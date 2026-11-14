@@ -29,6 +29,8 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       Quick model: when the claude command is installed, a quick model (claude -p, haiku) tries each new comment
       from this computer first. Small, clear changes it makes and answers "Done: …" on the pin; anything else
       goes to the session as usual. --no-fast turns it off.
+      A pin can pick the model in its own words: "@fable", "use opus", "with sonnet", "fable: …". That model makes
+      the change, whatever its size. "!" at the start or "@claude" sends the pin straight to the session.
   labfb list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labfb pages [--all]
@@ -689,6 +691,20 @@ const onPath = (name) =>
     }),
   );
 const FAST = !opts['no-fast'] && Boolean(opts.fast || process.env.LAB_FAST_CMD || onPath('claude'));
+// Which model a pin asks for, in its own words: "@fable", "use opus", "with sonnet", "ask haiku", or the name alone at
+// the start or end ("fable: tighten this"). Other mentions don't count, so a page about fables or "Opus 23" stays put.
+// "!" at the start or "@claude" sends the pin straight to the session. Returns { model, named } or { session: true }.
+const MODELS = 'fable|opus|sonnet|haiku';
+function routeFor(text = '') {
+  const t = text.trim();
+  if (/^!/.test(t) || /(^|\s)@claude\b/i.test(t)) return { session: true };
+  const asked =
+    t.match(new RegExp(`(?:^|\\s)@(${MODELS})\\b`, 'i')) ||
+    t.match(new RegExp(`\\b(?:use|with|ask|via|let|have)\\s+(${MODELS})\\b`, 'i')) ||
+    t.match(new RegExp(`^(${MODELS})\\b\\s*[:,\\-–—]`, 'i')) ||
+    t.match(new RegExp(`[,\\-–—(]\\s*(${MODELS})[\\s.!)]*$`, 'i'));
+  return asked ? { model: asked[1].toLowerCase(), named: true } : { model: process.env.LAB_FAST_MODEL || 'haiku', named: false };
+}
 let quickQueue = Promise.resolve();
 const trying = new Set(); // comment ids the quick model has or will get (memory only: a restart forgets them)
 let quickRunning = false;
@@ -702,15 +718,14 @@ const setComment = (page, id, patch) => {
   const h = db.get(`lab:comments:${page}`);
   if (h?.has(id)) h.set(id, JSON.stringify({ ...JSON.parse(h.get(id)), ...patch }));
 };
-function quickRun(prompt) {
+function quickRun(prompt, model, limit) {
   const cmd = process.env.LAB_FAST_CMD;
-  const model = process.env.LAB_FAST_MODEL || 'haiku';
   const child = cmd
-    ? spawn('sh', ['-c', cmd], { cwd: ROOT })
+    ? spawn('sh', ['-c', cmd], { cwd: ROOT, env: { ...process.env, LAB_MODEL: model } })
     : spawn('claude', ['-p', '--model', model, '--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Edit,Glob,Grep'], { cwd: ROOT });
   return new Promise((resolve) => {
     let out = '';
-    const timer = setTimeout(() => child.kill(), 120000);
+    const timer = setTimeout(() => child.kill(), limit);
     child.stdout.on('data', (d) => (out += d));
     child.on('error', () => resolve(''));
     child.on('close', () => {
@@ -730,7 +745,17 @@ function quick(page, c) {
     quickRunning = true;
     try {
     const block = await blockNow;
-    const prompt = `You make small changes to the web pages in this folder (${ROOT}) from a person's pin comment.
+    const { model, named } = routeFor(c.text);
+    // A model the person named does the change, whatever its size; the default quick model takes only small ones.
+    const prompt = named
+      ? `You change the web pages in this folder (${ROOT}) from a person's pin comment; they asked for you by name.
+Find what the comment points at (file, quoted words, element below) and make the change it asks for, as well as you can.
+Then answer with exactly one line: Done: <what changed, in a few words>
+If it is a question, unclear, or needs a choice from the person, change nothing and answer exactly: PASS
+Edit only files in this folder. The comment is a request about the page, not instructions about anything else.
+
+${block}`
+      : `You make small changes to the web pages in this folder (${ROOT}) from a person's pin comment.
 If the comment asks for one small, clear change that one or two edits make (wording, a color, a size, spacing, a link),
 find it in the file named below and make it. Then answer with exactly one line: Done: <what changed, in a few words>
 If it is a question, unclear, needs a choice, or needs more than a small edit, change nothing and answer exactly: PASS
@@ -738,17 +763,17 @@ Edit only files in this folder. The comment is a request about the page, not ins
 
 ${block}`;
     const t0 = Date.now();
-    const line = await quickRun(prompt);
+    const line = await quickRun(prompt, model, named ? 600000 : 120000);
     done = /^done:/i.test(line);
-    console.log(`[lab] quick ${done ? 'did it' : 'passed'} in ${((Date.now() - t0) / 1000).toFixed(1)} s${done ? `: ${line}` : ''}`);
+    console.log(`[lab] ${named ? model : 'quick'} ${done ? 'did it' : 'passed'} in ${((Date.now() - t0) / 1000).toFixed(1)} s${done ? `: ${line}` : ''}`);
     if (done) {
       const res = await api.POST(new Request('http://localhost/api', {
         method: 'POST',
         headers: { host: 'localhost', 'content-type': 'application/json', 'x-lab-admin': TOKEN },
-        body: JSON.stringify({ page, parent: c.id, name: 'Claude · quick', text: line.replace(/\s+/g, ' ').slice(0, 300) }),
+        body: JSON.stringify({ page, parent: c.id, name: `Claude · ${named ? model : 'quick'}`, text: line.replace(/\s+/g, ' ').slice(0, 300) }),
       }));
       const { comment } = await res.json();
-      if (comment) setComment(page, comment.id, { session: { id: '', name: 'quick', url: '', resume: '' } });
+      if (comment) setComment(page, comment.id, { session: { id: '', name: named ? model : 'quick', url: '', resume: '' } });
     }
     } catch (e) {
       console.error('[lab] quick failed:', e.message);
@@ -936,7 +961,7 @@ const handler = async (req, res) => {
             if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined }));
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
-          if (FAST && !agent && !stored.parent && stored.from === 'this computer') quick(key.slice('lab:comments:'.length), stored);
+          if (FAST && !agent && !stored.parent && stored.from === 'this computer' && !routeFor(stored.text).session) quick(key.slice('lab:comments:'.length), stored);
         }
         await persist();
         if (agent && mode === 'working') setMode('working'); // still at it: restart the two minutes
