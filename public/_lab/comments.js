@@ -482,7 +482,8 @@
       let all = box.textContent;
       // Lines drawn as elements (a <br> or a row per line, no newline characters): count those instead.
       const breaks = [...box.querySelectorAll('br, tr')];
-      if (!all.includes('\n') && breaks.length) {
+      // A code table counts its rows, whatever line breaks its markup has.
+      if ((codeTable || !all.includes('\n')) && breaks.length) {
         const ends = box.querySelectorAll('br').length ? [...box.querySelectorAll('br')] : [...box.querySelectorAll('tr')].slice(0, -1);
         const before = ends.filter((e) => e.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING && !e.contains(node)).length;
         const lineRange = document.createRange();
