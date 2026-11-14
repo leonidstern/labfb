@@ -23,6 +23,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
   - code: the page's own line numbers in excerpts, lines drawn one element per line (Docusaurus), and a block's title next to it
   - animated pictures: a rough time since they loaded (a page can't read which frame is showing)
 - Option-click is for commenting only: the page never sees it, so menus, buttons and folds don't act before the pin lands.
+- A pin can pick its model in plain words: "@fable", "use opus", "with sonnet", "fable: …". That model makes the change, whatever its size (up to 10 minutes), and signs its answer "Claude · fable". "!" at the start or "@claude" sends the pin straight to the session. Plain mentions ("the fable of…", "Opus 23") don't count.
 
 ## 0.4.0 · 2026-11-14
 
