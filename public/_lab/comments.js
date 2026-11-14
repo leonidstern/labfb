@@ -609,27 +609,6 @@
           const entry = performance.getEntriesByName(media.currentSrc || media.src)[0];
           const since = entry ? (performance.now() - entry.responseEnd) / 1000 : performance.now() / 1000;
           anchor.shownFor = Math.round(since * 10) / 10;
-          // The colour under the pin in the frame that was showing: an agent can find that frame in the file.
-          try {
-            const c = document.createElement('canvas');
-            [c.width, c.height] = [media.naturalWidth, media.naturalHeight];
-            const g = c.getContext('2d', { willReadFrequently: true });
-            g.drawImage(media, 0, 0);
-            // The most common colour in a small square around the pin, so thin lettering doesn't win.
-            const size = 11;
-            const px = Math.min(Math.max(Math.round((anchor.imgX || 0) * c.width) - 5, 0), Math.max(c.width - size, 0));
-            const py = Math.min(Math.max(Math.round((anchor.imgY || 0) * c.height) - 5, 0), Math.max(c.height - size, 0));
-            const d = g.getImageData(px, py, Math.min(size, c.width), Math.min(size, c.height)).data;
-            const seen = new Map();
-            for (let i = 0; i < d.length; i += 4) {
-              const key = '#' + [d[i], d[i + 1], d[i + 2]].map((v) => (v & 0xf0).toString(16).padStart(2, '0')).join('');
-              const hit = seen.get(key) || { n: 0, rgb: [d[i], d[i + 1], d[i + 2]] };
-              hit.n++;
-              seen.set(key, hit);
-            }
-            const top = [...seen.values()].sort((a, b) => b.n - a.n)[0];
-            anchor.frameColour = '#' + top.rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
-          } catch {} // a picture from another site can't be read
         }
         if (media.localName === 'video') {
           anchor.time = Math.round(media.currentTime * 10) / 10;

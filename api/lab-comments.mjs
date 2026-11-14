@@ -124,7 +124,6 @@ function cleanAnchor(a) {
     cssText: clean(a.cssText, 160) || undefined,
     transform: clean(a.transform, 80) || undefined,
     shownFor: sec(a.shownFor),
-    frameColour: /^#[0-9a-f]{6}$/i.test(a.frameColour || '') ? a.frameColour : undefined,
     gapAbove: clean(a.gapAbove, 160) || undefined,
     gapBelow: clean(a.gapBelow, 160) || undefined,
     scheme: a.scheme === 'dark' || a.scheme === 'light' ? a.scheme : undefined,
@@ -235,7 +234,7 @@ function asText(path, comments, host) {
       if (a.kind === 'video' && a.time !== undefined) lines.push(`video time: ${clock(a.time)}${a.duration ? ` of ${clock(a.duration)}` : ''}`);
       if (a.transform) lines.push(`shown with CSS transform ${a.transform}; the spot above is on the picture itself, the transform undone`);
       if (a.shownFor !== undefined)
-        lines.push(`animated picture: ${a.frameColour ? `the frame showing had colour ${a.frameColour} under the pin (find that frame in the file); ` : ''}it had been showing about ${a.shownFor} s (rough: browsers pause animations off screen)`);
+        lines.push(`animated picture: it had been showing about ${a.shownFor} s (rough: the page can't tell which frame was showing)`);
     } else if (a.kind === 'canvas' || a.kind === 'svg') {
       lines.push(`on: ${a.kind} animation, ${a.nw}×${a.nh} on screen`);
       lines.push(`spot: ${pct(a.imgX)} across, ${pct(a.imgY)} down`);
