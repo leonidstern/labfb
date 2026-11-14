@@ -119,6 +119,11 @@ function cleanAnchor(a) {
     imgX2: Number.isFinite(a.imgX2) ? num(a.imgX2) : undefined,
     imgY2: Number.isFinite(a.imgY2) ? num(a.imgY2) : undefined,
     zoneText: clean(a.zoneText, 300) || undefined,
+    shadow: clean(a.shadow, 200) || undefined,
+    chosen: clean(a.chosen, 120) || undefined,
+    cssText: clean(a.cssText, 160) || undefined,
+    transform: clean(a.transform, 80) || undefined,
+    shownFor: sec(a.shownFor),
     gapAbove: clean(a.gapAbove, 160) || undefined,
     gapBelow: clean(a.gapBelow, 160) || undefined,
     scheme: a.scheme === 'dark' || a.scheme === 'light' ? a.scheme : undefined,
@@ -141,6 +146,7 @@ function cleanAnchor(a) {
         out.quote.lineNo = int(a.quote.lineNo, 100000);
         out.quote.lines = int(a.quote.lines, 100000);
         if (a.quote.label) out.quote.label = clean(a.quote.label, 120);
+        if (a.quote.pageLineNo) out.quote.pageLineNo = int(a.quote.pageLineNo, 1000000);
       }
     }
   }
@@ -226,6 +232,8 @@ function asText(path, comments, host) {
             `${a.fit && a.fit !== 'fill' ? (a.fit.startsWith('background') ? ` (${a.fit})` : ` (object-fit ${a.fit})`) : ''}`,
         );
       if (a.kind === 'video' && a.time !== undefined) lines.push(`video time: ${clock(a.time)}${a.duration ? ` of ${clock(a.duration)}` : ''}`);
+      if (a.transform) lines.push(`shown with CSS transform ${a.transform}; the spot above is on the picture itself, the transform undone`);
+      if (a.shownFor !== undefined) lines.push(`animated picture: it had been showing for ${a.shownFor} s (it may loop; find the frame from its timing)`);
     } else if (a.kind === 'canvas' || a.kind === 'svg') {
       lines.push(`on: ${a.kind} animation, ${a.nw}×${a.nh} on screen`);
       lines.push(`spot: ${pct(a.imgX)} across, ${pct(a.imgY)} down`);
@@ -235,6 +243,7 @@ function asText(path, comments, host) {
       if (q.line) {
         lines.push(`on: code${q.label ? ` "${q.label}" (search the repo for it)` : ''}`);
         lines.push(`line: ${q.lineNo}${q.lines ? ` of ${q.lines}` : ''} in the block: ${q.line}`);
+        if (q.pageLineNo) lines.push(`line number shown on the page: ${q.pageLineNo} (the block is an excerpt; use this one in the file)`);
         lines.push(`word: [${q.exact}]`);
       } else lines.push(`on: text`, `text: "…${q.prefix}[${q.exact}]${q.suffix}…"`);
     } else if (a.context) {
@@ -243,6 +252,9 @@ function asText(path, comments, host) {
     if (a.element) lines.push(`element: ${a.element}`);
     if (a.text && !a.quote) lines.push(`element text: "${a.text}"`);
     if (a.inside) lines.push(`inside: ${a.inside}`);
+    if (a.shadow) lines.push(`inside web component: ${a.shadow} (its shadow DOM; search the repo for the tag name)`);
+    if (a.chosen) lines.push(`chosen option: ${a.chosen}`);
+    if (a.cssText) lines.push(`text added by CSS: ${a.cssText} (search the CSS for it)`);
     if (a.section) lines.push(`section: "${a.section}"`);
     if (a.zw) {
       lines.push(`type: area comment, ${a.docW}×${a.docH} px on screen`);
