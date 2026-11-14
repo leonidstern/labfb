@@ -119,6 +119,10 @@ function cleanAnchor(a) {
     imgX2: Number.isFinite(a.imgX2) ? num(a.imgX2) : undefined,
     imgY2: Number.isFinite(a.imgY2) ? num(a.imgY2) : undefined,
     zoneText: clean(a.zoneText, 300) || undefined,
+    gapAbove: clean(a.gapAbove, 160) || undefined,
+    gapBelow: clean(a.gapBelow, 160) || undefined,
+    scheme: a.scheme === 'dark' || a.scheme === 'light' ? a.scheme : undefined,
+    background: /^#[0-9a-f]{6}$/i.test(a.background || '') ? a.background : undefined,
     zw: Number.isFinite(a.zw) && a.zw > 0 ? num(a.zw) : undefined,
     zh: Number.isFinite(a.zh) && a.zh > 0 ? num(a.zh) : undefined,
     docW: int(a.docW),
@@ -217,7 +221,10 @@ function asText(path, comments, host) {
             ` (pixels ${px(a.imgX, a.nw)},${px(a.imgY, a.nh)} to ${px(a.imgX2, a.nw)},${px(a.imgY2, a.nh)})${a.fit && a.fit !== 'fill' ? ` (object-fit ${a.fit})` : ''}`,
         );
       } else if (a.nw && a.imgX !== undefined)
-        lines.push(`spot in original: ${pct(a.imgX)} across, ${pct(a.imgY)} down of ${a.nw}×${a.nh}${a.fit && a.fit !== 'fill' ? ` (object-fit ${a.fit})` : ''}`);
+        lines.push(
+          `spot in original: ${pct(a.imgX)} across, ${pct(a.imgY)} down of ${a.nw}×${a.nh} (pixel ${Math.round(a.imgX * a.nw)},${Math.round(a.imgY * a.nh)})` +
+            `${a.fit && a.fit !== 'fill' ? (a.fit.startsWith('background') ? ` (${a.fit})` : ` (object-fit ${a.fit})`) : ''}`,
+        );
       if (a.kind === 'video' && a.time !== undefined) lines.push(`video time: ${clock(a.time)}${a.duration ? ` of ${clock(a.duration)}` : ''}`);
     } else if (a.kind === 'canvas' || a.kind === 'svg') {
       lines.push(`on: ${a.kind} animation, ${a.nw}×${a.nh} on screen`);
@@ -242,6 +249,8 @@ function asText(path, comments, host) {
       lines.push(`area on element: ${pct(a.x)}–${pct(a.x + a.zw)} across, ${pct(a.y)}–${pct(a.y + a.zh)} down`);
       if (a.zoneText) lines.push(`text in area: "${a.zoneText}"`);
     } else lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`);
+    if (a.gapAbove || a.gapBelow) lines.push(`between: ${a.gapAbove || 'the top'} (above) and ${a.gapBelow || 'the end'} (below)`, `page y: ${a.docY} px`);
+    if (a.scheme) lines.push(`colours: ${a.scheme}${a.background ? ` (background ${a.background})` : ''}`);
     if (a.width) lines.push(`viewport: ${a.width}${a.height ? `×${a.height}` : 'px wide'}${a.dpr ? ` @${a.dpr}x` : ''}`);
     if (a.build) lines.push(`build: ${a.build}`);
     lines.push(`selector (at comment time): ${a.selector || 'body'}`);

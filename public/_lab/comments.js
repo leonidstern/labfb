@@ -285,6 +285,94 @@
     return { fit, nw, nh, imgX: clamp01((cx - rect.left - ox) / dw), imgY: clamp01((cy - rect.top - oy) / dh) };
   }
 
+  // The picture file's own size. With srcset, naturalWidth is the size in CSS pixels, not the file's: read the width
+  // descriptor of the candidate the browser picked ("photo-1600.jpg 1600w"), or scale by its density ("2x").
+  function fileSize(img) {
+    let nw = img.naturalWidth;
+    let nh = img.naturalHeight;
+    const sets = [img.srcset, ...[...(img.closest('picture')?.querySelectorAll('source') || [])].map((s) => s.srcset)].filter(Boolean);
+    for (const set of sets) {
+      for (const part of set.split(/,\s+/)) {
+        const [url, d = '1x'] = part.trim().split(/\s+/);
+        let abs = '';
+        try {
+          abs = new URL(url, location.href).href;
+        } catch {}
+        if (!url || abs !== img.currentSrc || !nw) continue;
+        const v = parseFloat(d);
+        if (d.endsWith('w') && v) return { nw: Math.round(v), nh: Math.round((v * nh) / nw) };
+        if (d.endsWith('x') && v) return { nw: Math.round(nw * v), nh: Math.round(nh * v) };
+      }
+    }
+    return { nw, nh };
+  }
+
+  // Where the click is inside a CSS background picture: its file size (loaded once, usually from the cache),
+  // background-size (cover, contain, auto, lengths) and background-position. Fills the anchor when known.
+  function backgroundSpot(n, url, anchor, cx, cy) {
+    const r = n.getBoundingClientRect();
+    const cs = getComputedStyle(n);
+    const fill = (iw, ih) => {
+      if (!iw || !ih || !r.width || !r.height) return;
+      const size = cs.backgroundSize.split(',')[0].trim();
+      let dw = iw;
+      let dh = ih;
+      if (size === 'cover' || size === 'contain') {
+        const k = (size === 'cover' ? Math.max : Math.min)(r.width / iw, r.height / ih);
+        dw = iw * k;
+        dh = ih * k;
+      } else if (size !== 'auto' && size !== 'auto auto') {
+        const [w, h = 'auto'] = size.split(/\s+/);
+        const len = (v, of) => (v.endsWith('%') ? (parseFloat(v) / 100) * of : parseFloat(v));
+        dw = w === 'auto' ? NaN : len(w, r.width);
+        dh = h === 'auto' ? NaN : len(h, r.height);
+        if (Number.isNaN(dw) && Number.isNaN(dh)) [dw, dh] = [iw, ih];
+        else if (Number.isNaN(dw)) dw = (dh * iw) / ih;
+        else if (Number.isNaN(dh)) dh = (dw * ih) / iw;
+      }
+      const [px = '50%', py = '50%'] = cs.backgroundPosition.split(',')[0].trim().split(/\s+/);
+      const off = (v, room) => (v.endsWith('%') ? (parseFloat(v) / 100) * room : parseFloat(v) || 0);
+      const ox = off(px, r.width - dw);
+      const oy = off(py, r.height - dh);
+      Object.assign(anchor, { nw: iw, nh: ih, fit: `background ${size}`, imgX: clamp01((cx - r.left - ox) / dw), imgY: clamp01((cy - r.top - oy) / dh) });
+    };
+    const probe = new Image();
+    probe.onload = () => fill(probe.naturalWidth, probe.naturalHeight);
+    probe.src = url;
+    if (probe.complete) fill(probe.naturalWidth, probe.naturalHeight);
+  }
+
+  // A click on empty space: the blocks just above and below it inside the element, by heading or first words.
+  function between(target, cy) {
+    const kids = [...target.children].filter((k) => k !== host && k.getBoundingClientRect().height > 0);
+    let above = null;
+    let below = null;
+    for (const k of kids) {
+      const kr = k.getBoundingClientRect();
+      if (kr.bottom <= cy) above = k;
+      else if (kr.top >= cy && !below) below = k;
+      else if (kr.top < cy && kr.bottom > cy) return null; // inside a block, not between two
+    }
+    const say = (k) => {
+      if (!k) return undefined;
+      const h = k.matches('h1, h2, h3, h4, h5, h6') ? k : k.querySelector('h1, h2, h3, h4, h5, h6');
+      return short(`${openingTag(k)} "${short((h || k).textContent, 60)}"`, 160);
+    };
+    return above || below ? { above: say(above), below: say(below) } : null;
+  }
+
+  // Light or dark where the pin is: the first background colour behind it that isn't transparent.
+  function schemeAt(target) {
+    for (let n = target; n; n = n.parentElement) {
+      const m = getComputedStyle(n).backgroundColor.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
+      if (!m || (m[4] !== undefined && parseFloat(m[4]) < 0.5)) continue;
+      const [r, g, b] = [m[1], m[2], m[3]].map(Number);
+      const hex = '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+      return { scheme: 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? 'dark' : 'light', background: hex };
+    }
+    return { scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' };
+  }
+
   // The word under the click plus ~40 characters either side, so an agent can grep the source.
   function quoteAt(cx, cy) {
     let node = null;
@@ -385,7 +473,7 @@
         anchor.file = fileHint(anchor.src);
         if (media.alt) anchor.alt = short(media.alt, 120);
         const spot = media.localName === 'img'
-          ? naturalSpot(media, r, clientX, clientY, media.naturalWidth, media.naturalHeight)
+          ? naturalSpot(media, r, clientX, clientY, fileSize(media).nw, fileSize(media).nh)
           : naturalSpot(media, r, clientX, clientY, media.videoWidth, media.videoHeight);
         if (spot) Object.assign(anchor, spot);
         if (media.localName === 'video') {
@@ -413,12 +501,18 @@
             anchor.kind = 'background';
             anchor.src = new URL(bg[1], location.href).href;
             anchor.file = fileHint(anchor.src);
+            backgroundSpot(n, anchor.src, anchor, clientX, clientY);
             break;
           }
         }
         anchor.kind ||= 'element';
+        if (anchor.kind === 'element') {
+          const gap = between(target, clientY);
+          if (gap) Object.assign(anchor, { gapAbove: gap.above, gapBelow: gap.below });
+        }
       }
     }
+    Object.assign(anchor, schemeAt(target));
     return anchor;
   }
 
@@ -531,6 +625,7 @@
       docW: Math.round(right - left),
       docH: Math.round(bottom - top),
     });
+    Object.assign(anchor, schemeAt(box));
     // Text inside the zone: the words whose middle falls inside it, in reading order. (Reading it like a selection
     // between the zone's corners took the whole paragraph whenever a corner sat above or below a line of text.)
     const words = [];
@@ -553,8 +648,8 @@
     if (text) anchor.zoneText = text;
     // The same area inside the original image or video file, when the zone is on one.
     if (/^(img|video)$/.test(box.localName)) {
-      const nw = box.naturalWidth || box.videoWidth;
-      const nh = box.naturalHeight || box.videoHeight;
+      const nw = box.localName === 'img' ? fileSize(box).nw : box.videoWidth;
+      const nh = box.localName === 'img' ? fileSize(box).nh : box.videoHeight;
       const a = naturalSpot(box, r, left, top, nw, nh);
       const b = naturalSpot(box, r, right, bottom, nw, nh);
       if (a && b) Object.assign(anchor, { imgX: a.imgX, imgY: a.imgY, imgX2: b.imgX, imgY2: b.imgY });
