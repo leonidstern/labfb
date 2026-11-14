@@ -285,12 +285,148 @@
     return { fit, nw, nh, imgX: clamp01((cx - rect.left - ox) / dw), imgY: clamp01((cy - rect.top - oy) / dh) };
   }
 
+  // The picture file's own size. With srcset, naturalWidth is the size in CSS pixels, not the file's: read the width
+  // descriptor of the candidate the browser picked ("photo-1600.jpg 1600w"), or scale by its density ("2x").
+  function fileSize(img) {
+    let nw = img.naturalWidth;
+    let nh = img.naturalHeight;
+    const sets = [img.srcset, ...[...(img.closest('picture')?.querySelectorAll('source') || [])].map((s) => s.srcset)].filter(Boolean);
+    for (const set of sets) {
+      for (const part of set.split(/,\s+/)) {
+        const [url, d = '1x'] = part.trim().split(/\s+/);
+        let abs = '';
+        try {
+          abs = new URL(url, location.href).href;
+        } catch {}
+        if (!url || abs !== img.currentSrc || !nw) continue;
+        const v = parseFloat(d);
+        if (d.endsWith('w') && v) return { nw: Math.round(v), nh: Math.round((v * nh) / nw) };
+        if (d.endsWith('x') && v) return { nw: Math.round(nw * v), nh: Math.round(nh * v) };
+      }
+    }
+    return { nw, nh };
+  }
+
+  // A point on an element turned, scaled or skewed by its own CSS transform, in the element's untransformed box.
+  function untransform(el, cx, cy) {
+    const t = getComputedStyle(el).transform;
+    if (!t || t === 'none') return null;
+    const m = new DOMMatrix(t);
+    if (m.isIdentity) return null;
+    const w = el.offsetWidth || el.getBoundingClientRect().width;
+    const h = el.offsetHeight || el.getBoundingClientRect().height;
+    const [ox, oy] = getComputedStyle(el).transformOrigin.split(' ').map(parseFloat);
+    const at = (x, y) => m.transformPoint(new DOMPoint(x - ox, y - oy));
+    const corners = [at(0, 0), at(w, 0), at(0, h), at(w, h)];
+    const r = el.getBoundingClientRect();
+    // Where the transform origin is on screen: the drawn box's top left, minus how far the corners reach.
+    const origin = { x: r.left - Math.min(...corners.map((p) => p.x)), y: r.top - Math.min(...corners.map((p) => p.y)) };
+    const q = m.inverse().transformPoint(new DOMPoint(cx - origin.x, cy - origin.y));
+    return { rect: { left: 0, top: 0, width: w, height: h }, x: q.x + ox, y: q.y + oy };
+  }
+
+  // A picture inside an SVG (<image>): its file size, and preserveAspectRatio (default: fit inside, centred).
+  function svgImageSpot(el, anchor, cx, cy) {
+    const r = el.getBoundingClientRect();
+    const keep = (el.getAttribute('preserveAspectRatio') || 'xMidYMid meet').split(/\s+/);
+    const fill = (iw, ih) => {
+      if (!iw || !ih || !r.width || !r.height) return;
+      let [dw, dh] = [r.width, r.height];
+      if (keep[0] !== 'none') {
+        const k = (keep[1] === 'slice' ? Math.max : Math.min)(r.width / iw, r.height / ih);
+        [dw, dh] = [iw * k, ih * k];
+      }
+      const align = (v, room) => (v === 'Min' ? 0 : v === 'Max' ? room : room / 2);
+      const ox = keep[0] === 'none' ? 0 : align(keep[0].slice(1, 4), r.width - dw);
+      const oy = keep[0] === 'none' ? 0 : align(keep[0].slice(5, 8), r.height - dh);
+      Object.assign(anchor, { nw: iw, nh: ih, imgX: clamp01((cx - r.left - ox) / dw), imgY: clamp01((cy - r.top - oy) / dh) });
+    };
+    const probe = new Image();
+    probe.onload = () => fill(probe.naturalWidth, probe.naturalHeight);
+    probe.src = anchor.src;
+    if (probe.complete) fill(probe.naturalWidth, probe.naturalHeight);
+  }
+
+  // Where the click is inside a CSS background picture: its file size (loaded once, usually from the cache),
+  // background-size (cover, contain, auto, lengths) and background-position. Fills the anchor when known.
+  function backgroundSpot(n, url, anchor, cx, cy) {
+    const r = n.getBoundingClientRect();
+    const cs = getComputedStyle(n);
+    // Layers are comma lists (a gradient on top of the photo is common): use the photo's own layer.
+    const layers = (v) => v.split(/,(?![^(]*\))/).map((x) => x.trim());
+    const at = Math.max(0, layers(cs.backgroundImage).findIndex((l) => l.includes(url)));
+    const pick = (v) => {
+      const l = layers(v);
+      return l[at % l.length];
+    };
+    const fill = (iw, ih) => {
+      if (!iw || !ih || !r.width || !r.height) return;
+      const size = pick(cs.backgroundSize);
+      let dw = iw;
+      let dh = ih;
+      if (size === 'cover' || size === 'contain') {
+        const k = (size === 'cover' ? Math.max : Math.min)(r.width / iw, r.height / ih);
+        dw = iw * k;
+        dh = ih * k;
+      } else if (size !== 'auto' && size !== 'auto auto') {
+        const [w, h = 'auto'] = size.split(/\s+/);
+        const len = (v, of) => (v.endsWith('%') ? (parseFloat(v) / 100) * of : parseFloat(v));
+        dw = w === 'auto' ? NaN : len(w, r.width);
+        dh = h === 'auto' ? NaN : len(h, r.height);
+        if (Number.isNaN(dw) && Number.isNaN(dh)) [dw, dh] = [iw, ih];
+        else if (Number.isNaN(dw)) dw = (dh * iw) / ih;
+        else if (Number.isNaN(dh)) dh = (dw * ih) / iw;
+      }
+      const [px = '50%', py = '50%'] = pick(cs.backgroundPosition).split(/\s+/);
+      const off = (v, room) => (v.endsWith('%') ? (parseFloat(v) / 100) * room : parseFloat(v) || 0);
+      const ox = off(px, r.width - dw);
+      const oy = off(py, r.height - dh);
+      Object.assign(anchor, { nw: iw, nh: ih, fit: `background ${size}`, imgX: clamp01((cx - r.left - ox) / dw), imgY: clamp01((cy - r.top - oy) / dh) });
+    };
+    const probe = new Image();
+    probe.onload = () => fill(probe.naturalWidth, probe.naturalHeight);
+    probe.src = url;
+    if (probe.complete) fill(probe.naturalWidth, probe.naturalHeight);
+  }
+
+  // A click on empty space: the blocks just above and below it inside the element, by heading or first words.
+  function between(target, cy) {
+    const kids = [...target.children].filter((k) => k !== host && k.getBoundingClientRect().height > 0);
+    let above = null;
+    let below = null;
+    for (const k of kids) {
+      const kr = k.getBoundingClientRect();
+      if (kr.bottom <= cy) above = k;
+      else if (kr.top >= cy && !below) below = k;
+      else if (kr.top < cy && kr.bottom > cy) return null; // inside a block, not between two
+    }
+    const say = (k) => {
+      if (!k) return undefined;
+      const h = k.matches('h1, h2, h3, h4, h5, h6') ? k : k.querySelector('h1, h2, h3, h4, h5, h6');
+      return short(`${openingTag(k)} "${short((h || k).textContent, 60)}"`, 160);
+    };
+    return above || below ? { above: say(above), below: say(below) } : null;
+  }
+
+  // Light or dark where the pin is: the first background colour behind it that isn't transparent.
+  function schemeAt(target) {
+    for (let n = target; n; n = n.parentElement) {
+      const m = getComputedStyle(n).backgroundColor.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
+      if (!m || (m[4] !== undefined && parseFloat(m[4]) < 0.5)) continue;
+      const [r, g, b] = [m[1], m[2], m[3]].map(Number);
+      const hex = '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+      return { scheme: 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? 'dark' : 'light', background: hex };
+    }
+    return { scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' };
+  }
+
   // The word under the click plus ~40 characters either side, so an agent can grep the source.
-  function quoteAt(cx, cy) {
+  function quoteAt(cx, cy, shadowRoots = []) {
     let node = null;
     let offset = 0;
     if (document.caretPositionFromPoint) {
-      const p = document.caretPositionFromPoint(cx, cy);
+      // Open shadow roots under the click are passed in, so text inside a web component is found too.
+      const p = shadowRoots.length ? document.caretPositionFromPoint(cx, cy, { shadowRoots }) : document.caretPositionFromPoint(cx, cy);
       if (p) (node = p.offsetNode), (offset = p.offset);
     } else if (document.caretRangeFromPoint) {
       const r = document.caretRangeFromPoint(cx, cy);
@@ -305,8 +441,22 @@
     const text = node.data;
     let a = offset;
     let b = offset;
-    while (a > 0 && /\S/.test(text[a - 1])) a--;
-    while (b < text.length && /\S/.test(text[b])) b++;
+    // Chinese, Japanese, Korean and Thai don't put spaces between words: ask the browser where the word is.
+    const seg = /[\u0e00-\u0e7f\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/.test(text) && typeof Intl !== 'undefined' && Intl.Segmenter
+      ? new Intl.Segmenter(node.parentElement?.closest('[lang]')?.lang || undefined, { granularity: 'word' })
+      : null;
+    if (seg) {
+      for (const w of seg.segment(text)) {
+        if (offset >= w.index && offset <= w.index + w.segment.length && w.segment.trim()) {
+          a = w.index;
+          b = w.index + w.segment.length;
+          if (offset < b) break;
+        }
+      }
+    } else {
+      while (a > 0 && /\S/.test(text[a - 1])) a--;
+      while (b < text.length && /\S/.test(text[b])) b++;
+    }
     const block = node.parentElement?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, a, button, label, span, div') || node.parentElement;
     const full = block?.textContent || text;
     const before = full.slice(0, full.indexOf(text) + a);
@@ -321,20 +471,50 @@
     // (a figcaption, data-file, title or aria-label nearby), so an agent can open the file at that line.
     const pre = node.parentElement?.closest('pre, [data-file]') ||
       (/^pre/.test(getComputedStyle(node.parentElement).whiteSpace) ? node.parentElement : null);
-    if (pre) {
+    // A table of code with its own line numbers (one row per line) counts as a block too.
+    const codeTable = !pre && node.parentElement?.closest('table[data-file], table[class*="code" i]');
+    if (pre || codeTable) {
+      const box = pre || codeTable;
       const r = document.createRange();
-      r.setStart(pre, 0);
+      r.setStart(box, 0);
       r.setEnd(node, offset);
-      const upto = r.toString();
-      const all = pre.textContent;
-      const from = upto.lastIndexOf('\n') + 1;
-      const to = all.indexOf('\n', upto.length);
-      quote.line = short(all.slice(from, to < 0 ? undefined : to).trim(), 200);
-      quote.lineNo = upto.split('\n').length;
-      quote.lines = all.replace(/\n$/, '').split('\n').length;
-      const holder = pre.closest('[data-file], figure') || pre;
-      const label = holder.getAttribute('data-file') || holder.querySelector?.('figcaption')?.textContent ||
-        pre.getAttribute('title') || pre.getAttribute('aria-label') || '';
+      let upto = r.toString();
+      let all = box.textContent;
+      // Lines drawn as elements (a <br> or a row per line, no newline characters): count those instead.
+      const breaks = [...box.querySelectorAll('br, tr')];
+      // A code table counts its rows, whatever line breaks its markup has.
+      if ((box.localName === 'table' || !all.includes('\n')) && breaks.length) {
+        const ends = box.querySelectorAll('br').length ? [...box.querySelectorAll('br')] : [...box.querySelectorAll('tr')].slice(0, -1);
+        const before = ends.filter((e) => e.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING && !e.contains(node)).length;
+        const lineRange = document.createRange();
+        if (before) lineRange.setStartAfter(ends[before - 1]);
+        else lineRange.setStart(box, 0);
+        if (ends[before]) lineRange.setEndBefore(ends[before]);
+        else lineRange.setEnd(box, box.childNodes.length);
+        // Rows are the lines themselves; with <br> a line is what lies between two of them.
+        const row = box.querySelectorAll('br').length ? null : node.parentElement?.closest('tr');
+        quote.line = short((row ? row.textContent : lineRange.toString()).trim(), 200);
+        quote.lineNo = before + 1;
+        quote.lines = ends.length + (box.querySelectorAll('br').length ? 0 : 1);
+      } else {
+        const from = upto.lastIndexOf('\n') + 1;
+        const to = all.indexOf('\n', upto.length);
+        quote.line = short(all.slice(from, to < 0 ? undefined : to).trim(), 200);
+        quote.lineNo = upto.split('\n').length;
+        quote.lines = all.replace(/\n$/, '').split('\n').length;
+      }
+      // The page's own line number, when it shows one (a number cell, or data-line on the row or cell).
+      const row = node.parentElement?.closest('tr, [data-line], [data-line-number]');
+      if (row) {
+        const cell = row.matches('[data-line], [data-line-number]') ? row : row.querySelector('[data-line], [data-line-number]');
+        const n = cell?.getAttribute('data-line') || cell?.getAttribute('data-line-number') || [...row.children].map((c) => c.textContent.trim()).find((t) => /^\d+$/.test(t));
+        if (n && /^\d+$/.test(n)) quote.pageLineNo = Number(n);
+      }
+      // The block's label: data-file, a caption, or a title bar next to the block (Docusaurus, Expressive Code).
+      let label = box.closest('[data-file]')?.getAttribute('data-file') || box.getAttribute('title') || box.getAttribute('aria-label') || '';
+      for (let el = box.parentElement, i = 0; !label.trim() && el && el !== document.body && i < 3; el = el.parentElement, i++) {
+        label = el.querySelector(':scope > figcaption, :scope > [class*="title" i]')?.textContent || '';
+      }
       if (label.trim()) quote.label = short(label.trim(), 120);
     }
     return quote;
@@ -348,7 +528,17 @@
   }
 
   function anchorAt(clientX, clientY) {
-    const stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
+    let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
+    // Inside open web components: follow the click into each shadow root.
+    const shadowRoots = [];
+    let shadowHost = null;
+    for (let top = stack[0]; top?.shadowRoot && !host.contains(top) && shadowRoots.length < 5; top = stack[0]) {
+      shadowHost ||= top;
+      shadowRoots.push(top.shadowRoot);
+      const inner = top.shadowRoot.elementsFromPoint(clientX, clientY).filter((n) => n !== top);
+      if (!inner.length) break;
+      stack = [...inner, ...stack];
+    }
     // data-comment-target: a click anywhere inside snaps to that element (same attribute as Claude artifacts).
     const target = stack[0]?.closest('[data-comment-target]') || stack[0] || document.body;
     const rect = target.getBoundingClientRect();
@@ -372,22 +562,57 @@
       if (h.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(target)) heading = h;
     }
     if (heading) anchor.section = short(heading.textContent, 100);
+    if (shadowHost) anchor.shadow = openingTag(shadowHost);
+    // A <select>: which option is chosen (its text is every option in a row).
+    const select = target.closest?.('select');
+    if (select && select.selectedIndex >= 0) {
+      anchor.chosen = short(`${select.selectedIndex + 1} of ${select.options.length}: "${select.options[select.selectedIndex].text}"`, 120);
+    }
+    // Text that CSS adds with ::before / ::after content (a badge, a label): it isn't in the HTML.
+    for (const el of [target, target.parentElement]) {
+      if (!el || el === document.body) continue;
+      for (const which of ['::before', '::after']) {
+        const c = getComputedStyle(el, which).content;
+        const m = c && c.match(/^"(.+)"$/);
+        if (m && m[1].trim()) {
+          anchor.cssText = short(`"${m[1]}" from ${which} of ${openingTag(el)}`, 160);
+          break;
+        }
+      }
+      if (anchor.cssText) break;
+    }
     const build = document.querySelector('meta[name="lab-build"]')?.content;
     if (build) anchor.build = short(build, 40);
 
     // What the pin sits on: media first (even under a transparent overlay), then text, then a background image.
-    const media = stack.slice(0, 5).find((n) => /^(img|video|canvas|svg)$/.test(n.localName) && !host.contains(n));
-    if (media) {
+    const media = stack.slice(0, 5).find((n) => /^(img|video|canvas|svg|image)$/.test(n.localName) && !host.contains(n));
+    if (media?.localName === 'image' && media.namespaceURI === 'http://www.w3.org/2000/svg') {
+      // A picture placed inside an SVG with <image href>: a picture file, not a drawing.
+      anchor.kind = 'image';
+      anchor.src = new URL(media.getAttribute('href') || media.getAttribute('xlink:href') || '', location.href).href;
+      anchor.file = fileHint(anchor.src);
+      svgImageSpot(media, anchor, clientX, clientY);
+    } else if (media) {
       const r = media.getBoundingClientRect();
       anchor.kind = media.localName === 'img' ? 'image' : media.localName;
       if (media.localName === 'img' || media.localName === 'video') {
         anchor.src = mediaSrc(media);
         anchor.file = fileHint(anchor.src);
         if (media.alt) anchor.alt = short(media.alt, 120);
+        // Turned or skewed by a CSS transform: undo it, so the spot is measured on the picture itself.
+        const local = untransform(media, clientX, clientY);
+        const [box, px, py] = local ? [local.rect, local.x, local.y] : [r, clientX, clientY];
         const spot = media.localName === 'img'
-          ? naturalSpot(media, r, clientX, clientY, media.naturalWidth, media.naturalHeight)
-          : naturalSpot(media, r, clientX, clientY, media.videoWidth, media.videoHeight);
+          ? naturalSpot(media, box, px, py, fileSize(media).nw, fileSize(media).nh)
+          : naturalSpot(media, box, px, py, media.videoWidth, media.videoHeight);
         if (spot) Object.assign(anchor, spot);
+        if (local) anchor.transform = short(getComputedStyle(media).transform, 80);
+        // An animated picture (GIF, WebP, APNG): how long it had been showing, to find the frame.
+        if (media.localName === 'img' && /\.(gif|webp|apng)(\?|#|$)/i.test(media.currentSrc || media.src)) {
+          const entry = performance.getEntriesByName(media.currentSrc || media.src)[0];
+          const since = entry ? (performance.now() - entry.responseEnd) / 1000 : performance.now() / 1000;
+          anchor.shownFor = Math.round(since * 10) / 10;
+        }
         if (media.localName === 'video') {
           anchor.time = Math.round(media.currentTime * 10) / 10;
           if (Number.isFinite(media.duration)) anchor.duration = Math.round(media.duration * 10) / 10;
@@ -402,7 +627,7 @@
         anchor.nh = Math.round(r.height);
       }
     } else {
-      const quote = quoteAt(clientX, clientY);
+      const quote = quoteAt(clientX, clientY, shadowRoots);
       if (quote) {
         anchor.kind = 'text';
         anchor.quote = quote;
@@ -413,12 +638,18 @@
             anchor.kind = 'background';
             anchor.src = new URL(bg[1], location.href).href;
             anchor.file = fileHint(anchor.src);
+            backgroundSpot(n, anchor.src, anchor, clientX, clientY);
             break;
           }
         }
         anchor.kind ||= 'element';
+        if (anchor.kind === 'element') {
+          const gap = between(target, clientY);
+          if (gap) Object.assign(anchor, { gapAbove: gap.above, gapBelow: gap.below });
+        }
       }
     }
+    Object.assign(anchor, schemeAt(target));
     return anchor;
   }
 
@@ -531,6 +762,7 @@
       docW: Math.round(right - left),
       docH: Math.round(bottom - top),
     });
+    Object.assign(anchor, schemeAt(box));
     // Text inside the zone: the words whose middle falls inside it, in reading order. (Reading it like a selection
     // between the zone's corners took the whole paragraph whenever a corner sat above or below a line of text.)
     const words = [];
@@ -553,8 +785,8 @@
     if (text) anchor.zoneText = text;
     // The same area inside the original image or video file, when the zone is on one.
     if (/^(img|video)$/.test(box.localName)) {
-      const nw = box.naturalWidth || box.videoWidth;
-      const nh = box.naturalHeight || box.videoHeight;
+      const nw = box.localName === 'img' ? fileSize(box).nw : box.videoWidth;
+      const nh = box.localName === 'img' ? fileSize(box).nh : box.videoHeight;
       const a = naturalSpot(box, r, left, top, nw, nh);
       const b = naturalSpot(box, r, right, bottom, nw, nh);
       if (a && b) Object.assign(anchor, { imgX: a.imgX, imgY: a.imgY, imgX2: b.imgX, imgY2: b.imgY });
@@ -1090,9 +1322,18 @@
     liveZone.style.width = `${Math.abs(drag.x1 - drag.x0)}px`;
     liveZone.style.height = `${Math.abs(drag.y1 - drag.y0)}px`;
   };
+  function startDrag(e) {
+    // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
+    if ((!on && !e.altKey) || draft || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if (e.composedPath().includes(host)) return;
+    if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+    if (e.target instanceof Element && e.target.closest(OFF)) return;
+    drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
+  }
   document.addEventListener(
     'pointerdown',
     (e) => {
+      if (e.altKey) return; // Option presses are taken earlier (see optionPress)
       // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
       if ((!on && !e.altKey) || draft || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host)) return;
@@ -1163,7 +1404,28 @@
     true,
   );
 
-  document.addEventListener('click', (e) => {
+  // Option (Alt) presses are for commenting: the page never sees them, so a menu item or a button doesn't run
+  // and close itself before the pin lands on it.
+  const optionPress = (e) => e.altKey && !e.metaKey && !e.ctrlKey && e.button === 0 && !e.composedPath().includes(host) &&
+    !(e.target instanceof Element && e.target.closest(OFF));
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
+    addEventListener(type, (e) => {
+      if (!optionPress(e)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (type === 'pointerdown') startDrag(e);
+      if (type === 'pointerup') endDrag(e);
+    }, true);
+  }
+  addEventListener('click', (e) => {
+    if (!optionPress(e)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!afterDrag) onPageClick(e); // the click that ends an Option-drag belongs to the area
+  }, true);
+
+  document.addEventListener('click', (e) => onPageClick(e));
+  function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
     if (draft || openId) {
       if ([...root.querySelectorAll('textarea')].some((t) => t.value.trim())) return; // typed text stays; Escape discards it
@@ -1180,7 +1442,7 @@
     showAgain();
     draft = { anchor: anchorAt(e.clientX, e.clientY) };
     render();
-  });
+  }
 
   let frame = 0;
   const reflow = () => {
