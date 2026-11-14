@@ -312,9 +312,16 @@
   function backgroundSpot(n, url, anchor, cx, cy) {
     const r = n.getBoundingClientRect();
     const cs = getComputedStyle(n);
+    // Layers are comma lists (a gradient on top of the photo is common): use the photo's own layer.
+    const layers = (v) => v.split(/,(?![^(]*\))/).map((x) => x.trim());
+    const at = Math.max(0, layers(cs.backgroundImage).findIndex((l) => l.includes(url)));
+    const pick = (v) => {
+      const l = layers(v);
+      return l[at % l.length];
+    };
     const fill = (iw, ih) => {
       if (!iw || !ih || !r.width || !r.height) return;
-      const size = cs.backgroundSize.split(',')[0].trim();
+      const size = pick(cs.backgroundSize);
       let dw = iw;
       let dh = ih;
       if (size === 'cover' || size === 'contain') {
@@ -330,7 +337,7 @@
         else if (Number.isNaN(dw)) dw = (dh * iw) / ih;
         else if (Number.isNaN(dh)) dh = (dw * ih) / iw;
       }
-      const [px = '50%', py = '50%'] = cs.backgroundPosition.split(',')[0].trim().split(/\s+/);
+      const [px = '50%', py = '50%'] = pick(cs.backgroundPosition).split(/\s+/);
       const off = (v, room) => (v.endsWith('%') ? (parseFloat(v) / 100) * room : parseFloat(v) || 0);
       const ox = off(px, r.width - dw);
       const oy = off(py, r.height - dh);
