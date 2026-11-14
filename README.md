@@ -88,6 +88,22 @@ Without Claude, run `npx @leonidstern/labfb` in your project:
 - **Options:** `--no-fast` turns off the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
+## Other agents
+
+labfb isn't tied to Claude. Comments are plain text and the local loop is a few shell commands, so any agent that can read a link or use a terminal works: Codex, Cursor, Gemini CLI, or a script.
+
+- **Cloud lab:** give the agent the `/_lab/agent/<page path>` link. It's plain text with every open comment.
+- **Local lab:** paste the prompt from [Local lab](#local-lab) into your agent. It uses only `npx @leonidstern/labfb`, `wait`, `reply` and `pages`.
+- **Its name on the page:** set `LAB_AGENT_NAME=Codex` where the agent runs `reply`, and its replies are signed "Codex" instead of "Claude". `wait --name "my project"` (or `LAB_SESSION_NAME`) is the name the page shows while it listens.
+- **Quick model with another tool:** `LAB_FAST_CMD` replaces the `claude` command. It runs in the project folder, gets the prompt on stdin and the model a pin asked for in `LAB_MODEL`, and its last line is the answer: `Done: <what changed>` or `PASS`.
+
+```sh
+LAB_FAST_CMD='./scripts/quick-edit.sh' npx @leonidstern/labfb       # start, with your own quick step
+LAB_AGENT_NAME=Codex npx @leonidstern/labfb reply <id> "Done: …"   # the agent answers on a pin
+```
+
+What stays Claude-only: the plugin and its skill, the link to the Claude Code session on the page, and model names in pins ("use fable"), which only mean something to the `claude` command (another command sees them in `LAB_MODEL`).
+
 ## Both
 
 ![A person pins, the agent GETs one link as plain text, then opens the exact file, line, pixel or second](docs/how-agents-see-comments.png)
