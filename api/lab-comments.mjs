@@ -124,6 +124,7 @@ function cleanAnchor(a) {
     cssText: clean(a.cssText, 160) || undefined,
     transform: clean(a.transform, 80) || undefined,
     shownFor: sec(a.shownFor),
+    frameColour: /^#[0-9a-f]{6}$/i.test(a.frameColour || '') ? a.frameColour : undefined,
     gapAbove: clean(a.gapAbove, 160) || undefined,
     gapBelow: clean(a.gapBelow, 160) || undefined,
     scheme: a.scheme === 'dark' || a.scheme === 'light' ? a.scheme : undefined,
@@ -233,7 +234,8 @@ function asText(path, comments, host) {
         );
       if (a.kind === 'video' && a.time !== undefined) lines.push(`video time: ${clock(a.time)}${a.duration ? ` of ${clock(a.duration)}` : ''}`);
       if (a.transform) lines.push(`shown with CSS transform ${a.transform}; the spot above is on the picture itself, the transform undone`);
-      if (a.shownFor !== undefined) lines.push(`animated picture: it had been showing for ${a.shownFor} s (it may loop; find the frame from its timing)`);
+      if (a.shownFor !== undefined)
+        lines.push(`animated picture: ${a.frameColour ? `the frame showing had colour ${a.frameColour} under the pin (find that frame in the file); ` : ''}it had been showing about ${a.shownFor} s (rough: browsers pause animations off screen)`);
     } else if (a.kind === 'canvas' || a.kind === 'svg') {
       lines.push(`on: ${a.kind} animation, ${a.nw}×${a.nh} on screen`);
       lines.push(`spot: ${pct(a.imgX)} across, ${pct(a.imgY)} down`);
@@ -242,8 +244,8 @@ function asText(path, comments, host) {
       const q = a.quote;
       if (q.line) {
         lines.push(`on: code${q.label ? ` "${q.label}" (search the repo for it)` : ''}`);
-        lines.push(`line: ${q.lineNo}${q.lines ? ` of ${q.lines}` : ''} in the block: ${q.line}`);
-        if (q.pageLineNo) lines.push(`line number shown on the page: ${q.pageLineNo} (the block is an excerpt; use this one in the file)`);
+        if (q.pageLineNo) lines.push(`line: ${q.pageLineNo} (the number shown next to it on the page; row ${q.lineNo}${q.lines ? ` of ${q.lines}` : ''} of this excerpt): ${q.line}`);
+        else lines.push(`line: ${q.lineNo}${q.lines ? ` of ${q.lines}` : ''} in the block: ${q.line}`);
         lines.push(`word: [${q.exact}]`);
       } else lines.push(`on: text`, `text: "…${q.prefix}[${q.exact}]${q.suffix}…"`);
     } else if (a.context) {

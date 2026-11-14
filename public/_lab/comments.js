@@ -508,9 +508,10 @@
         if (n && /^\d+$/.test(n)) quote.pageLineNo = Number(n);
       }
       // The block's label: data-file, a caption, or a title bar next to the block (Docusaurus, Expressive Code).
-      const holder = box.closest('[data-file], figure, [class*="codeBlock" i], [class*="code-block" i]') || box;
-      const label = holder.getAttribute('data-file') || holder.querySelector?.('figcaption, [class*="title" i]')?.textContent ||
-        box.getAttribute('title') || box.getAttribute('aria-label') || '';
+      let label = box.closest('[data-file]')?.getAttribute('data-file') || box.getAttribute('title') || box.getAttribute('aria-label') || '';
+      for (let el = box.parentElement, i = 0; !label.trim() && el && el !== document.body && i < 3; el = el.parentElement, i++) {
+        label = el.querySelector(':scope > figcaption, :scope > [class*="title" i]')?.textContent || '';
+      }
       if (label.trim()) quote.label = short(label.trim(), 120);
     }
     return quote;
@@ -608,6 +609,15 @@
           const entry = performance.getEntriesByName(media.currentSrc || media.src)[0];
           const since = entry ? (performance.now() - entry.responseEnd) / 1000 : performance.now() / 1000;
           anchor.shownFor = Math.round(since * 10) / 10;
+          // The colour under the pin in the frame that was showing: an agent can find that frame in the file.
+          try {
+            const c = document.createElement('canvas');
+            [c.width, c.height] = [media.naturalWidth, media.naturalHeight];
+            const g = c.getContext('2d', { willReadFrequently: true });
+            g.drawImage(media, 0, 0);
+            const d = g.getImageData(Math.round((anchor.imgX || 0) * (c.width - 1)), Math.round((anchor.imgY || 0) * (c.height - 1)), 1, 1).data;
+            anchor.frameColour = '#' + [d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, '0')).join('');
+          } catch {} // a picture from another site can't be read
         }
         if (media.localName === 'video') {
           anchor.time = Math.round(media.currentTime * 10) / 10;
