@@ -1,4 +1,5 @@
 // Local lab for the benchmark: serves public/ and bench/site at /bench, runs api/lab-comments.mjs with an in-memory store.
+// BENCH_SITE and BENCH_AT serve another folder at another path (bench/situations.mjs: bench/situations at /sit).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,6 +9,8 @@ process.env.LAB_HOST ??= 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN ??= 'admintoken';
 const api = await apiOn(new Map(), REPO);
 const port = Number(process.env.PORT || 4321);
+const SITE = path.resolve(REPO, process.env.BENCH_SITE || 'bench/site');
+const AT = process.env.BENCH_AT || '/bench';
 export const ready = new Promise((r) => (globalThis.__ready = r));
 http.createServer(async (req, res) => {
   try {
@@ -23,9 +26,9 @@ http.createServer(async (req, res) => {
       res.end(Buffer.from(await out.arrayBuffer()));
       return;
     }
-    const bench = url.pathname === '/bench' || url.pathname.startsWith('/bench/');
-    const root = bench ? path.join(REPO, 'bench/site') : path.join(REPO, 'public');
-    let file = path.join(root, decodeURIComponent(bench ? url.pathname.slice('/bench'.length) || '/' : url.pathname));
+    const bench = url.pathname === AT || url.pathname.startsWith(AT + '/');
+    const root = bench ? SITE : path.join(REPO, 'public');
+    let file = path.join(root, decodeURIComponent(bench ? url.pathname.slice(AT.length) || '/' : url.pathname));
     if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
     if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
@@ -36,4 +39,4 @@ http.createServer(async (req, res) => {
     if (res.headersSent) res.destroy();
     else res.writeHead(500).end(String(e));
   }
-}).listen(port, () => { console.log(`http://localhost:${port}/bench/`); globalThis.__ready(); });
+}).listen(port, () => { console.log(`http://localhost:${port}${AT}/`); globalThis.__ready(); });
