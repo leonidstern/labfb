@@ -16,6 +16,13 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Fixed: an area comment's text is now the words inside the area. It was the whole paragraph whenever the area reached above or below a line of text.
 - Fixed: a comment card could stay see-through when the page was in the background (a stalled fade-in); cards now only slide in, never fade.
 - Fixed: dragging on an image while a comment card was open dragged the image itself. Now it marks an area and closes the card; with comments on, images and videos never start a browser drag.
+- Pins say more, so an agent finds the spot from the text alone (found with the benchmark in `bench/situations*`):
+  - the exact pixel next to the rounded percents; the real file size of `srcset` and `<picture>` images; a spot inside CSS background photos (using the photo's own layer under a gradient); pictures turned by a CSS transform measured with the transform undone; pictures inside an SVG `<image>`
+  - the blocks above and below a click on empty space, and the page y; light or dark (the colour behind the pin)
+  - words in Chinese, Japanese, Korean and Thai; text added by CSS `::before`/`::after`; the chosen option of a `<select>`; words inside open web components (Shadow DOM)
+  - code: the page's own line numbers in excerpts, lines drawn one element per line (Docusaurus), and a block's title next to it
+  - animated pictures: a rough time since they loaded (a page can't read which frame is showing)
+- Option-click is for commenting only: the page never sees it, so menus, buttons and folds don't act before the pin lands.
 
 ## 0.4.0 · 2026-11-14
 
