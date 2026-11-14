@@ -187,7 +187,8 @@
       /* 16px fields keep iOS from zooming the page when one is focused. */
       @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.006em; } kbd { display: none; } }
       @keyframes lab-fade { from { opacity: 0; } }
-      @keyframes lab-in { from { opacity: 0; transform: translateY(4px) scale(.98); } }
+      /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
+      @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
       @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
       /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
       @supports (corner-shape: squircle) { .card, .float .box, .card .box { corner-shape: squircle; border-radius: calc(var(--_radius) * 1.8); } }
@@ -530,26 +531,26 @@
       docW: Math.round(right - left),
       docH: Math.round(bottom - top),
     });
-    // Text inside the zone, read like a selection from its top-left to its bottom-right corner.
-    const caret = (x, y) => {
-      if (document.caretPositionFromPoint) {
-        const c = document.caretPositionFromPoint(x, y);
-        return c && { node: c.offsetNode, offset: c.offset };
+    // Text inside the zone: the words whose middle falls inside it, in reading order. (Reading it like a selection
+    // between the zone's corners took the whole paragraph whenever a corner sat above or below a line of text.)
+    const words = [];
+    const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let n = walker.nextNode(); n && words.length < 80; n = walker.nextNode()) {
+      if (host.contains(n)) continue;
+      const pr = n.parentElement?.getBoundingClientRect();
+      if (!pr || pr.bottom < top || pr.top > bottom || pr.right < left || pr.left > right) continue;
+      for (const m of n.data.matchAll(/\S+/g)) {
+        range.setStart(n, m.index);
+        range.setEnd(n, m.index + m[0].length);
+        const w = range.getBoundingClientRect();
+        const cx = (w.left + w.right) / 2;
+        const cy = (w.top + w.bottom) / 2;
+        if (w.width && cx >= left && cx <= right && cy >= top && cy <= bottom) words.push(m[0]);
       }
-      const c = document.caretRangeFromPoint?.(x, y);
-      return c && { node: c.startContainer, offset: c.startOffset };
-    };
-    const from = caret(left + 1, top + 1);
-    const to = caret(right - 1, bottom - 1);
-    if (from && to && from.node.nodeType === 3 && to.node.nodeType === 3) {
-      try {
-        const range = document.createRange();
-        range.setStart(from.node, from.offset);
-        range.setEnd(to.node, to.offset);
-        const words = short(range.toString(), 300);
-        if (words) anchor.zoneText = words;
-      } catch {}
     }
+    const text = short(words.join(' '), 300);
+    if (text) anchor.zoneText = text;
     // The same area inside the original image or video file, when the zone is on one.
     if (/^(img|video)$/.test(box.localName)) {
       const nw = box.naturalWidth || box.videoWidth;

@@ -13,6 +13,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - `labfb pages`: every running lab's pages as a Markdown list in `.lab/lab-pages.md`, with open comment counts. Running labs register in `~/.labfb/servers/` (removed on exit), and each lab answers `/_lab/pages` for this computer only. The skill sends the file to the person after starting a lab, so it sits under Outputs in the desktop app.
 - One lab per project: `labfb list` shows the labs running on this computer; starting a lab in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one). The skill and the cloud setup prompt now check for an existing lab, project, page or session before creating one.
 - `labfb add <url>` / `labfb remove <url>`: save cloud lab pages with the project (`.lab/links.json`). `pages` lists the project's labs and cloud pages, by domain with open comments; `pages --all` lists every lab on the computer.
+- Fixed: an area comment's text is now the words inside the area. It was the whole paragraph whenever the area reached above or below a line of text.
+- Fixed: a comment card could stay see-through when the page was in the background (a stalled fade-in); cards now only slide in, never fade.
 
 ## 0.4.0 · 2026-11-14
 
