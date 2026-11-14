@@ -119,6 +119,15 @@ function cleanAnchor(a) {
     imgX2: Number.isFinite(a.imgX2) ? num(a.imgX2) : undefined,
     imgY2: Number.isFinite(a.imgY2) ? num(a.imgY2) : undefined,
     zoneText: clean(a.zoneText, 300) || undefined,
+    shadow: clean(a.shadow, 200) || undefined,
+    chosen: clean(a.chosen, 120) || undefined,
+    cssText: clean(a.cssText, 160) || undefined,
+    transform: clean(a.transform, 80) || undefined,
+    shownFor: sec(a.shownFor),
+    gapAbove: clean(a.gapAbove, 160) || undefined,
+    gapBelow: clean(a.gapBelow, 160) || undefined,
+    scheme: a.scheme === 'dark' || a.scheme === 'light' ? a.scheme : undefined,
+    background: /^#[0-9a-f]{6}$/i.test(a.background || '') ? a.background : undefined,
     zw: Number.isFinite(a.zw) && a.zw > 0 ? num(a.zw) : undefined,
     zh: Number.isFinite(a.zh) && a.zh > 0 ? num(a.zh) : undefined,
     docW: int(a.docW),
@@ -137,6 +146,7 @@ function cleanAnchor(a) {
         out.quote.lineNo = int(a.quote.lineNo, 100000);
         out.quote.lines = int(a.quote.lines, 100000);
         if (a.quote.label) out.quote.label = clean(a.quote.label, 120);
+        if (a.quote.pageLineNo) out.quote.pageLineNo = int(a.quote.pageLineNo, 1000000);
       }
     }
   }
@@ -217,8 +227,14 @@ function asText(path, comments, host) {
             ` (pixels ${px(a.imgX, a.nw)},${px(a.imgY, a.nh)} to ${px(a.imgX2, a.nw)},${px(a.imgY2, a.nh)})${a.fit && a.fit !== 'fill' ? ` (object-fit ${a.fit})` : ''}`,
         );
       } else if (a.nw && a.imgX !== undefined)
-        lines.push(`spot in original: ${pct(a.imgX)} across, ${pct(a.imgY)} down of ${a.nw}×${a.nh}${a.fit && a.fit !== 'fill' ? ` (object-fit ${a.fit})` : ''}`);
+        lines.push(
+          `spot in original: ${pct(a.imgX)} across, ${pct(a.imgY)} down of ${a.nw}×${a.nh} (pixel ${Math.round(a.imgX * a.nw)},${Math.round(a.imgY * a.nh)})` +
+            `${a.fit && a.fit !== 'fill' ? (a.fit.startsWith('background') ? ` (${a.fit})` : ` (object-fit ${a.fit})`) : ''}`,
+        );
       if (a.kind === 'video' && a.time !== undefined) lines.push(`video time: ${clock(a.time)}${a.duration ? ` of ${clock(a.duration)}` : ''}`);
+      if (a.transform) lines.push(`shown with CSS transform ${a.transform}; the spot above is on the picture itself, the transform undone`);
+      if (a.shownFor !== undefined)
+        lines.push(`animated picture: it had been showing about ${a.shownFor} s (rough: the page can't tell which frame was showing)`);
     } else if (a.kind === 'canvas' || a.kind === 'svg') {
       lines.push(`on: ${a.kind} animation, ${a.nw}×${a.nh} on screen`);
       lines.push(`spot: ${pct(a.imgX)} across, ${pct(a.imgY)} down`);
@@ -227,7 +243,8 @@ function asText(path, comments, host) {
       const q = a.quote;
       if (q.line) {
         lines.push(`on: code${q.label ? ` "${q.label}" (search the repo for it)` : ''}`);
-        lines.push(`line: ${q.lineNo}${q.lines ? ` of ${q.lines}` : ''} in the block: ${q.line}`);
+        if (q.pageLineNo) lines.push(`line: ${q.pageLineNo} (the number shown next to it on the page; row ${q.lineNo}${q.lines ? ` of ${q.lines}` : ''} of this excerpt): ${q.line}`);
+        else lines.push(`line: ${q.lineNo}${q.lines ? ` of ${q.lines}` : ''} in the block: ${q.line}`);
         lines.push(`word: [${q.exact}]`);
       } else lines.push(`on: text`, `text: "…${q.prefix}[${q.exact}]${q.suffix}…"`);
     } else if (a.context) {
@@ -236,12 +253,17 @@ function asText(path, comments, host) {
     if (a.element) lines.push(`element: ${a.element}`);
     if (a.text && !a.quote) lines.push(`element text: "${a.text}"`);
     if (a.inside) lines.push(`inside: ${a.inside}`);
+    if (a.shadow) lines.push(`inside web component: ${a.shadow} (its shadow DOM; search the repo for the tag name)`);
+    if (a.chosen) lines.push(`chosen option: ${a.chosen}`);
+    if (a.cssText) lines.push(`text added by CSS: ${a.cssText} (search the CSS for it)`);
     if (a.section) lines.push(`section: "${a.section}"`);
     if (a.zw) {
       lines.push(`type: area comment, ${a.docW}×${a.docH} px on screen`);
       lines.push(`area on element: ${pct(a.x)}–${pct(a.x + a.zw)} across, ${pct(a.y)}–${pct(a.y + a.zh)} down`);
       if (a.zoneText) lines.push(`text in area: "${a.zoneText}"`);
     } else lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`);
+    if (a.gapAbove || a.gapBelow) lines.push(`between: ${a.gapAbove || 'the top'} (above) and ${a.gapBelow || 'the end'} (below)`, `page y: ${a.docY} px`);
+    if (a.scheme) lines.push(`colours: ${a.scheme}${a.background ? ` (background ${a.background})` : ''}`);
     if (a.width) lines.push(`viewport: ${a.width}${a.height ? `×${a.height}` : 'px wide'}${a.dpr ? ` @${a.dpr}x` : ''}`);
     if (a.build) lines.push(`build: ${a.build}`);
     lines.push(`selector (at comment time): ${a.selector || 'body'}`);
