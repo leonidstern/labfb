@@ -491,7 +491,9 @@
         else lineRange.setStart(box, 0);
         if (ends[before]) lineRange.setEndBefore(ends[before]);
         else lineRange.setEnd(box, box.childNodes.length);
-        quote.line = short(lineRange.toString().trim(), 200);
+        // Rows are the lines themselves; with <br> a line is what lies between two of them.
+        const row = box.querySelectorAll('br').length ? null : node.parentElement?.closest('tr');
+        quote.line = short((row ? row.textContent : lineRange.toString()).trim(), 200);
         quote.lineNo = before + 1;
         quote.lines = ends.length + (box.querySelectorAll('br').length ? 0 : 1);
       } else {
