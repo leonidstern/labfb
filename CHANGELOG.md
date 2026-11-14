@@ -15,6 +15,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - `labfb add <url>` / `labfb remove <url>`: save cloud lab pages with the project (`.lab/links.json`). `pages` lists the project's labs and cloud pages, by domain with open comments; `pages --all` lists every lab on the computer.
 - Fixed: an area comment's text is now the words inside the area. It was the whole paragraph whenever the area reached above or below a line of text.
 - Fixed: a comment card could stay see-through when the page was in the background (a stalled fade-in); cards now only slide in, never fade.
+- Fixed: dragging on an image while a comment card was open dragged the image itself. Now it marks an area and closes the card; with comments on, images and videos never start a browser drag.
 
 ## 0.4.0 · 2026-11-14
 

@@ -1093,7 +1093,8 @@
   document.addEventListener(
     'pointerdown',
     (e) => {
-      if ((!on && !e.altKey) || draft || openId || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
+      if ((!on && !e.altKey) || draft || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host)) return;
       if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -1136,13 +1137,21 @@
     getSelection?.()?.removeAllRanges();
     if (Math.abs(d.x1 - d.x0) < 12 || Math.abs(d.y1 - d.y0) < 12) return;
     showAgain();
+    openId = null;
     draft = { anchor: zoneAnchor(d) };
     render();
   };
   document.addEventListener('pointerup', endDrag, true);
   document.addEventListener('pointercancel', endDrag, true);
-  // Don't let images start a native drag while marking an area.
-  document.addEventListener('dragstart', (e) => drag && e.preventDefault(), true);
+  // Don't let images and videos start a native drag while comments are on: a press there marks an area.
+  document.addEventListener(
+    'dragstart',
+    (e) => {
+      const media = on && e.target instanceof Element && e.target.closest('img, video') && !e.composedPath().includes(host);
+      if (drag || media) e.preventDefault();
+    },
+    true,
+  );
 
   document.addEventListener(
     'click',
