@@ -2,6 +2,10 @@
 
 Versions follow [semver](https://semver.org). Before 1.0, a minor version can change how things work.
 
+## Unreleased
+
+- README: "Other agents": using labfb with Codex, Cursor, Gemini CLI or a script (`LAB_AGENT_NAME`, `LAB_FAST_CMD`, `LAB_MODEL`).
+
 ## 0.5.0 · 2026-11-14
 
 - The quick model is on by default when the `claude` command is installed (no `--fast` needed). `--no-fast` turns it off; without the command it stays off.
