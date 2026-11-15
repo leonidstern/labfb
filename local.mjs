@@ -964,6 +964,11 @@ const register = () => {
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
 const clients = new Set();
+// A beat every 15 s on every live connection: a page that hears nothing for longer knows its connection stalled (the
+// laptop slept, the wifi changed) and connects again at once instead of waiting for the browser to notice.
+setInterval(() => {
+  for (const c of clients) c.res.write('event: beat\ndata: 1\n\n');
+}, 15000).unref();
 // Read marks per name: a person on their phone and their Mac (same name) shares what's new and what's read. Kept in
 // .lab/reads.json as { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
 const READS = path.join(LAB, 'reads.json');

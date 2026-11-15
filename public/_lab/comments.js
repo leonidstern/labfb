@@ -3320,6 +3320,14 @@
     who.hidden = true;
     root.querySelector('.left').prepend(who);
     let stream = null;
+    let beat = 0;
+    // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
+    const showAway = (word) => {
+      who.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
+      who.classList.add('idle');
+      who.classList.remove('working');
+      who.hidden = false;
+    };
     let seen = null;
     let readsAt = null;
     let hotAt = null;
@@ -3509,7 +3517,11 @@
     const connect = () => {
       if (stream) return; // background tabs stay connected too, so their title count and pins keep up
       stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
+      beat = Date.now();
+      stream.addEventListener('beat', () => (beat = Date.now()));
+      stream.onerror = () => showAway('reconnecting');
       stream.onmessage = (e) => {
+        beat = Date.now();
         const v = JSON.parse(e.data);
         // A new widget script: this page needs it, so it reloads (when it's safe, as always).
         if (v.widget && script.dataset.widget && v.widget !== script.dataset.widget) return reload();
@@ -3524,7 +3536,12 @@
           load();
         }
         if (String(v.files) !== script.dataset.version) return reload();
-        if (hotAt !== null && v.hot !== hotAt) hotUpdate(v.hotFiles || []);
+        // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
+        // and picture, instead of only the last batch of files.
+        if (hotAt !== null && v.hot !== hotAt) {
+          if (v.hot - hotAt > 1) hotUpdate([{ kind: 'html' }, { kind: 'css', path: '' }]);
+          else hotUpdate(v.hotFiles || []);
+        }
         hotAt = v.hot;
         if (seen !== null && v.comments !== seen) loadChanges(seen); // keeps typed text: it adds replies in place
         seen = v.comments;
@@ -3564,6 +3581,23 @@
       fetch(script.dataset.live.replace(/live$/, 'bye'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab }) }).catch(() => {});
     });
     addEventListener('pageshow', (e) => e.persisted && connect()); // back from the back-forward cache
+    // Back from sleep, or the connection went quiet: connect again at once and catch up on what was missed (the first
+    // message after it says what changed). A clock that jumped (the laptop slept) or 40 s without a beat both count.
+    let tick = Date.now();
+    const freshStream = () => {
+      stream?.close();
+      stream = null;
+      showAway('reconnecting');
+      connect();
+    };
+    setInterval(() => {
+      const now = Date.now();
+      const slept = now - tick > 20000;
+      tick = now;
+      if (document.hidden && !slept) return;
+      if (slept || (stream && now - beat > 40000)) freshStream();
+    }, 5000);
+    addEventListener('online', freshStream);
     connect();
   }
 })();
