@@ -1051,7 +1051,9 @@ async function unseen() {
   const check = quickDone.length
     ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
     : '';
-  const text = [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check].filter(Boolean).join('\n\n') +
+  // First line: how many things this message holds, so an agent that only reads part of it can tell.
+  const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, quickDone.length && `${quickDone.length} quick change${quickDone.length === 1 ? '' : 's'} to check`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
+  const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n` + [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check].filter(Boolean).join('\n\n') +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
