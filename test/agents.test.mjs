@@ -461,3 +461,33 @@ test('a pin handed to the agent but never answered comes back in a later wait, o
   const third = await cli(dir, ['wait', '--timeout', '3'], {});
   assert.doesNotMatch(third, /Still waiting/, 'not again within 10 minutes');
 });
+
+test('two sessions share one lab by page: wait --pages takes only its pages, a plain wait the rest', async () => {
+  const dir = site('pages');
+  fs.writeFileSync(path.join(dir, 'other.html'), '<!doctype html><title>o</title><h1 id="t">Other</h1>');
+  const { B } = await lab(dir);
+  const pinOn = async (page, text) =>
+    (await (await fetch(B + '/_lab/api/comments', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: B },
+      body: JSON.stringify({ page, name: 'Leo', text, anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }),
+    })).json()).comment.id;
+  const mine = cli(dir, ['wait', '--pages', 'other', '--timeout', '6'], { LAB_SETTLE_MS: '0' });
+  await new Promise((r) => setTimeout(r, 400));
+  const rest = cli(dir, ['wait', '--timeout', '6'], { LAB_SETTLE_MS: '0' });
+  await new Promise((r) => setTimeout(r, 400));
+  await pinOn('/other', 'pin on other');
+  await pinOn('/index', 'pin on index');
+  const [a, b] = await Promise.all([mine, rest]);
+  assert.match(a, /pin on other/);
+  assert.doesNotMatch(a, /pin on index/);
+  assert.match(b, /pin on index/);
+  assert.doesNotMatch(b, /pin on other/, 'a plain wait leaves pages another session listens on');
+  assert.doesNotMatch(a + b, /Another session is listening/);
+  // Between its waits (working on the pins), the page stays with that session.
+  await pinOn('/other', 'second on other');
+  const later = await cli(dir, ['wait', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
+  assert.doesNotMatch(later, /second on other/, 'later: ' + later);
+  const again = await cli(dir, ['wait', '--page', '/other.html', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
+  assert.match(again, /second on other/, 'again: ' + again);
+});

@@ -50,7 +50,9 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
 For the agent, from the project (any folder under it):
-  labfb wait [--timeout 1500]
+  labfb wait [--timeout 1500] [--pages /a,/b]
+      --pages: only these pages' pins, so two sessions can share one lab (one per page). A wait without it gets every
+      page nobody else is listening on.
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
       An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
@@ -62,13 +64,19 @@ Files in .lab/ inside the folder: comments.md (every open comment as text), comm
 server.json (port, key, session; owner-only), seen. Delete .lab to start over.`;
 
 // ---------- arguments ----------
+// The pages a wait listens on (--pages /a,/b, or wait --page /a): page keys as the lab writes them ("/router-fixes").
+function listenPages(forWait = false) {
+  const raw = opts.pages || (forWait ? opts.page : '');
+  if (!raw) return null;
+  return String(raw).split(',').map((p) => '/' + p.trim().replace(/^\/+/, '').replace(/\.html?$/i, '')).filter((p) => p !== '/');
+}
 const argv = process.argv.slice(2);
 const opts = {};
 const pos = [];
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
 const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--fast', '--no-fast', '--new', '--all'];
-const VALUED = ['--port', '--name', '--page', '--timeout', '--dir', '--proxy'];
+const VALUED = ['--port', '--name', '--page', '--pages', '--timeout', '--dir', '--proxy'];
 const unknownFlags = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -538,7 +546,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
     });
 
   if (cmd === 'wait') {
-    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500 });
+    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages(true) });
     if (out.status === 204) console.log('No new comments yet. Run wait again to keep listening.');
     else if (out.status === 409) console.log('Another session is listening now; this one stopped.');
     else if (out.status === 410) console.log('The page was closed, so this stopped listening. Wait again only when the person asks or opens the page.');
@@ -577,7 +585,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
   console.log(`${cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
   // --wait: answer and listen again in one command (one round trip less per pin).
   if (opts.wait) {
-    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500 });
+    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages() });
     console.log(out.status === 204 ? 'No new comments yet. Run wait again to keep listening.' : out.status === 409 ? 'Another session is listening now; this one stopped.' : out.status === 410 ? 'The page was closed, so this stopped listening.' : out.text);
   }
   process.exit(0);
@@ -954,7 +962,18 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
 
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
-let waiter = null;
+// Sessions listening: each wait covers some pages (or, without --pages, every page no other wait has claimed).
+let waiters = [];
+// A page a session listened on stays its own for half an hour after its wait ends (while it works on the pins), so a
+// wait for every page doesn't take that page's next pin in between.
+const claims = new Map(); // page -> last time a wait for it was open
+const CLAIM_MS = 1800000;
+const claimed = () => {
+  const now = Date.now();
+  for (const w of waiters) for (const p of w.pages || []) claims.set(p, now);
+  return new Set([...claims].filter(([, at]) => now - at < CLAIM_MS).map(([p]) => p));
+};
+const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed().has(p)));
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
 // ends after an hour of no page. Each tab has an id. A tab in the background drops its stream but still counts as
 // open; it leaves when it says bye on pagehide (closed, or navigated away), or after half an hour with no stream.
@@ -973,14 +992,13 @@ const pagesChanged = () => {
   if (openTabs()) closedSince = null;
   else closedSince ??= Date.now();
   clearTimeout(closedTimer);
-  if (closedSince === null || !waiter) return;
+  if (closedSince === null || !waiters.length) return;
   closedTimer = setTimeout(() => {
-    if (openTabs() || !waiter) return;
-    const w = waiter;
-    waiter = null;
+    if (openTabs() || !waiters.length) return;
+    const all = waiters;
+    waiters = [];
     waitEnded = Date.now();
-    clearTimeout(w.timer);
-    w.res.writeHead(410).end('the page was closed');
+    for (const w of all) clearTimeout(w.timer), w.res.writeHead(410).end('the page was closed');
     setMode('away');
   }, Math.max(0, closedSince + CLOSE_GRACE - Date.now()));
 };
@@ -1001,10 +1019,10 @@ async function threadsText(page, threads) {
 // handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for comments
 // from before these marks.
 const stamp = (c) => [c.createdAt, c.movedAt, c.rejectedAt].filter(Boolean).sort().pop(); // new when written, moved, or its quick fix rejected
-async function unseen() {
+async function unseen(scope = pages()) {
   // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
   if (trying.size) return null;
-  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // The quick model's changes since the last delivery, for the session to check (they can be wrong: a fix in the right
   // spot that doesn't do what was asked, or one broader than the pin).
   // Only the risky ones: a change to code (not just a stylesheet) or to more than one file. A one-file style fix the
@@ -1012,13 +1030,13 @@ async function unseen() {
   const risky = (c) => !c.quickFiles || c.quickFiles.length > 1 || c.quickFiles.some((f) => !/\.(s?css|less)$/.test(f));
   // The rest (one-file style fixes) still pass by as one line each (id · file · the line it added), cheap to glance at:
   // a wrong one is easy to spot without opening anything.
-  const styleDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
-  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  const styleDone = scope.flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  const quickDone = scope.flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
   const now = Date.now();
   const lastBy = (c, mine) => [c, ...commentsOf(c._page).filter((r) => r.parent === c.id)].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
-  const missed = pages().flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
+  const missed = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
     .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(c.remindedAt && now - Date.parse(c.remindedAt) < 600000))
     .filter(({ page, c }) => !fresh.some((f) => f.page === page && (f.c.id === c.id || f.c.parent === c.id)));
   if (!fresh.length && !quickDone.length && !missed.length) return null;
@@ -1082,19 +1100,20 @@ const SETTLE_MS = Number(process.env.LAB_SETTLE_MS ?? 2000);
 const REMIND_MS = Number(process.env.LAB_REMIND_MS ?? 180000); // a handed pin with no answer comes back after this
 let settleTimer = null;
 function wake() {
-  if (!waiter) return;
+  if (!waiters.length) return;
   clearTimeout(settleTimer);
   settleTimer = setTimeout(wakeNow, SETTLE_MS);
 }
 async function wakeNow() {
-  if (!waiter) return;
-  const got = await unseen();
-  if (!got?.text || !waiter) return;
-  const w = waiter;
-  waiter = null;
-  waitEnded = Date.now();
-  clearTimeout(w.timer);
-  deliver(w.res, got);
+  for (const w of [...waiters]) {
+    if (!waiters.includes(w)) continue;
+    const got = await unseen(scopeOf(w));
+    if (!got?.text || !waiters.includes(w)) continue;
+    waiters = waiters.filter((x) => x !== w);
+    waitEnded = Date.now();
+    clearTimeout(w.timer);
+    deliver(w.res, got);
+  }
 }
 
 // ---------- the router: who handles a pin (on when an agent's command is installed; --no-fast turns it off) ----------
@@ -1560,37 +1579,40 @@ const handler = async (req, res) => {
     }
     if (pathname === '/_lab/wait') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
-      const { timeout } = JSON.parse((await new Response(req).text()) || '{}');
-      if (waiter) {
-        const old = waiter;
-        waiter = null; // before its close handler runs, so it doesn't mark Claude as away
+      const { timeout, pages: only } = JSON.parse((await new Response(req).text()) || '{}');
+      const want = Array.isArray(only) && only.length ? only.map(String).sort() : null;
+      // A new wait for the same pages replaces the old one (the same session listening again, or another taking over);
+      // waits for other pages stay.
+      const key = want ? want.join(',') : '*';
+      for (const old of waiters.filter((w) => w.key === key)) {
+        waiters = waiters.filter((w) => w !== old); // before its close handler runs, so it doesn't mark Claude as away
         clearTimeout(old.timer);
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
-      const got = await unseen();
+      const w = { res, pages: want, key };
+      for (const p of want || []) claims.set(p, Date.now());
+      const got = await unseen(scopeOf(w));
       if (got?.text) return deliver(res, got);
-      const w = {
-        res,
-        timer: setTimeout(() => {
-          if (waiter !== w) return;
-          waiter = null;
-          waitEnded = Date.now();
-          res.writeHead(204).end();
-          setMode('away');
-        }, Math.min(Number(timeout) || 1500, 7000) * 1000),
-      };
+      w.timer = setTimeout(() => {
+        if (!waiters.includes(w)) return;
+        waiters = waiters.filter((x) => x !== w);
+        waitEnded = Date.now();
+        res.writeHead(204).end();
+        if (!waiters.length) setMode('away');
+      }, Math.min(Number(timeout) || 1500, 7000) * 1000);
       if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
-      waiter = w;
+      waiters.push(w);
+      for (const p of want || []) claims.set(p, Date.now());
       setMode('listening');
       pagesChanged();
       // Claude stopped listening (the wait was cancelled): the page says so.
       res.on('close', () => {
-        if (waiter !== w) return;
-        waiter = null;
+        if (!waiters.includes(w)) return;
+        waiters = waiters.filter((x) => x !== w);
         waitEnded = Date.now();
         clearTimeout(w.timer);
-        setMode('away');
+        if (!waiters.length) setMode('away');
       });
       return;
     }
