@@ -1075,8 +1075,26 @@ let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
 let waiters = [];
 // A page a session listened on stays its own for half an hour after its wait ends (while it works on the pins), so a
 // wait for every page doesn't take that page's next pin in between.
-const claims = new Map(); // page -> last time a wait for it was open
+// Kept in .lab/claims.json, so a lab restart doesn't hand a working session's pages to the other wait.
 const CLAIM_MS = 1800000;
+const CLAIMS_FILE = path.join(LAB, 'claims.json');
+const claims = new Map(
+  (() => {
+    try {
+      return Object.entries(JSON.parse(fs.readFileSync(CLAIMS_FILE, 'utf8'))).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS);
+    } catch {
+      return [];
+    }
+  })(),
+); // page -> last time a wait for it was open
+const claim = (pages) => {
+  if (!pages?.length) return;
+  const now = Date.now();
+  for (const p of pages) claims.set(p, now);
+  try {
+    fs.writeFileSync(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
+  } catch {}
+};
 const claimed = () => {
   const now = Date.now();
   for (const w of waiters) for (const p of w.pages || []) claims.set(p, now);
@@ -1796,7 +1814,7 @@ const handler = async (req, res) => {
       }
       session = sessionFrom(req);
       const w = { res, pages: want, key };
-      for (const p of want || []) claims.set(p, Date.now());
+      claim(want);
       const got = await unseen(scopeOf(w));
       if (got?.text) return deliver(res, got);
       w.timer = setTimeout(() => {
@@ -1808,7 +1826,7 @@ const handler = async (req, res) => {
       }, Math.min(Number(timeout) || 1500, 7000) * 1000);
       if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
       waiters.push(w);
-      for (const p of want || []) claims.set(p, Date.now());
+      claim(want);
       setMode('listening');
       pagesChanged();
       // Claude stopped listening (the wait was cancelled): the page says so.

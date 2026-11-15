@@ -516,6 +516,25 @@ test('a pin handed to the agent but never answered comes back in a later wait, o
   assert.doesNotMatch(third, /Still waiting/, 'not again within 10 minutes');
 });
 
+test('a page claim survives a lab restart', async () => {
+  const dir = site('claim-restart');
+  fs.writeFileSync(path.join(dir, 'other.html'), '<!doctype html><title>o</title><h1 id="t">Other</h1>');
+  await lab(dir);
+  await cli(dir, ['wait', '--pages', 'other', '--timeout', '1'], { LAB_SETTLE_MS: '0' });
+  kids.at(-1).kill();
+  await new Promise((r) => setTimeout(r, 300));
+  const { B } = await lab(dir);
+  await fetch(B + '/_lab/api/comments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: B },
+    body: JSON.stringify({ page: '/other', name: 'Leo', text: 'pin after restart', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }),
+  });
+  const plain = await cli(dir, ['wait', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
+  assert.doesNotMatch(plain, /pin after restart/, 'the claiming session keeps its page across the restart');
+  const mine = await cli(dir, ['wait', '--pages', 'other', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
+  assert.match(mine, /pin after restart/);
+});
+
 test('two sessions share one lab by page: wait --pages takes only its pages, a plain wait the rest', async () => {
   const dir = site('pages');
   fs.writeFileSync(path.join(dir, 'other.html'), '<!doctype html><title>o</title><h1 id="t">Other</h1>');
