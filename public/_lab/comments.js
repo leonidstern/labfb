@@ -3183,7 +3183,7 @@
     let stream = null;
     let seen = null;
     let readsAt = null;
-    let cssAt = null;
+    let hotAt = null;
     // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
     const swapCss = (files) => {
@@ -3199,6 +3199,145 @@
         link.after(next);
       }
     };
+    const fresh = (u) => {
+      const url = new URL(u, location.href);
+      url.searchParams.set('lab-v', Date.now().toString(36));
+      return url.href;
+    };
+    const samePath = (u, paths) => {
+      try {
+        const url = new URL(u, location.href);
+        return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
+      } catch {
+        return false;
+      }
+    };
+    // A picture or SVG: every element that shows it gets the new file (img, srcset, poster, SVG image/use, the tab
+    // icon). Nothing shows it directly: it's a CSS background, so the stylesheets are swapped.
+    const swapImages = (paths) => {
+      let hit = 0;
+      for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
+        if (host.contains(n)) continue;
+        for (const attr of ['src', 'href', 'poster', 'xlink:href']) {
+          const v = n.getAttribute(attr);
+          if (v && samePath(v.split('#')[0], paths)) (n.setAttribute(attr, fresh(v.split('#')[0]) + (v.includes('#') ? v.slice(v.indexOf('#')) : '')), hit++);
+        }
+        const set = n.getAttribute('srcset');
+        if (set && set.split(',').some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
+          n.setAttribute('srcset', set.split(',').map((c) => {
+            const [u, ...rest] = c.trim().split(/\s+/);
+            return [samePath(u, paths) ? fresh(u) : u, ...rest].join(' ');
+          }).join(', '));
+          hit++;
+        }
+      }
+      if (!hit) swapCss([]);
+    };
+    // A font: each @font-face that uses it is loaded again as a new face, which takes over from the old one.
+    const reloadFonts = (paths) => {
+      for (const sheet of document.styleSheets) {
+        let rules;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue; // another site's stylesheet
+        }
+        for (const r of rules || []) {
+          if (!(r instanceof CSSFontFaceRule)) continue;
+          const src = r.style.getPropertyValue('src');
+          const base = sheet.href || location.href;
+          if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
+          const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => (samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all));
+          const d = (k) => r.style.getPropertyValue(k) || undefined;
+          try {
+            const face = new FontFace(d('font-family').replace(/^["']|["']$/g, ''), again, { weight: d('font-weight'), style: d('font-style'), stretch: d('font-stretch'), unicodeRange: d('unicode-range'), display: d('font-display') });
+            face.load().then((f) => document.fonts.add(f)).catch(() => {});
+          } catch {}
+        }
+      }
+    };
+    // An HTML page: fetch it and change only what differs, in place (scroll, open things and typed text stay). A
+    // changed script or stylesheet list can't be patched safely: then it's a normal reload.
+    const ownStyles = () => new Set([fonts, pinCursorStyle]);
+    const scriptsOf = (doc) => [...doc.querySelectorAll('script')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
+    const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
+    const keepOut = (n) => n === host || (n.nodeType === 1 && n.localName === 'script');
+    // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
+    // everything after it (an open <details> further down stays the same element, and stays open).
+    const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || '') === (n.id || ''));
+    const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute('class') === n.getAttribute('class') : o.nodeType !== 3 || o.data === n.data);
+    const morphKids = (a, b) => {
+      const olds = [...a.childNodes].filter((n) => !keepOut(n));
+      const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === 'script'));
+      let j = 0;
+      let prev = null;
+      const put = (n) => {
+        const c = document.importNode(n, true);
+        a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
+        return c;
+      };
+      news.forEach((n, i) => {
+        const o = olds[j];
+        if (!o) return void (prev = put(n));
+        if (alike(o, n)) return void ((prev = morphNode(o, n)), j++);
+        // The old one comes back a little later: this new one was added before it.
+        if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
+        // This new one is a little further on among the old ones: the ones before it were removed.
+        const k = olds.slice(j + 1, j + 8).findIndex((m) => alike(m, n));
+        if (k >= 0) {
+          for (const gone of olds.slice(j, j + 1 + k)) gone.remove();
+          j += k + 1;
+          return void (prev = morphNode(olds[j], n), j++);
+        }
+        prev = morphNode(o, n);
+        j++;
+      });
+      for (const o of olds.slice(j)) o.remove();
+    };
+    const morphNode = (o, n) => {
+      if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || (o.nodeType === 1 && (o.id || '') !== (n.id || ''))) {
+        const c = document.importNode(n, true);
+        o.replaceWith(c);
+        return c;
+      }
+      if (o.nodeType === 3 || o.nodeType === 8) {
+        if (o.data !== n.data) o.data = n.data;
+        return o;
+      }
+      if (o.nodeType !== 1) return o;
+      // An opened <details> or <dialog> stays open (you opened it; the file doesn't say so).
+      for (const { name } of [...o.attributes]) if (!n.hasAttribute(name) && !(name === 'open' && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
+      for (const { name, value } of [...n.attributes]) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+      // What you're typing in, a playing video, a canvas, a web component's insides: left as they are.
+      if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
+      morphKids(o, n);
+      return o;
+    };
+    const morphPage = async () => {
+      try {
+        const res = await fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html' } });
+        if (!res.ok) return reload();
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        if (scriptsOf(doc).join('\n') !== scriptsOf(document).join('\n') || sheetsOf(doc).join('\n') !== sheetsOf(document).join('\n')) return reload();
+        if (doc.title !== document.title) document.title = doc.title;
+        const mine = ownStyles();
+        const olds = [...document.head.querySelectorAll('style')].filter((x) => !mine.has(x));
+        const news = [...doc.head.querySelectorAll('style')];
+        news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
+        for (const o of olds.slice(news.length)) o.remove();
+        morphKids(document.body, doc.body);
+        reflow();
+      } catch {
+        reload();
+      }
+    };
+    const hotUpdate = (files) => {
+      const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
+      if (of('html').length) morphPage();
+      if (of('css').length) swapCss(of('css'));
+      if (of('img').length) swapImages(of('img'));
+      if (of('font').length) reloadFonts(of('font'));
+    };
     // The server counts open tabs: a tab in the background still counts, and says bye when it closes, so closing
     // the page stops Claude listening.
     const tab = Math.random().toString(36).slice(2, 12);
@@ -3208,8 +3347,8 @@
       stream.onmessage = (e) => {
         const v = JSON.parse(e.data);
         if (String(v.files) !== script.dataset.version) return reload();
-        if (cssAt !== null && v.css !== cssAt) swapCss(v.cssFiles || []);
-        cssAt = v.css;
+        if (hotAt !== null && v.hot !== hotAt) hotUpdate(v.hotFiles || []);
+        hotAt = v.hot;
         if (seen !== null && v.comments !== seen) loadChanges(seen); // keeps typed text: it adds replies in place
         seen = v.comments;
         if (v.reads !== readsAt) (readsAt = v.reads), syncReads(); // read on another device with your name
