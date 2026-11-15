@@ -2272,9 +2272,21 @@
         // the first message).
         if (!appear && prevScroll != null) card.querySelector('.body').scrollTop = prevScroll;
         else if (appear) {
+          // Computers: at the first new message when there is one. Phones: always the end, the last message in view
+          // (Leo, 15 Nov), set again once the sheet has slid in and its height settled, unless you scrolled meanwhile.
           const body = card.querySelector('.body');
-          const first = body.querySelector('.fresh, .newline');
+          const first = coarse ? null : body.querySelector('.fresh, .newline');
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
+          if (coarse) {
+            let set = body.scrollTop;
+            const again = () => {
+              if (!body.isConnected || Math.abs(body.scrollTop - set) > 2) return; // you scrolled: leave it
+              body.scrollTop = body.scrollHeight;
+              set = body.scrollTop;
+            };
+            requestAnimationFrame(again);
+            setTimeout(again, 320);
+          }
         }
         swipeDown(card, () => ((openId = null), render()));
         markSeen(news);
