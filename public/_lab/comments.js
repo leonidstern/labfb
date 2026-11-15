@@ -425,12 +425,12 @@
         .float { background: var(--_bg); box-shadow: var(--_shadow); }
         .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
         /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
-        /* 62 px to grab, reaching 36 px above the sheet's edge over the dimmed page (Leo, 15 Nov: "the whole top and a bit
-           above"); the bar and the layout stay as they were. The chat's and the list's header reach up the same way. */
-        .handle { display: block; flex: none; height: 62px; margin-top: -44px; touch-action: none; position: relative;
-                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 44px / 36px 4px no-repeat; }
+        /* Reaching 60 px above the sheet's edge over the dimmed page (Leo, 15 Nov: "the whole top and a bit above", then
+           "do more"); the bar and the layout stay as they were. The chat's and the list's header reach up the same way. */
+        .handle { display: block; flex: none; height: 86px; margin-top: -68px; touch-action: none; position: relative;
+                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 68px / 36px 4px no-repeat; }
         .list .tabs { position: relative; }
-        .list .tabs::before { content: ''; position: absolute; left: 0; right: 0; top: -36px; height: 36px; }
+        .list .tabs::before { content: ''; position: absolute; left: 0; right: 0; top: -60px; height: 60px; }
         .list .tabs { touch-action: pan-x; }
         .chatwin .tabs { touch-action: none; }
         .list .items, .msgs, .card > .body { touch-action: pan-y; }
@@ -2989,8 +2989,9 @@
         const across = t.clientX - x0;
         if (!down && !across) return; // iOS sends moves for pressure changes too
         const sideways = Math.abs(across) > Math.abs(down);
-        // The sheet's top 96 px pull it down too, messages and all (Leo, 15 Nov: the strip alone was too small to find).
-        const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < 96;
+        // The sheet's top 40% pulls it down too, messages and all (Leo, 15 Nov: the strip, then 96 px, still too small to
+        // feel); below that a pull scrolls the messages until they reach their top.
+        const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.4;
         if (grabArea(e.target)) mode = sideways && e.target.closest('.tabs') ? 'off' : 'drag'; // the list's tabs scroll sideways
         else if (nearTop && box?.localName !== 'textarea') mode = 'drag';
         else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? 'drag' : 'off';
