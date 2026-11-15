@@ -209,7 +209,8 @@
       .list .tabs button.on { background: var(--_fg); color: var(--_bg); }
       .list .tabs .hold { margin-left: auto; }
       .list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: var(--_r-s); cursor: pointer; font: inherit; }
-      .list .it:hover, .list .it.cur { background: color-mix(in srgb, var(--_fg) 7%, transparent); }
+      .list .it:hover, .list .it.cur { background: var(--_hover); }
+      .list .it { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line per pin; the rest is in its thread */
       .list .it span, .list .none { color: var(--_muted); }
       .list .it .tag { display: inline-block; padding: 0 7px; border-radius: var(--_r-s); background: var(--_accent); color: var(--_accent-fg);
                        font-size: 11.5px; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
