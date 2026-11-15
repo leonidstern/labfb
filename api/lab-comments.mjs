@@ -102,7 +102,7 @@ const num = (value) => (Number.isFinite(value) ? Math.min(Math.max(value, 0), 1)
 
 const int = (v, max = 100000) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v), 0), max) : undefined);
 const sec = (v) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v * 10) / 10, 0), 86400) : undefined);
-const KINDS = ['image', 'video', 'canvas', 'svg', 'text', 'background', 'element'];
+const KINDS = ['image', 'video', 'canvas', 'svg', 'text', 'background', 'element', 'page']; // page: about the page as a whole, no spot
 
 // Only known fields, each capped, so a page can't stuff arbitrary data into the store.
 function cleanAnchor(a) {
@@ -235,7 +235,8 @@ function asText(path, comments, host) {
     if (c.from) lines.push(`from: ${c.from}`);
     if (c.movedAt) lines.push(`pin moved: ${stamp(c.movedAt)} (the spot below is the new one)`);
     if (c.quickNote) lines.push(`quick model passed: ${body(String(c.quickNote).slice(0, 200))}`);
-    if (a.kind === 'image' || a.kind === 'video' || a.kind === 'background') {
+    if (a.kind === 'page') lines.push('on: the page as a whole (no spot)');
+    else if (a.kind === 'image' || a.kind === 'video' || a.kind === 'background') {
       lines.push(`on: ${a.kind}${a.file ? ` "${a.file}" (search the repo's src/ and public/ for it)` : ''}`);
       if (a.src) lines.push(`src: ${a.src}`);
       if (a.alt) lines.push(`alt: ${a.alt}`);
@@ -285,12 +286,12 @@ function asText(path, comments, host) {
       lines.push(`area on element: ${pct(a.x)}–${pct(a.x + a.zw)} across, ${pct(a.y)}–${pct(a.y + a.zh)} down`);
       if (a.zoneText) lines.push(`text in area: "${a.zoneText}"`);
       if (a.zoneItems?.length) lines.push('in the area:', ...a.zoneItems.map((v) => `  - ${body(v)}`));
-    } else lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`);
+    } else if (a.kind !== 'page') lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`);
     if (a.gapAbove || a.gapBelow) lines.push(`between: ${a.gapAbove || 'the top'} (above) and ${a.gapBelow || 'the end'} (below)`, `page y: ${a.docY} px`);
     if (a.scheme) lines.push(`colours: ${a.scheme}${a.background ? ` (background ${a.background})` : ''}`);
     if (a.width) lines.push(`viewport: ${a.width}${a.height ? `×${a.height}` : 'px wide'}${a.dpr ? ` @${a.dpr}x` : ''}`);
     if (a.build) lines.push(`build: ${a.build}`);
-    lines.push(`selector (at comment time): ${a.selector || 'body'}`);
+    if (a.kind !== 'page') lines.push(`selector (at comment time): ${a.selector || 'body'}`);
     for (const r of comments.filter((r) => r.parent === c.id)) lines.push(`reply: ${r.name}${r.from && r.from !== c.from ? ` (${r.from})` : ''} · ${stamp(r.createdAt)} · id ${r.id}: ${body(r.text)}`);
   });
   return lines.join('\n') + '\n';
@@ -323,11 +324,13 @@ export async function POST(request) {
     return json({ name, scope, key, link });
   }
 
-  // Resolve / reopen / delete: admin only.
+  // Resolve / reopen: an admin, or whoever started the thread (with its key). Delete: admin only.
   if (body.action === 'resolve' || body.action === 'reopen' || body.action === 'delete') {
     const admin = adminFor(request, path);
-    if (!admin) return json({ error: 'forbidden' }, 403);
     const id = clean(body.id, 40);
+    const edit = editKey(path, id);
+    const own = body.action !== 'delete' && edit && typeof body.edit === 'string' && sameKey(body.edit, edit);
+    if (!admin && !own) return json({ error: 'forbidden' }, 403);
     if (body.action === 'delete') {
       const all = ((await run('HVALS', key)) || []).map((v) => JSON.parse(v));
       if (!all.some((c) => c.id === id)) return json({ error: 'not found' }, 404);
@@ -336,7 +339,7 @@ export async function POST(request) {
     }
     const current = await run('HGET', key, id);
     if (!current) return json({ error: 'not found' }, 404);
-    const comment = { ...JSON.parse(current), resolved: body.action === 'resolve', resolvedBy: body.action === 'resolve' ? admin.name : undefined };
+    const comment = { ...JSON.parse(current), resolved: body.action === 'resolve', resolvedBy: body.action === 'resolve' ? admin?.name || 'author' : undefined };
     await run('HSET', key, id, JSON.stringify(comment));
     return json({ comment });
   }
