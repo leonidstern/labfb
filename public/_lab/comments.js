@@ -317,6 +317,7 @@
       kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
             color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
       .bar:hover kbd { opacity: .75; }
+      kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
       .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
               box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
               letter-spacing: .005em; animation: lab-fade .2s ease-out; }
