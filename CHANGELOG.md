@@ -5,6 +5,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 ## Unreleased
 
 - Pins on a dev build name the component that drew the element and where: React (18: file and line; 19: the served file), Vue 3 and Svelte, with variant props (`Button variant=ghost (in Toolbar)`, `written at: src/ui.tsx:97`, `component used at: src/ui.tsx:322`). Every pin also says how the element looks (fill, text colour, size and weight, corners), with colours named by the page's CSS variables. A small cut of Census's reader.
+- `labfb mcp` (optional): an MCP server over stdin/stdout with the tools `comments`, `reply` and `wait`, for agents with MCP. No new dependencies.
 - Cloud lab default: sites deploy with `npm run ship` (`vercel build` + `vercel deploy --prebuilt`, live in seconds) and git deploys off; the setup prompt adds both, and the skill ships, checks the page, then pushes.
 - README: "Other agents": using labfb with Codex, Cursor, Gemini CLI or a script (`LAB_AGENT_NAME`, `LAB_FAST_CMD`, `LAB_MODEL`).
 
