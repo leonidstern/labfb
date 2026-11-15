@@ -2519,9 +2519,12 @@
     liveZone.style.width = `${Math.abs(drag.x1 - drag.x0)}px`;
     liveZone.style.height = `${Math.abs(drag.y1 - drag.y0)}px`;
   };
+  // An open new-comment box with nothing typed in it doesn't block drawing an area (a stray click had opened one, and
+  // every drag after it silently did nothing until it was closed); one with words in it does, so they aren't lost.
+  const draftHasText = () => Boolean(draft) && [...root.querySelectorAll('.float textarea')].some((t) => t.value.trim());
   function startDrag(e) {
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-    if ((!on && !e.altKey) || draft || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!on && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
     if (e.composedPath().includes(host)) return;
     if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -2532,7 +2535,7 @@
     (e) => {
       if (e.altKey) return; // Option presses are taken earlier (see optionPress)
       // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-      if ((!on && !e.altKey) || draft || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if ((!on && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host)) return;
       if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
