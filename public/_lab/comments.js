@@ -3117,6 +3117,15 @@
       strip.style.display = sheet && gap ? 'block' : 'none';
       strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
       strip.style.height = `${gap}px`;
+      // The keyboard came or went: the open sheet moves from where it was to its new place instead of jumping there
+      // (filling the screen above the keyboard, or resting on the screen's bottom again). Not while a finger drags it.
+      const open = sheet ? openSheet() : null;
+      const at = open?.getBoundingClientRect().top;
+      const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
+      if (open && open === fit.sheet && keyboardMoved && Math.abs(fit.top - at) > 8 && !open.style.transform && !still.matches) {
+        open.animate([{ transform: `translateY(${fit.top - at}px)` }, { transform: 'none' }], { duration: 340, easing: SPRING });
+      }
+      Object.assign(fit, { sheet: open, top: at, vh, kbUp: kb > 60 });
     };
     refit = fit;
     root.addEventListener('focusin', () => setTimeout(fit, 50));
