@@ -2065,10 +2065,10 @@
     const wrap = el('div', { class: 'composer' });
     const box = el('div', { class: 'box' });
     // No autofill or suggestion bar on phones: a comment isn't a form to fill.
-    const text = el('textarea', { placeholder, maxlength: '2000', rows: '1', 'aria-label': placeholder, autocomplete: 'off', autocorrect: 'off', spellcheck: 'false', writingsuggestions: 'false' });
+    const text = el('textarea', { placeholder, maxlength: '2000', rows: '1', 'aria-label': placeholder, enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false', writingsuggestions: 'false' });
     const who = el('label', { class: 'who' });
     const as = el('span', {}, 'as');
-    const name = el('input', { type: 'text', placeholder: 'your name', maxlength: '60', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' });
+    const name = el('input', { type: 'text', placeholder: 'your name', maxlength: '60', enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' });
     name.value = store.get('lab-name');
     who.append(as, name);
     const sendBtn = el('button', { class: 'send', type: 'button', 'aria-label': 'send' });
