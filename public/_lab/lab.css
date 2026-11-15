@@ -2,20 +2,40 @@
    for the lab) share these. Served at /_lab/lab.css. The --lab-* names are the widget's own theme hooks, so a page that
    sets them themes the widget too.
 
-   Colour: white boxes on a light grey page, text #141414, greys mixed from the text colour, green for a pick or a go.
+   Colour: a fixed grey scale and two greens (primitives), and named uses that point at them (semantic), as in Cooking.
    Corners: two in all, 6 px small (keys, code, rows, pills), 12 px boxes and buttons; circles only for dots.
    Type: the system font, 15 px text, 13 px small, 11 px caps labels; one weight for text, 600 for titles.
    Depth: a hairline ring and a soft shadow, no borders. */
 :root {
-  --lab-bg: #fff;
-  --lab-fg: #141414;
-  --lab-page: color-mix(in srgb, var(--lab-fg) 4%, var(--lab-bg));
-  --lab-muted: color-mix(in srgb, var(--lab-fg) 60%, var(--lab-bg));
-  --lab-line: color-mix(in srgb, var(--lab-fg) 13%, var(--lab-bg));
-  --lab-soft: color-mix(in srgb, var(--lab-fg) 6%, var(--lab-bg));
-  --lab-green: rgb(36, 160, 70);
-  --lab-green-soft: color-mix(in srgb, rgb(52, 199, 89) 16%, var(--lab-bg));
-  --lab-shadow: 0 0 0 .5px color-mix(in srgb, var(--lab-fg) 14%, transparent), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .08);
+  /* Base colours (primitives), like the Cooking design system: a fixed grey scale from white to near black, and two
+     greens. Nothing below picks a hex; everything points at these. */
+  --lab-gray-0: #ffffff;
+  --lab-gray-25: #f4f4f5;
+  --lab-gray-50: #f6f6f6;
+  --lab-gray-100: #f1f1f1;
+  --lab-gray-200: #e0e0e0;
+  --lab-gray-400: #9e9e9f;
+  --lab-gray-500: #727272;
+  --lab-gray-800: #38383a;
+  --lab-gray-850: #29292b;
+  --lab-gray-900: #1c1c1e;
+  --lab-gray-950: #141414;
+  --lab-gray-1000: #111113;
+  --lab-green-100: #dff6e4;
+  --lab-green-500: #34c759;
+  --lab-green-600: #24a046;
+  --lab-green-900: #203727;
+
+  /* What things use (semantic), light. Dark only re-points these. */
+  --lab-bg: var(--lab-gray-0);          /* boxes */
+  --lab-fg: var(--lab-gray-950);        /* text */
+  --lab-page: var(--lab-gray-50);       /* the page behind boxes */
+  --lab-muted: var(--lab-gray-500);     /* secondary text */
+  --lab-line: var(--lab-gray-200);      /* dividers */
+  --lab-soft: var(--lab-gray-100);      /* keys, hovers, other people's bubbles */
+  --lab-green: var(--lab-green-600);    /* go, done, picks */
+  --lab-green-soft: var(--lab-green-100); /* your bubbles, rec pills */
+  --lab-shadow: 0 0 0 .5px rgba(20, 20, 20, .14), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .08);
   --lab-r-s: 6px;
   --lab-radius: 12px;
   /* What boxes and small parts actually use: the same sizes, as Apple's continuous corners where the browser has them (below). */
@@ -27,14 +47,16 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --lab-bg: #1c1c1e; --lab-fg: #f4f4f5; --lab-page: #111113; --lab-green: rgb(52, 199, 89);
-    --lab-shadow: 0 0 0 1px color-mix(in srgb, var(--lab-fg) 16%, transparent), 0 10px 32px rgba(0, 0, 0, .5);
+    --lab-bg: var(--lab-gray-900); --lab-fg: var(--lab-gray-25); --lab-page: var(--lab-gray-1000); --lab-muted: var(--lab-gray-400);
+    --lab-line: var(--lab-gray-800); --lab-soft: var(--lab-gray-850); --lab-green: var(--lab-green-500); --lab-green-soft: var(--lab-green-900);
+    --lab-shadow: 0 0 0 1px rgba(244, 244, 245, .16), 0 10px 32px rgba(0, 0, 0, .5);
     color-scheme: dark;
   }
 }
 :root[data-theme='dark'] {
-  --lab-bg: #1c1c1e; --lab-fg: #f4f4f5; --lab-page: #111113; --lab-green: rgb(52, 199, 89);
-  --lab-shadow: 0 0 0 1px color-mix(in srgb, var(--lab-fg) 16%, transparent), 0 10px 32px rgba(0, 0, 0, .5);
+  --lab-bg: var(--lab-gray-900); --lab-fg: var(--lab-gray-25); --lab-page: var(--lab-gray-1000); --lab-muted: var(--lab-gray-400);
+  --lab-line: var(--lab-gray-800); --lab-soft: var(--lab-gray-850); --lab-green: var(--lab-green-500); --lab-green-soft: var(--lab-green-900);
+  --lab-shadow: 0 0 0 1px rgba(244, 244, 245, .16), 0 10px 32px rgba(0, 0, 0, .5);
   color-scheme: dark;
 }
 
