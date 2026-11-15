@@ -199,10 +199,10 @@
       .send.ready:hover { transform: scale(1.06); }
       .send.ready:active { transform: scale(.94); }
       .send.ready { background: var(--_accent); color: var(--_accent-fg); }
-      .send .arr { position: relative; display: block; width: 12px; height: 12px; }
-      .send .arr::before { content: ''; position: absolute; left: 50%; top: 2px; bottom: 0; width: 1.8px; border-radius: 1px; background: currentColor; transform: translateX(-50%); }
-      .send .arr::after { content: ''; position: absolute; left: 50%; top: 1.6px; width: 6.5px; height: 6.5px; border-left: 1.8px solid currentColor; border-top: 1.8px solid currentColor;
-                          border-radius: 1px 0 0 0; transform: translateX(-50%) rotate(45deg); transform-origin: center; }
+      /* The arrow is one drawn line (stem + head) with round ends and a round tip: two CSS boxes met at the tip
+         with a seam and square ends, and half-pixel offsets blurred them. */
+      .send .arr { display: block; width: 12px; height: 12px; overflow: visible; fill: none; stroke: currentColor;
+                   stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
       .send * { color: inherit; }
       .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
       .error:empty { display: none; }
@@ -406,7 +406,7 @@
         .chat-btn[data-agent=away]::before, .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
         .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { animation: lab-blink 1.1s ease-in-out infinite; }
         .send { width: 36px; height: 36px; }
-        .send .arr { width: 16px; height: 16px; margin: auto; } .send .arr::after { width: 8.5px; height: 8.5px; }
+        .send .arr { width: 18px; height: 18px; margin: auto; stroke-width: 2; }
       }
       /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
       @media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
@@ -1761,7 +1761,7 @@
   }
 
   // The send arrow is drawn with CSS (a stem and a chevron), no picture.
-  const ARROW = '<i class="arr" aria-hidden="true"></i>';
+  const ARROW = '<svg class="arr" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.6V2.6M3.4 7.2 8 2.6l4.6 4.6"/></svg>';
 
   // One field that grows: a pill while empty, a box with a divider and the name row once you type.
   function composer({ placeholder, onSubmit, autofocus }) {
