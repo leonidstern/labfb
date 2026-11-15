@@ -425,9 +425,9 @@
            move its top. */
         .card { height: var(--_sheet-max); }
         .card > .foot, .float > .composer { flex: none; padding: 0 12px var(--_pb); }
-        .card > .foot { margin-top: auto; }
-        .card .composer { margin-top: 10px; }
-        .card .nav { margin-top: 2px; gap: 20px; }
+        .card > .foot { margin-top: 0; padding-top: 6px; }
+        .card .composer { margin-top: 0; }
+        .card > .nav { flex: none; margin: -6px 0 0; padding: 0 12px; gap: 20px; }
         .card .nav .btn { font-size: 14px; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
         .card .nav { gap: 16px; }
         .card .nav { flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
@@ -479,15 +479,14 @@
         /* Glass reply boxes (Leo, 15 Nov; iOS 26's look, Android too): the messages scroll on under the box and show
            through it, blurred. Only the box's own strip overlaps; the new / resolve / delete row stays on the sheet. */
         .chatwin .msgs { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
-        .card > .body { margin-bottom: calc(-50px - var(--_pb)); padding-bottom: calc(58px + var(--_pb)); }
+        .card > .body { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
         /* …and fade out behind the box (iOS's scroll edge): from 4 px above its top to 12% at its bottom (Leo, 15 Nov:
            "behind input bottom", "a bit more", "less, it's just black", then "more, darker there"). */
         .chatwin .msgs { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
                                  mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
-        .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 54px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
-                                mask-image: linear-gradient(#000 calc(100% - 54px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
+        .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
+                                mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
         .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
-        .card > .foot > :not(.composer) { position: relative; z-index: 1; background: var(--_bg); }
         .chatwin .chat .box, .card .box, .float .box, .float .box:focus-within {
           background: color-mix(in srgb, var(--_bg) 72%, transparent);
           -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
@@ -2559,9 +2558,10 @@
         b.addEventListener('click', () => goTo(fresh[0][0]));
         nav.append(b);
       }
-      // One row on phones: new on the left, reopen / delete on the right, so the sheet keeps its room for messages.
-      if (nav.firstChild && actions) nav.append(actions);
-      if (nav.firstChild) foot.append(nav);
+      // One row on phones: new on the left, reopen / delete on the right, at the top under the handle like a header, so
+      // the reply box below stands alone as the chat's does (and the messages fade under it the same way).
+      if (actions) nav.append(actions);
+      if (nav.firstChild) card.insertBefore(nav, body);
     }
     foot.append(
       composer({
