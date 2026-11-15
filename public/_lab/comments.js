@@ -89,11 +89,13 @@
       button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
       .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
       .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
-             background: var(--_bg); border: 0; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16);
+             background: var(--_bg); border: 0; box-shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 28%, transparent), 0 2px 8px rgba(0,0,0,.16);
              display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12.5px; font-weight: 500;
              font-variant-numeric: tabular-nums; letter-spacing: .01em; transform-origin: 0 100%;
              transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
-      button.pin:hover { transform: scale(1.08); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 4px 14px rgba(0,0,0,.2); }
+      /* A 1 px edge in the text colour (dark on light pins, light in dark mode) so a pin shows on white and black alike;
+         the one you point at or have open gets a green edge. */
+      button.pin:hover, button.pin.open { transform: scale(1.08); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 4px 14px rgba(0,0,0,.2); }
       button.pin:active { transform: scale(.96); }
       .pin.in { animation: lab-pin .26s var(--_ease); }
       /* A new comment lands with one faint halo from its pin. */
@@ -2011,7 +2013,7 @@
       const pin = el(
         'button',
         {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}`,
+          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${openId === c.id ? ' open' : ''}`,
           type: 'button',
           title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
         },
@@ -3354,22 +3356,27 @@
         if (!res.ok) return reload();
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
         if (scriptsOf(doc).join('\n') !== scriptsOf(document).join('\n') || sheetsOf(doc).join('\n') !== sheetsOf(document).join('\n')) return reload();
-        if (doc.title !== document.title) document.title = doc.title;
-        const mine = ownStyles();
-        const olds = [...document.head.querySelectorAll('style')].filter((x) => !mine.has(x));
-        const news = [...doc.head.querySelectorAll('style')];
-        news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
-        for (const o of olds.slice(news.length)) o.remove();
-        // What you're looking at stays put: the element a third down the window keeps its place on screen.
-        let mark = document.elementFromPoint(innerWidth / 2, Math.min(innerHeight / 3, 240));
-        while (mark && (mark === host || host.contains(mark))) mark = null;
-        const markTop = mark?.getBoundingClientRect().top;
-        morphKids(document.body, doc.body);
-        if (mark?.isConnected) {
-          const moved = mark.getBoundingClientRect().top - markTop;
-          if (Math.abs(moved) > 1) scrollBy(0, moved);
-        }
-        reflow();
+        // The browser cross-fades the old page into the new one (View Transitions, Safari 18+ and Chrome; others just swap).
+        const apply = () => {
+          if (doc.title !== document.title) document.title = doc.title;
+          const mine = ownStyles();
+          const olds = [...document.head.querySelectorAll('style')].filter((x) => !mine.has(x));
+          const news = [...doc.head.querySelectorAll('style')];
+          news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
+          for (const o of olds.slice(news.length)) o.remove();
+          // What you're looking at stays put: the element a third down the window keeps its place on screen.
+          let mark = document.elementFromPoint(innerWidth / 2, Math.min(innerHeight / 3, 240));
+          while (mark && (mark === host || host.contains(mark))) mark = null;
+          const markTop = mark?.getBoundingClientRect().top;
+          morphKids(document.body, doc.body);
+          if (mark?.isConnected) {
+            const moved = mark.getBoundingClientRect().top - markTop;
+            if (Math.abs(moved) > 1) scrollBy(0, moved);
+          }
+          reflow();
+        };
+        if (document.startViewTransition && !still.matches) document.startViewTransition(apply);
+        else apply();
       } catch {
         reload();
       }
