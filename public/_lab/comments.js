@@ -1534,6 +1534,7 @@
     toggleBtn.classList.toggle('secondary', on);
     host.toggleAttribute('data-sheet', Boolean(on && (draft || openId || listOpen || chatOpen))); // phones: the sheet has the screen's bottom
     document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
+    backCloses();
     refit();
     document.documentElement.classList.toggle('lab-pinning', on);
     copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
@@ -2120,8 +2121,41 @@
   const scrollerIn = (e, node) =>
     e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === 'textarea' || /auto|scroll/.test(getComputedStyle(n).overflowY)));
   const SPRING = 'cubic-bezier(.32,.72,0,1)'; // iOS's sheet curve
+  // Android's back gesture closes an open sheet first, like a native one, instead of leaving the page (CloseWatcher,
+  // Chrome 120+; elsewhere back works as before). With something typed it nudges, as a tap on the dimmed page does.
+  function backCloses() {
+    const open = matchMedia('(pointer: coarse)').matches && host.hasAttribute('data-sheet');
+    if (!open && backCloses.w) {
+      const w = backCloses.w;
+      backCloses.w = null;
+      w.destroy();
+    }
+    if (open && !backCloses.w && 'CloseWatcher' in window) {
+      try {
+        const w = new CloseWatcher();
+        w.onclose = () => {
+          if (backCloses.w === w) backCloses.w = null;
+          closeOrNudge();
+          backCloses(); // still open (it nudged): back closes it next time
+        };
+        backCloses.w = w;
+      } catch {}
+    }
+  }
   function swipeDown(node, close) {
     if (!coarse) return;
+    // Right after its content scrolled (a fling up to the top), a pull down scrolls on instead of taking the sheet,
+    // and for a moment after letting go of a drag a tap does nothing, so a sheet that springs back under the finger
+    // doesn't press what lands there or pop the keyboard (Vaul's 100 ms and 200 ms).
+    let scrolledAt = -1e9;
+    let releasedAt = -1e9;
+    node.addEventListener('scroll', () => (scrolledAt = performance.now()), { capture: true, passive: true });
+    node.addEventListener('click', (e) => {
+      if (performance.now() - releasedAt < 200) e.preventDefault(), e.stopPropagation();
+    }, true);
+    node.addEventListener('focusin', (e) => {
+      if (performance.now() - releasedAt < 200 && e.target.localName === 'textarea') e.target.blur();
+    });
     let x0 = 0;
     let y0 = 0;
     let dy = 0;
@@ -2148,7 +2182,7 @@
         if (!down && !across) return; // iOS sends moves for pressure changes too
         const sideways = Math.abs(across) > Math.abs(down);
         if (grabArea(e.target)) mode = sideways && e.target.closest('.tabs') ? 'off' : 'drag'; // the list's tabs scroll sideways
-        else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 ? 'drag' : 'off';
+        else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? 'drag' : 'off';
         else mode = sideways ? 'hold' : 'drag';
         if (mode === 'off') return;
         if (mode === 'hold') return e.preventDefault();
@@ -2166,6 +2200,7 @@
       const was = mode;
       mode = null;
       if (was !== 'drag') return;
+      releasedAt = performance.now();
       if (e.timeStamp - last.at > 80) v = 0; // held still before letting go
       const h = node.offsetHeight || innerHeight;
       if (v > 0.4 || (dy > h / 3 && v > -0.1)) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
@@ -2191,18 +2226,23 @@
     const fit = () => {
       const zoomed = Math.abs(vv.scale - 1) > 0.01; // pinch-zoomed: that isn't a keyboard
       const r = probe.getBoundingClientRect();
-      const seen = vv.offsetTop + vv.height; // the bottom of what the screen shows
+      // iOS 26.0 can leave offsetTop at 24 px after the keyboard has gone. With nothing to type in focused there is no
+      // keyboard and nothing panned (unzoomed), so an offset then is stale and counts as 0.
+      const field = root.activeElement || document.activeElement;
+      const typing = /^(textarea|input|select)$/.test(field?.localName || '') || Boolean(field?.isContentEditable);
+      const top = zoomed || !typing ? 0 : vv.offsetTop;
+      const seen = top + vv.height; // the bottom of what the screen shows
       const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen));
       const gap = zoomed ? 0 : Math.max(0, Math.round(seen - r.bottom));
       const vh = zoomed ? 0 : Math.round(vv.height);
       // Safari 26 doesn't count as "keyboard up" here (its fixed layer ends above the keyboard by itself): the sheet stays
       // a half sheet resting on that layer, which sits right, and the strip below it is covered.
       const sheet = host.hasAttribute('data-sheet');
-      const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY}`;
+      const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
       if (key === fitted) return;
       fitted = key;
       host.style.setProperty('--lab-kb', `${kb}px`);
-      host.style.setProperty('--lab-top', `${zoomed ? 0 : Math.round(vv.offsetTop)}px`);
+      host.style.setProperty('--lab-top', `${Math.round(top)}px`);
       if (vh) host.style.setProperty('--lab-vh', `${vh}px`);
       else host.style.removeProperty('--lab-vh');
       host.toggleAttribute('data-kb', kb > 60);

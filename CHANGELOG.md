@@ -4,6 +4,11 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Phone sheets, from the bottom-sheet research (Vaul, Ionic, iOS and Android sheets):
+  - Android's back gesture closes an open sheet (chat, list, thread, new comment) instead of leaving the page; with something typed it nudges, like a tap on the dimmed page.
+  - Right after the messages or the list scrolled (a fling up to the top), a pull down keeps scrolling for 100 ms instead of taking the sheet with it.
+  - For 200 ms after letting go of a drag, a tap does nothing, so a sheet springing back under the finger doesn't press a button or pop the keyboard.
+  - iOS 26.0's leftover 24 px viewport offset after the keyboard closes is ignored (with nothing focused to type in), so the sheet no longer sits off by that.
 - Local labs: what's new and what's read is shared by name, so your phone and your Mac (the same name) show the same: open a pin or the chat on one and its "new" clears on the other. Kept in `.lab/reads.json`.
 - Each comment is marked when it's handed to a wait, instead of one "seen up to" time: a comment a batch left out (or one saved a moment late) is no longer skipped for good.
 - Chat and list buttons stand out (bold) when something is new, and the chat marks where unread messages start with a "new" line.
