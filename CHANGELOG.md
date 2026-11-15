@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- A safety net for missed pins: a thread handed to the agent more than 3 minutes ago (`LAB_REMIND_MS`) that still has no answer after the person's last words comes back in the next wait, under "Still waiting for your answer", at most every 10 minutes.
 - Chat: a reply shows what it answers, as in Telegram (the name and the start of that message, a green bar beside it); a tap there jumps to it.
 - The bar has ‹ › around "list" while there are new comments: they step through the new ones from the top of the page, without opening the list.
 - Phones: the chat sheet has no "chat" title.

@@ -441,3 +441,17 @@ test('each comment is marked when handed over: one left out of a batch still com
   assert.doesNotMatch(out, new RegExp(`id ${a}`), 'the one handed over before does not come again');
   assert.ok(!fs.readFileSync(path.join(dir, '.lab/seen'), { encoding: 'utf8', flag: 'a+' }).trim(), 'no single "seen up to" time moves past comments');
 });
+
+test('a pin handed to the agent but never answered comes back in a later wait, once', async () => {
+  const dir = site('missed');
+  const { B } = await lab(dir, ['--no-fast'], { LAB_REMIND_MS: '0' });
+  const id = await pin(B, 'make it red');
+  const first = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(first, new RegExp(`id ${id}`));
+  // The agent read nothing and waits again: the pin comes back as a reminder.
+  const again = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(again, /^# Still waiting for your answer/m);
+  assert.match(again, new RegExp(`id ${id} "make it red"`));
+  const third = await cli(dir, ['wait', '--timeout', '3'], {});
+  assert.doesNotMatch(third, /Still waiting/, 'not again within 10 minutes');
+});

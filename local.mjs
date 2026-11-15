@@ -1011,7 +1011,14 @@ async function unseen() {
   // quick model kept is left alone, so the session isn't woken to re-read it (it cost time and tokens and found nothing).
   const risky = (c) => !c.quickFiles || c.quickFiles.length > 1 || c.quickFiles.some((f) => !/\.(s?css|less)$/.test(f));
   const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
-  if (!fresh.length && !quickDone.length) return null;
+  // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
+  // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
+  const now = Date.now();
+  const lastBy = (c, mine) => [c, ...commentsOf(c._page).filter((r) => r.parent === c.id)].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
+  const missed = pages().flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
+    .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(c.remindedAt && now - Date.parse(c.remindedAt) < 600000))
+    .filter(({ page, c }) => !fresh.some((f) => f.page === page && (f.c.id === c.id || f.c.parent === c.id)));
+  if (!fresh.length && !quickDone.length && !missed.length) return null;
   const blocks = [];
   const sent = new Set(); // page + thread id actually written into the text
   // A reply in a thread the agent already has: only the new words and one line on what the thread is about, not the
@@ -1035,8 +1042,12 @@ async function unseen() {
     sent.add(`${f.page}\n${root.id}`);
   }
   if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
+  if (missed.length) {
+    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
+    for (const { page, c } of missed) setComment(page, c.id, { remindedAt: new Date(now).toISOString() });
+  }
   const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
-  if (!given.length && !quickDone.length) return null;
+  if (!given.length && !quickDone.length && !missed.length) return null;
   const check = quickDone.length
     ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
     : '';
@@ -1059,6 +1070,7 @@ function deliver(res, got) {
 // A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made in a quick run go over
 // together, in one round trip, instead of one wake-up each.
 const SETTLE_MS = Number(process.env.LAB_SETTLE_MS ?? 2000);
+const REMIND_MS = Number(process.env.LAB_REMIND_MS ?? 180000); // a handed pin with no answer comes back after this
 let settleTimer = null;
 function wake() {
   if (!waiter) return;
