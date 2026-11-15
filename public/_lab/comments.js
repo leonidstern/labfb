@@ -54,6 +54,7 @@
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   let on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
   let openId = null;
+  let cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
   let draft = null; // { anchor, docX, docY }
 
   // ---------- DOM ----------
@@ -466,7 +467,8 @@
         /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
         .chatwin { height: var(--_sheet-max); transition: height .38s cubic-bezier(.32, .72, 0, 1); }
         /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
-        .chatwin.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
+        .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
+        .card { transition: height .38s cubic-bezier(.32, .72, 0, 1); } /* a comment pulls up to full height as the chat does */
         /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
         .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
                       background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat, var(--_bg); }
@@ -2344,7 +2346,8 @@
           const first = coarse ? null : body.querySelector('.fresh, .newline');
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
         }
-        swipeDown(card, () => ((openId = null), render()));
+        if (coarse && cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
+        swipeDown(card, () => ((openId = null), (cardFull = false), render()), true);
         markSeen(news);
         if (news.length) drawList(); // opened is read: the "N new" pill and the tab title count it off at once
         quoted = zone ? null : c.anchor; // an area's outline says what it's on; only selected words get the highlight
@@ -3094,8 +3097,8 @@
         host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
         setTimeout(() => (node.style.transition = scrim.style.transition = ''), 400);
       };
-      if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), settle();
-      if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove('full'), settle();
+      if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), node.classList.contains('card') && (cardFull = true), settle();
+      if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove('full'), node.classList.contains('card') && (cardFull = false), settle();
       // Where the sheet would come to rest if let go now, as iOS judges a throw (Apple's "Designing Fluid Interfaces":
       // the distance plus the speed carried on at the normal deceleration, 0.998 a millisecond, so v × 499): past half
       // its height it goes. A short quick flick closes; a slow long drag closes past halfway; a move back up never does.
