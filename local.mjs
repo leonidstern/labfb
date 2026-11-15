@@ -1390,21 +1390,32 @@ const titleOf = (file) => {
   }
 };
 // A folder with no index.html: its pages, wherever they are below it, not its subfolders.
+// The lab's own screens (the page list, "not found") in the lab's design system, /_lab/lab.css.
+const labPage = (title, body) =>
+  `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1, viewport-fit=cover">` +
+  `<title>${title}</title><link rel=stylesheet href="/_lab/lab.css"><body class=lab><main>${body}</main></body>`;
+const notFound = (req, res, what) => {
+  if (!/text\/html/.test(req.headers.accept || '')) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
+  return res.end(labPage('labfb · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));
+};
 const listing = (res, dir, urlPath) => {
   const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
   const li = pagesUnder(dir)
     .map((rel) => {
       const title = titleOf(path.join(dir, rel));
       const href = urlPath.replace(/\/$/, '') + urlOf(rel);
-      return `<li><a href="${esc(href)}">${esc(title || rel)}</a>${title ? ` <span style="opacity:.55">${esc(rel)}</span>` : ''}</li>`;
+      return `<li><a href="${esc(href)}"><span>${esc(title || rel)}</span>${title ? `<span class="lab-muted">${esc(rel)}</span>` : ''}</a></li>`;
     })
     .join('');
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(
-    `<!doctype html><meta charset=utf-8><title>labfb · ${esc(path.basename(dir))}</title>` +
-      `<body style="font:15px/1.6 system-ui;margin:40px;max-width:640px"><h1 style="font-size:17px;margin:0 0 4px">Pages in ${esc(path.basename(dir))}</h1>` +
-      `<p style="margin:0 0 16px;opacity:.6">Open one, then press c (or hold Option) and click to comment.</p>` +
-      `<ul style="padding-left:20px">${li || '<li>No HTML pages here. Running a dev server? Start it, then run labfb again.</li>'}</ul></body>`,
+    labPage(
+      `labfb · ${esc(path.basename(dir))}`,
+      `<header><h1>Pages in ${esc(path.basename(dir))}</h1><p class="lede">Open one, then press <kbd>c</kbd> (or hold Option) and click to comment.</p></header>` +
+        `<ul class="lab-box lab-rows">${li || '<li class="lab-muted" style="padding:8px 10px">No HTML pages here. Running a dev server? Start it, then run labfb again.</li>'}</ul>`,
+    ),
   );
 };
 
@@ -1588,7 +1599,7 @@ const handler = async (req, res) => {
     let file = path.join(base, pathname);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
-    if (!fs.existsSync(file)) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+    if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (fs.statSync(file).isDirectory() && !pathname.endsWith('/') && fs.existsSync(file + '.html')) file += '.html'; // /a is a.html, /a/ is a/index.html

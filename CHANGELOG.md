@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The lab's design system in one file, `/_lab/lab.css`: colours, three corners, type, boxes, pills, buttons, keys, rows and tables, with `--lab-*` names that are also the widget's theme hooks. The lab's page list and its "not found" page use it.
 - The bar's "hide comments" reads just "hide".
 - Three corner sizes in all: 6 px for small things (keys, list rows, small buttons), 12 px for boxes, cards, bubbles and sheets (phones were 18 px), and round for pills and dots.
 - The list has just two tabs, new and open, and opens on new each time. The work, resolved and mine tabs and draft mode are parked (hidden, code kept).

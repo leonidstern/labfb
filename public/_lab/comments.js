@@ -243,6 +243,7 @@
       .bar button.secondary { color: var(--_muted); }
       .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
       .bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
+      .bar button.go-btn.on kbd { background: rgba(255, 255, 255, .22); color: #fff !important; }
       .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--_accent); }
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
       /* The left side: who's listening, then copy link; the right side is the bar. */
