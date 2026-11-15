@@ -1228,7 +1228,10 @@
     const bottom = Math.max(y0, y1);
     const anchor = anchorAt((left + right) / 2, (top + bottom) / 2);
     let box = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2).find((n) => n !== host && !host.contains(n));
-    const contains = (r) => r.left <= left + 2 && r.top <= top + 2 && r.right >= right - 2 && r.bottom >= bottom - 2;
+    // The area is on the smallest element that holds most of it (80%): a narrow strip drawn a little past a picture's
+    // edge stays on the picture, instead of climbing to the page itself.
+    const area = Math.max(1, (right - left) * (bottom - top));
+    const contains = (r) => (Math.max(0, Math.min(r.right, right) - Math.max(r.left, left)) * Math.max(0, Math.min(r.bottom, bottom) - Math.max(r.top, top))) / area >= 0.8;
     while (box && box !== document.body && !contains(box.getBoundingClientRect())) box = box.parentElement;
     box ||= document.body;
     const r = box.getBoundingClientRect();
@@ -1237,8 +1240,8 @@
       element: openingTag(box),
       x: r.width ? (left - r.left) / r.width : 0,
       y: r.height ? (top - r.top) / r.height : 0,
-      zw: r.width ? Math.min((right - left) / r.width, 1) : 0,
-      zh: r.height ? Math.min((bottom - top) / r.height, 1) : 0,
+      zw: r.width ? (right - left) / r.width : 0, // may pass 1 a little: the area can reach past its element's edge
+      zh: r.height ? (bottom - top) / r.height : 0,
       docX: (left + scrollX) / docWidth(),
       docY: top + scrollY,
       docW: Math.round(right - left),

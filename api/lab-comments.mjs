@@ -99,6 +99,8 @@ const editKey = (path, id) =>
 const clean = (value, max) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 const cleanText = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 const num = (value) => (Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0);
+// An area may reach a little past its element's edge (it's on the element that holds most of it).
+const wide = (value) => (Number.isFinite(value) ? Math.min(Math.max(value, -1), 2) : 0);
 
 const int = (v, max = 100000) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v), 0), max) : undefined);
 const sec = (v) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v * 10) / 10, 0), 86400) : undefined);
@@ -108,8 +110,8 @@ const KINDS = ['image', 'video', 'canvas', 'svg', 'text', 'background', 'element
 function cleanAnchor(a) {
   const out = {
     selector: clean(a.selector, MAX.selector),
-    x: num(a.x),
-    y: num(a.y),
+    x: a.zw ? wide(a.x) : num(a.x),
+    y: a.zw ? wide(a.y) : num(a.y),
     docX: num(a.docX),
     docY: int(a.docY) ?? 0,
     width: int(a.width, 10000) ?? 0,
@@ -146,8 +148,8 @@ function cleanAnchor(a) {
     gapBelow: clean(a.gapBelow, 160) || undefined,
     scheme: a.scheme === 'dark' || a.scheme === 'light' ? a.scheme : undefined,
     background: /^#[0-9a-f]{6}$/i.test(a.background || '') ? a.background : undefined,
-    zw: Number.isFinite(a.zw) && a.zw > 0 ? num(a.zw) : undefined,
-    zh: Number.isFinite(a.zh) && a.zh > 0 ? num(a.zh) : undefined,
+    zw: Number.isFinite(a.zw) && a.zw > 0 ? Math.min(a.zw, 3) : undefined,
+    zh: Number.isFinite(a.zh) && a.zh > 0 ? Math.min(a.zh, 3) : undefined,
     docW: int(a.docW),
     docH: int(a.docH),
     time: sec(a.time),
