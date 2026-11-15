@@ -1425,9 +1425,11 @@
     if (!LIST_WINDOW) {
       // Without the list window the middle shows how many are new (a click goes to the next one). The pills keep their
       // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
-      newPrev.hidden = newNext.hidden = listBtn.hidden = !on;
+      newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
+      listBtn.hidden = !on;
       listBtn.textContent = `${freshAll} new`;
-      for (const b of [newPrev, newNext, listBtn]) (b.disabled = !freshAll), b.classList.toggle('quiet', !freshAll);
+      listBtn.disabled = !freshAll;
+      listBtn.classList.toggle('quiet', !freshAll);
       const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
       doneBtn.hidden = !on;
       doneBtn.disabled = !doneCount && !showDone;

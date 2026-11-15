@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The bar's "N new" has no ‹ › arrows: a click goes to the next new comment, J and K step forward and back.
 - No pictures left in the widget's controls: the close cross and the send arrow are drawn with CSS, and the picture pointers are gone (where the drawn pin can't show, in an open dialog or before the mouse moves, the system crosshair / copy pointer stands in). Holding Option over a link shows the drawn pin too.
 - ‹ N new › counts new messages in done threads too.
 - A thread's reopen / resolve / delete sit on the right, a size smaller, out of the reading flow.
