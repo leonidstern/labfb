@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- "copy link" is the first pill on the left of the bar.
+- The list's and the chat's close button is a round, quiet button with a drawn cross, darker on hover.
 - The bar's pills show their keys: chat M, list L, go V, comments C (hidden on touch screens).
 - Escape closes the chat and the list too (after an open thread or new comment).
 - M opens and closes the chat (with comments shown and nothing typed).

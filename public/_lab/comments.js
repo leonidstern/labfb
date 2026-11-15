@@ -206,7 +206,13 @@
       }
       .list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
       .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
-      .list .tabs .x { padding: 4px 8px; }
+      /* Close: a round, quiet button with a drawn cross (not the ✕ character), darker on hover. */
+      .list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
+                       font-size: 0; color: var(--_muted); background: transparent; }
+      .list .tabs .x::before { content: ''; width: 11px; height: 11px; background: currentColor;
+                               -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 2.5l7 7M9.5 2.5l-7 7' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 2.5l7 7M9.5 2.5l-7 7' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+      .list .tabs .x:hover { background: var(--_soft); color: var(--_fg); }
+      .list .tabs .x:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; }
       .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
       .chatwin .replying { flex: none; }
       .chatwin .chat .box { background: var(--_soft); }
@@ -356,11 +362,11 @@
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" title="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" title="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="bar">
+      <button class="secondary copy-all" type="button" hidden>copy link</button>
       <button class="secondary send-all" type="button" hidden></button>
       <button class="secondary chat-btn" type="button" hidden title="chat (M)">chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary go-btn" type="button" hidden title="go mode: every click approves what it's on, no typing (V)">go</button>
-      <button class="secondary copy-all" type="button" hidden>copy link</button>
       <button class="toggle" type="button"></button>
     </div>`;
   const layer = root.querySelector('.layer');
