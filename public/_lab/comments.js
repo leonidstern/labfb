@@ -207,14 +207,15 @@
       .msg.mine { align-self: flex-end; background: var(--_fg); color: var(--_bg); }
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       .msg.mine b { display: none; }
-      .msg { cursor: pointer; position: relative; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+      .msg { position: relative; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
       .msg::after { content: '↩'; position: absolute; right: -28px; top: 50%; translate: 0 -50%; color: var(--_fg); opacity: var(--lab-r, 0); scale: calc(.6 + .4 * var(--lab-r, 0)); }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
       .box:has(.trap) { position: relative; }
       .trap { position: absolute; top: 8px; left: 14px; width: 1px; height: 1px; opacity: 0; pointer-events: none; font-size: 16px; border: 0; padding: 0; }
-      .msg .tick { color: inherit; float: right; margin: 5px -3px -3px 10px; font-size: 11px; line-height: 1; letter-spacing: -.38em; opacity: .55; }
-      .msg .tick.got { opacity: .85; }
+      .msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 11px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
+      .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.38em; }
+      .msg .tick.got { font-weight: 600; }
       .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
       .bar button * { color: inherit; font-weight: inherit; }
@@ -1204,7 +1205,7 @@
     listEl.querySelector('.items').replaceChildren(...(items.length ? items : [el('div', { class: 'none' }, 'nothing here')]));
   }
   // The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
-  // a pin's say what they're on). New messages are about the page; tap one to answer it instead.
+  // a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.
   let replyTo = null;
   let newFrom = null;
   function drawChat() {
@@ -1230,23 +1231,26 @@
     const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
     box.replaceChildren(...msgs.flatMap((m) => {
       const root = m.parent ? byId.get(m.parent) : m;
-      const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, title: when(m.createdAt), 'data-id': m.id });
+      const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id });
       b.append(el('b', {}, m.name));
       // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
       const done = root?.resolved || /^done\b/i.test(m.text) ? '✅ ' : '';
       b.append(document.createTextNode(done + m.text));
-      // Yours: ✓ sent, ✓✓ handed to the agent (its thread went to the agent at or after you wrote it), as in messengers.
+      // The time in the bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent,
+      // ✓✓ handed to the agent (its thread went to the agent at or after you wrote it).
+      const at = new Date(m.createdAt);
+      const stamp = el('span', { class: 'stamp' }, at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' }));
       if (mine(m) && !m.session) {
         const got = root?.handedAt && root.handedAt >= m.createdAt;
-        b.append(el('span', { class: `tick${got ? ' got' : ''}`, title: got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
+        stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
       }
-      const answer = (again) => {
-        replyTo = root && (again || replyTo !== root.id) ? root.id : null;
+      b.append(stamp);
+      const answer = () => {
+        replyTo = root ? root.id : null;
         drawChat();
         chatEl.querySelector('.chat textarea')?.focus({ preventScroll: true });
       };
-      b.addEventListener('click', () => answer(false));
-      swipeToAnswer(b, () => answer(true));
+      swipeToAnswer(b, answer); // phones: swipe one to answer it; no tap or click
       return m.id === newFrom && m !== msgs[0] ? [el('div', { class: 'newline' }, 'new'), b] : [b];
     }));
     const strip = chatEl.querySelector('.replying');
@@ -1276,7 +1280,7 @@
           },
         }),
       );
-    chat.querySelector('textarea').placeholder = target ? 'reply' : msgs.length ? `message · ${coarse ? 'swipe' : 'click'} one to reply` : 'message';
+    chat.querySelector('textarea').placeholder = target ? 'reply' : msgs.length && coarse ? 'message · swipe one to reply' : 'message';
     if (atEnd) box.scrollTop = box.scrollHeight;
   }
   // Phones: swipe a message left to answer it, as in messengers: it follows the finger, ↩ shows, and past 56 px a tick
