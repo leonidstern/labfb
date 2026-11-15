@@ -1943,6 +1943,7 @@
         }
         swipeDown(card, () => ((openId = null), render()));
         markSeen(news);
+        if (news.length) drawList(); // opened is read: the "N new" pill and the tab title count it off at once
         quoted = zone ? null : c.anchor; // an area's outline says what it's on; only selected words get the highlight
       }
     });
@@ -2243,8 +2244,16 @@
     if (!fresh.length) return;
     const top = (c) => position(c.anchor || {}).top;
     fresh.sort((a, b) => top(a) - top(b));
+    // The open one was read when it opened, so it's no longer in the list: step on from where it is on the page.
+    const open = openId && threads().find((c) => c.id === openId);
+    const here = open ? top(open) : null;
+    const after = here == null ? -1 : fresh.findIndex((c) => top(c) > here);
     const at = fresh.findIndex((c) => c.id === openId);
-    goTo(fresh[at < 0 ? (dir > 0 ? 0 : fresh.length - 1) : (at + dir + fresh.length) % fresh.length], !coarse); // the reply box takes the cursor (not on phones: no keyboard popping up)
+    const next = at >= 0 ? (at + dir + fresh.length) % fresh.length
+      : here == null ? (dir > 0 ? 0 : fresh.length - 1)
+      : dir > 0 ? (after < 0 ? 0 : after)
+      : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
+    goTo(fresh[next], !coarse); // the reply box takes the cursor (not on phones: no keyboard popping up)
   };
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
