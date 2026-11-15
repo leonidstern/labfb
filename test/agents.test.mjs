@@ -300,17 +300,16 @@ const until = async (ok, n = 60) => {
   for (let i = 0; i < n && !(await ok()); i++) await new Promise((r) => setTimeout(r, 100));
 };
 
-test('a pass puts back what the quick tool changed, and the log says so', async () => {
+test('a pass leaves what changed during it (maybe the session\'s edit), and the log names it', async () => {
   const dir = site('undo-pass');
-  const page = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
   const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "<p>half done</p>" >> index.html; echo "PASS: needs a choice"' });
   await pin(B, 'make the title red');
   await until(() => quickLog(dir).length > 0);
-  assert.equal(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), page, 'index.html is as it was');
+  assert.match(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), /half done/, 'not put back');
   const [l] = quickLog(dir);
-  assert.equal(l.result, 'undone');
+  assert.equal(l.result, 'pass');
   assert.deepEqual(l.files, ['index.html']);
-  assert.equal(l.note, 'needs a choice');
+  assert.match(l.note, /^needs a choice; files changed during its try were left as they are .*: index\.html; check them$/);
 });
 
 test('a quick change that is too big is put back and goes to the session with why', async () => {
@@ -380,6 +379,60 @@ test('a quick change to shared code (a file two others load) is put back and goe
   assert.match(out, /quick model passed: its change was to shared code/);
 });
 
+test('files a quick try changed but did not claim are left and named to the session', async () => {
+  const dir = site('pass-leftover');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "h1{color:red}" > red.css; echo "PASS: needs a choice"' });
+  const id = await pin(B, 'which red?');
+  await until(() => quickLog(dir).length > 0);
+  assert.equal(fs.readFileSync(path.join(dir, 'red.css'), 'utf8').trim(), 'h1{color:red}', 'not put back: it may be the session\'s edit');
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(out, new RegExp(`id ${id}`));
+  assert.match(out, /quick model passed: needs a choice; files changed during its try were left as they are \(maybe its edit, maybe yours\): red\.css; check them/);
+});
+
+// A quick tool that says what it edits ("edited: <file>"): tries run side by side and the session isn't held (24, 21).
+const TRACKS = { LAB_FAST_TRACKS: '1' };
+const fileFrom = 'p=$(cat); n=$(printf "%s" "$p" | grep -o "make f[0-9]" | head -1 | cut -c6-)';
+
+test('quick tries that say what they edit run side by side', async () => {
+  const dir = site('parallel');
+  const { B } = await lab(dir, [], { ...TRACKS, LAB_FAST_CMD: `${fileFrom}; sleep 1.5; echo "a{}" > $n.css; echo "edited: $n.css"; echo "Done: $n"` });
+  const t0 = Date.now();
+  await Promise.all(['make f1 red', 'make f2 red', 'make f3 red'].map((t) => pin(B, t)));
+  await until(() => quickLog(dir).length === 3, 80);
+  const took = Date.now() - t0;
+  assert.ok(took < 4000, `three 1.5 s tries took ${took} ms, so they ran together`);
+  assert.deepEqual(quickLog(dir).map((l) => l.result), ['done', 'done', 'done']);
+  assert.deepEqual(quickLog(dir).map((l) => l.files[0]).sort(), ['f1.css', 'f2.css', 'f3.css'], 'each try owns only its own file');
+});
+
+test('the session hears other pins while a quick try still runs', async () => {
+  const dir = site('no-hold');
+  const { B } = await lab(dir, [], { ...TRACKS, LAB_FAST_CMD: `${fileFrom}; sleep 4; echo "a{}" > $n.css; echo "edited: $n.css"; echo "Done: $n"` });
+  await pin(B, 'make f1 red');
+  const asked = await pin(B, '! what font is this');
+  const t0 = Date.now();
+  const out = await cli(dir, ['wait', '--timeout', '3'], {});
+  assert.ok(Date.now() - t0 < 3000, 'not held until the quick try ends');
+  assert.match(out, new RegExp(`id ${asked}`));
+  assert.doesNotMatch(out, /make f1 red/, 'the pin being tried waits for its try');
+});
+
+test("a tracked pass puts back its own edits, and never another's", async () => {
+  const dir = site('own-undo');
+  const { B } = await lab(dir, [], { ...TRACKS, LAB_FAST_CMD: 'cat >/dev/null; echo "<p>half</p>" >> index.html; echo "edited: index.html"; sleep 1; echo "PASS: needs a choice"' });
+  const page = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  await pin(B, 'which red?');
+  await new Promise((r) => setTimeout(r, 400));
+  fs.writeFileSync(path.join(dir, 'other.css'), 'b{}'); // the session, meanwhile
+  await until(() => quickLog(dir).length > 0);
+  assert.equal(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), page, 'its own edit is put back');
+  assert.equal(fs.readFileSync(path.join(dir, 'other.css'), 'utf8'), 'b{}', "the session's file stays");
+  const [l] = quickLog(dir);
+  assert.equal(l.result, 'undone');
+  assert.deepEqual(l.files, ['index.html']);
+});
+
 test('a one-file style fix the quick model kept is not handed to the session', async () => {
   const dir = site('style-only');
   const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "h1{color:red}" > red.css; echo "Done: title red"' });
@@ -416,6 +469,7 @@ test('quick changes to code reach the session to check even when no pin was pass
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, /^# Quick changes to check$/m);
   assert.match(out, new RegExp(`^- id ${id} "make it red" \\(/index\\): red\\.js`, 'm'));
+  assert.match(out, /without opening files\. Open a file only when/, 'the lines are read first; files are opened only when they look off');
   assert.doesNotMatch(out, /^# New comments/m);
   const again = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.doesNotMatch(again, /Quick changes to check/, 'handed over once');
@@ -460,4 +514,53 @@ test('a pin handed to the agent but never answered comes back in a later wait, o
   assert.match(again, new RegExp(`id ${id} "make it red"`));
   const third = await cli(dir, ['wait', '--timeout', '3'], {});
   assert.doesNotMatch(third, /Still waiting/, 'not again within 10 minutes');
+});
+
+test('a page claim survives a lab restart', async () => {
+  const dir = site('claim-restart');
+  fs.writeFileSync(path.join(dir, 'other.html'), '<!doctype html><title>o</title><h1 id="t">Other</h1>');
+  await lab(dir);
+  await cli(dir, ['wait', '--pages', 'other', '--timeout', '1'], { LAB_SETTLE_MS: '0' });
+  kids.at(-1).kill();
+  await new Promise((r) => setTimeout(r, 300));
+  const { B } = await lab(dir);
+  await fetch(B + '/_lab/api/comments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: B },
+    body: JSON.stringify({ page: '/other', name: 'Leo', text: 'pin after restart', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }),
+  });
+  const plain = await cli(dir, ['wait', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
+  assert.doesNotMatch(plain, /pin after restart/, 'the claiming session keeps its page across the restart');
+  const mine = await cli(dir, ['wait', '--pages', 'other', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
+  assert.match(mine, /pin after restart/);
+});
+
+test('two sessions share one lab by page: wait --pages takes only its pages, a plain wait the rest', async () => {
+  const dir = site('pages');
+  fs.writeFileSync(path.join(dir, 'other.html'), '<!doctype html><title>o</title><h1 id="t">Other</h1>');
+  const { B } = await lab(dir);
+  const pinOn = async (page, text) =>
+    (await (await fetch(B + '/_lab/api/comments', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: B },
+      body: JSON.stringify({ page, name: 'Leo', text, anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }),
+    })).json()).comment.id;
+  const mine = cli(dir, ['wait', '--pages', 'other', '--timeout', '6'], { LAB_SETTLE_MS: '0' });
+  await new Promise((r) => setTimeout(r, 400));
+  const rest = cli(dir, ['wait', '--timeout', '6'], { LAB_SETTLE_MS: '0' });
+  await new Promise((r) => setTimeout(r, 400));
+  await pinOn('/other', 'pin on other');
+  await pinOn('/index', 'pin on index');
+  const [a, b] = await Promise.all([mine, rest]);
+  assert.match(a, /pin on other/);
+  assert.doesNotMatch(a, /pin on index/);
+  assert.match(b, /pin on index/);
+  assert.doesNotMatch(b, /pin on other/, 'a plain wait leaves pages another session listens on');
+  assert.doesNotMatch(a + b, /Another session is listening/);
+  // Between its waits (working on the pins), the page stays with that session.
+  await pinOn('/other', 'second on other');
+  const later = await cli(dir, ['wait', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
+  assert.doesNotMatch(later, /second on other/, 'later: ' + later);
+  const again = await cli(dir, ['wait', '--page', '/other.html', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
+  assert.match(again, /second on other/, 'again: ' + again);
 });

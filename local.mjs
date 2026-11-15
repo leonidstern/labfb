@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { apiOn, callApi, sendFile } from './lib/dev.mjs';
 
@@ -50,7 +50,9 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
 For the agent, from the project (any folder under it):
-  labfb wait [--timeout 1500]
+  labfb wait [--timeout 1500] [--pages /a,/b]
+      --pages: only these pages' pins, so two sessions can share one lab (one per page). A wait without it gets every
+      page nobody else is listening on.
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
       An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
@@ -62,13 +64,21 @@ Files in .lab/ inside the folder: comments.md (every open comment as text), comm
 server.json (port, key, session; owner-only), seen. Delete .lab to start over.`;
 
 // ---------- arguments ----------
+// The pages a wait listens on (--pages /a,/b, or wait --page /a): page keys as the lab writes them ("/router-fixes").
+function listenPages(forWait = false) {
+  const raw = opts.pages || (forWait ? opts.page : '');
+  if (!raw) return null;
+  return String(raw).split(',').map((p) => '/' + p.trim().replace(/^\/+/, '').replace(/\.html?$/i, '')).filter((p) => p !== '/');
+}
 const argv = process.argv.slice(2);
 const opts = {};
 const pos = [];
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
 const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--fast', '--no-fast', '--new', '--all'];
-const VALUED = ['--port', '--name', '--page', '--timeout', '--dir', '--proxy'];
+// How answers should read, said with every pin (the page shows short blocks and '- ' lists as such).
+const WRITE_SHORT = "Write answers short: they're read in a small window, often on a phone. One point per line or two, a blank line between points, '- ' lines for lists.";
+const VALUED = ['--port', '--name', '--page', '--pages', '--timeout', '--dir', '--proxy'];
 const unknownFlags = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -354,7 +364,7 @@ if (pos[0] === 'mcp') {
     {
       name: 'reply',
       title: 'Answer on a pin',
-      description: 'Answer on a pin in the local lab, by the id `comments` shows. resolve: true closes the thread.',
+      description: `Answer on a pin in the local lab, by the id \`comments\` shows. resolve: true closes the thread. ${WRITE_SHORT}`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -538,7 +548,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
     });
 
   if (cmd === 'wait') {
-    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500 });
+    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages(true) });
     if (out.status === 204) console.log('No new comments yet. Run wait again to keep listening.');
     else if (out.status === 409) console.log('Another session is listening now; this one stopped.');
     else if (out.status === 410) console.log('The page was closed, so this stopped listening. Wait again only when the person asks or opens the page.');
@@ -577,7 +587,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
   console.log(`${cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
   // --wait: answer and listen again in one command (one round trip less per pin).
   if (opts.wait) {
-    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500 });
+    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages() });
     console.log(out.status === 204 ? 'No new comments yet. Run wait again to keep listening.' : out.status === 409 ? 'Another session is listening now; this one stopped.' : out.status === 410 ? 'The page was closed, so this stopped listening.' : out.text);
   }
   process.exit(0);
@@ -819,7 +829,16 @@ const agentText = async (page) => {
   return fileFor(page) ? local.replace(/^(page: .*)$/m, `$1\nfile: ${fileFor(page)}`) : local;
 };
 
-let version = { files: 0, comments: 0 };
+// lab: this run of the lab (a restart is a new one); widget: what the comment widget's script is, so open pages reload
+// only when it changed and otherwise just catch up after a restart.
+const widgetRev = () => {
+  try {
+    return createHash('sha1').update(fs.readFileSync(path.join(REPO, 'public/_lab/comments.js'))).digest('hex').slice(0, 10);
+  } catch {
+    return '';
+  }
+};
+let version = { files: 0, comments: 0, lab: randomBytes(4).toString('hex'), widget: widgetRev() };
 // Saving: comments.json and comments.md are rewritten in the background, one write at a time; changes that land
 // meanwhile go into the next one. Each page's agent text is kept and rebuilt only when that page changed, so a
 // comment costs the same with 10 comments or 20,000. The request that changed something doesn't wait for the files.
@@ -827,10 +846,50 @@ const texts = new Map(); // page → its agent text
 const dirty = new Set(); // pages whose text must be rebuilt
 let writing = null;
 let again = false;
+// What changed, per comments version, so open pages fetch only that (a reply: ~1 KB) instead of the page's whole list.
+// Found by comparing each page with how it was last time (the store holds each comment as a JSON string, so this is a
+// string compare per comment), which also catches changes made without saying which page.
+const shot = new Map(); // page -> Map(id -> JSON string), as last sent
+const changeLog = []; // { rev, page, set: [JSON strings], del: [ids] }, the latest 300
+const takeShot = (p) => new Map(db.get(`lab:comments:${p}`) || []);
+for (const p of pages()) shot.set(p, takeShot(p));
+function logChanges(page, rev) {
+  for (const p of page ? [page] : [...new Set([...pages(), ...shot.keys()])]) {
+    const was = shot.get(p) || new Map();
+    const now = takeShot(p);
+    const set = [...now].filter(([id, v]) => was.get(id) !== v).map(([, v]) => v);
+    const del = [...was.keys()].filter((id) => !now.has(id));
+    shot.set(p, now);
+    if (set.length || del.length) changeLog.push({ rev, page: p, set, del });
+  }
+  changeLog.push({ rev, page: null, set: [], del: [] }); // every version is in the log, so a gap shows
+  while (changeLog.length > 300) changeLog.shift();
+}
+// A comment as another device sees it: who the agent is, not its session link or resume command; no file notes.
+const forGuests = (c) => {
+  if (!c || typeof c !== 'object') return c;
+  const { quickDiff, quickFiles, quickNote, ...rest } = c;
+  if (rest.session) rest.session = { name: rest.session.name, agent: rest.session.agent, kind: rest.session.kind };
+  return rest;
+};
+function commentChangesSince(page, since) {
+  const first = changeLog.find((e) => e.page === null)?.rev;
+  // The oldest rev in the log may have lost some entries to the trim: only a page that already has it gets a delta.
+  if (!Number.isInteger(since) || first === undefined || since < first || since > version.comments) return null;
+  const out = new Map();
+  for (const e of changeLog) {
+    if (e.rev <= since || e.page !== page) continue;
+    for (const v of e.set) out.set(JSON.parse(v).id, v);
+    for (const id of e.del) out.set(id, null);
+  }
+  return { rev: version.comments, set: [...out.values()].filter(Boolean).map((v) => JSON.parse(v)), del: [...out].filter(([, v]) => v === null).map(([id]) => id) };
+}
+
 function persist(page) {
   if (page) dirty.add(page);
   else for (const p of pages()) dirty.add(p);
   version = { ...version, comments: version.comments + 1 };
+  logChanges(page, version.comments);
   if (writing) {
     again = true;
     return writing;
@@ -874,6 +933,24 @@ const sameOrigin = (req) => {
   }
 };
 const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+// --wifi listens on every address, and a Mac on IPv6 has public ones (the Host check is easy to fake, so it isn't a lock):
+// only this computer and devices on the local network get in, whatever the router's firewall lets through.
+const nearby = (req) => {
+  const a = String(req.socket.remoteAddress || '').toLowerCase().replace(/^::ffff:/, '');
+  if (a === '::1' || /^127\./.test(a)) return true;
+  if (!WIFI) return false;
+  return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a));
+};
+// A phone on the same wifi may come from its public IPv6 address: it shares this Mac's /64 network prefix.
+const prefix64 = (a) => {
+  if (!a.includes(':')) return '';
+  const [head, tail = ''] = a.split('::');
+  const h = head ? head.split(':') : [], t = tail ? tail.split(':') : [];
+  const all = a.includes('::') ? [...h, ...Array(8 - h.length - t.length).fill('0'), ...t] : h;
+  return all.slice(0, 4).map((g) => parseInt(g, 16)).join(':');
+};
+const lanPrefixes = () => new Set(Object.values(os.networkInterfaces()).flat()
+  .filter((n) => n && n.family === 'IPv6' && !n.internal && /^[23]/.test(n.address)).map((n) => prefix64(n.address.toLowerCase())));
 const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
 const sessionFrom = (req) => {
   try {
@@ -913,16 +990,27 @@ const register = () => {
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
 const clients = new Set();
+// A beat every 15 s on every live connection: a page that hears nothing for longer knows its connection stalled (the
+// laptop slept, the wifi changed) and connects again at once instead of waiting for the browser to notice.
+setInterval(() => {
+  for (const c of clients) c.res.write('event: beat\ndata: 1\n\n');
+}, 15000).unref();
 // Read marks per name: a person on their phone and their Mac (same name) shares what's new and what's read. Kept in
 // .lab/reads.json as { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
 const READS = path.join(LAB, 'reads.json');
+// Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
+const bare = (o) => Object.assign(Object.create(null), o);
 const reads = (() => {
   try {
-    return JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
+    const raw = JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
+    const out = Object.create(null);
+    for (const [name, pagesOf] of Object.entries(raw)) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
+    return out;
   } catch {
-    return {};
+    return Object.create(null);
   }
 })();
+let readsBroadcast = 0;
 let readsRev = 0;
 const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
 let readsTimer;
@@ -937,24 +1025,82 @@ const broadcast = () => {
 let reloadTimer;
 // With --proxy the dev server reloads its own pages.
 let indexStale = false;
+// Saves in one burst that are all CSS, pictures, fonts or HTML pages: the pages update in place (stylesheets and
+// pictures swapped, fonts reloaded, HTML patched), so nothing flashes and your place stays. Anything else (a script,
+// data) → a reload.
+const HOT = { css: /\.css$/i, img: /\.(png|jpe?g|gif|webp|avif|svg|ico)$/i, font: /\.(woff2?|ttf|otf)$/i, html: /\.html?$/i };
+const hotSaved = new Map(); // served path -> kind
+let otherSaved = false;
 if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
   if (!file || file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules')) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
   // event's name can't tell; a CSS or JS save leaves the index alone.)
   if (/\.html?$/i.test(file) || !path.extname(file)) indexStale = true;
+  const kind = Object.keys(HOT).find((k) => HOT[k].test(file));
+  if (kind) hotSaved.set('/' + file.split(path.sep).join('/'), kind);
+  else otherSaved = true;
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
     if (indexStale) (fileIndex = null), fileMemo.clear(), (indexStale = false);
+    const hotOnly = !otherSaved && hotSaved.size > 0;
+    const hot = [...hotSaved].slice(0, 50).map(([p, kind]) => ({ path: p, kind }));
+    hotSaved.clear();
+    otherSaved = false;
     // The quick model is still at work: the page reloads once, together with its answer (see quick()).
-    if (quickRunning) return (filesWaiting = true);
-    version = { ...version, files: version.files + 1 };
+    if (quickActive) return (filesWaiting = true);
+    if (hotOnly) version = { ...version, hot: (version.hot || 0) + 1, hotFiles: hot };
+    else version = { ...version, files: version.files + 1 };
     broadcast();
-  }, 80);
+    // While the agent works it often saves several files for one fix: wait for 400 ms of quiet so the page updates
+    // once. A person saving by hand gets it after 80 ms.
+  }, mode === 'working' ? 400 : 80);
 });
+
+// The widget's own files: a changed script reloads open pages (they need the new one); lab.css is swapped in place.
+let widgetTimer;
+try {
+  fs.watch(path.join(REPO, 'public/_lab'), (event, file) => {
+    clearTimeout(widgetTimer);
+    widgetTimer = setTimeout(() => {
+      if (/\.css$/i.test(file || '')) version = { ...version, hot: (version.hot || 0) + 1, hotFiles: [{ path: `/_lab/${file}`, kind: 'css' }] };
+      else version = { ...version, widget: widgetRev() };
+      broadcast();
+    }, 120);
+  });
+} catch {}
 
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
-let waiter = null;
+// Sessions listening: each wait covers some pages (or, without --pages, every page no other wait has claimed).
+let waiters = [];
+// A page a session listened on stays its own for half an hour after its wait ends (while it works on the pins), so a
+// wait for every page doesn't take that page's next pin in between.
+// Kept in .lab/claims.json, so a lab restart doesn't hand a working session's pages to the other wait.
+const CLAIM_MS = 1800000;
+const CLAIMS_FILE = path.join(LAB, 'claims.json');
+const claims = new Map(
+  (() => {
+    try {
+      return Object.entries(JSON.parse(fs.readFileSync(CLAIMS_FILE, 'utf8'))).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS);
+    } catch {
+      return [];
+    }
+  })(),
+); // page -> last time a wait for it was open
+const claim = (pages) => {
+  if (!pages?.length) return;
+  const now = Date.now();
+  for (const p of pages) claims.set(p, now);
+  try {
+    fs.writeFileSync(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
+  } catch {}
+};
+const claimed = () => {
+  const now = Date.now();
+  for (const w of waiters) for (const p of w.pages || []) claims.set(p, now);
+  return new Set([...claims].filter(([, at]) => now - at < CLAIM_MS).map(([p]) => p));
+};
+const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed().has(p)));
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
 // ends after an hour of no page. Each tab has an id. A tab in the background drops its stream but still counts as
 // open; it leaves when it says bye on pagehide (closed, or navigated away), or after half an hour with no stream.
@@ -973,14 +1119,13 @@ const pagesChanged = () => {
   if (openTabs()) closedSince = null;
   else closedSince ??= Date.now();
   clearTimeout(closedTimer);
-  if (closedSince === null || !waiter) return;
+  if (closedSince === null || !waiters.length) return;
   closedTimer = setTimeout(() => {
-    if (openTabs() || !waiter) return;
-    const w = waiter;
-    waiter = null;
+    if (openTabs() || !waiters.length) return;
+    const all = waiters;
+    waiters = [];
     waitEnded = Date.now();
-    clearTimeout(w.timer);
-    w.res.writeHead(410).end('the page was closed');
+    for (const w of all) clearTimeout(w.timer), w.res.writeHead(410).end('the page was closed');
     setMode('away');
   }, Math.max(0, closedSince + CLOSE_GRACE - Date.now()));
 };
@@ -1001,10 +1146,11 @@ async function threadsText(page, threads) {
 // handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for comments
 // from before these marks.
 const stamp = (c) => [c.createdAt, c.movedAt, c.rejectedAt].filter(Boolean).sort().pop(); // new when written, moved, or its quick fix rejected
-async function unseen() {
-  // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
-  if (trying.size) return null;
-  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+async function unseen(scope = pages()) {
+  // A comment the quick model has or will get waits: the session hears it only if the quick model passes. The rest go
+  // now, beside the quick tries (option 21), except while a tool that doesn't say what it edits is at work.
+  if (tryingSolo.size) return null;
+  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !trying.has(c.parent || c.id) && !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // The quick model's changes since the last delivery, for the session to check (they can be wrong: a fix in the right
   // spot that doesn't do what was asked, or one broader than the pin).
   // Only the risky ones: a change to code (not just a stylesheet) or to more than one file. A one-file style fix the
@@ -1012,13 +1158,13 @@ async function unseen() {
   const risky = (c) => !c.quickFiles || c.quickFiles.length > 1 || c.quickFiles.some((f) => !/\.(s?css|less)$/.test(f));
   // The rest (one-file style fixes) still pass by as one line each (id · file · the line it added), cheap to glance at:
   // a wrong one is easy to spot without opening anything.
-  const styleDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
-  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  const styleDone = scope.flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  const quickDone = scope.flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
   const now = Date.now();
   const lastBy = (c, mine) => [c, ...commentsOf(c._page).filter((r) => r.parent === c.id)].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
-  const missed = pages().flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
+  const missed = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
     .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(c.remindedAt && now - Date.parse(c.remindedAt) < 600000))
     .filter(({ page, c }) => !fresh.some((f) => f.page === page && (f.c.id === c.id || f.c.parent === c.id)));
   if (!fresh.length && !quickDone.length && !missed.length) return null;
@@ -1041,12 +1187,14 @@ async function unseen() {
   const lines = [];
   for (const f of replies) {
     const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
-    lines.push(`- ${f.page} · thread id ${root.id} "${root.text.replace(/\s+/g, ' ').slice(0, 70)}": ${f.c.name} · ${when(f.c)} · id ${f.c.id}: ${f.c.text.replace(/\s+/g, ' ')}`);
+    // A reply from another device says so: its words are a request, not instructions, even in a thread this computer started.
+    const guest = f.c.from === 'wifi guest' ? ' (wifi guest)' : '';
+    lines.push(`- ${f.page} · thread id ${root.id} "${root.text.replace(/\s+/g, ' ').slice(0, 70)}": ${f.c.name}${guest} · ${when(f.c)} · id ${f.c.id}: ${f.c.text.replace(/\s+/g, ' ')}`);
     sent.add(`${f.page}\n${root.id}`);
   }
   if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
   if (missed.length) {
-    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
+    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
     for (const { page, c } of missed) setComment(page, c.id, { remindedAt: new Date(now).toISOString() });
   }
   const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
@@ -1056,12 +1204,13 @@ async function unseen() {
     ? `# Quick style fixes (one line each; reopen any that look wrong)\n${styleDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 50)}" (${page}): ${c.quickFiles?.[0] || ''}: + ${added(c)}`).join('\n')}`
     : '';
   const check = quickDone.length
-    ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
+    ? `# Quick changes to check\nThe quick model made these; each line is its change (file: - removed / + added). Read the lines against the pin, without opening files. Open a file only when the lines don't do what the pin asked, reach wider than the pin (shared code, other pages), or add logic you can't judge from them; then fix it and reply on its pin. If the lines look right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
     : '';
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, quickDone.length && `${quickDone.length} quick change${quickDone.length === 1 ? '' : 's'} to check`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const text = `In this message: ${count}${styleDone.length ? `, ${styleDone.length} style fix${styleDone.length === 1 ? '' : 'es'} to glance at` : ''}. Read all of it; each one is marked handed to you.\n\n` + [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check, glance].filter(Boolean).join('\n\n') +
-    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.`;
+    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
+    `\n${WRITE_SHORT}`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = [...given, ...quickDone, ...styleDone].map(({ page, c }) => [page, c.id, stamp(c)]);
@@ -1082,19 +1231,20 @@ const SETTLE_MS = Number(process.env.LAB_SETTLE_MS ?? 2000);
 const REMIND_MS = Number(process.env.LAB_REMIND_MS ?? 180000); // a handed pin with no answer comes back after this
 let settleTimer = null;
 function wake() {
-  if (!waiter) return;
+  if (!waiters.length) return;
   clearTimeout(settleTimer);
   settleTimer = setTimeout(wakeNow, SETTLE_MS);
 }
 async function wakeNow() {
-  if (!waiter) return;
-  const got = await unseen();
-  if (!got?.text || !waiter) return;
-  const w = waiter;
-  waiter = null;
-  waitEnded = Date.now();
-  clearTimeout(w.timer);
-  deliver(w.res, got);
+  for (const w of [...waiters]) {
+    if (!waiters.includes(w)) continue;
+    const got = await unseen(scopeOf(w));
+    if (!got?.text || !waiters.includes(w)) continue;
+    waiters = waiters.filter((x) => x !== w);
+    waitEnded = Date.now();
+    clearTimeout(w.timer);
+    deliver(w.res, got);
+  }
 }
 
 // ---------- the router: who handles a pin (on when an agent's command is installed; --no-fast turns it off) ----------
@@ -1168,9 +1318,35 @@ function routeFor(text = '') {
   if (tool && !model && tool === listening) return { session: true };
   return { tool, model, named: true };
 }
-let quickQueue = Promise.resolve(); // one quick change at a time, so each one's edits are known exactly
+// Quick tries run side by side (LAB_FAST_PARALLEL, 3) when the tool says which files it edits: Claude's stream log, or
+// LAB_FAST_CMD with LAB_FAST_TRACKS=1 printing "edited: <file>" lines. Each try then owns exactly its files. A tool
+// that doesn't say runs alone, and the session hears nothing while it runs (its edits are known only by "what changed").
+const QUICK_PARALLEL = Math.max(1, Number(process.env.LAB_FAST_PARALLEL) || 3);
 const trying = new Set(); // comment ids the quick model has or will get (memory only: a restart forgets them)
-let quickRunning = false;
+const tryingSolo = new Set(); // the ones a tool that doesn't say what it edits has or will get
+let quickActive = 0;
+let quickSolo = false;
+const quickWaiting = [];
+function pumpQuick() {
+  while (quickWaiting.length && !quickSolo) {
+    const next = quickWaiting[0];
+    if (next.solo ? quickActive > 0 : quickActive >= QUICK_PARALLEL) break;
+    quickWaiting.shift();
+    quickActive++;
+    if (next.solo) quickSolo = true;
+    next.run().catch(() => {}).finally(() => {
+      quickActive--;
+      if (next.solo) quickSolo = false;
+      pumpQuick();
+    });
+  }
+}
+// Files each running try is editing (live, from its stream), and the ones tries edited lately: a try never puts back
+// a file another try or the session touched meanwhile.
+const liveEdits = new Map(); // file → Set of comment ids
+const editLog = []; // { file, id, at }
+const touchedByOthers = (file, id, since) =>
+  [...(liveEdits.get(file) || [])].some((x) => x !== id) || editLog.some((e) => e.file === file && e.id !== id && e.at >= since);
 // The project's files, to see exactly what a quick change did and to undo it. Kept between changes: only files whose
 // size or time changed are read again. Files over 512 KB, or past 64 MB in all, are seen but can't be undone.
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'out', 'coverage']);
@@ -1288,20 +1464,55 @@ const setComment = (page, id, patch) => {
   const h = db.get(`lab:comments:${page}`);
   if (h?.has(id)) h.set(id, JSON.stringify({ ...JSON.parse(h.get(id)), ...patch }));
 };
-function quickRun(prompt, model, limit, tool, asked = '') {
+// Whether this try's tool says which files it edits (then it can run beside others; see QUICK_PARALLEL).
+const tracksEdits = (tool) => (process.env.LAB_FAST_CMD ? process.env.LAB_FAST_TRACKS === '1' : tool === 'claude');
+// Runs one try. Resolves { line, edited }: its answer's last line, and the files it edited (a Set; null when the tool
+// doesn't say). onEdit hears each file as it is edited.
+function quickRun(prompt, model, limit, tool, asked = '', onEdit = () => {}) {
   const cmd = process.env.LAB_FAST_CMD;
-  const [bin, args, env] = cmd ? [] : QUICK[tool](model, prompt);
+  const tracked = tracksEdits(tool);
+  const stream = !cmd && tool === 'claude';
+  const [bin, args0, env] = cmd ? [] : QUICK[tool](model, prompt);
+  const args = stream ? [...args0, '--output-format', 'stream-json', '--verbose'] : args0;
   const child = cmd
     ? spawn('sh', ['-c', cmd], { cwd: ROOT, env: { ...process.env, LAB_MODEL: model, LAB_TOOL: asked, LAB_AGENT: session?.agent || '' } })
     : spawn(bin, args, { cwd: ROOT, env: { ...process.env, ...env } });
+  const edited = tracked ? new Set() : null;
+  const saw = (f) => {
+    if (!edited || typeof f !== 'string' || !f) return;
+    const full = path.resolve(ROOT, f);
+    if (!edited.has(full)) edited.add(full), onEdit(full);
+  };
+  let text = ''; // the answer: Claude's result, or the command's own output without its "edited:" lines
+  let rest = '';
+  const take = (l) => {
+    if (stream) {
+      let d;
+      try {
+        d = JSON.parse(l);
+      } catch {
+        return;
+      }
+      if (d.type === 'assistant') for (const x of d.message?.content || []) if (x.type === 'tool_use' && /^(Edit|MultiEdit|Write|NotebookEdit)$/.test(x.name)) saw(x.input?.file_path || x.input?.notebook_path);
+      if (d.type === 'result' && typeof d.result === 'string') text = d.result;
+      return;
+    }
+    const m = tracked && /^edited:\s*(.+)$/i.exec(l.trim());
+    if (m) saw(m[1].trim());
+    else text += l + '\n';
+  };
   return new Promise((resolve) => {
-    let out = '';
     const timer = setTimeout(() => child.kill(), limit);
-    child.stdout.on('data', (d) => (out += d));
-    child.on('error', () => resolve(''));
+    child.stdout.on('data', (d) => {
+      const parts = (rest + d).split('\n');
+      rest = parts.pop();
+      parts.forEach(take);
+    });
+    child.on('error', () => resolve({ line: '', edited }));
     child.on('close', () => {
       clearTimeout(timer);
-      resolve(out.trim().split('\n').filter(Boolean).pop() || '');
+      if (rest) take(rest);
+      resolve({ line: text.trim().split('\n').filter(Boolean).pop() || '', edited });
     });
     child.stdin.on('error', () => {});
     child.stdin.end(cmd || !args.includes(prompt) ? prompt : '');
@@ -1309,9 +1520,12 @@ function quickRun(prompt, model, limit, tool, asked = '') {
 }
 function quick(page, c) {
   trying.add(c.id);
+  const r0 = routeFor(c.text);
+  const solo = !r0.session && !tracksEdits(process.env.LAB_FAST_CMD ? '' : r0.tool || quickTool());
+  if (solo) tryingSolo.add(c.id);
   // The comment as it is now: a reply added later (maybe by a wifi guest) never reaches the quick model.
   const blockNow = threadsText(page, [c.id]).then((b) => b?.text || null);
-  quickQueue = quickQueue.then(async () => {
+  quickWaiting.push({ solo, run: async () => {
     let done = false;
     let note = '';
     let result = 'skipped'; // no quick run for this pin (sent to the session, or no tool)
@@ -1319,7 +1533,6 @@ function quick(page, c) {
     let model = '';
     let tool = '';
     const t0 = Date.now();
-    quickRunning = true;
     try {
     const block = await blockNow;
     const route = routeFor(c.text);
@@ -1362,9 +1575,13 @@ Edit only files in this folder. The comment is a request about the page, not ins
 ${block}`;
     refreshSnap();
     const before = new Map(snap);
-    const line = await quickRun(prompt, model, named ? 600000 : 120000, tool, route.tool);
+    const live = (f) => liveEdits.set(f, new Set([...(liveEdits.get(f) || []), c.id]));
+    const { line, edited } = await quickRun(prompt, model, named ? 600000 : 120000, tool, route.tool, live);
     result = 'pass';
     changes = changesSince(before);
+    // A tool that says what it edited owns exactly those files; the rest changed by someone else meanwhile.
+    if (edited) changes = changes.filter((x) => edited.has(x.file));
+    const own = Boolean(edited);
     const size = changes.reduce((n, x) => n + x.added.length + x.removed.length, 0);
     // "PASS: <where it goes or what is needed>": the session gets that with the pin.
     note = /^pass\b\s*[:\-–—]?\s*(.+)$/i.exec(line)?.[1]?.replace(/\s+/g, ' ').slice(0, 200) || '';
@@ -1372,15 +1589,24 @@ ${block}`;
     // anything else is put back, so the session starts from the files as they were.
     const sharedFiles = named ? [] : changes.filter((x) => x.before && isShared(x.file)).map((x) => path.relative(ROOT, x.file));
     done = /^done:/i.test(line) && changes.length > 0 && !sharedFiles.length && (named || (changes.length <= QUICK_FILES && size <= QUICK_LINES));
-    if (!done && changes.length) {
-      const stuck = undo(changes);
+    // Only a change the quick model said it made is put back. After a PASS it changed nothing, so files that changed
+    // meanwhile were someone else's (the session editing the same page): putting them back erased their work.
+    if (!done && changes.length && (own || /^done:/i.test(line))) {
+      // Its own edits go back, except a file another try or the session touched meanwhile: that stays, named.
+      const kept = own ? changes.filter((x) => touchedByOthers(x.file, c.id, t0)) : [];
+      const stuck = undo(changes.filter((x) => !kept.includes(x)));
       result = 'undone';
       if (/^done:/i.test(line))
         note = sharedFiles.length
           ? `its change was to shared code (${sharedFiles.join(', ')}), used by other pages too, so it was put back; check where the fix belongs`
           : `its change was too big for a quick one (${changes.length} files, ${size} lines), so it was put back`;
+      if (kept.length) note += `${note ? '; ' : ''}not put back, since others edited them too meanwhile: ${kept.map((x) => path.relative(ROOT, x.file)).join(', ')}; check them`;
       if (stuck.length) note += `${note ? '; ' : ''}couldn't put back ${stuck.map((f) => path.relative(ROOT, f)).join(', ')}`;
     }
+    // A pass, a time-out or a crash that left files changed: they stay (they may be the session's own edits), and the
+    // session is told which, so a half-done quick edit is never left unseen (option 20).
+    if (!done && changes.length && !own && !/^done:/i.test(line))
+      note += `${note ? '; ' : ''}files changed during its try were left as they are (maybe its edit, maybe yours): ${changes.map((x) => path.relative(ROOT, x.file)).join(', ')}; check them`;
     if (done) result = 'done';
     const label = named ? model : 'quick';
     const who = cmd ? process.env.LAB_AGENT_NAME || '' : AGENTS[tool].name;
@@ -1405,7 +1631,11 @@ ${block}`;
     } finally {
       setComment(page, c.id, { quick: done ? 'done' : 'pass', ...(note && !done ? { quickNote: note } : {}) });
       trying.delete(c.id);
-      quickRunning = false;
+      tryingSolo.delete(c.id);
+      for (const [f, ids] of liveEdits) if (ids.delete(c.id) && !ids.size) liveEdits.delete(f);
+      const at = Date.now();
+      for (const x of changes) editLog.push({ file: x.file, id: c.id, at });
+      while (editLog.length && editLog[0].at < at - 30 * 60000) editLog.shift();
       flushFiles(); // this job's edits reload the page together with its answer
       // One line per quick decision in .lab/quick.jsonl: what the quick step takes and passes, and why.
       try {
@@ -1418,7 +1648,8 @@ ${block}`;
       broadcast();
       wake();
     }
-  }).catch(() => {});
+  } });
+  pumpQuick();
 }
 
 function announce(page, c) {
@@ -1428,7 +1659,7 @@ function announce(page, c) {
 
 // ---------- pages ----------
 const widget = (page, admin) =>
-  `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}"` +
+  `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
@@ -1499,7 +1730,7 @@ const listing = (res, dir, urlPath) => {
 const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
-    if (!allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
+    if (!nearby(req) || !allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
     if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !/^application\/json/.test(req.headers['content-type'] || '')))
       return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
     const pathname = decodeURIComponent(url.pathname);
@@ -1507,6 +1738,17 @@ const handler = async (req, res) => {
     // .lab (comments, admin key), .git, .env and other dot files are never served.
     if (pathname.split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
 
+    // A background tab's quick check: the same state the live stream sends, and the tab still counts as open.
+    if (pathname === '/_lab/state' && req.method === 'GET') {
+      const id = String(url.searchParams.get('tab') || '').slice(0, 40);
+      if (id) {
+        const tab = tabs.get(id) || { streams: 0, seen: 0 };
+        tab.seen = Date.now();
+        tabs.set(id, tab);
+      }
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(state(isLoopback(req)));
+    }
     if (pathname === '/_lab/live') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       const client = { res, local: isLoopback(req) };
@@ -1560,37 +1802,40 @@ const handler = async (req, res) => {
     }
     if (pathname === '/_lab/wait') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
-      const { timeout } = JSON.parse((await new Response(req).text()) || '{}');
-      if (waiter) {
-        const old = waiter;
-        waiter = null; // before its close handler runs, so it doesn't mark Claude as away
+      const { timeout, pages: only } = JSON.parse((await new Response(req).text()) || '{}');
+      const want = Array.isArray(only) && only.length ? only.map(String).sort() : null;
+      // A new wait for the same pages replaces the old one (the same session listening again, or another taking over);
+      // waits for other pages stay.
+      const key = want ? want.join(',') : '*';
+      for (const old of waiters.filter((w) => w.key === key)) {
+        waiters = waiters.filter((w) => w !== old); // before its close handler runs, so it doesn't mark Claude as away
         clearTimeout(old.timer);
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
-      const got = await unseen();
+      const w = { res, pages: want, key };
+      claim(want);
+      const got = await unseen(scopeOf(w));
       if (got?.text) return deliver(res, got);
-      const w = {
-        res,
-        timer: setTimeout(() => {
-          if (waiter !== w) return;
-          waiter = null;
-          waitEnded = Date.now();
-          res.writeHead(204).end();
-          setMode('away');
-        }, Math.min(Number(timeout) || 1500, 7000) * 1000),
-      };
+      w.timer = setTimeout(() => {
+        if (!waiters.includes(w)) return;
+        waiters = waiters.filter((x) => x !== w);
+        waitEnded = Date.now();
+        res.writeHead(204).end();
+        if (!waiters.length) setMode('away');
+      }, Math.min(Number(timeout) || 1500, 7000) * 1000);
       if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
-      waiter = w;
+      waiters.push(w);
+      claim(want);
       setMode('listening');
       pagesChanged();
       // Claude stopped listening (the wait was cancelled): the page says so.
       res.on('close', () => {
-        if (waiter !== w) return;
-        waiter = null;
+        if (!waiters.includes(w)) return;
+        waiters = waiters.filter((x) => x !== w);
         waitEnded = Date.now();
         clearTimeout(w.timer);
-        setMode('away');
+        if (!waiters.length) setMode('away');
       });
       return;
     }
@@ -1613,20 +1858,34 @@ const handler = async (req, res) => {
       return res.end(await agentText(pathname.slice('/_lab/agent'.length)));
     }
     // Read marks, shared by name: GET ?name=&page= gives the ids read there; POST { name, page, ids } adds to them.
+    if (pathname === '/_lab/api/changes' && req.method === 'GET') {
+      const out = commentChangesSince(url.searchParams.get('page') || '', Number(url.searchParams.get('since')));
+      if (out && !isLoopback(req)) out.set = out.set.map(forGuests);
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify(out || { full: true }));
+    }
     if (pathname === '/_lab/api/reads') {
       if (req.method === 'POST') {
         const b = JSON.parse((await new Response(req).text()) || '{}');
         const name = plainName(b.name);
         const page = String(b.page || '').slice(0, 500);
-        const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String).filter((id) => /^[\w-]{1,40}$/.test(id)))].slice(0, 2000);
-        if (!name || !page) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and page needed');
-        const had = new Set(((reads[name] ||= {})[page] ||= []));
+        if (!name || !page || !db.has(`lab:comments:${page}`)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and a page with comments needed');
+        // Any device may mark under any name: your phone and this Mac share "new" by name. (--wifi only lets in the local
+        // network, so the worst a stranger there can do is clear someone's new marks.)
+        if (!(name in reads) && Object.keys(reads).length >= 200) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many names');
+        const onPage = db.get(`lab:comments:${page}`);
+        // Only ids of comments that are on that page count, so the marks can't grow past the comments themselves.
+        const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String))].filter((id) => onPage.has(id)).slice(0, 2000);
+        const mine = (reads[name] ||= Object.create(null));
+        if (!(page in mine) && Object.keys(mine).length >= 500) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many pages');
+        const had = new Set((mine[page] ||= []));
         const added = ids.filter((id) => !had.has(id));
         if (added.length) {
-          reads[name][page].push(...added);
+          mine[page].push(...added);
           readsRev++;
           saveReads();
-          broadcast();
+          // One broadcast per moment, however many marks arrive (each makes every open tab sync its reads).
+          if (!readsBroadcast) readsBroadcast = setTimeout(() => ((readsBroadcast = 0), broadcast()), 300);
         }
         return res.writeHead(204).end();
       }
@@ -1667,6 +1926,14 @@ const handler = async (req, res) => {
         wake();
       }
       res.writeHead(out.status, { 'content-type': out.headers.get('content-type') || 'application/json' });
+      // Another device sees comments without the agent's session details or the quick step's file notes.
+      if (req.method === 'GET' && out.ok && !isLoopback(req) && /json/.test(out.headers.get('content-type') || '')) {
+        try {
+          const data = JSON.parse(text);
+          if (Array.isArray(data.comments)) data.comments = data.comments.map(forGuests);
+          return res.end(JSON.stringify(data));
+        } catch {}
+      }
       return res.end(text);
     }
 
@@ -1747,7 +2014,7 @@ function proxyTo(req, res, url) {
 
 const server = http.createServer(handler);
 server.on('upgrade', (req, socket, head) => {
-  if (!PROXY || !allowedHost(req.headers.host)) return socket.destroy();
+  if (!PROXY || !nearby(req) || !allowedHost(req.headers.host)) return socket.destroy();
   const up = net.connect(Number(PROXY.port) || 80, PROXY.hostname, () => {
     const lines = [];
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
