@@ -352,6 +352,8 @@
         .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; font-weight: 600;
               color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
         .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
+        /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
+        .go-btn:not(.on):not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; }
         /* 3, cursor: the switch is the same pin in grey, saying "off" (regular, a touch bigger than go's bold). */
         .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
         .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
@@ -1484,6 +1486,7 @@
     store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
     goBtn.classList.toggle('on', goMode && !v); // cursor replaces go's green at once
+    goFace();
     document.documentElement.classList.toggle('lab-pinning', on && !v);
     document.documentElement.classList.toggle('lab-go', on && goMode && !v);
     recheck();
@@ -1491,6 +1494,7 @@
   const setGo = (v) => {
     if (cursorMode) setCursor(false);
     goMode = v;
+    queueMicrotask(goFace);
     store.set('lab-go', v ? '1' : '');
     goBtn.classList.toggle('on', v);
     goBtn.setAttribute('aria-pressed', String(v));
@@ -1674,11 +1678,17 @@
       if (!b.hidden) first = false;
     }
   }
+  // The switch shows what a click will place: 1 your comment pin (your initial), 2 a go pin, 3 nothing ("off").
+  function goFace() {
+    const gp = goBtn.querySelector('.gp');
+    if (gp) gp.textContent = !goMode && !cursorMode ? initial(store.get('lab-name')) || '+' : 'go';
+  }
   function drawList() {
     const all = threads();
     listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
     goBtn.hidden = !on;
     if (!goBtn.firstElementChild) goBtn.replaceChildren(coarse ? document.createTextNode('go') : el('span', { class: 'gp' }, 'go'), el('kbd', {}, '1/2/3'));
+    goFace();
     goBtn.classList.toggle('on', goMode && !cursorMode);
     goBtn.classList.toggle('cursor', cursorMode);
     goBtn.setAttribute('aria-pressed', String(goMode));
