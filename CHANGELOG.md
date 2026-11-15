@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- M opens and closes the chat (with comments shown and nothing typed).
 - On a computer, opening the chat closes an open thread (and a new comment with nothing typed in it).
 - Scrollbars inside the chat, threads and the list are thin, on a clear track, like macOS ones (CSS only).
 - Go mode: a "go" button in the bar, or V, switches it on and off. While it's on, every click, drawn area, selection or hold on a phone posts a "go" pin at once (approve what it's on), with no box to type in; in draft mode go pins wait with the other drafts. Needs your name set once. A go pin is green with a tick, apart from comments.

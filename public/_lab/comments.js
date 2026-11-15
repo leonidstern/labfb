@@ -352,12 +352,12 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · v for go · c to hide</div>
+    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · m chat · v for go · c to hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" title="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" title="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="bar">
       <button class="secondary send-all" type="button" hidden></button>
-      <button class="secondary chat-btn" type="button" hidden>chat</button>
+      <button class="secondary chat-btn" type="button" hidden title="chat (M)">chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary go-btn" type="button" hidden title="go mode: every click approves what it's on, no typing (V)">go</button>
       <button class="secondary copy-all" type="button" hidden>copy link</button>
@@ -2088,9 +2088,13 @@
       setGo(!goMode);
       return;
     }
-    // The list's keys, with comments shown and nothing typed: L list, J/K next/previous, R reply, E resolve.
-    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkre]$/i.test(e.key)) {
+    // The list's keys, with comments shown and nothing typed: L list, M chat (messages), J/K next/previous, R reply, E resolve.
+    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkrem]$/i.test(e.key)) {
       const k = e.key.toLowerCase();
+      if (k === 'm') {
+        e.preventDefault();
+        return chatBtn.click();
+      }
       const l = listed();
       const at = l.findIndex((c) => c.id === openId);
       if (k === 'l') ((listOpen = !listOpen), drawList());
