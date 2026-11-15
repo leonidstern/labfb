@@ -119,14 +119,15 @@
       .zone rect.ring { display: none; }
       .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
-      /* The agent is on it: a thin green ring turns around the pin. */
-      /* The agent is on it: a green stroke runs round the pin's own teardrop outline (a turning conic gradient, cut to a
-         2 px ring; --lab-spin is registered in the page, since @property doesn't work inside a shadow root). */
-      .pin.working::before { content: ''; position: absolute; inset: -4px; border-radius: 18px 18px 18px 6px; padding: 2px; pointer-events: none;
-                             background: conic-gradient(from var(--lab-spin, 0deg), rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%);
-                             -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-                             mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-                             animation: lab-spin 1.2s linear infinite; }
+      /* The agent is on it: a green stroke runs round the pin's own teardrop outline. The ring (a still 2 px teardrop mask)
+         holds a conic gradient that turns by transform, so the screen turns it without redrawing: 30 such pins cost ~1 ms
+         a second, against ~125 ms when the gradient's angle itself was animated. */
+      .pin .ring { position: absolute; inset: -4px; border-radius: 18px 18px 18px 6px; padding: 2px; overflow: hidden; pointer-events: none;
+                   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+                   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+      .ring::before { content: ''; position: absolute; inset: -50%; will-change: transform;
+                      background: conic-gradient(rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%); animation: lab-turn 1.2s linear infinite; }
+      @keyframes lab-turn { to { transform: rotate(360deg); } }
       @keyframes lab-spin { to { --lab-spin: 360deg; } }
       /* The drawn pointer: your pin, following the mouse (it moves without a transition; only its look eases). */
       .ptr { position: fixed; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px 14px 14px 2px; corner-shape: round;
@@ -279,10 +280,9 @@
       .msg .tick.got { font-weight: 600; }
       /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
       .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .t { opacity: .55; }
-      .msg .stamp .ring { display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%;
-                          background: conic-gradient(from var(--lab-spin, 0deg), rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .25) 28% 100%);
+      .msg .stamp .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
                           -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
-                          mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); animation: lab-spin 1.2s linear infinite; }
+                          mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
       .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
       .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
@@ -374,7 +374,7 @@
       @supports (corner-shape: squircle) {
         :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
         *, *::before, *::after { corner-shape: squircle; }
-        button.pin, .pin.working::before, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
+        button.pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
         .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring, .gp { corner-shape: round; } /* circles stay circles */
       }
       @keyframes lab-pin { from { transform: scale(1.1); } }
@@ -2086,6 +2086,7 @@
         },
         /^go$/i.test(c.text.trim()) ? 'go' : state === 'done' || c.resolved ? '✓' : initial(c.name),
       );
+      if (state === 'now') pin.append(el('i', { class: 'ring', 'aria-hidden': 'true' }));
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
       if (movable) grab(pin, c);
