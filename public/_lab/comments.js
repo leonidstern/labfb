@@ -431,7 +431,13 @@
         .list .items, .msgs, .card > .body { touch-action: pan-y; }
         .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
 
-        :host([data-sheet]) :is(.bar, .hint, .listener, .left) { visibility: hidden; }
+        :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
+        /* The bar steps down under the screen's edge while a sheet is open and rises back once it has gone, on the
+           sheets' own curve (it used to blink out and back). */
+        .bar { transition: transform .34s cubic-bezier(.32, .72, 0, 1), opacity .2s; }
+        :host([data-sheet]) .bar { transform: translateY(calc(100% + 16px + env(safe-area-inset-bottom, 0px))); opacity: 0; pointer-events: none;
+                                   transition: transform .24s cubic-bezier(.4, 0, 1, 1), opacity .2s .04s; }
+        :host([data-sheet]) .bar button { pointer-events: none; }
         /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
            sheet never scrolls the page. */
         :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
