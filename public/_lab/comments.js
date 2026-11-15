@@ -3006,7 +3006,10 @@
         const across = t.clientX - x0;
         if (!down && !across) return; // iOS sends moves for pressure changes too
         const sideways = Math.abs(across) > Math.abs(down);
+        // The sheet's top 96 px pull it down too, messages and all (Leo, 15 Nov: the strip alone was too small to find).
+        const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < 96;
         if (grabArea(e.target)) mode = sideways && e.target.closest('.tabs') ? 'off' : 'drag'; // the list's tabs scroll sideways
+        else if (nearTop && box?.localName !== 'textarea') mode = 'drag';
         else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? 'drag' : 'off';
         else mode = sideways ? 'hold' : 'drag';
         if (mode === 'off') return;
