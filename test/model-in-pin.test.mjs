@@ -15,7 +15,7 @@ const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], {
   cwd: DIR,
-  env: { ...process.env, PORT, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-')), LAB_FAST_CMD: 'cat >/dev/null; echo "Done: used $LAB_MODEL"' },
+  env: { ...process.env, PORT, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-')), LAB_AGENT_NAME: 'Claude', LAB_FAST_CMD: 'cat >/dev/null; echo x >> note.txt; echo "Done: used $LAB_MODEL"' },
 });
 after(() => {
   server.kill();
