@@ -1010,12 +1010,6 @@ const reads = (() => {
     return Object.create(null);
   }
 })();
-// Names this computer marks reads under: a wifi guest can't write marks for them (and clear the owner's "new").
-const ownNames = new Set();
-for (const h of db.values()) for (const v of h.values()) {
-  const c = JSON.parse(v);
-  if (c.from === 'this computer' && c.name) ownNames.add(String(c.name).replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80));
-}
 let readsBroadcast = 0;
 let readsRev = 0;
 const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
@@ -1781,10 +1775,9 @@ const handler = async (req, res) => {
         const b = JSON.parse((await new Response(req).text()) || '{}');
         const name = plainName(b.name);
         const page = String(b.page || '').slice(0, 500);
-        const local = isLoopback(req);
         if (!name || !page || !db.has(`lab:comments:${page}`)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and a page with comments needed');
-        if (local) ownNames.add(name);
-        else if (ownNames.has(name)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('that name reads on this computer');
+        // Any device may mark under any name: your phone and this Mac share "new" by name. (--wifi only lets in the local
+        // network, so the worst a stranger there can do is clear someone's new marks.)
         if (!(name in reads) && Object.keys(reads).length >= 200) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many names');
         const onPage = db.get(`lab:comments:${page}`);
         // Only ids of comments that are on that page count, so the marks can't grow past the comments themselves.
@@ -1803,7 +1796,6 @@ const handler = async (req, res) => {
         return res.writeHead(204).end();
       }
       const name = plainName(url.searchParams.get('name'));
-      if (name && !isLoopback(req) && ownNames.has(name)) return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ids":[]}');
       const ids = (name && reads[name]?.[url.searchParams.get('page') || '']) || [];
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ ids }));
@@ -1819,7 +1811,6 @@ const handler = async (req, res) => {
           // Mark who wrote it, so Claude can tell this computer from a guest, and its own replies from people's.
           const [key, h] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
           const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: sessionFrom(req) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
-          if (stored.from === 'this computer') ownNames.add(plainName(stored.name));
           h.set(comment.id, JSON.stringify(stored));
           // A person answering a resolved thread ("still wrong") reopens it, here too, where the browser is admin.
           if (!agent && stored.parent && h.has(stored.parent)) {
