@@ -1929,12 +1929,22 @@
   });
   chatEl.querySelector('.x').addEventListener('click', () => slideAway(chatEl, () => ((chatOpen = false), render())));
   // On a computer a click outside the chat closes it (phones have the dimmed page for that); what you typed stays.
+  // That click only closes: it doesn't start a comment or press what's under it.
+  let closingClick = false;
   document.addEventListener('pointerdown', (e) => {
+    closingClick = false;
     if (coarse || !chatOpen || e.button !== 0) return;
     const path = e.composedPath();
     if (path.includes(chatEl) || path.includes(chatBtn)) return;
     chatOpen = false;
+    closingClick = true;
     render();
+  }, true);
+  addEventListener('click', (e) => {
+    if (!closingClick) return;
+    closingClick = false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
   }, true);
   for (const b of listEl.querySelectorAll('[data-f]')) b.addEventListener('click', () => ((filter = b.dataset.f), drawList()));
   holdBtn.addEventListener('click', () => (store.set('lab-hold', store.get('lab-hold') === '1' ? '' : '1'), drawList()));

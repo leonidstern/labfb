@@ -6,7 +6,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 - Phones: the chat has two heights, like iOS and Android sheets: pull it up (or flick) to fill the screen, pull it down from there to go back; from the lower height a pull down closes it as before, and a hard flick down from the top closes it too. It opens at the lower height.
 - Links in the chat and in threads open in a new tab.
-- On a computer, a click outside the chat closes it (what you typed stays).
+- On a computer, a click outside the chat closes it and does nothing else (no new comment, no press on what's under it); what you typed stays.
 - A newer version reloads the page as soon as it's safe: not while you type, have words in a box, place a new comment or just touched the page. An open chat, list or thread no longer holds it back; they come back after the reload.
 - Jumping to a pin (list, chat, J / K) puts the pin and its open thread in view together, in the middle of the window when they fit.
 - A long thread scrolls inside its card (at most 460 px or 62% of the window) and opens at its first new message, or the newest.
