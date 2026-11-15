@@ -187,6 +187,13 @@
       .who input:focus { color: var(--_fg); }
       .box.open .line { display: block; animation: lab-fade .16s ease-out; }
       .box.open .who { display: flex; animation: lab-fade .16s ease-out; }
+      /* One line once your name is known: text, a quiet "as <name>" (still editable) and the arrow, side by side.
+         The text grows upward; the name and arrow stay on its last line. Only a first comment, with no name yet, opens
+         the second row to ask for it. */
+      .box.one, .box.one.open { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "text who send"; align-items: end; row-gap: 0; padding: 7px 7px 7px 14px; }
+      .box.one .line { display: none !important; }
+      .box.one .who { align-self: end; padding-bottom: 5px; max-width: 40%; }
+      .box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
       .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
               background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
       .send.ready:hover { transform: scale(1.06); }
@@ -346,6 +353,10 @@
         .card .composer { margin-top: 10px; }
         .card .nav { margin-top: 2px; gap: 20px; }
         .card .nav .btn { font-size: 14px; padding: 8px 0; } /* thumb-sized */
+        .card .nav { flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
+        .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
+        .box.one .who span { font-size: 16px; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
+        .card .nav .acts button.btn { font-size: 14px; }
         .float { background: var(--_bg); box-shadow: var(--_shadow); }
         .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
         /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
@@ -1217,6 +1228,16 @@
       docH: Math.round(bottom - top),
     });
     Object.assign(anchor, schemeAt(box));
+    // The middle of an area often lands on one word (a caption under a picture): that word is not what the area is
+    // on, so no quote (it lit up green as if it alone was picked); the area's words are in zoneText below.
+    if (anchor.kind === 'text') {
+      delete anchor.quote;
+      anchor.kind = 'element';
+    }
+    const boxText = box === document.body ? '' : short(box.textContent, 200);
+    if (boxText && (box.textContent || '').length < 400) anchor.text = short(boxText, 80);
+    else delete anchor.text;
+    if (box !== document.body) anchor.looks = looksOf(box);
     // Text inside the zone: the words whose middle falls inside it, in reading order. (Reading it like a selection
     // between the zone's corners took the whole paragraph whenever a corner sat above or below a line of text.)
     const words = [];
@@ -1772,10 +1793,13 @@
     const sync = () => {
       const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
       // Opening moves the arrow from the text row to the name row: slide it there while the box grows, no jump.
-      const glide = open !== box.classList.contains('open') && box.isConnected && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const glide = open !== box.classList.contains('open') && !store.get('lab-name') && box.isConnected && !matchMedia('(prefers-reduced-motion: reduce)').matches;
       const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
+      const one = Boolean(store.get('lab-name'));
+      box.classList.toggle('one', one);
       box.classList.toggle('open', open);
       as.hidden = !name.value.trim();
+      if (one && !CSS.supports?.('field-sizing', 'content')) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
       sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
       text.style.height = 'auto';
       text.style.height = `${text.scrollHeight}px`;
@@ -1981,7 +2005,7 @@
       const { anchor } = draft;
       const { left, top, zone } = position(anchor);
       drawZone(zone, 'draft');
-      quoted = anchor;
+      quoted = zone ? null : anchor; // an area lights no single word
       const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
@@ -2119,8 +2143,9 @@
     };
     // Resolve: admins, and whoever started the thread (its key is kept in their browser). Delete: admins.
     const ownKey = store.get(`lab-edit:${c.id}`);
+    let actions = null;
     if (isAdmin || ownKey) {
-      const actions = el('div', { class: 'row' });
+      actions = el('div', { class: 'row acts' });
       const resolve = el('button', { class: 'btn', type: 'button' }, c.resolved ? 'reopen' : 'resolve');
       const failed = (btn) => (btn.textContent = 'failed, try again');
       resolve.addEventListener('click', async () => {
@@ -2200,6 +2225,8 @@
       };
       if (l.length > 1) step('‹ prev', l[(at + l.length - 1) % l.length]), step('next ›', l[(at + 1) % l.length]);
       if (fresh.length) step(`new · ${fresh.length} ›`, fresh[0]);
+      // One row on phones: prev / next on the left, reopen / delete on the right, so the sheet keeps its room for messages.
+      if (nav.firstChild && actions) nav.append(actions);
       if (nav.firstChild) foot.append(nav);
       // The keyboard's ^ ˅ go to the field before or after the reply box: an invisible one on each side steps to the
       // previous or next thread instead, with the keyboard staying up.
@@ -2482,7 +2509,14 @@
     afterDrag = true;
     setTimeout(() => (afterDrag = false), 0);
     getSelection?.()?.removeAllRanges();
-    if (Math.abs(d.x1 - d.x0) < 12 || Math.abs(d.y1 - d.y0) < 12) return;
+    // A thin drag (a line of text, a small icon) still makes an area: it grows to at least 12 px each way around its middle,
+    // instead of silently doing nothing.
+    for (const [a, b] of [['x0', 'x1'], ['y0', 'y1']]) {
+      if (Math.abs(d[b] - d[a]) >= 12) continue;
+      const mid = (d[a] + d[b]) / 2;
+      d[a] = mid - 6;
+      d[b] = mid + 6;
+    }
     showAgain();
     openId = null;
     begin(zoneAnchor(d));
