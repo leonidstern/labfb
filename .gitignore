@@ -1,1 +1,6 @@
 .lab/
+node_modules/
+public/_lab/comments.min.js
+public/_lab/comments.min.js.map
+public/_lab/comments.src.js
+public/_lab/comments.js.map

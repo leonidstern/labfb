@@ -14,5 +14,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - run: npm ci
       - run: node --check local.mjs && node --check public/_lab/comments.js && node --check api/lab-comments.mjs
+      - run: npm run build && node --check public/_lab/comments.min.js
       - run: npm test

@@ -1957,6 +1957,14 @@ const handler = async (req, res) => {
     const lab = pathname.startsWith('/_lab/');
     const base = lab ? path.join(REPO, 'public') : ROOT;
     let file = path.join(base, pathname);
+    // The widget minified (npm run build, done before every publish) while it's newer than the source; an edited
+    // source (working on labfb itself) is served as it is.
+    if (pathname === '/_lab/comments.js') {
+      const min = path.join(base, '_lab', 'comments.min.js');
+      try {
+        if (fs.statSync(min).mtimeMs >= fs.statSync(file).mtimeMs) file = min;
+      } catch {}
+    }
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
     if (!fs.existsSync(file)) return notFound(req, res, pathname);
