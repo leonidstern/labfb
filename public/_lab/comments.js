@@ -554,6 +554,18 @@
     return node;
   };
 
+  // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
+  // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
+  function patchKids(box, next) {
+    const keep = new Set(next);
+    for (const n of [...box.childNodes]) if (!keep.has(n)) n.remove();
+    let at = box.firstChild;
+    for (const n of next) {
+      if (n === at) at = at.nextSibling;
+      else box.insertBefore(n, at);
+    }
+  }
+
   // ---------- anchoring ----------
   function selectorFor(node) {
     const parts = [];
@@ -1909,7 +1921,14 @@
     // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
     const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
     const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
-    box.replaceChildren(...msgs.flatMap((m) => {
+    // A message already on screen that hasn't changed keeps its own node: a redraw for one new message used to rebuild
+    // every bubble (a phone showed the chat blink as messages arrived).
+    const kept = new Map([...box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+    const same = (n) => {
+      const old = kept.get(n.dataset?.id);
+      return old && old.outerHTML.replace(' fresh', '') === n.outerHTML ? old : n;
+    };
+    patchKids(box, msgs.flatMap((m) => {
       const root = m.parent ? byId.get(m.parent) : m;
       const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id });
       // The done mark sits beside the name, not in the words.
@@ -1933,7 +1952,7 @@
       b.append(...readable(m.text));
       b.append(stampOf(m, root));
       return m.id === newFrom && m !== msgs[0] ? [el('div', { class: 'newline' }, 'new'), b] : [b];
-    }));
+    }).map(same));
     const strip = chatEl.querySelector('.replying');
     const target = replyTo && byId.get(replyTo);
     strip.hidden = !target;
