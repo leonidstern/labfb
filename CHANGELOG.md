@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The bar's pills show their keys: chat M, list L, go V, comments C (hidden on touch screens).
 - Escape closes the chat and the list too (after an open thread or new comment).
 - M opens and closes the chat (with comments shown and nothing typed).
 - On a computer, opening the chat closes an open thread (and a new comment with nothing typed in it).

@@ -1261,10 +1261,11 @@
     const all = threads();
     listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
     goBtn.hidden = !on;
+    if (!goBtn.firstElementChild) goBtn.replaceChildren(document.createTextNode('go'), el('kbd', {}, 'v'));
     goBtn.classList.toggle('on', goMode);
     goBtn.setAttribute('aria-pressed', String(goMode));
     const freshAll = all.filter((c) => !c.resolved && !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
-    listBtn.textContent = freshAll ? `list · ${freshAll} new` : 'list';
+    listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), el('kbd', {}, 'l'));
     listBtn.classList.toggle('has-new', freshAll > 0);
     const h = held().length;
     sendBtn.hidden = !h;
@@ -1356,7 +1357,7 @@
     if (on && chatOpen) markSeen(msgs.filter(isNew)); // open: what's there is read
     const fresh = msgs.filter(isNew).length;
     chatBtn.hidden = !on;
-    chatBtn.textContent = fresh ? `chat · ${fresh} new` : 'chat';
+    chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'), el('kbd', {}, 'm'));
     chatBtn.classList.toggle('has-new', fresh > 0);
     const opening = chatEl.hidden;
     chatEl.hidden = !on || !chatOpen;
