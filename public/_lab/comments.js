@@ -330,7 +330,7 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · c to hide</div>
+    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c to hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" title="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" title="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="bar">
@@ -2257,16 +2257,45 @@
     selChip.style.left = `${Math.min(Math.max(selRect.left + selRect.width / 2, 60), innerWidth - 60)}px`;
     selChip.style.top = `${below ? selRect.bottom + 10 : Math.max(selRect.top - 46, 8)}px`;
   });
+  // A comment on the words selected: pinned at their start, quoting exactly them (a few words either side to find them
+  // again), not just the word under the pin.
+  const commentOnSelection = () => {
+    const sel = getSelection?.();
+    const range = sel?.rangeCount && sel.getRangeAt(0);
+    const exact = String(sel || '').replace(/\s+/g, ' ').trim();
+    if (!range || !exact || host.contains(range.commonAncestorContainer)) return false;
+    const box = range.getClientRects()[0] || range.getBoundingClientRect();
+    const anchor = anchorAt(box.left + 2, box.top + box.height / 2);
+    const at = range.commonAncestorContainer;
+    const block = (at.nodeType === 1 ? at : at.parentElement)?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div') || document.body;
+    const side = (a, b) => {
+      const r = document.createRange();
+      r.setStart(...a);
+      r.setEnd(...b);
+      return String(r).replace(/\s+/g, ' ');
+    };
+    anchor.kind = 'text';
+    anchor.quote = {
+      exact: short(exact, 80),
+      prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, '').slice(-40),
+      suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
+    };
+    sel.removeAllRanges();
+    selChip.hidden = true;
+    showAgain();
+    openId = null;
+    draft = { anchor };
+    render();
+    return true;
+  };
   selChip.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!selRect) return;
-    const { left, top, height } = selRect;
-    getSelection?.()?.removeAllRanges();
-    selChip.hidden = true;
-    openId = null;
-    draft = { anchor: anchorAt(left + 2, top + height / 2) };
-    render();
+    if (selRect) commentOnSelection();
   });
+  // Computers: Shift + drag selects words (a plain drag marks an area); letting go opens a comment on them.
+  document.addEventListener('mouseup', (e) => {
+    if (on && !draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host)) setTimeout(commentOnSelection, 0);
+  }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
     if (draft || openId) {
