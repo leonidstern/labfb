@@ -742,6 +742,10 @@ try {
   console.log(`[lab] comments.json was damaged; moved it to ${path.basename(aside)} and started empty`);
 }
 const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(c)]))]));
+// The hosted lab allows 60 new comments an hour from one address (a guard against spam on the open web). A local lab
+// only lets in this computer and the home network, where one phone reviewing a page can pass that in an evening
+// (15 Nov): 600 here, unless LAB_COMMENTS_PER_HOUR says otherwise.
+process.env.LAB_COMMENTS_PER_HOUR ||= '600';
 const api = await apiOn(db, REPO);
 const commentsOf = (page) => [...(db.get(`lab:comments:${page}`)?.values() ?? [])].map((v) => JSON.parse(v)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 const pages = () => [...db.keys()].filter((k) => k.startsWith('lab:comments:') && db.get(k).size).map((k) => k.slice('lab:comments:'.length));
