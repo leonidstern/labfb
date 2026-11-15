@@ -191,6 +191,7 @@
       .list .it .tag { display: inline-block; padding: 0 7px; border-radius: 999px; background: var(--_accent); color: var(--_accent-fg);
                        font-size: 11.5px; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
       .list .none { padding: 8px; }
+      .list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
       .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
       .list .tabs .x { padding: 4px 8px; }
       .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
@@ -338,7 +339,7 @@
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
     <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c to hide</div>
-    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" title="close">✕</button></div><div class="items"></div></div>
+    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" title="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" title="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="bar">
       <button class="secondary send-all" type="button" hidden></button>
@@ -1228,6 +1229,7 @@
     listEl.querySelector('[data-f="new"]').textContent = fresh ? `new · ${fresh}` : 'new';
     listEl.querySelector('[data-f="resolved"]').hidden = !isAdmin;
     holdBtn.classList.toggle('on', store.get('lab-hold') === '1');
+    if (filter === 'work') return listEl.querySelector('.items').replaceChildren(...workItems());
     const items = listed().map((c) => {
       const b = el('button', { class: `it${openId === c.id ? ' cur' : ''}`, type: 'button' });
       b.append(document.createTextNode(`${c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(onWhat(c) ? [el('span', {}, `on ${onWhat(c)} `)] : []), el('span', {}, `· ${c.name}${c.quick === 'done' ? ' · done by quick' : !c.resolved && isDone(c) ? ' · ✅ done' : ''}`), ...(unread(c).length ? [' ', el('span', { class: 'tag' }, `${unread(c).length} new`)] : []));
@@ -1235,6 +1237,47 @@
       return b;
     });
     listEl.querySelector('.items').replaceChildren(...(items.length ? items : [el('div', { class: 'none' }, 'nothing here')]));
+  }
+  // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
+  // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
+  const ago = (iso) => {
+    const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+    return m < 1 ? 'just now' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+  };
+  function workItems() {
+    const today = new Date().toDateString();
+    const now = [];
+    const next = [];
+    const done = [];
+    for (const c of comments.filter((x) => !x.parent)) {
+      const thread = [c, ...repliesOf(c.id)].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const people = thread.filter((m) => !m.session);
+      const agent = thread.filter((m) => m.session);
+      const lastPerson = people.at(-1)?.createdAt || '';
+      const answer = agent.at(-1);
+      const answered = answer && answer.createdAt > lastPerson;
+      const finished = c.resolved || c.quick === 'done' || (answered && /^done\b/i.test(answer.text));
+      if (finished) {
+        const at = answered ? answer.createdAt : c.createdAt;
+        if (new Date(at).toDateString() === today) done.push([c, at]);
+      } else if (answered && /^on it\b/i.test(answer.text)) now.push([c, answer.createdAt]);
+      else if (!answered && c.handedAt && c.handedAt >= lastPerson) now.push([c, c.handedAt]);
+      else if (!answered) next.push([c, lastPerson]);
+    }
+    const row = ([c, at], when) => {
+      const b = el('button', { class: `it${openId === c.id ? ' cur' : ''}`, type: 'button' });
+      b.append(document.createTextNode(`${isPage(c) ? 'chat' : c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), el('span', {}, `· ${when(at)}`));
+      b.addEventListener('click', () => (isPage(c) ? ((chatOpen = true), (listOpen = false), render()) : goTo(c)));
+      return b;
+    };
+    const part = (title, list, when, newest = false) =>
+      list.length ? [el('div', { class: 'group' }, `${title} · ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
+    const out = [
+      ...part('Now', now, (at) => `on it ${ago(at)}`.replace('on it just now', 'just started')),
+      ...part('Next', next, (at) => `sent ${ago(at)} ago`.replace('just now ago', 'just now')),
+      ...part('Done today', done, (at) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), true),
+    ];
+    return out.length ? out : [el('div', { class: 'none' }, 'nothing in progress on this page')];
   }
   // The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
   // a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.

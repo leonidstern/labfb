@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The list has a "work" tab: Now (handed to the agent and not answered yet, or answered "On it"), Next (sent, not handed yet) and Done today, for this page's pins and chat.
+- Drawn areas are green with no dark ring, like quoted words; a quote that runs over several items is found and lit.
 - Phones: the chat has two heights, like iOS and Android sheets: pull it up (or flick) to fill the screen, pull it down from there to go back; from the lower height a pull down closes it as before, and a hard flick down from the top closes it too. It opens at the lower height.
 - Links in the chat and in threads open in a new tab.
 - On a computer, a click outside the chat closes it and does nothing else (no new comment, no press on what's under it); what you typed stays.
