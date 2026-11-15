@@ -2267,7 +2267,9 @@
       if (openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
-        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (!stepping || keepKeys)); // the reply box takes the cursor, phones too
+        // The reply box takes the cursor on a computer. Phones don't (no keyboard popping up over what you came to read,
+        // Leo 15 Nov); a keyboard already up while stepping to the next one stays up.
+        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? keepKeys : !stepping || keepKeys));
         openCard = card;
         if (appear && !stepping) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
