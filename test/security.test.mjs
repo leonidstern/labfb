@@ -38,6 +38,7 @@ test('resolve and delete need an admin key; delete takes the replies with it', a
   const { comment } = await pin('/anna/site/home');
   await call({ page: '/anna/site/home', name: 'Bo', text: 'reply', parent: comment.id }, { ip: '10.0.0.8' });
   assert.equal((await call({ page: '/anna/site/home', action: 'resolve', id: comment.id })).status, 403);
+  assert.equal((await call({ page: '/anna/site/home', action: 'resolve', id: comment.id, edit: 'guess' })).status, 403, 'a wrong key');
   assert.equal((await call({ page: '/anna/site/home', action: 'delete', id: comment.id }, { 'x-lab-admin': 'guess' })).status, 403);
   assert.equal((await call({ page: '/anna/site/home', action: 'delete', id: comment.id }, { 'x-lab-admin': OWNER })).status, 200);
   const left = (await (await call({ page: '/anna/site/home' }, {}, 'GET')).json()).comments;
@@ -147,4 +148,17 @@ test('dot files, .lab/ and paths outside the folder are never served', async () 
 
 test("the agent's endpoints need the lab's key", async () => {
   assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: { 'content-type': 'application/json', origin: `http://localhost:${PORT}` } })).status, 403);
+});
+
+test("whoever started a thread may resolve and reopen it with its key, not delete it or touch another", async () => {
+  const mine = await pin('/anna/site/own');
+  const other = await pin('/anna/site/own');
+  const page = '/anna/site/own';
+  assert.ok(mine.edit, 'the starter gets a key');
+  assert.equal((await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).status, 200);
+  assert.equal((await call({ page, action: 'reopen', id: mine.comment.id, edit: mine.edit })).status, 200);
+  assert.equal((await call({ page, action: 'delete', id: mine.comment.id, edit: mine.edit })).status, 403, 'delete stays admin-only');
+  assert.equal((await call({ page, action: 'resolve', id: other.comment.id, edit: mine.edit })).status, 403, "another thread's key");
+  const r = await (await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).json();
+  assert.equal(r.comment.resolvedBy, 'author');
 });

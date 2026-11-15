@@ -991,13 +991,18 @@ async function unseen() {
     : '';
   const text = [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check].filter(Boolean).join('\n\n') +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}), then wait again.`;
-  return { text, cursor };
+  // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
+  const handed = [...new Set(fresh.map((f) => `${f.page}\n${f.c.parent || f.c.id}`))].map((k) => k.split('\n'));
+  return { text, cursor, handed };
 }
 // Hand the new comments to a wait; the cursor moves only once they are written to it.
 function deliver(res, got) {
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
   seen = got.cursor;
   writeAtomic(SEEN, seen);
+  const at = new Date().toISOString();
+  for (const [page, id] of got.handed || []) setComment(page, id, { handedAt: at });
+  for (const page of new Set((got.handed || []).map(([page]) => page))) persist(page).catch(() => {});
   setMode('working');
 }
 async function wake() {

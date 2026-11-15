@@ -171,7 +171,54 @@
                     box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
                     letter-spacing: .005em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color .15s, transform .15s var(--_ease); }
       .bar button:active { transform: scale(.97); }
+      /* The list and the chat: a header, a part that scrolls, and (the chat) a box at the bottom that doesn't. */
+      .list { position: fixed; right: 16px; bottom: 66px; width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: hidden;
+              display: flex; flex-direction: column; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow); font-size: 13px; }
+      .list .tabs { display: flex; flex-wrap: wrap; gap: 2px; flex: none; padding: 12px 8px 6px; }
+      .list .items, .msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+      .list .items { padding: 0 6px 6px; }
+      .list .tabs button { border: 0; border-radius: 999px; padding: 4px 8px; white-space: nowrap; background: none; color: var(--_muted); cursor: pointer; font: inherit; }
+      .list .tabs button.on { background: var(--_fg); color: var(--_bg); }
+      .list .tabs .hold { margin-left: auto; }
+      .list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: 8px; cursor: pointer; font: inherit; }
+      .list .it:hover, .list .it.cur { background: color-mix(in srgb, var(--_fg) 7%, transparent); }
+      .list .it span, .list .none { color: var(--_muted); }
+      .list .it .tag { display: inline-block; padding: 0 7px; border-radius: 999px; background: var(--_accent); color: var(--_accent-fg);
+                       font-size: 11.5px; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
+      .list .none { padding: 8px; }
+      .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
+      .list .tabs .x { padding: 4px 8px; }
+      .working { border-radius: 999px; padding: 9px 14px; background: var(--_bg); color: var(--_muted); box-shadow: var(--_shadow); font-size: 13px;
+                 font-weight: 500; letter-spacing: .005em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .working::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px;
+                             background: var(--_accent); animation: lab-blink 1.1s ease-in-out infinite; }
+      .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
+      .chatwin .replying { flex: none; }
+      .chatwin .chat .box { background: var(--_soft); }
+      .chatwin .tabs b { padding: 4px 8px; font-weight: 600; margin-right: auto; }
+      .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
+      .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
+      /* Something just sent eases in; the arrow flies off and comes back. */
+      .fresh { animation: lab-rise .2s var(--_ease); }
+      .send.sent svg { animation: lab-fly .32s var(--_ease); }
+      @keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
+      @keyframes lab-fly { 45% { transform: translateY(-9px); opacity: 0; } 46% { transform: translateY(7px); opacity: 0; } }
+      .msg { max-width: 85%; padding: 7px 10px; border-radius: 14px; background: var(--_soft); align-self: flex-start; }
+      .msg.mine { align-self: flex-end; background: var(--_fg); color: var(--_bg); }
+      .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
+      .msg.mine b { display: none; }
+      .msg { cursor: pointer; position: relative; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+      .msg::after { content: '↩'; position: absolute; right: -28px; top: 50%; translate: 0 -50%; color: var(--_fg); opacity: var(--lab-r, 0); scale: calc(.6 + .4 * var(--lab-r, 0)); }
+      .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
+      .msg b, .msg i { color: inherit; }
+      .box:has(.trap) { position: relative; }
+      .trap { position: absolute; top: 8px; left: 14px; width: 1px; height: 1px; opacity: 0; pointer-events: none; font-size: 16px; border: 0; padding: 0; }
+      .msg .tick { float: right; margin: 5px -3px -3px 10px; font-size: 11px; line-height: 1; letter-spacing: -.38em; opacity: .55; }
+      .msg .tick.got { opacity: .85; }
+      .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
+      .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
       .bar button * { color: inherit; font-weight: inherit; }
+      .bar .tally { color: var(--_muted); font-variant-numeric: tabular-nums; }
       .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
       .bar button.secondary { color: var(--_muted); }
       .listener { position: fixed; left: 16px; bottom: 16px; display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: 999px;
@@ -179,6 +226,8 @@
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
       .listener span { color: var(--_muted); }
       .listener.idle::before { background: var(--_muted); opacity: .5; }
+      .listener.working::before { animation: lab-blink 1.1s ease-in-out infinite; }
+      @keyframes lab-blink { 50% { opacity: .2; } }
       .listener:not([data-copy=""])[data-copy] { cursor: copy; }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: 4px; text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
@@ -190,6 +239,9 @@
       @keyframes lab-fade { from { opacity: 0; } }
       /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
       @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
+      @keyframes lab-sheet-in { from { transform: translateY(100%); } }
+      @keyframes lab-sheet-out { to { transform: translateY(100%); } }
+      @keyframes lab-fade { from { opacity: 0; } }
       @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
       /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
       @supports (corner-shape: squircle) { .card, .float .box, .card .box { corner-shape: squircle; border-radius: calc(var(--_radius) * 1.8); } }
@@ -201,19 +253,111 @@
                               to { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_accent) 0%, transparent); } }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
       @media (max-width: 480px) { kbd { display: none; } }
+      .handle { display: none; }
+      /* Phones: a thread or a new comment opens as a sheet from the bottom, full width, instead of beside the pin. */
+      @media (pointer: coarse) and (max-width: 560px) {
+        /* Sheets fit what the screen shows (--lab-vh, the visible height, and --lab-kb, the keyboard over the page's
+           bottom, are kept up to date from visualViewport); their bottom part is solid down past the screen's edge,
+           behind the home bar, the keyboard and Safari's toolbar, so nothing of the page shows below the box. */
+        :host { --_safe: env(safe-area-inset-bottom, 0px); --_kb: var(--lab-kb, 0px);
+                --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb)); }
+        :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
+        /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
+           panning the page can't push it up and nothing of the page shows above or below it. */
+        :host([data-kb]) :is(.card, .list:not([hidden])) { top: var(--lab-top, 0px) !important; bottom: auto !important;
+          height: var(--lab-vh, 100dvh) !important; max-height: none !important; border-radius: 0; }
+        /* A new comment stays small, just above the keyboard, with the page (dimmed) above it: you see what you comment on. */
+        :host([data-kb]) .float { top: auto !important; bottom: var(--lab-kb, 0px) !important; height: auto !important; border-radius: 18px 18px 0 0; }
+        .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
+                        max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: 18px 18px 0 0; padding: 8px 0 0; z-index: 3; }
+        .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
+        .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 4px; }
+        .card > .foot, .float > .composer { flex: none; padding: 0 14px var(--_pb); }
+        .card > .foot { margin-top: auto; }
+        .card .composer { margin-top: 10px; }
+        .card .nav { margin-top: 2px; gap: 20px; }
+        .card .nav .btn { font-size: 14px; padding: 8px 0; } /* thumb-sized */
+        .float { background: var(--_bg); box-shadow: var(--_shadow); }
+        .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
+        /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
+        .handle { display: block; flex: none; height: 26px; margin-top: -8px; touch-action: none;
+                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat; }
+        .list .tabs { touch-action: pan-x; }
+        .chatwin .tabs { touch-action: none; }
+        .list .items, .msgs, .card > .body { touch-action: pan-y; }
+        .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
+        :host([data-sheet]) :is(.bar, .hint, .listener) { visibility: hidden; }
+        /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
+           sheet never scrolls the page. */
+        :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
+        .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
+        .card.out, .float.out { animation: lab-sheet-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+        .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: 18px 18px 0 0;
+                font-size: 15px; z-index: 3; }
+        /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
+        .chatwin { height: var(--_sheet-max); }
+        /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
+        .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: 18px 18px 0 0;
+                      background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat, var(--_bg); }
+        .list .items { padding: 0 12px calc(10px + var(--_safe)); }
+        .chatwin .msgs { padding: 4px 12px 8px; }
+        .chatwin .chat { padding: 6px 12px var(--_pb); }
+        .list .it { padding: 11px 8px; }
+        /* The bar wraps instead of running off the screen's left edge. */
+        .bar { left: 16px; flex-wrap: wrap-reverse; justify-content: flex-end; pointer-events: none; }
+        .bar button { pointer-events: auto; }
+      }
+      /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
+      .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
+      .sel-chip { position: fixed; transform: translateX(-50%); border: 0; border-radius: 999px; padding: 8px 14px; background: var(--_fg);
+                  color: var(--_bg); font: 500 14px/1 var(--_font, inherit); box-shadow: var(--_shadow); z-index: 4; }
+      /* Phones: the listening label is a light in the "list" button (steady: listening, blinking: working, grey:
+         nobody), the bar goes back to the bottom, and the send button is big enough for a thumb. */
+      @media (pointer: coarse) and (max-width: 560px) {
+        .listener { display: none !important; }
+        .bar { bottom: 16px !important; }
+        .hint { bottom: 64px !important; }
+        .list-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
+        .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
+        .send { width: 36px; height: 36px; }
+        .send svg { width: 16px; height: 16px; margin: auto; }
+      }
+      /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
+      @media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
       [hidden] { display: none !important; }
     </style>
+    <div class="scrim"></div>
     <div class="layer"></div>
+    <button class="sel-chip" type="button" hidden>Comment</button>
     <div class="hint" hidden>click to comment · drag to mark an area · c to hide</div>
+    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" title="close">✕</button></div><div class="items"></div></div>
+    <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" title="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="bar">
+      <button class="secondary send-all" type="button" hidden></button>
+      <span class="working" hidden></span>
+      <button class="secondary chat-btn" type="button" hidden>chat</button>
+      <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary copy-all" type="button" hidden>copy link</button>
       <button class="toggle" type="button"></button>
     </div>`;
   const layer = root.querySelector('.layer');
   const hint = root.querySelector('.hint');
-  if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'tap to comment';
+  if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'hold to comment';
   const toggleBtn = root.querySelector('.toggle');
   const copyBtn = root.querySelector('.copy-all');
+  // The comments list (new / open / resolved / mine; J/K step, R reply, E resolve, L shows it), and drafts: with
+  // "drafts" on, new pins wait in this browser until "send 3 drafts", so nothing starts on pin 1 of 10.
+  const listBtn = root.querySelector('.list-btn');
+  const sendBtn = root.querySelector('.send-all');
+  const listEl = root.querySelector('.list');
+  const holdBtn = listEl.querySelector('.hold');
+  const chatEl = root.querySelector('.chatwin');
+  const chatBtn = root.querySelector('.chat-btn');
+  const workingEl = root.querySelector('.working');
+  let listOpen = false;
+  let filter = 'open';
+  let refit = () => {}; // phones: fit the sheets to the keyboard again (below)
+  let chatOpen = false;
 
   const el = (tag, attrs = {}, text) => {
     const node = document.createElement(tag);
@@ -936,8 +1080,12 @@
       // Keep what is already on screen when a refresh fails.
     }
     if (!typed() && !grabbing) render();
-    // Someone is in a box: the open thread gets its new replies in place; everything else shows on the next render.
-    else if (openCard?.isConnected) openCard.sync();
+    // Someone is in a box: the open thread gets its new replies in place, the chat its new messages (its box is left
+    // alone); everything else shows on the next render.
+    else {
+      if (openCard?.isConnected) openCard.sync();
+      if (chatOpen) drawChat();
+    }
   }
 
   async function send(payload) {
@@ -971,6 +1119,203 @@
 
   // ---------- render ----------
   const threads = () => comments.filter((c) => !c.parent && (isAdmin || !c.resolved));
+  const heldKey = () => `lab-held:${page}`;
+  const held = () => {
+    try {
+      return JSON.parse(store.get(heldKey()) || '[]');
+    } catch {
+      return [];
+    }
+  };
+  // Being worked on: handed to the agent and not answered or resolved since (a comment, a chat message).
+  const working = (c) => Boolean(c.handedAt && !c.resolved && !repliesOf(c.id).some((r) => r.session && r.createdAt >= c.handedAt));
+  const listed = () =>
+    threads()
+      .filter((c) => c.anchor?.kind !== 'page')
+      .filter((c) => (filter === 'new' ? unread(c).length : filter === 'open' ? !c.resolved : filter === 'resolved' ? c.resolved : mine(c)))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  // What a comment is on, in a few words, so the list reads without the page: the quoted words, else the text of the
+  // pinned element or, when that says too little ("4", an icon), of the nearest box around it; else its section.
+  const onWhat = (c) => {
+    const a = c.anchor || {};
+    let w = a.quote?.exact || '';
+    let n = null;
+    try {
+      n = !w && a.selector ? document.querySelector(a.selector) : null;
+    } catch {}
+    for (let up = 0; n && n !== document.body && up < 5; n = n.parentElement, up++) {
+      const t = n.innerText?.replace(/\s+/g, ' ').trim() || '';
+      if (t.length >= 12) {
+        w = t;
+        break;
+      }
+    }
+    w = (w || a.text || a.section || '').replace(/\s+/g, ' ').trim();
+    return w ? `"${w.length > 40 ? `${w.slice(0, 39)}…` : w}"` : '';
+  };
+  const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
+  // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
+  let stepping = false;
+  let keepKeys = false;
+  const goTo = (c, keys = false) => {
+    stepping = Boolean(openId);
+    keepKeys = stepping && (keys || root.activeElement?.localName === 'textarea');
+    openId = c.id;
+    draft = null;
+    if (coarse) listOpen = false;
+    render();
+    // The pin comes into view: on phones in the middle of what the sheet leaves free above it.
+    const above = coarse && openCard?.isConnected ? (innerHeight - openCard.offsetHeight) / 2 : innerHeight / 3;
+    scrollTo({ top: Math.max(0, position(c.anchor || {}).top - Math.max(40, above)), behavior: 'smooth' });
+  };
+  // Done: resolved, fixed by the quick model, or answered "Done: …" by someone other than its author (the agent).
+  const isDone = (c) => c.resolved || c.quick === 'done' || repliesOf(c.id).some((r) => r.name !== c.name && /^done\b/i.test(r.text));
+  function drawList() {
+    const all = threads();
+    listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
+    // What the agent is on now, apart from the counts of comments, just to read: "working on 2 · 3 done", done counting
+    // what it has answered since the oldest of those was handed to it.
+    const busy = all.filter(working);
+    const since = busy.map((c) => c.handedAt).sort()[0];
+    const answered = all.filter((c) => c.handedAt >= since && !working(c)).length;
+    workingEl.hidden = !on || !busy.length;
+    workingEl.textContent = `working on ${busy.length}${answered ? ` · ${answered} done` : ''}`;
+    const freshAll = all.filter((c) => !c.resolved && !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
+    // How far the agent got, at a glance: done of all the pins (resolved ones too, for guests who don't see them).
+    const pins = comments.filter((c) => !c.parent && !isPage(c));
+    const doneN = pins.filter(isDone).length;
+    listBtn.replaceChildren(freshAll ? `list · ${freshAll} new` : 'list', ...(pins.length ? [el('span', { class: 'tally', title: `${doneN} of ${pins.length} done` }, `${doneN}/${pins.length} ✓`)] : []));
+    const h = held().length;
+    sendBtn.hidden = !h;
+    sendBtn.textContent = `send ${h} draft${h === 1 ? '' : 's'}`;
+    listEl.hidden = !on || !listOpen;
+    if (listEl.hidden) return;
+    for (const b of listEl.querySelectorAll('[data-f]')) b.classList.toggle('on', b.dataset.f === filter);
+    const fresh = all.filter((c) => !isPage(c) && unread(c).length).length; // chat messages count in the chat
+    listEl.querySelector('[data-f="new"]').textContent = fresh ? `new · ${fresh}` : 'new';
+    listEl.querySelector('[data-f="resolved"]').hidden = !isAdmin;
+    holdBtn.classList.toggle('on', store.get('lab-hold') === '1');
+    const items = listed().map((c) => {
+      const b = el('button', { class: `it${openId === c.id ? ' cur' : ''}`, type: 'button' });
+      b.append(document.createTextNode(`${c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(onWhat(c) ? [el('span', {}, `on ${onWhat(c)} `)] : []), el('span', {}, `· ${c.name}${c.quick === 'done' ? ' · done by quick' : !c.resolved && isDone(c) ? ' · ✅ done' : ''}`), ...(unread(c).length ? [' ', el('span', { class: 'tag' }, `${unread(c).length} new`)] : []));
+      b.addEventListener('click', () => goTo(c));
+      return b;
+    });
+    listEl.querySelector('.items').replaceChildren(...(items.length ? items : [el('div', { class: 'none' }, 'nothing here')]));
+  }
+  // The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
+  // a pin's say what they're on). New messages are about the page; tap one to answer it instead.
+  let replyTo = null;
+  function drawChat() {
+    const byId = new Map(comments.map((c) => [c.id, c]));
+    // Only the chat's own messages (about the page as a whole) and the replies to them: pins live on the page and in the list.
+    const msgs = comments
+      .filter((c) => isPage(c) || (c.parent && isPage(byId.get(c.parent) || {})))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(-150);
+    if (on && chatOpen) markSeen(msgs.filter(isNew)); // open: what's there is read
+    const fresh = msgs.filter(isNew).length;
+    chatBtn.hidden = !on;
+    chatBtn.textContent = fresh ? `chat · ${fresh} new` : 'chat';
+    const opening = chatEl.hidden;
+    chatEl.hidden = !on || !chatOpen;
+    if (chatEl.hidden) return;
+    const box = chatEl.querySelector('.msgs');
+    // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
+    const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+    const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
+    box.replaceChildren(...msgs.map((m) => {
+      const root = m.parent ? byId.get(m.parent) : m;
+      const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, title: when(m.createdAt), 'data-id': m.id });
+      b.append(el('b', {}, m.name));
+      // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
+      const done = root?.resolved || /^done\b/i.test(m.text) ? '✅ ' : '';
+      if (m.parent && root) b.append(el('i', {}, `↩ ${done}${root.name}: ${short(root.text, 32)}`));
+      b.append(document.createTextNode((m.parent ? '' : done) + m.text));
+      // Yours: ✓ sent, ✓✓ handed to the agent (its thread went to the agent at or after you wrote it), as in messengers.
+      if (mine(m) && !m.session) {
+        const got = root?.handedAt && root.handedAt >= m.createdAt;
+        b.append(el('span', { class: `tick${got ? ' got' : ''}`, title: got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
+      }
+      const answer = (again) => {
+        replyTo = root && (again || replyTo !== root.id) ? root.id : null;
+        drawChat();
+        chatEl.querySelector('.chat textarea')?.focus({ preventScroll: true });
+      };
+      b.addEventListener('click', () => answer(false));
+      swipeToAnswer(b, () => answer(true));
+      return b;
+    }));
+    const strip = chatEl.querySelector('.replying');
+    const target = replyTo && byId.get(replyTo);
+    strip.hidden = !target;
+    if (target) {
+      const x = el('button', { type: 'button', title: 'about the page instead' }, '✕');
+      x.addEventListener('click', () => ((replyTo = null), drawChat()));
+      strip.replaceChildren(document.createTextNode(`↩ ${target.name}: ${target.text.replace(/\s+/g, ' ').slice(0, 40)}`), x);
+    }
+    if (!box.firstChild) box.append(el('div', { class: 'none' }, 'say something about the page as a whole'));
+    const chat = chatEl.querySelector('.chat');
+    if (!chat.firstChild)
+      chat.append(
+        composer({
+          placeholder: 'message',
+          onSubmit: async (name, text) => {
+            const { comment } = await send(
+              replyTo ? { name, text, parent: replyTo } : { name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } },
+            );
+            replyTo = null;
+            comments.push(comment);
+            markSeen([comment]);
+            box.scrollTop = box.scrollHeight;
+            render();
+            return { keep: true }; // the same box stays, with the cursor in it: the phone's keyboard stays up
+          },
+        }),
+      );
+    chat.querySelector('textarea').placeholder = target ? 'reply' : msgs.length ? `message · ${coarse ? 'swipe' : 'click'} one to reply` : 'message';
+    if (atEnd) box.scrollTop = box.scrollHeight;
+  }
+  // Phones: swipe a message left to answer it, as in messengers: it follows the finger, ↩ shows, and past 56 px a tick
+  // of the phone says letting go answers it. Up and down stays the chat's scrolling.
+  function swipeToAnswer(b, answer) {
+    if (!coarse) return;
+    let x0 = 0;
+    let y0 = 0;
+    let dx = 0;
+    let mode = null;
+    b.addEventListener('touchstart', (e) => {
+      x0 = e.touches[0].clientX;
+      y0 = e.touches[0].clientY;
+      dx = 0;
+      mode = e.touches.length > 1 ? 'off' : null;
+    }, { passive: true });
+    b.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      const ax = t.clientX - x0;
+      const ay = t.clientY - y0;
+      if (!mode) {
+        if (Math.abs(ax) < 6 && Math.abs(ay) < 6) return;
+        mode = ax < 0 && Math.abs(ax) > Math.abs(ay) * 1.5 ? 'answer' : 'off';
+      }
+      if (mode !== 'answer') return;
+      const was = dx;
+      dx = Math.max(-80, Math.min(0, ax));
+      if (dx <= -56 && was > -56) navigator.vibrate?.(8);
+      b.style.transition = 'none';
+      b.style.transform = `translateX(${dx}px)`;
+      b.style.setProperty('--lab-r', String(Math.min(1, -dx / 56)));
+    }, { passive: true });
+    const end = () => {
+      if (mode === 'answer' && dx <= -56) answer();
+      mode = null;
+      b.style.transition = 'transform 300ms cubic-bezier(.32,.72,0,1)';
+      b.style.transform = '';
+      b.style.removeProperty('--lab-r');
+    };
+    b.addEventListener('touchend', end);
+    b.addEventListener('touchcancel', end);
+  }
   // Open comments are numbered 1, 2, 3… in order, the same for everyone, admins and the agent text.
   const numberOf = (c) =>
     comments
@@ -982,7 +1327,10 @@
   const seenKey = () => `lab-seen:${page}`;
   const readSeen = () => new Set(store.get(seenKey()).split(',').filter(Boolean));
   let seen = readSeen();
-  const isNew = (c) => !seen.has(c.id) && c.name !== store.get('lab-name');
+  // Yours is never new: your name (any case or spacing), or a pin this browser started (it keeps its edit key).
+  const plain = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const mine = (c) => (plain(c.name) && plain(c.name) === plain(store.get('lab-name'))) || Boolean(store.get(`lab-edit:${c.id}`));
+  const isNew = (c) => !seen.has(c.id) && !mine(c);
   const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
   const markSeen = (items) => {
     for (const item of items) seen.add(item.id);
@@ -1016,17 +1364,28 @@
   function composer({ placeholder, onSubmit, autofocus }) {
     const wrap = el('div', { class: 'composer' });
     const box = el('div', { class: 'box' });
-    const text = el('textarea', { placeholder, maxlength: '2000', rows: '1', 'aria-label': placeholder });
+    // No autofill or suggestion bar on phones: a comment isn't a form to fill.
+    const text = el('textarea', { placeholder, maxlength: '2000', rows: '1', 'aria-label': placeholder, autocomplete: 'off', autocorrect: 'off', spellcheck: 'false', writingsuggestions: 'false' });
     const who = el('label', { class: 'who' });
     const as = el('span', {}, 'as');
-    const name = el('input', { type: 'text', placeholder: 'your name', maxlength: '60', autocomplete: 'name' });
+    const name = el('input', { type: 'text', placeholder: 'your name', maxlength: '60', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' });
     name.value = store.get('lab-name');
     who.append(as, name);
     const sendBtn = el('button', { class: 'send', type: 'button', 'aria-label': 'send' });
+    // Pressing send keeps the cursor in the box: on phones a blur first drops the keyboard, the sheet moves, and the
+    // tap misses the button.
+    sendBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+    sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
     sendBtn.innerHTML = ARROW;
     const error = el('div', { class: 'error' });
     box.append(text, el('div', { class: 'line' }), who, sendBtn);
     wrap.append(box, error);
+    // The box is taller than its one line of text: a tap anywhere on it (not the name or send) puts the cursor in, at the end.
+    box.addEventListener('click', (e) => {
+      if (e.target !== box && !e.target.classList?.contains('line')) return;
+      text.focus({ preventScroll: true });
+      text.setSelectionRange(text.value.length, text.value.length);
+    });
 
     const sync = () => {
       const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
@@ -1055,6 +1414,9 @@
         return name.focus();
       }
       store.set('lab-name', name.value.trim());
+      sendBtn.classList.remove('sent');
+      void sendBtn.offsetWidth; // restart the arrow's flight on a quick second send
+      sendBtn.classList.add('sent');
       busy = true;
       error.textContent = '';
       try {
@@ -1084,7 +1446,10 @@
     // Keep focus in the field when the send button is pressed.
     sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
     requestAnimationFrame(sync);
-    if (autofocus) setTimeout(() => text.focus(), 0);
+    // Right after it's on screen, in the same tap: phones open the keyboard only then.
+    // preventScroll: the sheet is still sliding in from below the screen, and the page must not scroll to meet it.
+    const focus = () => text.focus({ preventScroll: true });
+    if (autofocus) queueMicrotask(() => (text.isConnected ? focus() : setTimeout(focus, 0)));
     return wrap;
   }
 
@@ -1114,8 +1479,9 @@
     grabbing = false; // a pin being dragged is replaced: its drag ends here
     dropDrag?.();
     const prev = layer.querySelector('.card:not(.out), .float:not(.out)');
+    const prevHeight = stepping && coarse && prev ? prev.offsetHeight : 0; // stepping on a phone: the sheet's top doesn't drop
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
-    const places = new Map(on ? threads().map((c) => [c.id, position(c.anchor || {})]) : []);
+    const places = new Map(on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
     layer.replaceChildren();
     pinsById.clear();
     const now = on ? draft || openId : null;
@@ -1123,32 +1489,44 @@
     const anim = appear ? ' in' : '';
     let quoted = null;
     const done = () => {
-      if (!now && shown && prev && !still.matches) {
+      if (!now && shown && prev && !still.matches && !prev.style.transform) { // not when it already slid away (phones)
         prev.classList.remove('in');
         prev.classList.add('out');
         prev.inert = true;
         layer.append(prev);
-        setTimeout(() => prev.remove(), 150);
+        setTimeout(() => prev.remove(), coarse ? 230 : 150);
       }
       markQuote(quoted);
       shown = now;
       posted = null;
     };
     const list = threads();
-    const open = list.filter((c) => !c.resolved).length;
-    const fresh = list.filter((c) => !c.resolved).reduce((n, c) => n + unread(c).length, 0);
+    const open = list.filter((c) => !c.resolved && c.anchor?.kind !== 'page').length; // chat messages count in the chat
+    const fresh = list.filter((c) => !c.resolved && c.anchor?.kind !== 'page').reduce((n, c) => n + unread(c).length, 0); // the chat counts its own
+    // New replies are counted on "list" while comments show, on the toggle while they are hidden.
     toggleBtn.replaceChildren(
-      document.createTextNode(
-        (on ? 'hide comments' : open ? `comments · ${open}` : 'comments') + (fresh ? ` · ${fresh} new` : ''),
-      ),
+      document.createTextNode((on ? 'hide comments' : open ? `comments · ${open}` : 'comments') + (!on && fresh ? ` · ${fresh} new` : '')),
       el('kbd', {}, 'c'),
     );
     toggleBtn.classList.toggle('secondary', on);
+    host.toggleAttribute('data-sheet', Boolean(on && (draft || openId || listOpen || chatOpen))); // phones: the sheet has the screen's bottom
+    document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
+    refit();
     document.documentElement.classList.toggle('lab-pinning', on);
     copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
+    drawList();
+    drawChat();
     if (!on) return done();
+    for (const h of held()) {
+      const { left, top } = position(h.anchor);
+      const p = el('div', { class: 'pin held', title: `${h.name}: ${h.text} · draft, not sent yet` }, initial(h.name));
+      p.style.left = `${left}px`;
+      p.style.top = `${top}px`;
+      layer.append(p);
+    }
 
     list.forEach((c) => {
+      if (isPage(c)) return; // in the chat, not on the page
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
       if (openId === c.id) drawZone(zone, `saved${anim}`);
       const news = unread(c);
@@ -1177,10 +1555,13 @@
       if (openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
-        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && !coarse);
+        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (!stepping || keepKeys)); // the reply box takes the cursor, phones too
         openCard = card;
-        if (appear) card.classList.add('in');
+        if (appear && !stepping) card.classList.add('in');
+        if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
+        stepping = keepKeys = false;
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
+        swipeDown(card, () => ((openId = null), render()));
         markSeen(news);
         quoted = c.anchor;
       }
@@ -1197,10 +1578,16 @@
       layer.append(pin);
       const float = el('div', { class: `float${anim}` });
       float.append(
+        el('div', { class: 'handle' }),
         composer({
           placeholder: 'add a comment',
           autofocus: true,
           onSubmit: async (name, text) => {
+            if (store.get('lab-hold') === '1') {
+              store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
+              draft = null;
+              return render();
+            }
             const { comment, edit } = await send({ name, text, anchor });
             if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
             comments.push(comment);
@@ -1212,6 +1599,7 @@
           },
         }),
       );
+      swipeDown(float, () => ((draft = null), render()));
       if (zone) placeCard(float, left + 14, zone.top + zone.height);
       else placeBeside(float, left, top);
     }
@@ -1287,6 +1675,10 @@
   const coarse = matchMedia('(pointer: coarse)').matches;
   function threadCard(c, fresh = new Set(), focus = false) {
     const card = el('div', { class: 'card' });
+    // The thread scrolls in .body; the step buttons and the reply box stay put in .foot (phones: the sheet's bottom).
+    const body = el('div', { class: 'body' });
+    const foot = el('div', { class: 'foot' });
+    card.append(el('div', { class: 'handle' }), body, foot);
     card.addEventListener('click', (e) => e.stopPropagation());
     const itemEl = (item, isNew = fresh.has(item.id)) => {
       const box = el('div', { class: 'item' });
@@ -1300,25 +1692,29 @@
     };
     const shown = new Set();
     for (const item of [c, ...repliesOf(c.id)]) {
-      card.append(itemEl(item));
+      body.append(itemEl(item));
       shown.add(item.id);
     }
     card.sync = () => {
       for (const r of repliesOf(c.id)) {
         if (shown.has(r.id)) continue;
         const items = card.querySelectorAll('.item');
-        items[items.length - 1].after(itemEl(r, true));
+        const added = itemEl(r, true);
+        added.classList.add('fresh');
+        items[items.length - 1].after(added);
         shown.add(r.id);
         markSeen([r]);
       }
     };
-    if (isAdmin) {
+    // Resolve: admins, and whoever started the thread (its key is kept in their browser). Delete: admins.
+    const ownKey = store.get(`lab-edit:${c.id}`);
+    if (isAdmin || ownKey) {
       const actions = el('div', { class: 'row' });
       const resolve = el('button', { class: 'btn', type: 'button' }, c.resolved ? 'reopen' : 'resolve');
       const failed = (btn) => (btn.textContent = 'failed, try again');
       resolve.addEventListener('click', async () => {
         try {
-          const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id });
+          const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id, ...(ownKey ? { edit: ownKey } : {}) });
           Object.assign(c, comment);
           render();
         } catch {
@@ -1354,8 +1750,8 @@
         openId = null;
         render();
       });
-      actions.append(resolve, del);
-      card.append(actions);
+      actions.append(...(isAdmin ? [resolve, del] : [resolve]));
+      body.append(actions);
       // A fix the quick model made: keep it (resolves) or put it back (the agent gets the pin). Local labs only.
       if (c.quick === 'done' && !c.resolved) {
         const verdict = el('div', { class: 'row' });
@@ -1374,10 +1770,40 @@
           }
         });
         verdict.append(keep, back);
-        card.append(verdict);
+        body.append(verdict);
       }
     }
-    card.append(
+    // Phones: step through the threads from the sheet (J and K on a keyboard).
+    if (coarse) {
+      const l = listed().length ? listed() : threads();
+      const at = l.findIndex((x) => x.id === c.id);
+      const fresh = threads().filter((x) => x.id !== c.id && unread(x).length);
+      const nav = el('div', { class: 'row nav' });
+      const step = (label, to) => {
+        const b = el('button', { class: 'btn', type: 'button' }, label);
+        b.addEventListener('pointerdown', (e) => e.preventDefault()); // an open keyboard stays open (see goTo)
+        b.addEventListener('click', () => goTo(to));
+        nav.append(b);
+      };
+      if (l.length > 1) step('‹ prev', l[(at + l.length - 1) % l.length]), step('next ›', l[(at + 1) % l.length]);
+      if (fresh.length) step(`new · ${fresh.length} ›`, fresh[0]);
+      if (nav.firstChild) foot.append(nav);
+      // The keyboard's ^ ˅ go to the field before or after the reply box: an invisible one on each side steps to the
+      // previous or next thread instead, with the keyboard staying up.
+      if (l.length > 1)
+        queueMicrotask(() => {
+          const box = foot.querySelector('.composer textarea');
+          if (!box) return;
+          const trap = (to) => {
+            const t = el('input', { class: 'trap', type: 'text', 'aria-hidden': 'true', autocomplete: 'off' });
+            t.addEventListener('focus', () => goTo(to, true));
+            return t;
+          };
+          box.before(trap(l[(at + l.length - 1) % l.length]));
+          box.after(trap(l[(at + 1) % l.length]));
+        });
+    }
+    foot.append(
       composer({
         placeholder: 'reply',
         autofocus: focus,
@@ -1389,7 +1815,10 @@
           // and the reply box keeps its focus for the next one.
           shown.add(comment.id);
           const items = card.querySelectorAll('.item');
-          items[items.length - 1].after(itemEl(comment, false));
+          const added = itemEl(comment, false);
+          added.classList.add('fresh');
+          items[items.length - 1].after(added);
+          body.scrollTop = body.scrollHeight; // the reply just sent is in view above the box
           return { keep: true };
         },
       }),
@@ -1420,6 +1849,28 @@
     store.set('lab-on', '1');
   };
   copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
+  listBtn.addEventListener('click', () => ((listOpen = !listOpen), (chatOpen = false), (hint.hidden = true), render()));
+  listEl.querySelector('.x').addEventListener('click', () => slideAway(listEl, () => ((listOpen = false), render())));
+  chatBtn.addEventListener('click', () => ((chatOpen = !chatOpen), (listOpen = false), (hint.hidden = true), render()));
+  chatEl.querySelector('.x').addEventListener('click', () => slideAway(chatEl, () => ((chatOpen = false), render())));
+  for (const b of listEl.querySelectorAll('[data-f]')) b.addEventListener('click', () => ((filter = b.dataset.f), drawList()));
+  holdBtn.addEventListener('click', () => (store.set('lab-hold', store.get('lab-hold') === '1' ? '' : '1'), drawList()));
+  sendBtn.addEventListener('click', async () => {
+    const list = held();
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const { comment, edit } = await send(list[i]);
+        if (edit) store.set(`lab-edit:${comment.id}`, edit);
+        comments.push(comment);
+        markSeen([comment]);
+        store.set(heldKey(), JSON.stringify(list.slice(i + 1)));
+      } catch {
+        sendBtn.textContent = 'send failed, try again';
+        return;
+      }
+    }
+    render();
+  });
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
@@ -1428,6 +1879,19 @@
     if ((e.key === 'c' || e.key === 'C' || e.code === 'KeyC') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!on);
+      return;
+    }
+    // The list's keys, with comments shown and nothing typed: L list, J/K next/previous, R reply, E resolve.
+    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkre]$/i.test(e.key)) {
+      const k = e.key.toLowerCase();
+      const l = listed();
+      const at = l.findIndex((c) => c.id === openId);
+      if (k === 'l') ((listOpen = !listOpen), drawList());
+      else if ((k === 'j' || k === 'k') && l.length) goTo(l[(at + (k === 'j' ? 1 : l.length - 1) + (at < 0 && k === 'k' ? 1 : 0)) % l.length]);
+      else if (k === 'r' && openId) root.querySelector('.card textarea')?.focus({ preventScroll: true });
+      else if (k === 'e' && openId && isAdmin) [...root.querySelectorAll('.card .btn')].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
+      else return;
+      e.preventDefault();
       return;
     }
     if (e.key === 'Escape' && (draft || openId)) {
@@ -1561,6 +2025,241 @@
   }, true);
 
   document.addEventListener('click', (e) => onPageClick(e));
+
+  // Phones. A tap only reads (it closes what's open); holding a finger still for half a second pins, anywhere, links
+  // and buttons too (the phone's Option-click). Text selected the phone's way gets a "Comment" chip that pins on it.
+  let lastTouch = 0;
+  let pinnedByHold = false; // a hold just made a pin: the lift that ends it puts the cursor in its box (phones open the keyboard only then)
+  const selChip = root.querySelector('.sel-chip');
+  const scrim = root.querySelector('.scrim');
+  // The open sheet (phones): a thread, a new comment, the list or the chat.
+  const openSheet = () => root.querySelector('.card:not(.out), .float:not(.out)') || (listOpen ? listEl : chatOpen ? chatEl : null);
+  const closeAll = () => {
+    draft = null;
+    openId = null;
+    listOpen = false;
+    chatOpen = false;
+    render();
+  };
+  // Text typed in a thread or a new comment would be lost, so the sheet stays and nudges instead; the chat's box keeps
+  // its text when closed, so the chat always closes.
+  const closeOrNudge = () => {
+    const node = openSheet();
+    if (![...root.querySelectorAll('textarea')].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
+    node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: 260, easing: 'ease-out' });
+  };
+  scrim.addEventListener('click', closeOrNudge);
+  scrim.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false }); // the page stays still behind it
+  // A swipe down on the dimmed page closes the sheet too, like a tap there.
+  let scrimY = null;
+  scrim.addEventListener('touchstart', (e) => (scrimY = e.touches[0].clientY), { passive: true });
+  scrim.addEventListener('touchend', (e) => {
+    const dy = scrimY === null ? 0 : e.changedTouches[0].clientY - scrimY;
+    scrimY = null;
+    if (dy > 30) closeOrNudge();
+  });
+  // Phones: a sheet slides down and away, the dim fading with it, then it closes.
+  // After a swipe it goes on at the finger's speed (ms), so it doesn't stop and restart.
+  function slideAway(node, close, ms = 0) {
+    if (!coarse || !node || still.matches) return close();
+    // With the keyboard up, the sheet fills what's above it; letting the keyboard go now would resize the sheet in
+    // the middle of its slide. So it slides down behind the keyboard, and the keyboard goes once it's gone.
+    if (!host.hasAttribute('data-kb')) root.activeElement?.blur();
+    node.style.pointerEvents = 'none'; // not inert: that would take the cursor away, and the keyboard with it, at once
+    node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : 'transform .22s cubic-bezier(.4, 0, 1, 1)';
+    scrim.style.transition = `opacity ${ms || 220}ms`;
+    node.style.transform = 'translateY(100%)';
+    scrim.style.opacity = '0';
+    setTimeout(() => {
+      root.activeElement?.blur();
+      close();
+      node.style.pointerEvents = '';
+      node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = '';
+    }, ms || 220);
+  }
+  // A sheet follows the finger like a native one: from the handle and the header, from any part that doesn't scroll,
+  // and from a list or the messages when they're already at the top and the finger pulls down (any other drag there
+  // scrolls them natively; overscroll-behavior keeps the page behind still). Up past where it sits it stretches a
+  // little and springs back. Let go fast, or past a third of its height, and it carries on down and away at the
+  // finger's speed; else it springs back, the dimmed page fading with it. Text boxes stay the browser's.
+  const grabArea = (t) => Boolean(t.closest?.('.handle, .tabs'));
+  const scrollerIn = (e, node) =>
+    e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === 'textarea' || /auto|scroll/.test(getComputedStyle(n).overflowY)));
+  const SPRING = 'cubic-bezier(.32,.72,0,1)'; // iOS's sheet curve
+  function swipeDown(node, close) {
+    if (!coarse) return;
+    let x0 = 0;
+    let y0 = 0;
+    let dy = 0;
+    let v = 0; // px/ms, from the last moves
+    let last = null;
+    let mode = null; // 'drag' the sheet, 'hold' (sideways on a part that doesn't scroll), 'off' (the browser's)
+    let box = null; // the scrolling part the touch began in
+    node.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      x0 = t.clientX;
+      y0 = t.clientY;
+      dy = v = 0;
+      last = { y: y0, at: e.timeStamp };
+      box = scrollerIn(e, node);
+      mode = e.touches.length > 1 || box?.localName === 'textarea' ? 'off' : null;
+    }, { passive: true });
+    node.addEventListener('touchmove', (e) => {
+      if (mode === 'off') return;
+      if (mode === 'hold') return e.preventDefault();
+      const t = e.touches[0];
+      if (!mode) {
+        const down = t.clientY - y0;
+        const across = t.clientX - x0;
+        if (!down && !across) return; // iOS sends moves for pressure changes too
+        const sideways = Math.abs(across) > Math.abs(down);
+        if (grabArea(e.target)) mode = sideways && e.target.closest('.tabs') ? 'off' : 'drag'; // the list's tabs scroll sideways
+        else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 ? 'drag' : 'off';
+        else mode = sideways ? 'hold' : 'drag';
+        if (mode === 'off') return;
+        if (mode === 'hold') return e.preventDefault();
+      }
+      e.preventDefault();
+      const raw = t.clientY - y0;
+      dy = raw >= 0 ? raw : -12 * Math.log1p(-raw / 24); // up: a short stretch that gets stiffer
+      if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
+      last = { y: t.clientY, at: e.timeStamp };
+      node.style.transition = scrim.style.transition = 'none';
+      node.style.transform = `translateY(${dy}px)`;
+      scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
+    }, { passive: false });
+    const end = (e) => {
+      const was = mode;
+      mode = null;
+      if (was !== 'drag') return;
+      if (e.timeStamp - last.at > 80) v = 0; // held still before letting go
+      const h = node.offsetHeight || innerHeight;
+      if (v > 0.4 || (dy > h / 3 && v > -0.1)) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+      node.style.transition = `transform 380ms ${SPRING}`;
+      scrim.style.transition = 'opacity 300ms';
+      node.style.transform = scrim.style.opacity = '';
+      setTimeout(() => (node.style.transition = scrim.style.transition = ''), 400);
+    };
+    node.addEventListener('touchend', end);
+    node.addEventListener('touchcancel', end);
+  }
+  // iOS lays fixed things out on the page's full height while the keyboard covers its bottom part (and Safari may
+  // pan the view). Measure what is hidden below what the screen shows, from a fixed probe the height of the layout,
+  // so the sheets keep their box just above the keyboard and fit the rest (see --lab-kb and --lab-vh in the CSS).
+  const vv = window.visualViewport;
+  if (coarse && vv) {
+    const probe = el('i', { style: 'position:fixed;top:0;bottom:0;left:0;width:0;visibility:hidden;pointer-events:none' });
+    // Safari 26 with the keyboard up shows the page in a strip above the keyboard, around its address pill, where it
+    // draws nothing fixed: the sheet and its dimming stop above it. A block in the page itself (not fixed) covers it.
+    const strip = el('i', { style: 'position:absolute;left:0;width:100vw;display:none;background:var(--_bg);z-index:3;pointer-events:none' });
+    root.append(probe, strip);
+    let fitted = '';
+    const fit = () => {
+      const zoomed = Math.abs(vv.scale - 1) > 0.01; // pinch-zoomed: that isn't a keyboard
+      const r = probe.getBoundingClientRect();
+      const seen = vv.offsetTop + vv.height; // the bottom of what the screen shows
+      const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen));
+      const gap = zoomed ? 0 : Math.max(0, Math.round(seen - r.bottom));
+      const vh = zoomed ? 0 : Math.round(vv.height);
+      // Safari 26 doesn't count as "keyboard up" here (its fixed layer ends above the keyboard by itself): the sheet stays
+      // a half sheet resting on that layer, which sits right, and the strip below it is covered.
+      const sheet = host.hasAttribute('data-sheet');
+      const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY}`;
+      if (key === fitted) return;
+      fitted = key;
+      host.style.setProperty('--lab-kb', `${kb}px`);
+      host.style.setProperty('--lab-top', `${zoomed ? 0 : Math.round(vv.offsetTop)}px`);
+      if (vh) host.style.setProperty('--lab-vh', `${vh}px`);
+      else host.style.removeProperty('--lab-vh');
+      host.toggleAttribute('data-kb', kb > 60);
+      strip.style.display = sheet && gap ? 'block' : 'none';
+      strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
+      strip.style.height = `${gap}px`;
+    };
+    refit = fit;
+    root.addEventListener('focusin', () => setTimeout(fit, 50));
+    root.addEventListener('focusout', () => setTimeout(fit, 50));
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    fit();
+  }
+  // The chat stays at its newest message while it gets shorter (the keyboard coming up, the reply strip), unless
+  // you scrolled back to read.
+  const msgsEl = chatEl.querySelector('.msgs');
+  let stick = true;
+  msgsEl.addEventListener('scroll', () => (stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48), { passive: true });
+  if ('ResizeObserver' in window) new ResizeObserver(() => stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
+  swipeDown(listEl, () => ((listOpen = false), render()));
+  swipeDown(chatEl, () => ((chatOpen = false), render()));
+  let press = null;
+  const stopPress = () => press && (clearTimeout(press.timer), (press = null));
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      stopPress();
+      pinnedByHold = false;
+      if (e.pointerType === 'touch') lastTouch = Date.now();
+      if (e.pointerType !== 'touch' || draft || !(e.target instanceof Element) || e.composedPath().includes(host) || e.target.closest(OFF)) return;
+      const { clientX: x, clientY: y } = e;
+      press = {
+        x,
+        y,
+        timer: setTimeout(() => {
+          press = null;
+          pinnedByHold = true;
+          navigator.vibrate?.(8);
+          getSelection?.()?.removeAllRanges();
+          afterDrag = true; // the lift that ends the hold isn't a tap on the link
+          setTimeout(() => (afterDrag = false), 800);
+          showAgain();
+          openId = null;
+          draft = { anchor: anchorAt(x, y) };
+          render();
+        }, 500),
+      };
+    },
+    true,
+  );
+  document.addEventListener('pointermove', (e) => press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10 && stopPress(), true);
+  document.addEventListener('pointerup', (e) => {
+    if (e.pointerType === 'touch') lastTouch = Date.now();
+    stopPress();
+    if (pinnedByHold) root.querySelector('.float textarea')?.focus({ preventScroll: true });
+  }, true);
+  // The lift after a hold: no click follows it (it would land on the dimmed page and take the cursor away), and the
+  // touch's own end puts the cursor in the box, so the phone opens its keyboard.
+  document.addEventListener('touchend', (e) => {
+    if (!pinnedByHold) return;
+    pinnedByHold = false;
+    e.preventDefault();
+    root.querySelector('.float textarea')?.focus({ preventScroll: true });
+  }, { capture: true, passive: false });
+  document.addEventListener('pointercancel', stopPress, true);
+  addEventListener('scroll', stopPress, { passive: true, capture: true });
+  document.addEventListener('contextmenu', (e) => (press || afterDrag) && e.preventDefault(), true);
+  let selRect = null;
+  document.addEventListener('selectionchange', () => {
+    const sel = getSelection?.();
+    const range = sel?.rangeCount && sel.getRangeAt(0);
+    const text = String(sel || '').trim();
+    const inside = range && host.contains(range.commonAncestorContainer);
+    selRect = coarse && on && !draft && text && range && !inside ? range.getClientRects()[0] || range.getBoundingClientRect() : null;
+    selChip.hidden = !selRect;
+    if (!selRect) return;
+    const below = selRect.bottom + 52 < innerHeight;
+    selChip.style.left = `${Math.min(Math.max(selRect.left + selRect.width / 2, 60), innerWidth - 60)}px`;
+    selChip.style.top = `${below ? selRect.bottom + 10 : Math.max(selRect.top - 46, 8)}px`;
+  });
+  selChip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!selRect) return;
+    const { left, top, height } = selRect;
+    getSelection?.()?.removeAllRanges();
+    selChip.hidden = true;
+    openId = null;
+    draft = { anchor: anchorAt(left + 2, top + height / 2) };
+    render();
+  });
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
     if (draft || openId) {
@@ -1571,6 +2270,7 @@
       return;
     }
     if ((!on && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if (lastTouch && Date.now() - lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || (e.target instanceof Element && e.target.closest(INTERACTIVE))) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -1583,7 +2283,7 @@
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   const movePins = () => {
-    const list = threads();
+    const list = threads().filter((c) => c.anchor?.kind !== 'page');
     if (!on || openId || list.length !== pinsById.size) return render();
     const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
     if (places.some(([pin]) => !pin)) return render();
@@ -1649,6 +2349,16 @@
   const PIN_CURSOR =
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M3 23V12.5a9.5 9.5 0 1 1 9.5 9.5H4z' fill='black' stroke='white' stroke-width='2'/%3E%3C/svg%3E\") 3 23, crosshair";
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
+  // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
+  fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
+  // Phones: and the page behind stays put, even when the part of the sheet you drag on has nothing to scroll.
+  fonts.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
+  // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
+  fonts.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
+  // Phones: with comments on, a hold is labfb's (a pin), not the start of a text selection: iOS would cancel the touch
+  // for its selection, and the lift that lets the box open the keyboard would never come.
+  // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
+  fonts.textContent += `@media (pointer: coarse) { html.lab-pinning body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
   fonts.textContent += `html.lab-pinning body, html.lab-pinning body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${PIN_CURSOR}; }`;
   // Holding Option (Alt) shows the pin cursor on links and controls too, since Option-click pins there.
   fonts.textContent += `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${PIN_CURSOR} !important; }`;
@@ -1684,15 +2394,18 @@
       if (kept !== null) {
         sessionStorage.removeItem(key);
         if (kept.open) openId = kept.open;
+        if (kept.list) (listOpen = true), (filter = ['new', 'open', 'resolved', 'mine'].includes(kept.filter) ? kept.filter : filter);
+        if (kept.chat) chatOpen = true;
         addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
       }
     } catch {}
-    // Hold a reload while a comment is being started or text is typed; a focused, empty reply box doesn't count.
-    const busy = () => draft || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
+    // Hold a reload while anything is open (a thread, a new comment, the list) or a box has focus or text: the page
+    // reloads once you close it, where you were.
+    const busy = () => draft || openId || listOpen || chatOpen || root.activeElement || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
     const reload = () => {
       if (busy()) return setTimeout(reload, 500);
       try {
-        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: openId }));
+        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: openId, list: listOpen, filter, chat: chatOpen }));
       } catch {}
       location.reload();
     };
@@ -1734,6 +2447,10 @@
         else if (mode === 'working') who.replaceChildren(agent, span('is working'), ...tag);
         else who.replaceChildren(span('no agent listening'));
         who.classList.toggle('idle', mode === 'away');
+        who.classList.toggle('working', mode === 'working');
+        listBtn.dataset.agent = mode;
+        listBtn.title = who.textContent;
+        who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
         // No link, but a resume command (codex resume …): a tap copies it.

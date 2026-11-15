@@ -83,3 +83,12 @@ test('the agent text: an area lists what it holds, and locally the answer is a r
   assert.match(text, /^to answer: .* reply <id> "what you did" \[--resolve\]/m);
   assert.doesNotMatch(text, /to answer: POST/);
 });
+
+test('a comment about the page as a whole has no spot in the agent text', async () => {
+  await up();
+  await post({ page: '/index', name: 'Leo', text: 'the whole page feels too airy', anchor: { kind: 'page', width: 390, height: 664, dpr: 2 } });
+  const text = await (await fetch(B + '/_lab/agent/index')).text();
+  const block = text.split('\n## ').find((b) => b.includes('too airy'));
+  assert.match(block, /^on: the page as a whole \(no spot\)$/m);
+  assert.doesNotMatch(block, /^(where on element|selector \(at comment time\)):/m);
+});
