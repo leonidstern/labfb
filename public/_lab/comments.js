@@ -290,7 +290,7 @@
       .bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; line-height: 1; color: var(--_fg); }
       .bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
       .bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
-      .bar button.go-btn.on kbd { background: rgba(255, 255, 255, .22); color: #fff !important; }
+      .bar button.go-btn.on kbd { color: #fff !important; }
       .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 500; color: var(--_muted); }
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
       /* The left side: who's listening, then copy link; the right side is the bar. */
@@ -312,8 +312,10 @@
       @keyframes lab-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.7); opacity: 0; } }
       @keyframes lab-blink { 50% { opacity: .2; } }
       .listener:not([data-copy=""])[data-copy] { cursor: copy; }
-      kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: var(--_r-s); text-align: center;
-            background: var(--_soft); color: var(--_muted) !important; }
+      /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
+      kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
+            color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
+      .bar:hover kbd { opacity: .75; }
       .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
               box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
               letter-spacing: .005em; animation: lab-fade .2s ease-out; }
