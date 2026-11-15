@@ -406,8 +406,9 @@
         .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
                         max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: var(--_radius) var(--_radius) 0 0; padding: 8px 0 0; z-index: 3; }
         .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
-        .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 4px; margin-right: 0; }
-        .card > .foot, .float > .composer { flex: none; padding: 0 14px var(--_pb); }
+        /* The same 12 px sides as the chat's, so a thread's reply box sits exactly where the chat's message box does. */
+        .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 4px; margin-right: 0; }
+        .card > .foot, .float > .composer { flex: none; padding: 0 12px var(--_pb); }
         .card > .foot { margin-top: auto; }
         .card .composer { margin-top: 10px; }
         .card .nav { margin-top: 2px; gap: 20px; }
