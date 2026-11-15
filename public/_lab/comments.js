@@ -2243,7 +2243,7 @@
     const top = (c) => position(c.anchor || {}).top;
     fresh.sort((a, b) => top(a) - top(b));
     const at = fresh.findIndex((c) => c.id === openId);
-    goTo(fresh[at < 0 ? (dir > 0 ? 0 : fresh.length - 1) : (at + dir + fresh.length) % fresh.length]);
+    goTo(fresh[at < 0 ? (dir > 0 ? 0 : fresh.length - 1) : (at + dir + fresh.length) % fresh.length], !coarse); // the reply box takes the cursor (not on phones: no keyboard popping up)
   };
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
