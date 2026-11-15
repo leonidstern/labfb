@@ -145,14 +145,14 @@ test('a "Done" that changed no file counts as a pass: no reply, the session hear
   assert.match(log(), /said done but changed no file/);
 });
 
-test('a Claude model named in a pin needs the claude command: with only codex installed, the pin goes to the session', { skip: process.platform === 'win32' }, async () => {
+test('a Claude model named in a pin needs the claude command: with only codex installed, a note says so and the session takes it', { skip: process.platform === 'win32' }, async () => {
   const dir = site('named');
   const bin = tmp('bin');
   fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\ncat >/dev/null\necho x >> note.txt\necho "Done: codex did it"\n', { mode: 0o755 });
   const { B } = await lab(dir, [], { PATH: `${bin}:/usr/bin:/bin` });
-  const id = await pin(B, 'make the title red, use opus');
-  await new Promise((r) => setTimeout(r, 1500));
-  assert.deepEqual(await replies(B, id, false), []);
+  const [r] = await replies(B, await pin(B, 'make the title red, use opus'));
+  assert.equal(r?.name, 'labfb'); // not done by codex: a note, and the session takes it
+  assert.match(r?.text, /claude isn't installed/);
 });
 
 test('MCP: the client\'s name signs replies when the agent\'s own variables are missing', async () => {
@@ -180,4 +180,101 @@ test('MCP: the client\'s name signs replies when the agent\'s own variables are 
   const [r] = await replies(B, id);
   assert.equal(r?.name, 'Codex');
   mcp.kill();
+});
+
+// ---------- a pin names the tool or the model ----------
+test('pins name a tool or a model: it gets them; "@<listening agent>" goes to the session; ordinary words stay put', async () => {
+  const dir = site('route');
+  // LAB_FAST_CMD stands in for every tool: it echoes what it was asked to use.
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo x >> note.txt; echo "Done: tool=$LAB_TOOL model=$LAB_MODEL"' });
+  const cases = [
+    ['make it red, use fable', 'Done: tool=claude model=fable'],
+    ['use gpt-5-codex for this', 'Done: tool=codex model=gpt-5-codex'],
+    ['@codex make it red', 'Done: tool=codex model='],
+    ['gemini: tighten this', 'Done: tool=antigravity model='],
+    ['use gemini-2.5-pro here', 'Done: tool=antigravity model=gemini-2.5-pro'],
+    ['@cursor make it red', 'Done: tool=cursor model='],
+    ['model:o3 rewrite this', 'Done: tool= model=o3'],
+    ['use cursor: pointer here', 'Done: tool= model=haiku'], // a CSS request, not Cursor
+    ['make the title green', 'Done: tool= model=haiku'],
+  ];
+  for (const [text, want] of cases) {
+    const [r] = await replies(B, await pin(B, text));
+    assert.equal(r?.text, want, text);
+  }
+  // Nobody listening counts as Claude, as before: "@claude" goes to the session.
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(await replies(B, await pin(B, '@claude make it red'), false), []);
+});
+
+test('a pin naming a tool that is not installed says so on the pin, and the session takes it', { skip: process.platform === 'win32' }, async () => {
+  const dir = site('missing');
+  const bin = tmp('bin');
+  fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\ncat >/dev/null\necho x >> note.txt\necho "Done: codex"\n', { mode: 0o755 });
+  const { B } = await lab(dir, [], { PATH: `${bin}:/usr/bin:/bin` });
+  const [r] = await replies(B, await pin(B, '@cursor make it red'));
+  assert.equal(r?.name, 'labfb');
+  assert.match(r?.text, /cursor-agent isn't installed on this computer/);
+  const [c] = await replies(B, await pin(B, 'use gpt-5 to make it red'));
+  assert.equal(c?.name, 'Codex · gpt-5');
+});
+
+// ---------- plugin files and the MCP server's folder ----------
+test('the plugin files agree with the package (name, version) and declare the MCP server', () => {
+  const read = (f) => JSON.parse(fs.readFileSync(fileURLToPath(new URL(`../${f}`, import.meta.url)), 'utf8'));
+  const { version } = read('package.json');
+  for (const f of ['plugin.json', '.claude-plugin/plugin.json', '.cursor-plugin/plugin.json']) {
+    assert.equal(read(f).name, 'labfb', f);
+    assert.equal(read(f).version, version, `${f} is at ${version}`);
+  }
+  assert.equal(read('plugin.json').$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json');
+  const mcp = read('mcp.json');
+  assert.equal(mcp.$schema, 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json');
+  assert.deepEqual(mcp.mcpServers.labfb, { type: 'stdio', command: 'npx', args: ['-y', '@leonidstern/labfb@latest', 'mcp'] });
+  assert.equal(read('.agents/plugins/marketplace.json').plugins[0].source.path, './');
+});
+
+test('MCP started in a plugin folder finds the project: by the client root, the shell folder, or dir', async () => {
+  const dir = site('proj');
+  const { B } = await lab(dir);
+  await pin(B, 'project pin');
+  const pluginDir = tmp('plugin');
+  const start = (env) => {
+    const mcp = spawn(process.execPath, [LAB, 'mcp'], { cwd: pluginDir, env: { ...clean, LABFB_HOME: home, ...env } });
+    kids.push(mcp);
+    let buf = '';
+    const answers = new Map();
+    let rootsAsked = null;
+    mcp.stdout.on('data', (d) => {
+      buf += d;
+      for (let i = buf.indexOf('\n'); i >= 0; i = buf.indexOf('\n')) {
+        const m = JSON.parse(buf.slice(0, i));
+        buf = buf.slice(i + 1);
+        if (m.method === 'roots/list') rootsAsked?.(m);
+        else answers.get(m.id)?.(m);
+      }
+    });
+    let n = 1;
+    const ask = (method, params) => new Promise((done) => { const k = n++; answers.set(k, done); mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: k, method, params }) + '\n'); });
+    const roots = new Promise((r) => (rootsAsked = r));
+    return { mcp, ask, roots };
+  };
+  const says = async (ask, args = {}) => (await ask('tools/call', { name: 'comments', arguments: args })).result.content[0].text;
+
+  // 1. The client gives its root.
+  const a = start({ PWD: pluginDir });
+  await a.ask('initialize', { protocolVersion: '2025-06-18', capabilities: { roots: {} }, clientInfo: { name: 'codex-mcp-client', version: '1' } });
+  const q = await a.roots;
+  a.mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: q.id, result: { roots: [{ uri: `file://${dir}`, name: 'proj' }] } }) + '\n');
+  await new Promise((r) => setTimeout(r, 200));
+  assert.match(await says(a.ask), /project pin/);
+  // 2. No roots: the shell's folder (PWD) has the lab.
+  const b = start({ PWD: dir });
+  await b.ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
+  assert.match(await says(b.ask), /project pin/);
+  // 3. Neither: the tool's dir.
+  const c = start({ PWD: pluginDir });
+  await c.ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
+  assert.match(await says(c.ask), /No lab in/);
+  assert.match(await says(c.ask, { dir }), /project pin/);
 });

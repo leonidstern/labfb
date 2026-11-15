@@ -90,7 +90,7 @@ Without Claude, run `npx @leonidstern/labfb@latest` in your project:
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
 - **One lab per project:** `npx @leonidstern/labfb list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
 - **This project's pages:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx @leonidstern/labfb add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
-- **Pick the model in the pin:** write "use fable", "@opus" or "sonnet: …" and that model makes the change. Start with `!` (or write `@claude`) to send it straight to the Claude session. Other pins go to the quick model first.
+- **Pick the tool or model in the pin:** write "use fable", "@opus", "use gpt-5", "@codex", "gemini: …", "@cursor" or "model:<name>" and that tool and model makes the change. Start with `!` (or name the agent that is listening, like `@claude`) to send it straight to the session. A tool that isn't installed says so on the pin, and the session takes it. Other pins go to the quick model first.
 - **MCP (optional):** `npx @leonidstern/labfb@latest mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code, once for all your projects: `claude mcp add -s user labfb -- npx @leonidstern/labfb@latest mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
 - **Options:** `--no-fast` turns off the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
@@ -99,7 +99,12 @@ Without Claude, run `npx @leonidstern/labfb@latest` in your project:
 
 labfb works with any agent that can use a terminal or MCP. Comments are plain text, the local loop is a few shell commands, and the skill is in the shared Agent Skills format.
 
-- **The skill:** `npx skills add leonidstern/labfb` puts it where your agent reads skills (`.agents/skills/` for most). Then "start labfb" works as in Claude. To point every session at it, add to your `AGENTS.md`:
+- **The plugin (skill + MCP server):**
+  - Codex: `codex plugin marketplace add leonidstern/labfb`, then `codex plugin add labfb@leonidstern`.
+  - Cursor: add the repo as a plugin (Dashboard → Plugins & MCPs → Import from Repo), or copy it to `~/.cursor/plugins/local/labfb`.
+  - Copilot CLI: `copilot plugin marketplace add leonidstern/labfb` (it reads the Claude plugin files).
+  - Others with Agent Plugins: `plugin.json` and `mcp.json` at the repo root.
+- **Just the skill:** `npx skills add leonidstern/labfb` puts it where your agent reads skills (`.agents/skills/` for most). Then "start labfb" works as in Claude. To point every session at it, add to your `AGENTS.md`:
   ```md
   Pin comments on pages: labfb. Say "start labfb" to listen; see .agents/skills/labfb/SKILL.md.
   ```
@@ -126,7 +131,7 @@ LAB_FAST_CMD='./scripts/quick-edit.sh' npx @leonidstern/labfb@latest   # start, 
 npx @leonidstern/labfb reply <id> "Done: …"                           # the agent answers on a pin
 ```
 
-Still Claude-only: the Claude Code plugin (other agents use the skill), and Claude model names in pins ("use fable", "@opus"), which need the `claude` command; without it those pins go to the session.
+In a pin, Claude models ("use fable", "@opus") need the `claude` command, GPT models (`gpt-…`) need `codex`, and Gemini models need `agy`. The MCP server finds the project from the client's root folder or the shell's folder; if it can't, its tools take a `dir`.
 
 ## Updating
 

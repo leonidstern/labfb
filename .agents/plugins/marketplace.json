@@ -1,0 +1,11 @@
+{
+  "name": "leonidstern",
+  "plugins": [
+    {
+      "name": "labfb",
+      "source": { "source": "local", "path": "./" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}
