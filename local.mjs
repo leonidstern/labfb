@@ -933,6 +933,24 @@ const sameOrigin = (req) => {
   }
 };
 const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+// --wifi listens on every address, and a Mac on IPv6 has public ones (the Host check is easy to fake, so it isn't a lock):
+// only this computer and devices on the local network get in, whatever the router's firewall lets through.
+const nearby = (req) => {
+  const a = String(req.socket.remoteAddress || '').toLowerCase().replace(/^::ffff:/, '');
+  if (a === '::1' || /^127\./.test(a)) return true;
+  if (!WIFI) return false;
+  return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a));
+};
+// A phone on the same wifi may come from its public IPv6 address: it shares this Mac's /64 network prefix.
+const prefix64 = (a) => {
+  if (!a.includes(':')) return '';
+  const [head, tail = ''] = a.split('::');
+  const h = head ? head.split(':') : [], t = tail ? tail.split(':') : [];
+  const all = a.includes('::') ? [...h, ...Array(8 - h.length - t.length).fill('0'), ...t] : h;
+  return all.slice(0, 4).map((g) => parseInt(g, 16)).join(':');
+};
+const lanPrefixes = () => new Set(Object.values(os.networkInterfaces()).flat()
+  .filter((n) => n && n.family === 'IPv6' && !n.internal && /^[23]/.test(n.address)).map((n) => prefix64(n.address.toLowerCase())));
 const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
 const sessionFrom = (req) => {
   try {
@@ -1624,7 +1642,7 @@ const listing = (res, dir, urlPath) => {
 const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
-    if (!allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
+    if (!nearby(req) || !allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
     if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !/^application\/json/.test(req.headers['content-type'] || '')))
       return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
     const pathname = decodeURIComponent(url.pathname);
@@ -1911,7 +1929,7 @@ function proxyTo(req, res, url) {
 
 const server = http.createServer(handler);
 server.on('upgrade', (req, socket, head) => {
-  if (!PROXY || !allowedHost(req.headers.host)) return socket.destroy();
+  if (!PROXY || !nearby(req) || !allowedHost(req.headers.host)) return socket.destroy();
   const up = net.connect(Number(PROXY.port) || 80, PROXY.hostname, () => {
     const lines = [];
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
