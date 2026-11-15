@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- A comment on selected words puts its pin on the last selected letter, where the selection ended (on the first when the selection runs over several items).
 - A pin the agent is on (handed to it and not answered yet, or answered "On it") has a thin green ring turning around it.
 - The list has a "work" tab: Now (handed to the agent and not answered yet, or answered "On it"), Next (sent, not handed yet) and Done today, for this page's pins and chat.
 - Drawn areas are green with no dark ring, like quoted words; a quote that runs over several items is found and lit.

@@ -2459,8 +2459,16 @@
     const range = sel?.rangeCount && sel.getRangeAt(0);
     const exact = String(sel || '').replace(/\s+/g, ' ').trim();
     if (!range || !exact || host.contains(range.commonAncestorContainer)) return false;
-    const box = range.getClientRects()[0] || range.getBoundingClientRect();
-    const anchor = anchorAt(box.left + 2, box.top + box.height / 2);
+    // The pin sits on the last selected letter (where the selection ended), when that's in the same element as its
+    // first; a selection over several items keeps it on the first, so the pin finds its place again.
+    const rects = range.getClientRects();
+    const first = rects[0] || range.getBoundingClientRect();
+    const last = rects[rects.length - 1] || first;
+    const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+    const endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
+    const anchor = startEl && (startEl === endEl || startEl.contains(endEl))
+      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2)
+      : anchorAt(first.left + 2, first.top + first.height / 2);
     const at = range.commonAncestorContainer;
     const block = (at.nodeType === 1 ? at : at.parentElement)?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div') || document.body;
     const side = (a, b) => {
