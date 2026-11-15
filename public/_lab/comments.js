@@ -297,7 +297,7 @@
       .bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
       .bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
       .bar button.go-btn.on kbd { background: rgba(255, 255, 255, .22); color: #fff !important; }
-      .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--_accent); }
+      .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 500; color: var(--_muted); }
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
       /* The left side: who's listening, then copy link; the right side is the bar. */
       .left { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
