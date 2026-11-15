@@ -123,7 +123,7 @@ test('the quick step uses an installed agent tool (codex), signs with its name, 
   const bin = tmp('bin');
   // A stand-in codex: records its arguments, edits a file, answers Done.
   fs.writeFileSync(path.join(bin, 'codex'), `#!/bin/sh\necho "$@" > "${bin}/args"\ncat >/dev/null\necho changed >> note.txt\necho "Done: changed it"\n`, { mode: 0o755 });
-  const { B, log } = await lab(dir, [], { PATH: `${bin}:/usr/bin:/bin` });
+  const { B, log } = await lab(dir, ['--fast'], { PATH: `${bin}:/usr/bin:/bin` });
   assert.match(log(), /quick model on \(codex\)/);
   const id = await pin(B, 'make the title red');
   const [r] = await replies(B, id);
@@ -138,7 +138,7 @@ test('a "Done" that changed no file counts as a pass: no reply, the session hear
   const dir = site('nochange');
   const bin = tmp('bin');
   fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\ncat >/dev/null\necho "Done: changed it"\n', { mode: 0o755 });
-  const { B, log } = await lab(dir, [], { PATH: `${bin}:/usr/bin:/bin` });
+  const { B, log } = await lab(dir, ['--fast'], { PATH: `${bin}:/usr/bin:/bin` });
   const id = await pin(B, 'make the title red');
   await new Promise((r) => setTimeout(r, 1500));
   assert.deepEqual(await replies(B, id, false), []);

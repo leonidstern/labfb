@@ -26,12 +26,12 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       and reloads when files change. The folder is this one unless you name another.
       --wifi lets phones and laptops on the same wifi comment too (as guests). Use it at home only.
       A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
-      Quick model: when an agent's command is installed (claude, codex, cursor-agent, opencode, copilot, amp, agy),
+      Quick model (--fast): when an agent's command is installed (claude, codex, cursor-agent, opencode, copilot, amp, agy),
       it tries each new comment from this computer first, in its one-shot mode (Claude: haiku): the listening agent's
       own tool when it has one. Small, clear changes it makes and answers "Done: …" on the pin; anything else goes
       to the session as usual, with the quick model's reason. A change over 3 files or 40 lines, or a pass, is put back.
       Each decision is logged in .lab/quick.jsonl.
-      LAB_FAST_AGENT=codex picks the tool, LAB_FAST_MODEL the model. --no-fast turns it off.
+      It's off unless asked for: --fast turns it on. LAB_FAST_AGENT=codex picks the tool, LAB_FAST_MODEL the model.
       A pin can pick the tool or model in its own words: "@fable", "use opus", "use gpt-5", "@codex", "gemini: …",
       "@cursor", "model:<name>". That tool and model makes the change, whatever its size. "!" at the start, or naming
       the agent that is listening ("@claude"), sends the pin straight to the session.
@@ -1286,7 +1286,9 @@ function quickTool() {
   if (INSTALLED.includes(session?.kind)) return session.kind;
   return INSTALLED[INSTALLED.indexOf('claude')] || INSTALLED[0] || '';
 }
-const FAST = !opts['no-fast'] && Boolean(opts.fast || process.env.LAB_FAST_CMD || INSTALLED.length);
+// Parked by default (Leo, 15 Nov: 26 tries on a day's pins, 0 kept, each pin ~10 s later): --fast (or LAB_FAST_CMD) turns
+// it on. A pin that names a tool or model ("use haiku") still goes to it either way.
+const FAST = !opts['no-fast'] && Boolean(opts.fast || process.env.LAB_FAST_CMD);
 // Which tool or model a pin asks for, in its own words: "@fable", "use opus", "with codex", "ask gpt-5", "gemini: …",
 // "@cursor", "model:o3", or the name alone at the start or end ("fable: tighten this"). Other mentions don't count, so
 // a page about fables or "Opus 23" stays put. Tool names that are ordinary words too (cursor, amp, copilot, claude)
@@ -1924,7 +1926,7 @@ const handler = async (req, res) => {
             if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined }));
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
-          if (FAST && !agent && !stored.parent && stored.from === 'this computer' && !routeFor(stored.text).session) {
+          if ((FAST || routeFor(stored.text).named) && !opts['no-fast'] && !agent && !stored.parent && stored.from === 'this computer' && !routeFor(stored.text).session) {
             const skip = !routeFor(stored.text).named && quickSkip(stored);
             if (!skip) quick(key.slice('lab:comments:'.length), stored);
             else fs.appendFileSync(path.join(LAB, 'quick.jsonl'), JSON.stringify({ at: new Date().toISOString(), page: key.slice('lab:comments:'.length), id: stored.id, text: String(stored.text).slice(0, 120), result: 'direct', note: skip }) + '\n');
@@ -2095,7 +2097,8 @@ server.on('listening', async () => {
   console.log(`[lab] your agent: run \`${CMD} wait\` in the background from ${ROOT}; it ends with the next comment.`);
   const quickName = process.env.LAB_FAST_CMD ? 'LAB_FAST_CMD' : AGENTS[quickTool()]?.cli;
   console.log(FAST && quickName ? `[lab] quick model on (${quickName}): small changes from this computer are tried first (--no-fast turns it off)`
-    : '[lab] quick model off (it needs an agent\'s command: claude, codex, cursor-agent, opencode, copilot, amp or agy)');
+    : FAST ? '[lab] quick model off (it needs an agent\'s command: claude, codex, cursor-agent, opencode, copilot, amp or agy)'
+      : '[lab] quick model off (--fast tries small changes with a quick model first)');
   // Open a page, not a list of folders: the project's main page when there's no index.html at the top.
   const first = !PROXY && !fs.existsSync(path.join(ROOT, 'index.html')) ? pagesUnder(ROOT)[0] : null;
   const start = first ? urlOf(first) : '/';

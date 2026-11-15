@@ -33,8 +33,11 @@ const start = (args, PATH) =>
   });
 const plain = process.platform === 'win32' ? process.env.PATH : '/usr/bin:/bin';
 
-test('on when the claude command is installed', async () => {
-  assert.match(await start([], BIN + path.delimiter + plain), /quick model on/);
+test('off by default, even with the claude command installed', async () => {
+  assert.match(await start([], BIN + path.delimiter + plain), /quick model off \(--fast/);
+});
+test('--fast turns it on when the claude command is installed', async () => {
+  assert.match(await start(['--fast'], BIN + path.delimiter + plain), /quick model on/);
 });
 test('--no-fast turns it off', async () => {
   assert.match(await start(['--no-fast'], BIN + path.delimiter + plain), /quick model off/);
