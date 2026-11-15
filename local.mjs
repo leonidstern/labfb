@@ -1167,7 +1167,33 @@ server.on('error', (e) => {
   if (e.code !== 'EADDRINUSE' || fixed || PORT >= Number(opts.port || 4400) + 20) die(`[lab] could not start: ${e.message}`);
   server.listen(++PORT, WIFI ? undefined : '127.0.0.1');
 });
+// A newer labfb on npm: said once when the lab starts. Checked at most once a day (kept in ~/.labfb/latest.json)
+// with a short timeout, never in CI or with LABFB_NO_UPDATE_CHECK=1. The request names only the package.
+async function newerVersion() {
+  if (process.env.LABFB_NO_UPDATE_CHECK || process.env.CI) return null;
+  const file = path.join(path.dirname(REGISTRY), 'latest.json');
+  let latest = null;
+  try {
+    const kept = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (Date.now() - kept.at < 864e5) latest = kept.version;
+  } catch {}
+  if (!latest) {
+    try {
+      const res = await fetch('https://registry.npmjs.org/@leonidstern/labfb/latest', { signal: AbortSignal.timeout(1500) });
+      latest = (await res.json()).version;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ version: latest, at: Date.now() }));
+    } catch {
+      return null;
+    }
+  }
+  const parts = (v) => String(v).split('-')[0].split('.').map(Number);
+  const [a, b] = [parts(latest), parts(VERSION)];
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i] ? latest : null;
+  return null;
+}
 server.on('listening', async () => {
+  newerVersion().then((v) => v && console.log(`[lab] labfb ${v} is out (you have ${VERSION}): npx @leonidstern/labfb@latest`));
   origin = `http://localhost:${PORT}`;
   saveServer();
   register();
