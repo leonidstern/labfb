@@ -1687,6 +1687,14 @@
       const tall = bottom - pinTop + 28;
       top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
     }
+    // A pin near the page's end can't scroll up into the free part above a phone's sheet: the page gets room below its
+    // end while the sheet is open (it went behind the sheet before).
+    if (coarse) {
+      const de = document.documentElement;
+      const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
+      const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
+      de.style.setProperty('--lab-room', `${room}px`);
+    }
     scrollTo({ top: Math.max(0, top), behavior: still.matches ? 'auto' : 'smooth' });
   };
   // Done: resolved, fixed by the quick model, or answered "Done: …" by someone other than its author (the agent).
@@ -3398,6 +3406,7 @@
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
+  fonts.textContent += "html.lab-sheet body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
   // Phones: and the page behind stays put, even when the part of the sheet you drag on has nothing to scroll.
   fonts.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
