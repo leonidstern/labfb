@@ -300,17 +300,16 @@ const until = async (ok, n = 60) => {
   for (let i = 0; i < n && !(await ok()); i++) await new Promise((r) => setTimeout(r, 100));
 };
 
-test('a pass puts back what the quick tool changed, and the log says so', async () => {
+test('a pass leaves what changed during it (maybe the session\'s edit), and the log names it', async () => {
   const dir = site('undo-pass');
-  const page = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
   const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "<p>half done</p>" >> index.html; echo "PASS: needs a choice"' });
   await pin(B, 'make the title red');
   await until(() => quickLog(dir).length > 0);
-  assert.equal(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), page, 'index.html is as it was');
+  assert.match(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), /half done/, 'not put back');
   const [l] = quickLog(dir);
-  assert.equal(l.result, 'undone');
+  assert.equal(l.result, 'pass');
   assert.deepEqual(l.files, ['index.html']);
-  assert.equal(l.note, 'needs a choice');
+  assert.match(l.note, /^needs a choice; files changed during its try were left as they are .*: index\.html; check them$/);
 });
 
 test('a quick change that is too big is put back and goes to the session with why', async () => {
@@ -378,6 +377,17 @@ test('a quick change to shared code (a file two others load) is put back and goe
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, new RegExp(`id ${id}`));
   assert.match(out, /quick model passed: its change was to shared code/);
+});
+
+test('files a quick try changed but did not claim are left and named to the session', async () => {
+  const dir = site('pass-leftover');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "h1{color:red}" > red.css; echo "PASS: needs a choice"' });
+  const id = await pin(B, 'which red?');
+  await until(() => quickLog(dir).length > 0);
+  assert.equal(fs.readFileSync(path.join(dir, 'red.css'), 'utf8').trim(), 'h1{color:red}', 'not put back: it may be the session\'s edit');
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(out, new RegExp(`id ${id}`));
+  assert.match(out, /quick model passed: needs a choice; files changed during its try were left as they are \(maybe its edit, maybe yours\): red\.css; check them/);
 });
 
 test('a one-file style fix the quick model kept is not handed to the session', async () => {

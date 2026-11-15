@@ -1480,6 +1480,10 @@ ${block}`;
           : `its change was too big for a quick one (${changes.length} files, ${size} lines), so it was put back`;
       if (stuck.length) note += `${note ? '; ' : ''}couldn't put back ${stuck.map((f) => path.relative(ROOT, f)).join(', ')}`;
     }
+    // A pass, a time-out or a crash that left files changed: they stay (they may be the session's own edits), and the
+    // session is told which, so a half-done quick edit is never left unseen (option 20).
+    if (!done && changes.length && !/^done:/i.test(line))
+      note += `${note ? '; ' : ''}files changed during its try were left as they are (maybe its edit, maybe yours): ${changes.map((x) => path.relative(ROOT, x.file)).join(', ')}; check them`;
     if (done) result = 'done';
     const label = named ? model : 'quick';
     const who = cmd ? process.env.LAB_AGENT_NAME || '' : AGENTS[tool].name;
