@@ -1828,6 +1828,8 @@
     dropDrag?.();
     const prev = layer.querySelector('.card:not(.out), .float:not(.out)');
     const prevHeight = stepping && coarse && prev ? prev.offsetHeight : 0; // stepping on a phone: the sheet's top doesn't drop
+    // The same thread drawn again (reopened, resolved, a reply came in): it keeps where its messages were scrolled to.
+    const prevScroll = prev ? prev.querySelector('.body')?.scrollTop ?? null : null;
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
     layer.replaceChildren();
@@ -1926,7 +1928,8 @@
         stepping = keepKeys = false;
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         // Opens at the newest message, as the chat does (a short thread doesn't scroll).
-        if (appear && !coarse) {
+        if (!appear && prevScroll != null) card.querySelector('.body').scrollTop = prevScroll;
+        else if (appear && !coarse) {
           const body = card.querySelector('.body');
           const first = body.querySelector('.fresh, .newline');
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
