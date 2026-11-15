@@ -1146,7 +1146,7 @@ async function unseen(scope = pages()) {
     ? `# Quick style fixes (one line each; reopen any that look wrong)\n${styleDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 50)}" (${page}): ${c.quickFiles?.[0] || ''}: + ${added(c)}`).join('\n')}`
     : '';
   const check = quickDone.length
-    ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
+    ? `# Quick changes to check\nThe quick model made these; each line is its change (file: - removed / + added). Read the lines against the pin, without opening files. Open a file only when the lines don't do what the pin asked, reach wider than the pin (shared code, other pages), or add logic you can't judge from them; then fix it and reply on its pin. If the lines look right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
     : '';
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, quickDone.length && `${quickDone.length} quick change${quickDone.length === 1 ? '' : 's'} to check`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');

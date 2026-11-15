@@ -416,6 +416,7 @@ test('quick changes to code reach the session to check even when no pin was pass
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, /^# Quick changes to check$/m);
   assert.match(out, new RegExp(`^- id ${id} "make it red" \\(/index\\): red\\.js`, 'm'));
+  assert.match(out, /without opening files\. Open a file only when/, 'the lines are read first; files are opened only when they look off');
   assert.doesNotMatch(out, /^# New comments/m);
   const again = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.doesNotMatch(again, /Quick changes to check/, 'handed over once');
