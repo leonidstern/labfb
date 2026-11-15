@@ -70,14 +70,14 @@
         --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
         --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
         /* Washes of black (white in dark mode), four steps: soft, hover, line, muted, as lab.css. */
-        --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_muted: var(--lab-muted, rgba(0,0,0,.50));
+        --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_edge: var(--lab-edge, #c7c7cc); --_muted: var(--lab-muted, rgba(0,0,0,.50));
         --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
         --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
         --_ease: cubic-bezier(.2, .8, .2, 1); }
       @media (prefers-color-scheme: dark) {
         :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
                 --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
-                --_soft: var(--lab-soft, rgba(255,255,255,.05)); --_hover: var(--lab-hover, rgba(255,255,255,.10)); --_line: var(--lab-line, rgba(255,255,255,.15)); --_muted: var(--lab-muted, rgba(255,255,255,.50));
+                --_soft: var(--lab-soft, rgba(255,255,255,.05)); --_hover: var(--lab-hover, rgba(255,255,255,.10)); --_line: var(--lab-line, rgba(255,255,255,.15)); --_edge: var(--lab-edge, #48484a); --_muted: var(--lab-muted, rgba(255,255,255,.50));
                 --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
       }
       * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
@@ -89,7 +89,7 @@
       button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
       .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
       .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
-             background: var(--_bg); border: 0; box-shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 28%, transparent), 0 2px 8px rgba(0,0,0,.16);
+             background: var(--_bg); border: 0; box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
              display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12.5px; font-weight: 500;
              font-variant-numeric: tabular-nums; letter-spacing: .01em; transform-origin: 0 100%;
              transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
@@ -176,7 +176,7 @@
              background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
       /* The new comment box: the chat's box (no border), with only a soft shadow so it stands out on any page. */
       /* The new comment box has the pins' 1 px edge in the text colour, so it shows on white and black pages alike. */
-      .float .box, .float .box:focus-within { box-shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 28%, transparent), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
+      .float .box, .float .box:focus-within { box-shadow: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
       .card .box { background: var(--_soft); border-radius: var(--_radius); margin: 0; }
       .card .box, .card .box.open, .card .box:focus-within { box-shadow: none; } /* the same box as the chat's: soft grey, no border */
       /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
@@ -1181,6 +1181,8 @@
     }
     return Math.max(0, Math.min(y, pageEnd.y - h - 40));
   };
+  // An area's pin sits at the corner where the drag ended (where you let go), not where it started.
+  const pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
   function position(anchor) {
     const node = findTarget(anchor);
     if (node && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && /\[[^\]]+\]/.test(anchor.text || '')) {
@@ -1199,12 +1201,13 @@
         const left = rect.left + scrollX + anchor.x * rect.width;
         const top = rect.top + scrollY + anchor.y * rect.height;
         const zone = anchor.zw ? { left, top, width: anchor.zw * rect.width, height: anchor.zh * rect.height } : null;
-        return { left, top, zone };
+        return zone ? { ...pinOf(zone, anchor), zone } : { left, top, zone };
       }
     }
     const left = anchor.docX * docWidth();
     const top = inPage(anchor.docY, anchor.docH || 0);
     const zone = anchor.docW ? { left, top, width: anchor.docW, height: anchor.docH } : null;
+    if (zone) return { ...pinOf(zone, anchor), zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
     // Anchored to the page itself (a margin, or an area wider than any element): nothing has moved.
     return { left, top, zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
   }
@@ -1338,6 +1341,8 @@
       docY: top + scrollY,
       docW: Math.round(right - left),
       docH: Math.round(bottom - top),
+      pinX: x1 >= x0 ? 1 : 0, // the drag ended on the right / at the bottom: the pin goes there
+      pinY: y1 >= y0 ? 1 : 0,
     });
     Object.assign(anchor, schemeAt(box));
     // The middle of an area often lands on one word (a caption under a picture): that word is not what the area is

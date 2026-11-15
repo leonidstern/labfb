@@ -150,6 +150,8 @@ function cleanAnchor(a) {
     background: /^#[0-9a-f]{6}$/i.test(a.background || '') ? a.background : undefined,
     zw: Number.isFinite(a.zw) && a.zw > 0 ? Math.min(a.zw, 3) : undefined,
     zh: Number.isFinite(a.zh) && a.zh > 0 ? Math.min(a.zh, 3) : undefined,
+    pinX: a.pinX === 1 ? 1 : undefined, // an area's pin at the corner where the drag ended
+    pinY: a.pinY === 1 ? 1 : undefined,
     docW: int(a.docW),
     docH: int(a.docH),
     time: sec(a.time),
