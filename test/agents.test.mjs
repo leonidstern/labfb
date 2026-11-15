@@ -405,3 +405,17 @@ test('a pin handed to the agent is marked, so the page can show it as being work
   const reply = (await get()).find((c) => c.parent === id);
   assert.ok(reply.session && reply.createdAt >= handed.handedAt, "the agent's answer comes after it");
 });
+
+test('each comment is marked when handed over: one left out of a batch still comes, even if older than the rest', async () => {
+  const dir = site('marks');
+  const { B } = await lab(dir);
+  const a = await pin(B, 'make it red');
+  await cli(dir, ['wait', '--timeout', '5'], {});
+  const get = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+  assert.ok((await get()).find((c) => c.id === a).deliveredAt, 'marked with the stamp it was handed over at');
+  const b = await pin(B, 'and bigger');
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(out, new RegExp(`id ${b}`), 'the new one comes');
+  assert.doesNotMatch(out, new RegExp(`id ${a}`), 'the one handed over before does not come again');
+  assert.ok(!fs.readFileSync(path.join(dir, '.lab/seen'), { encoding: 'utf8', flag: 'a+' }).trim(), 'no single "seen up to" time moves past comments');
+});

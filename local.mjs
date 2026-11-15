@@ -968,41 +968,47 @@ async function threadsText(page, threads) {
   const text = await agentText(page);
   const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file):/.test(l)).join('\n');
   const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`)));
-  return parts.length ? `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}` : null;
+  const ids = threads.filter((id) => parts.some((b) => b.split('\n')[0].endsWith(`· id ${id}`)));
+  return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids } : null;
 }
-// A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale).
+// A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale). Each comment
+// handed to a wait is marked with the stamp it had (deliveredAt), so a comment counts as new until it itself has been
+// handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for comments
+// from before these marks.
 const stamp = (c) => [c.createdAt, c.movedAt, c.rejectedAt].filter(Boolean).sort().pop(); // new when written, moved, or its quick fix rejected
 async function unseen() {
   // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
   if (trying.size) return null;
-  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > seen).map((c) => ({ page, c })));
+  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // The quick model's changes since the last delivery, for the session to check (they can be wrong: a fix in the right
   // spot that doesn't do what was asked, or one broader than the pin).
-  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !c.resolved && stamp(c) > seen).map((c) => ({ page, c })));
+  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   if (!fresh.length && !quickDone.length) return null;
   const blocks = [];
+  const sent = new Set(); // page + thread id actually written into the text
   for (const page of new Set(fresh.map((f) => f.page))) {
     const block = await threadsText(page, [...new Set(fresh.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
-    if (block) blocks.push(block);
+    if (block) blocks.push(block.text), block.ids.forEach((id) => sent.add(`${page}\n${id}`));
   }
-  const cursor = [...fresh, ...quickDone].map((f) => stamp(f.c)).sort().pop();
+  const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
+  if (!given.length && !quickDone.length) return null;
   const check = quickDone.length
     ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
     : '';
   const text = [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check].filter(Boolean).join('\n\n') +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}), then wait again.`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
-  const handed = [...new Set(fresh.map((f) => `${f.page}\n${f.c.parent || f.c.id}`))].map((k) => k.split('\n'));
-  return { text, cursor, handed };
+  const handed = [...sent].map((k) => k.split('\n'));
+  const marks = [...given, ...quickDone].map(({ page, c }) => [page, c.id, stamp(c)]);
+  return { text, marks, handed };
 }
-// Hand the new comments to a wait; the cursor moves only once they are written to it.
+// Hand the new comments to a wait; each is marked as handed over only once it is written to it.
 function deliver(res, got) {
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
-  seen = got.cursor;
-  writeAtomic(SEEN, seen);
+  for (const [page, id, at] of got.marks) setComment(page, id, { deliveredAt: at });
   const at = new Date().toISOString();
-  for (const [page, id] of got.handed || []) setComment(page, id, { handedAt: at });
-  for (const page of new Set((got.handed || []).map(([page]) => page))) persist(page).catch(() => {});
+  for (const [page, id] of got.handed) setComment(page, id, { handedAt: at });
+  for (const page of new Set([...got.marks, ...got.handed].map(([page]) => page))) persist(page).catch(() => {});
   setMode('working');
 }
 async function wake() {
@@ -1211,7 +1217,7 @@ function quickRun(prompt, model, limit, tool, asked = '') {
 function quick(page, c) {
   trying.add(c.id);
   // The comment as it is now: a reply added later (maybe by a wifi guest) never reaches the quick model.
-  const blockNow = threadsText(page, [c.id]);
+  const blockNow = threadsText(page, [c.id]).then((b) => b?.text || null);
   quickQueue = quickQueue.then(async () => {
     let done = false;
     let note = '';
