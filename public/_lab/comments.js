@@ -279,6 +279,13 @@
       .msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 11px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
       .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* ✓ drawn as tall as the time's digits */
       .msg .tick.got { font-weight: 600; }
+      /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
+      .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .t { opacity: .55; }
+      .msg .stamp .ring { display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%;
+                          background: conic-gradient(from var(--lab-spin, 0deg), rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .25) 28% 100%);
+                          -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
+                          mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); animation: lab-spin 1.2s linear infinite; }
+      .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
       .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
       .bar button * { color: inherit; font-weight: inherit; }
@@ -328,7 +335,7 @@
         :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
         *, *::before, *::after { corner-shape: squircle; }
         button.pin, .pin.working::before, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
-        .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before { corner-shape: round; } /* circles stay circles */
+        .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring { corner-shape: round; } /* circles stay circles */
       }
       @keyframes lab-pin { from { transform: scale(1.1); } }
       @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
@@ -1596,10 +1603,23 @@
   const stampOf = (m, root, prefix = '') => {
     const at = new Date(m.createdAt);
     const time = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' });
-    const stamp = el('span', { class: 'stamp' }, prefix + time);
+    const stamp = el('span', { class: 'stamp' });
+    stamp.append(el('span', { class: 't' }, prefix + time));
     if (mine(m) && !m.session) {
-      const got = root?.handedAt && root.handedAt >= m.createdAt;
-      stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
+      const thread = root ? [root, ...repliesOf(root.id)] : [m];
+      const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
+      const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
+      // The agent is on this very message (its newest one in the thread): the ring, as on the pin. Answered: green ✓.
+      if (!answered && latest && root && workState(root)[0] === 'now') {
+        stamp.classList.add('busy');
+        stamp.append(el('span', { class: 'ring', role: 'img', 'aria-label': 'the agent is on it' }));
+      } else if (answered) {
+        stamp.classList.add('ans');
+        stamp.append(el('span', { class: 'tick', 'aria-label': 'answered' }, '✓'));
+      } else {
+        const got = root?.handedAt && root.handedAt >= m.createdAt;
+        stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
+      }
     }
     return stamp;
   };
@@ -2338,6 +2358,7 @@
       : here == null ? (dir > 0 ? 0 : fresh.length - 1)
       : dir > 0 ? (after < 0 ? 0 : after)
       : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
+    chatOpen = false; // N new from the chat: the chat closes and the new comment opens
     goTo(fresh[next], !coarse); // the reply box takes the cursor (not on phones: no keyboard popping up)
   };
   newPrev.addEventListener('click', () => stepNew(-1));
@@ -2381,6 +2402,9 @@
     const path = e.composedPath();
     if (path.includes(chatEl) || path.includes(chatBtn)) return;
     chatOpen = false;
+    // The widget's own buttons (N new, go, hide…) still do their thing; only a click on the page just closes. Their
+    // bar is drawn again only after the click, or the button would be swapped out under it and the click lost.
+    if (path.includes(host)) return void addEventListener('click', () => render(), { once: true });
     closingClick = true;
     render();
   }, true);
