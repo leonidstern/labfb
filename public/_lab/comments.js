@@ -69,15 +69,15 @@
         --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
         --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
         --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
-        /* Apple's system greys, four steps a scheme: soft (gray 6), hover (gray 5), line (gray 3), muted (gray). */
-        --_soft: var(--lab-soft, #f2f2f7); --_hover: var(--lab-hover, #e5e5ea); --_line: var(--lab-line, #c7c7cc); --_muted: var(--lab-muted, #8e8e93);
+        /* Washes of black (white in dark mode), four steps: soft, hover, line, muted, as lab.css. */
+        --_soft: var(--lab-soft, rgba(0,0,0,.04)); --_hover: var(--lab-hover, rgba(0,0,0,.08)); --_line: var(--lab-line, rgba(0,0,0,.16)); --_muted: var(--lab-muted, rgba(0,0,0,.55));
         --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
         --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
         --_ease: cubic-bezier(.2, .8, .2, 1); }
       @media (prefers-color-scheme: dark) {
         :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
                 --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
-                --_soft: var(--lab-soft, #2c2c2e); --_hover: var(--lab-hover, #3a3a3c); --_line: var(--lab-line, #38383a); --_muted: var(--lab-muted, #8e8e93);
+                --_soft: var(--lab-soft, rgba(255,255,255,.06)); --_hover: var(--lab-hover, rgba(255,255,255,.11)); --_line: var(--lab-line, rgba(255,255,255,.18)); --_muted: var(--lab-muted, rgba(255,255,255,.58));
                 --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
       }
       * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
@@ -226,7 +226,7 @@
       .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
       /* Close: a round, quiet button with a drawn cross (not the ✕ character), darker on hover. */
       .list .tabs .show-done { color: var(--_muted); }
-      .chatwin .tabs b { visibility: hidden; } /* no "chat" title: the window speaks for itself (the header stays: the close button, and the grab strip on phones) */
+      .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
       .list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
                        font-size: 0; color: var(--_muted); background: transparent; }
       .list .tabs .x::before { content: ''; width: 11px; height: 11px; background: currentColor;
@@ -268,6 +268,8 @@
       .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
       .bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
       .bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; line-height: 1; color: var(--_fg); }
+      .bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
+      .bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
       .bar button.go-btn.on kbd { background: rgba(255, 255, 255, .22); color: #fff !important; }
       .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--_accent); }
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
@@ -364,6 +366,7 @@
                       background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat, var(--_bg); }
         .list .items { padding: 0 12px calc(10px + var(--_safe)); }
         .chatwin .msgs { padding: 4px 12px 8px; }
+        .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
         .chatwin .chat { padding: 6px 12px var(--_pb); }
         .list .it { padding: 11px 8px; }
         /* The bar wraps instead of running off the screen's left edge. */
@@ -422,6 +425,7 @@
   // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
   // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
   const LIST_WINDOW = false;
+  const tabTitle = { base: '' };
   let showDone = store.get('lab-show-done') === '1';
   const newNext = root.querySelector('.new-next');
   const sendBtn = root.querySelector('.send-all');
@@ -1014,8 +1018,47 @@
   }
 
   // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
+  // A pin on a big container (the page's body or main) is placed by a share of its size, which drifts when content is
+  // added above. If it was on a word ("…before [word] after…"), find that word again and sit on it; if the word is gone,
+  // say so (the pin shows faded as moved) instead of pointing at whatever is there now.
+  function wordSpot(anchor) {
+    const m = /^(?:…)?(.*?)\[([^\]]+)\](.*?)(?:…)?$/s.exec(anchor.text || '');
+    if (!m) return null;
+    const before = m[1].replace(/\s+/g, ' ').slice(-24);
+    const word = m[2];
+    // The page's text, read once per moment and shared by all such pins.
+    if (!wordSpot.cache || performance.now() - wordSpot.cache.at > 400) {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (t) => (host.contains(t.parentNode) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+      let text = '';
+      const at = [];
+      for (let t; (t = walker.nextNode()); ) {
+        const v = t.data.replace(/\s+/g, ' ');
+        for (let i = 0; i < v.length; i++) at.push([t, i]);
+        text += v;
+      }
+      wordSpot.cache = { at: performance.now(), text, map: at };
+    }
+    const { text, map: at } = wordSpot.cache;
+    let i = text.indexOf(before + word);
+    if (i < 0) return { gone: true };
+    i += before.length;
+    const range = document.createRange();
+    try {
+      range.setStart(...at[i]);
+      range.setEnd(at[i + word.length - 1][0], at[i + word.length - 1][1] + 1);
+    } catch {
+      return { gone: true };
+    }
+    const r = range.getBoundingClientRect();
+    return r.width || r.height ? { left: r.left + scrollX + Math.min(6, r.width / 2), top: r.top + scrollY + r.height / 2 } : { gone: true };
+  }
   function position(anchor) {
     const node = findTarget(anchor);
+    if (node && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && /\[[^\]]+\]/.test(anchor.text || '')) {
+      const spot = wordSpot(anchor);
+      if (spot && !spot.gone) return { left: spot.left, top: spot.top, zone: null };
+      if (spot?.gone) return { left: anchor.docX * docWidth(), top: anchor.docY, zone: null, moved: true };
+    }
     if (node) {
       const rect = node.getBoundingClientRect();
       if (rect.width || rect.height) {
@@ -1368,13 +1411,22 @@
     // ‹ › around it step through the new ones, top to bottom of the page, without opening the list.
     newPrev.hidden = newNext.hidden = !on || !all.some((c) => !c.resolved && !isPage(c) && unread(c).length);
     if (!LIST_WINDOW) {
-      // Without the list window the middle shows how many are new (a click goes to the next one); nothing new, nothing shown.
-      listBtn.hidden = !on || !freshAll;
+      // Without the list window the middle shows how many are new (a click goes to the next one). The pills keep their
+      // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
+      newPrev.hidden = newNext.hidden = listBtn.hidden = !on;
       listBtn.textContent = `${freshAll} new`;
+      for (const b of [newPrev, newNext, listBtn]) (b.disabled = !freshAll), b.classList.toggle('quiet', !freshAll);
       const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
-      doneBtn.hidden = !on || !doneCount;
-      doneBtn.textContent = showDone ? `hide done` : `show done · ${doneCount}`;
+      doneBtn.hidden = !on;
+      doneBtn.disabled = !doneCount && !showDone;
+      doneBtn.classList.toggle('quiet', doneBtn.disabled);
+      doneBtn.textContent = showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`;
     }
+    // The browser tab shows how many new messages there are, as "(3) Page title".
+    const tabNew = all.reduce((n, c) => n + unread(c).length, 0);
+    if (!tabTitle.base || !document.title.startsWith('(')) tabTitle.base = document.title.replace(/^\(\d+\) /, '');
+    const want = tabNew ? `(${tabNew}) ${tabTitle.base}` : tabTitle.base;
+    if (document.title !== want) document.title = want;
     listBtn.classList.toggle('has-new', freshAll > 0);
     const h = held().length;
     sendBtn.hidden = !h;

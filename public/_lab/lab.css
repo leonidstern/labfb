@@ -2,41 +2,41 @@
    for the lab) share these. Served at /_lab/lab.css. The --lab-* names are the widget's own theme hooks, so a page that
    sets them themes the widget too.
 
-   Colour: a fixed grey scale and two greens (primitives), and named uses that point at them (semantic), as in Cooking.
+   Colour: white, black and green, with 4 see-through steps each (primitives, as in Cooking), and named uses that point at them.
    Corners: two in all, 6 px small (keys, code, rows, pills), 12 px boxes and buttons; circles only for dots.
    Type: the system font, 15 px text, 13 px small, 11 px caps labels; one weight for text, 600 for titles.
    Depth: a hairline ring and a soft shadow, no borders. */
 :root {
-  /* Base colours (primitives): Apple's system greys, four steps a scheme, white and two near blacks, and greens.
-     Nothing below picks a hex; everything points at these. */
+  /* Base colours (primitives): white and black, and see-through steps of each (4 a scheme, as Cooking does), plus the
+     green and its own 4 steps. Fills are a wash of black on light, of white on dark, so they sit right on any surface. */
   --lab-white: #ffffff;
-  --lab-gray-6: #f2f2f7;      /* light: page, soft */
-  --lab-gray-5: #e5e5ea;      /* light: hover */
-  --lab-gray-3: #c7c7cc;      /* light: separators */
-  --lab-gray: #8e8e93;        /* both: secondary text */
-  --lab-gray-dark-5: #2c2c2e; /* dark: soft */
-  --lab-gray-dark-4: #3a3a3c; /* dark: hover */
-  --lab-gray-dark-sep: #38383a; /* dark: separators */
-  --lab-ink: #141414;         /* light: text */
-  --lab-paper-dark: #1c1c1e;  /* dark: boxes */
-  --lab-black: #000000;       /* dark: page */
-  --lab-snow: #f4f4f5;        /* dark: text */
-  --lab-green-100: #dff6e4;
-  --lab-green-500: #34c759;
-  --lab-green-600: #24a046;
-  --lab-green-900: #203727;
+  --lab-ink: #141414;
+  --lab-paper-dark: #1c1c1e;
+  --lab-black: #000000;
+  --lab-black-1: rgba(0, 0, 0, .04);  /* light: page wash, soft fills */
+  --lab-black-2: rgba(0, 0, 0, .08);  /* light: hover */
+  --lab-black-3: rgba(0, 0, 0, .16);  /* light: separators */
+  --lab-black-4: rgba(0, 0, 0, .55);  /* light: secondary text */
+  --lab-white-1: rgba(255, 255, 255, .06); /* dark: soft fills */
+  --lab-white-2: rgba(255, 255, 255, .11); /* dark: hover */
+  --lab-white-3: rgba(255, 255, 255, .18); /* dark: separators */
+  --lab-white-4: rgba(255, 255, 255, .58); /* dark: secondary text */
+  --lab-green-1: rgba(52, 199, 89, .14);  /* soft green: your bubbles, rec pills */
+  --lab-green-2: rgba(52, 199, 89, .26);  /* hover on green */
+  --lab-green-3: rgba(52, 199, 89, .55);  /* outlines, dots */
+  --lab-green-4: rgb(36, 160, 70);        /* green: go, done, picks (dark: #34c759) */
 
   /* What things use (semantic), light. Dark only re-points these. */
   --lab-bg: var(--lab-white);           /* boxes */
   --lab-fg: var(--lab-ink);             /* text */
-  --lab-page: var(--lab-gray-6);        /* the page behind boxes */
-  --lab-muted: var(--lab-gray);         /* secondary text */
-  --lab-line: var(--lab-gray-3);        /* dividers: Apple's separator grey, drawn as a hairline */
+  --lab-page: #f5f5f5;                  /* the page behind boxes: white under one black wash, solid so nothing shows through */
+  --lab-muted: var(--lab-black-4);      /* secondary text */
+  --lab-line: var(--lab-black-3);       /* dividers, drawn as a hairline */
   --lab-hair: .5px solid var(--lab-line); /* one device pixel on a Retina screen, as Apple's separators */
-  --lab-soft: var(--lab-gray-6);        /* keys, other people's bubbles, boxes to type in */
-  --lab-hover: var(--lab-gray-5);       /* hover on rows and buttons */
-  --lab-green: var(--lab-green-600);    /* go, done, picks */
-  --lab-green-soft: var(--lab-green-100); /* your bubbles, rec pills */
+  --lab-soft: var(--lab-black-1);       /* keys, other people's bubbles, boxes to type in */
+  --lab-hover: var(--lab-black-2);      /* hover on rows and buttons */
+  --lab-green: var(--lab-green-4);      /* go, done, picks */
+  --lab-green-soft: var(--lab-green-1); /* your bubbles, rec pills */
   --lab-shadow: 0 0 0 .5px rgba(20, 20, 20, .14), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .08);
   --lab-r-s: 6px;
   --lab-radius: 12px;
@@ -49,15 +49,15 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --lab-bg: var(--lab-paper-dark); --lab-fg: var(--lab-snow); --lab-page: var(--lab-black); --lab-muted: var(--lab-gray);
-    --lab-line: var(--lab-gray-dark-sep); --lab-soft: var(--lab-gray-dark-5); --lab-hover: var(--lab-gray-dark-4); --lab-green: var(--lab-green-500); --lab-green-soft: var(--lab-green-900);
+    --lab-bg: var(--lab-paper-dark); --lab-fg: #f4f4f5; --lab-page: var(--lab-black); --lab-muted: var(--lab-white-4);
+    --lab-line: var(--lab-white-3); --lab-soft: var(--lab-white-1); --lab-hover: var(--lab-white-2); --lab-green: #34c759; --lab-green-soft: var(--lab-green-1);
     --lab-shadow: 0 0 0 1px rgba(244, 244, 245, .16), 0 10px 32px rgba(0, 0, 0, .5);
     color-scheme: dark;
   }
 }
 :root[data-theme='dark'] {
-  --lab-bg: var(--lab-paper-dark); --lab-fg: var(--lab-snow); --lab-page: var(--lab-black); --lab-muted: var(--lab-gray);
-  --lab-line: var(--lab-gray-dark-sep); --lab-soft: var(--lab-gray-dark-5); --lab-hover: var(--lab-gray-dark-4); --lab-green: var(--lab-green-500); --lab-green-soft: var(--lab-green-900);
+  --lab-bg: var(--lab-paper-dark); --lab-fg: #f4f4f5; --lab-page: var(--lab-black); --lab-muted: var(--lab-white-4);
+  --lab-line: var(--lab-white-3); --lab-soft: var(--lab-white-1); --lab-hover: var(--lab-white-2); --lab-green: #34c759; --lab-green-soft: var(--lab-green-1);
   --lab-shadow: 0 0 0 1px rgba(244, 244, 245, .16), 0 10px 32px rgba(0, 0, 0, .5);
   color-scheme: dark;
 }
