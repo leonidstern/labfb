@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Scrollbars inside the chat, threads and the list are thin, on a clear track, like macOS ones (CSS only).
 - Go mode: a "go" button in the bar, or V, switches it on and off. While it's on, every click, drawn area, selection or hold on a phone posts a "go" pin at once (approve what it's on), with no box to type in; in draft mode go pins wait with the other drafts. Needs your name set once.
 - A comment on selected words puts its pin on the last selected letter, where the selection ended (on the first when the selection runs over several items).
 - A pin the agent is on (handed to it and not answered yet, or answered "On it") has a thin green ring turning around it.
