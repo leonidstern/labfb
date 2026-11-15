@@ -414,7 +414,8 @@
         .card > .foot { margin-top: auto; }
         .card .composer { margin-top: 10px; }
         .card .nav { margin-top: 2px; gap: 20px; }
-        .card .nav .btn { font-size: 14px; padding: 8px 0; } /* thumb-sized */
+        .card .nav .btn { font-size: 14px; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
+        .card .nav { gap: 16px; }
         .card .nav { flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
         .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
         .box.one .who span { font-size: 16px; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
@@ -452,6 +453,10 @@
         .list .it { padding: 11px 8px; }
         /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
         .pin { scale: .8; }
+        /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
+        .msg .p { font-size: 15px; line-height: 21px; }
+        .msg .quote { font-size: 13.5px; }
+        .msg b, .msg .quote b { font-size: 12.5px; }
         .pin.moved { scale: .64; }
         /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
         .bar > button { padding: 12px 14px; min-height: 44px; }
