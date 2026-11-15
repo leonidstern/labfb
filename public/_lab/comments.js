@@ -858,6 +858,7 @@
       height: innerHeight,
       dpr: Math.round((devicePixelRatio || 1) * 100) / 100,
       element: openingTag(target),
+      eh: Math.round(rect.height), // its height then: a pin on a big container can tell if the page grew under it
     };
     const own = short(target.textContent, 200);
     if (own && target !== document.body && (target.textContent || '').length < 400) anchor.text = short(own, 80);
@@ -1058,6 +1059,11 @@
       const spot = wordSpot(anchor);
       if (spot && !spot.gone) return { left: spot.left, top: spot.top, zone: null };
       if (spot?.gone) return { left: anchor.docX * docWidth(), top: anchor.docY, zone: null, moved: true };
+    }
+    // On a big container with no word to find: if the container's height changed since, the share of it no longer points
+    // at the same thing, so the pin keeps its old place and shows faded as moved rather than pointing at something else.
+    if (node && anchor.eh && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && !/\[[^\]]+\]/.test(anchor.text || '')) {
+      if (Math.abs(node.getBoundingClientRect().height - anchor.eh) > 40) return { left: anchor.docX * docWidth(), top: anchor.docY, zone: null, moved: true };
     }
     if (node) {
       const rect = node.getBoundingClientRect();

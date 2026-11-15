@@ -10,7 +10,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - The bar keeps its pills in place: ‹ N new › and "show done" stay (quiet and disabled at 0) instead of appearing and shifting the others.
 - The browser tab shows new messages as "(3) Page title".
 - The chat's top is just the grab strip (no empty title row), as tall as a thread's.
-- A pin on the page's body or main that was on a word sits on that word again after the page changes; if the word is gone it shows faded as moved.
+- A pin on the page's body or main that was on a word sits on that word again after the page changes; if the word is gone it shows faded as moved. One with no word shows faded as moved once the page's height has changed under it (new pins keep that height).
 - The list window is parked: the bar shows ‹ N new › while there are new comments (the middle and J go to the next, ‹ and K to the previous), and a "show done · N" / "hide done" pill. On phones the agent's light moves to the chat button. `LIST_WINDOW` brings the list back.
 - The list shows each pin on one line (longer ones end in …); rows highlight in Apple's hover grey.
 - Done pins with nothing new in them are hidden on the page; "show done · N" in the list brings them back (remembered per browser). A done pin with a new reply shows as usual.
