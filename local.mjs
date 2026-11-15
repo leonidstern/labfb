@@ -1469,7 +1469,9 @@ ${block}`;
     // anything else is put back, so the session starts from the files as they were.
     const sharedFiles = named ? [] : changes.filter((x) => x.before && isShared(x.file)).map((x) => path.relative(ROOT, x.file));
     done = /^done:/i.test(line) && changes.length > 0 && !sharedFiles.length && (named || (changes.length <= QUICK_FILES && size <= QUICK_LINES));
-    if (!done && changes.length) {
+    // Only a change the quick model said it made is put back. After a PASS it changed nothing, so files that changed
+    // meanwhile were someone else's (the session editing the same page): putting them back erased their work.
+    if (!done && changes.length && /^done:/i.test(line)) {
       const stuck = undo(changes);
       result = 'undone';
       if (/^done:/i.test(line))
