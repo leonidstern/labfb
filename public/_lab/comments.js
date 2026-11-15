@@ -275,7 +275,7 @@
       .msg b, .msg i { color: inherit; }
       .box:has(.trap) { position: relative; }
       .trap { position: absolute; top: 8px; left: 14px; width: 1px; height: 1px; opacity: 0; pointer-events: none; font-size: 16px; border: 0; padding: 0; }
-      .msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 11px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
+      .msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 10px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
       .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* ✓ drawn as tall as the time's digits */
       .msg .tick.got { font-weight: 600; }
       /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
@@ -332,9 +332,10 @@
         .bar > button.quiet.first { box-shadow: none; }
         .bar .list-btn, .bar .done-btn { min-width: 0; }
         .bar .mn { color: var(--_muted); font-weight: 400; }
-        .bar .cnt { font-size: 11px; font-weight: 600; line-height: 16px; min-width: 18px; padding: 0 5px; border-radius: 8px; text-align: center;
-                    background: var(--_fg); color: var(--_bg); }
-        .bar .cnt.zero { background: var(--_soft); color: var(--_muted); }
+        /* Words stay grey (as the bar's buttons were); the count is the one thing in the text colour: a plain number. */
+        .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
+        .bar .cnt { font-size: 13px; font-weight: 600; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
+        .bar .cnt.zero { color: var(--_muted); font-weight: 500; }
         .bar .cnt.none { visibility: hidden; width: 0; min-width: 0; padding: 0; margin-left: -6px; }
         .bar button.go-btn.on { background: none; color: var(--_fg); }
         .bar button.go-btn.on kbd { color: var(--_muted) !important; }
@@ -342,9 +343,9 @@
               color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
         .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
         /* 3, cursor: the switch shows a pointer instead of go, grey. */
-        .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
-        .go-btn.cursor .gp::after { content: ''; position: absolute; left: 7px; top: 5px; width: 9px; height: 11px; background: var(--_muted);
-                                    clip-path: polygon(0 0, 100% 62%, 56% 64%, 78% 100%, 62% 100%, 42% 68%, 0 92%); }
+        .go-btn.cursor .gp { box-shadow: none; color: transparent; position: relative; }
+        .go-btn.cursor .gp::after { content: ''; position: absolute; left: 7px; top: 5px; width: 10px; height: 12px; background: var(--_muted);
+                                    clip-path: polygon(0 0, 0 88%, 28% 66%, 74% 64%); } /* a plain pointer (the arrow head of the mouse pointer): one shape, no outline */
         .more { font-size: 15px !important; letter-spacing: .05em; }
         .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
                      border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
