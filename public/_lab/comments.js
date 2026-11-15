@@ -1020,8 +1020,15 @@
         return fileHint(mediaSrc(m)) === anchor.file;
       }
       if (anchor.element && openingTag(n) !== anchor.element) return false;
-      // Its words start here (a quote from a selection can run on into the next items); spaces don't count.
-      if (anchor.quote?.exact) return (n.textContent || '').replace(/\s+/g, '').includes(anchor.quote.exact.replace(/\s+/g, '').slice(0, 24));
+      // Its words start here (a quote from a selection can run on into the next items); spaces don't count. A short quote
+      // ("lab", "above") is found anywhere, so the words around it must be there too, or it's another element.
+      if (anchor.quote?.exact) {
+        const t = (n.textContent || '').replace(/\s+/g, '');
+        const q = anchor.quote.exact.replace(/\s+/g, '').slice(0, 24);
+        const before = (anchor.quote.prefix || '').replace(/\s+/g, '').slice(-10);
+        const after = (anchor.quote.suffix || '').replace(/\s+/g, '').slice(0, 10);
+        return t.includes(q) && (q.length >= 16 || (!before && !after) || t.includes(before + q) || t.includes(q + after));
+      }
       return true;
     };
     const said = short(anchor.text, 400);
@@ -1053,8 +1060,10 @@
       if (anchor.quote?.exact && matches(n)) score += 4;
       if (said && t === said) score += 4;
       else if (said && t.startsWith(said.slice(0, 40))) score += 2;
-      if (anchor.section && sectionOf(n) === anchor.section) score += 2;
+      // The same section only breaks a tie between elements that say the right thing; on its own it would pick a
+      // neighbour (an option removed from a list put its pins on the next one).
       if (!score && twins.length > 1) continue;
+      if (score && anchor.section && sectionOf(n) === anchor.section) score += 2;
       const d = Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
       if (score > best || (score === best && d < near)) [found, best, near] = [n, score, d];
     }
