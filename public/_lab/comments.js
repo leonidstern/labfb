@@ -80,9 +80,9 @@
                 --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
                 --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
       }
-      * { box-sizing: border-box; font-family: var(--lab-font, 'lab-inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
+      * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
           font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: 0;
-          font-feature-settings: var(--lab-font-features, 'calt', 'ss03', 'cv05'); font-synthesis: none; font-optical-sizing: auto;
+          font-feature-settings: var(--lab-font-features, normal); font-synthesis: none; font-optical-sizing: auto;
           -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
           caret-color: var(--_accent); -webkit-tap-highlight-color: transparent; }
       ::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
@@ -1089,7 +1089,6 @@
     const prev = layer.querySelector('.card:not(.out), .float:not(.out)');
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(on ? threads().map((c) => [c.id, position(c.anchor || {})]) : []);
-    if (on || draft || openId) loadFonts?.();
     layer.replaceChildren();
     const now = on ? draft || openId : null;
     const appear = now !== shown;
@@ -1575,20 +1574,12 @@
   });
   if ('ResizeObserver' in window) new ResizeObserver(reflow).observe(document.body);
 
-  // Font: Inter 4 (400 and 500, latin, with its OpenType features) from the fonts folder next to this script, under a private family name so it
-  // can't clash with the page's fonts. @font-face is ignored inside a shadow root, so it goes in the document.
-  // Other fonts: --lab-font on the host element, data-font="Name" (a font the page already loads) or data-font-url (a woff2).
-  // The font files load only when comments open (a card, a composer, or comments on): a page someone just reads
-  // downloads none of them, and the bar uses the system font until then.
+  // Font: the system's own (San Francisco, Segoe UI, Roboto…), so nothing downloads. A site can pick its own with
+  // --lab-font on the host element, data-font="Name" (a font the page already loads) or data-font-url (a woff2).
+  // @font-face is ignored inside a shadow root, so a data-font-url face goes in the document.
   const fonts = document.createElement('style');
-  const faces = document.createElement('style');
-  const fontFile = (weight) => new URL(`fonts/inter-latin-${weight}.woff2`, script?.src || new URL('/_lab/', location.href));
-  faces.textContent = [400, 500]
-    .map((w) => `@font-face{font-family:'lab-inter';font-style:normal;font-weight:${w};font-display:swap;src:url('${fontFile(w)}') format('woff2');}`)
-    .join('');
   if (script?.dataset.fontUrl)
-    faces.textContent += `@font-face{font-family:'lab comments';font-display:swap;src:url('${new URL(script.dataset.fontUrl, script.src || location.href)}') format('woff2');}`;
-  var loadFonts = () => faces.isConnected || document.head.append(faces);
+    fonts.textContent = `@font-face{font-family:'lab comments';font-display:swap;src:url('${new URL(script.dataset.fontUrl, script.src || location.href)}') format('woff2');}`;
   const fontName = script?.dataset.fontUrl ? 'lab comments' : script?.dataset.font;
   if (fontName) host.style.setProperty('--lab-font', `'${fontName.replace(/'/g, '')}', system-ui, sans-serif`);
 

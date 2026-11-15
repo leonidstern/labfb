@@ -1171,7 +1171,7 @@ const handler = async (req, res) => {
       return res.end(text);
     }
 
-    // The widget and its fonts come from this repo; everything else from the folder, never from outside it.
+    // The widget comes from this repo; everything else from the folder, never from outside it.
     const lab = pathname.startsWith('/_lab/');
     const base = lab ? path.join(REPO, 'public') : ROOT;
     let file = path.join(base, pathname);
