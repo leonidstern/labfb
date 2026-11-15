@@ -308,7 +308,7 @@
       @media (max-width: 480px) { kbd { display: none; } }
       .handle { display: none; }
       /* Phones: a thread or a new comment opens as a sheet from the bottom, full width, instead of beside the pin. */
-      @media (pointer: coarse) and (max-width: 560px) {
+      @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
         /* Sheets fit what the screen shows (--lab-vh, the visible height, and --lab-kb, the keyboard over the page's
            bottom, are kept up to date from visualViewport); their bottom part is solid down past the screen's edge,
            behind the home bar, the keyboard and Safari's toolbar, so nothing of the page shows below the box. */
@@ -369,7 +369,7 @@
                   color: var(--_bg); font: 500 14px/1 var(--_font, inherit); box-shadow: var(--_shadow); z-index: 4; }
       /* Phones: the listening label is a light in the "list" button (steady: listening, blinking: working, grey:
          nobody), the bar goes back to the bottom, and the send button is big enough for a thumb. */
-      @media (pointer: coarse) and (max-width: 560px) {
+      @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
         .listener { display: none !important; }
         .bar { bottom: 16px !important; }
         .hint { bottom: 64px !important; }
@@ -1798,6 +1798,8 @@
       pin.addEventListener('click', (e) => {
         e.stopPropagation();
         if (pin.dataset.dragged) return;
+        // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
+        if (coarse && openId !== c.id) return goTo(c);
         openId = openId === c.id ? null : c.id;
         draft = null;
         render();

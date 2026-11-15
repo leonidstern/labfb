@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Phones on their side get the same sheets as upright (they used to get the computer's floating chat, which a tap outside didn't close and which couldn't be pulled up).
+- Phones: tapping a pin moves the page so the pin sits above its thread sheet instead of under it.
 - Router, narrowed after the big benchmark (v5 put back 15 fixes a run, 11 of them wrongly):
   - Shared code is a file loaded from two or more files in other folders (or the stylesheet of such a component, or a `:root` stylesheet). Imports are resolved by path, so a feature's own `status.js` isn't another feature's, and a stylesheet is named in full, so importing `InvoicesTable` doesn't count as importing `InvoicesTable.module.css`. On the benchmark app this flags exactly the 6 shared library files and none of the 11 feature files.
   - Only risky quick changes go to the session to check: code, or more than one file. A one-file style fix the quick model kept no longer wakes it.
