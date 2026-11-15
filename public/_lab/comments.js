@@ -3066,14 +3066,24 @@
       strip.style.height = `${gap}px`;
       // The keyboard came or went: the open sheet moves from where it was to its new place instead of jumping there
       // (filling the screen above the keyboard, or resting on the screen's bottom again). Not while a finger drags it.
-      // Where it sits on the screen (what you see), not in the page's layout: iOS pans the view up to 276 px while
-      // the keyboard is up and snaps it back as the keyboard goes, which a layout-only measure missed (15 Nov, Leo's
-      // iPhone: the visible height jumps 686 → 410 → 686 in one step each way, the layout stays 686).
+      // Its place as the browser reports it: on iOS 26 a fixed sheet's box is already where you see it (it rests on
+      // the keyboard while Safari pans the page), so subtracting the pan put the slide's start 276 px off (15 Nov,
+      // ?kbdebug on Leo's iPhone: the visible height jumps 686 → 410 → 686 in one step each way).
       const open = sheet ? openSheet() : null;
-      const at = open ? open.getBoundingClientRect().top - (zoomed ? 0 : vv.offsetTop) : null;
+      // Without any slide in progress (its own or the sheet's opening one): the place it is going to, not passing through.
+      const slid = (n) => { try { return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0; } catch { return 0; } };
+      const at = open ? open.getBoundingClientRect().top - slid(open) : null;
       const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
       if (open && open === fit.sheet && keyboardMoved && Math.abs(fit.top - at) > 8 && !open.style.transform && !still.matches) {
-        open.animate([{ transform: `translateY(${fit.top - at}px)` }, { transform: 'none' }], { duration: 340, easing: SPRING });
+        // Set at once, then eased away: an animate() call waits a frame to start, and that frame showed the sheet at
+        // its new place before it jumped back to slide (the flicker a ?kbdebug run on Leo's iPhone showed, 15 Nov).
+        open.style.transition = 'none';
+        open.style.transform = `translateY(${fit.top - at}px)`;
+        void open.offsetHeight;
+        open.style.transition = `transform 340ms ${SPRING}`;
+        open.style.transform = '';
+        clearTimeout(fit.done);
+        fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ''), 360);
       }
       Object.assign(fit, { sheet: open, top: at, vh, kbUp: kb > 60 });
     };
@@ -3094,7 +3104,7 @@
         const open = openSheet();
         const r = open?.getBoundingClientRect();
         lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(vv.height)} top${Math.round(vv.offsetTop)} in${innerHeight} kb${host.hasAttribute('data-kb') ? 1 : 0}` +
-          (r ? ` sheet${Math.round(r.top - vv.offsetTop)}/${Math.round(r.height)}${open.getAnimations().length ? ' anim' : ''}` : ''));
+          (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? ' anim' : ''}` : ''));
       };
       const watch = (what) => {
         row(what);
