@@ -1081,9 +1081,15 @@
   let shown = null;
   let posted = null;
   const still = matchMedia('(prefers-reduced-motion: reduce)');
+  // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
+  let dropDrag = null;
   function render() {
     grabbing = false; // a pin being dragged is replaced: its drag ends here
+    dropDrag?.();
     const prev = layer.querySelector('.card:not(.out), .float:not(.out)');
+    // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
+    const places = new Map(on ? threads().map((c) => [c.id, position(c.anchor || {})]) : []);
+    if (on || draft || openId) loadFonts?.();
     layer.replaceChildren();
     const now = on ? draft || openId : null;
     const appear = now !== shown;
@@ -1116,7 +1122,7 @@
     if (!on) return done();
 
     list.forEach((c) => {
-      const { left, top, moved, zone } = position(c.anchor || {});
+      const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
       if (openId === c.id) drawZone(zone, `saved${anim}`);
       const news = unread(c);
       const movable = !zone && (isAdmin || store.get(`lab-edit:${c.id}`));
@@ -1211,12 +1217,16 @@
       };
       const scrolled = () => moving && place();
       addEventListener('scroll', scrolled, true);
+      dropDrag = () => {
+        removeEventListener('scroll', scrolled, true);
+        dropDrag = null;
+      };
       const up = async (ev) => {
         pin.removeEventListener('pointermove', move);
         pin.removeEventListener('pointerup', up);
         pin.removeEventListener('pointercancel', up);
         pin.removeEventListener('lostpointercapture', up);
-        removeEventListener('scroll', scrolled, true);
+        dropDrag?.();
         if (!grabbing) return; // already ended (the layer was redrawn mid-drag)
         grabbing = false;
         if (!moving) return;
@@ -1568,13 +1578,17 @@
   // Font: Inter 4 (400 and 500, latin, with its OpenType features) from the fonts folder next to this script, under a private family name so it
   // can't clash with the page's fonts. @font-face is ignored inside a shadow root, so it goes in the document.
   // Other fonts: --lab-font on the host element, data-font="Name" (a font the page already loads) or data-font-url (a woff2).
+  // The font files load only when comments open (a card, a composer, or comments on): a page someone just reads
+  // downloads none of them, and the bar uses the system font until then.
   const fonts = document.createElement('style');
+  const faces = document.createElement('style');
   const fontFile = (weight) => new URL(`fonts/inter-latin-${weight}.woff2`, script?.src || new URL('/_lab/', location.href));
-  fonts.textContent = [400, 500]
+  faces.textContent = [400, 500]
     .map((w) => `@font-face{font-family:'lab-inter';font-style:normal;font-weight:${w};font-display:swap;src:url('${fontFile(w)}') format('woff2');}`)
     .join('');
   if (script?.dataset.fontUrl)
-    fonts.textContent += `@font-face{font-family:'lab comments';font-display:swap;src:url('${new URL(script.dataset.fontUrl, script.src || location.href)}') format('woff2');}`;
+    faces.textContent += `@font-face{font-family:'lab comments';font-display:swap;src:url('${new URL(script.dataset.fontUrl, script.src || location.href)}') format('woff2');}`;
+  var loadFonts = () => faces.isConnected || document.head.append(faces);
   const fontName = script?.dataset.fontUrl ? 'lab comments' : script?.dataset.font;
   if (fontName) host.style.setProperty('--lab-font', `'${fontName.replace(/'/g, '')}', system-ui, sans-serif`);
 
