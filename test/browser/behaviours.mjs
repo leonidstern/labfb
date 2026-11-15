@@ -136,9 +136,9 @@ for (const eng of ['webkit', 'chromium']) {
 
   // Keys
   const chatOpen = () => shadow(() => { return !r.querySelector('.chatwin').hidden; });
-  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ц', code: 'KeyW', bubbles: true })));
+  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'с', code: 'KeyC', bubbles: true })));
   await sleep(300);
-  check(eng, 'W opens the chat, on a Cyrillic layout too', await chatOpen());
+  check(eng, 'C opens the chat, on a Cyrillic layout too', await chatOpen());
   await p.keyboard.press('Escape');
   await sleep(200);
   await p.keyboard.press('2');

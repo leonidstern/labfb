@@ -315,7 +315,7 @@
         border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
       @keyframes lab-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.7); opacity: 0; } }
       @keyframes lab-blink { 50% { opacity: .2; } }
-      .listener:not([data-copy=""])[data-copy] { cursor: copy; }
+      .listener { cursor: default; } /* a plain arrow, also where a tap copies the resume command */
       /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
       kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
             color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
@@ -331,6 +331,7 @@
         .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
         .bar > button.quiet.first { box-shadow: none; }
         .bar .list-btn, .bar .done-btn { min-width: 0; }
+        .bar .mn { color: var(--_muted); font-weight: 400; }
         .bar .cnt { font-size: 11px; font-weight: 600; line-height: 16px; min-width: 18px; padding: 0 5px; border-radius: 8px; text-align: center;
                     background: var(--_fg); color: var(--_bg); }
         .bar .cnt.zero { background: var(--_soft); color: var(--_muted); }
@@ -475,7 +476,7 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · w chat · a d new · 1 comment · 2 go · 3 cursor · m hide</div>
+    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · w new · 1 comment · 2 go · 3 cursor · m hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -486,7 +487,7 @@
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
-      <button class="secondary go-btn" type="button" hidden title="go mode: every click approves what it's on, no typing (V)">go</button>
+      <button class="secondary go-btn" type="button" hidden title="1 comment · 2 go: every click approves what it's on · 3 cursor: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more" aria-haspopup="menu">⋯</button>
     </div>
@@ -1574,6 +1575,12 @@
   const isDone = (c) => c.resolved || c.quick === 'done' || repliesOf(c.id).some((r) => r.name !== c.name && /^done\b/i.test(r.text));
   // Computers (Leo, 2026-11-15, option 1b): one bar of segments (chat, new, go, ⋯) at the bottom right; the less used
   // ones (show done, copy link, hide) sit in the ⋯ menu. Comments hidden: the bar is just "comments". Phones keep theirs.
+  // A word with its key marked inside it, as in menus: (c)hat, ne(w).
+  const keyWord = (before, key, after) => {
+    const w = el('span', { class: 'kw' });
+    w.append(before, el('span', { class: 'mn' }, `(${key})`), after);
+    return w;
+  };
   function placeBar() {
     if (coarse) return;
     const inMenu = on ? [doneBtn, copyBtn, toggleBtn] : [];
@@ -1606,9 +1613,9 @@
       // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
       newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
       listBtn.hidden = !on;
-      if (coarse) listBtn.replaceChildren(document.createTextNode(`${freshAll} new`), el('kbd', {}, 'd'));
-      else listBtn.replaceChildren(document.createTextNode('new'), el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll)), el('kbd', {}, 'd'));
-      listBtn.title = 'next new comment: D, or Control-D while typing (A, or Control-Shift-D, for the one before)';
+      if (coarse) listBtn.replaceChildren(document.createTextNode(`${freshAll} new`));
+      else listBtn.replaceChildren(keyWord('ne', 'w', ''), el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll)));
+      listBtn.title = 'next new comment: W, or Control-D while typing (Shift for the one before)';
       listBtn.disabled = !freshAll;
       listBtn.classList.toggle('quiet', !freshAll);
       const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
@@ -1733,8 +1740,8 @@
     const fresh = msgs.filter(isNew).length;
     chatBtn.hidden = !on;
     // Computers: "chat" with a count badge (kept in place, empty, when there's nothing new); phones keep their words.
-    if (coarse) chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'), el('kbd', {}, 'w'));
-    else chatBtn.replaceChildren(document.createTextNode('chat'), el('b', { class: `cnt${fresh ? '' : ' none'}` }, String(fresh || 0)), el('kbd', {}, 'w'));
+    if (coarse) chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'));
+    else chatBtn.replaceChildren(keyWord('', 'c', 'hat'), el('b', { class: `cnt${fresh ? '' : ' none'}` }, String(fresh || 0)));
     chatBtn.classList.toggle('has-new', fresh > 0);
     placeBar(); // the chat button may have just shown: the segment lines follow
     const opening = chatEl.hidden;
@@ -2572,35 +2579,18 @@
       else setGo(e.code.endsWith('2'));
       return;
     }
-    if (on && (e.key === 'v' || e.key === 'V' || e.code === 'KeyV') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
-      e.preventDefault();
-      setGo(!goMode);
-      return;
-    }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C.
     const letter = /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : (e.key || '').toLowerCase();
-    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkrecnwad]$/.test(letter)) {
+    // The keys (Leo, 2026-11-15), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment, 2 go,
+    // 3 cursor, M hide. With a thread open: R reply, E resolve.
+    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[cwre]$/.test(letter)) {
       const k = letter;
-      // WASD (Leo, 2026-11-15): W chat, A / D the previous / next new comment, S go on and off. C, N, J, K and V still work.
-      if (k === 'c' || k === 'w') {
-        e.preventDefault();
-        return chatBtn.click();
-      }
-      if (k === 'a' || k === 'd') {
-        e.preventDefault();
-        return stepNew(k === 'a' ? -1 : 1);
-      }
-      const l = listed();
-      const at = l.findIndex((c) => c.id === openId);
-      if (!LIST_WINDOW && (k === 'j' || k === 'k' || k === 'n')) stepNew(k === 'k' ? -1 : 1); // N (or J) the next new comment, K the one before
-      else if (k === 'l' && !LIST_WINDOW) return;
-      else if (k === 'l') ((listOpen = !listOpen), listOpen && (filter = 'new'), drawList());
-      else if ((k === 'j' || k === 'k') && l.length) goTo(l[(at + (k === 'j' ? 1 : l.length - 1) + (at < 0 && k === 'k' ? 1 : 0)) % l.length]);
-      else if (k === 'r' && openId) root.querySelector('.card textarea')?.focus({ preventScroll: true });
-      else if (k === 'e' && openId && isAdmin) [...root.querySelectorAll('.card .btn')].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
-      else return;
       e.preventDefault();
+      if (k === 'c') return chatBtn.click();
+      if (k === 'w') return stepNew(e.shiftKey ? -1 : 1);
+      if (k === 'r' && openId) root.querySelector('.card textarea')?.focus({ preventScroll: true });
+      else if (k === 'e' && openId && isAdmin) [...root.querySelectorAll('.card .btn')].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
     }
     // Escape closes the top one: a thread or new comment first, then the chat, then the list (typed chat text stays).
