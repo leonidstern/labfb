@@ -4,6 +4,8 @@
 
 Pin comments on pages, and your agent reads them as plain text. Use it on a live domain where anyone with the link can comment, or on your own computer, where Claude answers on the pins while it works.
 
+**Small, no dependencies, runs in any folder.** labfb uses only Node 20+ itself: no packages to install, about 125 kB on npm, 14 files. Run `npx @leonidstern/labfb` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
+
 ![Comments pinned on a demo page](docs/comments.png)
 
 ## Features
@@ -22,7 +24,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **Quick model first:** when Claude Code is installed, small, clear changes are done by a fast model in a few seconds. `--no-fast` turns it off.
 - **Phone too:** `--wifi` lets a phone at home join. Comments stay in `.lab/`, one store per project.
 
-Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 19 KB gzipped, and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
+Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 27 KB gzipped (the script on the page), and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
 
 ## Cloud lab
 
