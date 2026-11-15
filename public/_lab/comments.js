@@ -100,9 +100,9 @@
       button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
                         animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
       .pin.resolved { color: var(--_muted); }
-      /* Statuses. A go pin: an outline with a green tick when placed, the turning stroke while the agent is on it,
-         filled green once done. A comment pin: your initial, the stroke, then a green tick when done. */
-      button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 14px;
+      /* Statuses. A go pin says "go": green in a green outline when placed, the turning stroke while the agent is on it,
+         white on green once done (a ✓ is only ever a done comment). A comment pin: your initial, the stroke, then a green tick. */
+      button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 11px; font-weight: 600; letter-spacing: .01em;
                       box-shadow: inset 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
       button.pin.go.done { background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16); }
       button.pin.done:not(.go) { color: rgb(36, 160, 70); }
@@ -133,7 +133,7 @@
              transition: opacity .12s ease-out, background-color .16s ease-out; }
       .ptr.show { opacity: 1; }
       .ptr span { grid-area: 1 / 1; font-size: 12px; font-weight: 600; line-height: 1; transition: opacity .16s ease-out, transform .16s ease-out; }
-      .ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 14px; }
+      .ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 11px; letter-spacing: .01em; }
       .ptr.go { background: rgb(36, 160, 70); }
       .ptr.go .ini { opacity: 0; transform: scale(.5); }
       .ptr.go .tick { opacity: 1; transform: none; }
@@ -2002,7 +2002,7 @@
           type: 'button',
           title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
         },
-        state === 'done' || c.resolved || /^go$/i.test(c.text.trim()) ? '✓' : initial(c.name),
+        /^go$/i.test(c.text.trim()) ? 'go' : state === 'done' || c.resolved ? '✓' : initial(c.name),
       );
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
@@ -3034,7 +3034,7 @@
   // smoothly, the pin turning green with a tick for go, and fading out where the system pointer takes over (links,
   // fields, the widget, Shift). Mice only; touch and pens keep what they had.
   const ptr = el('div', { class: 'ptr', 'aria-hidden': 'true' });
-  ptr.append(el('span', { class: 'ini' }, '+'), el('span', { class: 'tick' }, '✓'));
+  ptr.append(el('span', { class: 'ini' }, '+'), el('span', { class: 'tick' }, 'go'));
   root.append(ptr);
   // It shows exactly where the system pointer is hidden (cursor: none from the rules above): never two pointers, never
   // none. That's checked on every move, and again when the page scrolls under a still mouse, Shift or Option is pressed,
