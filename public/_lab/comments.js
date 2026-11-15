@@ -128,7 +128,6 @@
       .ring::before { content: ''; position: absolute; inset: -50%; will-change: transform;
                       background: conic-gradient(rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%); animation: lab-turn 1.2s linear infinite; }
       @keyframes lab-turn { to { transform: rotate(360deg); } }
-      @keyframes lab-spin { to { --lab-spin: 360deg; } }
       /* The drawn pointer: your pin, following the mouse (it moves without a transition; only its look eases). */
       .ptr { position: fixed; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px 14px 14px 2px; corner-shape: round;
              background: var(--_bg); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 2px 6px rgba(0,0,0,.18);
@@ -211,12 +210,6 @@
       .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
       .error:empty { display: none; }
       .error.wait { color: var(--_muted); }
-      /* Thin scroll bars in threads, the chat and the reply box: a narrow grey thumb, no track. */
-      * { scrollbar-width: thin; scrollbar-color: var(--_line) transparent; }
-      ::-webkit-scrollbar { width: 6px; height: 6px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: var(--_line); border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: var(--_muted); }
       .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
       .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
                     box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
@@ -323,7 +316,6 @@
       .listener.working::after { content: ''; position: absolute; left: 14px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px;
         border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
       @keyframes lab-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.7); opacity: 0; } }
-      @keyframes lab-blink { 50% { opacity: .2; } }
       .listener { cursor: default; } /* a plain arrow, also where a tap copies the resume command */
       /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
       kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
@@ -346,7 +338,6 @@
         .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
         .bar .cnt { font-size: 12px; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
         .bar .cnt.zero { color: var(--_muted); }
-        .bar .cnt.none { visibility: hidden; width: 0; min-width: 0; padding: 0; margin-left: -6px; }
         .bar button.go-btn.on { background: none; color: var(--_fg); }
         .bar button.go-btn.on kbd { color: var(--_muted) !important; }
         .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; font-weight: 600;
@@ -383,7 +374,6 @@
       @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
       @keyframes lab-sheet-in { from { transform: translateY(100%); } }
       @keyframes lab-sheet-out { to { transform: translateY(100%); } }
-      @keyframes lab-fade { from { opacity: 0; } }
       @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
       /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
       /* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a
@@ -392,7 +382,7 @@
       @supports (corner-shape: squircle) {
         :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
         *, *::before, *::after { corner-shape: squircle; }
-        button.pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
+        .pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
         .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring, .gp { corner-shape: round; } /* circles stay circles */
       }
       @keyframes lab-pin { from { transform: scale(1.1); } }
@@ -489,7 +479,7 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · w new · 1 comment · 2 go · 3 cursor · m hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · w new · 1 comment · 2 go · 3 cursor · m hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -502,9 +492,9 @@
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary go-btn" type="button" hidden title="1 comment · 2 go: every click approves what it's on · 3 cursor: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
-      <button class="secondary more" type="button" hidden aria-label="more" aria-haspopup="menu">⋯</button>
+      <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
-    <div class="more-menu" role="menu" hidden></div>`;
+    <div class="more-menu" id="lab-more" hidden></div>`;
   const layer = root.querySelector('.layer');
   const hint = root.querySelector('.hint');
   if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'hold to comment';
@@ -1244,7 +1234,7 @@
   // A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
   const nameLine = (name, done) => {
     const b = el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
-    if (done) b.append(el('span', { class: 'mark done', 'aria-label': 'done' }, '✓'));
+    if (done) b.append(el('span', { class: 'mark done', role: 'img', 'aria-label': 'done' }, '✓'));
     return b;
   };
   // Draft mode is parked for now (Leo, 2026-11-15): its button is hidden and new pins post at once.
@@ -1497,7 +1487,7 @@
     queueMicrotask(goFace);
     store.set('lab-go', v ? '1' : '');
     goBtn.classList.toggle('on', v);
-    goBtn.setAttribute('aria-pressed', String(v));
+    goBtn.setAttribute('aria-pressed', String(v && !cursorMode));
     document.documentElement.classList.toggle('lab-go', on && v);
     ptr.classList.toggle('go', v); // the drawn pointer turns at once, without waiting for the mouse to move
     recheck();
@@ -1539,7 +1529,7 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `could not save (${res.status})`);
     // A new pin or go from this tab can be taken back with Command-Z (the newest first).
-    if (data.comment && !payload.parent && !payload.action) placed.push(data.comment.id);
+    if (data.comment && !payload.parent && !payload.action && payload.anchor?.kind !== 'page') placed.push(data.comment.id);
     return data;
   }
   const placed = [];
@@ -1557,17 +1547,25 @@
       } else if (ownKey) {
         const { comment } = await send({ action: 'resolve', id, edit: ownKey });
         Object.assign(c, comment);
-      } else return;
+      } else return void placed.push(id);
     } catch {
-      return;
+      return void placed.push(id); // not taken back: it stays next in line
     }
     if (openId === id) openId = null;
     render();
-    const was = hint.textContent;
-    hint.textContent = `took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`;
+    say(`took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
+  }
+  // A short note in the hint strip (an undo, a copied link), then the strip goes back to its own words.
+  function say(words) {
+    say.was ??= hint.textContent;
+    hint.textContent = words;
     hint.hidden = false;
-    clearTimeout(undoLast.t);
-    undoLast.t = setTimeout(() => ((hint.hidden = true), (hint.textContent = was)), 1800);
+    clearTimeout(say.t);
+    say.t = setTimeout(() => {
+      hint.hidden = true;
+      hint.textContent = say.was;
+      say.was = undefined;
+    }, 1800);
   }
 
   // ---------- copy for an agent ----------
@@ -1587,6 +1585,7 @@
       document.execCommand('copy');
       area.remove();
     }
+    if (moreMenu.contains(button)) return say('link copied'); // the ⋯ menu closes on a pick: say it in the hint strip
     // "copied" for a moment in the same box: the button keeps its width, so nothing beside it moves.
     const label = button.textContent;
     button.style.width = `${button.getBoundingClientRect().width}px`;
@@ -1653,16 +1652,17 @@
       const tall = bottom - pinTop + 28;
       top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
     }
-    scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    scrollTo({ top: Math.max(0, top), behavior: still.matches ? 'auto' : 'smooth' });
   };
   // Done: resolved, fixed by the quick model, or answered "Done: …" by someone other than its author (the agent).
-  const isDone = (c) => c.resolved || c.quick === 'done' || repliesOf(c.id).some((r) => r.name !== c.name && /^done\b/i.test(r.text));
+  // Done means the same everywhere (the list, the pins, show done): what workState says.
+  const isDone = (c) => c.resolved || workState(c)[0] === 'done';
   // Computers (Leo, 2026-11-15, option 1b): one bar of segments (chat, new, go, ⋯) at the bottom right; the less used
   // ones (show done, copy link, hide) sit in the ⋯ menu. Comments hidden: the bar is just "comments". Phones keep theirs.
   // A word with its key marked inside it, as in menus: (c)hat, ne(w).
   const keyWord = (before, key, after) => {
     const w = el('span', { class: 'kw' });
-    w.append(before, el('span', { class: 'mn' }, `(${key})`), after);
+    w.append(before, el('span', { class: 'mn', 'aria-hidden': 'true' }, `(${key})`), after);
     return w;
   };
   function placeBar() {
@@ -1672,7 +1672,7 @@
     if (!on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!on) root.querySelector('.left').append(copyBtn);
     moreBtn.hidden = !on;
-    if (!on) moreMenu.hidden = true;
+    if (!on && !moreMenu.hidden) setMenu(false);
     // The first segment shown has no line before it.
     let first = true;
     for (const b of bar.children) {
@@ -1684,18 +1684,21 @@
   function goFace() {
     const gp = goBtn.querySelector('.gp');
     if (gp) gp.textContent = !goMode && !cursorMode ? initial(store.get('lab-name')) || '+' : 'go';
+    // Read out as what a click places, not the letter on it.
+    goBtn.setAttribute('aria-label', `a click places: ${cursorMode ? 'nothing (cursor)' : goMode ? 'go' : 'a comment'}`);
+    goBtn.setAttribute('aria-keyshortcuts', '1 2 3');
   }
   function drawList() {
     const all = threads();
     listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
     goBtn.hidden = !on;
-    if (!goBtn.firstElementChild) goBtn.replaceChildren(coarse ? document.createTextNode('go') : el('span', { class: 'gp' }, 'go'), el('kbd', {}, '1/2/3'));
+    if (!goBtn.firstElementChild) goBtn.replaceChildren(coarse ? document.createTextNode('go') : el('span', { class: 'gp' }, 'go'), el('kbd', { 'aria-hidden': 'true' }, '1/2/3'));
     goFace();
     goBtn.classList.toggle('on', goMode && !cursorMode);
     goBtn.classList.toggle('cursor', cursorMode);
-    goBtn.setAttribute('aria-pressed', String(goMode));
+    goBtn.setAttribute('aria-pressed', String(goMode && !cursorMode));
     const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0); // a new message in a done thread counts too
-    listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), el('kbd', {}, 'l'));
+    listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), el('kbd', { 'aria-hidden': 'true' }, 'l'));
     // ‹ › around it step through the new ones, top to bottom of the page, without opening the list.
     newPrev.hidden = newNext.hidden = !on || !all.some((c) => !isPage(c) && unread(c).length);
     if (!LIST_WINDOW) {
@@ -1704,7 +1707,11 @@
       newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
       listBtn.hidden = !on;
       if (coarse) listBtn.replaceChildren(document.createTextNode(`${freshAll} new`));
-      else listBtn.replaceChildren(keyWord('ne', 'w', ''), el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll)));
+      else {
+        listBtn.replaceChildren(keyWord('ne', 'w', ''), el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll)));
+        listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);
+        listBtn.setAttribute('aria-keyshortcuts', 'w');
+      }
       listBtn.title = 'next new comment: W, or Control-D while typing (Shift for the one before)';
       listBtn.disabled = !freshAll;
       listBtn.classList.toggle('quiet', !freshAll);
@@ -1807,10 +1814,10 @@
         stamp.append(el('span', { class: 'ring', role: 'img', 'aria-label': 'the agent is on it' }));
       } else if (answered) {
         stamp.classList.add('ans');
-        stamp.append(el('span', { class: 'tick', 'aria-label': 'answered' }, '✓'));
+        stamp.append(el('span', { class: 'tick', role: 'img', 'aria-label': 'answered' }, '✓'));
       } else {
         const got = root?.handedAt && root.handedAt >= m.createdAt;
-        stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
+        stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, role: 'img', 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
       }
     }
     return stamp;
@@ -1831,7 +1838,11 @@
     chatBtn.hidden = !on;
     // Computers: "chat" with a count badge (kept in place, empty, when there's nothing new); phones keep their words.
     if (coarse) chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'));
-    else chatBtn.replaceChildren(keyWord('', 'c', 'hat'), el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
+    else {
+      chatBtn.replaceChildren(keyWord('', 'c', 'hat'), el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
+      chatBtn.setAttribute('aria-label', `chat, ${fresh} new`);
+      chatBtn.setAttribute('aria-keyshortcuts', 'c');
+    }
     chatBtn.classList.toggle('has-new', fresh > 0);
     placeBar(); // the chat button may have just shown: the segment lines follow
     const opening = chatEl.hidden;
@@ -1859,7 +1870,7 @@
           const box = chatEl.querySelector('.msgs');
           const to = box.querySelector(`[data-id="${root.id}"]`);
           if (!to) return;
-          box.scrollTo({ top: to.offsetTop - box.offsetTop - 12, behavior: 'smooth' });
+          box.scrollTo({ top: to.offsetTop - box.offsetTop - 12, behavior: still.matches ? 'auto' : 'smooth' });
           to.animate?.([{ boxShadow: '0 0 0 2px rgb(52,199,89)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 900 });
         });
         b.append(q);
@@ -1989,7 +2000,7 @@
       if (!added.length) return;
       for (const id of added) seen.add(id);
       store.set(seenKey(), [...seen].join(','));
-      render();
+      shownAgain(); // typed text in an open box stays
     } catch {}
   }
   const repliesOf = (id) => comments.filter((c) => c.parent === id);
@@ -2182,7 +2193,7 @@
     // New replies are counted on "list" while comments show, on the toggle while they are hidden.
     toggleBtn.replaceChildren(
       document.createTextNode((on ? (coarse ? 'hide' : 'hide comments') : open ? `comments · ${open}` : 'comments') + (!on && fresh ? ` · ${fresh} new` : '')),
-      el('kbd', {}, 'm'),
+      el('kbd', { 'aria-hidden': 'true' }, 'm'),
     );
     toggleBtn.classList.toggle('secondary', on);
     host.toggleAttribute('data-sheet', Boolean(on && (draft || openId || listOpen || chatOpen))); // phones: the sheet has the screen's bottom
@@ -2190,7 +2201,7 @@
     backCloses();
     refit();
     document.documentElement.classList.toggle('lab-pinning', on && !cursorMode);
-    document.documentElement.classList.toggle('lab-go', on && goMode);
+    document.documentElement.classList.toggle('lab-go', on && goMode && !cursorMode);
     copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
     drawList();
     drawChat();
@@ -2218,6 +2229,8 @@
           class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${openId === c.id ? ' open' : ''}`,
           type: 'button',
           title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
+          // Its state in words too (the ring, the tick and the new dot are only seen).
+          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}${moved ? ', moved' : ''}`,
         },
         /^go$/i.test(c.text.trim()) ? 'go' : state === 'done' || c.resolved ? '✓' : initial(c.name),
       );
@@ -2561,19 +2574,25 @@
     render();
   };
   toggleBtn.addEventListener('click', () => setOn(!on));
+  // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
+  // or a pick gives focus back to the button.
+  function setMenu(open, refocus = false) {
+    moreMenu.hidden = !open;
+    moreBtn.setAttribute('aria-expanded', String(open));
+    if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
+    else if (refocus) moreBtn.focus({ preventScroll: true });
+  }
   moreBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    moreMenu.hidden = !moreMenu.hidden;
-    moreBtn.setAttribute('aria-expanded', String(!moreMenu.hidden));
+    setMenu(moreMenu.hidden);
   });
-  // A pick in the menu, a click anywhere else or Escape closes it.
-  moreMenu.addEventListener('click', () => setTimeout(() => (moreMenu.hidden = true), 0));
+  moreMenu.addEventListener('click', () => setTimeout(() => setMenu(false, true), 0));
   addEventListener('pointerdown', (e) => {
-    if (!moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) moreMenu.hidden = true;
+    if (!moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) setMenu(false);
   }, true);
   addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !moreMenu.hidden) {
-      moreMenu.hidden = true;
+      setMenu(false, true);
       e.stopPropagation();
     }
   }, true);
@@ -2677,11 +2696,11 @@
       return;
     }
     // Control-D goes to the next new comment from anywhere, the reply box too (plain D types a letter there); Shift: back.
-    if (on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyZ' && !typing(e) && !inOtherWidget && placed.length) {
+    if (on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || '') || (!/^[a-z]$/i.test(e.key || '') && e.code === 'KeyZ')) && !typing(e) && !inOtherWidget && placed.length) {
       e.preventDefault();
       return void undoLast();
     }
-    if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD') {
+    if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD' && !(typing(e) && !e.composedPath().includes(host))) {
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = root.querySelector('.card textarea, .float textarea');
@@ -2697,10 +2716,11 @@
     }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C.
-    const letter = /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : (e.key || '').toLowerCase();
+    // The letter typed when it's Latin (QWERTZ and AZERTY move letters), else the key's place (Cyrillic and others).
+    const letter = /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
     // The keys (Leo, 2026-11-15), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment, 2 go,
     // 3 cursor, M hide. With a thread open: R reply, E resolve.
-    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[cwre]$/.test(letter)) {
+    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwre]$/.test(letter)) {
       const k = letter;
       e.preventDefault();
       if (k === 'c') return chatBtn.click();
@@ -3172,7 +3192,7 @@
   });
   // Computers: Shift + drag selects words (a plain drag marks an area); letting go opens a comment on them.
   document.addEventListener('mouseup', (e) => {
-    if (on && !draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host)) setTimeout(commentOnSelection, 0);
+    if (on && !cursorMode && !draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host)) setTimeout(commentOnSelection, 0);
   }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
@@ -3320,7 +3340,6 @@
       `html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }` +
       `html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
   }
-  fonts.textContent += '@property --lab-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }';
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.
   fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
@@ -3400,10 +3419,14 @@
       draft || grabbing || openId || chatOpen || listOpen || (coarse && /^(textarea|input)$/.test(root.activeElement?.localName || '')) ||
       [...root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
+    let reloadTimer = 0;
     const reload = () => {
       // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
       if (document.hidden) return void (reloadWhenShown = true);
-      if (busy()) return setTimeout(reload, 500);
+      if (busy()) {
+        if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
+        return;
+      }
       try {
         sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: openId, list: listOpen, filter, chat: chatOpen }));
       } catch {}
@@ -3428,24 +3451,31 @@
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
     const showAway = (word) => {
       who.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
+      who.setAttribute('aria-label', word);
       who.classList.add('idle');
       who.classList.remove('working');
       who.hidden = false;
     };
-    let seen = null;
+    let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
     let readsAt = null;
     let hotAt = null;
     // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
     const swapCss = (files) => {
-      const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]')].filter((l) => new URL(l.href, location.href).origin === location.origin);
+      // A clone still loading from an earlier save is skipped (its original is swapped instead) and dropped once a newer one is in.
+      const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
       const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
       for (const link of named.length ? named : links) {
         const url = new URL(link.href, location.href);
         url.searchParams.set('lab-v', Date.now().toString(36));
         const next = link.cloneNode();
         next.href = url.href;
-        next.addEventListener('load', () => link.remove(), { once: true });
+        next.dataset.labSwap = '';
+        const path = url.pathname;
+        next.addEventListener('load', () => {
+          for (const l of document.querySelectorAll('link[rel~="stylesheet"][href]')) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
+          delete next.dataset.labSwap;
+        }, { once: true });
         next.addEventListener('error', () => next.remove(), { once: true });
         link.after(next);
       }
@@ -3570,11 +3600,18 @@
       morphKids(o, n);
       return o;
     };
+    // A page with scripts of its own is reloaded instead: patching it toward its file would undo what its scripts built.
+    const ownScripts = () => scriptsOf(document).length > 0;
+    let morphRun = 0;
     const morphPage = async () => {
+      if (ownScripts()) return reload();
+      const run = ++morphRun;
       try {
         const res = await fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html' } });
         if (!res.ok) return reload();
-        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const html = await res.text();
+        if (run !== morphRun) return; // a newer save is already being fetched: only the latest is applied
+        const doc = new DOMParser().parseFromString(html, 'text/html');
         if (scriptsOf(doc).join('\n') !== scriptsOf(document).join('\n') || sheetsOf(doc).join('\n') !== sheetsOf(document).join('\n')) return reload();
         // What you're looking at stays put: an element a third down the window keeps its place on screen. Found before
         // the change (during a cross-fade the page can't be hit-tested).
@@ -3592,6 +3629,7 @@
           // The page's own new title, with the "(3)" of new messages kept in front.
           if (doc.title !== tabTitle.base) {
             tabTitle.base = doc.title;
+            document.title = doc.title; // drawList puts the "(3)" back in front
             drawList();
           }
           const mine = ownStyles();
@@ -3606,15 +3644,25 @@
           }
           reflow();
         };
-        if (document.startViewTransition && !still.matches) document.startViewTransition(apply);
-        else apply();
+        // An error inside the cross-fade would go unseen: any failure falls back to a reload.
+        const safe = () => {
+          try {
+            apply();
+          } catch {
+            reload();
+          }
+        };
+        if (document.startViewTransition && !still.matches) document.startViewTransition(safe);
+        else safe();
       } catch {
         reload();
       }
     };
     const hotUpdate = (files) => {
       const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
-      if (of('html').length) morphPage();
+      // Only a save of this page's own file patches it (another page saved in the lab changes nothing here).
+      const here = decodeURIComponent(location.pathname).replace(/\/$/, '/index').replace(/\.html?$/i, '');
+      if (of('html').some((p) => !p || p.replace(/\.html?$/i, '') === here)) morphPage();
       if (of('css').length) swapCss(of('css'));
       if (of('img').length) swapImages(of('img'));
       if (of('font').length) reloadFonts(of('font'));
@@ -3622,15 +3670,44 @@
     // The server counts open tabs: a tab in the background still counts, and says bye when it closes, so closing
     // the page stops Claude listening.
     const tab = Math.random().toString(36).slice(2, 12);
+    // A tab in front keeps one live stream. A tab in the background lets it go after 30 s and asks for the lab's
+    // state every 20 s instead (a quick request each time), so its "(3)" title and pins keep up without holding a
+    // connection: browsers allow only 6 to one lab at a time, and held ones by background tabs made the rest hang.
+    let pollTimer = 0;
+    let dropTimer = 0;
+    const poll = async () => {
+      try {
+        onState(await (await fetch(`${script.dataset.live.replace(/live$/, 'state')}?tab=${tab}`, { cache: 'no-store' })).json());
+      } catch {}
+    };
+    const toBackground = () => {
+      clearTimeout(dropTimer);
+      dropTimer = setTimeout(() => {
+        stream?.close();
+        stream = null;
+        clearInterval(pollTimer);
+        pollTimer = setInterval(poll, 20000);
+      }, 30000);
+    };
+    const toFront = () => {
+      clearTimeout(dropTimer);
+      clearInterval(pollTimer);
+      pollTimer = 0;
+      connect();
+    };
     const connect = () => {
-      if (stream) return; // background tabs stay connected too, so their title count and pins keep up
+      if (stream) return;
       stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
       beat = Date.now();
       stream.addEventListener('beat', () => (beat = Date.now()));
       stream.onerror = () => showAway('reconnecting');
       stream.onmessage = (e) => {
         beat = Date.now();
-        const v = JSON.parse(e.data);
+        onState(JSON.parse(e.data));
+      };
+    };
+    function onState(v) {
+      {
         // A new widget script: this page needs it, so it reloads (when it's safe, as always).
         if (v.widget && script.dataset.widget && v.widget !== script.dataset.widget) return reload();
         // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
@@ -3639,7 +3716,7 @@
           script.dataset.lab = v.lab;
           script.dataset.version = String(v.files);
           hotAt = v.hot;
-          seen = v.comments;
+          commentsRev = v.comments;
           morphPage();
           load();
         }
@@ -3651,8 +3728,8 @@
           else hotUpdate(v.hotFiles || []);
         }
         hotAt = v.hot;
-        if (seen !== null && v.comments !== seen) loadChanges(seen); // keeps typed text: it adds replies in place
-        seen = v.comments;
+        if (commentsRev !== null && v.comments !== commentsRev) loadChanges(commentsRev); // keeps typed text: it adds replies in place
+        commentsRev = v.comments;
         if (v.reads !== readsAt) (readsAt = v.reads), syncReads(); // read on another device with your name
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
@@ -3668,7 +3745,7 @@
         who.classList.toggle('working', mode === 'working');
         listBtn.dataset.agent = mode;
         chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's light
-        listBtn.title = who.textContent;
+        if (coarse) listBtn.title = who.textContent; // phones: the light on it says who's listening
         who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
@@ -3676,12 +3753,12 @@
         who.dataset.copy = !s?.url && s?.resume && mode !== 'away' ? s.resume : '';
         who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labfb wait' : s?.resume ? `${s.resume}${who.dataset.copy ? ' (tap to copy)' : ''}` : '';
         who.hidden = false;
-      };
-    };
+      }
+    }
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) return;
+      if (document.hidden) return toBackground();
       if (reloadWhenShown) return reload();
-      connect(); // back in front: reconnect if the browser dropped it meanwhile
+      toFront(); // back in front: the live stream again, and the first message says what changed meanwhile
     });
     addEventListener('pagehide', () => {
       stream?.close();
@@ -3698,14 +3775,16 @@
       showAway('reconnecting');
       connect();
     };
+    // Hidden tabs' timers are slowed to about once a minute, which would look like sleep: only a tab in front checks.
     setInterval(() => {
       const now = Date.now();
       const slept = now - tick > 20000;
       tick = now;
-      if (document.hidden && !slept) return;
+      if (document.hidden) return;
       if (slept || (stream && now - beat > 40000)) freshStream();
     }, 5000);
-    addEventListener('online', freshStream);
+    addEventListener('online', () => !document.hidden && freshStream());
     connect();
+    if (document.hidden) toBackground();
   }
 })();

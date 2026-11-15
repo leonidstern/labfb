@@ -1632,6 +1632,17 @@ const handler = async (req, res) => {
     // .lab (comments, admin key), .git, .env and other dot files are never served.
     if (pathname.split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
 
+    // A background tab's quick check: the same state the live stream sends, and the tab still counts as open.
+    if (pathname === '/_lab/state' && req.method === 'GET') {
+      const id = String(url.searchParams.get('tab') || '').slice(0, 40);
+      if (id) {
+        const tab = tabs.get(id) || { streams: 0, seen: 0 };
+        tab.seen = Date.now();
+        tabs.set(id, tab);
+      }
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(state(isLoopback(req)));
+    }
     if (pathname === '/_lab/live') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       const client = { res, local: isLoopback(req) };
