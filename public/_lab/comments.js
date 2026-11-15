@@ -159,6 +159,8 @@
       .meta .ago { white-space: nowrap; }
       .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
       .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
+      /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
+      .card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 11.5px; }
       button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
                    letter-spacing: .01em; border-radius: var(--_r-s); transition: color .12s; }
       button.btn:hover { color: var(--_fg); }
