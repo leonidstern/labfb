@@ -1222,6 +1222,7 @@
     goBtn.setAttribute('aria-pressed', String(v));
     document.documentElement.classList.toggle('lab-go', on && v);
     ptr.classList.toggle('go', v); // the drawn pointer turns at once, without waiting for the mouse to move
+    recheck();
   };
   function begin(anchor) {
     const name = store.get('lab-name').trim();
@@ -2096,6 +2097,7 @@
   const setOn = (value) => {
     on = value;
     if (!on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
+    else recheck();
     store.set('lab-on', on ? '1' : '0');
     if (on) showHint();
     draft = null;
@@ -2751,23 +2753,30 @@
   const ptr = el('div', { class: 'ptr', 'aria-hidden': 'true' });
   ptr.append(el('span', { class: 'ini' }, '+'), el('span', { class: 'tick' }, '✓'));
   root.append(ptr);
-  const plainAt = (e) => {
-    const path = e.composedPath();
-    const t = path[0];
-    if (!(t instanceof Element) || path.includes(host)) return false;
-    return !t.closest(`${INTERACTIVE}, [contenteditable], ${OFF}`);
-  };
-  addEventListener('pointermove', (e) => {
-    if (e.pointerType !== 'mouse') return;
+  // It shows exactly where the system pointer is hidden (cursor: none from the rules above): never two pointers, never
+  // none. That's checked on every move, and again when the page scrolls under a still mouse, Shift or Option is pressed,
+  // or go or comments are switched.
+  let mouse = null; // the last mouse position
+  const place = (x, y, target) => {
     const h = document.documentElement;
-    h.classList.add('lab-drawn');
-    const show = on && !h.classList.contains('lab-shift') && !h.classList.contains('lab-dragging') && plainAt(e);
+    const show = Boolean(target) && target !== host && !host.contains(target) && getComputedStyle(target).cursor === 'none';
     ptr.classList.toggle('show', show);
     ptr.classList.toggle('go', goMode);
-    ptr.style.transform = `translate(${e.clientX - 1}px, ${e.clientY - 27}px)`;
+    ptr.style.transform = `translate(${x - 1}px, ${y - 27}px)`;
+  };
+  const recheck = () => mouse && requestAnimationFrame(() => mouse && place(mouse.x, mouse.y, document.elementFromPoint(mouse.x, mouse.y)));
+  addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    document.documentElement.classList.add('lab-drawn');
+    mouse = { x: e.clientX, y: e.clientY };
+    const t = e.composedPath()[0];
+    place(e.clientX, e.clientY, t instanceof Element ? t : null);
   }, { capture: true, passive: true });
-  document.documentElement.addEventListener('mouseleave', () => ptr.classList.remove('show'));
-  addEventListener('blur', () => ptr.classList.remove('show'));
+  addEventListener('scroll', recheck, { capture: true, passive: true });
+  addEventListener('keydown', (e) => (e.key === 'Shift' || e.key === 'Alt') && recheck(), true);
+  addEventListener('keyup', (e) => (e.key === 'Shift' || e.key === 'Alt') && recheck(), true);
+  document.documentElement.addEventListener('mouseleave', () => ((mouse = null), ptr.classList.remove('show')));
+  addEventListener('blur', () => ((mouse = null), ptr.classList.remove('show')));
   const GO_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z' fill='rgb%2836%2C160%2C70%29' stroke='white'/%3E%3Cpath d='M9.2 14.2l3.2 3.2 6.2-6.6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
   const PIN_PATH = 'M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z';
   const toPng = (svgUrl, scale) =>
@@ -2799,13 +2808,19 @@
     ptr.querySelector('.ini').textContent = ch;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="${PIN_PATH}" fill="white" stroke="rgba(20,20,20,.3)"/><text x="14" y="18.3" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,system-ui,sans-serif" font-size="12" font-weight="600" fill="#141414">${ch}</text></svg>`;
     const pinSvg = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    // In a cascade layer, so a page's own pointers (a clickable card) still win over ours.
+    const plain = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
     const rules = (pin, go) =>
-      `html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${pin}; }` +
+      `@layer lab-pointer { html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *${plain} { cursor: ${pin}; } ` +
+      // With the drawn pointer (below) the system one hides over plain parts of the page, except in the top layer (an
+      // open dialog or popover, full screen), which draws above the widget: there the picture pointer stays.
+      `html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *${plain}:not(${OFF}, ${OFF} *, dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *) { cursor: none; } ` +
+      // The pointer is inherited, so places that aren't commented on name theirs: editable text a text cursor, a part
+      // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
+      `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
       // Holding Option (Alt) shows it on links and controls too, since Option-click pins there.
       `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${pin} !important; }` +
-      `html.lab-go body, html.lab-go body * { cursor: ${go.replace(/;/, ' !important;')} !important; }` +
-      // With the drawn pointer (below) the system one hides over plain parts of the page; links and fields keep theirs.
-      `html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments]) { cursor: none !important; }`;
+      `html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: ${go.replace(/;/, ' !important;')} !important; }`;
     if (!pinCursorStyle.textContent) pinCursorStyle.textContent = rules(`url("${pinSvg}") 1 27, crosshair`, `url("${GO_SVG}") 1 27, copy`);
     const [pin, go] = await Promise.all([cursorOf(pinSvg, 'crosshair'), cursorOf(GO_SVG, 'copy')]);
     if (cursorKey === ch) pinCursorStyle.textContent = rules(pin, go);
@@ -2820,7 +2835,7 @@
   const shiftKey = (e) => {
     clearTimeout(shiftOff);
     if (e.shiftKey) document.documentElement.classList.add('lab-shift');
-    else shiftOff = setTimeout(() => document.documentElement.classList.remove('lab-shift'), 400);
+    else shiftOff = setTimeout(() => (document.documentElement.classList.remove('lab-shift'), recheck()), 400);
   };
   addEventListener('keydown', shiftKey, true);
   addEventListener('keyup', shiftKey, true);

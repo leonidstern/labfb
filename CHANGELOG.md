@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The drawn pointer shows exactly where the system pointer is hidden, checked again when the page scrolls under a still mouse, Shift or Option is pressed, or go and comments are switched. A page's own pointers (a clickable card) win over it; editable text gets a text cursor and data-uncommentable parts the plain arrow; in an open dialog, popover or full screen (above the widget) the picture pointer stays.
 - The comment pointer is drawn with CSS (your pin following the mouse) instead of an image, so it changes smoothly: it turns green with a tick for go, and fades out where the system pointer takes over (links, fields, the widget, Shift). Mice only.
 - Lab pages draw dividers as Apple-style hairlines: half a pixel (one device pixel on Retina) in Apple's separator grey (`--lab-hair`, `--lab-gray-300`).
 - Pins find their element again after the page changes above them: when the stored path leads to a different element (a section added, items reordered), the pin looks for the one with the same tag, classes and words under the same heading, nearest to where it was, and sits at the same spot inside it.
