@@ -179,6 +179,7 @@
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
       .listener span { color: var(--_muted); }
       .listener.idle::before { background: var(--_muted); opacity: .5; }
+      .listener:not([data-copy=""])[data-copy] { cursor: copy; }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: 4px; text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
       .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
@@ -1652,6 +1653,16 @@
     };
     const who = document.createElement('a');
     who.className = 'listener';
+    who.addEventListener('click', async () => {
+      const text = who.dataset.copy;
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        const was = [...who.childNodes];
+        who.replaceChildren('copied');
+        setTimeout(() => who.textContent === 'copied' && who.replaceChildren(...was), 1200);
+      } catch {}
+    });
     who.hidden = true;
     root.append(who);
     let stream = null;
@@ -1671,15 +1682,18 @@
         const s = v.session;
         const mode = s ? v.mode || 'listening' : 'away';
         const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
-        // "Claude is working (ooze)": Claude first, the session's name after it in brackets.
-        const tag = s && s.name !== 'Claude' ? [span(`(${s.name})`)] : [];
-        if (mode === 'listening') who.replaceChildren(span('talking to'), 'Claude', ...tag);
-        else if (mode === 'working') who.replaceChildren('Claude', span('is working'), ...tag);
-        else who.replaceChildren(span('no Claude listening'));
+        // "Codex is working (ooze)": the agent first, the session's name after it in brackets.
+        const agent = s?.agent || 'Claude';
+        const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
+        if (mode === 'listening') who.replaceChildren(span('talking to'), agent, ...tag);
+        else if (mode === 'working') who.replaceChildren(agent, span('is working'), ...tag);
+        else who.replaceChildren(span('no agent listening'));
         who.classList.toggle('idle', mode === 'away');
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
-        who.title = mode === 'away' ? 'Ask Claude to run: node local.mjs wait' : s?.resume || '';
+        // No link, but a resume command (codex resume …): a tap copies it.
+        who.dataset.copy = !s?.url && s?.resume && mode !== 'away' ? s.resume : '';
+        who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labfb wait' : s?.resume ? `${s.resume}${who.dataset.copy ? ' (tap to copy)' : ''}` : '';
         who.hidden = false;
       };
     };

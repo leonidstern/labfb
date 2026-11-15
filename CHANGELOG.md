@@ -4,6 +4,15 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Any agent, not just Claude:
+  - labfb tells which agent runs `wait` and `reply` (Codex, Cursor, Amp, opencode, Antigravity, Claude; Copilot with `LAB_AGENT=copilot`). The page says "talking to Codex", replies are signed "Codex", and a Codex or Amp session shows its way back (`codex resume <id>`, tap to copy; Amp's thread link).
+  - The quick step runs with whichever agent tool is installed (the listening agent's own first): `codex exec`, `cursor-agent -p`, `opencode run`, `copilot -p`, `amp -x`, `agy -p`, never with "allow all" flags. A "Done" that changed no file counts as a pass. `LAB_FAST_AGENT` and `LAB_FAST_MODEL` choose.
+  - Fixed: the quick step signed every answer "Claude", even when `LAB_FAST_CMD` ran another tool.
+  - The skill reads the same for every agent; `npx skills add leonidstern/labfb` installs it for Codex, Cursor, Copilot, Amp, opencode, Windsurf and others. Agents that aren't woken when a background command ends loop `wait --timeout 50` in the foreground.
+  - `labfb mcp`: `wait` returns after 50 seconds by default (Codex and Cursor stop tool calls at 60), and the client's name signs replies when the agent's own variables don't reach the server.
+  - In Codex's sandbox, a `wait` or `reply` that can't reach the lab says why and how to get around it.
+  - A pin can name any tool or model: "use gpt-5" (Codex), "@codex", "gemini: …" (Antigravity), "@cursor", "model:<name>"; Claude models as before. Naming the listening agent sends the pin to the session; a tool that isn't installed says so on the pin. Tool names that are ordinary words (cursor, amp, copilot) count only with "@", so "cursor: pointer" stays a CSS request.
+  - One plugin for several agents: `plugin.json` + `mcp.json` (Agent Plugins 1.0) for Codex and others (`codex plugin marketplace add leonidstern/labfb`), `.cursor-plugin/plugin.json` for Cursor; Copilot reads the Claude plugin files. Installed this way the MCP server starts in the plugin's folder, so it finds the project from the client's root (MCP roots) or the shell's folder, and its tools take a `dir`.
 - Faster, from a code review:
   - the widget reads every pin's place once per redraw (150 pins: 11 layouts instead of 671 in ten redraws)
   - its font files load only when comments open, so a reader downloads none (57 KB)
