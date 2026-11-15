@@ -13,7 +13,7 @@ const env = { ...process.env, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 
 const PORT = String(5900 + Math.floor(Math.random() * 90));
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--no-fast', '--port', PORT], { cwd: DIR, env });
+const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
 const mcp = spawn(process.execPath, [LAB, 'mcp'], { cwd: DIR, env });
 after(() => {
   mcp.kill();
