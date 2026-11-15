@@ -270,7 +270,6 @@
       .msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12.5px; line-height: 1.35;
                     color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
       .msg .quote b { display: block; font-size: 11.5px; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
-      .msg::after { content: '↩'; position: absolute; right: -28px; top: 50%; translate: 0 -50%; color: var(--_fg); opacity: var(--lab-r, 0); scale: calc(.6 + .4 * var(--lab-r, 0)); }
       .msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; } .msg .p.gap { margin-top: 6px; }
       .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
@@ -1927,12 +1926,6 @@
       }
       b.append(...readable(m.text));
       b.append(stampOf(m, root));
-      const answer = () => {
-        replyTo = root ? root.id : null;
-        drawChat();
-        chatEl.querySelector('.chat textarea')?.focus({ preventScroll: true });
-      };
-      swipeToAnswer(b, answer); // phones: swipe one to answer it; no tap or click
       return m.id === newFrom && m !== msgs[0] ? [el('div', { class: 'newline' }, 'new'), b] : [b];
     }));
     const strip = chatEl.querySelector('.replying');
@@ -1964,48 +1957,8 @@
           },
         }),
       );
-    chat.querySelector('textarea').placeholder = target ? 'reply' : msgs.length && coarse ? 'message · swipe one to reply' : 'message';
+    chat.querySelector('textarea').placeholder = target ? 'reply' : 'message';
     if (atEnd) box.scrollTop = box.scrollHeight;
-  }
-  // Phones: swipe a message left to answer it, as in messengers: it follows the finger, ↩ shows, and past 56 px a tick
-  // of the phone says letting go answers it. Up and down stays the chat's scrolling.
-  function swipeToAnswer(b, answer) {
-    if (!coarse) return;
-    let x0 = 0;
-    let y0 = 0;
-    let dx = 0;
-    let mode = null;
-    b.addEventListener('touchstart', (e) => {
-      x0 = e.touches[0].clientX;
-      y0 = e.touches[0].clientY;
-      dx = 0;
-      mode = e.touches.length > 1 ? 'off' : null;
-    }, { passive: true });
-    b.addEventListener('touchmove', (e) => {
-      const t = e.touches[0];
-      const ax = t.clientX - x0;
-      const ay = t.clientY - y0;
-      if (!mode) {
-        if (Math.abs(ax) < 6 && Math.abs(ay) < 6) return;
-        mode = ax < 0 && Math.abs(ax) > Math.abs(ay) * 1.5 ? 'answer' : 'off';
-      }
-      if (mode !== 'answer') return;
-      const was = dx;
-      dx = Math.max(-80, Math.min(0, ax));
-      if (dx <= -56 && was > -56) navigator.vibrate?.(8);
-      b.style.transition = 'none';
-      b.style.transform = `translateX(${dx}px)`;
-      b.style.setProperty('--lab-r', String(Math.min(1, -dx / 56)));
-    }, { passive: true });
-    const end = () => {
-      if (mode === 'answer' && dx <= -56) answer();
-      mode = null;
-      b.style.transition = 'transform 300ms cubic-bezier(.32,.72,0,1)';
-      b.style.transform = '';
-      b.style.removeProperty('--lab-r');
-    };
-    b.addEventListener('touchend', end);
-    b.addEventListener('touchcancel', end);
   }
   // Open comments are numbered 1, 2, 3… in order, the same for everyone, admins and the agent text.
   const numberOf = (c) =>
