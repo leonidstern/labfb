@@ -7,6 +7,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Each comment is marked when it's handed to a wait, instead of one "seen up to" time: a comment a batch left out (or one saved a moment late) is no longer skipped for good.
 - Chat and list buttons stand out (bold) when something is new, and the chat marks where unread messages start with a "new" line.
 - Resolving a thread closes its card.
+- Threads read like the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, a "new" line above the first unread reply.
+- "copy link" keeps its width while it says "copied", so nothing beside it moves.
 - On a computer, opening the chat puts the cursor in its message box.
 - Chat: each message has its time in the corner (no hover tooltip over the text), your own with ✓ / ✓✓; no "↩ name: …" quote above replies (the ✅ for done stays); no click to reply (phones swipe).
 - The list names each pin by what it's on: when the pinned element says little ("4", an icon), the text of the box around it.

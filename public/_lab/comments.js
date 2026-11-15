@@ -122,6 +122,7 @@
       .card.out, .float.out { animation: lab-out .14s ease-in forwards; pointer-events: none; }
       .item { display: grid; row-gap: 3px; }
       .item + .item { margin-top: 14px; }
+      .msg.item { display: block; } .msg.item + .msg.item { margin-top: 0; }
       .meta { display: flex; align-items: baseline; gap: .5em; font-size: 12px; color: var(--_muted); margin: 0;
               white-space: nowrap; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
       .meta b { font-weight: 500; font-size: 13px; letter-spacing: .005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -1110,9 +1111,15 @@
       document.execCommand('copy');
       area.remove();
     }
+    // "copied" for a moment in the same box: the button keeps its width, so nothing beside it moves.
     const label = button.textContent;
+    button.style.width = `${button.getBoundingClientRect().width}px`;
+    button.style.justifyContent = 'center';
     button.textContent = 'copied';
-    setTimeout(() => (button.textContent = label), 1400);
+    setTimeout(() => {
+      button.textContent = label;
+      button.style.width = button.style.justifyContent = '';
+    }, 1400);
   }
 
   // ---------- render ----------
@@ -1193,6 +1200,18 @@
   }
   // The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
   // a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.
+  // The time in a bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent, ✓✓ handed to
+  // the agent (its thread went to the agent at or after you wrote it). Chat and threads alike.
+  const stampOf = (m, root, prefix = '') => {
+    const at = new Date(m.createdAt);
+    const time = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    const stamp = el('span', { class: 'stamp' }, prefix + time);
+    if (mine(m) && !m.session) {
+      const got = root?.handedAt && root.handedAt >= m.createdAt;
+      stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
+    }
+    return stamp;
+  };
   let replyTo = null;
   let newFrom = null;
   function drawChat() {
@@ -1223,15 +1242,7 @@
       // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
       const done = root?.resolved || /^done\b/i.test(m.text) ? '✅ ' : '';
       b.append(document.createTextNode(done + m.text));
-      // The time in the bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent,
-      // ✓✓ handed to the agent (its thread went to the agent at or after you wrote it).
-      const at = new Date(m.createdAt);
-      const stamp = el('span', { class: 'stamp' }, at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' }));
-      if (mine(m) && !m.session) {
-        const got = root?.handedAt && root.handedAt >= m.createdAt;
-        stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
-      }
-      b.append(stamp);
+      b.append(stampOf(m, root));
       const answer = () => {
         replyTo = root ? root.id : null;
         drawChat();
@@ -1333,15 +1344,6 @@
   const repliesOf = (id) => comments.filter((c) => c.parent === id);
   // Pins show who left them: the first letter of the name.
   const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
-  const ago = (iso) => {
-    const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
-    const [n, unit] = s < 60 ? [0, ''] : s < 3600 ? [s / 60, 'minute'] : s < 86400 ? [s / 3600, 'hour'] : s < 2592000 ? [s / 86400, 'day'] : s < 31536000 ? [s / 2592000, 'month'] : [s / 31536000, 'year'];
-    if (!unit) return 'just now';
-    const k = Math.floor(n);
-    return `${k} ${unit}${k === 1 ? '' : 's'} ago`;
-  };
-  const when = (iso) =>
-    new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   function placeCard(card, left, top) {
     layer.append(card);
@@ -1674,18 +1676,20 @@
     const foot = el('div', { class: 'foot' });
     card.append(el('div', { class: 'handle' }), body, foot);
     card.addEventListener('click', (e) => e.stopPropagation());
-    const itemEl = (item, isNew = fresh.has(item.id)) => {
-      const box = el('div', { class: 'item' });
-      const meta = el('div', { class: 'meta' });
-      meta.append(el('b', {}, item.name), el('span', { class: 'ago', title: when(item.createdAt) }, ago(item.createdAt)));
-      if (isNew) meta.append(el('span', { class: 'dot', title: 'new' }));
-      // The number the agent text uses for this thread.
-      if (item === c && !c.resolved) meta.append(el('span', { class: 'num', title: 'comment number, as in the agent link' }, String(numberOf(c))));
-      box.append(meta, el('div', { class: 'text' }, item.text));
+    // Messages as in the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, and
+    // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.
+    body.classList.add('msgs');
+    const itemEl = (item) => {
+      const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id });
+      const done = item !== c && /^done\b/i.test(item.text) ? '✅ ' : '';
+      box.append(el('b', {}, item.name), document.createTextNode(done + item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
     const shown = new Set();
-    for (const item of [c, ...repliesOf(c.id)]) {
+    const all = [c, ...repliesOf(c.id)];
+    const firstNew = all.find((x) => fresh.has(x.id));
+    for (const item of all) {
+      if (item === firstNew && item !== c) body.append(el('div', { class: 'newline' }, 'new'));
       body.append(itemEl(item));
       shown.add(item.id);
     }
@@ -1693,7 +1697,7 @@
       for (const r of repliesOf(c.id)) {
         if (shown.has(r.id)) continue;
         const items = card.querySelectorAll('.item');
-        const added = itemEl(r, true);
+        const added = itemEl(r);
         added.classList.add('fresh');
         items[items.length - 1].after(added);
         shown.add(r.id);
