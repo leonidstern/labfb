@@ -259,6 +259,8 @@
                     color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
       .msg .quote b { display: block; font-size: 11.5px; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
       .msg::after { content: '↩'; position: absolute; right: -28px; top: 50%; translate: 0 -50%; color: var(--_fg); opacity: var(--lab-r, 0); scale: calc(.6 + .4 * var(--lab-r, 0)); }
+      .msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; } .msg .p.gap { margin-top: 6px; }
+      .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
       .box:has(.trap) { position: relative; }
@@ -404,7 +406,7 @@
     <button class="sel-chip" type="button" hidden>Comment</button>
     <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · n new · v for go · m to hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
-    <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" aria-label="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
+    <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
       <button class="secondary send-all" type="button" hidden></button>
@@ -1140,6 +1142,33 @@
     if (at < text.length) out.push(document.createTextNode(text.slice(at)));
     return out;
   };
+  // Messages read in short blocks: a blank line starts a new paragraph, "- " or "1. " lines are a list, and one long
+  // paragraph (as agents tend to write) is broken after every second sentence, so a small window isn't a wall of text.
+  const sentences = (t) => t.split(/(?<=[.!?])\s+(?=["'(\[]?[A-Z0-9])/);
+  const readable = (text) => {
+    const blocks = [];
+    for (const [n, para] of String(text || '').trim().split(/\n\s*\n/).entries()) {
+      const lines = para.split('\n');
+      if (lines.length === 1 && para.length > 240) { // one long paragraph: two sentences a block
+        const ss = sentences(para);
+        for (let i = 0; i < ss.length; i += 2) blocks.push({ text: ss.slice(i, i + 2).join(' '), gap: n > 0 || i > 0 });
+        continue;
+      }
+      lines.forEach((line, i) => {
+        const item = /^\s*(?:[-•*]|\d+[.)])\s+/.exec(line);
+        const prev = i > 0 ? blocks.at(-1) : null;
+        if (item) blocks.push({ li: /\d/.test(item[0]) ? item[0].trim() : '•', text: line.slice(item[0].length), gap: n > 0 && i === 0 });
+        else if (prev && !prev.li) prev.text += `\n${line}`;
+        else blocks.push({ text: line, gap: (n > 0 && i === 0) || Boolean(prev) });
+      });
+    }
+    return blocks.map((b) => {
+      const node = el('span', { class: `p${b.li ? ' li' : ''}${b.gap ? ' gap' : ''}` });
+      if (b.li) node.append(el('span', { class: 'mk' }, b.li));
+      node.append(...linked(b.text));
+      return node;
+    });
+  };
   const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
   const markQuote = (anchor) => {
     if (!canMark) return;
@@ -1570,7 +1599,7 @@
         });
         b.append(q);
       }
-      b.append(...linked(m.text));
+      b.append(...readable(m.text));
       b.append(stampOf(m, root));
       const answer = () => {
         replyTo = root ? root.id : null;
@@ -2066,7 +2095,7 @@
     body.classList.add('msgs');
     const itemEl = (item) => {
       const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id });
-      box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...linked(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
+      box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
     const shown = new Set();
@@ -2286,7 +2315,7 @@
     // Computers: the cursor goes in the message box (phones wait for a tap, so the keyboard doesn't cover the chat).
     if (chatOpen && !coarse) chatEl.querySelector('.chat textarea')?.focus({ preventScroll: true });
   });
-  chatEl.querySelector('.x').addEventListener('click', () => slideAway(chatEl, () => ((chatOpen = false), render())));
+  // No close cross on the chat: a click outside it, Escape or C closes it (phones: the handle or the dimmed page).
   // On a computer a click outside the chat closes it (phones have the dimmed page for that); what you typed stays.
   // That click only closes: it doesn't start a comment or press what's under it.
   let closingClick = false;
@@ -3040,7 +3069,10 @@
     const busy = () =>
       draft || grabbing || openId || chatOpen || listOpen || (coarse && /^(textarea|input)$/.test(root.activeElement?.localName || '')) ||
       [...root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
+    let reloadWhenShown = false;
     const reload = () => {
+      // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
+      if (document.hidden) return void (reloadWhenShown = true);
       if (busy()) return setTimeout(reload, 500);
       try {
         sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: openId, list: listOpen, filter, chat: chatOpen }));
@@ -3101,7 +3133,9 @@
       };
     };
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) connect(); // back in front: reconnect if the browser dropped it meanwhile
+      if (document.hidden) return;
+      if (reloadWhenShown) return reload();
+      connect(); // back in front: reconnect if the browser dropped it meanwhile
     });
     addEventListener('pagehide', () => {
       stream?.close();
