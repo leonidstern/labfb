@@ -38,6 +38,9 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       --all lists every lab on this computer.
   labfb add <url> [--name "title"]   ·   labfb remove <url>
       Save a cloud lab page (https://<lab domain>/<page>) for this folder, in .lab/links.json.
+  labfb mcp
+      Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply and wait, for this folder's lab.
+      Claude Code: claude mcp add labfb -- npx @leonidstern/labfb mcp
   labfb preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
@@ -237,6 +240,91 @@ if (pos[0] === 'pages') {
   fs.writeFileSync(out, (lines.join('\n').trim() || (opts.all ? 'No labs running, and no saved cloud pages.' : 'No labs for this folder, and no saved cloud pages. `pages --all` lists every lab on this computer.')) + '\n');
   console.log(out);
   process.exit(0);
+}
+
+// ---------- MCP (optional): the same comments, as tools for any agent with MCP ----------
+// `labfb mcp` speaks MCP over stdin/stdout (JSON-RPC, one message per line). Each tool runs this script's own
+// commands in the folder the agent started it in, so it's the same as wait / reply on the command line.
+if (pos[0] === 'mcp') {
+  const { execFile } = await import('node:child_process');
+  const run = (args, ms) =>
+    new Promise((done) =>
+      execFile(process.execPath, [ME, ...args], { cwd: HERE, timeout: ms, maxBuffer: 4 << 20 }, (err, stdout, stderr) =>
+        done({ ok: !err, text: (stdout || '') + (err && !stdout ? stderr || err.message : '') }),
+      ),
+    );
+  const text = (t, isError = false) => ({ content: [{ type: 'text', text: t.trim() || '(nothing)' }], ...(isError ? { isError } : {}) });
+  const tools = [
+    {
+      name: 'comments',
+      description: "Open pin comments: this folder's local lab (all pages), or one cloud lab page when `url` is given. Plain text: each comment's id, words, element, file, line, pixel or second.",
+      inputSchema: { type: 'object', properties: { url: { type: 'string', description: 'A cloud lab page, https://<lab domain>/<page>' } } },
+    },
+    {
+      name: 'reply',
+      description: 'Answer on a pin in the local lab, by the id the comments show. resolve: true closes the thread.',
+      inputSchema: { type: 'object', properties: { id: { type: 'string' }, text: { type: 'string' }, resolve: { type: 'boolean' } }, required: ['id', 'text'] },
+    },
+    {
+      name: 'wait',
+      description: 'Wait for the next pin in the local lab and return it (up to `seconds`, default 300). The page shows that an agent is listening.',
+      inputSchema: { type: 'object', properties: { seconds: { type: 'number' } } },
+    },
+  ];
+  const call = async (name, a = {}) => {
+    if (name === 'comments') {
+      if (a.url) {
+        const u = new URL(a.url);
+        const res = await fetch(`${u.origin}/_lab/agent${u.pathname}`, { signal: AbortSignal.timeout(10000) });
+        return text(await res.text(), !res.ok);
+      }
+      const file = path.join(HERE, '.lab', 'comments.md');
+      if (!fs.existsSync(file)) return text(`No lab in ${HERE}. Start one: ${CMD}`, true);
+      return text(fs.readFileSync(file, 'utf8'));
+    }
+    if (name === 'reply') {
+      const r = await run(['reply', String(a.id), String(a.text), ...(a.resolve ? ['--resolve'] : [])], 30000);
+      return text(r.text, !r.ok);
+    }
+    if (name === 'wait') {
+      const s = Math.min(Math.max(Number(a.seconds) || 300, 5), 1500);
+      const r = await run(['wait', '--timeout', String(s)], (s + 30) * 1000);
+      return text(r.text, !r.ok);
+    }
+    return text(`Unknown tool ${name}`, true);
+  };
+  const send = (msg) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
+  let buf = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    buf += chunk;
+    for (let i = buf.indexOf('\n'); i >= 0; i = buf.indexOf('\n')) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (!line) continue;
+      let m;
+      try {
+        m = JSON.parse(line);
+      } catch {
+        send({ id: null, error: { code: -32700, message: 'Parse error' } });
+        continue;
+      }
+      if (m.id === undefined) continue; // a notification: nothing to answer
+      (async () => {
+        if (m.method === 'initialize')
+          return { protocolVersion: m.params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'labfb', version: VERSION } };
+        if (m.method === 'ping') return {};
+        if (m.method === 'tools/list') return { tools };
+        if (m.method === 'tools/call') return call(m.params?.name, m.params?.arguments);
+        throw Object.assign(new Error(`Method not found: ${m.method}`), { code: -32601 });
+      })().then(
+        (result) => send({ id: m.id, result }),
+        (e) => send({ id: m.id, error: { code: e.code || -32603, message: e.message } }),
+      );
+    }
+  });
+  process.stdin.on('end', () => process.exit(0));
+  await new Promise(() => {});
 }
 
 // ---------- Claude's side: wait, reply, resolve ----------
