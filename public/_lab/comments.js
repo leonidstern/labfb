@@ -213,7 +213,7 @@
       .msg b, .msg i { color: inherit; }
       .box:has(.trap) { position: relative; }
       .trap { position: absolute; top: 8px; left: 14px; width: 1px; height: 1px; opacity: 0; pointer-events: none; font-size: 16px; border: 0; padding: 0; }
-      .msg .tick { float: right; margin: 5px -3px -3px 10px; font-size: 11px; line-height: 1; letter-spacing: -.38em; opacity: .55; }
+      .msg .tick { color: inherit; float: right; margin: 5px -3px -3px 10px; font-size: 11px; line-height: 1; letter-spacing: -.38em; opacity: .55; }
       .msg .tick.got { opacity: .85; }
       .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
@@ -1234,8 +1234,7 @@
       b.append(el('b', {}, m.name));
       // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
       const done = root?.resolved || /^done\b/i.test(m.text) ? '✅ ' : '';
-      if (m.parent && root) b.append(el('i', {}, `↩ ${done}${root.name}: ${short(root.text, 32)}`));
-      b.append(document.createTextNode((m.parent ? '' : done) + m.text));
+      b.append(document.createTextNode(done + m.text));
       // Yours: ✓ sent, ✓✓ handed to the agent (its thread went to the agent at or after you wrote it), as in messengers.
       if (mine(m) && !m.session) {
         const got = root?.handedAt && root.handedAt >= m.createdAt;
