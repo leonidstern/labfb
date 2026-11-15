@@ -115,9 +115,14 @@
       .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 2; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       /* The agent is on it: a thin green ring turns around the pin. */
-      .pin.working::before { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(52, 199, 89, .25);
-                             border-top-color: rgb(52, 199, 89); animation: lab-spin 1s linear infinite; pointer-events: none; }
-      @keyframes lab-spin { to { transform: rotate(1turn); } }
+      /* The agent is on it: a green stroke runs round the pin's own teardrop outline (a turning conic gradient, cut to a
+         2 px ring; --lab-spin is registered in the page, since @property doesn't work inside a shadow root). */
+      .pin.working::before { content: ''; position: absolute; inset: -4px; border-radius: 18px 18px 18px 6px; padding: 2px; pointer-events: none;
+                             background: conic-gradient(from var(--lab-spin, 0deg), rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%);
+                             -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+                             mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+                             animation: lab-spin 1.2s linear infinite; }
+      @keyframes lab-spin { to { --lab-spin: 360deg; } }
       .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                         background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
       .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
@@ -2682,6 +2687,7 @@
   // A pin-shaped cursor over everything you can comment on (links and controls keep theirs).
   const PIN_CURSOR =
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M3 23V12.5a9.5 9.5 0 1 1 9.5 9.5H4z' fill='black' stroke='white' stroke-width='2'/%3E%3C/svg%3E\") 3 23, crosshair";
+  fonts.textContent += '@property --lab-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }';
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';

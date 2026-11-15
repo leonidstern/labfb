@@ -20,7 +20,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Scrollbars inside the chat, threads and the list are thin, on a clear track, like macOS ones (CSS only).
 - Go mode: a "go" button in the bar, or V, switches it on and off. While it's on, every click, drawn area, selection or hold on a phone posts a "go" pin at once (approve what it's on), with no box to type in; in draft mode go pins wait with the other drafts. Needs your name set once. A go pin is green with a tick, apart from comments.
 - A comment on selected words puts its pin on the last selected letter, where the selection ended (on the first when the selection runs over several items).
-- A pin the agent is on (handed to it and not answered yet, or answered "On it") has a thin green ring turning around it.
+- A pin the agent is on (handed to it and not answered yet, or answered "On it") has a green stroke running round its own teardrop outline.
 - The list has a "work" tab: Now (handed to the agent and not answered yet, or answered "On it"), Next (sent, not handed yet) and Done today, for this page's pins and chat.
 - Drawn areas are a green dotted outline with no fill and no dark ring; a quote that runs over several items is found and lit.
 - Phones: the chat has two heights, like iOS and Android sheets: pull it up (or flick) to fill the screen, pull it down from there to go back; from the lower height a pull down closes it as before, and a hard flick down from the top closes it too. It opens at the lower height.
