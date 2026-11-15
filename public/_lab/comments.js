@@ -210,6 +210,12 @@
       .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
       .error:empty { display: none; }
       .error.wait { color: var(--_muted); }
+      /* Thin scroll bars in threads, the chat and the reply box: a narrow grey thumb, no track. */
+      * { scrollbar-width: thin; scrollbar-color: var(--_line) transparent; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--_line); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--_muted); }
       .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
       .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
                     box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
@@ -1459,6 +1465,7 @@
     else {
       if (openCard?.isConnected) openCard.sync();
       if (chatOpen) drawChat();
+      drawList(); // the bar's counts and the tab's "(3)" keep up even while a box has the cursor (a tab left in the background)
     }
   }
 
@@ -3534,7 +3541,11 @@
         const markTop = mark?.getBoundingClientRect().top;
         // The browser cross-fades the old page into the new one (View Transitions, Safari 18+ and Chrome; others just swap).
         const apply = () => {
-          if (doc.title !== document.title) document.title = doc.title;
+          // The page's own new title, with the "(3)" of new messages kept in front.
+          if (doc.title !== tabTitle.base) {
+            tabTitle.base = doc.title;
+            drawList();
+          }
           const mine = ownStyles();
           const olds = [...document.head.querySelectorAll('style')].filter((x) => !mine.has(x));
           const news = [...doc.head.querySelectorAll('style')];
