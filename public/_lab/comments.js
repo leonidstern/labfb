@@ -450,6 +450,9 @@
         .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
         .chatwin .chat { padding: 6px 12px var(--_pb); }
         .list .it { padding: 11px 8px; }
+        /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
+        .pin { scale: .8; }
+        .pin.moved { scale: .64; }
         /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
         .bar > button { padding: 12px 14px; min-height: 44px; }
         .more-menu { bottom: 72px; min-width: 200px; }
