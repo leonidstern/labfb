@@ -265,6 +265,12 @@
       .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
       .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
+      /* Each agent's messages in its own brand colour: the name in it, the bubble a soft wash of it (Leo, 15 Nov). */
+      .msg[data-agent=claude] { --_brand: #d97757; } .msg[data-agent=codex] { --_brand: #10a37f; } .msg[data-agent=cursor] { --_brand: #8a8a8e; }
+      .msg[data-agent=gemini] { --_brand: #4285f4; } .msg[data-agent=copilot] { --_brand: #8957e5; } .msg[data-agent=amp] { --_brand: #f34e3f; }
+      .msg[data-agent=opencode] { --_brand: #8a8a8e; }
+      .msg[data-agent] { background: color-mix(in srgb, var(--_brand) 11%, var(--_bg)); }
+      .msg[data-agent] > b { color: var(--_brand); opacity: 1; }
       .msg.mine b { display: none; }
       .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; } /* a small green tick, as the ticks on messages */
       .msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12.5px; line-height: 1.35;
@@ -1309,6 +1315,13 @@
   }
   // A message's name with its small marks: ↩ replied, ✅ done.
   // A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
+  // Which agent wrote a message, for its brand colour: the session's kind, else the first word of its name.
+  const AGENT_KINDS = ['claude', 'codex', 'cursor', 'gemini', 'antigravity', 'copilot', 'amp', 'opencode'];
+  const agentOf = (m) => {
+    if (!m?.session) return '';
+    const k = String(m.session.kind || m.name || '').trim().split(/\W/)[0].toLowerCase();
+    return AGENT_KINDS.includes(k) ? (k === 'antigravity' ? 'gemini' : k) : '';
+  };
   const nameLine = (name, done) => {
     const b = el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
     if (done) b.append(el('span', { class: 'mark done', role: 'img', 'aria-label': 'done' }, '✓'));
@@ -1953,7 +1966,7 @@
     };
     patchKids(box, msgs.flatMap((m) => {
       const root = m.parent ? byId.get(m.parent) : m;
-      const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id });
+      const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(agentOf(m) ? { 'data-agent': agentOf(m) } : {}) });
       // The done mark sits beside the name, not in the words.
       // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
       const isDone = Boolean(root?.resolved || /^done\b/i.test(m.text));
@@ -2455,7 +2468,7 @@
     // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.
     body.classList.add('msgs');
     const itemEl = (item) => {
-      const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id });
+      const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(agentOf(item) ? { 'data-agent': agentOf(item) } : {}) });
       box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
