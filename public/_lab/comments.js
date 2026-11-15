@@ -3012,7 +3012,10 @@
       }
       e.preventDefault();
       raw = t.clientY - y0;
-      dy = raw >= 0 ? raw : -12 * Math.log1p(-raw / 24); // up: a short stretch that gets stiffer
+      // Up past where it sits: iOS's rubber band (UIScrollView's: offset = (1 − 1 / (pull × 0.55 / size + 1)) × size),
+      // so it follows the finger, more and more slowly (it barely moved before: 100 px of pull gave 20 px, now ~50).
+      const size = node.offsetHeight || 400;
+      dy = raw >= 0 ? raw : -(1 - 1 / ((-raw * 0.55) / size + 1)) * size;
       if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
       last = { y: t.clientY, at: e.timeStamp };
       node.style.transition = scrim.style.transition = 'none';
