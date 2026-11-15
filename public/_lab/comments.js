@@ -226,6 +226,7 @@
       .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
       /* Close: a round, quiet button with a drawn cross (not the ✕ character), darker on hover. */
       .list .tabs .show-done { color: var(--_muted); }
+      .chatwin .tabs b { visibility: hidden; } /* no "chat" title: the window speaks for itself (the header stays: the close button, and the grab strip on phones) */
       .list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
                        font-size: 0; color: var(--_muted); background: transparent; }
       .list .tabs .x::before { content: ''; width: 11px; height: 11px; background: currentColor;
@@ -345,7 +346,7 @@
         .chatwin .tabs { touch-action: none; }
         .list .items, .msgs, .card > .body { touch-action: pan-y; }
         .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
-        .chatwin .tabs b { visibility: hidden; } /* no "chat" title on phones: the sheet speaks for itself (the header stays as the grab strip) */
+
         :host([data-sheet]) :is(.bar, .hint, .listener, .left) { visibility: hidden; }
         /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
            sheet never scrolls the page. */
@@ -1530,6 +1531,8 @@
             const { comment } = await send(
               replyTo ? { name, text, parent: replyTo } : { name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } },
             );
+            const answered = replyTo && comments.find((x) => x.id === replyTo);
+            if (answered?.resolved) answered.resolved = false; // writing in a done thread reopens it
             replyTo = null;
             comments.push(comment);
             markSeen([comment]);
@@ -2121,6 +2124,12 @@
           const { comment } = await send({ name, text, parent: c.id });
           comments.push(comment);
           markSeen([comment]);
+          // Writing in a done thread reopens it (the lab does the same): it shows as open at once, pin and buttons.
+          if (c.resolved) {
+            c.resolved = false;
+            render();
+            return { keep: true };
+          }
           // Add the reply where it belongs instead of redrawing the card, so nothing on screen blinks
           // and the reply box keeps its focus for the next one.
           shown.add(comment.id);
