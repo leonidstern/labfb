@@ -11,7 +11,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 **Cloud lab**: pages on a domain, for people you share links with
 - **No account:** anyone with the link clicks anywhere, types a name and comments.
 - **One link for your agent:** "copy link" gives plain text with every open comment. Paste it into any agent and it goes to the file.
-- **Knows what's under the pin:** the quoted words, the element, the image file and pixel, the code line, the video second. No screenshots needed.
+- **Knows what's under the pin:** the quoted words, the element, the image file and pixel, the code line, the video second; on a dev build, the component and the file and line that wrote it. No screenshots needed.
 - **One domain, many repos:** the lab domain only proxies `/<name>/*` to each member's own repo and Vercel project.
 - **Admin links per person:** let someone resolve and delete on their pages only. Nothing to set up per person.
 
