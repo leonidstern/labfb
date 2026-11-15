@@ -335,6 +335,7 @@
         .bar .mn { color: var(--_muted); font-weight: 400; }
         /* Words stay grey (as the bar's buttons were); the count is the one thing in the text colour: a plain number. */
         .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
+        .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
         .bar .cnt { font-size: 12px; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
         .bar .cnt.zero { color: var(--_muted); }
         .bar .cnt.none { visibility: hidden; width: 0; min-width: 0; padding: 0; margin-left: -6px; }
@@ -1938,8 +1939,17 @@
     const width = card.offsetWidth;
     const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
     card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;
-    card.style.top = `${top + 10}px`;
+    // Near the page's end a thread opens above its pin, so it doesn't make the page longer and push things down.
+    const h = card.offsetHeight;
+    const below = top + 10 + h > contentEnd();
+    card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`; // above: clear of the pin (28 px tall)
+    card.style.transformOrigin = below ? '14px 100%' : '';
   }
+  // Where the page's own content ends (not the pins' layer): see inPage().
+  const contentEnd = () => {
+    inPage(0);
+    return pageEnd.y;
+  };
 
   // The send arrow is drawn with CSS (a stem and a chevron), no picture.
   const ARROW = '<i class="arr" aria-hidden="true"></i>';
@@ -2047,12 +2057,14 @@
     layer.append(node);
     const width = node.offsetWidth;
     const right = scrollX + document.documentElement.clientWidth - 12;
+    const h = node.offsetHeight;
+    const end = contentEnd();
     if (left + 36 + width <= right) {
       node.style.left = `${left + 36}px`;
-      node.style.top = `${top - 37}px`;
+      node.style.top = `${Math.min(top - 37, end - h - 8)}px`; // never past the page's end
     } else {
       node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
-      node.style.top = `${top + 10}px`;
+      node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
     }
   }
 
