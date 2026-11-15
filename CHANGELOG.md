@@ -4,7 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Keys are WASD now: W chat, A / D the previous / next new comment, S go on and off (C, N, J, K and V still work). In a text box, Control-D goes to the next new comment (Control-Shift-D back); Control-N no longer does. Key hints read "chat (w)", small and grey.
+- Keys are WASD now: W chat, A / D the previous / next new comment, 1 comment and 2 go, like picking a tool (C, N, J, K and V still work). In a text box, Control-D goes to the next new comment (Control-Shift-D back); Control-N no longer does. Key hints read "chat (w)", small and grey.
 - Tabs in the background stay connected to the lab, so their pins, chat and "(3)" title count keep up while you're in another tab.
 - N goes to the next new comment (the pill shows the key); Control-N does it from anywhere, the reply box too (Control-Shift-N: the one before); J and K still step forward and back.
 - Going to a new comment ("N new" or J / K) puts the cursor in its reply box (computers).
