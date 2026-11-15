@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The comment pointer is a white comment pin with a + (was a black pin), over everything you can comment on; links and controls keep theirs, Shift gives the text cursor back.
 - The ✓ / ✓✓ in a message's corner are as tall as the time's digits.
 - The list's and chat's close button: hovering only darkens the cross (no circle behind it), and no "close" tooltip.
 - Your own messages are soft green with dark text, not black.
