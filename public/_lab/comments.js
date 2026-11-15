@@ -177,7 +177,8 @@
       .card .box, .card .box.open, .card .box:focus-within { box-shadow: none; } /* the same box as the chat's: soft grey, no border */
       /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
       .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
-      .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 4px 0; margin: 0; resize: none;
+      /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
+      .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
                       min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
       .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
       .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
@@ -193,7 +194,7 @@
          the second row to ask for it. */
       .box.one, .box.one.open { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "text who send"; align-items: end; row-gap: 0; padding: 7px 7px 7px 14px; }
       .box.one .line { display: none !important; }
-      .box.one .who { align-self: end; padding-bottom: 5px; max-width: 40%; }
+      .box.one .who { align-self: end; line-height: 20px; padding-bottom: 2px; max-width: 40%; } /* the text's last line box, so they share a line */
       .box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
       .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
               background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
@@ -322,7 +323,9 @@
               box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
               letter-spacing: .005em; animation: lab-fade .2s ease-out; }
       /* 16px fields keep iOS from zooming the page when one is focused. */
-      @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.006em; } kbd { display: none; } }
+      @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.006em; } kbd { display: none; }
+        .box textarea { line-height: 22px; padding: 7px 0; } /* phones: 22 + 7 + 7 = 36, the send button's size */
+        .box.one .who { line-height: 22px; padding-bottom: 7px; } }
       @keyframes lab-fade { from { opacity: 0; } }
       /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
       @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
