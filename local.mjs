@@ -54,8 +54,8 @@ For the agent, from the project (any folder under it):
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
       An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
-  labfb reply <id> "what you did" [--resolve] [--page /path]
-      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread.
+  labfb reply <id> "what you did" [--resolve] [--wait] [--page /path]
+      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread; --wait listens again right after.
   labfb resolve <id> [--page /path]
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments.json (the store),
@@ -67,7 +67,7 @@ const opts = {};
 const pos = [];
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
-const SWITCHES = ['--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--all'];
+const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--fast', '--no-fast', '--new', '--all'];
 const VALUED = ['--port', '--name', '--page', '--timeout', '--dir', '--proxy'];
 const unknownFlags = [];
 for (let i = 0; i < argv.length; i++) {
@@ -575,6 +575,11 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
     if (out.status >= 300) die(`Could not resolve: ${out.text}`);
   }
   console.log(`${cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
+  // --wait: answer and listen again in one command (one round trip less per pin).
+  if (opts.wait) {
+    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500 });
+    console.log(out.status === 204 ? 'No new comments yet. Run wait again to keep listening.' : out.status === 409 ? 'Another session is listening now; this one stopped.' : out.status === 410 ? 'The page was closed, so this stopped listening.' : out.text);
+  }
   process.exit(0);
 }
 
@@ -908,7 +913,24 @@ const register = () => {
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
 const clients = new Set();
-const state = (local) => JSON.stringify({ ...version, mode, session: session && (local ? session : { name: session.name, agent: session.agent }) });
+// Read marks per name: a person on their phone and their Mac (same name) shares what's new and what's read. Kept in
+// .lab/reads.json as { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
+const READS = path.join(LAB, 'reads.json');
+const reads = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
+  } catch {
+    return {};
+  }
+})();
+let readsRev = 0;
+const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
+let readsTimer;
+const saveReads = () => {
+  clearTimeout(readsTimer);
+  readsTimer = setTimeout(() => fs.promises.writeFile(READS, JSON.stringify(reads)).catch((e) => console.error('[lab] could not save read marks:', e.message)), 300);
+};
+const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -967,45 +989,104 @@ setInterval(pagesChanged, 60000).unref();
 async function threadsText(page, threads) {
   const text = await agentText(page);
   const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file):/.test(l)).join('\n');
-  const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`)));
-  return parts.length ? `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}` : null;
+  // Lean: details an agent rarely needs (computed looks, colours, window size, the CSS path) stay in the full text at
+  // /_lab/agent/<page>; the pin's words, element, text, section and file stay here.
+  const RARE = /^(looks|colours|viewport|selector \(at comment time\)):/;
+  const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`))).map((b) => b.split('\n').filter((l) => !RARE.test(l)).join('\n'));
+  const ids = threads.filter((id) => parts.some((b) => b.split('\n')[0].endsWith(`· id ${id}`)));
+  return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids } : null;
 }
-// A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale).
+// A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale). Each comment
+// handed to a wait is marked with the stamp it had (deliveredAt), so a comment counts as new until it itself has been
+// handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for comments
+// from before these marks.
 const stamp = (c) => [c.createdAt, c.movedAt, c.rejectedAt].filter(Boolean).sort().pop(); // new when written, moved, or its quick fix rejected
 async function unseen() {
   // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
   if (trying.size) return null;
-  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > seen).map((c) => ({ page, c })));
+  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // The quick model's changes since the last delivery, for the session to check (they can be wrong: a fix in the right
   // spot that doesn't do what was asked, or one broader than the pin).
-  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !c.resolved && stamp(c) > seen).map((c) => ({ page, c })));
-  if (!fresh.length && !quickDone.length) return null;
+  // Only the risky ones: a change to code (not just a stylesheet) or to more than one file. A one-file style fix the
+  // quick model kept is left alone, so the session isn't woken to re-read it (it cost time and tokens and found nothing).
+  const risky = (c) => !c.quickFiles || c.quickFiles.length > 1 || c.quickFiles.some((f) => !/\.(s?css|less)$/.test(f));
+  // The rest (one-file style fixes) still pass by as one line each (id · file · the line it added), cheap to glance at:
+  // a wrong one is easy to spot without opening anything.
+  const styleDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
+  // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
+  const now = Date.now();
+  const lastBy = (c, mine) => [c, ...commentsOf(c._page).filter((r) => r.parent === c.id)].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
+  const missed = pages().flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
+    .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(c.remindedAt && now - Date.parse(c.remindedAt) < 600000))
+    .filter(({ page, c }) => !fresh.some((f) => f.page === page && (f.c.id === c.id || f.c.parent === c.id)));
+  if (!fresh.length && !quickDone.length && !missed.length) return null;
   const blocks = [];
-  for (const page of new Set(fresh.map((f) => f.page))) {
-    const block = await threadsText(page, [...new Set(fresh.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
-    if (block) blocks.push(block);
+  const sent = new Set(); // page + thread id actually written into the text
+  // A reply in a thread the agent already has: only the new words and one line on what the thread is about, not the
+  // whole thread again (the full one is at /_lab/agent/<page>).
+  const known = (f) => {
+    if (!f.c.parent) return false;
+    const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
+    return Boolean(root?.deliveredAt) && !fresh.some((g) => g.c.id === root.id);
+  };
+  const replies = fresh.filter(known);
+  const whole = fresh.filter((f) => !known(f));
+  for (const page of new Set(whole.map((f) => f.page))) {
+    const block = await threadsText(page, [...new Set(whole.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
+    if (block) blocks.push(block.text), block.ids.forEach((id) => sent.add(`${page}\n${id}`));
   }
-  const cursor = [...fresh, ...quickDone].map((f) => stamp(f.c)).sort().pop();
+  const when = (c) => `${new Date(c.createdAt).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  const lines = [];
+  for (const f of replies) {
+    const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
+    lines.push(`- ${f.page} · thread id ${root.id} "${root.text.replace(/\s+/g, ' ').slice(0, 70)}": ${f.c.name} · ${when(f.c)} · id ${f.c.id}: ${f.c.text.replace(/\s+/g, ' ')}`);
+    sent.add(`${f.page}\n${root.id}`);
+  }
+  if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
+  if (missed.length) {
+    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
+    for (const { page, c } of missed) setComment(page, c.id, { remindedAt: new Date(now).toISOString() });
+  }
+  const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
+  if (!given.length && !quickDone.length && !missed.length) return null;
+  const added = (c) => (/\+ ([^/·]+)/.exec(c.quickDiff || '')?.[1] || '').trim().slice(0, 80);
+  const glance = styleDone.length
+    ? `# Quick style fixes (one line each; reopen any that look wrong)\n${styleDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 50)}" (${page}): ${c.quickFiles?.[0] || ''}: + ${added(c)}`).join('\n')}`
+    : '';
   const check = quickDone.length
     ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
     : '';
-  const text = [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check].filter(Boolean).join('\n\n') +
-    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}), then wait again.`;
+  // First line: how many things this message holds, so an agent that only reads part of it can tell.
+  const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, quickDone.length && `${quickDone.length} quick change${quickDone.length === 1 ? '' : 's'} to check`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
+  const text = `In this message: ${count}${styleDone.length ? `, ${styleDone.length} style fix${styleDone.length === 1 ? '' : 'es'} to glance at` : ''}. Read all of it; each one is marked handed to you.\n\n` + [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check, glance].filter(Boolean).join('\n\n') +
+    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
-  const handed = [...new Set(fresh.map((f) => `${f.page}\n${f.c.parent || f.c.id}`))].map((k) => k.split('\n'));
-  return { text, cursor, handed };
+  const handed = [...sent].map((k) => k.split('\n'));
+  const marks = [...given, ...quickDone, ...styleDone].map(({ page, c }) => [page, c.id, stamp(c)]);
+  return { text, marks, handed };
 }
-// Hand the new comments to a wait; the cursor moves only once they are written to it.
+// Hand the new comments to a wait; each is marked as handed over only once it is written to it.
 function deliver(res, got) {
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
-  seen = got.cursor;
-  writeAtomic(SEEN, seen);
+  for (const [page, id, at] of got.marks) setComment(page, id, { deliveredAt: at });
   const at = new Date().toISOString();
-  for (const [page, id] of got.handed || []) setComment(page, id, { handedAt: at });
-  for (const page of new Set((got.handed || []).map(([page]) => page))) persist(page).catch(() => {});
+  for (const [page, id] of got.handed) setComment(page, id, { handedAt: at });
+  for (const page of new Set([...got.marks, ...got.handed].map(([page]) => page))) persist(page).catch(() => {});
   setMode('working');
 }
-async function wake() {
+// A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made in a quick run go over
+// together, in one round trip, instead of one wake-up each.
+const SETTLE_MS = Number(process.env.LAB_SETTLE_MS ?? 2000);
+const REMIND_MS = Number(process.env.LAB_REMIND_MS ?? 180000); // a handed pin with no answer comes back after this
+let settleTimer = null;
+function wake() {
+  if (!waiter) return;
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(wakeNow, SETTLE_MS);
+}
+async function wakeNow() {
   if (!waiter) return;
   const got = await unseen();
   if (!got?.text || !waiter) return;
@@ -1159,25 +1240,43 @@ const quickUndo = new Map(); // thread id → [{ file, before, after }] (null: t
 // A quick change stays only when it is small: at most 3 files and 40 lines added and removed.
 const QUICK_FILES = 3;
 const QUICK_LINES = 40;
-// Shared code: a file that two or more other files load (a shared component, a hook, a helper), its stylesheet, or a
-// stylesheet that sets page-wide variables (:root). A quick change there can break pages nobody pinned, so it isn't
-// the quick model's to keep: it goes back and the session takes the pin.
+// Shared code: a file loaded from two or more other folders (a shared component, a hook, a helper), the stylesheet of
+// such a component, or a stylesheet that sets page-wide variables (:root). A quick change there can break pages nobody
+// pinned, so it isn't the quick model's to keep: it goes back and the session takes the pin. Files used only inside
+// their own folder (a feature's table, its stylesheet, its helpers) stay the quick model's, even when several files
+// there load them, and so does a page the router loads.
 const CODE = /\.(m?[jt]sx?|vue|svelte|astro|s?css|html?)$/;
 function loaders(file) {
-  const name = path.basename(file).replace(/(\.module)?\.[\w]+$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(?:from|import|require\\(|@import|url\\()\\s*['"(]?[^'"\\n)]*\\b${name}(?:\\.module)?(?:\\.[\\w]+)?['")]`);
+  // Every import in the other files, resolved: './status' in invoices/ is invoices/status.js, not tickets/status.js.
+  // A stylesheet is named in full (InvoicesTable.module.css is never an import of InvoicesTable); a script with or
+  // without its extension, or as its folder's index. Paths that aren't relative (an alias like @/ui/Button) count
+  // when their last two parts match.
+  const strip = (f) => f.replace(/(\/index)?\.(m?[jt]sx?|vue|svelte|astro)$/, '');
+  const want = /\.s?css$/.test(file) ? file : strip(file);
+  const tail = want.split(path.sep).slice(-2).join('/');
+  const spec = /(?:\bfrom|\bimport|require\(|@import|url\()\s*['"]?([^'"\s)]+)['")]/g;
   const out = [];
-  for (const [f, v] of snap) if (f !== file && v.body && CODE.test(f) && re.test(v.body.toString('utf8'))) out.push(f);
+  for (const [f, v] of snap) {
+    if (f === file || !v.body || !CODE.test(f)) continue;
+    for (const [, s] of v.body.toString('utf8').matchAll(spec)) {
+      const hit = s.startsWith('.') ? (/\.s?css$/.test(want) ? path.resolve(path.dirname(f), s) : strip(path.resolve(path.dirname(f), s))) === want : (/\.s?css$/.test(want) ? s : strip(s)).endsWith(tail);
+      if (hit) {
+        out.push(f);
+        break;
+      }
+    }
+  }
   return out;
 }
-function isShared(file) {
+function isShared(file, depth = 0) {
   if (!CODE.test(file)) return false;
   const body = snap.get(file)?.body?.toString('utf8') || '';
   if (/\.s?css$/.test(file) && /:root\s*\{[^}]*--/.test(body)) return true;
+  const dir = path.dirname(file);
   const by = loaders(file);
-  if (by.length >= 2) return true;
-  // A component's own stylesheet is as shared as the component that loads it.
-  return /\.s?css$/.test(file) && by.length === 1 && loaders(by[0]).length >= 2;
+  if (new Set(by.filter((f) => path.dirname(f) !== dir)).size >= 2) return true;
+  // A stylesheet is as shared as the component next to it that loads it.
+  return depth === 0 && /\.s?css$/.test(file) && by.some((f) => path.dirname(f) === dir && isShared(f, 1));
 }
 let filesWaiting = false;
 const flushFiles = () => {
@@ -1211,7 +1310,7 @@ function quickRun(prompt, model, limit, tool, asked = '') {
 function quick(page, c) {
   trying.add(c.id);
   // The comment as it is now: a reply added later (maybe by a wifi guest) never reaches the quick model.
-  const blockNow = threadsText(page, [c.id]);
+  const blockNow = threadsText(page, [c.id]).then((b) => b?.text || null);
   quickQueue = quickQueue.then(async () => {
     let done = false;
     let note = '';
@@ -1297,6 +1396,7 @@ ${block}`;
       quickUndo.set(c.id, changes.map((x) => ({ file: x.file, before: x.before ? x.before.body : null, after: fs.existsSync(x.file) ? fs.readFileSync(x.file) : null })));
       // What it changed, for the session to glance at with its next pins.
       setComment(page, c.id, {
+        quickFiles: changes.map((x) => path.relative(ROOT, x.file)),
         quickDiff: changes.map((x) => `${path.relative(ROOT, x.file)}: ${[...x.removed.slice(0, 2).map((l) => `- ${l.trim()}`), ...x.added.slice(0, 2).map((l) => `+ ${l.trim()}`)].join(' / ')}`).join(' · ').slice(0, 600),
       });
     }
@@ -1367,21 +1467,32 @@ const titleOf = (file) => {
   }
 };
 // A folder with no index.html: its pages, wherever they are below it, not its subfolders.
+// The lab's own screens (the page list, "not found") in the lab's design system, /_lab/lab.css.
+const labPage = (title, body) =>
+  `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1, viewport-fit=cover">` +
+  `<title>${title}</title><link rel=stylesheet href="/_lab/lab.css"><body class=lab><main>${body}</main></body>`;
+const notFound = (req, res, what) => {
+  if (!/text\/html/.test(req.headers.accept || '')) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
+  return res.end(labPage('labfb · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));
+};
 const listing = (res, dir, urlPath) => {
   const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
   const li = pagesUnder(dir)
     .map((rel) => {
       const title = titleOf(path.join(dir, rel));
       const href = urlPath.replace(/\/$/, '') + urlOf(rel);
-      return `<li><a href="${esc(href)}">${esc(title || rel)}</a>${title ? ` <span style="opacity:.55">${esc(rel)}</span>` : ''}</li>`;
+      return `<li><a href="${esc(href)}"><span>${esc(title || rel)}</span>${title ? `<span class="lab-muted">${esc(rel)}</span>` : ''}</a></li>`;
     })
     .join('');
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(
-    `<!doctype html><meta charset=utf-8><title>labfb · ${esc(path.basename(dir))}</title>` +
-      `<body style="font:15px/1.6 system-ui;margin:40px;max-width:640px"><h1 style="font-size:17px;margin:0 0 4px">Pages in ${esc(path.basename(dir))}</h1>` +
-      `<p style="margin:0 0 16px;opacity:.6">Open one, then press c (or hold Option) and click to comment.</p>` +
-      `<ul style="padding-left:20px">${li || '<li>No HTML pages here. Running a dev server? Start it, then run labfb again.</li>'}</ul></body>`,
+    labPage(
+      `labfb · ${esc(path.basename(dir))}`,
+      `<header><h1>Pages in ${esc(path.basename(dir))}</h1><p class="lede">Open one, then press <kbd>m</kbd> to show comments (or hold Option) and click to comment.</p></header>` +
+        `<ul class="lab-box lab-rows">${li || '<li class="lab-muted" style="padding:8px 10px">No HTML pages here. Running a dev server? Start it, then run labfb again.</li>'}</ul>`,
+    ),
   );
 };
 
@@ -1501,6 +1612,29 @@ const handler = async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(await agentText(pathname.slice('/_lab/agent'.length)));
     }
+    // Read marks, shared by name: GET ?name=&page= gives the ids read there; POST { name, page, ids } adds to them.
+    if (pathname === '/_lab/api/reads') {
+      if (req.method === 'POST') {
+        const b = JSON.parse((await new Response(req).text()) || '{}');
+        const name = plainName(b.name);
+        const page = String(b.page || '').slice(0, 500);
+        const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String).filter((id) => /^[\w-]{1,40}$/.test(id)))].slice(0, 2000);
+        if (!name || !page) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and page needed');
+        const had = new Set(((reads[name] ||= {})[page] ||= []));
+        const added = ids.filter((id) => !had.has(id));
+        if (added.length) {
+          reads[name][page].push(...added);
+          readsRev++;
+          saveReads();
+          broadcast();
+        }
+        return res.writeHead(204).end();
+      }
+      const name = plainName(url.searchParams.get('name'));
+      const ids = (name && reads[name]?.[url.searchParams.get('page') || '']) || [];
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify({ ids }));
+    }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
@@ -1542,7 +1676,7 @@ const handler = async (req, res) => {
     let file = path.join(base, pathname);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
-    if (!fs.existsSync(file)) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+    if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (fs.statSync(file).isDirectory() && !pathname.endsWith('/') && fs.existsSync(file + '.html')) file += '.html'; // /a is a.html, /a/ is a/index.html

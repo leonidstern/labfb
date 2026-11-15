@@ -1,0 +1,117 @@
+/* The lab's design system: the comment widget and every lab page (the page list, "not found", pages an agent makes
+   for the lab) share these. Served at /_lab/lab.css. The --lab-* names are the widget's own theme hooks, so a page that
+   sets them themes the widget too.
+
+   Colour: white, black and green, with 4 see-through steps each (primitives, as in Cooking), and named uses that point at them.
+   Corners: two in all, 6 px small (keys, code, rows, pills), 12 px boxes and buttons; circles only for dots.
+   Type: the system font, 15 px text, 13 px small, 11 px caps labels; one weight for text, 600 for titles.
+   Depth: a hairline ring and a soft shadow, no borders. */
+:root {
+  /* Base colours (primitives): white and black, and see-through steps of each (4 a scheme, as Cooking does), plus the
+     green and its own 4 steps. Fills are a wash of black on light, of white on dark, so they sit right on any surface. */
+  --lab-white: #ffffff;
+  --lab-ink: #141414;
+  --lab-paper-dark: #1c1c1e;
+  --lab-black: #000000;
+  --lab-black-1: rgba(0, 0, 0, .05);  /* light: page wash, soft fills */
+  --lab-black-2: rgba(0, 0, 0, .10);  /* light: hover */
+  --lab-black-3: rgba(0, 0, 0, .15);  /* light: separators */
+  --lab-black-4: rgba(0, 0, 0, .50);  /* light: secondary text */
+  --lab-white-1: rgba(255, 255, 255, .05); /* dark: soft fills */
+  --lab-white-2: rgba(255, 255, 255, .10); /* dark: hover */
+  --lab-white-3: rgba(255, 255, 255, .15); /* dark: separators */
+  --lab-white-4: rgba(255, 255, 255, .50); /* dark: secondary text */
+  --lab-green-1: rgba(52, 199, 89, .15);  /* soft green: your bubbles, rec pills */
+  --lab-green-2: rgba(52, 199, 89, .30);  /* hover on green */
+  --lab-green-3: rgba(52, 199, 89, .50);  /* outlines, dots */
+  --lab-green-4: rgb(36, 160, 70);        /* green: go, done, picks (dark: #34c759) */
+
+  /* What things use (semantic), light. Dark only re-points these. */
+  --lab-bg: var(--lab-white);           /* boxes */
+  --lab-fg: var(--lab-ink);             /* text */
+  --lab-page: #f2f2f2;                  /* the page behind boxes: white under black-1 (5%), solid so nothing shows through */
+  --lab-muted: var(--lab-black-4);      /* secondary text */
+  --lab-line: var(--lab-black-3);       /* dividers, drawn as a hairline */
+  --lab-hair: .5px solid var(--lab-line); /* one device pixel on a Retina screen, as Apple's separators */
+  --lab-soft: var(--lab-black-1);       /* keys, other people's bubbles, boxes to type in */
+  --lab-hover: var(--lab-black-2);      /* hover on rows and buttons */
+  --lab-green: var(--lab-green-4);      /* go, done, picks */
+  --lab-green-soft: var(--lab-green-1); /* your bubbles, rec pills */
+  --lab-shadow: 0 0 0 .5px rgba(20, 20, 20, .14), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .08);
+  --lab-r-s: 6px;
+  --lab-radius: 12px;
+  /* What boxes and small parts actually use: the same sizes, as Apple's continuous corners where the browser has them (below). */
+  --lab-corner: var(--lab-radius);
+  --lab-corner-s: var(--lab-r-s);
+  --lab-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --lab-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --lab-bg: var(--lab-paper-dark); --lab-fg: #f4f4f5; --lab-page: var(--lab-black); --lab-muted: var(--lab-white-4);
+    --lab-line: var(--lab-white-3); --lab-soft: var(--lab-white-1); --lab-hover: var(--lab-white-2); --lab-green: #34c759; --lab-green-soft: var(--lab-green-1);
+    --lab-shadow: 0 0 0 1px rgba(244, 244, 245, .16), 0 10px 32px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --lab-bg: var(--lab-paper-dark); --lab-fg: #f4f4f5; --lab-page: var(--lab-black); --lab-muted: var(--lab-white-4);
+  --lab-line: var(--lab-white-3); --lab-soft: var(--lab-white-1); --lab-hover: var(--lab-white-2); --lab-green: #34c759; --lab-green-soft: var(--lab-green-1);
+  --lab-shadow: 0 0 0 1px rgba(244, 244, 245, .16), 0 10px 32px rgba(0, 0, 0, .5);
+  color-scheme: dark;
+}
+
+/* Base */
+*, *::before, *::after { box-sizing: border-box; }
+body.lab {
+  margin: 0; background: var(--lab-page); color: var(--lab-fg); font: 15px/1.45 var(--lab-font);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  padding: 24px max(16px, env(safe-area-inset-right, 0px)) 96px max(16px, env(safe-area-inset-left, 0px));
+}
+.lab main, .lab-main { max-width: 680px; margin: 0 auto; display: grid; gap: 20px; }
+.lab h1 { font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+.lab h2 { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--lab-muted); margin: 0 0 8px; }
+.lab p { margin: 0; }
+.lab a { color: inherit; text-underline-offset: 2px; }
+.lab-muted, .lab .lede { color: var(--lab-muted); }
+.lab .lede { margin-top: 6px; }
+.lab-small { font-size: 13px; }
+
+/* A box: white, 12 px corners, hairline ring and soft shadow. */
+.lab-box { background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 14px 16px; }
+
+/* Pills: small corners, 11 px, quiet grey; green for a pick or a go. */
+.lab-pill { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 4px 8px; border-radius: var(--lab-corner-s);
+  background: var(--lab-soft); color: var(--lab-muted); white-space: nowrap; }
+.lab-pill.go { background: var(--lab-green-soft); color: var(--lab-green); }
+
+/* Buttons, as in the widget's bar. */
+.lab-button { border: 0; border-radius: var(--lab-corner); padding: 9px 14px; cursor: pointer; background: var(--lab-bg); color: var(--lab-fg);
+  box-shadow: var(--lab-shadow); font: 500 13px var(--lab-font); white-space: nowrap; }
+.lab-button.go { background: var(--lab-green); color: #fff; }
+
+/* Keys and code: small corners on the soft grey. */
+.lab kbd, .lab code { font: 12.5px var(--lab-mono); background: var(--lab-soft); padding: 1px 5px; border-radius: var(--lab-corner-s); }
+
+/* A list of rows inside a box (the page list, the widget's list). */
+.lab-rows { list-style: none; margin: 0; padding: 6px; }
+.lab-rows a { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; border-radius: var(--lab-corner-s); text-decoration: none; }
+.lab-rows a:hover { background: var(--lab-hover); }
+.lab-rows .lab-muted { font-size: 13px; }
+
+/* Tables */
+.lab-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.lab-table th, .lab-table td { text-align: left; padding: 7px 10px; border-bottom: var(--lab-hair); vertical-align: top; }
+.lab-table tr:last-child td { border-bottom: 0; }
+.lab-table th { color: var(--lab-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.lab-button.go kbd { background: rgba(255, 255, 255, .22); color: #fff; }
+
+/* Apple's continuous corners (squircle) in Safari 26 and Chrome: a squircle needs about 1.8 times the radius to look the
+   same size. */
+@supports (corner-shape: squircle) {
+  :root { --lab-corner: calc(var(--lab-radius) * 1.8); --lab-corner-s: 11px; }
+  body.lab * { corner-shape: squircle; }
+  /* The pin keeps its teardrop. */
+  body.lab .pin { corner-shape: round; }
+}

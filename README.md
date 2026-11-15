@@ -54,7 +54,7 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
    https://<lab domain>/_lab/agent/_lab/demo shows it as text. Then delete it with header x-lab-admin: <token>.
 ```
 
-- **Comment:** open a page through the lab domain, press `c` (or hold Option), then click or drag. Drag your own pin to move it.
+- **Comment:** open a page through the lab domain, press `m` (or hold Option), then click or drag. Drag your own pin to move it.
 - **Read:** `https://<lab domain>/_lab/agent/<page path>` returns every open comment as plain text. Paste it into your agent.
 - **Resolve or delete:** open any page once with `#lab-admin=<token>`.
 - **Deploys:** each site ships with `npm run ship` (built on your computer, uploaded with `vercel deploy --prebuilt`, live in about 6 s for a small Astro site); pushes don't deploy. Ship what you commit.
@@ -87,7 +87,7 @@ Without Claude, run `npx @leonidstern/labfb@latest` in your project:
 - **Dev server (Astro, Next, Vite…):** start it as usual. labfb finds the one running from this project, even with other projects' servers running, and puts comments on top. `--proxy 4321` picks a port yourself.
 - **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb@latest dist`.
 
-- **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
+- **Comment:** press `m` (or hold Option) and click. Drag to mark an area.
 - **One lab per project:** `npx @leonidstern/labfb list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
 - **This project's pages:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx @leonidstern/labfb add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
 - **Pick the tool or model in the pin:** write "use fable", "@opus", "use gpt-5", "@codex", "gemini: …", "@cursor" or "model:<name>" and that tool and model makes the change. Start with `!` (or name the agent that is listening, like `@claude`) to send it straight to the session. A tool that isn't installed says so on the pin, and the session takes it. Other pins go to the quick model first.

@@ -328,7 +328,7 @@ test('a quick change that is too big is put back and goes to the session with wh
 test('the quick changes ride along with the next pins the session gets', async () => {
   const dir = site('glance');
   // Done for "red" pins, a pass for the rest.
-  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'if grep -q "make it red" ; then echo "h1{color:red}" > red.css; echo "Done: title red"; else echo "PASS: needs a choice"; fi' });
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'if grep -q "make it red" ; then echo "export const red = 1;" > red.js; echo "Done: title red"; else echo "PASS: needs a choice"; fi' });
   const red = await pin(B, 'make it red');
   await until(async () => (await replies(B, red, false)).length > 0);
   const other = await pin(B, 'pick a nicer font');
@@ -336,7 +336,7 @@ test('the quick changes ride along with the next pins the session gets', async (
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, new RegExp(`id ${other}`));
   assert.match(out, /^# Quick changes to check/m);
-  assert.match(out, new RegExp(`^- id ${red} "make it red" \\(/index\\): red\\.css: \\+ h1\\{color:red\\}`, 'm'));
+  assert.match(out, new RegExp(`^- id ${red} "make it red" \\(/index\\): red\\.js: \\+ export const red = 1;`, 'm'));
 });
 
 test('👎 on a quick fix puts it back and hands the pin to the agent; a file changed since is left alone', async () => {
@@ -380,14 +380,42 @@ test('a quick change to shared code (a file two others load) is put back and goe
   assert.match(out, /quick model passed: its change was to shared code/);
 });
 
-test('quick changes reach the session to check even when no pin was passed', async () => {
-  const dir = site('review');
+test('a one-file style fix the quick model kept is not handed to the session', async () => {
+  const dir = site('style-only');
   const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "h1{color:red}" > red.css; echo "Done: title red"' });
+  const id = await pin(B, 'make it red');
+  await until(async () => (await replies(B, id, false)).length > 0);
+  const out = await cli(dir, ['wait', '--timeout', '3'], {});
+  assert.doesNotMatch(out, /Quick changes to check/);
+  // It rides along as one line with the next pin the session gets.
+  const other = await pin(B, 'what font is this');
+  await until(() => quickLog(dir).length > 1);
+  const next = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(next, new RegExp(`^- id ${id} "make it red" \\(/index\\): red\\.css: \\+ h1\\{color:red\\}`, 'm'));
+  assert.match(next, /style fix to glance at/);
+});
+
+test('a feature\'s own stylesheet, used only in its folder, stays the quick model\'s', async () => {
+  const dir = site('feature-local');
+  fs.mkdirSync(path.join(dir, 'invoices'));
+  fs.writeFileSync(path.join(dir, 'invoices', 'InvoicesTable.module.css'), '.total{text-align:left}\n');
+  fs.writeFileSync(path.join(dir, 'invoices', 'InvoicesTable.jsx'), "import s from './InvoicesTable.module.css';\nexport default () => s.total;\n");
+  fs.writeFileSync(path.join(dir, 'invoices', 'InvoicesPage.jsx'), "import InvoicesTable from './InvoicesTable';\nexport default InvoicesTable;\n");
+  fs.writeFileSync(path.join(dir, 'router.jsx'), "import InvoicesPage from './invoices/InvoicesPage.jsx';\n");
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; printf ".total{text-align:right}\\n" > invoices/InvoicesTable.module.css; echo "Done: totals right"' });
+  const id = await pin(B, 'totals should line up right');
+  await until(async () => (await replies(B, id, false)).length > 0);
+  assert.equal(fs.readFileSync(path.join(dir, 'invoices', 'InvoicesTable.module.css'), 'utf8'), '.total{text-align:right}\n', 'kept');
+});
+
+test('quick changes to code reach the session to check even when no pin was passed', async () => {
+  const dir = site('review');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "export const red = 1;" > red.js; echo "Done: title red"' });
   const id = await pin(B, 'make it red');
   await until(async () => (await replies(B, id, false)).length > 0);
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, /^# Quick changes to check$/m);
-  assert.match(out, new RegExp(`^- id ${id} "make it red" \\(/index\\): red\\.css`, 'm'));
+  assert.match(out, new RegExp(`^- id ${id} "make it red" \\(/index\\): red\\.js`, 'm'));
   assert.doesNotMatch(out, /^# New comments/m);
   const again = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.doesNotMatch(again, /Quick changes to check/, 'handed over once');
@@ -404,4 +432,32 @@ test('a pin handed to the agent is marked, so the page can show it as being work
   await cli(dir, ['reply', id, 'Done: red'], { CODEX_THREAD_ID: 't1' });
   const reply = (await get()).find((c) => c.parent === id);
   assert.ok(reply.session && reply.createdAt >= handed.handedAt, "the agent's answer comes after it");
+});
+
+test('each comment is marked when handed over: one left out of a batch still comes, even if older than the rest', async () => {
+  const dir = site('marks');
+  const { B } = await lab(dir);
+  const a = await pin(B, 'make it red');
+  await cli(dir, ['wait', '--timeout', '5'], {});
+  const get = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+  assert.ok((await get()).find((c) => c.id === a).deliveredAt, 'marked with the stamp it was handed over at');
+  const b = await pin(B, 'and bigger');
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(out, new RegExp(`id ${b}`), 'the new one comes');
+  assert.doesNotMatch(out, new RegExp(`id ${a}`), 'the one handed over before does not come again');
+  assert.ok(!fs.readFileSync(path.join(dir, '.lab/seen'), { encoding: 'utf8', flag: 'a+' }).trim(), 'no single "seen up to" time moves past comments');
+});
+
+test('a pin handed to the agent but never answered comes back in a later wait, once', async () => {
+  const dir = site('missed');
+  const { B } = await lab(dir, ['--no-fast'], { LAB_REMIND_MS: '0' });
+  const id = await pin(B, 'make it red');
+  const first = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(first, new RegExp(`id ${id}`));
+  // The agent read nothing and waits again: the pin comes back as a reminder.
+  const again = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(again, /^# Still waiting for your answer/m);
+  assert.match(again, new RegExp(`id ${id} "make it red"`));
+  const third = await cli(dir, ['wait', '--timeout', '3'], {});
+  assert.doesNotMatch(third, /Still waiting/, 'not again within 10 minutes');
 });
