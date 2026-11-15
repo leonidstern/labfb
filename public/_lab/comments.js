@@ -1338,9 +1338,35 @@
   const isNew = (c) => !seen.has(c.id) && !mine(c);
   const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
   const markSeen = (items) => {
+    const fresh = items.filter((item) => !seen.has(item.id)).map((item) => item.id);
     for (const item of items) seen.add(item.id);
     store.set(seenKey(), [...seen].join(','));
+    if (fresh.length) shareReads(fresh);
   };
+  // On a local lab, what's read is shared by name: your phone and your Mac (the same name) show the same new and read.
+  const READS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'api/reads') : '';
+  const shareReads = (ids) => {
+    const who = store.get('lab-name').trim();
+    if (!READS || !who || !ids.length) return;
+    fetch(READS, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: who, page, ids }) }).catch(() => {});
+  };
+  async function syncReads() {
+    const who = store.get('lab-name').trim();
+    if (!READS || !who) return;
+    const at = page;
+    try {
+      const { ids } = await (await fetch(`${READS}?name=${encodeURIComponent(who)}&page=${encodeURIComponent(at)}`, { cache: 'no-store' })).json();
+      if (at !== page) return;
+      const theirs = new Set(ids);
+      const mineOnly = [...seen].filter((id) => !theirs.has(id));
+      const added = ids.filter((id) => !seen.has(id));
+      if (mineOnly.length) shareReads(mineOnly); // read here before: the other devices get it too
+      if (!added.length) return;
+      for (const id of added) seen.add(id);
+      store.set(seenKey(), [...seen].join(','));
+      render();
+    } catch {}
+  }
   const repliesOf = (id) => comments.filter((c) => c.parent === id);
   // Pins show who left them: the first letter of the name.
   const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
@@ -1410,6 +1436,7 @@
         return name.focus();
       }
       store.set('lab-name', name.value.trim());
+      syncReads();
       sendBtn.classList.remove('sent');
       void sendBtn.offsetWidth; // restart the arrow's flight on a quick second send
       sendBtn.classList.add('sent');
@@ -2350,6 +2377,7 @@
     if (pageNow() === page) return;
     page = pageNow();
     seen = readSeen();
+    syncReads();
     comments = [];
     draft = null;
     openId = null;
@@ -2461,6 +2489,7 @@
     root.append(who);
     let stream = null;
     let seen = null;
+    let readsAt = null;
     // The server counts open tabs: a tab in the background still counts, and says bye when it closes, so closing
     // the page stops Claude listening.
     const tab = Math.random().toString(36).slice(2, 12);
@@ -2472,6 +2501,7 @@
         if (String(v.files) !== script.dataset.version) return reload();
         if (seen !== null && v.comments !== seen) load(); // load() keeps typed text: it adds replies in place
         seen = v.comments;
+        if (v.reads !== readsAt) (readsAt = v.reads), syncReads(); // read on another device with your name
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
         const mode = s ? v.mode || 'listening' : 'away';

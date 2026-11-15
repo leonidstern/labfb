@@ -908,7 +908,24 @@ const register = () => {
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
 const clients = new Set();
-const state = (local) => JSON.stringify({ ...version, mode, session: session && (local ? session : { name: session.name, agent: session.agent }) });
+// Read marks per name: a person on their phone and their Mac (same name) shares what's new and what's read. Kept in
+// .lab/reads.json as { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
+const READS = path.join(LAB, 'reads.json');
+const reads = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
+  } catch {
+    return {};
+  }
+})();
+let readsRev = 0;
+const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
+let readsTimer;
+const saveReads = () => {
+  clearTimeout(readsTimer);
+  readsTimer = setTimeout(() => fs.promises.writeFile(READS, JSON.stringify(reads)).catch((e) => console.error('[lab] could not save read marks:', e.message)), 300);
+};
+const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1506,6 +1523,29 @@ const handler = async (req, res) => {
     if (pathname.startsWith('/_lab/agent/')) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(await agentText(pathname.slice('/_lab/agent'.length)));
+    }
+    // Read marks, shared by name: GET ?name=&page= gives the ids read there; POST { name, page, ids } adds to them.
+    if (pathname === '/_lab/api/reads') {
+      if (req.method === 'POST') {
+        const b = JSON.parse((await new Response(req).text()) || '{}');
+        const name = plainName(b.name);
+        const page = String(b.page || '').slice(0, 500);
+        const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String).filter((id) => /^[\w-]{1,40}$/.test(id)))].slice(0, 2000);
+        if (!name || !page) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and page needed');
+        const had = new Set(((reads[name] ||= {})[page] ||= []));
+        const added = ids.filter((id) => !had.has(id));
+        if (added.length) {
+          reads[name][page].push(...added);
+          readsRev++;
+          saveReads();
+          broadcast();
+        }
+        return res.writeHead(204).end();
+      }
+      const name = plainName(url.searchParams.get('name'));
+      const ids = (name && reads[name]?.[url.searchParams.get('page') || '']) || [];
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify({ ids }));
     }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);

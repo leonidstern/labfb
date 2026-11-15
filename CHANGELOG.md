@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Local labs: what's new and what's read is shared by name, so your phone and your Mac (the same name) show the same: open a pin or the chat on one and its "new" clears on the other. Kept in `.lab/reads.json`.
 - Each comment is marked when it's handed to a wait, instead of one "seen up to" time: a comment a batch left out (or one saved a moment late) is no longer skipped for good.
 - Chat and list buttons stand out (bold) when something is new, and the chat marks where unread messages start with a "new" line.
 - Resolving a thread closes its card.
