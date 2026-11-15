@@ -1428,6 +1428,7 @@
       newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
       listBtn.hidden = !on;
       listBtn.replaceChildren(document.createTextNode(`${freshAll} new`), el('kbd', {}, 'n'));
+      listBtn.title = 'next new comment: N, or Control-N while typing (Shift for the one before)';
       listBtn.disabled = !freshAll;
       listBtn.classList.toggle('quiet', !freshAll);
       const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
@@ -2322,6 +2323,14 @@
       e.preventDefault();
       setOn(!on);
       return;
+    }
+    // Control-N goes to the next new comment from anywhere, the reply box too (plain N types a letter there).
+    if (on && e.ctrlKey && !e.metaKey && !e.altKey && (e.code === 'KeyN' || e.key === 'n' || e.key === 'N')) {
+      e.preventDefault();
+      // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
+      const typed = root.querySelector('.card textarea, .float textarea');
+      if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 260 });
+      return stepNew(e.shiftKey ? -1 : 1);
     }
     // V switches between go and comment.
     if (on && (e.key === 'v' || e.key === 'V' || e.code === 'KeyV') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {

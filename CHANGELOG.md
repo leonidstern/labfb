@@ -4,7 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- N goes to the next new comment (the pill shows the key); J and K still step forward and back.
+- N goes to the next new comment (the pill shows the key); Control-N does it from anywhere, the reply box too (Control-Shift-N: the one before); J and K still step forward and back.
 - Going to a new comment ("N new" or J / K) puts the cursor in its reply box (computers).
 - The bar's "N new" has no ‹ › arrows: a click goes to the next new comment, J and K step forward and back.
 - No pictures left in the widget's controls: the close cross and the send arrow are drawn with CSS, and the picture pointers are gone (where the drawn pin can't show, in an open dialog or before the mouse moves, the system crosshair / copy pointer stands in). Holding Option over a link shows the drawn pin too.
