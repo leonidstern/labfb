@@ -1017,6 +1017,7 @@
     const z = zoneEl(cls);
     Object.assign(z.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
     layer.append(z);
+    return z;
   };
 
   // An area comment: facts come from the middle of the zone; the anchor element is the smallest one that
@@ -1690,7 +1691,7 @@
     list.forEach((c) => {
       if (isPage(c)) return; // in the chat, not on the page
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
-      if (openId === c.id && !c.anchor?.quote) drawZone(zone, `saved${anim}`); // quoted words get their highlight instead
+      if (openId === c.id) drawZone(zone, `saved${anim}`); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (isAdmin || store.get(`lab-edit:${c.id}`));
       const pin = el(
@@ -1705,8 +1706,12 @@
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
       if (movable) grab(pin, c);
-      // Hovering a pin on quoted words lights them up, as an open one does.
-      if (!coarse && c.anchor?.quote) {
+      // Hovering a pin shows what it's on, as an open one does: a drawn area its outline, selected words their highlight.
+      if (!coarse && zone && openId !== c.id) {
+        let shown = null;
+        pin.addEventListener('pointerenter', () => (shown = drawZone(zone, 'saved')));
+        pin.addEventListener('pointerleave', () => (shown?.remove(), (shown = null)));
+      } else if (!coarse && c.anchor?.quote && !zone) {
         pin.addEventListener('pointerenter', () => markQuote(c.anchor));
         pin.addEventListener('pointerleave', () => markQuote(quoted));
       }
@@ -1736,7 +1741,7 @@
         }
         swipeDown(card, () => ((openId = null), render()));
         markSeen(news);
-        quoted = c.anchor;
+        quoted = zone ? null : c.anchor; // an area's outline says what it's on; only selected words get the highlight
       }
     });
 
