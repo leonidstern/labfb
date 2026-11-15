@@ -167,7 +167,8 @@
       button.btn.danger, button.btn.danger:hover { color: #e5484d; }
       .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: .01em; padding: 2px 0; animation: lab-fade .12s ease-out; }
       .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
-      .card .composer { margin-top: 14px; }
+      .card .composer { margin-top: 6px; } /* close under resolve / delete */
+      .card > .body > .row:not(.nav) { margin-right: 7px; } /* resolve / delete end where the send button does */
       .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
              background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
       /* The new comment box: the chat's box (no border), with only a soft shadow so it stands out on any page. */
