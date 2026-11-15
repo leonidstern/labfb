@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The ✓ / ✓✓ in a message's corner are as tall as the time's digits.
+- The list's and chat's close button: hovering only darkens the cross (no circle behind it), and no "close" tooltip.
 - Your own messages are soft green with dark text, not black.
 - Go mode's pointer is a go pin (green teardrop with a white tick), clicking where its point is.
 - Computers, with comments shown: a click or drag no longer selects the page's text; hold Shift to select (and quote) words. Fields and editable text stay selectable.
