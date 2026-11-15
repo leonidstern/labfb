@@ -402,7 +402,7 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · j/k new · v for go · m to hide</div>
+    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · n new · v for go · m to hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" aria-label="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -1427,7 +1427,7 @@
       // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
       newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
       listBtn.hidden = !on;
-      listBtn.textContent = `${freshAll} new`;
+      listBtn.replaceChildren(document.createTextNode(`${freshAll} new`), el('kbd', {}, 'n'));
       listBtn.disabled = !freshAll;
       listBtn.classList.toggle('quiet', !freshAll);
       const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
@@ -2330,7 +2330,7 @@
       return;
     }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
-    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkrec]$/i.test(e.key)) {
+    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkrecn]$/i.test(e.key)) {
       const k = e.key.toLowerCase();
       if (k === 'c') {
         e.preventDefault();
@@ -2338,7 +2338,7 @@
       }
       const l = listed();
       const at = l.findIndex((c) => c.id === openId);
-      if (!LIST_WINDOW && (k === 'j' || k === 'k')) stepNew(k === 'j' ? 1 : -1);
+      if (!LIST_WINDOW && (k === 'j' || k === 'k' || k === 'n')) stepNew(k === 'k' ? -1 : 1); // N (or J) the next new comment, K the one before
       else if (k === 'l' && !LIST_WINDOW) return;
       else if (k === 'l') ((listOpen = !listOpen), listOpen && (filter = 'new'), drawList());
       else if ((k === 'j' || k === 'k') && l.length) goTo(l[(at + (k === 'j' ? 1 : l.length - 1) + (at < 0 && k === 'k' ? 1 : 0)) % l.length]);
