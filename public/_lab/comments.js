@@ -3083,6 +3083,49 @@
     vv.addEventListener('resize', fit);
     vv.addEventListener('scroll', fit);
     fit();
+    // ?kbdebug on the page's address: every frame for 1.5 s after the keyboard is asked for or let go, where the open
+    // sheet sits on the screen and what Safari reports, sent to the page's chat as "kb-log" 2 s after letting go. For
+    // tuning the keyboard slide on a real phone (a simulator's keyboard doesn't move like one).
+    if (/[?&]kbdebug\b/.test(location.search)) {
+      let lines = [];
+      let t0 = performance.now();
+      let sendTimer = 0;
+      const row = (what) => {
+        const open = openSheet();
+        const r = open?.getBoundingClientRect();
+        lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(vv.height)} top${Math.round(vv.offsetTop)} in${innerHeight} kb${host.hasAttribute('data-kb') ? 1 : 0}` +
+          (r ? ` sheet${Math.round(r.top - vv.offsetTop)}/${Math.round(r.height)}${open.getAnimations().length ? ' anim' : ''}` : ''));
+      };
+      const watch = (what) => {
+        row(what);
+        const end = performance.now() + 1500;
+        let prev = '';
+        const f = () => {
+          const before = lines.length;
+          row('f');
+          const last = lines[lines.length - 1].replace(/^\d+ f /, '');
+          if (last === prev) lines.length = before; // only frames where something moved
+          prev = last;
+          if (performance.now() < end) requestAnimationFrame(f);
+        };
+        requestAnimationFrame(f);
+      };
+      root.addEventListener('focusin', () => ((t0 = performance.now()), watch('focus')));
+      root.addEventListener('focusout', () => {
+        lines.push('--- let go');
+        t0 = performance.now();
+        watch('blur');
+        clearTimeout(sendTimer);
+        sendTimer = setTimeout(async () => {
+          const text = lines.join('\n');
+          lines = [];
+          for (let i = 0; i < text.length; i += 1900) {
+            await send({ name: 'kb-log', text: text.slice(i, i + 1900), anchor: { kind: 'page', selector: 'body', x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {});
+          }
+        }, 2000);
+      });
+      vv.addEventListener('resize', () => row('resize'));
+    }
   }
   // The chat stays at its newest message while it gets shorter (the keyboard coming up, the reply strip), unless
   // you scrolled back to read.
