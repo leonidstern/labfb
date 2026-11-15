@@ -3134,10 +3134,8 @@
         requestAnimationFrame(f);
       };
       root.addEventListener('focusin', () => ((t0 = performance.now()), watch('focus')));
-      root.addEventListener('focusout', () => {
-        lines.push('--- let go');
-        t0 = performance.now();
-        watch('blur');
+      // Sent 2 s after the last thing that moved (a keyboard, Safari's address bar), so one run is one message.
+      const sendSoon = () => {
         clearTimeout(sendTimer);
         sendTimer = setTimeout(async () => {
           const text = lines.join('\n');
@@ -3146,8 +3144,18 @@
             await send({ name: 'kb-log', text: text.slice(i, i + 1900), anchor: { kind: 'page', selector: 'body', x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {});
           }
         }, 2000);
+      };
+      root.addEventListener('focusout', () => {
+        lines.push('--- let go');
+        t0 = performance.now();
+        watch('blur');
+        sendSoon();
       });
-      vv.addEventListener('resize', () => row('resize'));
+      // The address bar growing or shrinking resizes the view too: each resize is followed for 1.5 s like a keyboard.
+      vv.addEventListener('resize', () => {
+        watch('resize');
+        if (lines.length > 1) sendSoon();
+      });
     }
   }
   // The chat stays at its newest message while it gets shorter (the keyboard coming up, the reply strip), unless
