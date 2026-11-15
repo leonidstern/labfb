@@ -1446,7 +1446,9 @@
     cursorMode = v;
     store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
+    goBtn.classList.toggle('on', goMode && !v); // cursor replaces go's green at once
     document.documentElement.classList.toggle('lab-pinning', on && !v);
+    document.documentElement.classList.toggle('lab-go', on && goMode && !v);
     recheck();
   };
   const setGo = (v) => {
