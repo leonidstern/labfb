@@ -68,7 +68,7 @@
       :host { all: initial;
         --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
         --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
-        --_radius: var(--lab-radius, 12px);
+        --_radius: var(--lab-radius, 12px); --_r-s: 6px /* three corners in all: 6 px small, 12 px boxes, round */;
         --_muted: color-mix(in srgb, var(--_fg) 60%, var(--_bg));
         --_line: color-mix(in srgb, var(--_fg) 13%, var(--_bg));
         --_soft: color-mix(in srgb, var(--_fg) 6%, var(--_bg));
@@ -141,7 +141,7 @@
       .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
       .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
       button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
-                   letter-spacing: .01em; border-radius: 4px; transition: color .12s; }
+                   letter-spacing: .01em; border-radius: var(--_r-s); transition: color .12s; }
       button.btn:hover { color: var(--_fg); }
       button.btn.danger, button.btn.danger:hover { color: #e5484d; }
       .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: .01em; padding: 2px 0; animation: lab-fade .12s ease-out; }
@@ -151,7 +151,7 @@
              background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
       .float .box { box-shadow: var(--_shadow); }
       .float .box:focus-within { box-shadow: var(--_shadow), 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
-      .card .box { background: var(--_soft); border-radius: max(calc(var(--_radius) - 2px), 0px); margin: 0; }
+      .card .box { background: var(--_soft); border-radius: var(--_radius); margin: 0; }
       .card .box.open { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent); }
       .card .box:focus-within { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
       /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
@@ -190,7 +190,7 @@
       .list .tabs button { border: 0; border-radius: 999px; padding: 4px 8px; white-space: nowrap; background: none; color: var(--_muted); cursor: pointer; font: inherit; }
       .list .tabs button.on { background: var(--_fg); color: var(--_bg); }
       .list .tabs .hold { margin-left: auto; }
-      .list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: 8px; cursor: pointer; font: inherit; }
+      .list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: var(--_r-s); cursor: pointer; font: inherit; }
       .list .it:hover, .list .it.cur { background: color-mix(in srgb, var(--_fg) 7%, transparent); }
       .list .it span, .list .none { color: var(--_muted); }
       .list .it .tag { display: inline-block; padding: 0 7px; border-radius: 999px; background: var(--_accent); color: var(--_accent-fg);
@@ -201,7 +201,7 @@
       @supports not (scrollbar-width: thin) {
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--_fg) 24%, transparent); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--_fg) 24%, transparent); border-radius: 999px; }
       }
       .list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
       .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
@@ -223,7 +223,7 @@
       .send.sent svg { animation: lab-fly .32s var(--_ease); }
       @keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
       @keyframes lab-fly { 45% { transform: translateY(-9px); opacity: 0; } 46% { transform: translateY(7px); opacity: 0; } }
-      .msg { max-width: 85%; padding: 7px 10px; border-radius: 14px; background: var(--_soft); align-self: flex-start; }
+      .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
       .msg.mine { align-self: flex-end; background: var(--_fg); color: var(--_bg); }
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       .msg.mine b { display: none; }
@@ -253,7 +253,7 @@
       .listener.working::before { animation: lab-blink 1.1s ease-in-out infinite; }
       @keyframes lab-blink { 50% { opacity: .2; } }
       .listener:not([data-copy=""])[data-copy] { cursor: copy; }
-      kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: 4px; text-align: center;
+      kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: var(--_r-s); text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
       .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
               box-shadow: var(--_shadow); padding: 8px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; white-space: nowrap;
@@ -288,9 +288,9 @@
         :host([data-kb]) :is(.card, .list:not([hidden])) { top: var(--lab-top, 0px) !important; bottom: auto !important;
           height: var(--lab-vh, 100dvh) !important; max-height: none !important; border-radius: 0; }
         /* A new comment stays small, just above the keyboard, with the page (dimmed) above it: you see what you comment on. */
-        :host([data-kb]) .float { top: auto !important; bottom: var(--lab-kb, 0px) !important; height: auto !important; border-radius: 18px 18px 0 0; }
+        :host([data-kb]) .float { top: auto !important; bottom: var(--lab-kb, 0px) !important; height: auto !important; border-radius: var(--_radius) var(--_radius) 0 0; }
         .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
-                        max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: 18px 18px 0 0; padding: 8px 0 0; z-index: 3; }
+                        max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: var(--_radius) var(--_radius) 0 0; padding: 8px 0 0; z-index: 3; }
         .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
         .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 4px; margin-right: 0; }
         .card > .foot, .float > .composer { flex: none; padding: 0 14px var(--_pb); }
@@ -314,14 +314,14 @@
         :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
         .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
         .card.out, .float.out { animation: lab-sheet-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
-        .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: 18px 18px 0 0;
+        .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
                 font-size: 15px; z-index: 3; }
         /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
         .chatwin { height: var(--_sheet-max); transition: height .38s cubic-bezier(.32, .72, 0, 1); }
         /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
         .chatwin.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
         /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
-        .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: 18px 18px 0 0;
+        .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
                       background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat, var(--_bg); }
         .list .items { padding: 0 12px calc(10px + var(--_safe)); }
         .chatwin .msgs { padding: 4px 12px 8px; }
