@@ -301,7 +301,9 @@
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
       .listener span { color: var(--_muted); }
       .listener.idle::before { background: var(--_muted); opacity: .5; }
-      .listener.working::before { animation: lab-blink 1.1s ease-in-out infinite; }
+      /* Working: the dot turns green and sends out a soft ring, like a "live" light. */
+      .listener.working::before { background: rgb(36, 160, 70); animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+      @keyframes lab-ping { 0% { box-shadow: 0 0 0 0 rgba(52, 199, 89, .55); } 80%, 100% { box-shadow: 0 0 0 6px rgba(52, 199, 89, 0); } }
       @keyframes lab-blink { 50% { opacity: .2; } }
       .listener:not([data-copy=""])[data-copy] { cursor: copy; }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: var(--_r-s); text-align: center;
@@ -408,7 +410,7 @@
         .hint { bottom: 64px !important; }
         .chat-btn[data-agent]::before, .list-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
         .chat-btn[data-agent=away]::before, .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
-        .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { animation: lab-blink 1.1s ease-in-out infinite; }
+        .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { background: rgb(36, 160, 70); animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
         .send { width: 36px; height: 36px; }
         .send .arr { height: 16px; margin: auto; } .send .arr::before, .send .arr::after { height: 9px; }
       }
