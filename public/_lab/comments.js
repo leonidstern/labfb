@@ -338,14 +338,16 @@
       const host = el[key];
       const parts = [];
       let usedAt = '';
-      for (let f = host?.return, i = 0; f && typeof f.type !== 'string' && parts.length < 2 && i < 40; f = f.return, i++) {
+      // Up through the plain elements around it (a <span> in a <td> in a <tr>…) to the component that rendered it.
+      for (let f = host?.return, i = 0; f && parts.length < 2 && i < 80; f = f.return, i++) {
+        if (typeof f.type === 'string') continue;
         const n = name(f.type);
         if (!plain(n)) continue;
         if (!parts.length) usedAt = srcOf(f);
         const v = variantOf(f.memoizedProps);
         parts.push(v ? `${n} ${v}` : n);
       }
-      if (!parts.length) return {};
+      if (!parts.length) return srcOf(host) ? { source: srcOf(host) } : {};
       return { component: parts.length > 1 ? `${parts[0]} (in ${parts[1]})` : parts[0], source: srcOf(host) || undefined, usedAt: usedAt || undefined };
     }
     const vue = el.__vueParentComponent;
@@ -366,16 +368,20 @@
   function looksOf(el) {
     const cs = getComputedStyle(el);
     const names = new Map();
-    const probe = document.createElement('i');
-    probe.style.display = 'none';
-    document.body.append(probe);
+    // A variable that isn't a colour (a radius, a gap) leaves the probe with its parent's colour, one no page uses:
+    // those are skipped, so "--radius-sm" never names a text colour.
+    const NONE = 'rgb(1, 2, 3)';
+    const wrap = document.createElement('i');
+    wrap.style.cssText = `display:none;color:${NONE}`;
+    const probe = wrap.appendChild(document.createElement('i'));
+    document.body.append(wrap);
     for (const prop of [...getComputedStyle(document.documentElement)].filter((p) => p.startsWith('--')).slice(0, 400)) {
       probe.style.color = '';
       probe.style.color = `var(${prop})`;
       const v = getComputedStyle(probe).color;
-      if (v && !names.has(v)) names.set(v, prop);
+      if (v && v !== NONE && !names.has(v)) names.set(v, prop);
     }
-    probe.remove();
+    wrap.remove();
     const say = (v) => (names.has(v) ? `${names.get(v)} ${v}` : v);
     const out = [];
     if (!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor)) out.push(`fill ${say(cs.backgroundColor)}`);
@@ -862,6 +868,25 @@
     }
     const text = short(words.join(' '), 300);
     if (text) anchor.zoneText = text;
+    // What the area holds: the outermost elements that sit wholly inside it (two cards, not the page around them),
+    // each with its text and, on a dev build, the component and line that wrote it.
+    const inArea = [];
+    const all = box.querySelectorAll('*');
+    for (let i = 0; i < all.length && i < 3000; i++) {
+      const el = all[i];
+      if (host.contains(el) || inArea.some((x) => x.contains(el))) continue;
+      const er = el.getBoundingClientRect();
+      if (er.width < 8 || er.height < 8 || er.left < left - 4 || er.right > right + 4 || er.top < top - 4 || er.bottom > bottom + 4) continue;
+      inArea.push(el);
+    }
+    if (inArea.length) {
+      anchor.zoneItems = inArea.slice(0, 5).map((el) => {
+        const c = componentAt(el);
+        const t = short(el.textContent, 50);
+        return short([openingTag(el), t && `"${t}"`, c.component, c.source && `written at ${c.source}`, c.usedAt && `used at ${c.usedAt}`].filter(Boolean).join(' · '), 500);
+      });
+      if (inArea.length > 5) anchor.zoneItems.push(`and ${inArea.length - 5} more`);
+    }
     // The same area inside the original image or video file, when the zone is on one.
     if (/^(img|video)$/.test(box.localName)) {
       const nw = box.localName === 'img' ? fileSize(box).nw : box.videoWidth;
@@ -1331,6 +1356,26 @@
       });
       actions.append(resolve, del);
       card.append(actions);
+      // A fix the quick model made: keep it (resolves) or put it back (the agent gets the pin). Local labs only.
+      if (c.quick === 'done' && !c.resolved) {
+        const verdict = el('div', { class: 'row' });
+        const keep = el('button', { class: 'btn', type: 'button' }, '👍 keep');
+        const back = el('button', { class: 'btn', type: 'button' }, '👎 put back');
+        keep.addEventListener('click', () => resolve.click());
+        back.addEventListener('click', async () => {
+          try {
+            const r = await fetch(new URL('/_lab/quick-undo', new URL(API, location.href)), { method: 'POST', headers: headers(), body: JSON.stringify({ page, id: c.id }) });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error);
+            c.quick = 'rejected';
+            render();
+          } catch (e) {
+            back.textContent = e.message || 'failed, try again';
+          }
+        });
+        verdict.append(keep, back);
+        card.append(verdict);
+      }
     }
     card.append(
       composer({
