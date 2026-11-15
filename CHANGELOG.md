@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Computers, with comments shown: a click or drag no longer selects the page's text; hold Shift to select (and quote) words. Fields and editable text stay selectable.
 - Go mode changes the pointer to a small green tick, and switching it (V or the button) redraws nothing, so nothing flickers.
 - Apple's continuous corners (squircle) on boxes, cards, bubbles, sheets, keys and rows wherever the browser draws them (Safari 26, Chrome); pills, buttons and dots stay round-ended, the pin keeps its teardrop. Same three sizes.
 - The lab's design system in one file, `/_lab/lab.css`: colours, three corners, type, boxes, pills, buttons, keys, rows and tables, with `--lab-*` names that are also the widget's theme hooks. The lab's page list and its "not found" page use it.

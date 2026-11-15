@@ -2695,6 +2695,21 @@
   const GO_CURSOR = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='12' cy='12' r='10' fill='rgb(36,160,70)' stroke='white' stroke-width='2'/%3E%3Cpath d='M7.5 12.2l3 3 6-6.4' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") 12 12, copy";
   fonts.textContent += `html.lab-go body, html.lab-go body * { cursor: ${GO_CURSOR} !important; }`;
   fonts.textContent += '@property --lab-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }';
+  // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
+  // Fields and editable text stay selectable.
+  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  // Letting go of Shift keeps text selectable a moment longer, so a selection made with it isn't dropped before its
+  // comment opens.
+  let shiftOff = 0;
+  const shiftKey = (e) => {
+    clearTimeout(shiftOff);
+    if (e.shiftKey) document.documentElement.classList.add('lab-shift');
+    else shiftOff = setTimeout(() => document.documentElement.classList.remove('lab-shift'), 400);
+  };
+  addEventListener('keydown', shiftKey, true);
+  addEventListener('keyup', shiftKey, true);
+  addEventListener('pointerdown', shiftKey, true);
+  addEventListener('blur', () => document.documentElement.classList.remove('lab-shift'));
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
