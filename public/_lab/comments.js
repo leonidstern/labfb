@@ -321,6 +321,37 @@
             color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
       .bar:hover kbd { opacity: .75; }
       .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
+      /* Computers: one bar of segments, a hairline between them; the less used ones in the ⋯ menu above it. */
+      @media (pointer: fine) {
+        .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
+        .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
+        .bar > button.first { box-shadow: none; }
+        .bar > button:not(:disabled):hover { background: var(--_hover); }
+        .bar > button:active { transform: none; background: var(--_hover); }
+        .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
+        .bar > button.quiet.first { box-shadow: none; }
+        .bar .list-btn, .bar .done-btn { min-width: 0; }
+        .bar .cnt { font-size: 11px; font-weight: 600; line-height: 16px; min-width: 18px; padding: 0 5px; border-radius: 8px; text-align: center;
+                    background: var(--_fg); color: var(--_bg); }
+        .bar .cnt.zero { background: var(--_soft); color: var(--_muted); }
+        .bar .cnt.none { visibility: hidden; width: 0; min-width: 0; padding: 0; margin-left: -6px; }
+        .bar button.go-btn.on { background: none; color: var(--_fg); }
+        .bar button.go-btn.on kbd { color: var(--_muted) !important; }
+        .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; font-weight: 600;
+              color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
+        .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
+        .more { font-size: 15px !important; letter-spacing: .05em; }
+        .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
+                     border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
+        .more-menu[hidden] { display: none; }
+        .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; color: var(--_fg); padding: 7px 10px;
+                            border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
+        .more-menu button:hover:not(:disabled) { background: var(--_hover); }
+        .more-menu button:disabled { color: var(--_muted); cursor: default; }
+        .more-menu button[hidden] { display: none; }
+        .more-menu kbd { margin: 0; }
+      }
+      @media (pointer: coarse) { .more, .more-menu { display: none !important; } }
       kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
       .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
               box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
@@ -344,7 +375,7 @@
         :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
         *, *::before, *::after { corner-shape: squircle; }
         button.pin, .pin.working::before, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
-        .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring { corner-shape: round; } /* circles stay circles */
+        .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring, .gp { corner-shape: round; } /* circles stay circles */
       }
       @keyframes lab-pin { from { transform: scale(1.1); } }
       @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
@@ -453,11 +484,16 @@
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary go-btn" type="button" hidden title="go mode: every click approves what it's on, no typing (V)">go</button>
       <button class="toggle" type="button"></button>
-    </div>`;
+      <button class="secondary more" type="button" hidden aria-label="more" aria-haspopup="menu">⋯</button>
+    </div>
+    <div class="more-menu" role="menu" hidden></div>`;
   const layer = root.querySelector('.layer');
   const hint = root.querySelector('.hint');
   if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'hold to comment';
   const toggleBtn = root.querySelector('.toggle');
+  const bar = root.querySelector('.bar');
+  const moreBtn = root.querySelector('.more');
+  const moreMenu = root.querySelector('.more-menu');
   const copyBtn = root.querySelector('.copy-all');
   // The comments list (new / open / resolved / mine; J/K step, R reply, E resolve, L shows it), and drafts: with
   // "drafts" on, new pins wait in this browser until "send 3 drafts", so nothing starts on pin 1 of 10.
@@ -1521,11 +1557,28 @@
   };
   // Done: resolved, fixed by the quick model, or answered "Done: …" by someone other than its author (the agent).
   const isDone = (c) => c.resolved || c.quick === 'done' || repliesOf(c.id).some((r) => r.name !== c.name && /^done\b/i.test(r.text));
+  // Computers (Leo, 2026-11-15, option 1b): one bar of segments (chat, new, go, ⋯) at the bottom right; the less used
+  // ones (show done, copy link, hide) sit in the ⋯ menu. Comments hidden: the bar is just "comments". Phones keep theirs.
+  function placeBar() {
+    if (coarse) return;
+    const inMenu = on ? [doneBtn, copyBtn, toggleBtn] : [];
+    for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
+    if (!on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
+    if (!on) root.querySelector('.left').append(copyBtn);
+    moreBtn.hidden = !on;
+    if (!on) moreMenu.hidden = true;
+    // The first segment shown has no line before it.
+    let first = true;
+    for (const b of bar.children) {
+      b.classList.toggle('first', first && !b.hidden);
+      if (!b.hidden) first = false;
+    }
+  }
   function drawList() {
     const all = threads();
     listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
     goBtn.hidden = !on;
-    if (!goBtn.firstElementChild) goBtn.replaceChildren(document.createTextNode('go'), el('kbd', {}, '1/2'));
+    if (!goBtn.firstElementChild) goBtn.replaceChildren(coarse ? document.createTextNode('go') : el('span', { class: 'gp' }, 'go'), el('kbd', {}, '1/2'));
     goBtn.classList.toggle('on', goMode);
     goBtn.setAttribute('aria-pressed', String(goMode));
     const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0); // a new message in a done thread counts too
@@ -1537,7 +1590,8 @@
       // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
       newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
       listBtn.hidden = !on;
-      listBtn.replaceChildren(document.createTextNode(`${freshAll} new`), el('kbd', {}, 'd'));
+      if (coarse) listBtn.replaceChildren(document.createTextNode(`${freshAll} new`), el('kbd', {}, 'd'));
+      else listBtn.replaceChildren(document.createTextNode('new'), el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll)), el('kbd', {}, 'd'));
       listBtn.title = 'next new comment: D, or Control-D while typing (A, or Control-Shift-D, for the one before)';
       listBtn.disabled = !freshAll;
       listBtn.classList.toggle('quiet', !freshAll);
@@ -1547,6 +1601,7 @@
       doneBtn.classList.toggle('quiet', doneBtn.disabled);
       doneBtn.textContent = showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`;
     }
+    placeBar();
     // The browser tab shows how many new messages there are, as "(3) Page title".
     const tabNew = all.reduce((n, c) => n + unread(c).length, 0);
     if (!tabTitle.base || !document.title.startsWith('(')) tabTitle.base = document.title.replace(/^\(\d+\) /, '');
@@ -1661,8 +1716,11 @@
     if (on && chatOpen) markSeen(msgs.filter(isNew)); // open: what's there is read
     const fresh = msgs.filter(isNew).length;
     chatBtn.hidden = !on;
-    chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'), el('kbd', {}, 'w'));
+    // Computers: "chat" with a count badge (kept in place, empty, when there's nothing new); phones keep their words.
+    if (coarse) chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'), el('kbd', {}, 'w'));
+    else chatBtn.replaceChildren(document.createTextNode('chat'), el('b', { class: `cnt${fresh ? '' : ' none'}` }, String(fresh || 0)), el('kbd', {}, 'w'));
     chatBtn.classList.toggle('has-new', fresh > 0);
+    placeBar(); // the chat button may have just shown: the segment lines follow
     const opening = chatEl.hidden;
     chatEl.hidden = !on || !chatOpen;
     if (chatEl.hidden) chatEl.classList.remove('full'); // opens at its lower height again
@@ -1988,7 +2046,7 @@
     const fresh = list.filter((c) => !c.resolved && c.anchor?.kind !== 'page').reduce((n, c) => n + unread(c).length, 0); // the chat counts its own
     // New replies are counted on "list" while comments show, on the toggle while they are hidden.
     toggleBtn.replaceChildren(
-      document.createTextNode((on ? 'hide' : open ? `comments · ${open}` : 'comments') + (!on && fresh ? ` · ${fresh} new` : '')),
+      document.createTextNode((on ? (coarse ? 'hide' : 'hide comments') : open ? `comments · ${open}` : 'comments') + (!on && fresh ? ` · ${fresh} new` : '')),
       el('kbd', {}, 'm'),
     );
     toggleBtn.classList.toggle('secondary', on);
@@ -2367,6 +2425,22 @@
     render();
   };
   toggleBtn.addEventListener('click', () => setOn(!on));
+  moreBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    moreMenu.hidden = !moreMenu.hidden;
+    moreBtn.setAttribute('aria-expanded', String(!moreMenu.hidden));
+  });
+  // A pick in the menu, a click anywhere else or Escape closes it.
+  moreMenu.addEventListener('click', () => setTimeout(() => (moreMenu.hidden = true), 0));
+  addEventListener('pointerdown', (e) => {
+    if (!moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) moreMenu.hidden = true;
+  }, true);
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !moreMenu.hidden) {
+      moreMenu.hidden = true;
+      e.stopPropagation();
+    }
+  }, true);
   goBtn.addEventListener('click', () => setGo(!goMode));
   const stepNew = (dir) => {
     const fresh = threads().filter((c) => !isPage(c) && unread(c).length);
