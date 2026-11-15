@@ -21,7 +21,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **No deploy:** run `npx @leonidstern/labfb@latest` in your project. It finds your running Astro, Next or Vite dev server and puts comments on top, or serves plain HTML files.
 - **Your agent answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
 - **Shows who is listening:** the label says whether Claude is listening or working. Close the page and Claude waits quietly: your first comment when you're back wakes it, and it stops after an hour.
-- **Quick model first:** when Claude Code (or Codex, Cursor, opencode, Copilot, Amp, Antigravity) is installed, small, clear changes, and one-line bugs even when asked as a question, are done by its one-shot mode in a few seconds, each checked and put back if it's a pass or too big. What it passes reaches your agent with its reason, and its changes ride along for a glance. `--no-fast` turns it off.
+- **Quick model first, a small router:** when Claude Code (or Codex, Cursor, opencode, Copilot, Amp, Antigravity) is installed, small, clear changes, and one-line bugs even when asked as a question, are done by its one-shot mode in a few seconds, each checked and put back if it's a pass or too big. What it passes reaches your agent with its reason, and its changes ride along for a glance. `--no-fast` turns it off.
 - **Phone too:** `--wifi` lets a phone at home join. Comments stay in `.lab/`, one store per project.
 
 Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 27 KB gzipped (the script on the page), and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.

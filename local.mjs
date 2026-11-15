@@ -1003,10 +1003,14 @@ async function wake() {
   deliver(w.res, got);
 }
 
-// ---------- fast path (on when the claude command is installed; --no-fast turns it off) ----------
-// Like a page answering "Send to Claude" itself: a quick, cheap model tries small changes first and answers on the pin.
-// Only comments from this computer: a wifi guest's words never drive edits without the session reading them.
-// LAB_FAST_CMD replaces the model command (a shell command; the prompt comes on stdin, the answer's last line is read).
+// ---------- the router: who handles a pin (on when an agent's command is installed; --no-fast turns it off) ----------
+// A small router in front of the session, for pins from this computer (a wifi guest's words never drive edits
+// without the session reading them):
+//   1. the pin's own words (routeFor): "!" or the listening agent → the session; a tool or model named → that one
+//   2. else the quick tool (quickTool): LAB_FAST_AGENT, the listening agent's own, Claude, the first installed
+//   3. after it (quick): a small "Done" stays; a pass or a change too big is put back and goes to the session with
+//      why; the person can still 👎 a kept one. Every decision is a line in .lab/quick.jsonl.
+// LAB_FAST_CMD replaces the tool (a shell command; the prompt comes on stdin, the answer's last line is read).
 const onPath = (name) =>
   (process.env.PATH || '').split(path.delimiter).some((dir) =>
     (process.platform === 'win32' ? ['.cmd', '.exe', ''] : ['']).some((ext) => {
