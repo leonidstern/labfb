@@ -945,17 +945,28 @@ const broadcast = () => {
 let reloadTimer;
 // With --proxy the dev server reloads its own pages.
 let indexStale = false;
+// Saves in one burst: only CSS files → the pages swap those stylesheets in place (no reload, nothing moves);
+// anything else → a reload.
+const cssSaved = new Set();
+let otherSaved = false;
 if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
   if (!file || file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules')) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
   // event's name can't tell; a CSS or JS save leaves the index alone.)
   if (/\.html?$/i.test(file) || !path.extname(file)) indexStale = true;
+  if (/\.css$/i.test(file)) cssSaved.add('/' + file.split(path.sep).join('/'));
+  else otherSaved = true;
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
     if (indexStale) (fileIndex = null), fileMemo.clear(), (indexStale = false);
+    const cssOnly = !otherSaved && cssSaved.size > 0;
+    const css = [...cssSaved];
+    cssSaved.clear();
+    otherSaved = false;
     // The quick model is still at work: the page reloads once, together with its answer (see quick()).
     if (quickRunning) return (filesWaiting = true);
-    version = { ...version, files: version.files + 1 };
+    if (cssOnly) version = { ...version, css: (version.css || 0) + 1, cssFiles: css.slice(0, 50) };
+    else version = { ...version, files: version.files + 1 };
     broadcast();
   }, 80);
 });

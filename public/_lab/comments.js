@@ -3136,6 +3136,22 @@
     let stream = null;
     let seen = null;
     let readsAt = null;
+    let cssAt = null;
+    // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
+    // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
+    const swapCss = (files) => {
+      const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]')].filter((l) => new URL(l.href, location.href).origin === location.origin);
+      const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
+      for (const link of named.length ? named : links) {
+        const url = new URL(link.href, location.href);
+        url.searchParams.set('lab-v', Date.now().toString(36));
+        const next = link.cloneNode();
+        next.href = url.href;
+        next.addEventListener('load', () => link.remove(), { once: true });
+        next.addEventListener('error', () => next.remove(), { once: true });
+        link.after(next);
+      }
+    };
     // The server counts open tabs: a tab in the background still counts, and says bye when it closes, so closing
     // the page stops Claude listening.
     const tab = Math.random().toString(36).slice(2, 12);
@@ -3145,6 +3161,8 @@
       stream.onmessage = (e) => {
         const v = JSON.parse(e.data);
         if (String(v.files) !== script.dataset.version) return reload();
+        if (cssAt !== null && v.css !== cssAt) swapCss(v.cssFiles || []);
+        cssAt = v.css;
         if (seen !== null && v.comments !== seen) load(); // load() keeps typed text: it adds replies in place
         seen = v.comments;
         if (v.reads !== readsAt) (readsAt = v.reads), syncReads(); // read on another device with your name
