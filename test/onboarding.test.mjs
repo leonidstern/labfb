@@ -80,8 +80,8 @@ test('a folder with no index.html at the top lists its pages, not its folders, a
       await new Promise((r) => setTimeout(r, 100));
     }
   }
-  assert.match(html, /href="\/site\/">Home</);
-  assert.match(html, /href="\/site\/about\/team\.html">site\/about\/team\.html</);
+  assert.match(html, /href="\/site\/"><span>Home</); // a page with a title shows it, its path in grey
+  assert.match(html, /href="\/site\/about\/team\.html"><span>site\/about\/team\.html</);
   assert.doesNotMatch(html, /lib/);
   assert.match(out, /opening site\/index\.html/);
   assert.match(await (await fetch(`http://localhost:${port}/site/`)).text(), /_lab\/comments\.js/);
