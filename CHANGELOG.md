@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The bar's "hide comments" reads just "hide".
 - Three corner sizes in all: 6 px for small things (keys, list rows, small buttons), 12 px for boxes, cards, bubbles and sheets (phones were 18 px), and round for pills and dots.
 - The list has just two tabs, new and open, and opens on new each time. The work, resolved and mine tabs and draft mode are parked (hidden, code kept).
 - Replied and done show as small marks beside the name again (↩ replied, ✅ done), not inside the message's words.
