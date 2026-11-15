@@ -335,7 +335,7 @@ test('the quick changes ride along with the next pins the session gets', async (
   await until(() => quickLog(dir).length > 1);
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, new RegExp(`id ${other}`));
-  assert.match(out, /^# Quick changes made meanwhile/m);
+  assert.match(out, /^# Quick changes to check/m);
   assert.match(out, new RegExp(`^- id ${red} "make it red" \\(/index\\): red\\.css: \\+ h1\\{color:red\\}`, 'm'));
 });
 
@@ -361,4 +361,34 @@ test('👎 on a quick fix puts it back and hands the pin to the agent; a file ch
   assert.equal(r.status, 409);
   assert.match((await r.json()).error, /changed since: red\.css/);
   assert.equal(fs.readFileSync(path.join(dir, 'red.css'), 'utf8'), 'h1{color:darkred}\n');
+});
+
+test('a quick change to shared code (a file two others load) is put back and goes to the session', async () => {
+  const dir = site('shared');
+  fs.mkdirSync(path.join(dir, 'ui'));
+  fs.writeFileSync(path.join(dir, 'ui', 'Button.js'), 'export const Button = () => "<button>";\n');
+  for (const f of ['a.js', 'b.js']) fs.writeFileSync(path.join(dir, f), "import { Button } from './ui/Button.js';\nButton();\n");
+  const before = fs.readFileSync(path.join(dir, 'ui', 'Button.js'), 'utf8');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; printf "export const Button = () => 2;\\n" > ui/Button.js; echo "Done: bigger button"' });
+  const id = await pin(B, 'make this button bigger');
+  await until(() => quickLog(dir).length > 0);
+  assert.equal(fs.readFileSync(path.join(dir, 'ui', 'Button.js'), 'utf8'), before, 'put back');
+  assert.deepEqual(await replies(B, id, false), [], 'no "Done" on the pin');
+  assert.match(quickLog(dir)[0].note, /shared code \(ui\/Button\.js\)/);
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(out, new RegExp(`id ${id}`));
+  assert.match(out, /quick model passed: its change was to shared code/);
+});
+
+test('quick changes reach the session to check even when no pin was passed', async () => {
+  const dir = site('review');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "h1{color:red}" > red.css; echo "Done: title red"' });
+  const id = await pin(B, 'make it red');
+  await until(async () => (await replies(B, id, false)).length > 0);
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(out, /^# Quick changes to check$/m);
+  assert.match(out, new RegExp(`^- id ${id} "make it red" \\(/index\\): red\\.css`, 'm'));
+  assert.doesNotMatch(out, /^# New comments/m);
+  const again = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.doesNotMatch(again, /Quick changes to check/, 'handed over once');
 });

@@ -972,17 +972,21 @@ async function unseen() {
   // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
   if (trying.size) return null;
   const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > seen).map((c) => ({ page, c })));
-  if (!fresh.length) return null;
+  // The quick model's changes since the last delivery, for the session to check (they can be wrong: a fix in the right
+  // spot that doesn't do what was asked, or one broader than the pin).
+  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !c.resolved && stamp(c) > seen).map((c) => ({ page, c })));
+  if (!fresh.length && !quickDone.length) return null;
   const blocks = [];
   for (const page of new Set(fresh.map((f) => f.page))) {
     const block = await threadsText(page, [...new Set(fresh.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
     if (block) blocks.push(block);
   }
-  const cursor = fresh.map((f) => stamp(f.c)).sort().pop();
-  // The quick model's changes since the last delivery, for a glance: they never wake the session by themselves.
-  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && stamp(c) > seen).map((c) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`));
-  const glance = quickDone.length ? `\n\n# Quick changes made meanwhile (glance; if one is wrong, fix it and reply on its pin)\n${quickDone.join('\n')}` : '';
-  const text = blocks.length ? `# New comments\n\n${blocks.join('\n\n')}${glance}\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}), then wait again.` : null;
+  const cursor = [...fresh, ...quickDone].map((f) => stamp(f.c)).sort().pop();
+  const check = quickDone.length
+    ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
+    : '';
+  const text = [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check].filter(Boolean).join('\n\n') +
+    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}), then wait again.`;
   return { text, cursor };
 }
 // Hand the new comments to a wait; the cursor moves only once they are written to it.
@@ -1146,6 +1150,26 @@ const quickUndo = new Map(); // thread id → [{ file, before, after }] (null: t
 // A quick change stays only when it is small: at most 3 files and 40 lines added and removed.
 const QUICK_FILES = 3;
 const QUICK_LINES = 40;
+// Shared code: a file that two or more other files load (a shared component, a hook, a helper), its stylesheet, or a
+// stylesheet that sets page-wide variables (:root). A quick change there can break pages nobody pinned, so it isn't
+// the quick model's to keep: it goes back and the session takes the pin.
+const CODE = /\.(m?[jt]sx?|vue|svelte|astro|s?css|html?)$/;
+function loaders(file) {
+  const name = path.basename(file).replace(/(\.module)?\.[\w]+$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(?:from|import|require\\(|@import|url\\()\\s*['"(]?[^'"\\n)]*\\b${name}(?:\\.module)?(?:\\.[\\w]+)?['")]`);
+  const out = [];
+  for (const [f, v] of snap) if (f !== file && v.body && CODE.test(f) && re.test(v.body.toString('utf8'))) out.push(f);
+  return out;
+}
+function isShared(file) {
+  if (!CODE.test(file)) return false;
+  const body = snap.get(file)?.body?.toString('utf8') || '';
+  if (/\.s?css$/.test(file) && /:root\s*\{[^}]*--/.test(body)) return true;
+  const by = loaders(file);
+  if (by.length >= 2) return true;
+  // A component's own stylesheet is as shared as the component that loads it.
+  return /\.s?css$/.test(file) && by.length === 1 && loaders(by[0]).length >= 2;
+}
 let filesWaiting = false;
 const flushFiles = () => {
   if (!filesWaiting) return;
@@ -1238,11 +1262,15 @@ ${block}`;
     note = /^pass\b\s*[:\-–—]?\s*(.+)$/i.exec(line)?.[1]?.replace(/\s+/g, ' ').slice(0, 200) || '';
     // A "Done" must have changed something, and only a little (a pin the person named a model for may change more);
     // anything else is put back, so the session starts from the files as they were.
-    done = /^done:/i.test(line) && changes.length > 0 && (named || (changes.length <= QUICK_FILES && size <= QUICK_LINES));
+    const sharedFiles = named ? [] : changes.filter((x) => x.before && isShared(x.file)).map((x) => path.relative(ROOT, x.file));
+    done = /^done:/i.test(line) && changes.length > 0 && !sharedFiles.length && (named || (changes.length <= QUICK_FILES && size <= QUICK_LINES));
     if (!done && changes.length) {
       const stuck = undo(changes);
       result = 'undone';
-      if (/^done:/i.test(line)) note = `its change was too big for a quick one (${changes.length} files, ${size} lines), so it was put back`;
+      if (/^done:/i.test(line))
+        note = sharedFiles.length
+          ? `its change was to shared code (${sharedFiles.join(', ')}), used by other pages too, so it was put back; check where the fix belongs`
+          : `its change was too big for a quick one (${changes.length} files, ${size} lines), so it was put back`;
       if (stuck.length) note += `${note ? '; ' : ''}couldn't put back ${stuck.map((f) => path.relative(ROOT, f)).join(', ')}`;
     }
     if (done) result = 'done';
