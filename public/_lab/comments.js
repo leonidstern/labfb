@@ -1639,7 +1639,9 @@
   }
 
   // ---------- render ----------
-  const threads = () => comments.filter((c) => !c.parent && (isAdmin || !c.resolved));
+  // Everyone sees done threads the same way (a guest's resolved pin vanished at once, with the answer in it unread):
+  // done ones with nothing new step aside, and show done brings them back.
+  const threads = () => comments.filter((c) => !c.parent);
   const heldKey = () => `lab-held:${page}`;
   const held = () => {
     try {
