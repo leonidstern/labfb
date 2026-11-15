@@ -284,6 +284,10 @@
                           -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
                           mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
       .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
+      /* One slot for the mark, whatever it is (✓, ✓✓, the turning ring, the green ✓): 12 px wide after a 4 px gap, so the
+         time doesn't shift when one turns into another (Leo, 15 Nov: it flicked as ✓ became the ring). */
+      .msg .stamp .tick { display: inline-block; width: 12px; text-align: center; margin-left: 4px; }
+      .msg .stamp .ring { margin: 0 1.5px 0 5.5px; }
       .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
       .bar button * { color: inherit; font-weight: inherit; }
