@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The list window is parked: the bar shows ‹ N new › while there are new comments (the middle and J go to the next, ‹ and K to the previous), and a "show done · N" / "hide done" pill. On phones the agent's light moves to the chat button. `LIST_WINDOW` brings the list back.
 - The list shows each pin on one line (longer ones end in …); rows highlight in Apple's hover grey.
 - Done pins with nothing new in them are hidden on the page; "show done · N" in the list brings them back (remembered per browser). A done pin with a new reply shows as usual.
 - A wait's message starts with what it holds ("In this message: 3 new, 1 reply"), so an agent that only read part of it can tell something is missing.

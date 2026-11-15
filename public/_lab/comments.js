@@ -304,7 +304,7 @@
         :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
         *, *::before, *::after { corner-shape: squircle; }
         button.pin, .pin.working::before, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
-        .listener::before, .list-btn[data-agent]::before { corner-shape: round; } /* circles stay circles */
+        .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before { corner-shape: round; } /* circles stay circles */
       }
       @keyframes lab-pin { from { transform: scale(1.1); } }
       @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
@@ -379,9 +379,9 @@
         .listener { display: none !important; }
         .bar { bottom: 16px !important; }
         .hint { bottom: 64px !important; }
-        .list-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
-        .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
-        .list-btn[data-agent=working]::before { animation: lab-blink 1.1s ease-in-out infinite; }
+        .chat-btn[data-agent]::before, .list-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
+        .chat-btn[data-agent=away]::before, .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
+        .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { animation: lab-blink 1.1s ease-in-out infinite; }
         .send { width: 36px; height: 36px; }
         .send svg { width: 16px; height: 16px; margin: auto; }
       }
@@ -392,7 +392,7 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · v for go · m to hide</div>
+    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · j/k new · v for go · m to hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" aria-label="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -402,6 +402,7 @@
       <button class="secondary new-prev" type="button" hidden aria-label="previous new comment">‹</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
+      <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary go-btn" type="button" hidden title="go mode: every click approves what it's on, no typing (V)">go</button>
       <button class="toggle" type="button"></button>
     </div>`;
@@ -416,6 +417,10 @@
   const goBtn = root.querySelector('.go-btn');
   const newPrev = root.querySelector('.new-prev');
   const showDoneBtn = root.querySelector('.show-done');
+  const doneBtn = root.querySelector('.done-btn');
+  // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
+  // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
+  const LIST_WINDOW = false;
   let showDone = store.get('lab-show-done') === '1';
   const newNext = root.querySelector('.new-next');
   const sendBtn = root.querySelector('.send-all');
@@ -1361,6 +1366,14 @@
     listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), el('kbd', {}, 'l'));
     // ‹ › around it step through the new ones, top to bottom of the page, without opening the list.
     newPrev.hidden = newNext.hidden = !on || !all.some((c) => !c.resolved && !isPage(c) && unread(c).length);
+    if (!LIST_WINDOW) {
+      // Without the list window the middle shows how many are new (a click goes to the next one); nothing new, nothing shown.
+      listBtn.hidden = !on || !freshAll;
+      listBtn.textContent = `${freshAll} new`;
+      const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
+      doneBtn.hidden = !on || !doneCount;
+      doneBtn.textContent = showDone ? `hide done` : `show done · ${doneCount}`;
+    }
     listBtn.classList.toggle('has-new', freshAll > 0);
     const h = held().length;
     sendBtn.hidden = !h;
@@ -2151,6 +2164,7 @@
     goTo(fresh[at < 0 ? (dir > 0 ? 0 : fresh.length - 1) : (at + dir + fresh.length) % fresh.length]);
   };
   newPrev.addEventListener('click', () => stepNew(-1));
+  doneBtn.addEventListener('click', () => showDoneBtn.click());
   showDoneBtn.addEventListener('click', () => {
     showDone = !showDone;
     store.set('lab-show-done', showDone ? '1' : '');
@@ -2165,7 +2179,7 @@
   };
   copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
   // The list opens on "new" each time.
-  listBtn.addEventListener('click', () => ((listOpen = !listOpen), listOpen && (filter = 'new'), (chatOpen = false), (hint.hidden = true), render()));
+  listBtn.addEventListener('click', () => (LIST_WINDOW ? ((listOpen = !listOpen), listOpen && (filter = 'new'), (chatOpen = false), (hint.hidden = true), render()) : stepNew(1)));
   listEl.querySelector('.x').addEventListener('click', () => slideAway(listEl, () => ((listOpen = false), render())));
   chatBtn.addEventListener('click', () => {
     chatOpen = !chatOpen;
@@ -2242,7 +2256,9 @@
       }
       const l = listed();
       const at = l.findIndex((c) => c.id === openId);
-      if (k === 'l') ((listOpen = !listOpen), listOpen && (filter = 'new'), drawList());
+      if (!LIST_WINDOW && (k === 'j' || k === 'k')) stepNew(k === 'j' ? 1 : -1);
+      else if (k === 'l' && !LIST_WINDOW) return;
+      else if (k === 'l') ((listOpen = !listOpen), listOpen && (filter = 'new'), drawList());
       else if ((k === 'j' || k === 'k') && l.length) goTo(l[(at + (k === 'j' ? 1 : l.length - 1) + (at < 0 && k === 'k' ? 1 : 0)) % l.length]);
       else if (k === 'r' && openId) root.querySelector('.card textarea')?.focus({ preventScroll: true });
       else if (k === 'e' && openId && isAdmin) [...root.querySelectorAll('.card .btn')].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
@@ -2998,6 +3014,7 @@
         who.classList.toggle('idle', mode === 'away');
         who.classList.toggle('working', mode === 'working');
         listBtn.dataset.agent = mode;
+        chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's light
         listBtn.title = who.textContent;
         who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
