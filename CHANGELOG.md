@@ -4,6 +4,10 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The quick step, from the fix benchmark:
+  - It takes bug reports asked as questions ("why is this here twice?", "nothing happens") and one-line logic slips (a comparison, a rounding, a condition), not only wording and styles. Before, Haiku passed every pin worded as a question.
+  - When it passes, it says why ("PASS: needs a change in lib/orders.js"); the session gets that line with the pin.
+  - Up to three pins at once (`LAB_FAST_PARALLEL`), pins on the same file one after another.
 - Sharper pins, from a frontend fix benchmark against Agentation:
   - Every element on a React dev build now gets its own JSX file and line ("written at") and the component that rendered it, not only a component's outermost element (it was 3 of 24 pins in the benchmark).
   - The "looks" line names only CSS variables that are colours: a radius or spacing variable no longer names a text colour (it did on 12 of 24 pins).

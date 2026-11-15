@@ -234,6 +234,7 @@ function asText(path, comments, host) {
     lines.push('', `## ${i + 1}. ${c.name} · ${stamp(c.createdAt)} · id ${c.id}`, `comment: ${body(c.text)}`);
     if (c.from) lines.push(`from: ${c.from}`);
     if (c.movedAt) lines.push(`pin moved: ${stamp(c.movedAt)} (the spot below is the new one)`);
+    if (c.quickNote) lines.push(`quick model passed: ${body(String(c.quickNote).slice(0, 200))}`);
     if (a.kind === 'image' || a.kind === 'video' || a.kind === 'background') {
       lines.push(`on: ${a.kind}${a.file ? ` "${a.file}" (search the repo's src/ and public/ for it)` : ''}`);
       if (a.src) lines.push(`src: ${a.src}`);

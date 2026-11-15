@@ -278,3 +278,40 @@ test('MCP started in a plugin folder finds the project: by the client root, the 
   assert.match(await says(c.ask), /No lab in/);
   assert.match(await says(c.ask, { dir }), /project pin/);
 });
+
+// ---------- the quick step: a few at a time, and a reason when it passes ----------
+test('quick pins on different files run side by side; pins on the same file wait for each other', async () => {
+  const dir = site('lanes');
+  fs.writeFileSync(path.join(dir, 'other.html'), '<!doctype html><title>o</title><h1 id="t">Other</h1>');
+  const log = path.join(dir, 'starts.txt');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: `cat >/dev/null; node -e "require('fs').appendFileSync('${log}', Date.now()+'\\n')"; sleep 1; echo x >> note.txt; echo "Done: ok"` });
+  const pinOn = async (page, text) =>
+    (await (await fetch(B + '/_lab/api/comments', {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: B },
+      body: JSON.stringify({ page, name: 'Leo', text, anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }),
+    })).json()).comment.id;
+  await Promise.all([pinOn('/index', 'make it red'), pinOn('/other', 'make it blue')]);
+  for (let i = 0; i < 60 && (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').length : 0) < 2; i++) await new Promise((r) => setTimeout(r, 100));
+  const [a, b] = fs.readFileSync(log, 'utf8').trim().split('\n').map(Number);
+  assert.ok(Math.abs(b - a) < 700, `different files start together (${Math.abs(b - a)} ms apart)`);
+  fs.rmSync(log);
+  await Promise.all([pinOn('/index', 'make it green'), pinOn('/index', 'make it bold')]);
+  for (let i = 0; i < 80 && (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').length : 0) < 2; i++) await new Promise((r) => setTimeout(r, 100));
+  const [c, d] = fs.readFileSync(log, 'utf8').trim().split('\n').map(Number);
+  assert.ok(Math.abs(d - c) >= 900, `the same file waits (${Math.abs(d - c)} ms apart)`);
+});
+
+test('a quick "PASS: <reason>" reaches the session with the pin', async () => {
+  const dir = site('passnote');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "PASS: needs a change in lib/orders.js sortOrders"' });
+  const id = await pin(B, 'sorted by total and this comes first?');
+  let text = '';
+  for (let i = 0; i < 50 && !/quick model passed/.test(text); i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    text = await (await fetch(B + '/_lab/agent/index')).text();
+  }
+  assert.match(text, /^quick model passed: needs a change in lib\/orders\.js sortOrders$/m);
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(out, new RegExp(`id ${id}`));
+  assert.match(out, /quick model passed: needs a change/);
+});
