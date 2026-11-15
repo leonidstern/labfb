@@ -47,3 +47,24 @@ test('the local lab serves the minified widget while it is newer than the source
     fs.utimesSync(SRC, was.atime, was.mtime);
   }
 });
+
+test('the local lab compresses text and answers a repeat with 304 not changed', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-etag-')));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<h1>hi</h1>' + '<p>words</p>'.repeat(200));
+  fs.writeFileSync(path.join(dir, 'pic.svg'), '<svg xmlns="http://www.w3.org/2000/svg">' + '<rect width="1" height="1"/>'.repeat(100) + '</svg>');
+  const port = String(5200 + Math.floor(Math.random() * 80));
+  kids.push(spawn(process.execPath, [path.join(ROOT, 'local.mjs'), '.', '--no-open', '--no-fast', '--port', port], { cwd: dir }));
+  const http = await import('node:http');
+  const get = (p, headers = {}) => new Promise((ok, bad) => http.get({ host: '127.0.0.1', port, path: p, headers }, (r) => { r.resume(); r.on('end', () => ok(r)); }).on('error', bad));
+  let first;
+  for (let i = 0; i < 50 && !first; i++) first = await get('/pic.svg', { 'accept-encoding': 'gzip, br' }).catch(() => new Promise((r) => setTimeout(r, 100)));
+  assert.equal(first.headers['content-encoding'], 'br');
+  assert.equal(first.headers['cache-control'], 'no-cache');
+  assert.ok(first.headers.etag);
+  assert.equal((await get('/pic.svg', { 'if-none-match': first.headers.etag })).statusCode, 304);
+  assert.equal((await get('/pic.svg', { 'accept-encoding': 'gzip' })).headers['content-encoding'], 'gzip');
+  assert.equal((await get('/pic.svg')).headers['content-encoding'], undefined, 'no encoding asked, none sent');
+  assert.equal((await get('/', { 'accept-encoding': 'br' })).headers['content-encoding'], 'br', 'pages too');
+  fs.writeFileSync(path.join(dir, 'pic.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  assert.equal((await get('/pic.svg', { 'if-none-match': first.headers.etag })).statusCode, 200, 'a changed file is sent fresh');
+});

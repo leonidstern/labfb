@@ -9,7 +9,7 @@ import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { apiOn, callApi, sendFile } from './lib/dev.mjs';
+import { apiOn, callApi, sendBody, sendFile } from './lib/dev.mjs';
 
 const REPO = path.dirname(fileURLToPath(import.meta.url));
 const ME = path.join(REPO, 'local.mjs');
@@ -1941,16 +1941,16 @@ const handler = async (req, res) => {
         broadcast();
         wake();
       }
-      res.writeHead(out.status, { 'content-type': out.headers.get('content-type') || 'application/json' });
+      const head = { 'content-type': out.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' };
       // Another device sees comments without the agent's session details or the quick step's file notes.
       if (req.method === 'GET' && out.ok && !isLoopback(req) && /json/.test(out.headers.get('content-type') || '')) {
         try {
           const data = JSON.parse(text);
           if (Array.isArray(data.comments)) data.comments = data.comments.map(forGuests);
-          return res.end(JSON.stringify(data));
+          return sendBody(req, res, out.status, head, JSON.stringify(data));
         } catch {}
       }
-      return res.end(text);
+      return sendBody(req, res, out.status, head, text);
     }
 
     // The widget comes from this repo; everything else from the folder, never from outside it.
@@ -1977,8 +1977,8 @@ const handler = async (req, res) => {
       file = path.join(file, 'index.html');
     }
     if (!lab && /\.html?$/i.test(file)) {
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      return res.end(inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req))));
+      return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+        inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req))));
     }
     sendFile(req, res, file);
   } catch (e) {
