@@ -103,7 +103,7 @@
       .pin.moved { opacity: .5; }
       .pin.grab { touch-action: none; }
       button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
-      .zone { position: absolute; background: rgba(52, 199, 89, .1);
+      .zone { position: absolute; background: none;
               border-radius: var(--_radius); pointer-events: none; }
       .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
       .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--_radius); ry: var(--_radius); }
@@ -111,7 +111,6 @@
       .zone rect.ring { display: none; }
       .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 2; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
-      .zone.saved { background: rgba(52, 199, 89, .06); }
       .zone.saved.in { animation: lab-settle .36s var(--_ease); }
       /* The agent is on it: a thin green ring turns around the pin. */
       .pin.working::before { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(52, 199, 89, .25);
