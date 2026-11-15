@@ -76,6 +76,8 @@ const pos = [];
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
 const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--fast', '--no-fast', '--new', '--all'];
+// How answers should read, said with every pin (the page shows short blocks and '- ' lists as such).
+const WRITE_SHORT = "Write answers short: they're read in a small window, often on a phone. One point per line or two, a blank line between points, '- ' lines for lists.";
 const VALUED = ['--port', '--name', '--page', '--pages', '--timeout', '--dir', '--proxy'];
 const unknownFlags = [];
 for (let i = 0; i < argv.length; i++) {
@@ -362,7 +364,7 @@ if (pos[0] === 'mcp') {
     {
       name: 'reply',
       title: 'Answer on a pin',
-      description: 'Answer on a pin in the local lab, by the id `comments` shows. resolve: true closes the thread.',
+      description: `Answer on a pin in the local lab, by the id \`comments\` shows. resolve: true closes the thread. ${WRITE_SHORT}`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -1125,7 +1127,8 @@ async function unseen(scope = pages()) {
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, quickDone.length && `${quickDone.length} quick change${quickDone.length === 1 ? '' : 's'} to check`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const text = `In this message: ${count}${styleDone.length ? `, ${styleDone.length} style fix${styleDone.length === 1 ? '' : 'es'} to glance at` : ''}. Read all of it; each one is marked handed to you.\n\n` + [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check, glance].filter(Boolean).join('\n\n') +
-    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.`;
+    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
+    `\n${WRITE_SHORT}`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = [...given, ...quickDone, ...styleDone].map(({ page, c }) => [page, c.id, stamp(c)]);
