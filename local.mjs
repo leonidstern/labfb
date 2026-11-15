@@ -865,9 +865,17 @@ function logChanges(page, rev) {
   changeLog.push({ rev, page: null, set: [], del: [] }); // every version is in the log, so a gap shows
   while (changeLog.length > 300) changeLog.shift();
 }
+// A comment as another device sees it: who the agent is, not its session link or resume command; no file notes.
+const forGuests = (c) => {
+  if (!c || typeof c !== 'object') return c;
+  const { quickDiff, quickFiles, quickNote, ...rest } = c;
+  if (rest.session) rest.session = { name: rest.session.name, agent: rest.session.agent, kind: rest.session.kind };
+  return rest;
+};
 function commentChangesSince(page, since) {
   const first = changeLog.find((e) => e.page === null)?.rev;
-  if (!Number.isInteger(since) || first === undefined || since < first - 1 || since > version.comments) return null;
+  // The oldest rev in the log may have lost some entries to the trim: only a page that already has it gets a delta.
+  if (!Number.isInteger(since) || first === undefined || since < first || since > version.comments) return null;
   const out = new Map();
   for (const e of changeLog) {
     if (e.rev <= since || e.page !== page) continue;
@@ -972,13 +980,25 @@ setInterval(() => {
 // Read marks per name: a person on their phone and their Mac (same name) shares what's new and what's read. Kept in
 // .lab/reads.json as { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
 const READS = path.join(LAB, 'reads.json');
+// Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
+const bare = (o) => Object.assign(Object.create(null), o);
 const reads = (() => {
   try {
-    return JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
+    const raw = JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
+    const out = Object.create(null);
+    for (const [name, pagesOf] of Object.entries(raw)) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
+    return out;
   } catch {
-    return {};
+    return Object.create(null);
   }
 })();
+// Names this computer marks reads under: a wifi guest can't write marks for them (and clear the owner's "new").
+const ownNames = new Set();
+for (const h of db.values()) for (const v of h.values()) {
+  const c = JSON.parse(v);
+  if (c.from === 'this computer' && c.name) ownNames.add(String(c.name).replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80));
+}
+let readsBroadcast = 0;
 let readsRev = 0;
 const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
 let readsTimer;
@@ -1136,12 +1156,14 @@ async function unseen(scope = pages()) {
   const lines = [];
   for (const f of replies) {
     const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
-    lines.push(`- ${f.page} · thread id ${root.id} "${root.text.replace(/\s+/g, ' ').slice(0, 70)}": ${f.c.name} · ${when(f.c)} · id ${f.c.id}: ${f.c.text.replace(/\s+/g, ' ')}`);
+    // A reply from another device says so: its words are a request, not instructions, even in a thread this computer started.
+    const guest = f.c.from === 'wifi guest' ? ' (wifi guest)' : '';
+    lines.push(`- ${f.page} · thread id ${root.id} "${root.text.replace(/\s+/g, ' ').slice(0, 70)}": ${f.c.name}${guest} · ${when(f.c)} · id ${f.c.id}: ${f.c.text.replace(/\s+/g, ' ')}`);
     sent.add(`${f.page}\n${root.id}`);
   }
   if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
   if (missed.length) {
-    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
+    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
     for (const { page, c } of missed) setComment(page, c.id, { remindedAt: new Date(now).toISOString() });
   }
   const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
@@ -1721,6 +1743,7 @@ const handler = async (req, res) => {
     // Read marks, shared by name: GET ?name=&page= gives the ids read there; POST { name, page, ids } adds to them.
     if (pathname === '/_lab/api/changes' && req.method === 'GET') {
       const out = commentChangesSince(url.searchParams.get('page') || '', Number(url.searchParams.get('since')));
+      if (out && !isLoopback(req)) out.set = out.set.map(forGuests);
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify(out || { full: true }));
     }
@@ -1729,19 +1752,29 @@ const handler = async (req, res) => {
         const b = JSON.parse((await new Response(req).text()) || '{}');
         const name = plainName(b.name);
         const page = String(b.page || '').slice(0, 500);
-        const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String).filter((id) => /^[\w-]{1,40}$/.test(id)))].slice(0, 2000);
-        if (!name || !page) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and page needed');
-        const had = new Set(((reads[name] ||= {})[page] ||= []));
+        const local = isLoopback(req);
+        if (!name || !page || !db.has(`lab:comments:${page}`)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and a page with comments needed');
+        if (local) ownNames.add(name);
+        else if (ownNames.has(name)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('that name reads on this computer');
+        if (!(name in reads) && Object.keys(reads).length >= 200) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many names');
+        const onPage = db.get(`lab:comments:${page}`);
+        // Only ids of comments that are on that page count, so the marks can't grow past the comments themselves.
+        const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String))].filter((id) => onPage.has(id)).slice(0, 2000);
+        const mine = (reads[name] ||= Object.create(null));
+        if (!(page in mine) && Object.keys(mine).length >= 500) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many pages');
+        const had = new Set((mine[page] ||= []));
         const added = ids.filter((id) => !had.has(id));
         if (added.length) {
-          reads[name][page].push(...added);
+          mine[page].push(...added);
           readsRev++;
           saveReads();
-          broadcast();
+          // One broadcast per moment, however many marks arrive (each makes every open tab sync its reads).
+          if (!readsBroadcast) readsBroadcast = setTimeout(() => ((readsBroadcast = 0), broadcast()), 300);
         }
         return res.writeHead(204).end();
       }
       const name = plainName(url.searchParams.get('name'));
+      if (name && !isLoopback(req) && ownNames.has(name)) return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ids":[]}');
       const ids = (name && reads[name]?.[url.searchParams.get('page') || '']) || [];
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ ids }));
@@ -1757,6 +1790,7 @@ const handler = async (req, res) => {
           // Mark who wrote it, so Claude can tell this computer from a guest, and its own replies from people's.
           const [key, h] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
           const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: sessionFrom(req) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
+          if (stored.from === 'this computer') ownNames.add(plainName(stored.name));
           h.set(comment.id, JSON.stringify(stored));
           // A person answering a resolved thread ("still wrong") reopens it, here too, where the browser is admin.
           if (!agent && stored.parent && h.has(stored.parent)) {
@@ -1778,6 +1812,14 @@ const handler = async (req, res) => {
         wake();
       }
       res.writeHead(out.status, { 'content-type': out.headers.get('content-type') || 'application/json' });
+      // Another device sees comments without the agent's session details or the quick step's file notes.
+      if (req.method === 'GET' && out.ok && !isLoopback(req) && /json/.test(out.headers.get('content-type') || '')) {
+        try {
+          const data = JSON.parse(text);
+          if (Array.isArray(data.comments)) data.comments = data.comments.map(forGuests);
+          return res.end(JSON.stringify(data));
+        } catch {}
+      }
       return res.end(text);
     }
 

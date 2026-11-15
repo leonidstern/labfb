@@ -1526,6 +1526,8 @@
   // tried again every 2 s for up to 5 minutes, instead of failing. Only a lab that answers with an error fails it.
   async function send(payload) {
     let res = null;
+    // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
+    if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
         res = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ page, ...payload }) });
