@@ -3066,8 +3066,11 @@
       strip.style.height = `${gap}px`;
       // The keyboard came or went: the open sheet moves from where it was to its new place instead of jumping there
       // (filling the screen above the keyboard, or resting on the screen's bottom again). Not while a finger drags it.
+      // Where it sits on the screen (what you see), not in the page's layout: iOS pans the view up to 276 px while
+      // the keyboard is up and snaps it back as the keyboard goes, which a layout-only measure missed (15 Nov, Leo's
+      // iPhone: the visible height jumps 686 → 410 → 686 in one step each way, the layout stays 686).
       const open = sheet ? openSheet() : null;
-      const at = open?.getBoundingClientRect().top;
+      const at = open ? open.getBoundingClientRect().top - (zoomed ? 0 : vv.offsetTop) : null;
       const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
       if (open && open === fit.sheet && keyboardMoved && Math.abs(fit.top - at) > 8 && !open.style.transform && !still.matches) {
         open.animate([{ transform: `translateY(${fit.top - at}px)` }, { transform: 'none' }], { duration: 340, easing: SPRING });
