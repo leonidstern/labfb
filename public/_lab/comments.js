@@ -209,6 +209,7 @@
       .send * { color: inherit; }
       .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
       .error:empty { display: none; }
+      .error.wait { color: var(--_muted); }
       .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
       .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
                     box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
@@ -1507,8 +1508,18 @@
       })
       .catch(() => ((draft = { anchor }), render())); // couldn't post: the usual box, so nothing is lost
   }
+  // Sent once the lab answers: while it can't be reached (restarting, the laptop just woke), the message waits and is
+  // tried again every 2 s for up to 5 minutes, instead of failing. Only a lab that answers with an error fails it.
   async function send(payload) {
-    const res = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ page, ...payload }) });
+    let res = null;
+    for (let tries = 0; !res; tries++) {
+      try {
+        res = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ page, ...payload }) });
+      } catch {
+        if (tries >= 150) throw new Error("couldn't reach the lab; your text is still here");
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `could not save (${res.status})`);
     return data;
@@ -2018,13 +2029,24 @@
       sendBtn.classList.add('sent');
       busy = true;
       error.textContent = '';
+      error.classList.remove('wait');
+      // Taking a while (the lab is restarting): say so; it goes as soon as the lab is back.
+      const slow = setTimeout(() => {
+        error.textContent = 'sending… it goes as soon as the lab is back';
+        error.classList.add('wait');
+      }, 1500);
       try {
         const result = await onSubmit(name.value.trim(), text.value.trim());
+        clearTimeout(slow);
+        error.textContent = '';
+        error.classList.remove('wait');
         if (result?.keep) {
           text.value = '';
           sync();
         }
       } catch (e) {
+        clearTimeout(slow);
+        error.classList.remove('wait');
         error.textContent = e.message;
         sync();
       }
