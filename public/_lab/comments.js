@@ -2496,9 +2496,15 @@
     }
     // Phones: step through the threads from the sheet (J and K on a keyboard).
     if (coarse) {
-      const l = listed().length ? listed() : threads();
+      // prev / next go round the pins shown on the page, top to bottom (not hidden done ones or the chat's); new goes to
+      // the next one with something new, further down first.
+      const topOf = (x) => position(x.anchor || {}).top;
+      const shown = threads().filter((x) => !isPage(x) && (x.id === c.id || showDone || !(isDone(x) && !unread(x).length)));
+      const l = shown.map((x) => [x, topOf(x)]).sort((p, q) => p[1] - q[1]).map(([x]) => x);
       const at = l.findIndex((x) => x.id === c.id);
-      const fresh = threads().filter((x) => x.id !== c.id && unread(x).length);
+      const here = topOf(c);
+      const fresh = l.filter((x) => x.id !== c.id && unread(x).length);
+      fresh.sort((p, q) => (topOf(p) > here ? 0 : 1) - (topOf(q) > here ? 0 : 1)); // below this one first, then from the top
       const nav = el('div', { class: 'row nav' });
       const step = (label, to) => {
         const b = el('button', { class: 'btn', type: 'button' }, label);
