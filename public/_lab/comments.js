@@ -323,6 +323,7 @@
             color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
       .bar:hover kbd { opacity: .75; }
       .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
+      .bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/2/3) reads like (c)hat and ne(w) */
       /* Computers: one bar of segments, a hairline between them; the less used ones in the ⋯ menu above it. */
       @media (pointer: fine) {
         .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
@@ -1745,7 +1746,8 @@
       doneBtn.hidden = !on;
       doneBtn.disabled = !doneCount && !showDone;
       doneBtn.classList.toggle('quiet', doneBtn.disabled);
-      doneBtn.textContent = showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`;
+      doneBtn.replaceChildren(showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`, el('kbd', { 'aria-hidden': 'true' }, 'd'));
+      doneBtn.setAttribute('aria-keyshortcuts', 'd');
     }
     placeBar();
     // The browser tab shows how many new messages there are, as "(3) Page title".
@@ -2745,12 +2747,13 @@
     // The letter typed when it's Latin (QWERTZ and AZERTY move letters), else the key's place (Cyrillic and others).
     const letter = /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
     // The keys (Leo, 2026-11-15), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment, 2 go,
-    // 3 cursor, M hide. With a thread open: R reply, E resolve.
-    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwre]$/.test(letter)) {
+    // 3 cursor, M hide, D show/hide done. With a thread open: R reply, E resolve.
+    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwred]$/.test(letter)) {
       const k = letter;
       e.preventDefault();
       if (k === 'c') return chatBtn.click();
       if (k === 'w') return stepNew(e.shiftKey ? -1 : 1);
+      if (k === 'd') return showDoneBtn.click();
       if (k === 'r' && openId) root.querySelector('.card textarea')?.focus({ preventScroll: true });
       else if (k === 'e' && openId && isAdmin) [...root.querySelectorAll('.card .btn')].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
