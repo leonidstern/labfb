@@ -1081,6 +1081,7 @@
   let shown = null;
   let posted = null;
   const still = matchMedia('(prefers-reduced-motion: reduce)');
+  const pinsById = new Map(); // the pins on the layer now, by thread id, for movePins()
   // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
   let dropDrag = null;
   function render() {
@@ -1090,6 +1091,7 @@
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(on ? threads().map((c) => [c.id, position(c.anchor || {})]) : []);
     layer.replaceChildren();
+    pinsById.clear();
     const now = on ? draft || openId : null;
     const appear = now !== shown;
     const anim = appear ? ' in' : '';
@@ -1145,6 +1147,7 @@
         render();
       });
       layer.append(pin);
+      pinsById.set(c.id, pin);
       if (openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
@@ -1531,13 +1534,26 @@
     render();
   }
 
+  // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
+  // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
+  const movePins = () => {
+    const list = threads();
+    if (!on || openId || list.length !== pinsById.size) return render();
+    const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
+    if (places.some(([pin]) => !pin)) return render();
+    for (const [pin, { left, top, moved }] of places) {
+      pin.style.left = `${left}px`;
+      pin.style.top = `${top}px`;
+      pin.classList.toggle('moved', Boolean(moved));
+    }
+  };
   let frame = 0;
   const reflow = () => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (draft || root.activeElement || grabbing) return;
-      render();
+      movePins();
     });
   };
   addEventListener('resize', reflow);

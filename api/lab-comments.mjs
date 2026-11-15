@@ -19,22 +19,35 @@ function store() {
   const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
-  return async (...command) => {
-    const res = await fetch(url, {
+  const call = async (where, body) => {
+    const res = await fetch(where, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(command),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || `store ${res.status}`);
-    return data.result;
+    return data;
   };
+  const run = async (...command) => (await call(url, command)).result;
+  // Several commands in one round trip (Upstash /pipeline): results in order.
+  run.all = async (...commands) => {
+    const list = commands.filter(Boolean);
+    const out = await call(`${url.replace(/\/$/, '')}/pipeline`, list);
+    return out.map((r) => {
+      if (r.error) throw new Error(r.error);
+      return r.result;
+    });
+  };
+  return run;
 }
 
 // Only pages proxied under <lab host>/<slug>/... can carry comments.
 function pagePath(raw) {
   if (typeof raw !== 'string' || raw.length > MAX.path) return null;
   if (!/^\/[a-z0-9_][a-z0-9_-]*(\/[A-Za-z0-9._~-]+)*\/?$/.test(raw)) return null;
+  // No "." or ".." segments: /anna/../mira/x must not read as a page under /anna (an admin key's scope).
+  if (/\/\.\.?(\/|$)/.test(raw)) return null;
   return raw.replace(/\/+$/, '') || null;
 }
 
@@ -312,13 +325,14 @@ export async function POST(request) {
     const admin = adminFor(request, path);
     if (!admin) return json({ error: 'forbidden' }, 403);
     const id = clean(body.id, 40);
-    const current = await run('HGET', key, id);
-    if (!current) return json({ error: 'not found' }, 404);
     if (body.action === 'delete') {
-      const replies = ((await run('HVALS', key)) || []).map((v) => JSON.parse(v)).filter((c) => c.parent === id).map((c) => c.id);
-      await run('HDEL', key, id, ...replies);
+      const all = ((await run('HVALS', key)) || []).map((v) => JSON.parse(v));
+      if (!all.some((c) => c.id === id)) return json({ error: 'not found' }, 404);
+      await run('HDEL', key, id, ...all.filter((c) => c.parent === id).map((c) => c.id));
       return json({ ok: true });
     }
+    const current = await run('HGET', key, id);
+    if (!current) return json({ error: 'not found' }, 404);
     const comment = { ...JSON.parse(current), resolved: body.action === 'resolve', resolvedBy: body.action === 'resolve' ? admin.name : undefined };
     await run('HSET', key, id, JSON.stringify(comment));
     return json({ comment });
@@ -342,15 +356,27 @@ export async function POST(request) {
   const text = cleanText(body.text, MAX.text);
   if (!name || !text) return json({ error: 'name and text are required' }, 400);
 
-  const count = await run('HLEN', key);
+  // One round trip for the checks: page size, the parent, and the per-IP count.
+  // A light per-IP limit on new comments and replies: LAB_COMMENTS_PER_HOUR (default 60). Admins are not limited.
+  // The count goes up before the checks below, so a post refused for a full page or a missing thread counts too.
+  let parent = body.parent ? clean(body.parent, 40) : null;
+  const limited = !isAdmin(request, path);
+  const ip = (request.headers.get('x-vercel-forwarded-for') || request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for') || '')
+    .split(',')[0].trim() || 'unknown';
+  const hourKey = `lab:rate:${ip}:${Math.floor(Date.now() / 3600000)}`;
+  const [count, found, used] = await run.all(
+    ['HLEN', key],
+    parent ? ['HGET', key, parent] : ['HLEN', key],
+    limited ? ['INCR', hourKey] : ['HLEN', key],
+    limited && ['EXPIRE', hourKey, 3600],
+  );
   if (count >= MAX.perPage) return json({ error: 'too many comments on this page' }, 429);
+  if (limited && used > (Number(process.env.LAB_COMMENTS_PER_HOUR) || 60)) return json({ error: 'too many comments, try again later' }, 429);
 
   // Replies attach to the thread (a reply to a reply goes to its thread). Someone answering a resolved thread
   // ("still broken") reopens it, so the agent sees it again.
-  let parent = body.parent ? clean(body.parent, 40) : null;
   let thread = null;
   if (parent) {
-    const found = await run('HGET', key, parent);
     if (!found) return json({ error: 'thread not found' }, 404);
     thread = JSON.parse(found);
     if (thread.parent) {
@@ -359,17 +385,6 @@ export async function POST(request) {
       if (!root) return json({ error: 'thread not found' }, 404);
       thread = JSON.parse(root);
     }
-  }
-
-  // A light per-IP limit on new comments and replies: LAB_COMMENTS_PER_HOUR (default 60).
-  // Only posts that will be stored count; admins (resolve, reopen, delete and their own replies) are not limited.
-  if (!isAdmin(request, path)) {
-    const ip = (request.headers.get('x-vercel-forwarded-for') || request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for') || '')
-      .split(',')[0].trim() || 'unknown';
-    const hourKey = `lab:rate:${ip}:${Math.floor(Date.now() / 3600000)}`;
-    const used = await run('INCR', hourKey);
-    if (used === 1) await run('EXPIRE', hourKey, 3600);
-    if (used > (Number(process.env.LAB_COMMENTS_PER_HOUR) || 60)) return json({ error: 'too many comments, try again later' }, 429);
   }
 
   const anchor = body.anchor || {};
@@ -382,8 +397,9 @@ export async function POST(request) {
     resolved: false,
     anchor: parent ? null : cleanAnchor(anchor),
   };
-  await run('HSET', key, comment.id, JSON.stringify(comment));
-  if (thread?.resolved && !isAdmin(request, path)) await run('HSET', key, parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined }));
+  // The comment, and the reopened thread when someone (not an admin) answers a resolved one: one round trip.
+  if (thread?.resolved && limited) await run('HSET', key, comment.id, JSON.stringify(comment), parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined }));
+  else await run('HSET', key, comment.id, JSON.stringify(comment));
   const edit = parent ? null : editKey(path, comment.id);
   return json(edit ? { comment, edit } : { comment }, 201);
 }
