@@ -274,8 +274,6 @@
       .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
-      .box:has(.trap) { position: relative; }
-      .trap { position: absolute; top: 8px; left: 14px; width: 1px; height: 1px; opacity: 0; pointer-events: none; font-size: 16px; border: 0; padding: 0; }
       .msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 10px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
       .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* ✓ drawn as tall as the time's digits */
       .msg .tick.got { font-weight: 600; }
@@ -2195,7 +2193,7 @@
     const fresh = list.filter((c) => !c.resolved && c.anchor?.kind !== 'page').reduce((n, c) => n + unread(c).length, 0); // the chat counts its own
     // New replies are counted on "list" while comments show, on the toggle while they are hidden.
     toggleBtn.replaceChildren(
-      document.createTextNode((on ? (coarse ? 'hide' : 'hide comments') : open ? `comments · ${open}` : 'comments') + (!on && fresh ? ` · ${fresh} new` : '')),
+      document.createTextNode((on ? 'hide comments' : open ? `comments · ${open}` : 'comments') + (!on && fresh ? ` · ${fresh} new` : '')),
       el('kbd', { 'aria-hidden': 'true' }, 'm'),
     );
     toggleBtn.classList.toggle('secondary', on);
@@ -2496,41 +2494,22 @@
     }
     // Phones: step through the threads from the sheet (J and K on a keyboard).
     if (coarse) {
-      // prev / next go round the pins shown on the page, top to bottom (not hidden done ones or the chat's); new goes to
-      // the next one with something new, further down first.
+      // As on a computer: no prev / next, just new · N (the bar's ne(w), which the sheet covers) to the next pin with
+      // something new, top to bottom of the page, further down first.
       const topOf = (x) => position(x.anchor || {}).top;
-      const shown = threads().filter((x) => !isPage(x) && (x.id === c.id || showDone || !(isDone(x) && !unread(x).length)));
-      const l = shown.map((x) => [x, topOf(x)]).sort((p, q) => p[1] - q[1]).map(([x]) => x);
-      const at = l.findIndex((x) => x.id === c.id);
       const here = topOf(c);
-      const fresh = l.filter((x) => x.id !== c.id && unread(x).length);
-      fresh.sort((p, q) => (topOf(p) > here ? 0 : 1) - (topOf(q) > here ? 0 : 1)); // below this one first, then from the top
+      const fresh = threads().filter((x) => !isPage(x) && x.id !== c.id && unread(x).length).map((x) => [x, topOf(x)]);
+      fresh.sort((p, q) => (p[1] > here ? 0 : 1) - (q[1] > here ? 0 : 1) || p[1] - q[1]);
       const nav = el('div', { class: 'row nav' });
-      const step = (label, to) => {
-        const b = el('button', { class: 'btn', type: 'button' }, label);
+      if (fresh.length) {
+        const b = el('button', { class: 'btn', type: 'button' }, `new · ${fresh.length} ›`);
         b.addEventListener('pointerdown', (e) => e.preventDefault()); // an open keyboard stays open (see goTo)
-        b.addEventListener('click', () => goTo(to));
+        b.addEventListener('click', () => goTo(fresh[0][0]));
         nav.append(b);
-      };
-      if (l.length > 1) step('‹ prev', l[(at + l.length - 1) % l.length]), step('next ›', l[(at + 1) % l.length]);
-      if (fresh.length) step(`new · ${fresh.length} ›`, fresh[0]);
-      // One row on phones: prev / next on the left, reopen / delete on the right, so the sheet keeps its room for messages.
+      }
+      // One row on phones: new on the left, reopen / delete on the right, so the sheet keeps its room for messages.
       if (nav.firstChild && actions) nav.append(actions);
       if (nav.firstChild) foot.append(nav);
-      // The keyboard's ^ ˅ go to the field before or after the reply box: an invisible one on each side steps to the
-      // previous or next thread instead, with the keyboard staying up.
-      if (l.length > 1)
-        queueMicrotask(() => {
-          const box = foot.querySelector('.composer textarea');
-          if (!box) return;
-          const trap = (to) => {
-            const t = el('input', { class: 'trap', type: 'text', 'aria-hidden': 'true', autocomplete: 'off' });
-            t.addEventListener('focus', () => goTo(to, true));
-            return t;
-          };
-          box.before(trap(l[(at + l.length - 1) % l.length]));
-          box.after(trap(l[(at + 1) % l.length]));
-        });
     }
     foot.append(
       composer({
