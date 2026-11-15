@@ -987,6 +987,9 @@
     if (done) b.append(el('span', { class: 'mark' }, '✅ done'));
     return b;
   };
+  // Draft mode is parked for now (Leo, 2026-11-15): its button is hidden and new pins post at once.
+  const DRAFT_MODE = false;
+  const drafting = () => DRAFT_MODE && store.get('lab-hold') === '1';
   // Messages show web addresses as links that open in a new tab.
   const linked = (text) => {
     const out = [];
@@ -1159,7 +1162,7 @@
       draft = { anchor };
       return render();
     }
-    if (store.get('lab-hold') === '1') {
+    if (drafting()) {
       store.set(heldKey(), JSON.stringify([...held(), { name, text: 'go', anchor }]));
       return render();
     }
@@ -1285,8 +1288,10 @@
     for (const b of listEl.querySelectorAll('[data-f]')) b.classList.toggle('on', b.dataset.f === filter);
     const fresh = all.filter((c) => !isPage(c) && unread(c).length).length; // chat messages count in the chat
     listEl.querySelector('[data-f="new"]').textContent = fresh ? `new · ${fresh}` : 'new';
-    listEl.querySelector('[data-f="resolved"]').hidden = !isAdmin;
-    holdBtn.classList.toggle('on', store.get('lab-hold') === '1');
+    // Just new and open for now; work, resolved, mine and draft mode stay in the code, hidden.
+    for (const f of ['work', 'resolved', 'mine']) listEl.querySelector(`[data-f="${f}"]`).hidden = true;
+    holdBtn.hidden = !DRAFT_MODE;
+    holdBtn.classList.toggle('on', drafting());
     if (filter === 'work') return listEl.querySelector('.items').replaceChildren(...workItems());
     const items = listed().map((c) => {
       const b = el('button', { class: `it${openId === c.id ? ' cur' : ''}`, type: 'button' });
@@ -1764,7 +1769,7 @@
           placeholder: 'add a comment',
           autofocus: true,
           onSubmit: async (name, text) => {
-            if (store.get('lab-hold') === '1') {
+            if (drafting()) {
               store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
               draft = null;
               return render();
@@ -2034,7 +2039,8 @@
     store.set('lab-on', '1');
   };
   copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
-  listBtn.addEventListener('click', () => ((listOpen = !listOpen), (chatOpen = false), (hint.hidden = true), render()));
+  // The list opens on "new" each time.
+  listBtn.addEventListener('click', () => ((listOpen = !listOpen), listOpen && (filter = 'new'), (chatOpen = false), (hint.hidden = true), render()));
   listEl.querySelector('.x').addEventListener('click', () => slideAway(listEl, () => ((listOpen = false), render())));
   chatBtn.addEventListener('click', () => {
     chatOpen = !chatOpen;
@@ -2069,7 +2075,7 @@
     e.stopImmediatePropagation();
   }, true);
   for (const b of listEl.querySelectorAll('[data-f]')) b.addEventListener('click', () => ((filter = b.dataset.f), drawList()));
-  holdBtn.addEventListener('click', () => (store.set('lab-hold', store.get('lab-hold') === '1' ? '' : '1'), drawList()));
+  holdBtn.addEventListener('click', () => (store.set('lab-hold', drafting() ? '' : '1'), drawList()));
   sendBtn.addEventListener('click', async () => {
     const list = held();
     for (let i = 0; i < list.length; i++) {
@@ -2111,7 +2117,7 @@
       }
       const l = listed();
       const at = l.findIndex((c) => c.id === openId);
-      if (k === 'l') ((listOpen = !listOpen), drawList());
+      if (k === 'l') ((listOpen = !listOpen), listOpen && (filter = 'new'), drawList());
       else if ((k === 'j' || k === 'k') && l.length) goTo(l[(at + (k === 'j' ? 1 : l.length - 1) + (at < 0 && k === 'k' ? 1 : 0)) % l.length]);
       else if (k === 'r' && openId) root.querySelector('.card textarea')?.focus({ preventScroll: true });
       else if (k === 'e' && openId && isAdmin) [...root.querySelectorAll('.card .btn')].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
