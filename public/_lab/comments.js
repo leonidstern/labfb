@@ -113,6 +113,10 @@
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       .zone.saved { background: rgba(52, 199, 89, .06); }
       .zone.saved.in { animation: lab-settle .36s var(--_ease); }
+      /* The agent is on it: a thin green ring turns around the pin. */
+      .pin.working::before { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(52, 199, 89, .25);
+                             border-top-color: rgb(52, 199, 89); animation: lab-spin 1s linear infinite; pointer-events: none; }
+      @keyframes lab-spin { to { transform: rotate(1turn); } }
       .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                         background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
       .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
@@ -1244,25 +1248,27 @@
     const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
     return m < 1 ? 'just now' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
   };
+  // A thread's state for the agent: ['now' | 'next' | 'done' | null, since when].
+  const workState = (c) => {
+    const thread = [c, ...repliesOf(c.id)];
+    const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || '';
+    const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
+    const answered = answer && answer.createdAt > lastPerson;
+    if (c.resolved || c.quick === 'done' || (answered && /^done\b/i.test(answer.text))) return ['done', answered ? answer.createdAt : c.createdAt];
+    if (answered && /^on it\b/i.test(answer.text)) return ['now', answer.createdAt];
+    if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['now', c.handedAt];
+    return answered ? [null, ''] : ['next', lastPerson];
+  };
   function workItems() {
     const today = new Date().toDateString();
     const now = [];
     const next = [];
     const done = [];
     for (const c of comments.filter((x) => !x.parent)) {
-      const thread = [c, ...repliesOf(c.id)].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      const people = thread.filter((m) => !m.session);
-      const agent = thread.filter((m) => m.session);
-      const lastPerson = people.at(-1)?.createdAt || '';
-      const answer = agent.at(-1);
-      const answered = answer && answer.createdAt > lastPerson;
-      const finished = c.resolved || c.quick === 'done' || (answered && /^done\b/i.test(answer.text));
-      if (finished) {
-        const at = answered ? answer.createdAt : c.createdAt;
-        if (new Date(at).toDateString() === today) done.push([c, at]);
-      } else if (answered && /^on it\b/i.test(answer.text)) now.push([c, answer.createdAt]);
-      else if (!answered && c.handedAt && c.handedAt >= lastPerson) now.push([c, c.handedAt]);
-      else if (!answered) next.push([c, lastPerson]);
+      const [state, at] = workState(c);
+      if (state === 'now') now.push([c, at]);
+      else if (state === 'next') next.push([c, at]);
+      else if (state === 'done' && new Date(at).toDateString() === today) done.push([c, at]);
     }
     const row = ([c, at], when) => {
       const b = el('button', { class: `it${openId === c.id ? ' cur' : ''}`, type: 'button' });
@@ -1640,7 +1646,7 @@
       const pin = el(
         'button',
         {
-          class: `pin${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}`,
+          class: `pin${c.resolved ? ' resolved' : ''}${workState(c)[0] === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}`,
           type: 'button',
           title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
         },
