@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Tabs in the background stay connected to the lab, so their pins, chat and "(3)" title count keep up while you're in another tab.
 - N goes to the next new comment (the pill shows the key); Control-N does it from anywhere, the reply box too (Control-Shift-N: the one before); J and K still step forward and back.
 - Going to a new comment ("N new" or J / K) puts the cursor in its reply box (computers).
 - The bar's "N new" has no ‹ › arrows: a click goes to the next new comment, J and K step forward and back.

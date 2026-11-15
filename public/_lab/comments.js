@@ -3059,7 +3059,7 @@
     // the page stops Claude listening.
     const tab = Math.random().toString(36).slice(2, 12);
     const connect = () => {
-      if (stream || document.hidden) return;
+      if (stream) return; // background tabs stay connected too, so their title count and pins keep up
       stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
       stream.onmessage = (e) => {
         const v = JSON.parse(e.data);
@@ -3092,9 +3092,7 @@
       };
     };
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) return connect();
-      stream?.close();
-      stream = null;
+      if (!document.hidden) connect(); // back in front: reconnect if the browser dropped it meanwhile
     });
     addEventListener('pagehide', () => {
       stream?.close();
