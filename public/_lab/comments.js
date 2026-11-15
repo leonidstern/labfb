@@ -2186,6 +2186,10 @@
           if (c.resolved) {
             c.resolved = false;
             render();
+            // The card is drawn again: keep it where you were, at the newest message, with the cursor in the box.
+            const again = openCard?.querySelector('.body');
+            if (again) again.scrollTop = again.scrollHeight;
+            openCard?.querySelector('textarea')?.focus({ preventScroll: true });
             return { keep: true };
           }
           // Add the reply where it belongs instead of redrawing the card, so nothing on screen blinks
