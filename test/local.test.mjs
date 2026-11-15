@@ -92,3 +92,42 @@ test('a comment about the page as a whole has no spot in the agent text', async 
   assert.match(block, /^on: the page as a whole \(no spot\)$/m);
   assert.doesNotMatch(block, /^(where on element|selector \(at comment time\)):/m);
 });
+
+test('read marks are shared by name: a phone and a Mac with the same name see the same new and read', async () => {
+  await up();
+  const reads = (q) => fetch(`${B}/_lab/api/reads?${q}`).then((r) => r.json());
+  const mark = (body) => fetch(B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) });
+  const rev = async () => {
+    const ctl = new AbortController();
+    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+    const { value } = await res.body.getReader().read();
+    ctl.abort();
+    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).reads;
+  };
+  const before = await rev();
+  assert.equal((await mark({ name: 'Leo ', page: '/index', ids: ['abc123', 'abc123', '../x'] })).status, 204);
+  assert.deepEqual((await reads('name=leo&page=/index')).ids, ['abc123'], 'same name in any case or spacing; bad ids dropped');
+  assert.deepEqual((await reads('name=Mira&page=/index')).ids, [], 'another name has its own');
+  assert.deepEqual((await reads('name=Leo&page=/other')).ids, [], 'per page');
+  assert.equal(await rev(), before + 1, 'the live stream tells open tabs to fetch them again');
+  assert.equal((await mark({ name: 'Leo', page: '/index', ids: ['abc123'] })).status, 204);
+  assert.equal(await rev(), before + 1, 'nothing new read: no wake-up');
+  assert.equal((await mark({ page: '/index', ids: ['x'] })).status, 400);
+  assert.equal((await fetch(B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' })).status, 403, 'other sites cannot post');
+});
+
+test('a reply in a thread the agent has gets only the new words; reply --wait answers and listens in one go', async () => {
+  await up();
+  const { comment } = await post({ page: '/index', name: 'Leo', text: 'make the heading bigger', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', looks: 'text 32px', viewport: '1000×800' } });
+  const first = await run(['wait', '--timeout', '5']);
+  assert.match(first.out, /make the heading bigger/);
+  assert.doesNotMatch(first.out, /^looks:|^viewport:/m, 'rare details stay in the full text');
+  const waiting = run(['reply', comment.id, 'On it', '--wait', '--timeout', '10']);
+  await new Promise((r) => setTimeout(r, 600));
+  await post({ page: '/index', name: 'Leo', text: 'and make it blue', parent: comment.id });
+  const out = (await waiting).out;
+  assert.match(out, /^Replied on \/index\./m);
+  assert.match(out, /^# New replies/m);
+  assert.match(out, new RegExp(`thread id ${comment.id} "make the heading bigger": Leo · .* · id \\w+: and make it blue`));
+  assert.doesNotMatch(out, /^## /m, 'not the whole thread again');
+});

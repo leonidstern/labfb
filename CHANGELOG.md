@@ -4,7 +4,101 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- The bar shows "working on 2 · 3 done": what the agent has been handed and not answered yet, and what it answered in the same round, apart from the done/total count of comments. Just to read; it hides when the agent is idle.
+- Tabs in the background stay connected to the lab, so their pins, chat and "(3)" title count keep up while you're in another tab.
+- N goes to the next new comment (the pill shows the key); Control-N does it from anywhere, the reply box too (Control-Shift-N: the one before); J and K still step forward and back.
+- Going to a new comment ("N new" or J / K) puts the cursor in its reply box (computers).
+- The bar's "N new" has no ‹ › arrows: a click goes to the next new comment, J and K step forward and back.
+- No pictures left in the widget's controls: the close cross and the send arrow are drawn with CSS, and the picture pointers are gone (where the drawn pin can't show, in an open dialog or before the mouse moves, the system crosshair / copy pointer stands in). Holding Option over a link shows the drawn pin too.
+- ‹ N new › counts new messages in done threads too.
+- A thread's reopen / resolve / delete sit on the right, a size smaller, out of the reading flow.
+- Router (option 10): one-file style fixes the quick model kept ride along with the session's next pins as one line each (id · file · the line it added), so a wrong one is easy to spot.
+- Washes set to 5 / 10 / 15 / 50 % for black and white, 15 / 30 / 50 % and solid for green.
+- Colours are washes, as in Cooking: white, black and green, each with 4 see-through steps (`--lab-black-1…4`, `--lab-white-1…4`, `--lab-green-1…4`); soft fills, hovers, lines and secondary text are washes of black on light and of white on dark.
+- The bar keeps its pills in place: ‹ N new › and "show done" stay (quiet and disabled at 0) instead of appearing and shifting the others.
+- The browser tab shows new messages as "(3) Page title".
+- The chat's top is just the grab strip (no empty title row), as tall as a thread's.
+- A pin on the page's body or main that was on a word sits on that word again after the page changes; if the word is gone it shows faded as moved. One with no word shows faded as moved once the page's height has changed under it (new pins keep that height).
+- The list window is parked: the bar shows ‹ N new › while there are new comments (the middle and J go to the next, ‹ and K to the previous), and a "show done · N" / "hide done" pill. On phones the agent's light moves to the chat button. `LIST_WINDOW` brings the list back.
+- The list shows each pin on one line (longer ones end in …); rows highlight in Apple's hover grey.
+- Done pins with nothing new in them are hidden on the page; "show done · N" in the list brings them back (remembered per browser). A done pin with a new reply shows as usual.
+- A wait's message starts with what it holds ("In this message: 3 new, 1 reply"), so an agent that only read part of it can tell something is missing.
+- A safety net for missed pins: a thread handed to the agent more than 3 minutes ago (`LAB_REMIND_MS`) that still has no answer after the person's last words comes back in the next wait, under "Still waiting for your answer", at most every 10 minutes.
+- Chat: a reply shows what it answers, as in Telegram (the name and the start of that message, a green bar beside it); a tap there jumps to it.
+- The bar has ‹ › around "list" while there are new comments: they step through the new ones from the top of the page, without opening the list.
+- The chat has no "chat" title (phones and computers).
+- Writing in a done thread reopens it on the page at once (the lab already reopened it on its side).
+- Greys are Apple's system greys, four steps a scheme (gray 6 #f2f2f7, gray 5 #e5e5ea, gray 3 #c7c7cc, gray #8e8e93; dark #2c2c2e, #3a3a3c, #38383a), in the widget and `lab.css`.
+- On a computer a thread or new comment closes at once, like the chat (its fade-out flickered); phones still slide the sheet away.
+- Lighter talk between the lab and the agent:
+  - A reply in a thread the agent already has comes as one line (the new words, the thread's id and what it's about), not the whole thread again.
+  - A new pin wakes the agent after 2 s of quiet (`LAB_SETTLE_MS`), so a quick run of pins goes over together.
+  - Pins leave out details agents rarely use (computed looks, colours, window size, CSS path); they stay in the full text at `/_lab/agent/<page>`.
+  - `reply … --wait` answers and listens again in one command.
+- Done shows as a small green ✓ beside the name (like the ticks on messages), not "✅ done".
+- A thread's reply box is the chat's: soft grey, no border; the new comment box drops its border too and keeps only a soft shadow so it stands out on the page.
+- Phones on their side get the same sheets as upright (they used to get the computer's floating chat, which a tap outside didn't close and which couldn't be pulled up).
+- Phones: tapping a pin moves the page so the pin sits above its thread sheet instead of under it.
+- Router, narrowed after the big benchmark (v5 put back 15 fixes a run, 11 of them wrongly):
+  - Shared code is a file loaded from two or more files in other folders (or the stylesheet of such a component, or a `:root` stylesheet). Imports are resolved by path, so a feature's own `status.js` isn't another feature's, and a stylesheet is named in full, so importing `InvoicesTable` doesn't count as importing `InvoicesTable.module.css`. On the benchmark app this flags exactly the 6 shared library files and none of the 11 feature files.
+  - Only risky quick changes go to the session to check: code, or more than one file. A one-file style fix the quick model kept no longer wakes it.
+- The drawn pointer shows exactly where the system pointer is hidden, checked again when the page scrolls under a still mouse, Shift or Option is pressed, or go and comments are switched. A page's own pointers (a clickable card) win over it; editable text gets a text cursor and data-uncommentable parts the plain arrow; in an open dialog, popover or full screen (above the widget) the picture pointer stays.
+- The comment pointer is drawn with CSS (your pin following the mouse) instead of an image, so it changes smoothly: it turns green with a tick for go, and fades out where the system pointer takes over (links, fields, the widget, Shift). Mice only.
+- Lab pages draw dividers as Apple-style hairlines: half a pixel (one device pixel on Retina) in Apple's separator grey (`--lab-hair`, `--lab-gray-300`).
+- Pins find their element again after the page changes above them: when the stored path leads to a different element (a section added, items reordered), the pin looks for the one with the same tag, classes and words under the same heading, nearest to where it was, and sits at the same spot inside it.
+- Pin statuses. A go pin is an outline with a green tick when placed, gets the turning stroke while the agent is on it, and fills green once done. A comment pin shows your initial, the stroke, then a green tick when done (was grey).
+- Closing the chat (Escape, the button or a click outside) takes the cursor out of its box, so keys like M and V work right away.
+- Keys swapped: M shows and hides comments (was C), C opens and closes the chat (was M).
+- Lab colours are set up like Cooking's: a fixed grey scale and greens as base colours (`--lab-gray-*`, `--lab-green-*`), and named uses that point at them (`--lab-page`, `--lab-bg`, `--lab-fg`, `--lab-muted`, `--lab-line`, `--lab-soft`, `--lab-green`, `--lab-green-soft`); dark mode only re-points the uses. Same colours as before, now solid hex.
+- Pointers are drawn once as PNGs (1x and 2x) instead of SVG, which browsers re-decode on every pointer change (a flicker, Safari most), and are rewritten only when your initial changes.
+- A newer version waits to reload until no thread, list or chat is open, so nothing moves while you read.
+- Messages: no "↩ replied" mark, and an agent's name shows without its session id ("Claude", not "Claude · session 8a296ba1").
+- The comment pointer looks like your own pin: the white teardrop with your initial (a + before you've given a name), clicking at its point; links and controls keep theirs, Shift gives the text cursor back. The go pointer is the same shape, green with a tick.
+- The ✓ / ✓✓ in a message's corner are as tall as the time's digits.
+- The list's and chat's close button: hovering only darkens the cross (no circle behind it), and no "close" tooltip.
+- Your own messages are soft green with dark text, not black.
+- Go mode's pointer is a go pin (green teardrop with a white tick), clicking where its point is.
+- Computers, with comments shown: a click or drag no longer selects the page's text; hold Shift to select (and quote) words. Fields and editable text stay selectable.
+- Switching go mode (V or the button) redraws nothing, so nothing flickers.
+- Apple's continuous corners (squircle) on boxes, cards, bubbles, sheets, keys and rows wherever the browser draws them (Safari 26, Chrome); dots stay circles and the pin keeps its teardrop.
+- The lab's design system in one file, `/_lab/lab.css`: colours, three corners, type, boxes, pills, buttons, keys, rows and tables, with `--lab-*` names that are also the widget's theme hooks. The lab's page list and its "not found" page use it.
+- The bar's "hide comments" reads just "hide".
+- Two corner sizes in all: 6 px for small things (keys, list rows, tabs, tags, text buttons), 12 px for boxes, cards, bubbles, sheets and buttons (the bar's pills too, no more round ends). Circles only for dots and the send button.
+- The list has just two tabs, new and open, and opens on new each time. The work, resolved and mine tabs and draft mode are parked (hidden, code kept).
+- Replied and done show as small marks beside the name again (↩ replied, ✅ done), not inside the message's words.
+- Hovering a pin shows what it's on: a drawn area its green outline, selected words their highlight. An open area pin shows its outline again (it was hidden when the area also held a quoted word), steady: no dark flash or shadow as it opens.
+- "copy link" sits on the left side of the screen, beside who's listening; the bar stays on the right.
+- The list's and the chat's close button is a round, quiet button with a drawn cross, darker on hover.
+- The bar's pills show their keys: chat C, list L, go V, hide M (hidden on touch screens).
+- Escape closes the chat and the list too (after an open thread or new comment).
+- On a computer, opening the chat closes an open thread (and a new comment with nothing typed in it).
+- Scrollbars inside the chat, threads and the list are thin, on a clear track, like macOS ones (CSS only).
+- Go mode: a "go" button in the bar, or V, switches it on and off. While it's on, every click, drawn area, selection or hold on a phone posts a "go" pin at once (approve what it's on), with no box to type in; in draft mode go pins wait with the other drafts. Needs your name set once. A go pin is green with a tick, apart from comments.
+- A comment on selected words puts its pin on the last selected letter, where the selection ended (on the first when the selection runs over several items).
+- A pin the agent is on (handed to it and not answered yet, or answered "On it") has a green stroke running round its own teardrop outline.
+- The list has a "work" tab: Now (handed to the agent and not answered yet, or answered "On it"), Next (sent, not handed yet) and Done today, for this page's pins and chat.
+- Drawn areas are a green dotted outline with no fill and no dark ring; a quote that runs over several items is found and lit.
+- Phones: the chat has two heights, like iOS and Android sheets: pull it up (or flick) to fill the screen, pull it down from there to go back; from the lower height a pull down closes it as before, and a hard flick down from the top closes it too. It opens at the lower height.
+- Links in the chat and in threads open in a new tab.
+- On a computer, a click outside the chat closes it and does nothing else (no new comment, no press on what's under it); what you typed stays.
+- A newer version reloads the page as soon as it's safe: not while you type, have words in a box, place a new comment or just touched the page. An open chat, list or thread no longer holds it back; they come back after the reload.
+- Jumping to a pin (list, chat, J / K) puts the pin and its open thread in view together, in the middle of the window when they fit.
+- A long thread scrolls inside its card (at most 460 px or 62% of the window) and opens at its first new message, or the newest.
+- Hovering a pin on quoted words lights them up; the quote's highlight is green, with no dotted box behind it.
+- Phones: the sheet's grab strip is 44 px tall (it reaches a little above the sheet's edge); the bar looks the same.
+- Phone sheets, from the bottom-sheet research (Vaul, Ionic, iOS and Android sheets):
+  - Android's back gesture closes an open sheet (chat, list, thread, new comment) instead of leaving the page; with something typed it nudges, like a tap on the dimmed page.
+  - Right after the messages or the list scrolled (a fling up to the top), a pull down keeps scrolling for 100 ms instead of taking the sheet with it.
+  - For 200 ms after letting go of a drag, a tap does nothing, so a sheet springing back under the finger doesn't press a button or pop the keyboard.
+  - iOS 26.0's leftover 24 px viewport offset after the keyboard closes is ignored (with nothing focused to type in), so the sheet no longer sits off by that.
+- Local labs: what's new and what's read is shared by name, so your phone and your Mac (the same name) show the same: open a pin or the chat on one and its "new" clears on the other. Kept in `.lab/reads.json`.
+- Each comment is marked when it's handed to a wait, instead of one "seen up to" time: a comment a batch left out (or one saved a moment late) is no longer skipped for good.
+- Chat and list buttons stand out (bold) when something is new, and the chat marks where unread messages start with a "new" line.
+- Resolving a thread closes its card.
+- Computers: Shift + drag selects words (a plain drag still marks an area), and letting go opens a comment quoting exactly them. Comments from the phone's Comment chip quote the whole selection too, not just the first word. A quote holds up to 300 characters (was 80), so a long selection isn't cut short.
+- Threads read like the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, a "new" line above the first unread reply.
+- "copy link" keeps its width while it says "copied", so nothing beside it moves.
+- On a computer, opening the chat puts the cursor in its message box.
+- Chat: each message has its time in the corner (no hover tooltip over the text), your own with ✓ / ✓✓; no "↩ name: …" quote above replies (the ✅ for done stays); no click to reply (phones swipe).
 - The list names each pin by what it's on: when the pinned element says little ("4", an icon), the text of the box around it.
 - Phones: holding a link or image no longer starts iOS's drag, which cancelled the hold before the box could open the keyboard.
 - Phones: a sheet follows the finger like a native one: from any part, and from its list or messages when they're at the top; a fast flick or a pull past a third closes it at the finger's speed, else it springs back; pulled up, it stretches a little.
@@ -15,7 +109,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Chat: your messages show ✓ when sent and ✓✓ once handed to the agent, as in messengers.
 - Phones: the page behind an open sheet no longer scrolls, even when you drag on a part of the sheet with nothing to scroll.
 - The chat closes from the dimmed page even with text in its box (the text stays for next time); a thread or new comment with typed text nudges instead of closing, since closing would lose it.
-- Only "working on N" blinks; the list's dot stays still (listening or away).
 - `labfb pages`: a lab serving this folder hides one serving a folder above it, so the list is this lab's pages, not everything up there.
 - Phones: the keyboard's ^ ˅ step to the previous or next pin while you write a reply, the keyboard staying up.
 - The router, from the big-app benchmark (Haiku said Done on 29 of 30 pins, 25 were right):
@@ -25,7 +118,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Phones: a tap or a swipe down on the dimmed page above a sheet closes it (the tap now also works on iOS Safari).
 - Phones: while a sheet is open, swiping down no longer triggers the browser's pull-to-refresh.
 - The chat holds only its own messages (about the page as a whole) and their replies; pins stay on the page and in the list. Your own comments are never new to you (your name in any case or spacing, or a pin this browser started), and the list tags threads with unread replies with a "2 new" pill. The chat stays at its newest message while the keyboard shortens it.
-- The list button shows how far the agent got: done of all pins ("5/8 ✓": resolved, fixed by the quick model, or answered "Done: …"), and the list marks done threads with ✅.
+- The list marks done threads with ✅ (resolved, fixed by the quick model, or answered "Done: …").
 - Sending eases the new message or reply in and the arrow flies off; the chat keeps its box (and the phone's keyboard) after a send and only follows new messages while you're at the bottom. Phones: prev / next are thumb-sized and keep the keyboard as it was, and the thread sheet keeps its height while you step.
 - Phone sheets: the thread, list and chat scroll natively and move only from their top (handle and header), so a swipe down never scrolls the messages; the message box is solid down to the screen's edge (behind the home bar and the keyboard too), the page is dimmed past the screen's edges, the ✕ is gone on phones, and sheets slide away when closed. A sheet sits above the keyboard and fits what the screen shows.
 - Phones: the send button works on the first tap with the keyboard open (pressing it no longer takes the cursor out of the box).
