@@ -109,7 +109,7 @@
       .zone { position: absolute; background: none;
               border-radius: var(--_radius); pointer-events: none; }
       .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-      .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--_radius); ry: var(--_radius); }
+      .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--lab-radius, 12px); ry: var(--lab-radius, 12px); }
       /* Green dots, the same green as quoted words, with no dark ring under them. */
       .zone rect.ring { display: none; }
       .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 2; }
@@ -273,7 +273,16 @@
       @keyframes lab-fade { from { opacity: 0; } }
       @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
       /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
-      @supports (corner-shape: squircle) { .card, .float .box, .card .box { corner-shape: squircle; border-radius: calc(var(--_radius) * 1.8); } }
+      /* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a
+         smooth curve instead of a circle arc (a squircle needs about 1.8 times the radius to look the same size).
+         Circles and the pin's teardrop stay as they are. */
+      @supports (corner-shape: squircle) {
+        :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
+        *, *::before, *::after { corner-shape: squircle; }
+        button.pin, .pin.working::before, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
+        .listener::before, .list-btn[data-agent]::before,
+        .bar button, .list .tabs button, .list .it .tag, .left .copy-all, .listener, .hint, .sel-chip { corner-shape: round; } /* pills stay round-ended */
+      }
       @keyframes lab-pin { from { transform: scale(1.1); } }
       @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
                             to { box-shadow: 0 0 0 16px color-mix(in srgb, var(--_fg) 0%, transparent); } }
