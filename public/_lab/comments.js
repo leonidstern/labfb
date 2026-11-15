@@ -999,9 +999,9 @@
     return null;
   }
   // A message's name with its small marks: ↩ replied, ✅ done.
-  const nameLine = (name, replied, done) => {
-    const b = el('b', {}, name);
-    if (replied) b.append(el('span', { class: 'mark' }, '↩ replied'));
+  // A message's name with its small mark: ✅ done. An agent's session id ("Claude · session 8a296ba1") is left off.
+  const nameLine = (name, done) => {
+    const b = el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
     if (done) b.append(el('span', { class: 'mark' }, '✅ done'));
     return b;
   };
@@ -1406,10 +1406,10 @@
     box.replaceChildren(...msgs.flatMap((m) => {
       const root = m.parent ? byId.get(m.parent) : m;
       const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id });
-      // Small marks beside the name, not in the words: ↩ replied (an answer in a thread), ✅ done.
+      // The done mark sits beside the name, not in the words.
       // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
       const isDone = Boolean(root?.resolved || /^done\b/i.test(m.text));
-      b.append(nameLine(m.name, Boolean(m.parent), isDone), ...linked(m.text));
+      b.append(nameLine(m.name, isDone), ...linked(m.text));
       b.append(stampOf(m, root));
       const answer = () => {
         replyTo = root ? root.id : null;
@@ -1893,7 +1893,7 @@
     body.classList.add('msgs');
     const itemEl = (item) => {
       const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id });
-      box.append(nameLine(item.name, false, item !== c && /^done\b/i.test(item.text)), ...linked(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
+      box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...linked(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
     const shown = new Set();
@@ -2764,13 +2764,13 @@
     } catch {}
     // Hold a reload while anything is open (a thread, a new comment, the list) or a box has focus or text: the page
     // reloads once you close it, where you were.
-    // A newer version reloads the page when it's safe: not while you type, have words in a box, place a new comment,
-    // have a phone's keyboard up or have just touched the page. What's open (a thread, the list, the chat) and where
-    // you were come back after it.
+    // A newer version reloads the page when it's safe: not while you read a thread, the list or the chat (it waits
+    // until they're closed, so nothing moves under you), type, have words in a box, place a new comment, have a phone's
+    // keyboard up or have just touched the page.
     let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
     const busy = () =>
-      draft || grabbing || (coarse && /^(textarea|input)$/.test(root.activeElement?.localName || '')) ||
+      draft || grabbing || openId || chatOpen || listOpen || (coarse && /^(textarea|input)$/.test(root.activeElement?.localName || '')) ||
       [...root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     const reload = () => {
       if (busy()) return setTimeout(reload, 500);
