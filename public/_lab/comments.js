@@ -301,11 +301,7 @@
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
       .listener span { color: var(--_muted); }
       .listener.idle::before { background: var(--_muted); opacity: .5; }
-      /* Working: the pin's turning green stroke, small: a 9 px ring in place of the dot. */
-      .listener.working::before, .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before {
-        width: 9px; height: 9px; margin: 0 1px 0 1px; background: conic-gradient(from var(--lab-spin, 0deg), rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%);
-        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
-        animation: lab-spin 1.2s linear infinite; opacity: 1; }
+      .listener.working::before { animation: lab-blink 1.1s ease-in-out infinite; }
       @keyframes lab-blink { 50% { opacity: .2; } }
       .listener:not([data-copy=""])[data-copy] { cursor: copy; }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: var(--_r-s); text-align: center;
@@ -412,8 +408,7 @@
         .hint { bottom: 64px !important; }
         .chat-btn[data-agent]::before, .list-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
         .chat-btn[data-agent=away]::before, .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
-        .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { width: 9px; height: 9px; margin-right: 5px; vertical-align: 0;
-          background: conic-gradient(from var(--lab-spin, 0deg), rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%); }
+        .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { animation: lab-blink 1.1s ease-in-out infinite; }
         .send { width: 36px; height: 36px; }
         .send .arr { height: 16px; margin: auto; } .send .arr::before, .send .arr::after { height: 9px; }
       }
