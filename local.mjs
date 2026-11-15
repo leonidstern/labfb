@@ -967,7 +967,7 @@ async function threadsText(page, threads) {
   return parts.length ? `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}` : null;
 }
 // A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale).
-const stamp = (c) => (c.movedAt && c.movedAt > c.createdAt ? c.movedAt : c.createdAt);
+const stamp = (c) => [c.createdAt, c.movedAt, c.rejectedAt].filter(Boolean).sort().pop(); // new when written, moved, or its quick fix rejected
 async function unseen() {
   // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
   if (trying.size) return null;
@@ -1137,6 +1137,8 @@ function undo(changes) {
   refreshSnap();
   return stuck;
 }
+// Kept quick changes, so a 👎 can put one back (memory only: after a restart the agent does it).
+const quickUndo = new Map(); // thread id → [{ file, before, after }] (null: the file wasn't there)
 // A quick change stays only when it is small: at most 3 files and 40 lines added and removed.
 const QUICK_FILES = 3;
 const QUICK_LINES = 40;
@@ -1251,6 +1253,7 @@ ${block}`;
       }));
       const { comment } = await res.json();
       if (comment) setComment(page, comment.id, { session: { id: '', name: label || who, agent: who || label, kind: tool, url: '', resume: '' } });
+      quickUndo.set(c.id, changes.map((x) => ({ file: x.file, before: x.before ? x.before.body : null, after: fs.existsSync(x.file) ? fs.readFileSync(x.file) : null })));
       // What it changed, for the session to glance at with its next pins.
       setComment(page, c.id, {
         quickDiff: changes.map((x) => `${path.relative(ROOT, x.file)}: ${[...x.removed.slice(0, 2).map((l) => `- ${l.trim()}`), ...x.added.slice(0, 2).map((l) => `+ ${l.trim()}`)].join(' / ')}`).join(' · ').slice(0, 600),
@@ -1370,6 +1373,32 @@ const handler = async (req, res) => {
         pagesChanged();
       });
       return;
+    }
+    // 👎 on a quick fix (this computer only): put its files back if nobody changed them since, and hand the pin
+    // to the agent with what was rejected.
+    if (pathname === '/_lab/quick-undo' && req.method === 'POST') {
+      if (req.headers['x-lab-admin'] !== TOKEN) return res.writeHead(403).end();
+      const { page, id } = JSON.parse((await new Response(req).text()) || '{}');
+      const c = commentsOf(page || '').find((x) => x.id === id);
+      const saved = quickUndo.get(id);
+      const no = (why) => res.writeHead(409, { 'content-type': 'application/json' }).end(JSON.stringify({ error: why }));
+      if (!c || c.quick !== 'done' || !saved?.every((x) => x.before !== undefined)) return no("can't put this one back here; ask your agent");
+      const now = (f) => (fs.existsSync(f) ? fs.readFileSync(f) : null);
+      const same = (a, b) => (a === null || b === null ? a === b : a.equals(b));
+      const moved = saved.filter((x) => !same(now(x.file), x.after)).map((x) => path.relative(ROOT, x.file));
+      if (moved.length) return no(`changed since: ${moved.join(', ')}; ask your agent`);
+      for (const x of saved) x.before === null ? fs.rmSync(x.file, { force: true }) : fs.writeFileSync(x.file, x.before);
+      quickUndo.delete(id);
+      refreshSnap();
+      setComment(page, id, { quick: 'rejected', rejectedAt: new Date().toISOString(), quickNote: `the person rejected the quick fix (👎), so it was put back: ${c.quickDiff || ''}`.slice(0, 200) });
+      try {
+        fs.appendFileSync(path.join(LAB, 'quick.jsonl'), JSON.stringify({ at: new Date().toISOString(), page, id, text: c.text.slice(0, 120), result: 'rejected', files: saved.map((x) => path.relative(ROOT, x.file)) }) + '\n');
+      } catch {}
+      if (!PROXY) version = { ...version, files: version.files + 1 };
+      await persist(page).catch(() => {});
+      broadcast();
+      wake();
+      return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
     }
     if (pathname === '/_lab/bye') {
       const { tab } = JSON.parse((await new Response(req).text()) || '{}');

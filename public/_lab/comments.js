@@ -1356,6 +1356,26 @@
       });
       actions.append(resolve, del);
       card.append(actions);
+      // A fix the quick model made: keep it (resolves) or put it back (the agent gets the pin). Local labs only.
+      if (c.quick === 'done' && !c.resolved) {
+        const verdict = el('div', { class: 'row' });
+        const keep = el('button', { class: 'btn', type: 'button' }, '👍 keep');
+        const back = el('button', { class: 'btn', type: 'button' }, '👎 put back');
+        keep.addEventListener('click', () => resolve.click());
+        back.addEventListener('click', async () => {
+          try {
+            const r = await fetch(new URL('/_lab/quick-undo', new URL(API, location.href)), { method: 'POST', headers: headers(), body: JSON.stringify({ page, id: c.id }) });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error);
+            c.quick = 'rejected';
+            render();
+          } catch (e) {
+            back.textContent = e.message || 'failed, try again';
+          }
+        });
+        verdict.append(keep, back);
+        card.append(verdict);
+      }
     }
     card.append(
       composer({

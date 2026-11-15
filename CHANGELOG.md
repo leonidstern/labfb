@@ -10,6 +10,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
   - Each quick change is checked: labfb notes the project's files before, sees exactly what changed after, and keeps it only when the tool said Done and it is small (3 files, 40 lines). A pass, or a change too big, is put back, so the session starts from the files as they were.
   - The quick model's changes ride along with the next pins the session gets, for a glance (they never wake it by themselves).
   - Every quick decision is a line in `.lab/quick.jsonl` (done, pass, put back; why; files; lines; seconds).
+  - 👍 keep / 👎 put back on a quick fix (this computer): 👎 restores the files if nobody changed them since, and hands the pin to the agent marked as rejected.
 - Sharper pins, from a frontend fix benchmark against Agentation:
   - Every element on a React dev build now gets its own JSX file and line ("written at") and the component that rendered it, not only a component's outermost element (it was 3 of 24 pins in the benchmark).
   - The "looks" line names only CSS variables that are colours: a radius or spacing variable no longer names a text colour (it did on 12 of 24 pins).

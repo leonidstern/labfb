@@ -338,3 +338,27 @@ test('the quick changes ride along with the next pins the session gets', async (
   assert.match(out, /^# Quick changes made meanwhile/m);
   assert.match(out, new RegExp(`^- id ${red} "make it red" \\(/index\\): red\\.css: \\+ h1\\{color:red\\}`, 'm'));
 });
+
+test('👎 on a quick fix puts it back and hands the pin to the agent; a file changed since is left alone', async () => {
+  const dir = site('thumbs');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "h1{color:red}" > red.css; echo "Done: title red"' });
+  const token = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).token;
+  const undo = (id) => fetch(B + '/_lab/quick-undo', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': token }, body: JSON.stringify({ page: '/index', id }) });
+  const a = await pin(B, 'make it red');
+  await until(async () => (await replies(B, a, false)).length > 0);
+  assert.equal(fs.existsSync(path.join(dir, 'red.css')), true);
+  assert.equal((await fetch(B + '/_lab/quick-undo', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: '{}' })).status, 403, 'needs this computer');
+  assert.equal((await undo(a)).status, 200);
+  assert.equal(fs.existsSync(path.join(dir, 'red.css')), false, 'put back');
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(out, new RegExp(`id ${a}`));
+  assert.match(out, /quick model passed: the person rejected the quick fix \(👎\), so it was put back: red\.css: \+ h1\{color:red\}/);
+  // Changed since the quick fix: not put back.
+  const b = await pin(B, 'make it red again');
+  await until(async () => (await replies(B, b, false)).length > 0);
+  fs.writeFileSync(path.join(dir, 'red.css'), 'h1{color:darkred}\n');
+  const r = await undo(b);
+  assert.equal(r.status, 409);
+  assert.match((await r.json()).error, /changed since: red\.css/);
+  assert.equal(fs.readFileSync(path.join(dir, 'red.css'), 'utf8'), 'h1{color:darkred}\n');
+});
