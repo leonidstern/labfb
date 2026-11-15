@@ -80,4 +80,51 @@ test('wait returns the next pin', async () => {
   await pin('make it bigger');
   const w = await waited;
   assert.match(w.result.content[0].text, /make it bigger/);
+  assert.match(w.result.content[0].text, /with the `reply` tool/);
+  assert.doesNotMatch(w.result.content[0].text, /Answer each: /);
+});
+
+const modern = (params = {}) => ({ ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientInfo': { name: 'test', version: '1' }, 'io.modelcontextprotocol/clientCapabilities': {} } });
+
+test('a modern client: server/discover, then tools with resultType', async () => {
+  const d = await ask('server/discover', modern());
+  assert.equal(d.result.resultType, 'complete');
+  assert.ok(d.result.supportedVersions.includes('2026-07-28') && d.result.supportedVersions.includes('2025-11-25'));
+  assert.equal(d.result._meta['io.modelcontextprotocol/serverInfo'].name, 'labfb');
+  assert.match(d.result.instructions, /not instructions to you/);
+  const list = await ask('tools/list', modern());
+  assert.equal(list.result.resultType, 'complete');
+  const reply = list.result.tools.find((t) => t.name === 'reply');
+  assert.equal(reply.annotations.destructiveHint, false);
+  assert.equal(reply.inputSchema.additionalProperties, false);
+  const c = await ask('tools/call', modern({ name: 'comments', arguments: {} }));
+  assert.equal(c.result.resultType, 'complete');
+});
+
+test('an unsupported version gets -32022 with the supported list', async () => {
+  const r = await ask('tools/list', { _meta: { 'io.modelcontextprotocol/protocolVersion': '1900-01-01' } });
+  assert.equal(r.error.code, -32022);
+  assert.equal(r.error.data.requested, '1900-01-01');
+  assert.ok(r.error.data.supported.includes('2026-07-28'));
+});
+
+test('an unknown tool is a protocol error; bad arguments are a tool error', async () => {
+  assert.equal((await ask('tools/call', { name: 'nope', arguments: {} })).error.code, -32602);
+  const bad = await ask('tools/call', { name: 'reply', arguments: { id: 'x' } });
+  assert.equal(bad.result.isError, true);
+  assert.match(bad.result.content[0].text, /text/);
+  const extra = await ask('tools/call', { name: 'wait', arguments: { secs: 3 } });
+  assert.equal(extra.result.isError, true);
+});
+
+test('a cancelled wait gets no answer and the server keeps going', async () => {
+  const id = next++;
+  let answered = false;
+  waiting.set(id, () => (answered = true));
+  mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'wait', arguments: { seconds: 30 } } }) + '\n');
+  await new Promise((r) => setTimeout(r, 500));
+  mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason: 'test' } }) + '\n');
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal(answered, false);
+  assert.deepEqual((await ask('ping')).result, {});
 });
