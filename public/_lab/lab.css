@@ -14,6 +14,7 @@
   --lab-gray-50: #f6f6f6;
   --lab-gray-100: #f1f1f1;
   --lab-gray-200: #e0e0e0;
+  --lab-gray-300: #c6c6c8;
   --lab-gray-400: #9e9e9f;
   --lab-gray-500: #727272;
   --lab-gray-800: #38383a;
@@ -31,7 +32,8 @@
   --lab-fg: var(--lab-gray-950);        /* text */
   --lab-page: var(--lab-gray-50);       /* the page behind boxes */
   --lab-muted: var(--lab-gray-500);     /* secondary text */
-  --lab-line: var(--lab-gray-200);      /* dividers */
+  --lab-line: var(--lab-gray-300);      /* dividers: Apple's separator grey, drawn as a hairline */
+  --lab-hair: .5px solid var(--lab-line); /* one device pixel on a Retina screen, as Apple's separators */
   --lab-soft: var(--lab-gray-100);      /* keys, hovers, other people's bubbles */
   --lab-green: var(--lab-green-600);    /* go, done, picks */
   --lab-green-soft: var(--lab-green-100); /* your bubbles, rec pills */
@@ -100,7 +102,7 @@ body.lab {
 
 /* Tables */
 .lab-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.lab-table th, .lab-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--lab-line); vertical-align: top; }
+.lab-table th, .lab-table td { text-align: left; padding: 7px 10px; border-bottom: var(--lab-hair); vertical-align: top; }
 .lab-table tr:last-child td { border-bottom: 0; }
 .lab-table th { color: var(--lab-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .lab-button.go kbd { background: rgba(255, 255, 255, .22); color: #fff; }

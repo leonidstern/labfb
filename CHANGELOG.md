@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Lab pages draw dividers as Apple-style hairlines: half a pixel (one device pixel on Retina) in Apple's separator grey (`--lab-hair`, `--lab-gray-300`).
 - Pins find their element again after the page changes above them: when the stored path leads to a different element (a section added, items reordered), the pin looks for the one with the same tag, classes and words under the same heading, nearest to where it was, and sits at the same spot inside it.
 - Pin statuses. A go pin is an outline with a green tick when placed, gets the turning stroke while the agent is on it, and fills green once done. A comment pin shows your initial, the stroke, then a green tick when done (was grey).
 - Closing the chat (Escape, the button or a click outside) takes the cursor out of its box, so keys like M and V work right away.
