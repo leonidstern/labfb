@@ -946,11 +946,42 @@
       if (anchor.quote?.exact) return (n.textContent || '').replace(/\s+/g, '').includes(anchor.quote.exact.replace(/\s+/g, '').slice(0, 24));
       return true;
     };
-    if (node && node !== document.body && matches(node)) return node;
+    const said = short(anchor.text, 400);
+    const saysSame = (n) => !said || anchor.quote?.exact || short(n.textContent, 400).startsWith(said.slice(0, 40));
+    const atPath = node && node !== document.body && matches(node) ? node : null;
+    if (atPath && saysSame(atPath)) return atPath;
     if (anchor.file && /^(image|video)$/.test(anchor.kind)) {
       return [...document.querySelectorAll('img, video')].find((m) => fileHint(mediaSrc(m)) === anchor.file) || null;
     }
-    return null;
+    // The page changed above it (a section added, a list reordered) and the path no longer leads there: look for the
+    // same element by what it is and what it says. Among elements with the same tag and classes, the best one has the
+    // same words (or the quote), sits under the same heading, and is nearest to where the pin was; a lone exact twin
+    // counts too. So the pin lands back on its element, at the same spot inside it, instead of where the page was.
+    const tag = /^<([\w-]+)/.exec(anchor.element || '')?.[1];
+    if (!tag || tag === 'body' || tag === 'html') return atPath;
+    const flat = (t) => short(t, 400);
+    const sectionOf = (n) => {
+      let heading = null;
+      for (const h of document.querySelectorAll('h1, h2, h3')) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
+      return heading ? short(heading.textContent, 100) : '';
+    };
+    let found = null;
+    let best = -1;
+    let near = Infinity;
+    const twins = [...document.querySelectorAll(tag)].slice(0, 400).filter((n) => !host.contains(n) && openingTag(n) === anchor.element);
+    for (const n of twins) {
+      const t = flat(n.textContent);
+      let score = 0;
+      if (anchor.quote?.exact && matches(n)) score += 4;
+      if (said && t === said) score += 4;
+      else if (said && t.startsWith(said.slice(0, 40))) score += 2;
+      if (anchor.section && sectionOf(n) === anchor.section) score += 2;
+      if (!score && twins.length > 1) continue;
+      const d = Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
+      if (score > best || (score === best && d < near)) [found, best, near] = [n, score, d];
+    }
+    // Nothing better found (the words were edited, say): the element at the old path, if it's still the same kind.
+    return best > 0 || !atPath ? found : atPath;
   }
 
   // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
