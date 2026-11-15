@@ -279,7 +279,8 @@
       .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* ✓ drawn as tall as the time's digits */
       .msg .tick.got { font-weight: 600; }
       /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
-      .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .t { opacity: .55; }
+      .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .tm { opacity: .55; }
+      .msg .stamp .tm { font-size: inherit; line-height: inherit; color: inherit; } /* every element gets 14 px by default: the time keeps the stamp's 10 */
       .msg .stamp .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
                           -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
                           mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
@@ -334,8 +335,8 @@
         .bar .mn { color: var(--_muted); font-weight: 400; }
         /* Words stay grey (as the bar's buttons were); the count is the one thing in the text colour: a plain number. */
         .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
-        .bar .cnt { font-size: 13px; font-weight: 600; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
-        .bar .cnt.zero { color: var(--_muted); font-weight: 500; }
+        .bar .cnt { font-size: 12px; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
+        .bar .cnt.zero { color: var(--_muted); }
         .bar .cnt.none { visibility: hidden; width: 0; min-width: 0; padding: 0; margin-left: -6px; }
         .bar button.go-btn.on { background: none; color: var(--_fg); }
         .bar button.go-btn.on kbd { color: var(--_muted) !important; }
@@ -1732,7 +1733,7 @@
     const at = new Date(m.createdAt);
     const time = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' });
     const stamp = el('span', { class: 'stamp' });
-    stamp.append(el('span', { class: 't' }, prefix + time));
+    stamp.append(el('span', { class: 'tm' }, prefix + time));
     if (mine(m) && !m.session) {
       const thread = root ? [root, ...repliesOf(root.id)] : [m];
       const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
