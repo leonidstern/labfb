@@ -199,14 +199,8 @@
       .send.ready:hover { transform: scale(1.06); }
       .send.ready:active { transform: scale(.94); }
       .send.ready { background: var(--_accent); color: var(--_accent-fg); }
-      /* The arrow: three round-ended bars, whole-pixel sizes. The element is the stem; the two arms hang from the
-         centre of its top cap and swing out 45°, so all three meet in one round tip (no seam, no blur). */
-      /* 1 px lines; left: .5px puts the centred 1 px stem on a whole pixel (it would sit on a half one, and blur). */
-      .send .arr { position: relative; left: .5px; display: block; width: 1px; height: 12px; border-radius: .5px; background: currentColor; }
-      .send .arr::before, .send .arr::after { content: ''; position: absolute; left: 0; top: 0; width: 1px; height: 7px;
-                                              border-radius: .5px; background: currentColor; transform-origin: .5px .5px; }
-      .send .arr::before { transform: rotate(45deg); }
-      .send .arr::after { transform: rotate(-45deg); }
+      /* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
+      .send .arr { display: block; position: relative; left: -1px; width: 12px; height: 11px; background: currentColor; clip-path: polygon(0 42%, 100% 0, 66% 100%, 46% 60%); }
       .send * { color: inherit; }
       .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
       .error:empty { display: none; }
@@ -260,7 +254,7 @@
       .fresh { animation: lab-rise .2s var(--_ease); }
       .send.sent .arr { animation: lab-fly .32s var(--_ease); }
       @keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
-      @keyframes lab-fly { 45% { transform: translateY(-9px); opacity: 0; } 46% { transform: translateY(7px); opacity: 0; } }
+      @keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
       .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
       .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
@@ -427,7 +421,7 @@
         .chat-btn[data-agent=working]::after, .list-btn[data-agent=working]::after { content: ''; position: absolute; left: 14px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
           border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
         .send { width: 36px; height: 36px; }
-        .send .arr { height: 16px; margin: auto; } .send .arr::before, .send .arr::after { height: 9px; }
+        .send .arr { width: 17px; height: 15px; margin: auto; }
       }
       /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
       @media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
