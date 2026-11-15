@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Closing the chat (Escape, the button or a click outside) takes the cursor out of its box, so keys like M and V work right away.
 - Keys swapped: M shows and hides comments (was C), C opens and closes the chat (was M).
 - Lab colours are set up like Cooking's: a fixed grey scale and greens as base colours (`--lab-gray-*`, `--lab-green-*`), and named uses that point at them (`--lab-page`, `--lab-bg`, `--lab-fg`, `--lab-muted`, `--lab-line`, `--lab-soft`, `--lab-green`, `--lab-green-soft`); dark mode only re-points the uses. Same colours as before, now solid hex.
 - Pointers are drawn once as PNGs (1x and 2x) instead of SVG, which browsers re-decode on every pointer change (a flicker, Safari most), and are rewritten only when your initial changes.

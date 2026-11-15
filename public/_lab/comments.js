@@ -1398,6 +1398,7 @@
     const opening = chatEl.hidden;
     chatEl.hidden = !on || !chatOpen;
     if (chatEl.hidden) chatEl.classList.remove('full'); // opens at its lower height again
+    if (chatEl.hidden && chatEl.contains(root.activeElement)) root.activeElement.blur(); // a closed chat keeps no focus, so keys work again
     if (chatEl.hidden) return;
     const box = chatEl.querySelector('.msgs');
     // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
