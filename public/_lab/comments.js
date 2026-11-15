@@ -1073,7 +1073,21 @@
       return true;
     };
     const said = short(anchor.text, 400);
-    const saysSame = (n) => !said || anchor.quote?.exact || short(n.textContent, 400).startsWith(said.slice(0, 40));
+    const sectionOf = (n) => {
+      let heading = null;
+      for (const h of document.querySelectorAll('h1, h2, h3')) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
+      return heading ? short(heading.textContent, 100) : '';
+    };
+    const squash = (t) => String(t || '').replace(/\s+/g, '');
+    const areaWords = squash(anchor.zoneText).slice(0, 30);
+    // The element at the old path is only the same one if it still says the same: its words, an area's words, or at
+    // least the same section (a box with no words of its own, like a grid, otherwise matched its twin in the next section).
+    const saysSame = (n) =>
+      anchor.quote?.exact ? true
+      : said ? short(n.textContent, 400).startsWith(said.slice(0, 40))
+      : areaWords ? squash(n.textContent).includes(areaWords)
+      : anchor.section ? sectionOf(n) === anchor.section
+      : true;
     const atPath = node && node !== document.body && matches(node) ? node : null;
     if (atPath && saysSame(atPath)) return atPath;
     if (anchor.file && /^(image|video)$/.test(anchor.kind)) {
@@ -1086,11 +1100,6 @@
     const tag = /^<([\w-]+)/.exec(anchor.element || '')?.[1];
     if (!tag || tag === 'body' || tag === 'html') return atPath;
     const flat = (t) => short(t, 400);
-    const sectionOf = (n) => {
-      let heading = null;
-      for (const h of document.querySelectorAll('h1, h2, h3')) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
-      return heading ? short(heading.textContent, 100) : '';
-    };
     let found = null;
     let best = -1;
     let near = Infinity;
@@ -1100,6 +1109,7 @@
       let score = 0;
       if (anchor.quote?.exact && matches(n)) score += 4;
       if (said && t === said) score += 4;
+      if (areaWords && squash(n.textContent).includes(areaWords)) score += 4;
       else if (said && t.startsWith(said.slice(0, 40))) score += 2;
       // The same section only breaks a tie between elements that say the right thing; on its own it would pick a
       // neighbour (an option removed from a list put its pins on the next one).
