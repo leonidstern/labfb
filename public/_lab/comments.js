@@ -3054,7 +3054,13 @@
       // a half sheet resting on that layer, which sits right, and the strip below it is covered.
       const sheet = host.hasAttribute('data-sheet');
       const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
-      if (key === fitted) return;
+      if (key === fitted) {
+        // Nothing to lay out again, but where the open sheet sits now is where the next keyboard slide starts from (it
+        // was last read when the chat opened, hidden, at 0: the slide jumped to the screen's top first).
+        const open = sheet ? openSheet() : null;
+        if (open?.offsetHeight && !open.style.transform) Object.assign(fit, { sheet: open, top: open.getBoundingClientRect().top });
+        return;
+      }
       fitted = key;
       host.style.setProperty('--lab-kb', `${kb}px`);
       host.style.setProperty('--lab-top', `${Math.round(top)}px`);
@@ -3072,12 +3078,19 @@
       const open = sheet ? openSheet() : null;
       // Without any slide in progress (its own or the sheet's opening one): the place it is going to, not passing through.
       const slid = (n) => { try { return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0; } catch { return 0; } };
-      const at = open ? open.getBoundingClientRect().top - slid(open) : null;
       const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
-      if (open && open === fit.sheet && keyboardMoved && Math.abs(fit.top - at) > 8 && !open.style.transform && !still.matches) {
+      const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !still.matches;
+      // Its own height change (the chat eases its height) jumps to the end first, so the place measured is where it
+      // ends up: measured mid-change, the slide started 84 px too high (?kbdebug, 15 Nov).
+      if (sliding) {
+        open.style.transition = 'none';
+        void open.offsetHeight;
+      }
+      const at = open ? open.getBoundingClientRect().top - slid(open) : null;
+      if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = '';
+      if (sliding && Math.abs(fit.top - at) > 8) {
         // Set at once, then eased away: an animate() call waits a frame to start, and that frame showed the sheet at
         // its new place before it jumped back to slide (the flicker a ?kbdebug run on Leo's iPhone showed, 15 Nov).
-        open.style.transition = 'none';
         open.style.transform = `translateY(${fit.top - at}px)`;
         void open.offsetHeight;
         open.style.transition = `transform 340ms ${SPRING}`;
@@ -3085,7 +3098,7 @@
         clearTimeout(fit.done);
         fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ''), 360);
       }
-      Object.assign(fit, { sheet: open, top: at, vh, kbUp: kb > 60 });
+      Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null }); // a hidden one has no place yet
     };
     refit = fit;
     root.addEventListener('focusin', () => setTimeout(fit, 50));
