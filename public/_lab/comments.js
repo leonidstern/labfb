@@ -344,8 +344,11 @@
         .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
         /* 3, cursor: the switch shows a pointer instead of go, grey. */
         .go-btn.cursor .gp { box-shadow: none; color: transparent; position: relative; }
-        .go-btn.cursor .gp::after { content: ''; position: absolute; left: 7px; top: 5px; width: 10px; height: 12px; background: var(--_muted);
-                                    clip-path: polygon(0 0, 0 88%, 28% 66%, 74% 64%); } /* a plain pointer (the arrow head of the mouse pointer): one shape, no outline */
+        /* A pointer drawn as an outline, the same size and line as the go pin's: a grey shape with the bar's colour cut out. */
+        .go-btn.cursor .gp::before, .go-btn.cursor .gp::after { content: ''; position: absolute; left: 5px; top: 2px; width: 14px; height: 18px;
+                                                                clip-path: polygon(0 0, 0 88%, 28% 66%, 74% 64%); }
+        .go-btn.cursor .gp::before { background: var(--_muted); }
+        .go-btn.cursor .gp::after { background: var(--_bg); transform: scale(.66); transform-origin: 28% 40%; }
         .more { font-size: 15px !important; letter-spacing: .05em; }
         .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
                      border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
@@ -1764,7 +1767,7 @@
     chatBtn.hidden = !on;
     // Computers: "chat" with a count badge (kept in place, empty, when there's nothing new); phones keep their words.
     if (coarse) chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'));
-    else chatBtn.replaceChildren(keyWord('', 'c', 'hat'), el('b', { class: `cnt${fresh ? '' : ' none'}` }, String(fresh || 0)));
+    else chatBtn.replaceChildren(keyWord('', 'c', 'hat'), el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
     chatBtn.classList.toggle('has-new', fresh > 0);
     placeBar(); // the chat button may have just shown: the segment lines follow
     const opening = chatEl.hidden;
