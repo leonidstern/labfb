@@ -1184,7 +1184,7 @@
     // How far the agent got, at a glance: done of all the pins (resolved ones too, for guests who don't see them).
     const pins = comments.filter((c) => !c.parent && !isPage(c));
     const doneN = pins.filter(isDone).length;
-    listBtn.replaceChildren(freshAll ? `list · ${freshAll} new` : 'list', ...(pins.length ? [el('span', { class: 'tally', title: `${doneN} of ${pins.length} done` }, `${doneN}/${pins.length} ✓`)] : []));
+    listBtn.replaceChildren(freshAll ? `list · ${freshAll} new` : 'list', ...(pins.length ? [el('span', { class: 'tally', title: `${doneN} of ${pins.length} done` }, `${doneN} of ${pins.length} pins done`)] : []));
     const h = held().length;
     sendBtn.hidden = !h;
     sendBtn.textContent = `send ${h} draft${h === 1 ? '' : 's'}`;
