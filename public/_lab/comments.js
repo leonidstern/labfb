@@ -437,10 +437,12 @@
         .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
 
         :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
-        /* The bar steps down under the screen's edge while a sheet is open and rises back once it has gone, on the
-           sheets' own curve (it used to blink out and back). */
+        /* The bar steps down under the screen's edge while a sheet is open and comes back as the sheet goes: --lab-p is
+           how far the sheet is on its way out (0 open, 1 gone), set while a finger drags it and while it slides away,
+           so the bar rises with it, in step, instead of after it (Leo, 15 Nov). */
         .bar { transition: transform .34s cubic-bezier(.32, .72, 0, 1), opacity .2s; }
-        :host([data-sheet]) .bar { transform: translateY(calc(100% + 16px + env(safe-area-inset-bottom, 0px))); opacity: 0; pointer-events: none;
+        :host([data-sheet]) .bar { transform: translateY(calc((100% + 16px + env(safe-area-inset-bottom, 0px)) * (1 - var(--lab-p, 0))));
+                                   opacity: var(--lab-p, 0); pointer-events: none;
                                    transition: transform .24s cubic-bezier(.4, 0, 1, 1), opacity .2s .04s; }
         :host([data-sheet]) .bar button { pointer-events: none; }
         /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
@@ -2916,11 +2918,14 @@
     scrim.style.transition = `opacity ${ms || 220}ms`;
     node.style.transform = 'translateY(100%)';
     scrim.style.opacity = '0';
+    bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
+    host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
     setTimeout(() => {
       root.activeElement?.blur();
       close();
       node.style.pointerEvents = '';
-      node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = '';
+      node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = bar.style.transition = '';
+      host.style.removeProperty('--lab-p');
     }, ms || 220);
   }
   // A sheet follows the finger like a native one: from the handle and the header, from any part that doesn't scroll,
@@ -3033,6 +3038,8 @@
       node.style.transition = scrim.style.transition = 'none';
       node.style.transform = `translateY(${dy}px)`;
       scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
+      bar.style.transition = 'none';
+      host.style.setProperty('--lab-p', String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
     };
     node.addEventListener('touchmove', onMove, { passive: false });
     scrim.addEventListener('touchmove', onMove, { passive: false });
@@ -3049,6 +3056,8 @@
         node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
         scrim.style.transition = 'opacity 300ms';
         node.style.transform = scrim.style.opacity = '';
+        bar.style.transition = '';
+        host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
         setTimeout(() => (node.style.transition = scrim.style.transition = ''), 400);
       };
       if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), settle();
@@ -3062,6 +3071,8 @@
       node.style.transition = `transform 380ms ${SPRING}`;
       scrim.style.transition = 'opacity 300ms';
       node.style.transform = scrim.style.opacity = '';
+      bar.style.transition = '';
+      host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
       setTimeout(() => (node.style.transition = scrim.style.transition = ''), 400);
     };
     node.addEventListener('touchend', end);
