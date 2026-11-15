@@ -1527,7 +1527,7 @@
       newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
       listBtn.hidden = !on;
       listBtn.replaceChildren(document.createTextNode(`${freshAll} new`), el('kbd', {}, 'd'));
-      listBtn.title = 'next new comment: N, or Control-N while typing (Shift for the one before)';
+      listBtn.title = 'next new comment: D, or Control-D while typing (A, or Control-Shift-D, for the one before)';
       listBtn.disabled = !freshAll;
       listBtn.classList.toggle('quiet', !freshAll);
       const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
@@ -2455,8 +2455,8 @@
       setOn(!on);
       return;
     }
-    // Control-N goes to the next new comment from anywhere, the reply box too (plain N types a letter there).
-    if (on && e.ctrlKey && !e.metaKey && !e.altKey && (e.code === 'KeyN' || e.key === 'n' || e.key === 'N')) {
+    // Control-D goes to the next new comment from anywhere, the reply box too (plain D types a letter there); Shift: back.
+    if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD') {
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = root.querySelector('.card textarea, .float textarea');
