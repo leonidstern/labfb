@@ -2025,6 +2025,11 @@
   chatBtn.addEventListener('click', () => {
     chatOpen = !chatOpen;
     listOpen = false;
+    // On a computer, opening the chat closes an open thread, and a new comment with nothing typed in it.
+    if (chatOpen && !coarse) {
+      openId = null;
+      if (draft && !root.querySelector('.float textarea')?.value.trim()) draft = null;
+    }
     hint.hidden = true;
     render();
     // Computers: the cursor goes in the message box (phones wait for a tap, so the keyboard doesn't cover the chat).
