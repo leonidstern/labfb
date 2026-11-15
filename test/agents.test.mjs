@@ -283,7 +283,7 @@ test('MCP started in a plugin folder finds the project: by the client root, the 
 test('a quick "PASS: <reason>" reaches the session with the pin', async () => {
   const dir = site('passnote');
   const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "PASS: needs a change in lib/orders.js sortOrders"' });
-  const id = await pin(B, 'sorted by total and this comes first?');
+  const id = await pin(B, 'sort by total, this one first');
   let text = '';
   for (let i = 0; i < 50 && !/quick model passed/.test(text); i++) {
     await new Promise((r) => setTimeout(r, 100));
@@ -293,6 +293,21 @@ test('a quick "PASS: <reason>" reaches the session with the pin', async () => {
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, new RegExp(`id ${id}`));
   assert.match(out, /quick model passed: needs a change/);
+});
+
+test('pins the quick step cannot help with (go, a question, a picture, the whole page) go straight to the session', async () => {
+  const dir = site('direct');
+  const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "PASS: should not run"' });
+  const post = (text, anchor) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B },
+    body: JSON.stringify({ page: '/index', name: 'Leo', text, anchor }) }).then((r) => r.json()).then((j) => j.comment.id);
+  const at = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const ids = [await post('go', at), await post('why is this red?', at), await post('crop it', { ...at, kind: 'image' }), await post('tidy the page', { kind: 'page', x: 0, y: 0, docX: 0, docY: 0, width: 1000 })];
+  const out = await cli(dir, ['wait', '--timeout', '5'], {});
+  for (const id of ids) assert.match(out, new RegExp(`id ${id}`));
+  assert.doesNotMatch(out, /quick model passed/);
+  const log = (fs.existsSync(path.join(dir, '.lab/quick.jsonl')) ? fs.readFileSync(path.join(dir, '.lab/quick.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
+  assert.deepEqual(log.map((l) => l.result), ['direct', 'direct', 'direct', 'direct']);
+  assert.deepEqual(log.map((l) => l.note), ['a short reply', 'a question', 'on a picture', 'about the page as a whole']);
 });
 
 const quickLog = (dir) => (fs.existsSync(path.join(dir, '.lab/quick.jsonl')) ? fs.readFileSync(path.join(dir, '.lab/quick.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
@@ -382,7 +397,7 @@ test('a quick change to shared code (a file two others load) is put back and goe
 test('files a quick try changed but did not claim are left and named to the session', async () => {
   const dir = site('pass-leftover');
   const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "h1{color:red}" > red.css; echo "PASS: needs a choice"' });
-  const id = await pin(B, 'which red?');
+  const id = await pin(B, 'a warmer red');
   await until(() => quickLog(dir).length > 0);
   assert.equal(fs.readFileSync(path.join(dir, 'red.css'), 'utf8').trim(), 'h1{color:red}', 'not put back: it may be the session\'s edit');
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
@@ -422,7 +437,7 @@ test("a tracked pass puts back its own edits, and never another's", async () => 
   const dir = site('own-undo');
   const { B } = await lab(dir, [], { ...TRACKS, LAB_FAST_CMD: 'cat >/dev/null; echo "<p>half</p>" >> index.html; echo "edited: index.html"; sleep 1; echo "PASS: needs a choice"' });
   const page = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
-  await pin(B, 'which red?');
+  await pin(B, 'a warmer red');
   await new Promise((r) => setTimeout(r, 400));
   fs.writeFileSync(path.join(dir, 'other.css'), 'b{}'); // the session, meanwhile
   await until(() => quickLog(dir).length > 0);

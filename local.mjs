@@ -1318,6 +1318,18 @@ function routeFor(text = '') {
   if (tool && !model && tool === listening) return { session: true };
   return { tool, model, named: true };
 }
+// Pins the quick step can't help with go to the session at once instead of waiting ~10 s for its pass (15 Nov: 17 of
+// 26 tries were these): a bare "go" / "ok", a question, a pin on a picture, or one about the page as a whole. A pin that
+// names a tool or model ("use haiku") still goes to it.
+function quickSkip(c) {
+  const t = String(c.text || '').trim();
+  const a = c.anchor || {};
+  if (/^(go|ok|okay|yes|yep|no|nope|thanks|thx|nice|cool|good|great|done|test|\+1|👍|👎)[.!]*$/iu.test(t)) return 'a short reply';
+  if (t.includes('?')) return 'a question';
+  if (/^(image|video)$/.test(a.kind || '')) return 'on a picture';
+  if (a.kind === 'page' || !a.selector) return 'about the page as a whole';
+  return '';
+}
 // Quick tries run side by side (LAB_FAST_PARALLEL, 3) when the tool says which files it edits: Claude's stream log, or
 // LAB_FAST_CMD with LAB_FAST_TRACKS=1 printing "edited: <file>" lines. Each try then owns exactly its files. A tool
 // that doesn't say runs alone, and the session hears nothing while it runs (its edits are known only by "what changed").
@@ -1912,7 +1924,11 @@ const handler = async (req, res) => {
             if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined }));
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
-          if (FAST && !agent && !stored.parent && stored.from === 'this computer' && !routeFor(stored.text).session) quick(key.slice('lab:comments:'.length), stored);
+          if (FAST && !agent && !stored.parent && stored.from === 'this computer' && !routeFor(stored.text).session) {
+            const skip = !routeFor(stored.text).named && quickSkip(stored);
+            if (!skip) quick(key.slice('lab:comments:'.length), stored);
+            else fs.appendFileSync(path.join(LAB, 'quick.jsonl'), JSON.stringify({ at: new Date().toISOString(), page: key.slice('lab:comments:'.length), id: stored.id, text: String(stored.text).slice(0, 120), result: 'direct', note: skip }) + '\n');
+          }
         }
         // The page that changed (a delete leaves no comment to find it by: then all pages are rebuilt).
         const changed = (() => {
