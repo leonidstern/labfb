@@ -340,6 +340,10 @@
         .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; font-weight: 600;
               color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
         .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
+        /* 3, cursor: the switch shows a pointer instead of go, grey. */
+        .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
+        .go-btn.cursor .gp::after { content: ''; position: absolute; left: 7px; top: 5px; width: 9px; height: 11px; background: var(--_muted);
+                                    clip-path: polygon(0 0, 100% 62%, 56% 64%, 78% 100%, 62% 100%, 42% 68%, 0 92%); }
         .more { font-size: 15px !important; letter-spacing: .05em; }
         .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
                      border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
@@ -471,7 +475,7 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · w chat · a d new · 1 comment · 2 go · m hide</div>
+    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · w chat · a d new · 1 comment · 2 go · 3 cursor · m hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -1433,8 +1437,19 @@
   // Go mode (V): every new spot (a click, a drawn area, selected words, a hold on phones) is posted at once as "go",
   // approving what it's on, with no box to type in. In draft mode go pins wait with the other drafts.
   let goMode = store.get('lab-go') === '1';
+  // Cursor (3): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
+  // Option-click still pins. 1 comment and 2 go leave it.
+  let cursorMode = store.get('lab-cursor') === '1';
   // Switching only changes the button and the pointer: nothing on the page is redrawn, so nothing flickers.
+  const setCursor = (v) => {
+    cursorMode = v;
+    store.set('lab-cursor', v ? '1' : '');
+    goBtn.classList.toggle('cursor', v);
+    document.documentElement.classList.toggle('lab-pinning', on && !v);
+    recheck();
+  };
   const setGo = (v) => {
+    if (cursorMode) setCursor(false);
     goMode = v;
     store.set('lab-go', v ? '1' : '');
     goBtn.classList.toggle('on', v);
@@ -1578,8 +1593,9 @@
     const all = threads();
     listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
     goBtn.hidden = !on;
-    if (!goBtn.firstElementChild) goBtn.replaceChildren(coarse ? document.createTextNode('go') : el('span', { class: 'gp' }, 'go'), el('kbd', {}, '1/2'));
-    goBtn.classList.toggle('on', goMode);
+    if (!goBtn.firstElementChild) goBtn.replaceChildren(coarse ? document.createTextNode('go') : el('span', { class: 'gp' }, 'go'), el('kbd', {}, '1/2/3'));
+    goBtn.classList.toggle('on', goMode && !cursorMode);
+    goBtn.classList.toggle('cursor', cursorMode);
     goBtn.setAttribute('aria-pressed', String(goMode));
     const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0); // a new message in a done thread counts too
     listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), el('kbd', {}, 'l'));
@@ -2054,7 +2070,7 @@
     document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
     backCloses();
     refit();
-    document.documentElement.classList.toggle('lab-pinning', on);
+    document.documentElement.classList.toggle('lab-pinning', on && !cursorMode);
     document.documentElement.classList.toggle('lab-go', on && goMode);
     copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
     drawList();
@@ -2550,9 +2566,10 @@
       return stepNew(e.shiftKey ? -1 : 1);
     }
     // 1 comment, 2 go (like picking a tool); V still switches between them.
-    if (on && /^(Digit|Numpad)[12]$/.test(e.code || '') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if (on && /^(Digit|Numpad)[123]$/.test(e.code || '') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
-      setGo(e.code.endsWith('2'));
+      if (e.code.endsWith('3')) setCursor(true);
+      else setGo(e.code.endsWith('2'));
       return;
     }
     if (on && (e.key === 'v' || e.key === 'V' || e.code === 'KeyV') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
@@ -2624,7 +2641,7 @@
   const draftHasText = () => Boolean(draft) && [...root.querySelectorAll('.float textarea')].some((t) => t.value.trim());
   function startDrag(e) {
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-    if ((!on && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!on && !e.altKey) || (cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
     if (e.composedPath().includes(host)) return;
     if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -2635,7 +2652,7 @@
     (e) => {
       if (e.altKey) return; // Option presses are taken earlier (see optionPress)
       // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-      if ((!on && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if ((!on && !e.altKey) || (cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host)) return;
       if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -3060,7 +3077,7 @@
       render();
       return;
     }
-    if ((!on && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!on && !e.altKey) || (cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
     if (lastTouch && Date.now() - lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || (e.target instanceof Element && e.target.closest(INTERACTIVE))) return;
