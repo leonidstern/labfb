@@ -762,7 +762,25 @@ const findFile = (page) => {
     };
     walk(ROOT, 0);
   }
-  return fileIndex.get(page) || sourceFor(page);
+  const html = fileIndex.get(page);
+  // Behind a dev server the top index.html is the app's shell (Vite, React): the route's own file says more.
+  if (PROXY) return sourceFor(page) || (html && html !== 'index.html' ? html : null);
+  return html || sourceFor(page);
+};
+// A path as the disk spells it (src/pages/Orders.jsx), though a case-insensitive disk also found "orders.jsx".
+const realCase = (rel) => {
+  let dir = ROOT;
+  const out = [];
+  for (const seg of rel.split('/')) {
+    let names = [];
+    try {
+      names = fs.readdirSync(dir);
+    } catch {}
+    const hit = names.find((n) => n === seg) || names.find((n) => n.toLowerCase() === seg.toLowerCase()) || seg;
+    out.push(hit);
+    dir = path.join(dir, hit);
+  }
+  return out.join('/');
 };
 // A dev server's page: guess its source file (Astro, Next, plain pages folders), with or without a base path.
 const sourceFor = (page) => {
@@ -776,7 +794,7 @@ const sourceFor = (page) => {
       `app/${pre}page.${x}`, `src/app/${pre}page.${x}`, `src/routes/${pre}+page.${x}`,
     ]);
     const hit = tries.find((t) => t && fs.existsSync(path.join(ROOT, t)));
-    if (hit) return hit;
+    if (hit) return realCase(hit);
   }
   return null;
 };
@@ -785,7 +803,8 @@ let origin = '';
 const agentText = async (page) => {
   const res = await api.GET(new Request(`http://localhost/api?format=text&page=${encodeURIComponent(page)}`, { headers: { host: 'localhost' } }));
   const text = (await res.text()).replaceAll('https://localhost', origin);
-  return fileFor(page) ? text.replace(/^(page: .*)$/m, `$1\nfile: ${fileFor(page)}`) : text;
+  const local = text.replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
+  return fileFor(page) ? local.replace(/^(page: .*)$/m, `$1\nfile: ${fileFor(page)}`) : local;
 };
 
 let version = { files: 0, comments: 0 };

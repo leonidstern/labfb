@@ -4,6 +4,12 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Sharper pins, from a frontend fix benchmark against Agentation:
+  - Every element on a React dev build now gets its own JSX file and line ("written at") and the component that rendered it, not only a component's outermost element (it was 3 of 24 pins in the benchmark).
+  - The "looks" line names only CSS variables that are colours: a radius or spacing variable no longer names a text colour (it did on 12 of 24 pins).
+  - Behind a dev server, the app's index.html shell isn't given as a page's file; the route's source is, spelled as on disk (src/pages/Orders.jsx).
+  - An area comment lists what it holds: the elements wholly inside it, each with its text, component and line.
+  - Locally the agent text says to answer with `reply`, not with a POST.
 - Any agent, not just Claude:
   - labfb tells which agent runs `wait` and `reply` (Codex, Cursor, Amp, opencode, Antigravity, Claude; Copilot with `LAB_AGENT=copilot`). The page says "talking to Codex", replies are signed "Codex", and a Codex or Amp session shows its way back (`codex resume <id>`, tap to copy; Amp's thread link).
   - The quick step runs with whichever agent tool is installed (the listening agent's own first): `codex exec`, `cursor-agent -p`, `opencode run`, `copilot -p`, `amp -x`, `agy -p`, never with "allow all" flags. A "Done" that changed no file counts as a pass. `LAB_FAST_AGENT` and `LAB_FAST_MODEL` choose.

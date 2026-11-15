@@ -132,6 +132,7 @@ function cleanAnchor(a) {
     imgX2: Number.isFinite(a.imgX2) ? num(a.imgX2) : undefined,
     imgY2: Number.isFinite(a.imgY2) ? num(a.imgY2) : undefined,
     zoneText: clean(a.zoneText, 300) || undefined,
+    zoneItems: Array.isArray(a.zoneItems) ? a.zoneItems.slice(0, 6).map((v) => clean(v, 300)).filter(Boolean) : undefined,
     shadow: clean(a.shadow, 200) || undefined,
     component: clean(a.component, 200) || undefined,
     source: clean(a.source, 200) || undefined,
@@ -282,6 +283,7 @@ function asText(path, comments, host) {
       lines.push(`type: area comment, ${a.docW}×${a.docH} px on screen`);
       lines.push(`area on element: ${pct(a.x)}–${pct(a.x + a.zw)} across, ${pct(a.y)}–${pct(a.y + a.zh)} down`);
       if (a.zoneText) lines.push(`text in area: "${a.zoneText}"`);
+      if (a.zoneItems?.length) lines.push('in the area:', ...a.zoneItems.map((v) => `  - ${body(v)}`));
     } else lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`);
     if (a.gapAbove || a.gapBelow) lines.push(`between: ${a.gapAbove || 'the top'} (above) and ${a.gapBelow || 'the end'} (below)`, `page y: ${a.docY} px`);
     if (a.scheme) lines.push(`colours: ${a.scheme}${a.background ? ` (background ${a.background})` : ''}`);
