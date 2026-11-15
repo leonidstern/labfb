@@ -188,10 +188,6 @@
       .list .none { padding: 8px; }
       .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
       .list .tabs .x { padding: 4px 8px; }
-      .working { border-radius: 999px; padding: 9px 14px; background: var(--_bg); color: var(--_muted); box-shadow: var(--_shadow); font-size: 13px;
-                 font-weight: 500; letter-spacing: .005em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-      .working::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px;
-                             background: var(--_accent); animation: lab-blink 1.1s ease-in-out infinite; }
       .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
       .chatwin .replying { flex: none; }
       .chatwin .chat .box { background: var(--_soft); }
@@ -322,6 +318,7 @@
         .hint { bottom: 64px !important; }
         .list-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
         .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
+        .list-btn[data-agent=working]::before { animation: lab-blink 1.1s ease-in-out infinite; }
         .send { width: 36px; height: 36px; }
         .send svg { width: 16px; height: 16px; margin: auto; }
       }
@@ -337,7 +334,6 @@
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" title="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="bar">
       <button class="secondary send-all" type="button" hidden></button>
-      <span class="working" hidden></span>
       <button class="secondary chat-btn" type="button" hidden>chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary copy-all" type="button" hidden>copy link</button>
@@ -356,7 +352,6 @@
   const holdBtn = listEl.querySelector('.hold');
   const chatEl = root.querySelector('.chatwin');
   const chatBtn = root.querySelector('.chat-btn');
-  const workingEl = root.querySelector('.working');
   let listOpen = false;
   let filter = 'open';
   let refit = () => {}; // phones: fit the sheets to the keyboard again (below)
@@ -1131,7 +1126,6 @@
     }
   };
   // Being worked on: handed to the agent and not answered or resolved since (a comment, a chat message).
-  const working = (c) => Boolean(c.handedAt && !c.resolved && !repliesOf(c.id).some((r) => r.session && r.createdAt >= c.handedAt));
   const listed = () =>
     threads()
       .filter((c) => c.anchor?.kind !== 'page')
@@ -1176,13 +1170,6 @@
   function drawList() {
     const all = threads();
     listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
-    // What the agent is on now, apart from the counts of comments, just to read: "working on 2 · 3 done", done counting
-    // what it has answered since the oldest of those was handed to it.
-    const busy = all.filter(working);
-    const since = busy.map((c) => c.handedAt).sort()[0];
-    const answered = all.filter((c) => c.handedAt >= since && !working(c)).length;
-    workingEl.hidden = !on || !busy.length;
-    workingEl.textContent = `working on ${busy.length}${answered ? ` · ${answered} done` : ''}`;
     const freshAll = all.filter((c) => !c.resolved && !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
     listBtn.textContent = freshAll ? `list · ${freshAll} new` : 'list';
     listBtn.classList.toggle('has-new', freshAll > 0);

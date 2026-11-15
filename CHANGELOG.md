@@ -7,7 +7,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Chat and list buttons stand out (bold) when something is new, and the chat marks where unread messages start with a "new" line.
 - Resolving a thread closes its card.
 - Chat: each message has its time in the corner (no hover tooltip over the text), your own with ✓ / ✓✓; no "↩ name: …" quote above replies (the ✅ for done stays); no click to reply (phones swipe).
-- The bar shows "working on 2 · 3 done": what the agent has been handed and not answered yet, and what it answered in the same round. Just to read; it hides when the agent is idle.
 - The list names each pin by what it's on: when the pinned element says little ("4", an icon), the text of the box around it.
 - Phones: holding a link or image no longer starts iOS's drag, which cancelled the hold before the box could open the keyboard.
 - Phones: a sheet follows the finger like a native one: from any part, and from its list or messages when they're at the top; a fast flick or a pull past a third closes it at the finger's speed, else it springs back; pulled up, it stretches a little.
@@ -18,7 +17,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Chat: your messages show ✓ when sent and ✓✓ once handed to the agent, as in messengers.
 - Phones: the page behind an open sheet no longer scrolls, even when you drag on a part of the sheet with nothing to scroll.
 - The chat closes from the dimmed page even with text in its box (the text stays for next time); a thread or new comment with typed text nudges instead of closing, since closing would lose it.
-- Only "working on N" blinks; the list's dot stays still (listening or away).
 - `labfb pages`: a lab serving this folder hides one serving a folder above it, so the list is this lab's pages, not everything up there.
 - Phones: the keyboard's ^ ˅ step to the previous or next pin while you write a reply, the keyboard staying up.
 - The router, from the big-app benchmark (Haiku said Done on 29 of 30 pins, 25 were right):
