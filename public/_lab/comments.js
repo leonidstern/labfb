@@ -3120,7 +3120,13 @@
   };
   addEventListener('keydown', shiftKey, true);
   addEventListener('keyup', shiftKey, true);
-  addEventListener('pointerdown', shiftKey, true);
+  // A press without Shift is never a selection: drop the Shift state at once, not 400 ms later (a click right after typing
+  // a capital letter, or after a screenshot shortcut, used to select the page's text).
+  addEventListener('pointerdown', (e) => {
+    if (e.shiftKey) return shiftKey(e);
+    clearTimeout(shiftOff);
+    document.documentElement.classList.remove('lab-shift');
+  }, true);
   addEventListener('blur', () => document.documentElement.classList.remove('lab-shift'));
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
