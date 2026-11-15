@@ -2939,6 +2939,7 @@
       } catch {}
     }
   }
+  let dbg = null; // ?kbdebug: a line into the phone's log (sheet drags)
   function swipeDown(node, close, grows = false) {
     if (!coarse) return;
     // A sheet that grows (the chat) has two heights, as iOS and Android sheets do: pull it up (or flick) to fill the
@@ -2996,6 +2997,7 @@
         else if (nearTop && box?.localName !== 'textarea') mode = 'drag';
         else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? 'drag' : 'off';
         else mode = sideways ? 'hold' : 'drag';
+        dbg?.(`touch ${String(e.target.className || e.target.localName).slice(0, 20)} at ${Math.round(y0 - node.getBoundingClientRect().top)}/${node.offsetHeight} down${Math.round(down)} → ${mode}${e.cancelable ? '' : ' (not cancelable)'}${box ? ` box${Math.round(box.scrollTop)}` : ''}`);
         if (mode === 'off') return;
         if (mode === 'hold') return e.preventDefault();
       }
@@ -3030,6 +3032,7 @@
       // the distance plus the speed carried on at the normal deceleration, 0.998 a millisecond, so v × 499): past half
       // its height it goes. A short quick flick closes; a slow long drag closes past halfway; a move back up never does.
       const rest = dy + Math.max(0, v) * 499;
+      dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} → ${v > -0.1 && rest > h / 2 ? 'close' : 'stay'}`);
       if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
       node.style.transition = `transform 380ms ${SPRING}`;
       scrim.style.transition = 'opacity 300ms';
@@ -3168,6 +3171,10 @@
         watch('blur');
         sendSoon();
       });
+      dbg = (line) => {
+        lines.push(`${Math.round(performance.now() - t0)} ${line}`);
+        sendSoon();
+      };
       // A message or pin arriving redraws things: followed for 1.5 s too, so a flicker then shows up in the log.
       let quietUntil = 0;
       new MutationObserver(() => {
