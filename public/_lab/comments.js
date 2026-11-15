@@ -463,6 +463,16 @@
         .chatwin .msgs { padding: 4px 12px 8px; }
         .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
         .chatwin .chat { padding: 6px 12px var(--_pb); }
+        /* Glass reply boxes (Leo, 15 Nov; iOS 26's look, Android too): the messages scroll on under the box and show
+           through it, blurred. Only the box's own strip overlaps; the new / resolve / delete row stays on the sheet. */
+        .chatwin .msgs { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
+        .card > .body { margin-bottom: calc(-50px - var(--_pb)); padding-bottom: calc(58px + var(--_pb)); }
+        .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
+        .card > .foot > :not(.composer) { position: relative; z-index: 1; background: var(--_bg); }
+        .chatwin .chat .box, .card .box, .float .box, .float .box:focus-within {
+          background: color-mix(in srgb, var(--_bg) 72%, transparent);
+          -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
+          box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
         .list .it { padding: 11px 8px; }
         /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
         .pin { scale: .8; }
