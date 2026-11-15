@@ -104,16 +104,33 @@ test('read marks are shared by name: a phone and a Mac with the same name see th
     ctl.abort();
     return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).reads;
   };
+  const { comment } = await post({ page: '/index', name: 'Sam', text: 'read me', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
+  const id = comment.id;
   const before = await rev();
-  assert.equal((await mark({ name: 'Leo ', page: '/index', ids: ['abc123', 'abc123', '../x'] })).status, 204);
-  assert.deepEqual((await reads('name=leo&page=/index')).ids, ['abc123'], 'same name in any case or spacing; bad ids dropped');
+  assert.equal((await mark({ name: 'Leo ', page: '/index', ids: [id, id, '../x', 'abc123'] })).status, 204);
+  assert.deepEqual((await reads('name=leo&page=/index')).ids, [id], 'same name in any case or spacing; ids not on the page dropped');
   assert.deepEqual((await reads('name=Mira&page=/index')).ids, [], 'another name has its own');
   assert.deepEqual((await reads('name=Leo&page=/other')).ids, [], 'per page');
+  await new Promise((r) => setTimeout(r, 400)); // marks are announced together, a moment later
   assert.equal(await rev(), before + 1, 'the live stream tells open tabs to fetch them again');
-  assert.equal((await mark({ name: 'Leo', page: '/index', ids: ['abc123'] })).status, 204);
+  assert.equal((await mark({ name: 'Leo', page: '/index', ids: [id] })).status, 204);
   assert.equal(await rev(), before + 1, 'nothing new read: no wake-up');
   assert.equal((await mark({ page: '/index', ids: ['x'] })).status, 400);
+  assert.equal((await mark({ name: '__proto__', page: '/index', ids: [id] })).status, 204, 'a name like __proto__ is just a name');
+  const after = await post({ page: '/index', name: 'Sam', text: 'still delivered', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
+  assert.equal(after.comment.session, undefined, 'and pollutes nothing on the server');
+  assert.equal((await mark({ name: 'Leo', page: 'session', ids: [id] })).status, 400, 'a page with no comments is refused');
   assert.equal((await fetch(B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' })).status, 403, 'other sites cannot post');
+});
+
+test('a retried post with the same nonce gives back the first comment, not a second one', async () => {
+  await up();
+  const body = { page: '/index', name: 'Leo', text: 'sent twice by a retry', nonce: 'n0nce-test-1', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } };
+  const a = await post(body);
+  const b = await post(body);
+  assert.equal(b.comment.id, a.comment.id);
+  const all = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+  assert.equal(all.filter((c) => c.text === 'sent twice by a retry').length, 1);
 });
 
 test('a reply in a thread the agent has gets only the new words; reply --wait answers and listens in one go', async () => {

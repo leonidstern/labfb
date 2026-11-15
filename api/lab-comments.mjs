@@ -99,6 +99,9 @@ const editKey = (path, id) =>
 const clean = (value, max) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 const cleanText = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 const num = (value) => (Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0);
+// An area may reach a little past its element's edge (it's on the element that holds most of it).
+const isArea = (a) => Number.isFinite(a.zw) && a.zw > 0;
+const wide = (value) => (Number.isFinite(value) ? Math.min(Math.max(value, -1), 2) : 0);
 
 const int = (v, max = 100000) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v), 0), max) : undefined);
 const sec = (v) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v * 10) / 10, 0), 86400) : undefined);
@@ -108,8 +111,8 @@ const KINDS = ['image', 'video', 'canvas', 'svg', 'text', 'background', 'element
 function cleanAnchor(a) {
   const out = {
     selector: clean(a.selector, MAX.selector),
-    x: num(a.x),
-    y: num(a.y),
+    x: isArea(a) ? wide(a.x) : num(a.x),
+    y: isArea(a) ? wide(a.y) : num(a.y),
     docX: num(a.docX),
     docY: int(a.docY) ?? 0,
     width: int(a.width, 10000) ?? 0,
@@ -146,10 +149,14 @@ function cleanAnchor(a) {
     gapBelow: clean(a.gapBelow, 160) || undefined,
     scheme: a.scheme === 'dark' || a.scheme === 'light' ? a.scheme : undefined,
     background: /^#[0-9a-f]{6}$/i.test(a.background || '') ? a.background : undefined,
-    zw: Number.isFinite(a.zw) && a.zw > 0 ? num(a.zw) : undefined,
-    zh: Number.isFinite(a.zh) && a.zh > 0 ? num(a.zh) : undefined,
+    zw: isArea(a) ? Math.min(a.zw, 3) : undefined,
+    zh: isArea(a) && Number.isFinite(a.zh) && a.zh > 0 ? Math.min(a.zh, 3) : undefined,
+    pinX: a.pinX === 1 ? 1 : undefined, // an area's pin at the corner where the drag ended
+    pinY: a.pinY === 1 ? 1 : undefined,
     docW: int(a.docW),
     docH: int(a.docH),
+    oy: isArea(a) && Number.isFinite(a.oy) ? Math.min(Math.max(Math.round(a.oy), -2000), 100000) : undefined, // an area's px offset below its element's top
+    eh: int(a.eh), // the element's height then (a big container can tell it grew)
     time: sec(a.time),
     duration: sec(a.duration),
     context: clean(a.context, MAX.context) || undefined, // older widget versions
@@ -362,6 +369,20 @@ export async function POST(request) {
   const text = cleanText(body.text, MAX.text);
   if (!name || !text) return json({ error: 'name and text are required' }, 400);
 
+  // Sent again after a lost answer (the browser retries while the lab can't be reached): the same nonce gives back the
+  // comment the first try saved, instead of a second one. Kept 15 minutes.
+  const nonce = typeof body.nonce === 'string' && /^[\w-]{8,40}$/.test(body.nonce) ? body.nonce : '';
+  const nonceKey = nonce && `lab:nonce:${path}:${nonce}`;
+  if (nonceKey) {
+    const was = await run('GET', nonceKey);
+    const earlier = was && (await run('HGET', key, was));
+    if (earlier) {
+      const c = JSON.parse(earlier);
+      const edit = c.parent ? null : editKey(path, c.id);
+      return json(edit ? { comment: c, edit } : { comment: c }, 200);
+    }
+  }
+
   // One round trip for the checks: page size, the parent, and the per-IP count.
   // A light per-IP limit on new comments and replies: LAB_COMMENTS_PER_HOUR (default 60). Admins are not limited.
   // The count goes up before the checks below, so a post refused for a full page or a missing thread counts too.
@@ -406,6 +427,7 @@ export async function POST(request) {
   // The comment, and the reopened thread when someone (not an admin) answers a resolved one: one round trip.
   if (thread?.resolved && limited) await run('HSET', key, comment.id, JSON.stringify(comment), parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined }));
   else await run('HSET', key, comment.id, JSON.stringify(comment));
+  if (nonceKey) await run('SET', nonceKey, comment.id, 'EX', 900);
   const edit = parent ? null : editKey(path, comment.id);
   return json(edit ? { comment, edit } : { comment }, 201);
 }
