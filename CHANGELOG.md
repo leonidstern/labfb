@@ -6,6 +6,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 - Chat and list buttons stand out (bold) when something is new, and the chat marks where unread messages start with a "new" line.
 - Resolving a thread closes its card.
+- On a computer, opening the chat puts the cursor in its message box.
 - Chat: each message has its time in the corner (no hover tooltip over the text), your own with ✓ / ✓✓; no "↩ name: …" quote above replies (the ✅ for done stays); no click to reply (phones swipe).
 - The list names each pin by what it's on: when the pinned element says little ("4", an icon), the text of the box around it.
 - Phones: holding a link or image no longer starts iOS's drag, which cancelled the hold before the box could open the keyboard.

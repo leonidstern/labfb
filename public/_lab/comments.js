@@ -1847,7 +1847,14 @@
   copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
   listBtn.addEventListener('click', () => ((listOpen = !listOpen), (chatOpen = false), (hint.hidden = true), render()));
   listEl.querySelector('.x').addEventListener('click', () => slideAway(listEl, () => ((listOpen = false), render())));
-  chatBtn.addEventListener('click', () => ((chatOpen = !chatOpen), (listOpen = false), (hint.hidden = true), render()));
+  chatBtn.addEventListener('click', () => {
+    chatOpen = !chatOpen;
+    listOpen = false;
+    hint.hidden = true;
+    render();
+    // Computers: the cursor goes in the message box (phones wait for a tap, so the keyboard doesn't cover the chat).
+    if (chatOpen && !coarse) chatEl.querySelector('.chat textarea')?.focus({ preventScroll: true });
+  });
   chatEl.querySelector('.x').addEventListener('click', () => slideAway(chatEl, () => ((chatOpen = false), render())));
   for (const b of listEl.querySelectorAll('[data-f]')) b.addEventListener('click', () => ((filter = b.dataset.f), drawList()));
   holdBtn.addEventListener('click', () => (store.set('lab-hold', store.get('lab-hold') === '1' ? '' : '1'), drawList()));
