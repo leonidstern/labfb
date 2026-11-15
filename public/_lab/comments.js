@@ -300,7 +300,9 @@
         .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: 18px 18px 0 0;
                 font-size: 15px; z-index: 3; }
         /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
-        .chatwin { height: var(--_sheet-max); }
+        .chatwin { height: var(--_sheet-max); transition: height .38s cubic-bezier(.32, .72, 0, 1); }
+        /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
+        .chatwin.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
         /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
         .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: 18px 18px 0 0;
                       background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat, var(--_bg); }
@@ -1256,6 +1258,7 @@
     chatBtn.classList.toggle('has-new', fresh > 0);
     const opening = chatEl.hidden;
     chatEl.hidden = !on || !chatOpen;
+    if (chatEl.hidden) chatEl.classList.remove('full'); // opens at its lower height again
     if (chatEl.hidden) return;
     const box = chatEl.querySelector('.msgs');
     // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
@@ -2187,8 +2190,11 @@
       } catch {}
     }
   }
-  function swipeDown(node, close) {
+  function swipeDown(node, close, grows = false) {
     if (!coarse) return;
+    // A sheet that grows (the chat) has two heights, as iOS and Android sheets do: pull it up (or flick) to fill the
+    // screen, pull it down from there to go back; from the lower one a pull down closes it as before.
+    let raw = 0;
     // Right after its content scrolled (a fling up to the top), a pull down scrolls on instead of taking the sheet,
     // and for a moment after letting go of a drag a tap does nothing, so a sheet that springs back under the finger
     // doesn't press what lands there or pop the keyboard (Vaul's 100 ms and 200 ms).
@@ -2212,7 +2218,7 @@
       const t = e.touches[0];
       x0 = t.clientX;
       y0 = t.clientY;
-      dy = v = 0;
+      dy = v = raw = 0;
       last = { y: y0, at: e.timeStamp };
       box = scrollerIn(e, node);
       mode = e.touches.length > 1 || box?.localName === 'textarea' ? 'off' : null;
@@ -2233,7 +2239,7 @@
         if (mode === 'hold') return e.preventDefault();
       }
       e.preventDefault();
-      const raw = t.clientY - y0;
+      raw = t.clientY - y0;
       dy = raw >= 0 ? raw : -12 * Math.log1p(-raw / 24); // up: a short stretch that gets stiffer
       if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
       last = { y: t.clientY, at: e.timeStamp };
@@ -2248,6 +2254,14 @@
       releasedAt = performance.now();
       if (e.timeStamp - last.at > 80) v = 0; // held still before letting go
       const h = node.offsetHeight || innerHeight;
+      const settle = () => {
+        node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
+        scrim.style.transition = 'opacity 300ms';
+        node.style.transform = scrim.style.opacity = '';
+        setTimeout(() => (node.style.transition = scrim.style.transition = ''), 400);
+      };
+      if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), settle();
+      if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove('full'), settle();
       if (v > 0.4 || (dy > h / 3 && v > -0.1)) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
       node.style.transition = `transform 380ms ${SPRING}`;
       scrim.style.transition = 'opacity 300ms';
@@ -2309,7 +2323,7 @@
   msgsEl.addEventListener('scroll', () => (stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48), { passive: true });
   if ('ResizeObserver' in window) new ResizeObserver(() => stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
   swipeDown(listEl, () => ((listOpen = false), render()));
-  swipeDown(chatEl, () => ((chatOpen = false), render()));
+  swipeDown(chatEl, () => ((chatOpen = false), render()), true);
   let press = null;
   const stopPress = () => press && (clearTimeout(press.timer), (press = null));
   document.addEventListener(

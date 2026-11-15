@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Phones: the chat has two heights, like iOS and Android sheets: pull it up (or flick) to fill the screen, pull it down from there to go back; from the lower height a pull down closes it as before, and a hard flick down from the top closes it too. It opens at the lower height.
 - Links in the chat and in threads open in a new tab.
 - On a computer, a click outside the chat closes it (what you typed stays).
 - A newer version reloads the page as soon as it's safe: not while you type, have words in a box, place a new comment or just touched the page. An open chat, list or thread no longer holds it back; they come back after the reload.
