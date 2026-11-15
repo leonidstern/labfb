@@ -44,6 +44,9 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
    - add this to the site's shared layout, before </body>:
      <script src="https://<lab domain>/_lab/comments.js" defer></script>
    - put pages at /<slug>/<project>/<secret>/<page>, where <secret> is 10 random characters per project; mark them noindex and link to them from nowhere
+   - deploy it with prebuilt deploys: add "ship": "npx --yes vercel build --prod --yes && npx --yes vercel deploy --prebuilt --prod --yes"
+     to its package.json scripts and "git": { "deploymentEnabled": false } to its vercel.json, so `npm run ship` builds on my computer
+     and is live in seconds, and a push only keeps the history (link it once: `npx vercel link`)
 6. Once I confirm the DNS works: POST a test comment with curl to https://<lab domain>/_lab/api/comments
    ({"page":"/_lab/demo","name":"setup","text":"test"}, content-type application/json) and check that
    https://<lab domain>/_lab/agent/_lab/demo shows it as text. Then delete it with header x-lab-admin: <token>.
@@ -52,6 +55,7 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 - **Comment:** open a page through the lab domain, press `c` (or hold Option), then click or drag. Drag your own pin to move it.
 - **Read:** `https://<lab domain>/_lab/agent/<page path>` returns every open comment as plain text. Paste it into your agent.
 - **Resolve or delete:** open any page once with `#lab-admin=<token>`.
+- **Deploys:** each site ships with `npm run ship` (built on your computer, uploaded with `vercel deploy --prebuilt`, live in about 6 s for a small Astro site); pushes don't deploy. Ship what you commit.
 - **Admins:** ask your agent "make a lab admin link for anna on /anna". With your token it gets a link that lets anna resolve and delete comments on `/anna` pages only. One browser can hold links for several labs. Nothing to set up per person (how: top of `api/lab-comments.mjs`).
 
 ## Local lab

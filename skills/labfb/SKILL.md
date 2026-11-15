@@ -19,7 +19,7 @@ If their words could mean "the existing one" or "a new one", use the existing on
 
 1. Fetch the link. It is plain text: every open comment with its number, author, the quoted words, the element, the image file and pixel, the code line or the video second.
 2. Find each spot in the page's source from those details, not from a screenshot.
-3. Make the changes the person agrees with, push the way the repo deploys, and tell the person which numbers you did and which you skipped and why.
+3. Make the changes the person agrees with. Deploy the way the repo does: with an `npm run ship` script (prebuilt deploy, the labfb default), run it, check the page answers 200, then commit and push for the history; otherwise push. Tell the person which numbers you did and which you skipped and why.
 4. When you make or open a cloud lab page for the person, save it with the project: run `npx @leonidstern/labfb add <page address>` from the project's folder, so `pages` shows it with that project's labs.
 
 ## Local lab (local.mjs on this computer)
