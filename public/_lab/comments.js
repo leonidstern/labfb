@@ -425,9 +425,12 @@
         .float { background: var(--_bg); box-shadow: var(--_shadow); }
         .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
         /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
-        /* 44 px to grab (iOS 44 pt, Android 48 dp), reaching 18 px above the sheet's edge; the bar and the layout stay as they were. */
-        .handle { display: block; flex: none; height: 44px; margin-top: -26px; touch-action: none; position: relative;
-                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 26px / 36px 4px no-repeat; }
+        /* 62 px to grab, reaching 36 px above the sheet's edge over the dimmed page (Leo, 15 Nov: "the whole top and a bit
+           above"); the bar and the layout stay as they were. The chat's and the list's header reach up the same way. */
+        .handle { display: block; flex: none; height: 62px; margin-top: -44px; touch-action: none; position: relative;
+                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 44px / 36px 4px no-repeat; }
+        .list .tabs { position: relative; }
+        .list .tabs::before { content: ''; position: absolute; left: 0; right: 0; top: -36px; height: 36px; }
         .list .tabs { touch-action: pan-x; }
         .chatwin .tabs { touch-action: none; }
         .list .items, .msgs, .card > .body { touch-action: pan-y; }
@@ -3141,11 +3144,15 @@
       let lines = [];
       let t0 = performance.now();
       let sendTimer = 0;
+      let sentAt = -1e9;
       const row = (what) => {
         const open = openSheet();
         const r = open?.getBoundingClientRect();
         lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(vv.height)} top${Math.round(vv.offsetTop)} in${innerHeight} kb${host.hasAttribute('data-kb') ? 1 : 0}` +
-          (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? ' anim' : ''}` : ''));
+          (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? ' anim' : ''}` : '') +
+          // What is moving anywhere (the page, the pins, the dimming): for a flicker that isn't the keyboard.
+          ` [${[...document.getAnimations(), ...root.getAnimations()].map((a) => a.animationName || a.transitionProperty || 'js').slice(0, 6).join(',')}]` +
+          ` scrim${getComputedStyle(scrim).opacity.slice(0, 4)} scroll${Math.round(scrollY)}`);
       };
       const watch = (what) => {
         row(what);
@@ -3169,6 +3176,7 @@
           const text = lines.join('\n');
           lines = [];
           for (let i = 0; i < text.length; i += 1900) {
+            sentAt = performance.now();
             await send({ name: 'kb-log', text: text.slice(i, i + 1900), anchor: { kind: 'page', selector: 'body', x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {});
           }
         }, 2000);
@@ -3179,6 +3187,17 @@
         watch('blur');
         sendSoon();
       });
+      // A message or pin arriving redraws things: followed for 1.5 s too, so a flicker then shows up in the log.
+      let quietUntil = 0;
+      new MutationObserver(() => {
+        // Its own kb-log messages redraw the chat too: those never start another log.
+        if (performance.now() < quietUntil || performance.now() - sentAt < 4000) return;
+        quietUntil = performance.now() + 1500;
+        lines.push('--- redraw');
+        t0 = performance.now();
+        watch('redraw');
+        sendSoon();
+      }).observe(chatEl.querySelector('.msgs'), { childList: true });
       // The address bar growing or shrinking resizes the view too: each resize is followed for 1.5 s like a keyboard.
       vv.addEventListener('resize', () => {
         watch('resize');
