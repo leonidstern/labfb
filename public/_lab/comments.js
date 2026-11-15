@@ -1604,6 +1604,7 @@
         return name.focus();
       }
       store.set('lab-name', name.value.trim());
+      refreshPinCursor(); // the pointer shows your initial
       syncReads();
       sendBtn.classList.remove('sent');
       void sendBtn.offsetWidth; // restart the arrow's flight on a quick second send
@@ -2652,6 +2653,7 @@
     if (gone) return;
     if (!host.isConnected && document.body) document.body.append(host);
     if (!fonts.isConnected) document.head.append(fonts);
+    if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
     if (pageNow() === page) return;
     page = pageNow();
     seen = readSeen();
@@ -2689,12 +2691,22 @@
 
   // A comment pin as the pointer over everything you can comment on (links and controls keep theirs): the white
   // teardrop with a +, clicking at its point. Holding Shift gives the text cursor back for selecting words.
-  const PIN_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M2 24V13A11 11 0 0 1 13 2A11 11 0 0 1 24 13A11 11 0 0 1 13 24Z' fill='white' stroke='rgba(0,0,0,.35)' stroke-width='1.2' stroke-linejoin='round'/%3E%3Cpath d='M13 8.5v9M8.5 13h9' stroke='%23141414' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E";
-  const PIN_CURSOR = `url("${PIN_SVG}") 2 24, crosshair`;
-  new Image().src = PIN_SVG;
+  // It looks like your own pin: the white teardrop with your initial (a + before you've given a name).
+  const pinCursorStyle = document.createElement('style');
+  function refreshPinCursor() {
+    const ch = (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z" fill="white" stroke="rgba(20,20,20,.3)"/><text x="14" y="18.3" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,system-ui,sans-serif" font-size="12" font-weight="600" fill="#141414">${ch}</text></svg>`;
+    const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    new Image().src = url;
+    const cursor = `url("${url}") 1 27, crosshair`;
+    pinCursorStyle.textContent =
+      `html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${cursor}; }` +
+      // Holding Option (Alt) shows it on links and controls too, since Option-click pins there.
+      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${cursor} !important; }`;
+  }
   // Go mode's pointer is a go pin: the green teardrop with a white tick, its point (bottom left) where the click lands.
-  const GO_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M2 24V13A11 11 0 0 1 13 2A11 11 0 0 1 24 13A11 11 0 0 1 13 24Z' fill='rgb(36,160,70)' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M8.5 13.2l3 3 5.6-6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
-  const GO_CURSOR = `url("${GO_SVG}") 2 24, copy`;
+  const GO_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z' fill='rgb%2836%2C160%2C70%29' stroke='white'/%3E%3Cpath d='M9.2 14.2l3.2 3.2 6.2-6.6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
+  const GO_CURSOR = `url("${GO_SVG}") 1 27, copy`;
   fonts.textContent += `html.lab-go body, html.lab-go body * { cursor: ${GO_CURSOR} !important; }`;
   new Image().src = GO_SVG; // decoded ahead, so switching shows it at once
   fonts.textContent += '@property --lab-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }';
@@ -2724,9 +2736,6 @@
   // for its selection, and the lift that lets the box open the keyboard would never come.
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
   fonts.textContent += `@media (pointer: coarse) { html.lab-pinning body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
-  fonts.textContent += `html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${PIN_CURSOR}; }`;
-  // Holding Option (Alt) shows the pin cursor on links and controls too, since Option-click pins there.
-  fonts.textContent += `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${PIN_CURSOR} !important; }`;
   const setAlt = (down) => document.documentElement.classList.toggle('lab-alt', Boolean(down));
   addEventListener('keydown', (e) => e.key === 'Alt' && setAlt(true), true);
   addEventListener('keyup', (e) => e.key === 'Alt' && setAlt(false), true);
@@ -2734,7 +2743,8 @@
   addEventListener('blur', () => setAlt(false));
 
   const start = () => {
-    document.head.append(fonts);
+    document.head.append(fonts, pinCursorStyle);
+    refreshPinCursor();
     if (on) showHint();
     document.body.append(host);
     // The page's own selection while commenting, and the quoted words of an open text comment.

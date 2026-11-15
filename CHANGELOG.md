@@ -6,7 +6,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 - A newer version waits to reload until no thread, list or chat is open, so nothing moves while you read.
 - Messages: no "↩ replied" mark, and an agent's name shows without its session id ("Claude", not "Claude · session 8a296ba1").
-- The comment pointer is a white comment pin with a + (was a black pin), over everything you can comment on; links and controls keep theirs, Shift gives the text cursor back.
+- The comment pointer looks like your own pin: the white teardrop with your initial (a + before you've given a name), clicking at its point; links and controls keep theirs, Shift gives the text cursor back. The go pointer is the same shape, green with a tick.
 - The ✓ / ✓✓ in a message's corner are as tall as the time's digits.
 - The list's and chat's close button: hovering only darkens the cross (no circle behind it), and no "close" tooltip.
 - Your own messages are soft green with dark text, not black.
