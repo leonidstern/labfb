@@ -114,7 +114,6 @@
       .zone rect.ring { display: none; }
       .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 2; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
-      .zone.saved.in { animation: lab-settle .36s var(--_ease); }
       /* The agent is on it: a thin green ring turns around the pin. */
       .pin.working::before { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(52, 199, 89, .25);
                              border-top-color: rgb(52, 199, 89); animation: lab-spin 1s linear infinite; pointer-events: none; }
@@ -273,9 +272,6 @@
       @keyframes lab-pin { from { transform: scale(1.1); } }
       @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
                             to { box-shadow: 0 0 0 16px color-mix(in srgb, var(--_fg) 0%, transparent); } }
-      @keyframes lab-settle { from { background: color-mix(in srgb, var(--_accent) 16%, transparent);
-                                     box-shadow: 0 0 0 5px color-mix(in srgb, var(--_accent) 18%, transparent); }
-                              to { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_accent) 0%, transparent); } }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
       @media (max-width: 480px) { kbd { display: none; } }
       .handle { display: none; }

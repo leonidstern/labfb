@@ -4,7 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Hovering a pin shows what it's on: a drawn area its green outline, selected words their highlight. An open area pin shows its outline again (it was hidden when the area also held a quoted word).
+- Hovering a pin shows what it's on: a drawn area its green outline, selected words their highlight. An open area pin shows its outline again (it was hidden when the area also held a quoted word), steady: no dark flash or shadow as it opens.
 - "copy link" is the first pill on the left of the bar.
 - The list's and the chat's close button is a round, quiet button with a drawn cross, darker on hover.
 - The bar's pills show their keys: chat M, list L, go V, comments C (hidden on touch screens).
