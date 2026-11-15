@@ -21,7 +21,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Each comment is marked when it's handed to a wait, instead of one "seen up to" time: a comment a batch left out (or one saved a moment late) is no longer skipped for good.
 - Chat and list buttons stand out (bold) when something is new, and the chat marks where unread messages start with a "new" line.
 - Resolving a thread closes its card.
-- Computers: Shift + drag selects words (a plain drag still marks an area), and letting go opens a comment quoting exactly them. Comments from the phone's Comment chip quote the whole selection too, not just the first word.
+- Computers: Shift + drag selects words (a plain drag still marks an area), and letting go opens a comment quoting exactly them. Comments from the phone's Comment chip quote the whole selection too, not just the first word. A quote holds up to 300 characters (was 80), so a long selection isn't cut short.
 - Threads read like the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, a "new" line above the first unread reply.
 - "copy link" keeps its width while it says "copied", so nothing beside it moves.
 - On a computer, opening the chat puts the cursor in its message box.

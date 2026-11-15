@@ -2402,7 +2402,7 @@
     };
     anchor.kind = 'text';
     anchor.quote = {
-      exact: short(exact, 80),
+      exact: short(exact, 300),
       prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, '').slice(-40),
       suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
     };

@@ -155,7 +155,7 @@ function cleanAnchor(a) {
     context: clean(a.context, MAX.context) || undefined, // older widget versions
   };
   if (a.quote && typeof a.quote === 'object') {
-    const exact = clean(a.quote.exact, 80);
+    const exact = clean(a.quote.exact, 300); // selected words can run long; a click quotes one word
     if (exact) {
       const edge = (v) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').slice(0, 40) : '');
       out.quote = { exact, prefix: edge(a.quote.prefix), suffix: edge(a.quote.suffix) };
