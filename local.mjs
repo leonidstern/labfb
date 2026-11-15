@@ -266,7 +266,11 @@ if (pos[0] === 'list') {
 // Written to .lab/lab-pages.md in this folder: a file Claude can send to the person, so the pages sit with its outputs.
 if (pos[0] === 'pages') {
   const labs = [];
-  for (const lab of runningLabs().filter((l) => opts.all || forHere(l))) {
+  // The nearest lab wins: one serving this folder (or inside it) hides one serving a folder above, which would list
+  // everything else up there too.
+  const here = runningLabs().filter((l) => opts.all || forHere(l));
+  const near = here.filter((l) => l.root === HERE || l.root.startsWith(HERE + path.sep));
+  for (const lab of opts.all || !near.length ? here : near) {
     try {
       const res = await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) });
       if (res.ok) labs.push(await res.json());

@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- `labfb pages`: a lab serving this folder hides one serving a folder above it, so the list is this lab's pages, not everything up there.
 - The router, from the big-app benchmark (Haiku said Done on 29 of 30 pins, 25 were right):
   - A quick change to shared code (a file two or more others load, its stylesheet, or a stylesheet that sets :root variables) is put back and goes to the session with why, since it can break pages nobody pinned.
   - The quick model's changes always reach the session as "Quick changes to check", even when no pin was passed, with the ask to check each does what the pin asked and nothing broader.
