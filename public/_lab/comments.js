@@ -324,8 +324,8 @@
       .bar:hover kbd { opacity: .75; }
       .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
       .bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/2/3) reads like (c)hat and ne(w) */
-      /* Computers: one bar of segments, a hairline between them; the less used ones in the ⋯ menu above it. */
-      @media (pointer: fine) {
+      /* One bar of segments, a hairline between them; the less used ones in the ⋯ menu above it (phones too: same bar, bigger to tap). */
+      @media all {
         .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
         .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
         .bar > button.first { box-shadow: none; }
@@ -362,7 +362,6 @@
         .more-menu button[hidden] { display: none; }
         .more-menu kbd { margin: 0; }
       }
-      @media (pointer: coarse) { .more, .more-menu { display: none !important; } }
       kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
       .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
               box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
@@ -451,9 +450,10 @@
         .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
         .chatwin .chat { padding: 6px 12px var(--_pb); }
         .list .it { padding: 11px 8px; }
-        /* The bar wraps instead of running off the screen's left edge. */
-        .bar { left: 16px; flex-wrap: wrap-reverse; justify-content: flex-end; pointer-events: none; }
-        .bar button { pointer-events: auto; }
+        /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
+        .bar > button { padding: 12px 14px; min-height: 44px; }
+        .more-menu { bottom: 72px; min-width: 200px; }
+        .more-menu button { padding: 11px 12px; font-size: 15px; }
       }
       /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
       .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
@@ -465,11 +465,11 @@
         .listener { display: none !important; }
         .bar { bottom: 16px !important; }
         .hint { bottom: 64px !important; }
-        .chat-btn[data-agent]::before, .list-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
-        .chat-btn[data-agent=away]::before, .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
-        .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { background: rgb(36, 160, 70); }
-        .chat-btn[data-agent], .list-btn[data-agent] { position: relative; }
-        .chat-btn[data-agent=working]::after, .list-btn[data-agent=working]::after { content: ''; position: absolute; left: 14px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
+        .chat-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
+        .chat-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
+        .chat-btn[data-agent=working]::before { background: rgb(36, 160, 70); }
+        .chat-btn[data-agent] { position: relative; }
+        .chat-btn[data-agent=working]::after { content: ''; position: absolute; left: 14px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
           border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
         .send { width: 36px; height: 36px; }
         .send .arr { width: 17px; height: 15px; margin: auto; }
@@ -1693,7 +1693,6 @@
     return w;
   };
   function placeBar() {
-    if (coarse) return;
     const inMenu = on ? [doneBtn, copyBtn, toggleBtn] : [];
     for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
     if (!on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
@@ -1719,7 +1718,7 @@
     const all = threads();
     listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
     goBtn.hidden = !on;
-    if (!goBtn.firstElementChild) goBtn.replaceChildren(coarse ? document.createTextNode('go') : el('span', { class: 'gp' }, 'go'), el('kbd', { 'aria-hidden': 'true' }, '1/2/3'));
+    if (!goBtn.firstElementChild) goBtn.replaceChildren(el('span', { class: 'gp' }, 'go'), el('kbd', { 'aria-hidden': 'true' }, '1/2/3'));
     goFace();
     goBtn.classList.toggle('on', goMode && !cursorMode);
     goBtn.classList.toggle('cursor', cursorMode);
@@ -1733,9 +1732,8 @@
       // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
       newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
       listBtn.hidden = !on;
-      if (coarse) listBtn.replaceChildren(document.createTextNode(`${freshAll} new`));
-      else {
-        listBtn.replaceChildren(keyWord('ne', 'w', ''), el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll)));
+      {
+        listBtn.replaceChildren(coarse ? 'new' : keyWord('ne', 'w', ''), el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll))); // phones: no keys
         listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);
         listBtn.setAttribute('aria-keyshortcuts', 'w');
       }
@@ -1864,10 +1862,9 @@
     if (on && chatOpen) markSeen(msgs.filter(isNew)); // open: what's there is read
     const fresh = msgs.filter(isNew).length;
     chatBtn.hidden = !on;
-    // Computers: "chat" with a count badge (kept in place, empty, when there's nothing new); phones keep their words.
-    if (coarse) chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'));
-    else {
-      chatBtn.replaceChildren(keyWord('', 'c', 'hat'), el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
+    // "chat" with a count (kept in place, grey 0, when there's nothing new); phones the same, without the key letter.
+    {
+      chatBtn.replaceChildren(coarse ? 'chat' : keyWord('', 'c', 'hat'), el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
       chatBtn.setAttribute('aria-label', `chat, ${fresh} new`);
       chatBtn.setAttribute('aria-keyshortcuts', 'c');
     }
@@ -3774,7 +3771,7 @@
         who.classList.toggle('working', mode === 'working');
         listBtn.dataset.agent = mode;
         chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's light
-        if (coarse) listBtn.title = who.textContent; // phones: the light on it says who's listening
+        if (coarse) chatBtn.title = who.textContent; // phones: the light on the chat button says who's listening
         who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
