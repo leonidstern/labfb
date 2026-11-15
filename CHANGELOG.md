@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Pin statuses. A go pin is an outline with a green tick when placed, gets the turning stroke while the agent is on it, and fills green once done. A comment pin shows your initial, the stroke, then a green tick when done (was grey).
 - Closing the chat (Escape, the button or a click outside) takes the cursor out of its box, so keys like M and V work right away.
 - Keys swapped: M shows and hides comments (was C), C opens and closes the chat (was M).
 - Lab colours are set up like Cooking's: a fixed grey scale and greens as base colours (`--lab-gray-*`, `--lab-green-*`), and named uses that point at them (`--lab-page`, `--lab-bg`, `--lab-fg`, `--lab-muted`, `--lab-line`, `--lab-soft`, `--lab-green`, `--lab-green-soft`); dark mode only re-points the uses. Same colours as before, now solid hex.

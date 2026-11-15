@@ -100,9 +100,12 @@
       button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
                         animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
       .pin.resolved { color: var(--_muted); }
-      /* A go pin (approve, no words): green with a tick, so it reads apart from comments at a glance. */
-      button.pin.go { background: rgb(36, 160, 70); color: #fff; font-size: 14px; }
-      button.pin.go.resolved { background: color-mix(in srgb, rgb(36, 160, 70) 45%, var(--_bg)); }
+      /* Statuses. A go pin: an outline with a green tick when placed, the turning stroke while the agent is on it,
+         filled green once done. A comment pin: your initial, the stroke, then a green tick when done. */
+      button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 14px;
+                      box-shadow: inset 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
+      button.pin.go.done { background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16); }
+      button.pin.done:not(.go) { color: rgb(36, 160, 70); }
       .pin.moved { opacity: .5; }
       .pin.grab { touch-action: none; }
       button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
@@ -1726,14 +1729,15 @@
       if (openId === c.id) drawZone(zone, `saved${anim}`); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (isAdmin || store.get(`lab-edit:${c.id}`));
+      const [state] = workState(c); // placed (sent), now (the agent is on it) or done
       const pin = el(
         'button',
         {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${workState(c)[0] === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}`,
+          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}`,
           type: 'button',
           title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
         },
-        c.resolved || /^go$/i.test(c.text.trim()) ? '✓' : initial(c.name),
+        state === 'done' || c.resolved || /^go$/i.test(c.text.trim()) ? '✓' : initial(c.name),
       );
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
