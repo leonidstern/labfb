@@ -80,7 +80,8 @@ for (const eng of ['webkit', 'chromium']) {
   check(eng, 'CSS save swaps the stylesheet, no reload', loads === 1 && (await p.$$eval('link[rel=stylesheet]', (l) => l.some((x) => /lab-v=/.test(x.href)))));
   write('index.html', PAGE.replace('<title>T1', '<title>T2').replace('a caption under it', 'a caption, changed'));
   await sleep(1500);
-  const st = await p.evaluate(() => ({ t: document.title, cap: document.querySelector('.cap').textContent, v: document.querySelector('#i').value, open: document.querySelector('#d').open }));
+  const st = await p.evaluate(() => ({ t: document.title.replace(/^\(\d+\) /, ''), // the unread count prefix is the widget's own
+    cap: document.querySelector('.cap').textContent, v: document.querySelector('#i').value, open: document.querySelector('#d').open }));
   check(eng, 'HTML save patches in place, no reload', loads === 1 && st.t === 'T2' && st.cap === 'a caption, changed', JSON.stringify(st));
   check(eng, 'typed text and an open section stay', st.v === 'kept text' && st.open);
   await p.evaluate(() => scrollTo(0, 900));
