@@ -69,15 +69,15 @@
         --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
         --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
         --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
-        --_muted: color-mix(in srgb, var(--_fg) 60%, var(--_bg));
-        --_line: color-mix(in srgb, var(--_fg) 13%, var(--_bg));
-        --_soft: color-mix(in srgb, var(--_fg) 6%, var(--_bg));
+        /* Apple's system greys, four steps a scheme: soft (gray 6), hover (gray 5), line (gray 3), muted (gray). */
+        --_soft: var(--lab-soft, #f2f2f7); --_hover: var(--lab-hover, #e5e5ea); --_line: var(--lab-line, #c7c7cc); --_muted: var(--lab-muted, #8e8e93);
         --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
         --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
         --_ease: cubic-bezier(.2, .8, .2, 1); }
       @media (prefers-color-scheme: dark) {
         :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
                 --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
+                --_soft: var(--lab-soft, #2c2c2e); --_hover: var(--lab-hover, #3a3a3c); --_line: var(--lab-line, #38383a); --_muted: var(--lab-muted, #8e8e93);
                 --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
       }
       * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
@@ -186,7 +186,7 @@
       .box.open .line { display: block; animation: lab-fade .16s ease-out; }
       .box.open .who { display: flex; animation: lab-fade .16s ease-out; }
       .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
-              background: var(--_line); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
+              background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
       .send.ready:hover { transform: scale(1.06); }
       .send.ready:active { transform: scale(.94); }
       .send.ready { background: var(--_accent); color: var(--_accent-fg); }
@@ -245,7 +245,10 @@
       .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 16%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       .msg.mine b { display: none; }
-      .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; } /* a small green tick, as the ticks on messages */ .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+      .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; } /* a small green tick, as the ticks on messages */
+      .msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12.5px; line-height: 1.35;
+                    color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+      .msg .quote b { display: block; font-size: 11.5px; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
       .msg::after { content: '↩'; position: absolute; right: -28px; top: 50%; translate: 0 -50%; color: var(--_fg); opacity: var(--lab-r, 0); scale: calc(.6 + .4 * var(--lab-r, 0)); }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
@@ -261,6 +264,7 @@
       .bar button.secondary { color: var(--_muted); }
       .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
       .bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
+      .bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; line-height: 1; color: var(--_fg); }
       .bar button.go-btn.on kbd { background: rgba(255, 255, 255, .22); color: #fff !important; }
       .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--_accent); }
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
@@ -339,6 +343,7 @@
         .chatwin .tabs { touch-action: none; }
         .list .items, .msgs, .card > .body { touch-action: pan-y; }
         .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
+        .chatwin .tabs b { visibility: hidden; } /* no "chat" title on phones: the sheet speaks for itself (the header stays as the grab strip) */
         :host([data-sheet]) :is(.bar, .hint, .listener, .left) { visibility: hidden; }
         /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
            sheet never scrolls the page. */
@@ -392,7 +397,9 @@
     <div class="bar">
       <button class="secondary send-all" type="button" hidden></button>
       <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
+      <button class="secondary new-prev" type="button" hidden aria-label="previous new comment">‹</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
+      <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary go-btn" type="button" hidden title="go mode: every click approves what it's on, no typing (V)">go</button>
       <button class="toggle" type="button"></button>
     </div>`;
@@ -405,6 +412,8 @@
   // "drafts" on, new pins wait in this browser until "send 3 drafts", so nothing starts on pin 1 of 10.
   const listBtn = root.querySelector('.list-btn');
   const goBtn = root.querySelector('.go-btn');
+  const newPrev = root.querySelector('.new-prev');
+  const newNext = root.querySelector('.new-next');
   const sendBtn = root.querySelector('.send-all');
   const listEl = root.querySelector('.list');
   const holdBtn = listEl.querySelector('.hold');
@@ -1346,6 +1355,8 @@
     goBtn.setAttribute('aria-pressed', String(goMode));
     const freshAll = all.filter((c) => !c.resolved && !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
     listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), el('kbd', {}, 'l'));
+    // ‹ › around it step through the new ones, top to bottom of the page, without opening the list.
+    newPrev.hidden = newNext.hidden = !on || !all.some((c) => !c.resolved && !isPage(c) && unread(c).length);
     listBtn.classList.toggle('has-new', freshAll > 0);
     const h = held().length;
     sendBtn.hidden = !h;
@@ -1456,7 +1467,22 @@
       // The done mark sits beside the name, not in the words.
       // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
       const isDone = Boolean(root?.resolved || /^done\b/i.test(m.text));
-      b.append(nameLine(m.name, isDone), ...linked(m.text));
+      b.append(nameLine(m.name, isDone));
+      // A reply shows what it answers, as in Telegram: the name and the start of that message; a tap there jumps to it.
+      if (m.parent && root) {
+        const q = el('div', { class: 'quote' });
+        q.append(el('b', {}, String(root.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(root.text.replace(/\s+/g, ' ').slice(0, 90)));
+        q.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const box = chatEl.querySelector('.msgs');
+          const to = box.querySelector(`[data-id="${root.id}"]`);
+          if (!to) return;
+          box.scrollTo({ top: to.offsetTop - box.offsetTop - 12, behavior: 'smooth' });
+          to.animate?.([{ boxShadow: '0 0 0 2px rgb(52,199,89)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 900 });
+        });
+        b.append(q);
+      }
+      b.append(...linked(m.text));
       b.append(stampOf(m, root));
       const answer = () => {
         replyTo = root ? root.id : null;
@@ -2107,6 +2133,16 @@
   };
   toggleBtn.addEventListener('click', () => setOn(!on));
   goBtn.addEventListener('click', () => setGo(!goMode));
+  const stepNew = (dir) => {
+    const fresh = threads().filter((c) => !c.resolved && !isPage(c) && unread(c).length);
+    if (!fresh.length) return;
+    const top = (c) => position(c.anchor || {}).top;
+    fresh.sort((a, b) => top(a) - top(b));
+    const at = fresh.findIndex((c) => c.id === openId);
+    goTo(fresh[at < 0 ? (dir > 0 ? 0 : fresh.length - 1) : (at + dir + fresh.length) % fresh.length]);
+  };
+  newPrev.addEventListener('click', () => stepNew(-1));
+  newNext.addEventListener('click', () => stepNew(1));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
   const showAgain = () => {
     if (on) return;

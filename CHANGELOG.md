@@ -4,6 +4,10 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Chat: a reply shows what it answers, as in Telegram (the name and the start of that message, a green bar beside it); a tap there jumps to it.
+- The bar has ‹ › around "list" while there are new comments: they step through the new ones from the top of the page, without opening the list.
+- Phones: the chat sheet has no "chat" title.
+- Greys are Apple's system greys, four steps a scheme (gray 6 #f2f2f7, gray 5 #e5e5ea, gray 3 #c7c7cc, gray #8e8e93; dark #2c2c2e, #3a3a3c, #38383a), in the widget and `lab.css`.
 - On a computer a thread or new comment closes at once, like the chat (its fade-out flickered); phones still slide the sheet away.
 - Lighter talk between the lab and the agent:
   - A reply in a thread the agent already has comes as one line (the new words, the thread's id and what it's about), not the whole thread again.
