@@ -4,6 +4,23 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- `labfb pages`: a lab serving this folder hides one serving a folder above it, so the list is this lab's pages, not everything up there.
+- The router, from the big-app benchmark (Haiku said Done on 29 of 30 pins, 25 were right):
+  - A quick change to shared code (a file two or more others load, its stylesheet, or a stylesheet that sets :root variables) is put back and goes to the session with why, since it can break pages nobody pinned.
+  - The quick model's changes always reach the session as "Quick changes to check", even when no pin was passed, with the ask to check each does what the pin asked and nothing broader.
+- The quick step, from the fix benchmark:
+  - It takes bug reports asked as questions ("why is this here twice?", "nothing happens") and one-line logic slips (a comparison, a rounding, a condition), not only wording and styles. Before, Haiku passed every pin worded as a question.
+  - When it passes, it says why ("PASS: needs a change in lib/orders.js"); the session gets that line with the pin.
+  - Each quick change is checked: labfb notes the project's files before, sees exactly what changed after, and keeps it only when the tool said Done and it is small (3 files, 40 lines). A pass, or a change too big, is put back, so the session starts from the files as they were.
+  - The quick model's changes ride along with the next pins the session gets, for a glance (they never wake it by themselves).
+  - Every quick decision is a line in `.lab/quick.jsonl` (done, pass, put back; why; files; lines; seconds).
+  - 👍 keep / 👎 put back on a quick fix (this computer): 👎 restores the files if nobody changed them since, and hands the pin to the agent marked as rejected.
+- Sharper pins, from a frontend fix benchmark against Agentation:
+  - Every element on a React dev build now gets its own JSX file and line ("written at") and the component that rendered it, not only a component's outermost element (it was 3 of 24 pins in the benchmark).
+  - The "looks" line names only CSS variables that are colours: a radius or spacing variable no longer names a text colour (it did on 12 of 24 pins).
+  - Behind a dev server, the app's index.html shell isn't given as a page's file; the route's source is, spelled as on disk (src/pages/Orders.jsx).
+  - An area comment lists what it holds: the elements wholly inside it, each with its text, component and line.
+  - Locally the agent text says to answer with `reply`, not with a POST.
 - Any agent, not just Claude:
   - labfb tells which agent runs `wait` and `reply` (Codex, Cursor, Amp, opencode, Antigravity, Claude; Copilot with `LAB_AGENT=copilot`). The page says "talking to Codex", replies are signed "Codex", and a Codex or Amp session shows its way back (`codex resume <id>`, tap to copy; Amp's thread link).
   - The quick step runs with whichever agent tool is installed (the listening agent's own first): `codex exec`, `cursor-agent -p`, `opencode run`, `copilot -p`, `amp -x`, `agy -p`, never with "allow all" flags. A "Done" that changed no file counts as a pass. `LAB_FAST_AGENT` and `LAB_FAST_MODEL` choose.
