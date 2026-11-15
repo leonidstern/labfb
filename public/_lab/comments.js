@@ -2268,9 +2268,10 @@
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         stepping = keepKeys = false;
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
-        // Opens at the newest message, as the chat does (a short thread doesn't scroll).
+        // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
+        // the first message).
         if (!appear && prevScroll != null) card.querySelector('.body').scrollTop = prevScroll;
-        else if (appear && !coarse) {
+        else if (appear) {
           const body = card.querySelector('.body');
           const first = body.querySelector('.fresh, .newline');
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
