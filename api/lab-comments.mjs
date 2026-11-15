@@ -120,6 +120,10 @@ function cleanAnchor(a) {
     imgY2: Number.isFinite(a.imgY2) ? num(a.imgY2) : undefined,
     zoneText: clean(a.zoneText, 300) || undefined,
     shadow: clean(a.shadow, 200) || undefined,
+    component: clean(a.component, 200) || undefined,
+    source: clean(a.source, 200) || undefined,
+    usedAt: clean(a.usedAt, 200) || undefined,
+    looks: clean(a.looks, 200) || undefined,
     chosen: clean(a.chosen, 120) || undefined,
     cssText: clean(a.cssText, 160) || undefined,
     transform: clean(a.transform, 80) || undefined,
@@ -254,6 +258,10 @@ function asText(path, comments, host) {
     if (a.text && !a.quote) lines.push(`element text: "${a.text}"`);
     if (a.inside) lines.push(`inside: ${a.inside}`);
     if (a.shadow) lines.push(`inside web component: ${a.shadow} (its shadow DOM; search the repo for the tag name)`);
+    if (a.component) lines.push(`component: ${a.component}`);
+    if (a.source) lines.push(`written at: ${a.source}`);
+    if (a.usedAt) lines.push(`component used at: ${a.usedAt}`);
+    if (a.looks) lines.push(`looks: ${a.looks}`);
     if (a.chosen) lines.push(`chosen option: ${a.chosen}`);
     if (a.cssText) lines.push(`text added by CSS: ${a.cssText} (search the CSS for it)`);
     if (a.section) lines.push(`section: "${a.section}"`);
