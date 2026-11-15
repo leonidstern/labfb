@@ -197,3 +197,21 @@ test('preview with a bare --proxy writes a bare --proxy', async () => {
   assert.ok(!args.includes(true), 'no boolean in the args');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('a newer version on npm is announced as the lab starts', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-latest-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
+  // What a check would have found (kept for a day), so the test needs no network.
+  fs.writeFileSync(path.join(home, 'latest.json'), JSON.stringify({ version: '99.0.0', at: Date.now() }));
+  const env = { ...process.env, LABFB_HOME: home };
+  delete env.CI;
+  delete env.LABFB_NO_UPDATE_CHECK;
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--no-fast', '--port', String(5500 + Math.floor(Math.random() * 90))], { cwd: dir, env });
+  kids.push(lab);
+  let out = '';
+  lab.stdout.on('data', (d) => (out += d));
+  for (let i = 0; i < 40 && !/is out/.test(out); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.match(out, /labfb 99\.0\.0 is out \(you have [\d.]+\): npx @leonidstern\/labfb@latest/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
