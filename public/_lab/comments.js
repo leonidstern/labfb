@@ -352,13 +352,10 @@
         .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; font-weight: 600;
               color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
         .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
-        /* 3, cursor: the switch shows a pointer instead of go, grey. */
-        .go-btn.cursor .gp { box-shadow: none; color: transparent; position: relative; }
-        /* A pointer drawn as an outline, the same size and line as the go pin's: a grey shape with the bar's colour cut out. */
-        .go-btn.cursor .gp::before, .go-btn.cursor .gp::after { content: ''; position: absolute; left: 5px; top: 2px; width: 14px; height: 18px;
-                                                                clip-path: polygon(0 0, 0 88%, 28% 66%, 74% 64%); }
-        .go-btn.cursor .gp::before { background: var(--_muted); }
-        .go-btn.cursor .gp::after { background: var(--_bg); transform: scale(.66); transform-origin: 28% 40%; }
+        /* 3, cursor: the switch is the same pin in grey, saying "off" (regular, a touch bigger than go's bold). */
+        .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
+        .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
+                                    font-size: 9.5px; font-weight: 400; letter-spacing: .01em; }
         .more { font-size: 15px !important; letter-spacing: .05em; }
         .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
                      border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
