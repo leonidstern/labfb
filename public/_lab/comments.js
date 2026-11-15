@@ -467,6 +467,11 @@
            through it, blurred. Only the box's own strip overlaps; the new / resolve / delete row stays on the sheet. */
         .chatwin .msgs { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
         .card > .body { margin-bottom: calc(-50px - var(--_pb)); padding-bottom: calc(58px + var(--_pb)); }
+        /* …and fade out as they go (iOS's scroll edge): soft from 24 px above the box down to its bottom (Leo, 15 Nov). */
+        .chatwin .msgs { -webkit-mask-image: linear-gradient(#000 calc(100% - 80px - var(--_pb)), rgba(0,0,0,.15) calc(100% - var(--_pb)));
+                                 mask-image: linear-gradient(#000 calc(100% - 80px - var(--_pb)), rgba(0,0,0,.15) calc(100% - var(--_pb))); }
+        .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 74px - var(--_pb)), rgba(0,0,0,.15) calc(100% - var(--_pb)));
+                                mask-image: linear-gradient(#000 calc(100% - 74px - var(--_pb)), rgba(0,0,0,.15) calc(100% - var(--_pb))); }
         .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
         .card > .foot > :not(.composer) { position: relative; z-index: 1; background: var(--_bg); }
         .chatwin .chat .box, .card .box, .float .box, .float .box:focus-within {
