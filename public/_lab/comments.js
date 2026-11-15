@@ -115,7 +115,7 @@
       .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--lab-radius, 12px); ry: var(--lab-radius, 12px); }
       /* Green dots, the same green as quoted words, with no dark ring under them. */
       .zone rect.ring { display: none; }
-      .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 2; }
+      .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       /* The agent is on it: a thin green ring turns around the pin. */
       /* The agent is on it: a green stroke runs round the pin's own teardrop outline (a turning conic gradient, cut to a
