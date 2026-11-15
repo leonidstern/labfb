@@ -2105,9 +2105,14 @@
       e.preventDefault();
       return;
     }
+    // Escape closes the top one: a thread or new comment first, then the chat, then the list (typed chat text stays).
     if (e.key === 'Escape' && (draft || openId)) {
       draft = null;
       openId = null;
+      render();
+    } else if (e.key === 'Escape' && (chatOpen || listOpen)) {
+      if (chatOpen) chatOpen = false;
+      else listOpen = false;
       render();
     }
   });
