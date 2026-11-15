@@ -4,8 +4,9 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- The list button says "2 of 6 pins done" instead of "2/6 ✓".
-- The bar shows "working on 2 · 3 done": what the agent has been handed and not answered yet, and what it answered in the same round, apart from the done/total count of comments. Just to read; it hides when the agent is idle.
+- Chat and list buttons stand out (bold) when something is new, and the chat marks where unread messages start with a "new" line.
+- Resolving a thread closes its card.
+- The bar shows "working on 2 · 3 done": what the agent has been handed and not answered yet, and what it answered in the same round. Just to read; it hides when the agent is idle.
 - The list names each pin by what it's on: when the pinned element says little ("4", an icon), the text of the box around it.
 - Phones: holding a link or image no longer starts iOS's drag, which cancelled the hold before the box could open the keyboard.
 - Phones: a sheet follows the finger like a native one: from any part, and from its list or messages when they're at the top; a fast flick or a pull past a third closes it at the finger's speed, else it springs back; pulled up, it stretches a little.
@@ -26,7 +27,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Phones: a tap or a swipe down on the dimmed page above a sheet closes it (the tap now also works on iOS Safari).
 - Phones: while a sheet is open, swiping down no longer triggers the browser's pull-to-refresh.
 - The chat holds only its own messages (about the page as a whole) and their replies; pins stay on the page and in the list. Your own comments are never new to you (your name in any case or spacing, or a pin this browser started), and the list tags threads with unread replies with a "2 new" pill. The chat stays at its newest message while the keyboard shortens it.
-- The list button shows how far the agent got: done of all pins ("5 of 8 pins done": resolved, fixed by the quick model, or answered "Done: …"), and the list marks done threads with ✅.
+- The list marks done threads with ✅ (resolved, fixed by the quick model, or answered "Done: …").
 - Sending eases the new message or reply in and the arrow flies off; the chat keeps its box (and the phone's keyboard) after a send and only follows new messages while you're at the bottom. Phones: prev / next are thumb-sized and keep the keyboard as it was, and the thread sheet keeps its height while you step.
 - Phone sheets: the thread, list and chat scroll natively and move only from their top (handle and header), so a swipe down never scrolls the messages; the message box is solid down to the screen's edge (behind the home bar and the keyboard too), the page is dimmed past the screen's edges, the ✕ is gone on phones, and sheets slide away when closed. A sheet sits above the keyboard and fits what the screen shows.
 - Phones: the send button works on the first tap with the keyboard open (pressing it no longer takes the cursor out of the box).

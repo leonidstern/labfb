@@ -218,9 +218,11 @@
       .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
       .bar button * { color: inherit; font-weight: inherit; }
-      .bar .tally { color: var(--_muted); font-variant-numeric: tabular-nums; }
       .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
       .bar button.secondary { color: var(--_muted); }
+      .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
+      .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--_accent); }
+      .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
       .listener { position: fixed; left: 16px; bottom: 16px; display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: 999px;
              background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
@@ -1181,10 +1183,8 @@
     workingEl.hidden = !on || !busy.length;
     workingEl.textContent = `working on ${busy.length}${answered ? ` · ${answered} done` : ''}`;
     const freshAll = all.filter((c) => !c.resolved && !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
-    // How far the agent got, at a glance: done of all the pins (resolved ones too, for guests who don't see them).
-    const pins = comments.filter((c) => !c.parent && !isPage(c));
-    const doneN = pins.filter(isDone).length;
-    listBtn.replaceChildren(freshAll ? `list · ${freshAll} new` : 'list', ...(pins.length ? [el('span', { class: 'tally', title: `${doneN} of ${pins.length} done` }, `${doneN} of ${pins.length} pins done`)] : []));
+    listBtn.textContent = freshAll ? `list · ${freshAll} new` : 'list';
+    listBtn.classList.toggle('has-new', freshAll > 0);
     const h = held().length;
     sendBtn.hidden = !h;
     sendBtn.textContent = `send ${h} draft${h === 1 ? '' : 's'}`;
@@ -1206,6 +1206,7 @@
   // The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
   // a pin's say what they're on). New messages are about the page; tap one to answer it instead.
   let replyTo = null;
+  let newFrom = null;
   function drawChat() {
     const byId = new Map(comments.map((c) => [c.id, c]));
     // Only the chat's own messages (about the page as a whole) and the replies to them: pins live on the page and in the list.
@@ -1213,10 +1214,13 @@
       .filter((c) => isPage(c) || (c.parent && isPage(byId.get(c.parent) || {})))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .slice(-150);
+    if (on && chatOpen && chatEl.hidden) newFrom = msgs.find(isNew)?.id || null; // opening: a "new" line above the first unread
+    if (!chatOpen) newFrom = null;
     if (on && chatOpen) markSeen(msgs.filter(isNew)); // open: what's there is read
     const fresh = msgs.filter(isNew).length;
     chatBtn.hidden = !on;
     chatBtn.textContent = fresh ? `chat · ${fresh} new` : 'chat';
+    chatBtn.classList.toggle('has-new', fresh > 0);
     const opening = chatEl.hidden;
     chatEl.hidden = !on || !chatOpen;
     if (chatEl.hidden) return;
@@ -1224,7 +1228,7 @@
     // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
     const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
     const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
-    box.replaceChildren(...msgs.map((m) => {
+    box.replaceChildren(...msgs.flatMap((m) => {
       const root = m.parent ? byId.get(m.parent) : m;
       const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, title: when(m.createdAt), 'data-id': m.id });
       b.append(el('b', {}, m.name));
@@ -1244,7 +1248,7 @@
       };
       b.addEventListener('click', () => answer(false));
       swipeToAnswer(b, () => answer(true));
-      return b;
+      return m.id === newFrom && m !== msgs[0] ? [el('div', { class: 'newline' }, 'new'), b] : [b];
     }));
     const strip = chatEl.querySelector('.replying');
     const target = replyTo && byId.get(replyTo);
@@ -1714,8 +1718,10 @@
       const failed = (btn) => (btn.textContent = 'failed, try again');
       resolve.addEventListener('click', async () => {
         try {
+          const closing = !c.resolved; // resolved: the thread is done, so its card closes (reopen keeps it open)
           const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id, ...(ownKey ? { edit: ownKey } : {}) });
           Object.assign(c, comment);
+          if (closing && openId === c.id) return slideAway(openCard, () => ((openId = null), render()));
           render();
         } catch {
           failed(resolve);
