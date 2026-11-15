@@ -245,7 +245,11 @@
       .bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
       .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--_accent); }
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
-      .listener { position: fixed; left: 16px; bottom: 16px; display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: 999px;
+      /* The left side: who's listening, then copy link; the right side is the bar. */
+      .left { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
+      .left .copy-all { border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_muted);
+                        box-shadow: var(--_shadow); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; }
+      .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: 999px;
              background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
       .listener span { color: var(--_muted); }
@@ -308,7 +312,7 @@
         .chatwin .tabs { touch-action: none; }
         .list .items, .msgs, .card > .body { touch-action: pan-y; }
         .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
-        :host([data-sheet]) :is(.bar, .hint, .listener) { visibility: hidden; }
+        :host([data-sheet]) :is(.bar, .hint, .listener, .left) { visibility: hidden; }
         /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
            sheet never scrolls the page. */
         :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
@@ -357,8 +361,8 @@
     <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · m chat · v for go · c to hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" title="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" title="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
+    <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
-      <button class="secondary copy-all" type="button" hidden>copy link</button>
       <button class="secondary send-all" type="button" hidden></button>
       <button class="secondary chat-btn" type="button" hidden title="chat (M)">chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
@@ -2747,7 +2751,7 @@
       } catch {}
     });
     who.hidden = true;
-    root.append(who);
+    root.querySelector('.left').prepend(who);
     let stream = null;
     let seen = null;
     let readsAt = null;

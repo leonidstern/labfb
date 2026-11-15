@@ -8,7 +8,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - The list has just two tabs, new and open, and opens on new each time. The work, resolved and mine tabs and draft mode are parked (hidden, code kept).
 - Replied and done show as small marks beside the name again (↩ replied, ✅ done), not inside the message's words.
 - Hovering a pin shows what it's on: a drawn area its green outline, selected words their highlight. An open area pin shows its outline again (it was hidden when the area also held a quoted word), steady: no dark flash or shadow as it opens.
-- "copy link" is the first pill on the left of the bar.
+- "copy link" sits on the left side of the screen, beside who's listening; the bar stays on the right.
 - The list's and the chat's close button is a round, quiet button with a drawn cross, darker on hover.
 - The bar's pills show their keys: chat M, list L, go V, comments C (hidden on touch screens).
 - Escape closes the chat and the list too (after an open thread or new comment).
