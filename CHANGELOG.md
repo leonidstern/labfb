@@ -4,6 +4,14 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Faster, from a code review:
+  - the widget reads every pin's place once per redraw (150 pins: 11 layouts instead of 671 in ten redraws)
+  - its font files load only when comments open, so a reader downloads none (57 KB)
+  - behind a dev server, each page's file is remembered instead of guessed again for every page on every comment (300 pages: a comment takes 17.5 ms instead of 47.9 ms)
+  - saving a CSS or JS file no longer makes labfb walk the folder again
+- Fixed: a mistyped flag on any command is refused (it used to end up in a reply's text); `--` ends the flags.
+- Fixed: `labfb preview` under npx names the package instead of npx's cache path, and keeps a bare `--proxy` bare.
+- Fixed: a pin drag cut short by a redraw left a scroll listener behind.
 - Pins on a dev build name the component that drew the element and where: React (18: file and line; 19: the served file), Vue 3 and Svelte, with variant props (`Button variant=ghost (in Toolbar)`, `written at: src/ui.tsx:97`, `component used at: src/ui.tsx:322`). Every pin also says how the element looks (fill, text colour, size and weight, corners), with colours named by the page's CSS variables. A small cut of Census's reader.
 - `labfb mcp` (optional): an MCP server over stdin/stdout with the tools `comments`, `reply` and `wait`, for agents with MCP. No new dependencies.
 - Cloud lab default: sites deploy with `npm run ship` (`vercel build` + `vercel deploy --prebuilt`, live in seconds) and git deploys off; the setup prompt adds both, and the skill ships, checks the page, then pushes.

@@ -59,12 +59,22 @@ server.json (port, key, session; owner-only), seen. Delete .lab to start over.`;
 const argv = process.argv.slice(2);
 const opts = {};
 const pos = [];
+// One list of flags for every command: anything else starting with -- is refused, so a typo
+// (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
+const SWITCHES = ['--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--all'];
+const VALUED = ['--port', '--name', '--page', '--timeout', '--dir', '--proxy'];
+const unknownFlags = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
+  if (a === '--') {
+    pos.push(...argv.slice(i + 1));
+    break;
+  }
   if (a === '--help' || a === '-h') opts.help = true;
   else if (a === '--version' || a === '-v') opts.version = true;
-  else if (['--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--all'].includes(a)) opts[a.slice(2)] = true;
-  else if (['--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a)) {
+  else if (SWITCHES.includes(a)) opts[a.slice(2)] = true;
+  else if (a.startsWith('--') && !VALUED.includes(a)) unknownFlags.push(a);
+  else if (VALUED.includes(a)) {
     // --proxy on its own means "find the dev server yourself".
     const v = argv[i + 1];
     if (v === undefined || v.startsWith('-')) opts[a.slice(2)] = true;
@@ -80,6 +90,7 @@ const die = (msg) => {
   console.error(msg);
   process.exit(1);
 };
+if (unknownFlags.length) die(`Unknown option ${unknownFlags[0]}. See: ${CMD} --help`);
 
 // The Claude session running this command, if any (Claude Code sets CLAUDE_CODE_SESSION_ID).
 function mySession() {
@@ -111,7 +122,11 @@ if (pos[0] === 'preview') {
     }
   }
   function entry() {
-    return { name: 'lab', program: ME, args: ['.', '--no-open', ...(opts.proxy ? ['--proxy', opts.proxy] : [])], port: 4400, autoPort: true };
+    const args = ['.', '--no-open', ...(typeof opts.proxy === 'string' ? ['--proxy', opts.proxy] : opts.proxy ? ['--proxy'] : [])];
+    // Under npx this script sits in npx's cache, which moves with every version: name the package, not the path.
+    return CMD.startsWith('npx')
+      ? { name: 'lab', runtimeExecutable: 'npx', runtimeArgs: ['--yes', '@leonidstern/labfb', ...args], port: 4400, autoPort: true }
+      : { name: 'lab', program: ME, args, port: 4400, autoPort: true };
   }
   config.configurations = [...(config.configurations || []).filter((c) => c.name !== 'lab'), entry()];
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -396,8 +411,6 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
 }
 
 // ---------- the server ----------
-const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--version', '--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--all', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
-if (unknown) die(`Unknown option ${unknown}. See: ${CMD} --help`);
 if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in your project, or name a folder (see --help)`);
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
 
@@ -565,7 +578,16 @@ const keyFor = (rel) =>
     [...Buffer.from(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join(''),
   ).join('/');
 let fileIndex = null;
+// Each page's file is remembered (a miss too): a dev server's page is guessed by trying up to ~100 paths, too many
+// to repeat for every page on every comment. With plain files the watcher clears it; behind a dev server it lasts 30 s.
+const fileMemo = new Map();
+let fileMemoAt = Date.now();
 const fileFor = (page) => {
+  if (PROXY && Date.now() - fileMemoAt > 30000) fileMemo.clear(), (fileMemoAt = Date.now());
+  if (!fileMemo.has(page)) fileMemo.set(page, findFile(page));
+  return fileMemo.get(page);
+};
+const findFile = (page) => {
   if (!fileIndex) {
     fileIndex = new Map();
     const walk = (dir, depth) => {
@@ -677,11 +699,15 @@ const broadcast = () => {
 };
 let reloadTimer;
 // With --proxy the dev server reloads its own pages.
-if (!PROXY) fs.watch(ROOT, { recursive: true }, (_, file) => {
+let indexStale = false;
+if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
   if (!file || file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules')) return;
+  // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
+  // event's name can't tell; a CSS or JS save leaves the index alone.)
+  if (/\.html?$/i.test(file) || !path.extname(file)) indexStale = true;
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
-    fileIndex = null;
+    if (indexStale) (fileIndex = null), fileMemo.clear(), (indexStale = false);
     // The quick model is still at work: the page reloads once, together with its answer (see quick()).
     if (quickRunning) return (filesWaiting = true);
     version = { ...version, files: version.files + 1 };

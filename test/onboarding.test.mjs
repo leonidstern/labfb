@@ -179,3 +179,21 @@ test('pages lists this folder\'s labs only, unless --all', async () => {
   assert.match(all, /\*\*labfb-alpha-.*\[alpha\][\s\S]*\*\*labfb-beta-.*\[beta\]/s);
   for (const d of [a, b]) fs.rmSync(d, { recursive: true, force: true });
 });
+
+test('a mistyped flag is refused for every command, not posted as text', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-flag-'));
+  const r = await new Promise((resolve) => execFile(process.execPath, [LAB, 'reply', 'abc', 'Done', '--resolv'], { cwd: dir }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
+  assert.equal(r.code, 1);
+  assert.match(r.out, /Unknown option --resolv/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('preview with a bare --proxy writes a bare --proxy', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-preview-'));
+  await new Promise((resolve) => execFile(process.execPath, [LAB, 'preview', '.', '--proxy'], { cwd: dir }, resolve));
+  const lab = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'launch.json'), 'utf8')).configurations.find((c) => c.name === 'lab');
+  const args = lab.args || lab.runtimeArgs;
+  assert.equal(args.at(-1), '--proxy');
+  assert.ok(!args.includes(true), 'no boolean in the args');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
