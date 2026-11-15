@@ -2465,8 +2465,10 @@
       return;
     }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
-    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkrecn]$/i.test(e.key)) {
-      const k = e.key.toLowerCase();
+    // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C.
+    const letter = /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : (e.key || '').toLowerCase();
+    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkrecn]$/.test(letter)) {
+      const k = letter;
       if (k === 'c') {
         e.preventDefault();
         return chatBtn.click();
