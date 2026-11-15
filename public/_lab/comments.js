@@ -3356,6 +3356,17 @@
         if (!res.ok) return reload();
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
         if (scriptsOf(doc).join('\n') !== scriptsOf(document).join('\n') || sheetsOf(doc).join('\n') !== sheetsOf(document).join('\n')) return reload();
+        // What you're looking at stays put: an element a third down the window keeps its place on screen. Found before
+        // the change (during a cross-fade the page can't be hit-tested).
+        let mark = null;
+        for (const y of [Math.min(innerHeight / 3, 240), innerHeight / 2, 80]) {
+          const e = document.elementFromPoint(innerWidth / 2, y);
+          if (e && e !== document.body && e !== document.documentElement && !host.contains(e) && e !== host) {
+            mark = e;
+            break;
+          }
+        }
+        const markTop = mark?.getBoundingClientRect().top;
         // The browser cross-fades the old page into the new one (View Transitions, Safari 18+ and Chrome; others just swap).
         const apply = () => {
           if (doc.title !== document.title) document.title = doc.title;
@@ -3364,10 +3375,6 @@
           const news = [...doc.head.querySelectorAll('style')];
           news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
           for (const o of olds.slice(news.length)) o.remove();
-          // What you're looking at stays put: the element a third down the window keeps its place on screen.
-          let mark = document.elementFromPoint(innerWidth / 2, Math.min(innerHeight / 3, 240));
-          while (mark && (mark === host || host.contains(mark))) mark = null;
-          const markTop = mark?.getBoundingClientRect().top;
           morphKids(document.body, doc.body);
           if (mark?.isConnected) {
             const moved = mark.getBoundingClientRect().top - markTop;
