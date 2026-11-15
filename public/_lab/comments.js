@@ -3249,7 +3249,13 @@
         if (host.contains(n)) continue;
         for (const attr of ['src', 'href', 'poster', 'xlink:href']) {
           const v = n.getAttribute(attr);
-          if (v && samePath(v.split('#')[0], paths)) (n.setAttribute(attr, fresh(v.split('#')[0]) + (v.includes('#') ? v.slice(v.indexOf('#')) : '')), hit++);
+          if (!v || !samePath(v.split('#')[0], paths)) continue;
+          // The new file is loaded and decoded first, then shown: the picture never blinks empty.
+          const next = fresh(v.split('#')[0]);
+          const im = new Image();
+          im.src = next;
+          (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).finally(() => n.setAttribute(attr, next + (v.includes('#') ? v.slice(v.indexOf('#')) : '')));
+          hit++;
         }
         const set = n.getAttribute('srcset');
         if (set && set.split(',').some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
@@ -3354,7 +3360,15 @@
         const news = [...doc.head.querySelectorAll('style')];
         news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
         for (const o of olds.slice(news.length)) o.remove();
+        // What you're looking at stays put: the element a third down the window keeps its place on screen.
+        let mark = document.elementFromPoint(innerWidth / 2, Math.min(innerHeight / 3, 240));
+        while (mark && (mark === host || host.contains(mark))) mark = null;
+        const markTop = mark?.getBoundingClientRect().top;
         morphKids(document.body, doc.body);
+        if (mark?.isConnected) {
+          const moved = mark.getBoundingClientRect().top - markTop;
+          if (Math.abs(moved) > 1) scrollBy(0, moved);
+        }
         reflow();
       } catch {
         reload();
@@ -3375,6 +3389,18 @@
       stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
       stream.onmessage = (e) => {
         const v = JSON.parse(e.data);
+        // A new widget script: this page needs it, so it reloads (when it's safe, as always).
+        if (v.widget && script.dataset.widget && v.widget !== script.dataset.widget) return reload();
+        // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
+        // and patched (only if its file changed does anything move), and the comments are loaded again.
+        if (v.lab && script.dataset.lab && v.lab !== script.dataset.lab) {
+          script.dataset.lab = v.lab;
+          script.dataset.version = String(v.files);
+          hotAt = v.hot;
+          seen = v.comments;
+          morphPage();
+          load();
+        }
         if (String(v.files) !== script.dataset.version) return reload();
         if (hotAt !== null && v.hot !== hotAt) hotUpdate(v.hotFiles || []);
         hotAt = v.hot;

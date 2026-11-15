@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { apiOn, callApi, sendFile } from './lib/dev.mjs';
 
@@ -829,7 +829,16 @@ const agentText = async (page) => {
   return fileFor(page) ? local.replace(/^(page: .*)$/m, `$1\nfile: ${fileFor(page)}`) : local;
 };
 
-let version = { files: 0, comments: 0 };
+// lab: this run of the lab (a restart is a new one); widget: what the comment widget's script is, so open pages reload
+// only when it changed and otherwise just catch up after a restart.
+const widgetRev = () => {
+  try {
+    return createHash('sha1').update(fs.readFileSync(path.join(REPO, 'public/_lab/comments.js'))).digest('hex').slice(0, 10);
+  } catch {
+    return '';
+  }
+};
+let version = { files: 0, comments: 0, lab: randomBytes(4).toString('hex'), widget: widgetRev() };
 // Saving: comments.json and comments.md are rewritten in the background, one write at a time; changes that land
 // meanwhile go into the next one. Each page's agent text is kept and rebuilt only when that page changed, so a
 // comment costs the same with 10 comments or 20,000. The request that changed something doesn't wait for the files.
@@ -1009,6 +1018,19 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
     // once. A person saving by hand gets it after 80 ms.
   }, mode === 'working' ? 400 : 80);
 });
+
+// The widget's own files: a changed script reloads open pages (they need the new one); lab.css is swapped in place.
+let widgetTimer;
+try {
+  fs.watch(path.join(REPO, 'public/_lab'), (event, file) => {
+    clearTimeout(widgetTimer);
+    widgetTimer = setTimeout(() => {
+      if (/\.css$/i.test(file || '')) version = { ...version, hot: (version.hot || 0) + 1, hotFiles: [{ path: `/_lab/${file}`, kind: 'css' }] };
+      else version = { ...version, widget: widgetRev() };
+      broadcast();
+    }, 120);
+  });
+} catch {}
 
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
@@ -1498,7 +1520,7 @@ function announce(page, c) {
 
 // ---------- pages ----------
 const widget = (page, admin) =>
-  `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}"` +
+  `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
