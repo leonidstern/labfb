@@ -229,7 +229,7 @@
       @keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
       @keyframes lab-fly { 45% { transform: translateY(-9px); opacity: 0; } 46% { transform: translateY(7px); opacity: 0; } }
       .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
-      .msg.mine { align-self: flex-end; background: var(--_fg); color: var(--_bg); }
+      .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 16%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       .msg.mine b { display: none; }
       .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
@@ -2691,9 +2691,11 @@
   // A pin-shaped cursor over everything you can comment on (links and controls keep theirs).
   const PIN_CURSOR =
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M3 23V12.5a9.5 9.5 0 1 1 9.5 9.5H4z' fill='black' stroke='white' stroke-width='2'/%3E%3C/svg%3E\") 3 23, crosshair";
-  // Go mode's pointer: a small green tick, so you see every click approves (the widget's own buttons keep theirs).
-  const GO_CURSOR = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='12' cy='12' r='10' fill='rgb(36,160,70)' stroke='white' stroke-width='2'/%3E%3Cpath d='M7.5 12.2l3 3 6-6.4' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") 12 12, copy";
+  // Go mode's pointer is a go pin: the green teardrop with a white tick, its point (bottom left) where the click lands.
+  const GO_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M2 24V13A11 11 0 0 1 13 2A11 11 0 0 1 24 13A11 11 0 0 1 13 24Z' fill='rgb(36,160,70)' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M8.5 13.2l3 3 5.6-6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
+  const GO_CURSOR = `url("${GO_SVG}") 2 24, copy`;
   fonts.textContent += `html.lab-go body, html.lab-go body * { cursor: ${GO_CURSOR} !important; }`;
+  new Image().src = GO_SVG; // decoded ahead, so switching shows it at once
   fonts.textContent += '@property --lab-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }';
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.
