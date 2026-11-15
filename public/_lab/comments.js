@@ -467,12 +467,12 @@
            through it, blurred. Only the box's own strip overlaps; the new / resolve / delete row stays on the sheet. */
         .chatwin .msgs { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
         .card > .body { margin-bottom: calc(-50px - var(--_pb)); padding-bottom: calc(58px + var(--_pb)); }
-        /* …and fade out behind the box (iOS's scroll edge): from 4 px above its top to 40% at its bottom (Leo, 15 Nov:
-           "behind input bottom", "a bit more", then "less, it's just black"). */
-        .chatwin .msgs { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.4) calc(100% - var(--_pb)));
-                                 mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.4) calc(100% - var(--_pb))); }
-        .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 54px - var(--_pb)), rgba(0,0,0,.4) calc(100% - var(--_pb)));
-                                mask-image: linear-gradient(#000 calc(100% - 54px - var(--_pb)), rgba(0,0,0,.4) calc(100% - var(--_pb))); }
+        /* …and fade out behind the box (iOS's scroll edge): from 4 px above its top to 12% at its bottom (Leo, 15 Nov:
+           "behind input bottom", "a bit more", "less, it's just black", then "more, darker there"). */
+        .chatwin .msgs { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
+                                 mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
+        .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 54px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
+                                mask-image: linear-gradient(#000 calc(100% - 54px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
         .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
         .card > .foot > :not(.composer) { position: relative; z-index: 1; background: var(--_bg); }
         .chatwin .chat .box, .card .box, .float .box, .float .box:focus-within {
