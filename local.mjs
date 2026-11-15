@@ -999,7 +999,10 @@ async function unseen() {
   const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // The quick model's changes since the last delivery, for the session to check (they can be wrong: a fix in the right
   // spot that doesn't do what was asked, or one broader than the pin).
-  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  // Only the risky ones: a change to code (not just a stylesheet) or to more than one file. A one-file style fix the
+  // quick model kept is left alone, so the session isn't woken to re-read it (it cost time and tokens and found nothing).
+  const risky = (c) => !c.quickFiles || c.quickFiles.length > 1 || c.quickFiles.some((f) => !/\.(s?css|less)$/.test(f));
+  const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   if (!fresh.length && !quickDone.length) return null;
   const blocks = [];
   const sent = new Set(); // page + thread id actually written into the text
@@ -1182,25 +1185,43 @@ const quickUndo = new Map(); // thread id → [{ file, before, after }] (null: t
 // A quick change stays only when it is small: at most 3 files and 40 lines added and removed.
 const QUICK_FILES = 3;
 const QUICK_LINES = 40;
-// Shared code: a file that two or more other files load (a shared component, a hook, a helper), its stylesheet, or a
-// stylesheet that sets page-wide variables (:root). A quick change there can break pages nobody pinned, so it isn't
-// the quick model's to keep: it goes back and the session takes the pin.
+// Shared code: a file loaded from two or more other folders (a shared component, a hook, a helper), the stylesheet of
+// such a component, or a stylesheet that sets page-wide variables (:root). A quick change there can break pages nobody
+// pinned, so it isn't the quick model's to keep: it goes back and the session takes the pin. Files used only inside
+// their own folder (a feature's table, its stylesheet, its helpers) stay the quick model's, even when several files
+// there load them, and so does a page the router loads.
 const CODE = /\.(m?[jt]sx?|vue|svelte|astro|s?css|html?)$/;
 function loaders(file) {
-  const name = path.basename(file).replace(/(\.module)?\.[\w]+$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(?:from|import|require\\(|@import|url\\()\\s*['"(]?[^'"\\n)]*\\b${name}(?:\\.module)?(?:\\.[\\w]+)?['")]`);
+  // Every import in the other files, resolved: './status' in invoices/ is invoices/status.js, not tickets/status.js.
+  // A stylesheet is named in full (InvoicesTable.module.css is never an import of InvoicesTable); a script with or
+  // without its extension, or as its folder's index. Paths that aren't relative (an alias like @/ui/Button) count
+  // when their last two parts match.
+  const strip = (f) => f.replace(/(\/index)?\.(m?[jt]sx?|vue|svelte|astro)$/, '');
+  const want = /\.s?css$/.test(file) ? file : strip(file);
+  const tail = want.split(path.sep).slice(-2).join('/');
+  const spec = /(?:\bfrom|\bimport|require\(|@import|url\()\s*['"]?([^'"\s)]+)['")]/g;
   const out = [];
-  for (const [f, v] of snap) if (f !== file && v.body && CODE.test(f) && re.test(v.body.toString('utf8'))) out.push(f);
+  for (const [f, v] of snap) {
+    if (f === file || !v.body || !CODE.test(f)) continue;
+    for (const [, s] of v.body.toString('utf8').matchAll(spec)) {
+      const hit = s.startsWith('.') ? (/\.s?css$/.test(want) ? path.resolve(path.dirname(f), s) : strip(path.resolve(path.dirname(f), s))) === want : (/\.s?css$/.test(want) ? s : strip(s)).endsWith(tail);
+      if (hit) {
+        out.push(f);
+        break;
+      }
+    }
+  }
   return out;
 }
-function isShared(file) {
+function isShared(file, depth = 0) {
   if (!CODE.test(file)) return false;
   const body = snap.get(file)?.body?.toString('utf8') || '';
   if (/\.s?css$/.test(file) && /:root\s*\{[^}]*--/.test(body)) return true;
+  const dir = path.dirname(file);
   const by = loaders(file);
-  if (by.length >= 2) return true;
-  // A component's own stylesheet is as shared as the component that loads it.
-  return /\.s?css$/.test(file) && by.length === 1 && loaders(by[0]).length >= 2;
+  if (new Set(by.filter((f) => path.dirname(f) !== dir)).size >= 2) return true;
+  // A stylesheet is as shared as the component next to it that loads it.
+  return depth === 0 && /\.s?css$/.test(file) && by.some((f) => path.dirname(f) === dir && isShared(f, 1));
 }
 let filesWaiting = false;
 const flushFiles = () => {
@@ -1320,6 +1341,7 @@ ${block}`;
       quickUndo.set(c.id, changes.map((x) => ({ file: x.file, before: x.before ? x.before.body : null, after: fs.existsSync(x.file) ? fs.readFileSync(x.file) : null })));
       // What it changed, for the session to glance at with its next pins.
       setComment(page, c.id, {
+        quickFiles: changes.map((x) => path.relative(ROOT, x.file)),
         quickDiff: changes.map((x) => `${path.relative(ROOT, x.file)}: ${[...x.removed.slice(0, 2).map((l) => `- ${l.trim()}`), ...x.added.slice(0, 2).map((l) => `+ ${l.trim()}`)].join(' / ')}`).join(' · ').slice(0, 600),
       });
     }

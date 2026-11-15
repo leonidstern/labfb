@@ -4,6 +4,9 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Router, narrowed after the big benchmark (v5 put back 15 fixes a run, 11 of them wrongly):
+  - Shared code is a file loaded from two or more files in other folders (or the stylesheet of such a component, or a `:root` stylesheet). Imports are resolved by path, so a feature's own `status.js` isn't another feature's, and a stylesheet is named in full, so importing `InvoicesTable` doesn't count as importing `InvoicesTable.module.css`. On the benchmark app this flags exactly the 6 shared library files and none of the 11 feature files.
+  - Only risky quick changes go to the session to check: code, or more than one file. A one-file style fix the quick model kept no longer wakes it.
 - The drawn pointer shows exactly where the system pointer is hidden, checked again when the page scrolls under a still mouse, Shift or Option is pressed, or go and comments are switched. A page's own pointers (a clickable card) win over it; editable text gets a text cursor and data-uncommentable parts the plain arrow; in an open dialog, popover or full screen (above the widget) the picture pointer stays.
 - The comment pointer is drawn with CSS (your pin following the mouse) instead of an image, so it changes smoothly: it turns green with a tick for go, and fades out where the system pointer takes over (links, fields, the widget, Shift). Mice only.
 - Lab pages draw dividers as Apple-style hairlines: half a pixel (one device pixel on Retina) in Apple's separator grey (`--lab-hair`, `--lab-gray-300`).
