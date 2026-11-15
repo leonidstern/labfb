@@ -155,6 +155,8 @@ function cleanAnchor(a) {
     pinY: a.pinY === 1 ? 1 : undefined,
     docW: int(a.docW),
     docH: int(a.docH),
+    oy: isArea(a) && Number.isFinite(a.oy) ? Math.min(Math.max(Math.round(a.oy), -2000), 100000) : undefined, // an area's px offset below its element's top
+    eh: int(a.eh), // the element's height then (a big container can tell it grew)
     time: sec(a.time),
     duration: sec(a.duration),
     context: clean(a.context, MAX.context) || undefined, // older widget versions

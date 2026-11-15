@@ -108,7 +108,8 @@
                       box-shadow: inset 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
       button.pin.go.done { background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16); }
       button.pin.done:not(.go) { color: rgb(36, 160, 70); }
-      .pin.moved { opacity: .5; }
+      .pin.moved { opacity: .5; scale: .8; }
+      button.pin.moved:hover, button.pin.moved.open { opacity: 1; }
       .pin.grab { touch-action: none; }
       button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
       .zone { position: absolute; background: none;
@@ -920,6 +921,17 @@
       .map((a) => `${a.name}="${short(a.value, 60)}"`);
     return `<${node.localName}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`.slice(0, 200);
   }
+  // Is this element the kind a pin was put on? Same tag and id, and at least one of its classes still there: pages
+  // add and drop state classes (offscreen, is-active, open), and an exact match of the tag moved those pins away.
+  function sameKind(node, tag) {
+    if (!tag) return true;
+    const want = /^<([\w-]+)/.exec(tag)?.[1];
+    if (node.localName !== want) return false;
+    const id = / id="([^"]*)"/.exec(tag)?.[1];
+    if ((id || '') !== short(node.id || '', 60)) return false;
+    const classes = (/ class="([^"]*)"/.exec(tag)?.[1] || '').split(/\s+/).filter((c) => c && c !== '…' && !c.endsWith('…'));
+    return !classes.length || classes.some((c) => node.classList.contains(c));
+  }
 
   function anchorAt(clientX, clientY) {
     let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
@@ -1063,7 +1075,7 @@
         const m = n.closest?.('img, video') || n;
         return fileHint(mediaSrc(m)) === anchor.file;
       }
-      if (anchor.element && openingTag(n) !== anchor.element) return false;
+      if (anchor.element && !sameKind(n, anchor.element)) return false;
       // Its words start here (a quote from a selection can run on into the next items); spaces don't count. A short quote
       // ("lab", "above") is found anywhere, so the words around it must be there too, or it's another element.
       if (anchor.quote?.exact) {
@@ -1106,7 +1118,7 @@
     let found = null;
     let best = -1;
     let near = Infinity;
-    const twins = [...document.querySelectorAll(tag)].slice(0, 400).filter((n) => !host.contains(n) && openingTag(n) === anchor.element);
+    const twins = [...document.querySelectorAll(tag)].slice(0, 400).filter((n) => !host.contains(n) && sameKind(n, anchor.element));
     for (const n of twins) {
       const t = flat(n.textContent);
       let score = 0;
@@ -1162,7 +1174,7 @@
   }
   // A pin kept at its old spot never sits below the page's end (the page got shorter, say after a cleanup): it moves up
   // to just above the end, so it doesn't make the page longer. The end is the page's own content, not the pins' layer.
-  let pageEnd = { at: 0, y: 0 };
+  let pageEnd = { at: -Infinity, y: 0 }; // never fresh at first: a pin drawn in the page's first 300 ms sat at the top
   const inPage = (y, h = 0) => {
     if (performance.now() - pageEnd.at > 300) {
       const bottoms = [...document.body.children].filter((c) => c !== host && !host.contains(c)).map((c) => c.getBoundingClientRect().bottom + scrollY);
@@ -1172,7 +1184,14 @@
   };
   // An area's pin sits at the corner where the drag ended (where you let go), not where it started.
   const pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
+  // A pin whose spot changed waits on the page's left edge at the height it had, small and faded, out of the content's
+  // way (it pointed at something that's gone, so its old x means nothing now). Opening it still shows its old area.
+  const EDGE = 10;
   function position(anchor) {
+    const at = spotOf(anchor);
+    return at.moved ? { ...at, left: EDGE } : at;
+  }
+  function spotOf(anchor) {
     const node = findTarget(anchor);
     if (node && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && /\[[^\]]+\]/.test(anchor.text || '')) {
       const spot = wordSpot(anchor);
@@ -1188,8 +1207,11 @@
       const rect = node.getBoundingClientRect();
       if (rect.width || rect.height) {
         const left = rect.left + scrollX + anchor.x * rect.width;
-        const top = rect.top + scrollY + anchor.y * rect.height;
-        const zone = anchor.zw ? { left, top, width: anchor.zw * rect.width, height: anchor.zh * rect.height } : null;
+        // An area on a box much taller than itself (a section, the page) keeps its px offset and size: as a share of the
+        // box it jumped onto other text when pictures above it loaded or the page grew.
+        const tall = anchor.zw && Number.isFinite(anchor.oy) && anchor.docH && rect.height > 2 * anchor.docH;
+        const top = rect.top + scrollY + (tall ? anchor.oy : anchor.y * rect.height);
+        const zone = anchor.zw ? { left, top, width: anchor.zw * rect.width, height: tall ? anchor.docH : anchor.zh * rect.height } : null;
         return zone ? { ...pinOf(zone, anchor), zone } : { left, top, zone };
       }
     }
@@ -1326,6 +1348,7 @@
       y: r.height ? (top - r.top) / r.height : 0,
       zw: r.width ? (right - left) / r.width : 0, // may pass 1 a little: the area can reach past its element's edge
       zh: r.height ? (bottom - top) / r.height : 0,
+      oy: Math.round(top - r.top), // px below the element's top: a share of a tall box drifts when it grows (pictures load)
       docX: (left + scrollX) / docWidth(),
       docY: top + scrollY,
       docW: Math.round(right - left),
@@ -1391,9 +1414,12 @@
       const b = naturalSpot(box, r, right, bottom, nw, nh);
       if (a && b) Object.assign(anchor, { imgX: a.imgX, imgY: a.imgY, imgX2: b.imgX, imgY2: b.imgY });
     } else if (anchor.kind === 'image' || anchor.kind === 'video') {
-      // Zone is bigger than the media it is centred on: drop the single-point spot, keep the file.
+      // Zone is bigger than the media it is centred on: drop the single-point spot, keep the file as a hint. It's on
+      // the box, not the picture: as an 'image' it was placed on the picture by its file, with the box's shares, and
+      // jumped somewhere else on the page.
       delete anchor.imgX;
       delete anchor.imgY;
+      anchor.kind = 'element';
     }
     return anchor;
   }

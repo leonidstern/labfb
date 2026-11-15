@@ -102,6 +102,13 @@ for (const eng of ['webkit', 'chromium']) {
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'from elsewhere', anchor: { selector: '#p2', x: 0.1, y: 0.5, docX: 0.1, docY: 300, width: 1000, element: '<p id="p2">' } }) });
   await sleep(900);
   check(eng, 'a comment from elsewhere shows up, no reload', loads === 1 && (await shadow(() => { return r.querySelectorAll('button.pin').length; })) === pinsBefore + 1);
+  // Pages toggle state classes; a pin stays on its element. One whose element is gone waits on the left edge, at its height.
+  await p.evaluate(() => document.querySelector('#p2').classList.add('offscreen'));
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'gone', anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 400, width: 1000, element: '<p id="nope">' } }) });
+  await sleep(900);
+  const pins = await shadow(() => { return [...r.querySelectorAll('button.pin')].map((b) => [b.classList.contains('moved'), b.style.left, b.style.top]); });
+  check(eng, 'a pin keeps its element when the page adds a class to it', pins.every(([m, l]) => !m || l === '10px'), JSON.stringify(pins));
+  check(eng, 'a pin whose element is gone waits on the left edge at its height', pins.some(([m, l, t]) => m && l === '10px' && t === '400px'), JSON.stringify(pins));
 
   // Areas
   const img = await p.locator('#pic').boundingBox();
