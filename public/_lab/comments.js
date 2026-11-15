@@ -2899,16 +2899,11 @@
     if (![...root.querySelectorAll('textarea')].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
     node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: 260, easing: 'ease-out' });
   };
-  scrim.addEventListener('click', closeOrNudge);
+  // A tap on the dimmed page closes the sheet; a pull on it moves the sheet with the finger (see swipeDown), and the
+  // click that ends such a pull isn't a tap.
+  let sheetDraggedAt = -1e9;
+  scrim.addEventListener('click', () => performance.now() - sheetDraggedAt > 300 && closeOrNudge());
   scrim.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false }); // the page stays still behind it
-  // A swipe down on the dimmed page closes the sheet too, like a tap there.
-  let scrimY = null;
-  scrim.addEventListener('touchstart', (e) => (scrimY = e.touches[0].clientY), { passive: true });
-  scrim.addEventListener('touchend', (e) => {
-    const dy = scrimY === null ? 0 : e.changedTouches[0].clientY - scrimY;
-    scrimY = null;
-    if (dy > 30) closeOrNudge();
-  });
   // Phones: a sheet slides down and away, the dim fading with it, then it closes.
   // After a swipe it goes on at the finger's speed (ms), so it doesn't stop and restart.
   function slideAway(node, close, ms = 0) {
@@ -2983,16 +2978,22 @@
     let last = null;
     let mode = null; // 'drag' the sheet, 'hold' (sideways on a part that doesn't scroll), 'off' (the browser's)
     let box = null; // the scrolling part the touch began in
-    node.addEventListener('touchstart', (e) => {
+    let fromScrim = false; // the touch began on the dimmed page under the sheet: that pulls the sheet too
+    const onStart = (e) => {
+      fromScrim = e.currentTarget === scrim;
+      if (fromScrim && openSheet() !== node) return void (mode = 'off');
       const t = e.touches[0];
       x0 = t.clientX;
       y0 = t.clientY;
       dy = v = raw = 0;
       last = { y: y0, at: e.timeStamp };
-      box = scrollerIn(e, node);
+      box = fromScrim ? null : scrollerIn(e, node);
       mode = e.touches.length > 1 || box?.localName === 'textarea' ? 'off' : null;
-    }, { passive: true });
-    node.addEventListener('touchmove', (e) => {
+    };
+    node.addEventListener('touchstart', onStart, { passive: true });
+    scrim.addEventListener('touchstart', onStart, { passive: true });
+    const onMove = (e) => {
+      if (fromScrim !== (e.currentTarget === scrim)) return;
       const t = e.touches[0];
       // Scrolling the messages up to their top and pulling on in the same move hands the sheet to the finger, as iOS
       // sheets do (it used to take a second swipe). Only while the browser still lets the move be taken over.
@@ -3009,10 +3010,11 @@
         const across = t.clientX - x0;
         if (!down && !across) return; // iOS sends moves for pressure changes too
         const sideways = Math.abs(across) > Math.abs(down);
-        // The sheet's top 40% pulls it down too, messages and all (Leo, 15 Nov: the strip, then 96 px, still too small to
-        // feel); below that a pull scrolls the messages until they reach their top.
-        const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.4;
-        if (grabArea(e.target)) mode = sideways && e.target.closest('.tabs') ? 'off' : 'drag'; // the list's tabs scroll sideways
+        // The sheet's top quarter pulls it down too, messages and all, as does the dimmed page above it (Leo, 15 Nov);
+        // below that a pull scrolls the messages until they reach their top.
+        const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.25;
+        if (fromScrim) mode = sideways ? 'hold' : 'drag';
+        else if (grabArea(e.target)) mode = sideways && e.target.closest('.tabs') ? 'off' : 'drag'; // the list's tabs scroll sideways
         else if (nearTop && box?.localName !== 'textarea') mode = 'drag';
         else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? 'drag' : 'off';
         else mode = sideways ? 'hold' : 'drag';
@@ -3031,10 +3033,14 @@
       node.style.transition = scrim.style.transition = 'none';
       node.style.transform = `translateY(${dy}px)`;
       scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
-    }, { passive: false });
+    };
+    node.addEventListener('touchmove', onMove, { passive: false });
+    scrim.addEventListener('touchmove', onMove, { passive: false });
     const end = (e) => {
+      if (fromScrim !== (e.currentTarget === scrim)) return;
       const was = mode;
       mode = null;
+      if (was === 'drag') sheetDraggedAt = performance.now();
       if (was !== 'drag') return;
       releasedAt = performance.now();
       if (e.timeStamp - last.at > 80) v = 0; // held still before letting go
@@ -3059,6 +3065,8 @@
       setTimeout(() => (node.style.transition = scrim.style.transition = ''), 400);
     };
     node.addEventListener('touchend', end);
+    scrim.addEventListener('touchend', end);
+    scrim.addEventListener('touchcancel', end);
     node.addEventListener('touchcancel', end);
   }
   // iOS lays fixed things out on the page's full height while the keyboard covers its bottom part (and Safari may
@@ -3147,7 +3155,6 @@
       let lines = [];
       let t0 = performance.now();
       let sendTimer = 0;
-      let sentAt = -1e9;
       const row = (what) => {
         const open = openSheet();
         const r = open?.getBoundingClientRect();
@@ -3179,7 +3186,6 @@
           const text = lines.join('\n');
           lines = [];
           for (let i = 0; i < text.length; i += 1900) {
-            sentAt = performance.now();
             await send({ name: 'kb-log', text: text.slice(i, i + 1900), anchor: { kind: 'page', selector: 'body', x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {});
           }
         }, 2000);
@@ -3194,17 +3200,6 @@
         lines.push(`${Math.round(performance.now() - t0)} ${line}`);
         sendSoon();
       };
-      // A message or pin arriving redraws things: followed for 1.5 s too, so a flicker then shows up in the log.
-      let quietUntil = 0;
-      new MutationObserver(() => {
-        // Its own kb-log messages redraw the chat too: those never start another log.
-        if (performance.now() < quietUntil || performance.now() - sentAt < 4000) return;
-        quietUntil = performance.now() + 1500;
-        lines.push('--- redraw');
-        t0 = performance.now();
-        watch('redraw');
-        sendSoon();
-      }).observe(chatEl.querySelector('.msgs'), { childList: true });
       // The address bar growing or shrinking resizes the view too: each resize is followed for 1.5 s like a keyboard.
       vv.addEventListener('resize', () => {
         watch('resize');
