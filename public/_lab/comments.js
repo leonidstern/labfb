@@ -286,8 +286,9 @@
       .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
       /* One slot for the mark, whatever it is (✓, ✓✓, the turning ring, the green ✓): 12 px wide after a 4 px gap, so the
          time doesn't shift when one turns into another (Leo, 15 Nov: it flicked as ✓ became the ring). */
-      .msg .stamp .tick { display: inline-block; width: 12px; text-align: center; margin-left: 4px; }
-      .msg .stamp .ring { margin: 0 1.5px 0 5.5px; }
+      .msg .stamp .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
+      .msg .stamp .ring { margin: .5px 1.5px 0 5.5px; vertical-align: top; } /* the same 10 px tall as a ✓, so the bubble keeps its height */
+      .msg .stamp { height: 10px; }
       .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
       .bar button * { color: inherit; font-weight: inherit; }
