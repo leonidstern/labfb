@@ -1529,7 +1529,36 @@
     }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `could not save (${res.status})`);
+    // A new pin or go from this tab can be taken back with Command-Z (the newest first).
+    if (data.comment && !payload.parent && !payload.action) placed.push(data.comment.id);
     return data;
+  }
+  const placed = [];
+  // Command-Z (Control-Z elsewhere), not in a text box: the last pin or go placed from this tab goes away. This
+  // computer deletes it; a guest, who can't delete, resolves it (it steps aside).
+  async function undoLast() {
+    const id = placed.pop();
+    const c = id && comments.find((x) => x.id === id);
+    if (!c) return;
+    const ownKey = store.get(`lab-edit:${id}`);
+    try {
+      if (isAdmin) {
+        await send({ action: 'delete', id });
+        comments = comments.filter((x) => x.id !== id && x.parent !== id);
+      } else if (ownKey) {
+        const { comment } = await send({ action: 'resolve', id, edit: ownKey });
+        Object.assign(c, comment);
+      } else return;
+    } catch {
+      return;
+    }
+    if (openId === id) openId = null;
+    render();
+    const was = hint.textContent;
+    hint.textContent = `took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`;
+    hint.hidden = false;
+    clearTimeout(undoLast.t);
+    undoLast.t = setTimeout(() => ((hint.hidden = true), (hint.textContent = was)), 1800);
   }
 
   // ---------- copy for an agent ----------
@@ -2633,6 +2662,10 @@
       return;
     }
     // Control-D goes to the next new comment from anywhere, the reply box too (plain D types a letter there); Shift: back.
+    if (on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyZ' && !typing(e) && !inOtherWidget && placed.length) {
+      e.preventDefault();
+      return void undoLast();
+    }
     if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD') {
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
