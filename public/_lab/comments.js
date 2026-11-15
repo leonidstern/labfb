@@ -1170,10 +1170,13 @@
   // Go mode (V): every new spot (a click, a drawn area, selected words, a hold on phones) is posted at once as "go",
   // approving what it's on, with no box to type in. In draft mode go pins wait with the other drafts.
   let goMode = store.get('lab-go') === '1';
+  // Switching only changes the button and the pointer: nothing on the page is redrawn, so nothing flickers.
   const setGo = (v) => {
     goMode = v;
     store.set('lab-go', v ? '1' : '');
-    render();
+    goBtn.classList.toggle('on', v);
+    goBtn.setAttribute('aria-pressed', String(v));
+    document.documentElement.classList.toggle('lab-go', on && v);
   };
   function begin(anchor) {
     const name = store.get('lab-name').trim();
@@ -1703,6 +1706,7 @@
     backCloses();
     refit();
     document.documentElement.classList.toggle('lab-pinning', on);
+    document.documentElement.classList.toggle('lab-go', on && goMode);
     copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
     drawList();
     drawChat();
@@ -2687,6 +2691,9 @@
   // A pin-shaped cursor over everything you can comment on (links and controls keep theirs).
   const PIN_CURSOR =
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M3 23V12.5a9.5 9.5 0 1 1 9.5 9.5H4z' fill='black' stroke='white' stroke-width='2'/%3E%3C/svg%3E\") 3 23, crosshair";
+  // Go mode's pointer: a small green tick, so you see every click approves (the widget's own buttons keep theirs).
+  const GO_CURSOR = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='12' cy='12' r='10' fill='rgb(36,160,70)' stroke='white' stroke-width='2'/%3E%3Cpath d='M7.5 12.2l3 3 6-6.4' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") 12 12, copy";
+  fonts.textContent += `html.lab-go body, html.lab-go body * { cursor: ${GO_CURSOR} !important; }`;
   fonts.textContent += '@property --lab-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }';
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
