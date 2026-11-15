@@ -372,13 +372,13 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · m chat · v for go · c to hide</div>
+    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · v for go · m to hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" aria-label="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
       <button class="secondary send-all" type="button" hidden></button>
-      <button class="secondary chat-btn" type="button" hidden title="chat (M)">chat</button>
+      <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary go-btn" type="button" hidden title="go mode: every click approves what it's on, no typing (V)">go</button>
       <button class="toggle" type="button"></button>
@@ -1393,7 +1393,7 @@
     if (on && chatOpen) markSeen(msgs.filter(isNew)); // open: what's there is read
     const fresh = msgs.filter(isNew).length;
     chatBtn.hidden = !on;
-    chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'), el('kbd', {}, 'm'));
+    chatBtn.replaceChildren(document.createTextNode(fresh ? `chat · ${fresh} new` : 'chat'), el('kbd', {}, 'c'));
     chatBtn.classList.toggle('has-new', fresh > 0);
     const opening = chatEl.hidden;
     chatEl.hidden = !on || !chatOpen;
@@ -1698,7 +1698,7 @@
     // New replies are counted on "list" while comments show, on the toggle while they are hidden.
     toggleBtn.replaceChildren(
       document.createTextNode((on ? 'hide' : open ? `comments · ${open}` : 'comments') + (!on && fresh ? ` · ${fresh} new` : '')),
-      el('kbd', {}, 'c'),
+      el('kbd', {}, 'm'),
     );
     toggleBtn.classList.toggle('secondary', on);
     host.toggleAttribute('data-sheet', Boolean(on && (draft || openId || listOpen || chatOpen))); // phones: the sheet has the screen's bottom
@@ -2120,7 +2120,7 @@
   document.addEventListener('keydown', (e) => {
     if (gone) return;
     const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
-    if ((e.key === 'c' || e.key === 'C' || e.code === 'KeyC') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if ((e.key === 'm' || e.key === 'M' || e.code === 'KeyM') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!on);
       return;
@@ -2131,10 +2131,10 @@
       setGo(!goMode);
       return;
     }
-    // The list's keys, with comments shown and nothing typed: L list, M chat (messages), J/K next/previous, R reply, E resolve.
-    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkrem]$/i.test(e.key)) {
+    // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
+    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && /^[ljkrec]$/i.test(e.key)) {
       const k = e.key.toLowerCase();
-      if (k === 'm') {
+      if (k === 'c') {
         e.preventDefault();
         return chatBtn.click();
       }

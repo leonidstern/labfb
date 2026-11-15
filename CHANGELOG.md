@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Keys swapped: M shows and hides comments (was C), C opens and closes the chat (was M).
 - Lab colours are set up like Cooking's: a fixed grey scale and greens as base colours (`--lab-gray-*`, `--lab-green-*`), and named uses that point at them (`--lab-page`, `--lab-bg`, `--lab-fg`, `--lab-muted`, `--lab-line`, `--lab-soft`, `--lab-green`, `--lab-green-soft`); dark mode only re-points the uses. Same colours as before, now solid hex.
 - Pointers are drawn once as PNGs (1x and 2x) instead of SVG, which browsers re-decode on every pointer change (a flicker, Safari most), and are rewritten only when your initial changes.
 - A newer version waits to reload until no thread, list or chat is open, so nothing moves while you read.
@@ -24,9 +25,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Hovering a pin shows what it's on: a drawn area its green outline, selected words their highlight. An open area pin shows its outline again (it was hidden when the area also held a quoted word), steady: no dark flash or shadow as it opens.
 - "copy link" sits on the left side of the screen, beside who's listening; the bar stays on the right.
 - The list's and the chat's close button is a round, quiet button with a drawn cross, darker on hover.
-- The bar's pills show their keys: chat M, list L, go V, comments C (hidden on touch screens).
+- The bar's pills show their keys: chat C, list L, go V, hide M (hidden on touch screens).
 - Escape closes the chat and the list too (after an open thread or new comment).
-- M opens and closes the chat (with comments shown and nothing typed).
 - On a computer, opening the chat closes an open thread (and a new comment with nothing typed in it).
 - Scrollbars inside the chat, threads and the list are thin, on a clear track, like macOS ones (CSS only).
 - Go mode: a "go" button in the bar, or V, switches it on and off. While it's on, every click, drawn area, selection or hold on a phone posts a "go" pin at once (approve what it's on), with no box to type in; in draft mode go pins wait with the other drafts. Needs your name set once. A go pin is green with a tick, apart from comments.

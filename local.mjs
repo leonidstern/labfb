@@ -1413,7 +1413,7 @@ const listing = (res, dir, urlPath) => {
   res.end(
     labPage(
       `labfb · ${esc(path.basename(dir))}`,
-      `<header><h1>Pages in ${esc(path.basename(dir))}</h1><p class="lede">Open one, then press <kbd>c</kbd> (or hold Option) and click to comment.</p></header>` +
+      `<header><h1>Pages in ${esc(path.basename(dir))}</h1><p class="lede">Open one, then press <kbd>m</kbd> to show comments (or hold Option) and click to comment.</p></header>` +
         `<ul class="lab-box lab-rows">${li || '<li class="lab-muted" style="padding:8px 10px">No HTML pages here. Running a dev server? Start it, then run labfb again.</li>'}</ul>`,
     ),
   );
