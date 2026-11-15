@@ -103,7 +103,7 @@ fs.writeFileSync(path.join(DIR, '.env'), 'SECRET=1');
 fs.writeFileSync(path.join(OUTSIDE, 'private.txt'), 'outside the folder');
 fs.symlinkSync(path.join(OUTSIDE, 'private.txt'), path.join(DIR, 'link.txt'));
 const PORT = 5000 + Math.floor(Math.random() * 90);
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--no-fast', '--port', String(PORT)], {
+const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], {
   cwd: DIR,
   env: { ...process.env, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-')), LABFB_NO_UPDATE_CHECK: '1' },
 });

@@ -1711,7 +1711,7 @@
     }
     scrollTo({ top: Math.max(0, top), behavior: still.matches ? 'auto' : 'smooth' });
   };
-  // Done: resolved, fixed by the quick model, or answered "Done: …" by someone other than its author (the agent).
+  // Done: resolved, or answered "Done: …" by someone other than its author (the agent).
   // Done means the same everywhere (the list, the pins, show done): what workState says.
   const isDone = (c) => c.resolved || workState(c)[0] === 'done';
   // Computers (Leo, 2026-11-15, option 1b): one bar of segments (chat, new, go, ⋯) at the bottom right; the less used
@@ -1802,7 +1802,7 @@
     if (filter === 'work') return listEl.querySelector('.items').replaceChildren(...workItems());
     const items = listed().map((c) => {
       const b = el('button', { class: `it${openId === c.id ? ' cur' : ''}`, type: 'button' });
-      b.append(document.createTextNode(`${c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(onWhat(c) ? [el('span', {}, `on ${onWhat(c)} `)] : []), el('span', {}, `· ${c.name}${c.quick === 'done' ? ' · done by quick' : !c.resolved && isDone(c) ? ' · ✅ done' : ''}`), ...(unread(c).length ? [' ', el('span', { class: 'tag' }, `${unread(c).length} new`)] : []));
+      b.append(document.createTextNode(`${c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(onWhat(c) ? [el('span', {}, `on ${onWhat(c)} `)] : []), el('span', {}, `· ${c.name}${!c.resolved && isDone(c) ? ' · ✅ done' : ''}`), ...(unread(c).length ? [' ', el('span', { class: 'tag' }, `${unread(c).length} new`)] : []));
       b.addEventListener('click', () => goTo(c));
       return b;
     });
@@ -1820,7 +1820,7 @@
     const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || '';
     const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
     const answered = answer && answer.createdAt > lastPerson;
-    if (c.resolved || c.quick === 'done' || (answered && /^done\b/i.test(answer.text))) return ['done', answered ? answer.createdAt : c.createdAt];
+    if (c.resolved || (answered && /^done\b/i.test(answer.text))) return ['done', answered ? answer.createdAt : c.createdAt];
     if (answered && /^on it\b/i.test(answer.text)) return ['now', answer.createdAt];
     if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['now', c.handedAt];
     return answered ? [null, ''] : ['next', lastPerson];
@@ -2485,26 +2485,6 @@
       });
       actions.append(...(isAdmin ? [resolve, del] : [resolve]));
       body.append(actions);
-      // A fix the quick model made: keep it (resolves) or put it back (the agent gets the pin). Local labs only.
-      if (c.quick === 'done' && !c.resolved) {
-        const verdict = el('div', { class: 'row' });
-        const keep = el('button', { class: 'btn', type: 'button' }, '👍 keep');
-        const back = el('button', { class: 'btn', type: 'button' }, '👎 put back');
-        keep.addEventListener('click', () => resolve.click());
-        back.addEventListener('click', async () => {
-          try {
-            const r = await fetch(new URL('/_lab/quick-undo', new URL(API, location.href)), { method: 'POST', headers: headers(), body: JSON.stringify({ page, id: c.id }) });
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(data.error);
-            c.quick = 'rejected';
-            render();
-          } catch (e) {
-            back.textContent = e.message || 'failed, try again';
-          }
-        });
-        verdict.append(keep, back);
-        body.append(verdict);
-      }
     }
     // Phones: step through the threads from the sheet (J and K on a keyboard).
     if (coarse) {

@@ -21,7 +21,6 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **No deploy:** run `npx @leonidstern/labfb@latest` in your project. It finds your running Astro, Next or Vite dev server and puts comments on top, or serves plain HTML files.
 - **Your agent answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
 - **Shows who is listening:** the label says whether Claude is listening or working. Close the page and Claude waits quietly: your first comment when you're back wakes it, and it stops after an hour.
-- **Quick model first, a small router:** when Claude Code (or Codex, Cursor, opencode, Copilot, Amp, Antigravity) is installed, small, clear changes, and one-line bugs even when asked as a question, are done by its one-shot mode in a few seconds, each checked and put back if it's a pass or too big. What it passes reaches your agent with its reason, and its changes ride along for a glance. Off unless you start the lab with `--fast`.
 - **Phone too:** `--wifi` lets a phone at home join. Comments stay in `.lab/`, one store per project.
 
 Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 27 KB gzipped (the script on the page), and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
@@ -90,10 +89,9 @@ Without Claude, run `npx @leonidstern/labfb@latest` in your project:
 - **Comment:** press `m` (or hold Option) and click. Drag to mark an area.
 - **One lab per project:** `npx @leonidstern/labfb list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
 - **This project's pages:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx @leonidstern/labfb add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
-- **Pick the tool or model in the pin:** write "use fable", "@opus", "use gpt-5", "@codex", "gemini: …", "@cursor" or "model:<name>" and that tool and model makes the change. Start with `!` (or name the agent that is listening, like `@claude`) to send it straight to the session. A tool that isn't installed says so on the pin, and the session takes it. Other pins go to the quick model first when the lab runs with `--fast`.
-- **Which model listens:** the session you start decides it. Sonnet is the quick pick: it fixes what the quick model passes on in under a minute for 30 pins. Opus takes a few minutes more, but also opens each quick change and catches the wrong ones. Start it with `claude --model sonnet`, or `/model` in a running session.
+- **Which model listens:** the session you start decides it. Start it with `claude --model sonnet`, or `/model` in a running session.
 - **MCP (optional):** `npx @leonidstern/labfb@latest mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code, once for all your projects: `claude mcp add -s user labfb -- npx @leonidstern/labfb@latest mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
-- **Options:** `--fast` turns on the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
+- **Options:** `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
 ## Other agents
@@ -110,29 +108,28 @@ labfb works with any agent that can use a terminal or MCP. Comments are plain te
   Pin comments on pages: labfb. Say "start labfb" to listen; see .agents/skills/labfb/SKILL.md.
   ```
 - **Cloud lab:** give the agent the `/_lab/agent/<page path>` link. It's plain text with every open comment.
-- **Local lab:** paste the prompt from [Local lab](#local-lab), or use the skill. labfb tells the agent apart by itself: the page says "talking to Codex", replies are signed "Codex", and the quick step uses that agent's own tool.
+- **Local lab:** paste the prompt from [Local lab](#local-lab), or use the skill. labfb tells the agent apart by itself: the page says "talking to Codex", and replies are signed "Codex".
 - **Agents that aren't woken when a background command ends** (Codex, Antigravity): run `wait --timeout 50` in the foreground, in a loop. The MCP `wait` returns after 50 seconds by default for the same reason (Codex and Cursor stop tool calls at 60).
 
-| Agent | Known by | MCP | Quick step | Back to the session |
-|---|---|---|---|---|
-| Claude Code | `CLAUDECODE` | `claude mcp add labfb -- npx @leonidstern/labfb@latest mcp` | `claude -p` (haiku) | link, or `claude --resume` |
-| Codex | `CODEX_THREAD_ID` | `codex mcp add labfb -- npx @leonidstern/labfb@latest mcp` | `codex exec -s workspace-write` | `codex resume <id>` (tap the label to copy) |
-| Cursor | `CURSOR_AGENT` | its MCP settings | `cursor-agent -p` | |
-| Amp | `AMP_CURRENT_THREAD_ID` | its MCP settings | `amp -x` | thread link |
-| opencode | `OPENCODE_CLIENT` | its MCP settings | `opencode run` (edits only) | |
-| Antigravity | `ANTIGRAVITY_AGENT` | its MCP settings | `agy -p` | |
-| Copilot CLI | set `LAB_AGENT=copilot` | its MCP settings | `copilot -p --allow-tool write` | |
+| Agent | Known by | MCP | Back to the session |
+|---|---|---|---|
+| Claude Code | `CLAUDECODE` | `claude mcp add labfb -- npx @leonidstern/labfb@latest mcp` | link, or `claude --resume` |
+| Codex | `CODEX_THREAD_ID` | `codex mcp add labfb -- npx @leonidstern/labfb@latest mcp` | `codex resume <id>` (tap the label to copy) |
+| Cursor | `CURSOR_AGENT` | its MCP settings | |
+| Amp | `AMP_CURRENT_THREAD_ID` | its MCP settings | thread link |
+| opencode | `OPENCODE_CLIENT` | its MCP settings | |
+| Antigravity | `ANTIGRAVITY_AGENT` | its MCP settings | |
+| Copilot CLI | set `LAB_AGENT=copilot` | its MCP settings | |
 
-- **Choose:** `LAB_AGENT=<name>` overrides who is listening (any name), `LAB_AGENT_NAME` signs replies, `LAB_FAST_AGENT=codex` picks the quick tool, `LAB_FAST_MODEL` its model. The quick step never gets "allow all" flags: it may edit files in the project, nothing else, and a "Done" that changed no file counts as a pass.
+- **Choose:** `LAB_AGENT=<name>` overrides who is listening (any name), and `LAB_AGENT_NAME` signs replies.
 - **Codex's sandbox:** if `wait` or `reply` can't reach the lab, labfb says so. Use the MCP tools, or allow it: `-c sandbox_workspace_write.network_access=true`.
-- **Your own quick step:** `LAB_FAST_CMD` replaces the agent's tool. It runs in the project folder, gets the prompt on stdin, the model a pin asked for in `LAB_MODEL` and the listening agent in `LAB_AGENT`; its last line is the answer: `Done: <what changed>` or `PASS`.
 
 ```sh
-LAB_FAST_CMD='./scripts/quick-edit.sh' npx @leonidstern/labfb@latest   # start, with your own quick step
-npx @leonidstern/labfb reply <id> "Done: …"                           # the agent answers on a pin
+npx @leonidstern/labfb@latest                 # start the lab in the project
+npx @leonidstern/labfb reply <id> "Done: …"   # the agent answers on a pin
 ```
 
-In a pin, Claude models ("use fable", "@opus") need the `claude` command, GPT models (`gpt-…`) need `codex`, and Gemini models need `agy`. The MCP server finds the project from the client's root folder or the shell's folder; if it can't, its tools take a `dir`.
+The MCP server finds the project from the client's root folder or the shell's folder; if it can't, its tools take a `dir`.
 
 ## Updating
 
