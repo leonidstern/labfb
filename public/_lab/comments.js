@@ -126,6 +126,17 @@
                              mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
                              animation: lab-spin 1.2s linear infinite; }
       @keyframes lab-spin { to { --lab-spin: 360deg; } }
+      /* The drawn pointer: your pin, following the mouse (it moves without a transition; only its look eases). */
+      .ptr { position: fixed; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px 14px 14px 2px; corner-shape: round;
+             background: var(--_bg); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 2px 6px rgba(0,0,0,.18);
+             display: grid; place-items: center; pointer-events: none; z-index: 2147483647; opacity: 0; will-change: transform;
+             transition: opacity .12s ease-out, background-color .16s ease-out; }
+      .ptr.show { opacity: 1; }
+      .ptr span { grid-area: 1 / 1; font-size: 12px; font-weight: 600; line-height: 1; transition: opacity .16s ease-out, transform .16s ease-out; }
+      .ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 14px; }
+      .ptr.go { background: rgb(36, 160, 70); }
+      .ptr.go .ini { opacity: 0; transform: scale(.5); }
+      .ptr.go .tick { opacity: 1; transform: none; }
       .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                         background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
       .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
@@ -1210,6 +1221,7 @@
     goBtn.classList.toggle('on', v);
     goBtn.setAttribute('aria-pressed', String(v));
     document.documentElement.classList.toggle('lab-go', on && v);
+    ptr.classList.toggle('go', v); // the drawn pointer turns at once, without waiting for the mouse to move
   };
   function begin(anchor) {
     const name = store.get('lab-name').trim();
@@ -2083,6 +2095,7 @@
   };
   const setOn = (value) => {
     on = value;
+    if (!on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     store.set('lab-on', on ? '1' : '0');
     if (on) showHint();
     draft = null;
@@ -2732,6 +2745,29 @@
   // Drawn once into PNGs (1x and 2x): browsers re-decode SVG pointers when the pointer changes, which flickers (Safari
   // most); a PNG pointer stays put. The SVG one shows only for the moment before the PNGs are ready.
   const pinCursorStyle = document.createElement('style');
+  // The pointer itself is drawn (an element styled with CSS that follows the mouse), not an image: so it changes
+  // smoothly, the pin turning green with a tick for go, and fading out where the system pointer takes over (links,
+  // fields, the widget, Shift). Mice only; touch and pens keep what they had.
+  const ptr = el('div', { class: 'ptr', 'aria-hidden': 'true' });
+  ptr.append(el('span', { class: 'ini' }, '+'), el('span', { class: 'tick' }, '✓'));
+  root.append(ptr);
+  const plainAt = (e) => {
+    const path = e.composedPath();
+    const t = path[0];
+    if (!(t instanceof Element) || path.includes(host)) return false;
+    return !t.closest(`${INTERACTIVE}, [contenteditable], ${OFF}`);
+  };
+  addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const h = document.documentElement;
+    h.classList.add('lab-drawn');
+    const show = on && !h.classList.contains('lab-shift') && !h.classList.contains('lab-dragging') && plainAt(e);
+    ptr.classList.toggle('show', show);
+    ptr.classList.toggle('go', goMode);
+    ptr.style.transform = `translate(${e.clientX - 1}px, ${e.clientY - 27}px)`;
+  }, { capture: true, passive: true });
+  document.documentElement.addEventListener('mouseleave', () => ptr.classList.remove('show'));
+  addEventListener('blur', () => ptr.classList.remove('show'));
   const GO_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z' fill='rgb%2836%2C160%2C70%29' stroke='white'/%3E%3Cpath d='M9.2 14.2l3.2 3.2 6.2-6.6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
   const PIN_PATH = 'M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z';
   const toPng = (svgUrl, scale) =>
@@ -2760,13 +2796,16 @@
     const ch = (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
     if (ch === cursorKey) return; // nothing changed: leave the pointers alone
     cursorKey = ch;
+    ptr.querySelector('.ini').textContent = ch;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="${PIN_PATH}" fill="white" stroke="rgba(20,20,20,.3)"/><text x="14" y="18.3" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,system-ui,sans-serif" font-size="12" font-weight="600" fill="#141414">${ch}</text></svg>`;
     const pinSvg = `data:image/svg+xml,${encodeURIComponent(svg)}`;
     const rules = (pin, go) =>
       `html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${pin}; }` +
       // Holding Option (Alt) shows it on links and controls too, since Option-click pins there.
       `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${pin} !important; }` +
-      `html.lab-go body, html.lab-go body * { cursor: ${go.replace(/;/, ' !important;')} !important; }`;
+      `html.lab-go body, html.lab-go body * { cursor: ${go.replace(/;/, ' !important;')} !important; }` +
+      // With the drawn pointer (below) the system one hides over plain parts of the page; links and fields keep theirs.
+      `html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments]) { cursor: none !important; }`;
     if (!pinCursorStyle.textContent) pinCursorStyle.textContent = rules(`url("${pinSvg}") 1 27, crosshair`, `url("${GO_SVG}") 1 27, copy`);
     const [pin, go] = await Promise.all([cursorOf(pinSvg, 'crosshair'), cursorOf(GO_SVG, 'copy')]);
     if (cursorKey === ch) pinCursorStyle.textContent = rules(pin, go);
