@@ -192,7 +192,10 @@
       .send.ready:hover { transform: scale(1.06); }
       .send.ready:active { transform: scale(.94); }
       .send.ready { background: var(--_accent); color: var(--_accent-fg); }
-      .send svg { display: block; }
+      .send .arr { position: relative; display: block; width: 12px; height: 12px; }
+      .send .arr::before { content: ''; position: absolute; left: 50%; top: 2px; bottom: 0; width: 1.8px; border-radius: 1px; background: currentColor; transform: translateX(-50%); }
+      .send .arr::after { content: ''; position: absolute; left: 50%; top: 1.6px; width: 6.5px; height: 6.5px; border-left: 1.8px solid currentColor; border-top: 1.8px solid currentColor;
+                          border-radius: 1px 0 0 0; transform: translateX(-50%) rotate(45deg); transform-origin: center; }
       .send * { color: inherit; }
       .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
       .error:empty { display: none; }
@@ -231,8 +234,9 @@
       .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
       .list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
                        font-size: 0; color: var(--_muted); background: transparent; }
-      .list .tabs .x::before { content: ''; width: 11px; height: 11px; background: currentColor;
-                               -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 2.5l7 7M9.5 2.5l-7 7' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 2.5l7 7M9.5 2.5l-7 7' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+      /* The cross is drawn with CSS: two thin bars, no picture. */
+      .list .tabs .x::before, .list .tabs .x::after { content: ''; grid-area: 1 / 1; width: 12px; height: 1.6px; border-radius: 1px; background: currentColor; transform: rotate(45deg); }
+      .list .tabs .x::after { transform: rotate(-45deg); }
       .list .tabs .x:hover { color: var(--_fg); } /* hover: the cross darkens, nothing drawn behind it */
       .list .tabs .x:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; }
       .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
@@ -243,7 +247,7 @@
       .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
       /* Something just sent eases in; the arrow flies off and comes back. */
       .fresh { animation: lab-rise .2s var(--_ease); }
-      .send.sent svg { animation: lab-fly .32s var(--_ease); }
+      .send.sent .arr { animation: lab-fly .32s var(--_ease); }
       @keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
       @keyframes lab-fly { 45% { transform: translateY(-9px); opacity: 0; } 46% { transform: translateY(7px); opacity: 0; } }
       .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
@@ -389,7 +393,7 @@
         .chat-btn[data-agent=away]::before, .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
         .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { animation: lab-blink 1.1s ease-in-out infinite; }
         .send { width: 36px; height: 36px; }
-        .send svg { width: 16px; height: 16px; margin: auto; }
+        .send .arr { width: 16px; height: 16px; margin: auto; } .send .arr::after { width: 8.5px; height: 8.5px; }
       }
       /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
       @media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
@@ -1414,10 +1418,10 @@
     if (!goBtn.firstElementChild) goBtn.replaceChildren(document.createTextNode('go'), el('kbd', {}, 'v'));
     goBtn.classList.toggle('on', goMode);
     goBtn.setAttribute('aria-pressed', String(goMode));
-    const freshAll = all.filter((c) => !c.resolved && !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
+    const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0); // a new message in a done thread counts too
     listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), el('kbd', {}, 'l'));
     // ‹ › around it step through the new ones, top to bottom of the page, without opening the list.
-    newPrev.hidden = newNext.hidden = !on || !all.some((c) => !c.resolved && !isPage(c) && unread(c).length);
+    newPrev.hidden = newNext.hidden = !on || !all.some((c) => !isPage(c) && unread(c).length);
     if (!LIST_WINDOW) {
       // Without the list window the middle shows how many are new (a click goes to the next one). The pills keep their
       // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
@@ -1703,8 +1707,8 @@
     card.style.top = `${top + 10}px`;
   }
 
-  const ARROW =
-    '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 13V3.5M3.5 8 8 3.5 12.5 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // The send arrow is drawn with CSS (a stem and a chevron), no picture.
+  const ARROW = '<i class="arr" aria-hidden="true"></i>';
 
   // One field that grows: a pill while empty, a box with a divider and the name row once you type.
   function composer({ placeholder, onSubmit, autofocus }) {
@@ -2232,7 +2236,7 @@
   toggleBtn.addEventListener('click', () => setOn(!on));
   goBtn.addEventListener('click', () => setGo(!goMode));
   const stepNew = (dir) => {
-    const fresh = threads().filter((c) => !c.resolved && !isPage(c) && unread(c).length);
+    const fresh = threads().filter((c) => !isPage(c) && unread(c).length);
     if (!fresh.length) return;
     const top = (c) => position(c.anchor || {}).top;
     fresh.sort((a, b) => top(a) - top(b));
@@ -2920,53 +2924,28 @@
   addEventListener('keyup', (e) => (e.key === 'Shift' || e.key === 'Alt') && recheck(), true);
   document.documentElement.addEventListener('mouseleave', () => ((mouse = null), ptr.classList.remove('show')));
   addEventListener('blur', () => ((mouse = null), ptr.classList.remove('show')));
-  const GO_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z' fill='rgb%2836%2C160%2C70%29' stroke='white'/%3E%3Cpath d='M9.2 14.2l3.2 3.2 6.2-6.6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
-  const PIN_PATH = 'M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z';
-  const toPng = (svgUrl, scale) =>
-    new Promise((done) => {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const c = document.createElement('canvas');
-          c.width = c.height = 28 * scale;
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          done(c.toDataURL('image/png'));
-        } catch {
-          done('');
-        }
-      };
-      img.onerror = () => done('');
-      img.src = svgUrl;
-    });
-  const cursorOf = async (svgUrl, fallback) => {
-    const [p1, p2] = await Promise.all([toPng(svgUrl, 1), toPng(svgUrl, 2)]);
-    if (!p1 || !p2) return `url("${svgUrl}") 1 27, ${fallback}`;
-    return `url("${p1}") 1 27, ${fallback}; cursor: -webkit-image-set(url("${p1}") 1x, url("${p2}") 2x) 1 27, ${fallback}`;
-  };
+  // No pictures: where the drawn pin can't show (an open dialog or full screen draws above it, or before the mouse first
+  // moves) the system pointer is a plain crosshair for comments and the copy arrow for go.
   let cursorKey = '';
-  async function refreshPinCursor() {
+  function refreshPinCursor() {
     const ch = (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
     if (ch === cursorKey) return; // nothing changed: leave the pointers alone
     cursorKey = ch;
     ptr.querySelector('.ini').textContent = ch;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="${PIN_PATH}" fill="white" stroke="rgba(20,20,20,.3)"/><text x="14" y="18.3" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,system-ui,sans-serif" font-size="12" font-weight="600" fill="#141414">${ch}</text></svg>`;
-    const pinSvg = `data:image/svg+xml,${encodeURIComponent(svg)}`;
     // In a cascade layer, so a page's own pointers (a clickable card) still win over ours.
     const plain = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
-    const rules = (pin, go) =>
-      `@layer lab-pointer { html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *${plain} { cursor: ${pin}; } ` +
-      // With the drawn pointer (below) the system one hides over plain parts of the page, except in the top layer (an
-      // open dialog or popover, full screen), which draws above the widget: there the picture pointer stays.
-      `html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *${plain}:not(${OFF}, ${OFF} *, dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *) { cursor: none; } ` +
+    const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
+    pinCursorStyle.textContent =
+      `@layer lab-pointer { html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *${plain} { cursor: crosshair; } ` +
+      // With the drawn pointer the system one hides over plain parts of the page (not in the top layer, which is above it).
+      `html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
       // The pointer is inherited, so places that aren't commented on name theirs: editable text a text cursor, a part
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
       `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
-      // Holding Option (Alt) shows it on links and controls too, since Option-click pins there.
-      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${pin} !important; }` +
-      `html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: ${go.replace(/;/, ' !important;')} !important; }`;
-    if (!pinCursorStyle.textContent) pinCursorStyle.textContent = rules(`url("${pinSvg}") 1 27, crosshair`, `url("${GO_SVG}") 1 27, copy`);
-    const [pin, go] = await Promise.all([cursorOf(pinSvg, 'crosshair'), cursorOf(GO_SVG, 'copy')]);
-    if (cursorKey === ch) pinCursorStyle.textContent = rules(pin, go);
+      // Holding Option (Alt) pins links and controls too: the drawn pin shows over them (the system pointer hides).
+      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
+      `html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }` +
+      `html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
   }
   fonts.textContent += '@property --lab-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }';
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
