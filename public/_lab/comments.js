@@ -171,8 +171,7 @@
       .float .box { box-shadow: var(--_shadow); }
       .float .box:focus-within { box-shadow: var(--_shadow), 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
       .card .box { background: var(--_soft); border-radius: var(--_radius); margin: 0; }
-      .card .box.open { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent); }
-      .card .box:focus-within { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
+      .card .box, .card .box.open, .card .box:focus-within { box-shadow: none; } /* the same box as the chat's: soft grey, no border */
       /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
       .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
       .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 4px 0; margin: 0; resize: none;
@@ -246,7 +245,7 @@
       .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 16%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       .msg.mine b { display: none; }
-      .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+      .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; } /* a small green tick, as the ticks on messages */ .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
       .msg::after { content: '↩'; position: absolute; right: -28px; top: 50%; translate: 0 -50%; color: var(--_fg); opacity: var(--lab-r, 0); scale: calc(.6 + .4 * var(--lab-r, 0)); }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
@@ -1044,10 +1043,10 @@
     return null;
   }
   // A message's name with its small marks: ↩ replied, ✅ done.
-  // A message's name with its small mark: ✅ done. An agent's session id ("Claude · session 8a296ba1") is left off.
+  // A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
   const nameLine = (name, done) => {
     const b = el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
-    if (done) b.append(el('span', { class: 'mark' }, '✅ done'));
+    if (done) b.append(el('span', { class: 'mark done', 'aria-label': 'done' }, '✓'));
     return b;
   };
   // Draft mode is parked for now (Leo, 2026-11-15): its button is hidden and new pins post at once.
