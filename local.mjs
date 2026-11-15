@@ -835,10 +835,42 @@ const texts = new Map(); // page → its agent text
 const dirty = new Set(); // pages whose text must be rebuilt
 let writing = null;
 let again = false;
+// What changed, per comments version, so open pages fetch only that (a reply: ~1 KB) instead of the page's whole list.
+// Found by comparing each page with how it was last time (the store holds each comment as a JSON string, so this is a
+// string compare per comment), which also catches changes made without saying which page.
+const shot = new Map(); // page -> Map(id -> JSON string), as last sent
+const changeLog = []; // { rev, page, set: [JSON strings], del: [ids] }, the latest 300
+const takeShot = (p) => new Map(db.get(`lab:comments:${p}`) || []);
+for (const p of pages()) shot.set(p, takeShot(p));
+function logChanges(page, rev) {
+  for (const p of page ? [page] : [...new Set([...pages(), ...shot.keys()])]) {
+    const was = shot.get(p) || new Map();
+    const now = takeShot(p);
+    const set = [...now].filter(([id, v]) => was.get(id) !== v).map(([, v]) => v);
+    const del = [...was.keys()].filter((id) => !now.has(id));
+    shot.set(p, now);
+    if (set.length || del.length) changeLog.push({ rev, page: p, set, del });
+  }
+  changeLog.push({ rev, page: null, set: [], del: [] }); // every version is in the log, so a gap shows
+  while (changeLog.length > 300) changeLog.shift();
+}
+function commentChangesSince(page, since) {
+  const first = changeLog.find((e) => e.page === null)?.rev;
+  if (!Number.isInteger(since) || first === undefined || since < first - 1 || since > version.comments) return null;
+  const out = new Map();
+  for (const e of changeLog) {
+    if (e.rev <= since || e.page !== page) continue;
+    for (const v of e.set) out.set(JSON.parse(v).id, v);
+    for (const id of e.del) out.set(id, null);
+  }
+  return { rev: version.comments, set: [...out.values()].filter(Boolean).map((v) => JSON.parse(v)), del: [...out].filter(([, v]) => v === null).map(([id]) => id) };
+}
+
 function persist(page) {
   if (page) dirty.add(page);
   else for (const p of pages()) dirty.add(p);
   version = { ...version, comments: version.comments + 1 };
+  logChanges(page, version.comments);
   if (writing) {
     again = true;
     return writing;
@@ -1646,6 +1678,11 @@ const handler = async (req, res) => {
       return res.end(await agentText(pathname.slice('/_lab/agent'.length)));
     }
     // Read marks, shared by name: GET ?name=&page= gives the ids read there; POST { name, page, ids } adds to them.
+    if (pathname === '/_lab/api/changes' && req.method === 'GET') {
+      const out = commentChangesSince(url.searchParams.get('page') || '', Number(url.searchParams.get('since')));
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify(out || { full: true }));
+    }
     if (pathname === '/_lab/api/reads') {
       if (req.method === 'POST') {
         const b = JSON.parse((await new Response(req).text()) || '{}');

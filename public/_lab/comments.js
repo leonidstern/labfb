@@ -1331,6 +1331,29 @@
     } catch {
       // Keep what is already on screen when a refresh fails.
     }
+    shownAgain();
+  }
+  // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
+  // Anything odd (a gap, an error, an old lab) falls back to the whole list.
+  async function loadChanges(since) {
+    try {
+      const url = new URL('/_lab/api/changes', new URL(API, location.href));
+      url.search = new URLSearchParams({ page, since: String(since) });
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = res.ok ? await res.json() : { full: true };
+      if (data.full || !loaded) return load();
+      const gone = new Set(data.del);
+      const fresh = new Map(data.set.map((c) => [c.id, c]));
+      comments = comments.filter((c) => !gone.has(c.id)).map((c) => fresh.get(c.id) || c);
+      const had = new Set(comments.map((c) => c.id));
+      for (const c of data.set) if (!had.has(c.id)) comments.push(c);
+      comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    } catch {
+      return load();
+    }
+    shownAgain();
+  }
+  function shownAgain() {
     if (!typed() && !grabbing) render();
     // Someone is in a box: the open thread gets its new replies in place, the chat its new messages (its box is left
     // alone); everything else shows on the next render.
@@ -3163,7 +3186,7 @@
         if (String(v.files) !== script.dataset.version) return reload();
         if (cssAt !== null && v.css !== cssAt) swapCss(v.cssFiles || []);
         cssAt = v.css;
-        if (seen !== null && v.comments !== seen) load(); // load() keeps typed text: it adds replies in place
+        if (seen !== null && v.comments !== seen) loadChanges(seen); // keeps typed text: it adds replies in place
         seen = v.comments;
         if (v.reads !== readsAt) (readsAt = v.reads), syncReads(); // read on another device with your name
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
