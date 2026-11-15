@@ -227,7 +227,7 @@
       .msg.mine { align-self: flex-end; background: var(--_fg); color: var(--_bg); }
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       .msg.mine b { display: none; }
-      .msg { position: relative; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+      .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
       .msg::after { content: '↩'; position: absolute; right: -28px; top: 50%; translate: 0 -50%; color: var(--_fg); opacity: var(--lab-r, 0); scale: calc(.6 + .4 * var(--lab-r, 0)); }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
@@ -980,6 +980,13 @@
     }
     return null;
   }
+  // A message's name with its small marks: ↩ replied, ✅ done.
+  const nameLine = (name, replied, done) => {
+    const b = el('b', {}, name);
+    if (replied) b.append(el('span', { class: 'mark' }, '↩ replied'));
+    if (done) b.append(el('span', { class: 'mark' }, '✅ done'));
+    return b;
+  };
   // Messages show web addresses as links that open in a new tab.
   const linked = (text) => {
     const out = [];
@@ -1373,10 +1380,10 @@
     box.replaceChildren(...msgs.flatMap((m) => {
       const root = m.parent ? byId.get(m.parent) : m;
       const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id });
-      b.append(el('b', {}, m.name));
+      // Small marks beside the name, not in the words: ↩ replied (an answer in a thread), ✅ done.
       // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
-      const done = root?.resolved || /^done\b/i.test(m.text) ? '✅ ' : '';
-      b.append(...linked(done + m.text));
+      const isDone = Boolean(root?.resolved || /^done\b/i.test(m.text));
+      b.append(nameLine(m.name, Boolean(m.parent), isDone), ...linked(m.text));
       b.append(stampOf(m, root));
       const answer = () => {
         replyTo = root ? root.id : null;
@@ -1859,8 +1866,7 @@
     body.classList.add('msgs');
     const itemEl = (item) => {
       const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id });
-      const done = item !== c && /^done\b/i.test(item.text) ? '✅ ' : '';
-      box.append(el('b', {}, item.name), ...linked(done + item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
+      box.append(nameLine(item.name, false, item !== c && /^done\b/i.test(item.text)), ...linked(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
     const shown = new Set();
