@@ -2691,24 +2691,50 @@
 
   // A comment pin as the pointer over everything you can comment on (links and controls keep theirs): the white
   // teardrop with a +, clicking at its point. Holding Shift gives the text cursor back for selecting words.
-  // It looks like your own pin: the white teardrop with your initial (a + before you've given a name).
+  // It looks like your own pin: the white teardrop with your initial (a + before you've given a name). Go mode's is
+  // the same shape in green with a white tick. Both point (bottom left) where the click lands.
+  // Drawn once into PNGs (1x and 2x): browsers re-decode SVG pointers when the pointer changes, which flickers (Safari
+  // most); a PNG pointer stays put. The SVG one shows only for the moment before the PNGs are ready.
   const pinCursorStyle = document.createElement('style');
-  function refreshPinCursor() {
-    const ch = (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z" fill="white" stroke="rgba(20,20,20,.3)"/><text x="14" y="18.3" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,system-ui,sans-serif" font-size="12" font-weight="600" fill="#141414">${ch}</text></svg>`;
-    const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
-    new Image().src = url;
-    const cursor = `url("${url}") 1 27, crosshair`;
-    pinCursorStyle.textContent =
-      `html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${cursor}; }` +
-      // Holding Option (Alt) shows it on links and controls too, since Option-click pins there.
-      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${cursor} !important; }`;
-  }
-  // Go mode's pointer is a go pin: the green teardrop with a white tick, its point (bottom left) where the click lands.
   const GO_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z' fill='rgb%2836%2C160%2C70%29' stroke='white'/%3E%3Cpath d='M9.2 14.2l3.2 3.2 6.2-6.6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
-  const GO_CURSOR = `url("${GO_SVG}") 1 27, copy`;
-  fonts.textContent += `html.lab-go body, html.lab-go body * { cursor: ${GO_CURSOR} !important; }`;
-  new Image().src = GO_SVG; // decoded ahead, so switching shows it at once
+  const PIN_PATH = 'M1 25V14A13 13 0 0 1 14 1A13 13 0 0 1 27 14A13 13 0 0 1 14 27H3A2 2 0 0 1 1 25Z';
+  const toPng = (svgUrl, scale) =>
+    new Promise((done) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = c.height = 28 * scale;
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          done(c.toDataURL('image/png'));
+        } catch {
+          done('');
+        }
+      };
+      img.onerror = () => done('');
+      img.src = svgUrl;
+    });
+  const cursorOf = async (svgUrl, fallback) => {
+    const [p1, p2] = await Promise.all([toPng(svgUrl, 1), toPng(svgUrl, 2)]);
+    if (!p1 || !p2) return `url("${svgUrl}") 1 27, ${fallback}`;
+    return `url("${p1}") 1 27, ${fallback}; cursor: -webkit-image-set(url("${p1}") 1x, url("${p2}") 2x) 1 27, ${fallback}`;
+  };
+  let cursorKey = '';
+  async function refreshPinCursor() {
+    const ch = (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
+    if (ch === cursorKey) return; // nothing changed: leave the pointers alone
+    cursorKey = ch;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="${PIN_PATH}" fill="white" stroke="rgba(20,20,20,.3)"/><text x="14" y="18.3" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,system-ui,sans-serif" font-size="12" font-weight="600" fill="#141414">${ch}</text></svg>`;
+    const pinSvg = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    const rules = (pin, go) =>
+      `html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${pin}; }` +
+      // Holding Option (Alt) shows it on links and controls too, since Option-click pins there.
+      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${pin} !important; }` +
+      `html.lab-go body, html.lab-go body * { cursor: ${go.replace(/;/, ' !important;')} !important; }`;
+    if (!pinCursorStyle.textContent) pinCursorStyle.textContent = rules(`url("${pinSvg}") 1 27, crosshair`, `url("${GO_SVG}") 1 27, copy`);
+    const [pin, go] = await Promise.all([cursorOf(pinSvg, 'crosshair'), cursorOf(GO_SVG, 'copy')]);
+    if (cursorKey === ch) pinCursorStyle.textContent = rules(pin, go);
+  }
   fonts.textContent += '@property --lab-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }';
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.

@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Pointers are drawn once as PNGs (1x and 2x) instead of SVG, which browsers re-decode on every pointer change (a flicker, Safari most), and are rewritten only when your initial changes.
 - A newer version waits to reload until no thread, list or chat is open, so nothing moves while you read.
 - Messages: no "↩ replied" mark, and an agent's name shows without its session id ("Claude", not "Claude · session 8a296ba1").
 - The comment pointer looks like your own pin: the white teardrop with your initial (a + before you've given a name), clicking at its point; links and controls keep theirs, Shift gives the text cursor back. The go pointer is the same shape, green with a tick.
