@@ -103,15 +103,15 @@
       .pin.moved { opacity: .5; }
       .pin.grab { touch-action: none; }
       button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
-      .zone { position: absolute; background: color-mix(in srgb, var(--_accent) 5%, transparent);
+      .zone { position: absolute; background: rgba(52, 199, 89, .1);
               border-radius: var(--_radius); pointer-events: none; }
       .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
       .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--_radius); ry: var(--_radius); }
-      /* Light dots on a dark ring: the outline shows on black pages and white ones, whatever the system theme. */
-      .zone rect.ring { stroke: rgba(0,0,0,.5); stroke-width: 2.5; }
-      .zone rect.dots { stroke: #fff; stroke-width: 1; }
+      /* Green dots, the same green as quoted words, with no dark ring under them. */
+      .zone rect.ring { display: none; }
+      .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 2; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
-      .zone.saved { background: color-mix(in srgb, var(--_accent) 3%, transparent); }
+      .zone.saved { background: rgba(52, 199, 89, .06); }
       .zone.saved.in { animation: lab-settle .36s var(--_ease); }
       .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                         background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
@@ -902,7 +902,8 @@
         return fileHint(mediaSrc(m)) === anchor.file;
       }
       if (anchor.element && openingTag(n) !== anchor.element) return false;
-      if (anchor.quote?.exact) return (n.textContent || '').includes(anchor.quote.exact);
+      // Its words start here (a quote from a selection can run on into the next items); spaces don't count.
+      if (anchor.quote?.exact) return (n.textContent || '').replace(/\s+/g, '').includes(anchor.quote.exact.replace(/\s+/g, '').slice(0, 24));
       return true;
     };
     if (node && node !== document.body && matches(node)) return node;
@@ -933,23 +934,32 @@
 
   // The quoted words of a text comment, found again in the page, for the highlight (CSS Custom Highlight API:
   // nothing in the page's DOM is touched).
+  // The words are matched with spaces left out, across text pieces, so a quote that runs over several items (Shift +
+  // select) is found too; the search widens from the pinned element to the few boxes around it.
   function quoteRange(anchor) {
     const q = anchor?.quote;
-    const node = q?.exact ? findTarget(anchor) : null;
+    let node = q?.exact ? findTarget(anchor) : null;
     if (!node) return null;
-    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-    const tail = (q.prefix || '').slice(-12);
-    let first = null;
-    for (let t; (t = walker.nextNode()); ) {
-      for (let i = t.data.indexOf(q.exact); i !== -1; i = t.data.indexOf(q.exact, i + 1)) {
+    const want = q.exact.replace(/\s+/g, '');
+    const tail = (q.prefix || '').replace(/\s+/g, '').slice(-12);
+    for (let up = 0; node && up < 4; node = node.parentElement, up++) {
+      let text = '';
+      const at = []; // for each letter of text: its text piece and place in it
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      for (let t; (t = walker.nextNode()); )
+        for (let i = 0; i < t.data.length; i++) if (!/\s/.test(t.data[i])) (text += t.data[i]), at.push([t, i]);
+      let first = null;
+      for (let i = text.indexOf(want); i !== -1; i = text.indexOf(want, i + 1)) {
         const range = document.createRange();
-        range.setStart(t, i);
-        range.setEnd(t, i + q.exact.length);
-        if (!tail || t.data.slice(0, i).replace(/\s+/g, ' ').endsWith(tail)) return range;
+        range.setStart(...at[i]);
+        const [end, k] = at[i + want.length - 1];
+        range.setEnd(end, k + 1);
+        if (!tail || text.slice(0, i).endsWith(tail)) return range;
         first ||= range;
       }
+      if (first) return first;
     }
-    return first;
+    return null;
   }
   // Messages show web addresses as links that open in a new tab.
   const linked = (text) => {
