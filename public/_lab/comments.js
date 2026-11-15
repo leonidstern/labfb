@@ -2988,9 +2988,17 @@
       mode = e.touches.length > 1 || box?.localName === 'textarea' ? 'off' : null;
     }, { passive: true });
     node.addEventListener('touchmove', (e) => {
-      if (mode === 'off') return;
-      if (mode === 'hold') return e.preventDefault();
       const t = e.touches[0];
+      // Scrolling the messages up to their top and pulling on in the same move hands the sheet to the finger, as iOS
+      // sheets do (it used to take a second swipe). Only while the browser still lets the move be taken over.
+      if (mode === 'off' && box && box.localName !== 'textarea' && e.touches.length === 1 && e.cancelable && box.scrollTop <= 0 && t.clientY > last.y + 1) {
+        mode = 'drag';
+        y0 = t.clientY;
+        v = 0;
+        last = { y: t.clientY, at: e.timeStamp };
+      }
+      if (mode === 'off') return void (last = { y: t.clientY, at: e.timeStamp });
+      if (mode === 'hold') return e.preventDefault();
       if (!mode) {
         const down = t.clientY - y0;
         const across = t.clientX - x0;
@@ -3026,7 +3034,11 @@
       };
       if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), settle();
       if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove('full'), settle();
-      if (v > 0.4 || (dy > h / 3 && v > -0.1)) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+      // Where the sheet would come to rest if let go now, as iOS judges a throw (Apple's "Designing Fluid Interfaces":
+      // the distance plus the speed carried on at the normal deceleration, 0.998 a millisecond, so v × 499): past half
+      // its height it goes. A short quick flick closes; a slow long drag closes past halfway; a move back up never does.
+      const rest = dy + Math.max(0, v) * 499;
+      if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
       node.style.transition = `transform 380ms ${SPRING}`;
       scrim.style.transition = 'opacity 300ms';
       node.style.transform = scrim.style.opacity = '';
