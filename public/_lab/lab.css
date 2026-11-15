@@ -3,7 +3,7 @@
    sets them themes the widget too.
 
    Colour: white boxes on a light grey page, text #141414, greys mixed from the text colour, green for a pick or a go.
-   Corners: three in all, 6 px small (keys, rows, code), 12 px boxes, round for pills and dots.
+   Corners: two in all, 6 px small (keys, code, rows, pills), 12 px boxes and buttons; circles only for dots.
    Type: the system font, 15 px text, 13 px small, 11 px caps labels; one weight for text, 600 for titles.
    Depth: a hairline ring and a soft shadow, no borders. */
 :root {
@@ -21,7 +21,6 @@
   /* What boxes and small parts actually use: the same sizes, as Apple's continuous corners where the browser has them (below). */
   --lab-corner: var(--lab-radius);
   --lab-corner-s: var(--lab-r-s);
-  --lab-round: 999px;
   --lab-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --lab-mono: ui-monospace, 'SF Mono', Menlo, monospace;
   color-scheme: light;
@@ -58,13 +57,13 @@ body.lab {
 /* A box: white, 12 px corners, hairline ring and soft shadow. */
 .lab-box { background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 14px 16px; }
 
-/* Pills: round, 11 px, quiet grey; green for a pick or a go. */
-.lab-pill { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 4px 8px; border-radius: var(--lab-round);
+/* Pills: small corners, 11 px, quiet grey; green for a pick or a go. */
+.lab-pill { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 4px 8px; border-radius: var(--lab-corner-s);
   background: var(--lab-soft); color: var(--lab-muted); white-space: nowrap; }
 .lab-pill.go { background: var(--lab-green-soft); color: var(--lab-green); }
 
 /* Buttons, as in the widget's bar. */
-.lab-button { border: 0; border-radius: var(--lab-round); padding: 9px 14px; cursor: pointer; background: var(--lab-bg); color: var(--lab-fg);
+.lab-button { border: 0; border-radius: var(--lab-corner); padding: 9px 14px; cursor: pointer; background: var(--lab-bg); color: var(--lab-fg);
   box-shadow: var(--lab-shadow); font: 500 13px var(--lab-font); white-space: nowrap; }
 .lab-button.go { background: var(--lab-green); color: #fff; }
 
@@ -85,10 +84,10 @@ body.lab {
 .lab-button.go kbd { background: rgba(255, 255, 255, .22); color: #fff; }
 
 /* Apple's continuous corners (squircle) in Safari 26 and Chrome: a squircle needs about 1.8 times the radius to look the
-   same size. Pills and buttons stay round-ended (capsules). */
+   same size. */
 @supports (corner-shape: squircle) {
   :root { --lab-corner: calc(var(--lab-radius) * 1.8); --lab-corner-s: 11px; }
   body.lab * { corner-shape: squircle; }
-  /* Pills, buttons and anything round-ended stay round, as Apple's capsules; the pin keeps its teardrop. */
-  body.lab .lab-pill, body.lab .lab-button, body.lab .pin, body.lab [style*='--lab-round'] { corner-shape: round; }
+  /* The pin keeps its teardrop. */
+  body.lab .pin { corner-shape: round; }
 }

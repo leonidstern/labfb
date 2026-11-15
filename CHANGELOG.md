@@ -8,10 +8,10 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Go mode's pointer is a go pin (green teardrop with a white tick), clicking where its point is.
 - Computers, with comments shown: a click or drag no longer selects the page's text; hold Shift to select (and quote) words. Fields and editable text stay selectable.
 - Switching go mode (V or the button) redraws nothing, so nothing flickers.
-- Apple's continuous corners (squircle) on boxes, cards, bubbles, sheets, keys and rows wherever the browser draws them (Safari 26, Chrome); pills, buttons and dots stay round-ended, the pin keeps its teardrop. Same three sizes.
+- Apple's continuous corners (squircle) on boxes, cards, bubbles, sheets, keys and rows wherever the browser draws them (Safari 26, Chrome); dots stay circles and the pin keeps its teardrop.
 - The lab's design system in one file, `/_lab/lab.css`: colours, three corners, type, boxes, pills, buttons, keys, rows and tables, with `--lab-*` names that are also the widget's theme hooks. The lab's page list and its "not found" page use it.
 - The bar's "hide comments" reads just "hide".
-- Three corner sizes in all: 6 px for small things (keys, list rows, small buttons), 12 px for boxes, cards, bubbles and sheets (phones were 18 px), and round for pills and dots.
+- Two corner sizes in all: 6 px for small things (keys, list rows, tabs, tags, text buttons), 12 px for boxes, cards, bubbles, sheets and buttons (the bar's pills too, no more round ends). Circles only for dots and the send button.
 - The list has just two tabs, new and open, and opens on new each time. The work, resolved and mine tabs and draft mode are parked (hidden, code kept).
 - Replied and done show as small marks beside the name again (↩ replied, ✅ done), not inside the message's words.
 - Hovering a pin shows what it's on: a drawn area its green outline, selected words their highlight. An open area pin shows its outline again (it was hidden when the area also held a quoted word), steady: no dark flash or shadow as it opens.

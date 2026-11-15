@@ -68,7 +68,7 @@
       :host { all: initial;
         --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
         --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
-        --_radius: var(--lab-radius, 12px); --_r-s: 6px /* three corners in all: 6 px small, 12 px boxes, round */;
+        --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
         --_muted: color-mix(in srgb, var(--_fg) 60%, var(--_bg));
         --_line: color-mix(in srgb, var(--_fg) 13%, var(--_bg));
         --_soft: color-mix(in srgb, var(--_fg) 6%, var(--_bg));
@@ -182,7 +182,7 @@
       .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
       .error:empty { display: none; }
       .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
-      .bar button { border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
+      .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
                     box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
                     letter-spacing: .005em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color .15s, transform .15s var(--_ease); }
       .bar button:active { transform: scale(.97); }
@@ -192,13 +192,13 @@
       .list .tabs { display: flex; flex-wrap: wrap; gap: 2px; flex: none; padding: 12px 8px 6px; }
       .list .items, .msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
       .list .items { padding: 0 6px 6px; }
-      .list .tabs button { border: 0; border-radius: 999px; padding: 4px 8px; white-space: nowrap; background: none; color: var(--_muted); cursor: pointer; font: inherit; }
+      .list .tabs button { border: 0; border-radius: var(--_r-s); padding: 4px 8px; white-space: nowrap; background: none; color: var(--_muted); cursor: pointer; font: inherit; }
       .list .tabs button.on { background: var(--_fg); color: var(--_bg); }
       .list .tabs .hold { margin-left: auto; }
       .list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: var(--_r-s); cursor: pointer; font: inherit; }
       .list .it:hover, .list .it.cur { background: color-mix(in srgb, var(--_fg) 7%, transparent); }
       .list .it span, .list .none { color: var(--_muted); }
-      .list .it .tag { display: inline-block; padding: 0 7px; border-radius: 999px; background: var(--_accent); color: var(--_accent-fg);
+      .list .it .tag { display: inline-block; padding: 0 7px; border-radius: var(--_r-s); background: var(--_accent); color: var(--_accent-fg);
                        font-size: 11.5px; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
       .list .none { padding: 8px; }
       /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
@@ -253,9 +253,9 @@
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
       /* The left side: who's listening, then copy link; the right side is the bar. */
       .left { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
-      .left .copy-all { border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_muted);
+      .left .copy-all { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_muted);
                         box-shadow: var(--_shadow); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; }
-      .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: 999px;
+      .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
              background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
       .listener span { color: var(--_muted); }
@@ -266,7 +266,7 @@
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: var(--_r-s); text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
       .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
-              box-shadow: var(--_shadow); padding: 8px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; white-space: nowrap;
+              box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
               letter-spacing: .005em; animation: lab-fade .2s ease-out; }
       /* 16px fields keep iOS from zooming the page when one is focused. */
       @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.006em; } kbd { display: none; } }
@@ -285,8 +285,7 @@
         :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
         *, *::before, *::after { corner-shape: squircle; }
         button.pin, .pin.working::before, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
-        .listener::before, .list-btn[data-agent]::before,
-        .bar button, .list .tabs button, .list .it .tag, .left .copy-all, .listener, .hint, .sel-chip { corner-shape: round; } /* pills stay round-ended */
+        .listener::before, .list-btn[data-agent]::before { corner-shape: round; } /* circles stay circles */
       }
       @keyframes lab-pin { from { transform: scale(1.1); } }
       @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
@@ -352,7 +351,7 @@
       }
       /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
       .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
-      .sel-chip { position: fixed; transform: translateX(-50%); border: 0; border-radius: 999px; padding: 8px 14px; background: var(--_fg);
+      .sel-chip { position: fixed; transform: translateX(-50%); border: 0; border-radius: var(--_radius); padding: 8px 14px; background: var(--_fg);
                   color: var(--_bg); font: 500 14px/1 var(--_font, inherit); box-shadow: var(--_shadow); z-index: 4; }
       /* Phones: the listening label is a light in the "list" button (steady: listening, blinking: working, grey:
          nobody), the bar goes back to the bottom, and the send button is big enough for a thumb. */
