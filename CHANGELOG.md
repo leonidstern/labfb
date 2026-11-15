@@ -12,6 +12,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Fixed: a mistyped flag on any command is refused (it used to end up in a reply's text); `--` ends the flags.
 - Fixed: `labfb preview` under npx names the package instead of npx's cache path, and keeps a bare `--proxy` bare.
 - Fixed: a pin drag cut short by a redraw left a scroll listener behind.
+- Using the latest: labfb says when a newer version is out as it starts (npm checked at most once a day, cached in `~/.labfb/latest.json`; off in CI or with `LABFB_NO_UPDATE_CHECK=1`). The README, setup prompts, skill and MCP setup start it with `@latest`, and a new "Updating" section covers the command, the plugin, MCP and cloud labs.
 - Pins on a dev build name the component that drew the element and where: React (18: file and line; 19: the served file), Vue 3 and Svelte, with variant props (`Button variant=ghost (in Toolbar)`, `written at: src/ui.tsx:97`, `component used at: src/ui.tsx:322`). Every pin also says how the element looks (fill, text colour, size and weight, corners), with colours named by the page's CSS variables. A small cut of Census's reader.
 - `labfb mcp` (optional): an MCP server over stdin/stdout with the tools `comments`, `reply` and `wait`, for agents with MCP. No new dependencies.
 - Cloud lab default: sites deploy with `npm run ship` (`vercel build` + `vercel deploy --prebuilt`, live in seconds) and git deploys off; the setup prompt adds both, and the skill ships, checks the page, then pushes.

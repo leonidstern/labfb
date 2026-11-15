@@ -18,7 +18,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **Admin links per person:** let someone resolve and delete on their pages only. Nothing to set up per person.
 
 **Local lab**: pages on your computer, for you and Claude
-- **No deploy:** run `npx @leonidstern/labfb` in your project. It finds your running Astro, Next or Vite dev server and puts comments on top, or serves plain HTML files.
+- **No deploy:** run `npx @leonidstern/labfb@latest` in your project. It finds your running Astro, Next or Vite dev server and puts comments on top, or serves plain HTML files.
 - **Claude answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
 - **Shows who is listening:** the label says whether Claude is listening or working. Close the page and Claude waits quietly: your first comment when you're back wakes it, and it stops after an hour.
 - **Quick model first:** when Claude Code is installed, small, clear changes are done by a fast model in a few seconds. `--no-fast` turns it off.
@@ -67,7 +67,7 @@ Paste this into Claude Code in your project. It is the whole setup.
 ```text
 Start labfb (https://github.com/leonidstern/labfb) on this project and listen to my comments.
 
-1. Run `npx @leonidstern/labfb` here in the background. It finds this project's dev server, or serves plain HTML files.
+1. Run `npx @leonidstern/labfb@latest` here in the background. It finds this project's dev server, or serves plain HTML files.
    If it says the dev server isn't running, start it the way this project does, then run it again. Never stop other servers.
 2. Run `npx @leonidstern/labfb wait` in the background, with --name set to this project's name. It ends with my next comment.
 3. For each comment, change what it asks, then answer on the pin: `npx @leonidstern/labfb reply <id> "Done: …"`, with the id
@@ -82,16 +82,16 @@ Using it often? Install the plugin once, then just say **"start labfb"** in any 
 /plugin install labfb@leonidstern
 ```
 
-Without Claude, run `npx @leonidstern/labfb` in your project:
+Without Claude, run `npx @leonidstern/labfb@latest` in your project:
 
 - **Dev server (Astro, Next, Vite…):** start it as usual. labfb finds the one running from this project, even with other projects' servers running, and puts comments on top. `--proxy 4321` picks a port yourself.
-- **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb dist`.
+- **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb@latest dist`.
 
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
 - **One lab per project:** `npx @leonidstern/labfb list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
 - **This project's pages:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx @leonidstern/labfb add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
 - **Pick the model in the pin:** write "use fable", "@opus" or "sonnet: …" and that model makes the change. Start with `!` (or write `@claude`) to send it straight to the Claude session. Other pins go to the quick model first.
-- **MCP (optional):** `npx @leonidstern/labfb mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code: `claude mcp add labfb -- npx @leonidstern/labfb mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
+- **MCP (optional):** `npx @leonidstern/labfb@latest mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code, once for all your projects: `claude mcp add -s user labfb -- npx @leonidstern/labfb@latest mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
 - **Options:** `--no-fast` turns off the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
@@ -100,17 +100,24 @@ Without Claude, run `npx @leonidstern/labfb` in your project:
 labfb isn't tied to Claude. Comments are plain text and the local loop is a few shell commands, so any agent that can read a link or use a terminal works: Codex, Cursor, Gemini CLI, or a script.
 
 - **Cloud lab:** give the agent the `/_lab/agent/<page path>` link. It's plain text with every open comment.
-- **Agents with MCP but no terminal:** add `npx @leonidstern/labfb mcp` as an MCP server (stdio).
+- **Agents with MCP but no terminal:** add `npx @leonidstern/labfb@latest mcp` as an MCP server (stdio).
 - **Local lab:** paste the prompt from [Local lab](#local-lab) into your agent. It uses only `npx @leonidstern/labfb`, `wait`, `reply` and `pages`.
 - **Its name on the page:** set `LAB_AGENT_NAME=Codex` where the agent runs `reply`, and its replies are signed "Codex" instead of "Claude". `wait --name "my project"` (or `LAB_SESSION_NAME`) is the name the page shows while it listens.
 - **Quick model with another tool:** `LAB_FAST_CMD` replaces the `claude` command. It runs in the project folder, gets the prompt on stdin and the model a pin asked for in `LAB_MODEL`, and its last line is the answer: `Done: <what changed>` or `PASS`.
 
 ```sh
-LAB_FAST_CMD='./scripts/quick-edit.sh' npx @leonidstern/labfb       # start, with your own quick step
+LAB_FAST_CMD='./scripts/quick-edit.sh' npx @leonidstern/labfb@latest   # start, with your own quick step
 LAB_AGENT_NAME=Codex npx @leonidstern/labfb reply <id> "Done: …"   # the agent answers on a pin
 ```
 
 What stays Claude-only: the plugin and its skill, the link to the Claude Code session on the page, and model names in pins ("use fable"), which only mean something to the `claude` command (another command sees them in `LAB_MODEL`).
+
+## Updating
+
+- **The command:** start labfb with `npx @leonidstern/labfb@latest` and npx fetches the newest version (plain `npx @leonidstern/labfb` may reuse an older copy it keeps). When a newer one is out, labfb says so as it starts; it checks npm at most once a day. `LABFB_NO_UPDATE_CHECK=1` turns that off.
+- **The Claude Code plugin:** `claude plugin marketplace update leonidstern`, then `claude plugin update labfb@leonidstern`.
+- **The MCP server:** added with `@latest` (as above), it starts the newest version each time.
+- **Your cloud lab:** sync your fork of labfb with this repo on GitHub ("Sync fork") and redeploy; every site on the lab gets the new widget from the lab domain.
 
 ## Both
 
