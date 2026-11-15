@@ -1005,7 +1005,9 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
     if (hotOnly) version = { ...version, hot: (version.hot || 0) + 1, hotFiles: hot };
     else version = { ...version, files: version.files + 1 };
     broadcast();
-  }, 80);
+    // While the agent works it often saves several files for one fix: wait for 400 ms of quiet so the page updates
+    // once. A person saving by hand gets it after 80 ms.
+  }, mode === 'working' ? 400 : 80);
 });
 
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.

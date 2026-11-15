@@ -309,8 +309,13 @@
       .listener span { color: var(--_muted); }
       .listener.idle::before { background: var(--_muted); opacity: .5; }
       /* Working: the dot turns green and sends out a soft ring, like a "live" light. */
-      .listener.working::before { background: rgb(36, 160, 70); animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
-      @keyframes lab-ping { 0% { box-shadow: 0 0 0 0 rgba(52, 199, 89, .55); } 80%, 100% { box-shadow: 0 0 0 6px rgba(52, 199, 89, 0); } }
+      /* The ping is a copy of the dot that grows and fades (transform and opacity only), so only it is redrawn. A growing
+         shadow repainted the whole layer with every pin on it, each frame: ~170 ms a second on a page with 40 pins. */
+      .listener { position: relative; }
+      .listener.working::before { background: rgb(36, 160, 70); }
+      .listener.working::after { content: ''; position: absolute; left: 14px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px;
+        border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+      @keyframes lab-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.7); opacity: 0; } }
       @keyframes lab-blink { 50% { opacity: .2; } }
       .listener:not([data-copy=""])[data-copy] { cursor: copy; }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: var(--_r-s); text-align: center;
@@ -417,7 +422,10 @@
         .hint { bottom: 64px !important; }
         .chat-btn[data-agent]::before, .list-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
         .chat-btn[data-agent=away]::before, .list-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
-        .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { background: rgb(36, 160, 70); animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+        .chat-btn[data-agent=working]::before, .list-btn[data-agent=working]::before { background: rgb(36, 160, 70); }
+        .chat-btn[data-agent], .list-btn[data-agent] { position: relative; }
+        .chat-btn[data-agent=working]::after, .list-btn[data-agent=working]::after { content: ''; position: absolute; left: 14px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
+          border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
         .send { width: 36px; height: 36px; }
         .send .arr { height: 16px; margin: auto; } .send .arr::before, .send .arr::after { height: 9px; }
       }
