@@ -117,7 +117,11 @@
                         background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
       .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
       .card { position: absolute; width: 320px; max-width: calc(100vw - 24px); background: var(--_bg); border-radius: var(--_radius);
-              box-shadow: var(--_shadow); padding: 12px 14px 14px; transform-origin: 14px 0; z-index: 1; }
+              box-shadow: var(--_shadow); padding: 12px 14px 14px; transform-origin: 14px 0; z-index: 1;
+              display: flex; flex-direction: column; max-height: min(460px, 62vh); }
+      /* A long thread scrolls inside the card, which keeps one size; the step buttons and the reply box stay put. */
+      .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; }
+      .card > .foot { flex: none; }
       .card.in, .float.in { animation: lab-in .18s var(--_ease); }
       .card.out, .float.out { animation: lab-out .14s ease-in forwards; pointer-events: none; }
       .item { display: grid; row-gap: 3px; }
@@ -204,7 +208,7 @@
       .msg.mine { align-self: flex-end; background: var(--_fg); color: var(--_bg); }
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       .msg.mine b { display: none; }
-      .msg { position: relative; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+      .msg { position: relative; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
       .msg::after { content: '↩'; position: absolute; right: -28px; top: 50%; translate: 0 -50%; color: var(--_fg); opacity: var(--lab-r, 0); scale: calc(.6 + .4 * var(--lab-r, 0)); }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
@@ -271,7 +275,7 @@
         .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
                         max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: 18px 18px 0 0; padding: 8px 0 0; z-index: 3; }
         .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
-        .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 4px; }
+        .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 4px; margin-right: 0; }
         .card > .foot, .float > .composer { flex: none; padding: 0 14px var(--_pb); }
         .card > .foot { margin-top: auto; }
         .card .composer { margin-top: 10px; }
@@ -280,8 +284,9 @@
         .float { background: var(--_bg); box-shadow: var(--_shadow); }
         .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
         /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
-        .handle { display: block; flex: none; height: 26px; margin-top: -8px; touch-action: none;
-                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat; }
+        /* 44 px to grab (iOS 44 pt, Android 48 dp), reaching 18 px above the sheet's edge; the bar and the layout stay as they were. */
+        .handle { display: block; flex: none; height: 44px; margin-top: -26px; touch-action: none; position: relative;
+                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 26px / 36px 4px no-repeat; }
         .list .tabs { touch-action: pan-x; }
         .chatwin .tabs { touch-action: none; }
         .list .items, .msgs, .card > .body { touch-action: pan-y; }
@@ -944,6 +949,20 @@
     }
     return first;
   }
+  // Messages show web addresses as links that open in a new tab.
+  const linked = (text) => {
+    const out = [];
+    let at = 0;
+    for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]/g)) {
+      if (m.index > at) out.push(document.createTextNode(text.slice(at, m.index)));
+      const a = el('a', { href: m[0], target: '_blank', rel: 'noopener noreferrer', class: 'link' }, m[0]);
+      a.addEventListener('click', (e) => e.stopPropagation());
+      out.push(a);
+      at = m.index + m[0].length;
+    }
+    if (at < text.length) out.push(document.createTextNode(text.slice(at)));
+    return out;
+  };
   const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
   const markQuote = (anchor) => {
     if (!canMark) return;
@@ -1168,9 +1187,16 @@
     draft = null;
     if (coarse) listOpen = false;
     render();
-    // The pin comes into view: on phones in the middle of what the sheet leaves free above it.
-    const above = coarse && openCard?.isConnected ? (innerHeight - openCard.offsetHeight) / 2 : innerHeight / 3;
-    scrollTo({ top: Math.max(0, position(c.anchor || {}).top - Math.max(40, above)), behavior: 'smooth' });
+    // The pin comes into view: on phones in the middle of what the sheet leaves free above it; on a computer the pin
+    // and its open card together, in the middle of the window when they fit, else from the pin down.
+    const pinTop = position(c.anchor || {}).top;
+    let top = pinTop - Math.max(40, coarse && openCard?.isConnected ? (innerHeight - openCard.offsetHeight) / 2 : innerHeight / 3);
+    if (!coarse && openCard?.isConnected) {
+      const bottom = openCard.getBoundingClientRect().bottom + scrollY;
+      const tall = bottom - pinTop + 28;
+      top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
+    }
+    scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   };
   // Done: resolved, fixed by the quick model, or answered "Done: …" by someone other than its author (the agent).
   const isDone = (c) => c.resolved || c.quick === 'done' || repliesOf(c.id).some((r) => r.name !== c.name && /^done\b/i.test(r.text));
@@ -1241,7 +1267,7 @@
       b.append(el('b', {}, m.name));
       // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
       const done = root?.resolved || /^done\b/i.test(m.text) ? '✅ ' : '';
-      b.append(document.createTextNode(done + m.text));
+      b.append(...linked(done + m.text));
       b.append(stampOf(m, root));
       const answer = () => {
         replyTo = root ? root.id : null;
@@ -1552,7 +1578,7 @@
     list.forEach((c) => {
       if (isPage(c)) return; // in the chat, not on the page
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
-      if (openId === c.id) drawZone(zone, `saved${anim}`);
+      if (openId === c.id && !c.anchor?.quote) drawZone(zone, `saved${anim}`); // quoted words get their highlight instead
       const news = unread(c);
       const movable = !zone && (isAdmin || store.get(`lab-edit:${c.id}`));
       const pin = el(
@@ -1567,6 +1593,11 @@
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
       if (movable) grab(pin, c);
+      // Hovering a pin on quoted words lights them up, as an open one does.
+      if (!coarse && c.anchor?.quote) {
+        pin.addEventListener('pointerenter', () => markQuote(c.anchor));
+        pin.addEventListener('pointerleave', () => markQuote(quoted));
+      }
       pin.addEventListener('click', (e) => {
         e.stopPropagation();
         if (pin.dataset.dragged) return;
@@ -1585,6 +1616,12 @@
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         stepping = keepKeys = false;
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
+        // Opens at the newest message, as the chat does (a short thread doesn't scroll).
+        if (appear && !coarse) {
+          const body = card.querySelector('.body');
+          const first = body.querySelector('.fresh, .newline');
+          body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
+        }
         swipeDown(card, () => ((openId = null), render()));
         markSeen(news);
         quoted = c.anchor;
@@ -1710,7 +1747,7 @@
     const itemEl = (item) => {
       const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id });
       const done = item !== c && /^done\b/i.test(item.text) ? '✅ ' : '';
-      box.append(el('b', {}, item.name), document.createTextNode(done + item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
+      box.append(el('b', {}, item.name), ...linked(done + item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
     const shown = new Set();
@@ -1888,6 +1925,14 @@
     if (chatOpen && !coarse) chatEl.querySelector('.chat textarea')?.focus({ preventScroll: true });
   });
   chatEl.querySelector('.x').addEventListener('click', () => slideAway(chatEl, () => ((chatOpen = false), render())));
+  // On a computer a click outside the chat closes it (phones have the dimmed page for that); what you typed stays.
+  document.addEventListener('pointerdown', (e) => {
+    if (coarse || !chatOpen || e.button !== 0) return;
+    const path = e.composedPath();
+    if (path.includes(chatEl) || path.includes(chatBtn)) return;
+    chatOpen = false;
+    render();
+  }, true);
   for (const b of listEl.querySelectorAll('[data-f]')) b.addEventListener('click', () => ((filter = b.dataset.f), drawList()));
   holdBtn.addEventListener('click', () => (store.set('lab-hold', store.get('lab-hold') === '1' ? '' : '1'), drawList()));
   sendBtn.addEventListener('click', async () => {
@@ -2477,10 +2522,8 @@
     if (on) showHint();
     document.body.append(host);
     // The page's own selection while commenting, and the quoted words of an open text comment.
-    // These rules live in the document, so the colours are read from the layer once it is in the page.
-    const cs = getComputedStyle(host);
-    // A soft tint of the accent, so the quoted words stay readable in the page's own colour.
-    const paint = `background-color: color-mix(in srgb, ${cs.getPropertyValue('--_accent').trim() || '#141414'} 16%, transparent); color: inherit;`;
+    // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
+    const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
   };
@@ -2505,7 +2548,14 @@
     } catch {}
     // Hold a reload while anything is open (a thread, a new comment, the list) or a box has focus or text: the page
     // reloads once you close it, where you were.
-    const busy = () => draft || openId || listOpen || chatOpen || root.activeElement || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
+    // A newer version reloads the page when it's safe: not while you type, have words in a box, place a new comment,
+    // have a phone's keyboard up or have just touched the page. What's open (a thread, the list, the chat) and where
+    // you were come back after it.
+    let touchedAt = 0;
+    for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
+    const busy = () =>
+      draft || grabbing || (coarse && /^(textarea|input)$/.test(root.activeElement?.localName || '')) ||
+      [...root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     const reload = () => {
       if (busy()) return setTimeout(reload, 500);
       try {

@@ -4,6 +4,13 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Links in the chat and in threads open in a new tab.
+- On a computer, a click outside the chat closes it (what you typed stays).
+- A newer version reloads the page as soon as it's safe: not while you type, have words in a box, place a new comment or just touched the page. An open chat, list or thread no longer holds it back; they come back after the reload.
+- Jumping to a pin (list, chat, J / K) puts the pin and its open thread in view together, in the middle of the window when they fit.
+- A long thread scrolls inside its card (at most 460 px or 62% of the window) and opens at its first new message, or the newest.
+- Hovering a pin on quoted words lights them up; the quote's highlight is green, with no dotted box behind it.
+- Phones: the sheet's grab strip is 44 px tall (it reaches a little above the sheet's edge); the bar looks the same.
 - Phone sheets, from the bottom-sheet research (Vaul, Ionic, iOS and Android sheets):
   - Android's back gesture closes an open sheet (chat, list, thread, new comment) instead of leaving the page; with something typed it nudges, like a tap on the dimmed page.
   - Right after the messages or the list scrolled (a fling up to the top), a pull down keeps scrolling for 100 ms instead of taking the sheet with it.
