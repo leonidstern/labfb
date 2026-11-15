@@ -387,6 +387,12 @@ test('a one-file style fix the quick model kept is not handed to the session', a
   await until(async () => (await replies(B, id, false)).length > 0);
   const out = await cli(dir, ['wait', '--timeout', '3'], {});
   assert.doesNotMatch(out, /Quick changes to check/);
+  // It rides along as one line with the next pin the session gets.
+  const other = await pin(B, 'what font is this');
+  await until(() => quickLog(dir).length > 1);
+  const next = await cli(dir, ['wait', '--timeout', '5'], {});
+  assert.match(next, new RegExp(`^- id ${id} "make it red" \\(/index\\): red\\.css: \\+ h1\\{color:red\\}`, 'm'));
+  assert.match(next, /style fix to glance at/);
 });
 
 test('a feature\'s own stylesheet, used only in its folder, stays the quick model\'s', async () => {

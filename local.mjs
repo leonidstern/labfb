@@ -1010,6 +1010,9 @@ async function unseen() {
   // Only the risky ones: a change to code (not just a stylesheet) or to more than one file. A one-file style fix the
   // quick model kept is left alone, so the session isn't woken to re-read it (it cost time and tokens and found nothing).
   const risky = (c) => !c.quickFiles || c.quickFiles.length > 1 || c.quickFiles.some((f) => !/\.(s?css|less)$/.test(f));
+  // The rest (one-file style fixes) still pass by as one line each (id · file · the line it added), cheap to glance at:
+  // a wrong one is easy to spot without opening anything.
+  const styleDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && !risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   const quickDone = pages().flatMap((page) => commentsOf(page).filter((c) => c.quick === 'done' && c.quickDiff && risky(c) && !c.resolved && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
@@ -1048,16 +1051,20 @@ async function unseen() {
   }
   const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
   if (!given.length && !quickDone.length && !missed.length) return null;
+  const added = (c) => (/\+ ([^/·]+)/.exec(c.quickDiff || '')?.[1] || '').trim().slice(0, 80);
+  const glance = styleDone.length
+    ? `# Quick style fixes (one line each; reopen any that look wrong)\n${styleDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 50)}" (${page}): ${c.quickFiles?.[0] || ''}: + ${added(c)}`).join('\n')}`
+    : '';
   const check = quickDone.length
     ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
     : '';
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, quickDone.length && `${quickDone.length} quick change${quickDone.length === 1 ? '' : 's'} to check`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
-  const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n` + [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check].filter(Boolean).join('\n\n') +
+  const text = `In this message: ${count}${styleDone.length ? `, ${styleDone.length} style fix${styleDone.length === 1 ? '' : 'es'} to glance at` : ''}. Read all of it; each one is marked handed to you.\n\n` + [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check, glance].filter(Boolean).join('\n\n') +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
-  const marks = [...given, ...quickDone].map(({ page, c }) => [page, c.id, stamp(c)]);
+  const marks = [...given, ...quickDone, ...styleDone].map(({ page, c }) => [page, c.id, stamp(c)]);
   return { text, marks, handed };
 }
 // Hand the new comments to a wait; each is marked as handed over only once it is written to it.

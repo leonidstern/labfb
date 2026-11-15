@@ -70,14 +70,14 @@
         --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
         --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
         /* Washes of black (white in dark mode), four steps: soft, hover, line, muted, as lab.css. */
-        --_soft: var(--lab-soft, rgba(0,0,0,.04)); --_hover: var(--lab-hover, rgba(0,0,0,.08)); --_line: var(--lab-line, rgba(0,0,0,.16)); --_muted: var(--lab-muted, rgba(0,0,0,.55));
+        --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_muted: var(--lab-muted, rgba(0,0,0,.50));
         --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
         --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
         --_ease: cubic-bezier(.2, .8, .2, 1); }
       @media (prefers-color-scheme: dark) {
         :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
                 --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
-                --_soft: var(--lab-soft, rgba(255,255,255,.06)); --_hover: var(--lab-hover, rgba(255,255,255,.11)); --_line: var(--lab-line, rgba(255,255,255,.18)); --_muted: var(--lab-muted, rgba(255,255,255,.58));
+                --_soft: var(--lab-soft, rgba(255,255,255,.05)); --_hover: var(--lab-hover, rgba(255,255,255,.10)); --_line: var(--lab-line, rgba(255,255,255,.15)); --_muted: var(--lab-muted, rgba(255,255,255,.50));
                 --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
       }
       * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
@@ -245,7 +245,7 @@
       @keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
       @keyframes lab-fly { 45% { transform: translateY(-9px); opacity: 0; } 46% { transform: translateY(7px); opacity: 0; } }
       .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
-      .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 16%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
+      .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
       .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       .msg.mine b { display: none; }
       .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; } /* a small green tick, as the ticks on messages */

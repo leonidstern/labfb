@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Router (option 10): one-file style fixes the quick model kept ride along with the session's next pins as one line each (id · file · the line it added), so a wrong one is easy to spot.
+- Washes set to 5 / 10 / 15 / 50 % for black and white, 15 / 30 / 50 % and solid for green.
 - Colours are washes, as in Cooking: white, black and green, each with 4 see-through steps (`--lab-black-1…4`, `--lab-white-1…4`, `--lab-green-1…4`); soft fills, hovers, lines and secondary text are washes of black on light and of white on dark.
 - The bar keeps its pills in place: ‹ N new › and "show done" stay (quiet and disabled at 0) instead of appearing and shifting the others.
 - The browser tab shows new messages as "(3) Page title".

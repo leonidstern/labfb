@@ -13,23 +13,23 @@
   --lab-ink: #141414;
   --lab-paper-dark: #1c1c1e;
   --lab-black: #000000;
-  --lab-black-1: rgba(0, 0, 0, .04);  /* light: page wash, soft fills */
-  --lab-black-2: rgba(0, 0, 0, .08);  /* light: hover */
-  --lab-black-3: rgba(0, 0, 0, .16);  /* light: separators */
-  --lab-black-4: rgba(0, 0, 0, .55);  /* light: secondary text */
-  --lab-white-1: rgba(255, 255, 255, .06); /* dark: soft fills */
-  --lab-white-2: rgba(255, 255, 255, .11); /* dark: hover */
-  --lab-white-3: rgba(255, 255, 255, .18); /* dark: separators */
-  --lab-white-4: rgba(255, 255, 255, .58); /* dark: secondary text */
-  --lab-green-1: rgba(52, 199, 89, .14);  /* soft green: your bubbles, rec pills */
-  --lab-green-2: rgba(52, 199, 89, .26);  /* hover on green */
-  --lab-green-3: rgba(52, 199, 89, .55);  /* outlines, dots */
+  --lab-black-1: rgba(0, 0, 0, .05);  /* light: page wash, soft fills */
+  --lab-black-2: rgba(0, 0, 0, .10);  /* light: hover */
+  --lab-black-3: rgba(0, 0, 0, .15);  /* light: separators */
+  --lab-black-4: rgba(0, 0, 0, .50);  /* light: secondary text */
+  --lab-white-1: rgba(255, 255, 255, .05); /* dark: soft fills */
+  --lab-white-2: rgba(255, 255, 255, .10); /* dark: hover */
+  --lab-white-3: rgba(255, 255, 255, .15); /* dark: separators */
+  --lab-white-4: rgba(255, 255, 255, .50); /* dark: secondary text */
+  --lab-green-1: rgba(52, 199, 89, .15);  /* soft green: your bubbles, rec pills */
+  --lab-green-2: rgba(52, 199, 89, .30);  /* hover on green */
+  --lab-green-3: rgba(52, 199, 89, .50);  /* outlines, dots */
   --lab-green-4: rgb(36, 160, 70);        /* green: go, done, picks (dark: #34c759) */
 
   /* What things use (semantic), light. Dark only re-points these. */
   --lab-bg: var(--lab-white);           /* boxes */
   --lab-fg: var(--lab-ink);             /* text */
-  --lab-page: #f5f5f5;                  /* the page behind boxes: white under one black wash, solid so nothing shows through */
+  --lab-page: #f2f2f2;                  /* the page behind boxes: white under black-1 (5%), solid so nothing shows through */
   --lab-muted: var(--lab-black-4);      /* secondary text */
   --lab-line: var(--lab-black-3);       /* dividers, drawn as a hairline */
   --lab-hair: .5px solid var(--lab-line); /* one device pixel on a Retina screen, as Apple's separators */
