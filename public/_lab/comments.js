@@ -227,6 +227,7 @@
       .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
       .bar button.secondary { color: var(--_muted); }
       .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
+      .bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
       .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--_accent); }
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
       .listener { position: fixed; left: 16px; bottom: 16px; display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: 999px;
@@ -341,13 +342,14 @@
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c to hide</div>
+    <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · v for go · c to hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" title="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" title="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="bar">
       <button class="secondary send-all" type="button" hidden></button>
       <button class="secondary chat-btn" type="button" hidden>chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
+      <button class="secondary go-btn" type="button" hidden title="go mode: every click approves what it's on, no typing (V)">go</button>
       <button class="secondary copy-all" type="button" hidden>copy link</button>
       <button class="toggle" type="button"></button>
     </div>`;
@@ -359,6 +361,7 @@
   // The comments list (new / open / resolved / mine; J/K step, R reply, E resolve, L shows it), and drafts: with
   // "drafts" on, new pins wait in this browser until "send 3 drafts", so nothing starts on pin 1 of 10.
   const listBtn = root.querySelector('.list-btn');
+  const goBtn = root.querySelector('.go-btn');
   const sendBtn = root.querySelector('.send-all');
   const listEl = root.querySelector('.list');
   const holdBtn = listEl.querySelector('.hold');
@@ -1122,6 +1125,34 @@
     }
   }
 
+  // Go mode (V): every new spot (a click, a drawn area, selected words, a hold on phones) is posted at once as "go",
+  // approving what it's on, with no box to type in. In draft mode go pins wait with the other drafts.
+  let goMode = store.get('lab-go') === '1';
+  const setGo = (v) => {
+    goMode = v;
+    store.set('lab-go', v ? '1' : '');
+    render();
+  };
+  function begin(anchor) {
+    const name = store.get('lab-name').trim();
+    if (!goMode || !name) {
+      draft = { anchor };
+      return render();
+    }
+    if (store.get('lab-hold') === '1') {
+      store.set(heldKey(), JSON.stringify([...held(), { name, text: 'go', anchor }]));
+      return render();
+    }
+    send({ name, text: 'go', anchor })
+      .then(({ comment, edit }) => {
+        if (edit) store.set(`lab-edit:${comment.id}`, edit);
+        comments.push(comment);
+        markSeen([comment]);
+        posted = comment.id;
+        render();
+      })
+      .catch(() => ((draft = { anchor }), render())); // couldn't post: the usual box, so nothing is lost
+  }
   async function send(payload) {
     const res = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ page, ...payload }) });
     const data = await res.json().catch(() => ({}));
@@ -1219,6 +1250,9 @@
   function drawList() {
     const all = threads();
     listBtn.hidden = !on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
+    goBtn.hidden = !on;
+    goBtn.classList.toggle('on', goMode);
+    goBtn.setAttribute('aria-pressed', String(goMode));
     const freshAll = all.filter((c) => !c.resolved && !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
     listBtn.textContent = freshAll ? `list · ${freshAll} new` : 'list';
     listBtn.classList.toggle('has-new', freshAll > 0);
@@ -1968,6 +2002,7 @@
     render();
   };
   toggleBtn.addEventListener('click', () => setOn(!on));
+  goBtn.addEventListener('click', () => setGo(!goMode));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
   const showAgain = () => {
     if (on) return;
@@ -2030,6 +2065,12 @@
     if ((e.key === 'c' || e.key === 'C' || e.code === 'KeyC') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!on);
+      return;
+    }
+    // V switches between go and comment.
+    if (on && (e.key === 'v' || e.key === 'V' || e.code === 'KeyV') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      setGo(!goMode);
       return;
     }
     // The list's keys, with comments shown and nothing typed: L list, J/K next/previous, R reply, E resolve.
@@ -2130,8 +2171,7 @@
     if (Math.abs(d.x1 - d.x0) < 12 || Math.abs(d.y1 - d.y0) < 12) return;
     showAgain();
     openId = null;
-    draft = { anchor: zoneAnchor(d) };
-    render();
+    begin(zoneAnchor(d));
   };
   document.addEventListener('pointerup', endDrag, true);
   document.addEventListener('pointercancel', endDrag, true);
@@ -2414,8 +2454,7 @@
           setTimeout(() => (afterDrag = false), 800);
           showAgain();
           openId = null;
-          draft = { anchor: anchorAt(x, y) };
-          render();
+          begin(anchorAt(x, y));
         }, 500),
       };
     },
@@ -2486,8 +2525,7 @@
     selChip.hidden = true;
     showAgain();
     openId = null;
-    draft = { anchor };
-    render();
+    begin(anchor);
     return true;
   };
   selChip.addEventListener('click', (e) => {
@@ -2514,8 +2552,7 @@
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     if (String(getSelection?.() || '').trim()) return;
     showAgain();
-    draft = { anchor: anchorAt(e.clientX, e.clientY) };
-    render();
+    begin(anchorAt(e.clientX, e.clientY));
   }
 
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
