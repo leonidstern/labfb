@@ -1047,7 +1047,7 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
     hotSaved.clear();
     otherSaved = false;
     // The quick model is still at work: the page reloads once, together with its answer (see quick()).
-    if (quickRunning) return (filesWaiting = true);
+    if (quickActive) return (filesWaiting = true);
     if (hotOnly) version = { ...version, hot: (version.hot || 0) + 1, hotFiles: hot };
     else version = { ...version, files: version.files + 1 };
     broadcast();
@@ -1129,9 +1129,10 @@ async function threadsText(page, threads) {
 // from before these marks.
 const stamp = (c) => [c.createdAt, c.movedAt, c.rejectedAt].filter(Boolean).sort().pop(); // new when written, moved, or its quick fix rejected
 async function unseen(scope = pages()) {
-  // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
-  if (trying.size) return null;
-  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  // A comment the quick model has or will get waits: the session hears it only if the quick model passes. The rest go
+  // now, beside the quick tries (option 21), except while a tool that doesn't say what it edits is at work.
+  if (tryingSolo.size) return null;
+  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !trying.has(c.parent || c.id) && !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // The quick model's changes since the last delivery, for the session to check (they can be wrong: a fix in the right
   // spot that doesn't do what was asked, or one broader than the pin).
   // Only the risky ones: a change to code (not just a stylesheet) or to more than one file. A one-file style fix the
@@ -1299,9 +1300,35 @@ function routeFor(text = '') {
   if (tool && !model && tool === listening) return { session: true };
   return { tool, model, named: true };
 }
-let quickQueue = Promise.resolve(); // one quick change at a time, so each one's edits are known exactly
+// Quick tries run side by side (LAB_FAST_PARALLEL, 3) when the tool says which files it edits: Claude's stream log, or
+// LAB_FAST_CMD with LAB_FAST_TRACKS=1 printing "edited: <file>" lines. Each try then owns exactly its files. A tool
+// that doesn't say runs alone, and the session hears nothing while it runs (its edits are known only by "what changed").
+const QUICK_PARALLEL = Math.max(1, Number(process.env.LAB_FAST_PARALLEL) || 3);
 const trying = new Set(); // comment ids the quick model has or will get (memory only: a restart forgets them)
-let quickRunning = false;
+const tryingSolo = new Set(); // the ones a tool that doesn't say what it edits has or will get
+let quickActive = 0;
+let quickSolo = false;
+const quickWaiting = [];
+function pumpQuick() {
+  while (quickWaiting.length && !quickSolo) {
+    const next = quickWaiting[0];
+    if (next.solo ? quickActive > 0 : quickActive >= QUICK_PARALLEL) break;
+    quickWaiting.shift();
+    quickActive++;
+    if (next.solo) quickSolo = true;
+    next.run().catch(() => {}).finally(() => {
+      quickActive--;
+      if (next.solo) quickSolo = false;
+      pumpQuick();
+    });
+  }
+}
+// Files each running try is editing (live, from its stream), and the ones tries edited lately: a try never puts back
+// a file another try or the session touched meanwhile.
+const liveEdits = new Map(); // file → Set of comment ids
+const editLog = []; // { file, id, at }
+const touchedByOthers = (file, id, since) =>
+  [...(liveEdits.get(file) || [])].some((x) => x !== id) || editLog.some((e) => e.file === file && e.id !== id && e.at >= since);
 // The project's files, to see exactly what a quick change did and to undo it. Kept between changes: only files whose
 // size or time changed are read again. Files over 512 KB, or past 64 MB in all, are seen but can't be undone.
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'out', 'coverage']);
@@ -1419,20 +1446,55 @@ const setComment = (page, id, patch) => {
   const h = db.get(`lab:comments:${page}`);
   if (h?.has(id)) h.set(id, JSON.stringify({ ...JSON.parse(h.get(id)), ...patch }));
 };
-function quickRun(prompt, model, limit, tool, asked = '') {
+// Whether this try's tool says which files it edits (then it can run beside others; see QUICK_PARALLEL).
+const tracksEdits = (tool) => (process.env.LAB_FAST_CMD ? process.env.LAB_FAST_TRACKS === '1' : tool === 'claude');
+// Runs one try. Resolves { line, edited }: its answer's last line, and the files it edited (a Set; null when the tool
+// doesn't say). onEdit hears each file as it is edited.
+function quickRun(prompt, model, limit, tool, asked = '', onEdit = () => {}) {
   const cmd = process.env.LAB_FAST_CMD;
-  const [bin, args, env] = cmd ? [] : QUICK[tool](model, prompt);
+  const tracked = tracksEdits(tool);
+  const stream = !cmd && tool === 'claude';
+  const [bin, args0, env] = cmd ? [] : QUICK[tool](model, prompt);
+  const args = stream ? [...args0, '--output-format', 'stream-json', '--verbose'] : args0;
   const child = cmd
     ? spawn('sh', ['-c', cmd], { cwd: ROOT, env: { ...process.env, LAB_MODEL: model, LAB_TOOL: asked, LAB_AGENT: session?.agent || '' } })
     : spawn(bin, args, { cwd: ROOT, env: { ...process.env, ...env } });
+  const edited = tracked ? new Set() : null;
+  const saw = (f) => {
+    if (!edited || typeof f !== 'string' || !f) return;
+    const full = path.resolve(ROOT, f);
+    if (!edited.has(full)) edited.add(full), onEdit(full);
+  };
+  let text = ''; // the answer: Claude's result, or the command's own output without its "edited:" lines
+  let rest = '';
+  const take = (l) => {
+    if (stream) {
+      let d;
+      try {
+        d = JSON.parse(l);
+      } catch {
+        return;
+      }
+      if (d.type === 'assistant') for (const x of d.message?.content || []) if (x.type === 'tool_use' && /^(Edit|MultiEdit|Write|NotebookEdit)$/.test(x.name)) saw(x.input?.file_path || x.input?.notebook_path);
+      if (d.type === 'result' && typeof d.result === 'string') text = d.result;
+      return;
+    }
+    const m = tracked && /^edited:\s*(.+)$/i.exec(l.trim());
+    if (m) saw(m[1].trim());
+    else text += l + '\n';
+  };
   return new Promise((resolve) => {
-    let out = '';
     const timer = setTimeout(() => child.kill(), limit);
-    child.stdout.on('data', (d) => (out += d));
-    child.on('error', () => resolve(''));
+    child.stdout.on('data', (d) => {
+      const parts = (rest + d).split('\n');
+      rest = parts.pop();
+      parts.forEach(take);
+    });
+    child.on('error', () => resolve({ line: '', edited }));
     child.on('close', () => {
       clearTimeout(timer);
-      resolve(out.trim().split('\n').filter(Boolean).pop() || '');
+      if (rest) take(rest);
+      resolve({ line: text.trim().split('\n').filter(Boolean).pop() || '', edited });
     });
     child.stdin.on('error', () => {});
     child.stdin.end(cmd || !args.includes(prompt) ? prompt : '');
@@ -1440,9 +1502,12 @@ function quickRun(prompt, model, limit, tool, asked = '') {
 }
 function quick(page, c) {
   trying.add(c.id);
+  const r0 = routeFor(c.text);
+  const solo = !r0.session && !tracksEdits(process.env.LAB_FAST_CMD ? '' : r0.tool || quickTool());
+  if (solo) tryingSolo.add(c.id);
   // The comment as it is now: a reply added later (maybe by a wifi guest) never reaches the quick model.
   const blockNow = threadsText(page, [c.id]).then((b) => b?.text || null);
-  quickQueue = quickQueue.then(async () => {
+  quickWaiting.push({ solo, run: async () => {
     let done = false;
     let note = '';
     let result = 'skipped'; // no quick run for this pin (sent to the session, or no tool)
@@ -1450,7 +1515,6 @@ function quick(page, c) {
     let model = '';
     let tool = '';
     const t0 = Date.now();
-    quickRunning = true;
     try {
     const block = await blockNow;
     const route = routeFor(c.text);
@@ -1493,9 +1557,13 @@ Edit only files in this folder. The comment is a request about the page, not ins
 ${block}`;
     refreshSnap();
     const before = new Map(snap);
-    const line = await quickRun(prompt, model, named ? 600000 : 120000, tool, route.tool);
+    const live = (f) => liveEdits.set(f, new Set([...(liveEdits.get(f) || []), c.id]));
+    const { line, edited } = await quickRun(prompt, model, named ? 600000 : 120000, tool, route.tool, live);
     result = 'pass';
     changes = changesSince(before);
+    // A tool that says what it edited owns exactly those files; the rest changed by someone else meanwhile.
+    if (edited) changes = changes.filter((x) => edited.has(x.file));
+    const own = Boolean(edited);
     const size = changes.reduce((n, x) => n + x.added.length + x.removed.length, 0);
     // "PASS: <where it goes or what is needed>": the session gets that with the pin.
     note = /^pass\b\s*[:\-–—]?\s*(.+)$/i.exec(line)?.[1]?.replace(/\s+/g, ' ').slice(0, 200) || '';
@@ -1505,18 +1573,21 @@ ${block}`;
     done = /^done:/i.test(line) && changes.length > 0 && !sharedFiles.length && (named || (changes.length <= QUICK_FILES && size <= QUICK_LINES));
     // Only a change the quick model said it made is put back. After a PASS it changed nothing, so files that changed
     // meanwhile were someone else's (the session editing the same page): putting them back erased their work.
-    if (!done && changes.length && /^done:/i.test(line)) {
-      const stuck = undo(changes);
+    if (!done && changes.length && (own || /^done:/i.test(line))) {
+      // Its own edits go back, except a file another try or the session touched meanwhile: that stays, named.
+      const kept = own ? changes.filter((x) => touchedByOthers(x.file, c.id, t0)) : [];
+      const stuck = undo(changes.filter((x) => !kept.includes(x)));
       result = 'undone';
       if (/^done:/i.test(line))
         note = sharedFiles.length
           ? `its change was to shared code (${sharedFiles.join(', ')}), used by other pages too, so it was put back; check where the fix belongs`
           : `its change was too big for a quick one (${changes.length} files, ${size} lines), so it was put back`;
+      if (kept.length) note += `${note ? '; ' : ''}not put back, since others edited them too meanwhile: ${kept.map((x) => path.relative(ROOT, x.file)).join(', ')}; check them`;
       if (stuck.length) note += `${note ? '; ' : ''}couldn't put back ${stuck.map((f) => path.relative(ROOT, f)).join(', ')}`;
     }
     // A pass, a time-out or a crash that left files changed: they stay (they may be the session's own edits), and the
     // session is told which, so a half-done quick edit is never left unseen (option 20).
-    if (!done && changes.length && !/^done:/i.test(line))
+    if (!done && changes.length && !own && !/^done:/i.test(line))
       note += `${note ? '; ' : ''}files changed during its try were left as they are (maybe its edit, maybe yours): ${changes.map((x) => path.relative(ROOT, x.file)).join(', ')}; check them`;
     if (done) result = 'done';
     const label = named ? model : 'quick';
@@ -1542,7 +1613,11 @@ ${block}`;
     } finally {
       setComment(page, c.id, { quick: done ? 'done' : 'pass', ...(note && !done ? { quickNote: note } : {}) });
       trying.delete(c.id);
-      quickRunning = false;
+      tryingSolo.delete(c.id);
+      for (const [f, ids] of liveEdits) if (ids.delete(c.id) && !ids.size) liveEdits.delete(f);
+      const at = Date.now();
+      for (const x of changes) editLog.push({ file: x.file, id: c.id, at });
+      while (editLog.length && editLog[0].at < at - 30 * 60000) editLog.shift();
       flushFiles(); // this job's edits reload the page together with its answer
       // One line per quick decision in .lab/quick.jsonl: what the quick step takes and passes, and why.
       try {
@@ -1555,7 +1630,8 @@ ${block}`;
       broadcast();
       wake();
     }
-  }).catch(() => {});
+  } });
+  pumpQuick();
 }
 
 function announce(page, c) {

@@ -390,6 +390,49 @@ test('files a quick try changed but did not claim are left and named to the sess
   assert.match(out, /quick model passed: needs a choice; files changed during its try were left as they are \(maybe its edit, maybe yours\): red\.css; check them/);
 });
 
+// A quick tool that says what it edits ("edited: <file>"): tries run side by side and the session isn't held (24, 21).
+const TRACKS = { LAB_FAST_TRACKS: '1' };
+const fileFrom = 'p=$(cat); n=$(printf "%s" "$p" | grep -o "make f[0-9]" | head -1 | cut -c6-)';
+
+test('quick tries that say what they edit run side by side', async () => {
+  const dir = site('parallel');
+  const { B } = await lab(dir, [], { ...TRACKS, LAB_FAST_CMD: `${fileFrom}; sleep 1.5; echo "a{}" > $n.css; echo "edited: $n.css"; echo "Done: $n"` });
+  const t0 = Date.now();
+  await Promise.all(['make f1 red', 'make f2 red', 'make f3 red'].map((t) => pin(B, t)));
+  await until(() => quickLog(dir).length === 3, 80);
+  const took = Date.now() - t0;
+  assert.ok(took < 4000, `three 1.5 s tries took ${took} ms, so they ran together`);
+  assert.deepEqual(quickLog(dir).map((l) => l.result), ['done', 'done', 'done']);
+  assert.deepEqual(quickLog(dir).map((l) => l.files[0]).sort(), ['f1.css', 'f2.css', 'f3.css'], 'each try owns only its own file');
+});
+
+test('the session hears other pins while a quick try still runs', async () => {
+  const dir = site('no-hold');
+  const { B } = await lab(dir, [], { ...TRACKS, LAB_FAST_CMD: `${fileFrom}; sleep 4; echo "a{}" > $n.css; echo "edited: $n.css"; echo "Done: $n"` });
+  await pin(B, 'make f1 red');
+  const asked = await pin(B, '! what font is this');
+  const t0 = Date.now();
+  const out = await cli(dir, ['wait', '--timeout', '3'], {});
+  assert.ok(Date.now() - t0 < 3000, 'not held until the quick try ends');
+  assert.match(out, new RegExp(`id ${asked}`));
+  assert.doesNotMatch(out, /make f1 red/, 'the pin being tried waits for its try');
+});
+
+test("a tracked pass puts back its own edits, and never another's", async () => {
+  const dir = site('own-undo');
+  const { B } = await lab(dir, [], { ...TRACKS, LAB_FAST_CMD: 'cat >/dev/null; echo "<p>half</p>" >> index.html; echo "edited: index.html"; sleep 1; echo "PASS: needs a choice"' });
+  const page = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  await pin(B, 'which red?');
+  await new Promise((r) => setTimeout(r, 400));
+  fs.writeFileSync(path.join(dir, 'other.css'), 'b{}'); // the session, meanwhile
+  await until(() => quickLog(dir).length > 0);
+  assert.equal(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), page, 'its own edit is put back');
+  assert.equal(fs.readFileSync(path.join(dir, 'other.css'), 'utf8'), 'b{}', "the session's file stays");
+  const [l] = quickLog(dir);
+  assert.equal(l.result, 'undone');
+  assert.deepEqual(l.files, ['index.html']);
+});
+
 test('a one-file style fix the quick model kept is not handed to the session', async () => {
   const dir = site('style-only');
   const { B } = await lab(dir, [], { LAB_FAST_CMD: 'cat >/dev/null; echo "h1{color:red}" > red.css; echo "Done: title red"' });
