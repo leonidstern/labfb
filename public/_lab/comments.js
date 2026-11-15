@@ -1158,17 +1158,27 @@
     const r = range.getBoundingClientRect();
     return r.width || r.height ? { left: r.left + scrollX + Math.min(6, r.width / 2), top: r.top + scrollY + r.height / 2 } : { gone: true };
   }
+  // A pin kept at its old spot never sits below the page's end (the page got shorter, say after a cleanup): it moves up
+  // to just above the end, so it doesn't make the page longer. The end is the page's own content, not the pins' layer.
+  let pageEnd = { at: 0, y: 0 };
+  const inPage = (y, h = 0) => {
+    if (performance.now() - pageEnd.at > 300) {
+      const bottoms = [...document.body.children].filter((c) => c !== host && !host.contains(c)).map((c) => c.getBoundingClientRect().bottom + scrollY);
+      pageEnd = { at: performance.now(), y: Math.max(innerHeight, ...bottoms) };
+    }
+    return Math.max(0, Math.min(y, pageEnd.y - h - 40));
+  };
   function position(anchor) {
     const node = findTarget(anchor);
     if (node && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && /\[[^\]]+\]/.test(anchor.text || '')) {
       const spot = wordSpot(anchor);
       if (spot && !spot.gone) return { left: spot.left, top: spot.top, zone: null };
-      if (spot?.gone) return { left: anchor.docX * docWidth(), top: anchor.docY, zone: null, moved: true };
+      if (spot?.gone) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY), zone: null, moved: true };
     }
     // On a big container with no word to find: if the container's height changed since, the share of it no longer points
     // at the same thing, so the pin keeps its old place and shows faded as moved rather than pointing at something else.
     if (node && anchor.eh && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && !/\[[^\]]+\]/.test(anchor.text || '')) {
-      if (Math.abs(node.getBoundingClientRect().height - anchor.eh) > 40) return { left: anchor.docX * docWidth(), top: anchor.docY, zone: null, moved: true };
+      if (Math.abs(node.getBoundingClientRect().height - anchor.eh) > 40) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY), zone: null, moved: true };
     }
     if (node) {
       const rect = node.getBoundingClientRect();
@@ -1180,7 +1190,7 @@
       }
     }
     const left = anchor.docX * docWidth();
-    const top = anchor.docY;
+    const top = inPage(anchor.docY, anchor.docH || 0);
     const zone = anchor.docW ? { left, top, width: anchor.docW, height: anchor.docH } : null;
     // Anchored to the page itself (a margin, or an area wider than any element): nothing has moved.
     return { left, top, zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
