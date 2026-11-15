@@ -10,7 +10,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
   - Pins leave out details agents rarely use (computed looks, colours, window size, CSS path); they stay in the full text at `/_lab/agent/<page>`.
   - `reply … --wait` answers and listens again in one command.
 - Done shows as a small green ✓ beside the name (like the ticks on messages), not "✅ done".
-- A thread's reply box is the chat's: soft grey, no border.
+- A thread's reply box is the chat's: soft grey, no border; the new comment box drops its border too and keeps only a soft shadow so it stands out on the page.
 - Phones on their side get the same sheets as upright (they used to get the computer's floating chat, which a tap outside didn't close and which couldn't be pulled up).
 - Phones: tapping a pin moves the page so the pin sits above its thread sheet instead of under it.
 - Router, narrowed after the big benchmark (v5 put back 15 fixes a run, 11 of them wrongly):
