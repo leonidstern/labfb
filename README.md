@@ -89,6 +89,7 @@ Without Claude, run `npx @leonidstern/labfb` in your project:
 - **One lab per project:** `npx @leonidstern/labfb list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
 - **This project's pages:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx @leonidstern/labfb add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
 - **Pick the model in the pin:** write "use fable", "@opus" or "sonnet: …" and that model makes the change. Start with `!` (or write `@claude`) to send it straight to the Claude session. Other pins go to the quick model first.
+- **MCP (optional):** `npx @leonidstern/labfb mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code: `claude mcp add labfb -- npx @leonidstern/labfb mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
 - **Options:** `--no-fast` turns off the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
@@ -97,6 +98,7 @@ Without Claude, run `npx @leonidstern/labfb` in your project:
 labfb isn't tied to Claude. Comments are plain text and the local loop is a few shell commands, so any agent that can read a link or use a terminal works: Codex, Cursor, Gemini CLI, or a script.
 
 - **Cloud lab:** give the agent the `/_lab/agent/<page path>` link. It's plain text with every open comment.
+- **Agents with MCP but no terminal:** add `npx @leonidstern/labfb mcp` as an MCP server (stdio).
 - **Local lab:** paste the prompt from [Local lab](#local-lab) into your agent. It uses only `npx @leonidstern/labfb`, `wait`, `reply` and `pages`.
 - **Its name on the page:** set `LAB_AGENT_NAME=Codex` where the agent runs `reply`, and its replies are signed "Codex" instead of "Claude". `wait --name "my project"` (or `LAB_SESSION_NAME`) is the name the page shows while it listens.
 - **Quick model with another tool:** `LAB_FAST_CMD` replaces the `claude` command. It runs in the project folder, gets the prompt on stdin and the model a pin asked for in `LAB_MODEL`, and its last line is the answer: `Done: <what changed>` or `PASS`.
