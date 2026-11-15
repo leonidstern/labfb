@@ -175,7 +175,8 @@
       .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
              background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
       /* The new comment box: the chat's box (no border), with only a soft shadow so it stands out on any page. */
-      .float .box, .float .box:focus-within { box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
+      /* The new comment box has the pins' 1 px edge in the text colour, so it shows on white and black pages alike. */
+      .float .box, .float .box:focus-within { box-shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 28%, transparent), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
       .card .box { background: var(--_soft); border-radius: var(--_radius); margin: 0; }
       .card .box, .card .box.open, .card .box:focus-within { box-shadow: none; } /* the same box as the chat's: soft grey, no border */
       /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
