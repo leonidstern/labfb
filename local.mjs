@@ -803,7 +803,8 @@ let origin = '';
 const agentText = async (page) => {
   const res = await api.GET(new Request(`http://localhost/api?format=text&page=${encodeURIComponent(page)}`, { headers: { host: 'localhost' } }));
   const text = (await res.text()).replaceAll('https://localhost', origin);
-  const local = text.replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
+  // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
+  const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   return fileFor(page) ? local.replace(/^(page: .*)$/m, `$1\nfile: ${fileFor(page)}`) : local;
 };
 

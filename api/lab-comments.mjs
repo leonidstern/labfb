@@ -132,7 +132,7 @@ function cleanAnchor(a) {
     imgX2: Number.isFinite(a.imgX2) ? num(a.imgX2) : undefined,
     imgY2: Number.isFinite(a.imgY2) ? num(a.imgY2) : undefined,
     zoneText: clean(a.zoneText, 300) || undefined,
-    zoneItems: Array.isArray(a.zoneItems) ? a.zoneItems.slice(0, 6).map((v) => clean(v, 300)).filter(Boolean) : undefined,
+    zoneItems: Array.isArray(a.zoneItems) ? a.zoneItems.slice(0, 6).map((v) => clean(v, 500)).filter(Boolean) : undefined,
     shadow: clean(a.shadow, 200) || undefined,
     component: clean(a.component, 200) || undefined,
     source: clean(a.source, 200) || undefined,

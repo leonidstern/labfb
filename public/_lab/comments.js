@@ -883,7 +883,7 @@
       anchor.zoneItems = inArea.slice(0, 5).map((el) => {
         const c = componentAt(el);
         const t = short(el.textContent, 50);
-        return short([openingTag(el), t && `"${t}"`, c.component, c.source && `written at ${c.source}`, c.usedAt && `used at ${c.usedAt}`].filter(Boolean).join(' · '), 300);
+        return short([openingTag(el), t && `"${t}"`, c.component, c.source && `written at ${c.source}`, c.usedAt && `used at ${c.usedAt}`].filter(Boolean).join(' · '), 500);
       });
       if (inArea.length > 5) anchor.zoneItems.push(`and ${inArea.length - 5} more`);
     }
