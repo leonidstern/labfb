@@ -4,6 +4,11 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Lighter talk between the lab and the agent:
+  - A reply in a thread the agent already has comes as one line (the new words, the thread's id and what it's about), not the whole thread again.
+  - A new pin wakes the agent after 2 s of quiet (`LAB_SETTLE_MS`), so a quick run of pins goes over together.
+  - Pins leave out details agents rarely use (computed looks, colours, window size, CSS path); they stay in the full text at `/_lab/agent/<page>`.
+  - `reply … --wait` answers and listens again in one command.
 - Done shows as a small green ✓ beside the name (like the ticks on messages), not "✅ done".
 - A thread's reply box is the chat's: soft grey, no border.
 - Phones on their side get the same sheets as upright (they used to get the computer's floating chat, which a tap outside didn't close and which couldn't be pulled up).

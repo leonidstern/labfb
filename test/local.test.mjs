@@ -115,3 +115,19 @@ test('read marks are shared by name: a phone and a Mac with the same name see th
   assert.equal((await mark({ page: '/index', ids: ['x'] })).status, 400);
   assert.equal((await fetch(B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' })).status, 403, 'other sites cannot post');
 });
+
+test('a reply in a thread the agent has gets only the new words; reply --wait answers and listens in one go', async () => {
+  await up();
+  const { comment } = await post({ page: '/index', name: 'Leo', text: 'make the heading bigger', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', looks: 'text 32px', viewport: '1000×800' } });
+  const first = await run(['wait', '--timeout', '5']);
+  assert.match(first.out, /make the heading bigger/);
+  assert.doesNotMatch(first.out, /^looks:|^viewport:/m, 'rare details stay in the full text');
+  const waiting = run(['reply', comment.id, 'On it', '--wait', '--timeout', '10']);
+  await new Promise((r) => setTimeout(r, 600));
+  await post({ page: '/index', name: 'Leo', text: 'and make it blue', parent: comment.id });
+  const out = (await waiting).out;
+  assert.match(out, /^Replied on \/index\./m);
+  assert.match(out, /^# New replies/m);
+  assert.match(out, new RegExp(`thread id ${comment.id} "make the heading bigger": Leo · .* · id \\w+: and make it blue`));
+  assert.doesNotMatch(out, /^## /m, 'not the whole thread again');
+});

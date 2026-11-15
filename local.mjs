@@ -54,8 +54,8 @@ For the agent, from the project (any folder under it):
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
       An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
-  labfb reply <id> "what you did" [--resolve] [--page /path]
-      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread.
+  labfb reply <id> "what you did" [--resolve] [--wait] [--page /path]
+      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread; --wait listens again right after.
   labfb resolve <id> [--page /path]
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments.json (the store),
@@ -67,7 +67,7 @@ const opts = {};
 const pos = [];
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
-const SWITCHES = ['--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--all'];
+const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--fast', '--no-fast', '--new', '--all'];
 const VALUED = ['--port', '--name', '--page', '--timeout', '--dir', '--proxy'];
 const unknownFlags = [];
 for (let i = 0; i < argv.length; i++) {
@@ -575,6 +575,11 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
     if (out.status >= 300) die(`Could not resolve: ${out.text}`);
   }
   console.log(`${cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
+  // --wait: answer and listen again in one command (one round trip less per pin).
+  if (opts.wait) {
+    const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500 });
+    console.log(out.status === 204 ? 'No new comments yet. Run wait again to keep listening.' : out.status === 409 ? 'Another session is listening now; this one stopped.' : out.status === 410 ? 'The page was closed, so this stopped listening.' : out.text);
+  }
   process.exit(0);
 }
 
@@ -984,7 +989,10 @@ setInterval(pagesChanged, 60000).unref();
 async function threadsText(page, threads) {
   const text = await agentText(page);
   const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file):/.test(l)).join('\n');
-  const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`)));
+  // Lean: details an agent rarely needs (computed looks, colours, window size, the CSS path) stay in the full text at
+  // /_lab/agent/<page>; the pin's words, element, text, section and file stay here.
+  const RARE = /^(looks|colours|viewport|selector \(at comment time\)):/;
+  const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`))).map((b) => b.split('\n').filter((l) => !RARE.test(l)).join('\n'));
   const ids = threads.filter((id) => parts.some((b) => b.split('\n')[0].endsWith(`· id ${id}`)));
   return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids } : null;
 }
@@ -1006,17 +1014,34 @@ async function unseen() {
   if (!fresh.length && !quickDone.length) return null;
   const blocks = [];
   const sent = new Set(); // page + thread id actually written into the text
-  for (const page of new Set(fresh.map((f) => f.page))) {
-    const block = await threadsText(page, [...new Set(fresh.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
+  // A reply in a thread the agent already has: only the new words and one line on what the thread is about, not the
+  // whole thread again (the full one is at /_lab/agent/<page>).
+  const known = (f) => {
+    if (!f.c.parent) return false;
+    const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
+    return Boolean(root?.deliveredAt) && !fresh.some((g) => g.c.id === root.id);
+  };
+  const replies = fresh.filter(known);
+  const whole = fresh.filter((f) => !known(f));
+  for (const page of new Set(whole.map((f) => f.page))) {
+    const block = await threadsText(page, [...new Set(whole.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
     if (block) blocks.push(block.text), block.ids.forEach((id) => sent.add(`${page}\n${id}`));
   }
+  const when = (c) => `${new Date(c.createdAt).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  const lines = [];
+  for (const f of replies) {
+    const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
+    lines.push(`- ${f.page} · thread id ${root.id} "${root.text.replace(/\s+/g, ' ').slice(0, 70)}": ${f.c.name} · ${when(f.c)} · id ${f.c.id}: ${f.c.text.replace(/\s+/g, ' ')}`);
+    sent.add(`${f.page}\n${root.id}`);
+  }
+  if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
   const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
   if (!given.length && !quickDone.length) return null;
   const check = quickDone.length
     ? `# Quick changes to check\nThe quick model made these. For each, open the change: does it do what the pin asked, in the right place, and nothing broader (shared code, other pages)? If not, fix it and reply on its pin; if it's right, leave it.\n${quickDone.map(({ page, c }) => `- id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 80)}" (${page}): ${c.quickDiff}`).join('\n')}`
     : '';
   const text = [blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '', check].filter(Boolean).join('\n\n') +
-    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}), then wait again.`;
+    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = [...given, ...quickDone].map(({ page, c }) => [page, c.id, stamp(c)]);
@@ -1031,7 +1056,16 @@ function deliver(res, got) {
   for (const page of new Set([...got.marks, ...got.handed].map(([page]) => page))) persist(page).catch(() => {});
   setMode('working');
 }
-async function wake() {
+// A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made in a quick run go over
+// together, in one round trip, instead of one wake-up each.
+const SETTLE_MS = Number(process.env.LAB_SETTLE_MS ?? 2000);
+let settleTimer = null;
+function wake() {
+  if (!waiter) return;
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(wakeNow, SETTLE_MS);
+}
+async function wakeNow() {
   if (!waiter) return;
   const got = await unseen();
   if (!got?.text || !waiter) return;
