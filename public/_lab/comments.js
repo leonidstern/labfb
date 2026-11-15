@@ -224,6 +224,7 @@
       .list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
       .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
       /* Close: a round, quiet button with a drawn cross (not the ✕ character), darker on hover. */
+      .list .tabs .show-done { color: var(--_muted); }
       .list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
                        font-size: 0; color: var(--_muted); background: transparent; }
       .list .tabs .x::before { content: ''; width: 11px; height: 11px; background: currentColor;
@@ -391,7 +392,7 @@
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
     <div class="hint" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · v for go · m to hide</div>
-    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
+    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b><button type="button" class="x" aria-label="close">✕</button></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -413,6 +414,8 @@
   const listBtn = root.querySelector('.list-btn');
   const goBtn = root.querySelector('.go-btn');
   const newPrev = root.querySelector('.new-prev');
+  const showDoneBtn = root.querySelector('.show-done');
+  let showDone = store.get('lab-show-done') === '1';
   const newNext = root.querySelector('.new-next');
   const sendBtn = root.querySelector('.send-all');
   const listEl = root.querySelector('.list');
@@ -1369,6 +1372,9 @@
     // Just new and open for now; work, resolved, mine and draft mode stay in the code, hidden.
     for (const f of ['work', 'resolved', 'mine']) listEl.querySelector(`[data-f="${f}"]`).hidden = true;
     holdBtn.hidden = !DRAFT_MODE;
+    const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
+    showDoneBtn.hidden = !doneCount;
+    showDoneBtn.textContent = showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`;
     holdBtn.classList.toggle('on', drafting());
     if (filter === 'work') return listEl.querySelector('.items').replaceChildren(...workItems());
     const items = listed().map((c) => {
@@ -1794,6 +1800,8 @@
 
     list.forEach((c) => {
       if (isPage(c)) return; // in the chat, not on the page
+      // Done pins with nothing new in them step aside (the list's "done" button shows them again); an open one stays.
+      if (!showDone && openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
       if (openId === c.id) drawZone(zone, `saved${anim}`); // a drawn area shows its outline while open
       const news = unread(c);
@@ -2142,6 +2150,11 @@
     goTo(fresh[at < 0 ? (dir > 0 ? 0 : fresh.length - 1) : (at + dir + fresh.length) % fresh.length]);
   };
   newPrev.addEventListener('click', () => stepNew(-1));
+  showDoneBtn.addEventListener('click', () => {
+    showDone = !showDone;
+    store.set('lab-show-done', showDone ? '1' : '');
+    render();
+  });
   newNext.addEventListener('click', () => stepNew(1));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
   const showAgain = () => {

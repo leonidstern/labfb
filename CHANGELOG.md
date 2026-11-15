@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Done pins with nothing new in them are hidden on the page; "show done · N" in the list brings them back (remembered per browser). A done pin with a new reply shows as usual.
 - A wait's message starts with what it holds ("In this message: 3 new, 1 reply"), so an agent that only read part of it can tell something is missing.
 - A safety net for missed pins: a thread handed to the agent more than 3 minutes ago (`LAB_REMIND_MS`) that still has no answer after the person's last words comes back in the next wait, under "Still waiting for your answer", at most every 10 minutes.
 - Chat: a reply shows what it answers, as in Telegram (the name and the start of that message, a green bar beside it); a tap there jumps to it.
