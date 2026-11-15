@@ -215,3 +215,8 @@ test('a newer version on npm is announced as the lab starts', async () => {
   assert.match(out, /labfb 99\.0\.0 is out \(you have [\d.]+\): npx @leonidstern\/labfb@latest/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('the npm package ships the widget and the lab screens\' stylesheet', () => {
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const f of ['public/_lab/comments.js', 'public/_lab/lab.css']) assert.ok(pkg.files.includes(f), `${f} is in package.json files`);
+});

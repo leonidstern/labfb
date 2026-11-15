@@ -11,6 +11,7 @@
     "lib/",
     "api/",
     "public/_lab/comments.js",
+    "public/_lab/lab.css",
     "skills/",
     ".claude-plugin/",
     "CHANGELOG.md"
