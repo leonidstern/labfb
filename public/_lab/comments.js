@@ -200,10 +200,11 @@
       .send.ready:active { transform: scale(.94); }
       .send.ready { background: var(--_accent); color: var(--_accent-fg); }
       /* The arrow: three round-ended bars, whole-pixel sizes. The element is the stem; the two arms hang from the
-         centre of its top cap and swing out 45°, so all three meet in one round tip (no seam, no square ends, no blur). */
-      .send .arr { position: relative; display: block; width: 2px; height: 12px; border-radius: 1px; background: currentColor; }
-      .send .arr::before, .send .arr::after { content: ''; position: absolute; left: 0; top: 0; width: 2px; height: 7px;
-                                              border-radius: 1px; background: currentColor; transform-origin: 1px 1px; }
+         centre of its top cap and swing out 45°, so all three meet in one round tip (no seam, no blur). */
+      /* 1 px lines; left: .5px puts the centred 1 px stem on a whole pixel (it would sit on a half one, and blur). */
+      .send .arr { position: relative; left: .5px; display: block; width: 1px; height: 12px; border-radius: .5px; background: currentColor; }
+      .send .arr::before, .send .arr::after { content: ''; position: absolute; left: 0; top: 0; width: 1px; height: 7px;
+                                              border-radius: .5px; background: currentColor; transform-origin: .5px .5px; }
       .send .arr::before { transform: rotate(45deg); }
       .send .arr::after { transform: rotate(-45deg); }
       .send * { color: inherit; }
