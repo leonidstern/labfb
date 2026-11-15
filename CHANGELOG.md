@@ -4,10 +4,43 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The bar shows "working on 2 · 3 done": what the agent has been handed and not answered yet, and what it answered in the same round, apart from the done/total count of comments. Just to read; it hides when the agent is idle.
+- The list names each pin by what it's on: when the pinned element says little ("4", an icon), the text of the box around it.
+- Phones: holding a link or image no longer starts iOS's drag, which cancelled the hold before the box could open the keyboard.
+- Phones: a sheet follows the finger like a native one: from any part, and from its list or messages when they're at the top; a fast flick or a pull past a third closes it at the finger's speed, else it springs back; pulled up, it stretches a little.
+- Chat: swipe a message left to reply to it (it follows the finger, ↩ shows, the phone ticks), and the box says so: "message · swipe one to reply".
+- Phones: closing the chat or list with the keyboard up no longer jumps: the sheet slides down behind the keyboard, which goes once the sheet is gone.
+- Phones, Safari 26: with the keyboard up, the strip above it around Safari's address pill (where Safari draws nothing fixed) is covered by a solid block in the page, so the page no longer shows under the box; the sheet stays a half sheet above it.
+- A tap anywhere on a message box puts the cursor in it; the box is taller and wider than its one line of text, so taps near its edge used to miss.
+- Chat: your messages show ✓ when sent and ✓✓ once handed to the agent, as in messengers.
+- Phones: the page behind an open sheet no longer scrolls, even when you drag on a part of the sheet with nothing to scroll.
+- The chat closes from the dimmed page even with text in its box (the text stays for next time); a thread or new comment with typed text nudges instead of closing, since closing would lose it.
+- Only "working on N" blinks; the list's dot stays still (listening or away).
 - `labfb pages`: a lab serving this folder hides one serving a folder above it, so the list is this lab's pages, not everything up there.
+- Phones: the keyboard's ^ ˅ step to the previous or next pin while you write a reply, the keyboard staying up.
 - The router, from the big-app benchmark (Haiku said Done on 29 of 30 pins, 25 were right):
   - A quick change to shared code (a file two or more others load, its stylesheet, or a stylesheet that sets :root variables) is put back and goes to the session with why, since it can break pages nobody pinned.
   - The quick model's changes always reach the session as "Quick changes to check", even when no pin was passed, with the ask to check each does what the pin asked and nothing broader.
+- Phones: with the keyboard up, a thread, the list and the chat fill exactly what the screen shows (so iOS can't push them up and no page shows around them); a new comment stays just above the keyboard with the page dimmed above it, so you see what you comment on.
+- Phones: a tap or a swipe down on the dimmed page above a sheet closes it (the tap now also works on iOS Safari).
+- Phones: while a sheet is open, swiping down no longer triggers the browser's pull-to-refresh.
+- The chat holds only its own messages (about the page as a whole) and their replies; pins stay on the page and in the list. Your own comments are never new to you (your name in any case or spacing, or a pin this browser started), and the list tags threads with unread replies with a "2 new" pill. The chat stays at its newest message while the keyboard shortens it.
+- The list button shows how far the agent got: done of all pins ("5/8 ✓": resolved, fixed by the quick model, or answered "Done: …"), and the list marks done threads with ✅.
+- Sending eases the new message or reply in and the arrow flies off; the chat keeps its box (and the phone's keyboard) after a send and only follows new messages while you're at the bottom. Phones: prev / next are thumb-sized and keep the keyboard as it was, and the thread sheet keeps its height while you step.
+- Phone sheets: the thread, list and chat scroll natively and move only from their top (handle and header), so a swipe down never scrolls the messages; the message box is solid down to the screen's edge (behind the home bar and the keyboard too), the page is dimmed past the screen's edges, the ✕ is gone on phones, and sheets slide away when closed. A sheet sits above the keyboard and fits what the screen shows.
+- Phones: the send button works on the first tap with the keyboard open (pressing it no longer takes the cursor out of the box).
+- Opening a thread puts the cursor in its reply box, phones too; in the chat, messages of resolved threads and "Done:" answers carry ✅ by the reply mark; chat messages don't count among the comments.
+- Phone sheets feel native: they slide up, follow the finger down from the header (always) or the top of their content, spring back or slide away (a flick counts), and the dimmed page fades with them.
+- Phone sheets dim the page behind them (a tap there closes them, unless something is typed), never scroll the page, and the chat opens at its newest message.
+- Phones: the comment and name boxes ask for no autofill, autocorrect or writing suggestions; prev / next swap the thread in place (no slide, no keyboard).
+- Whoever started a thread can resolve and reopen it (the key their browser keeps for moving the pin), on a phone too; deleting stays admin-only.
+- Phones: the agent's light sits in the "list" button (steady: listening, blinking: working, grey: nobody) instead of a separate label, and the bar is back at the bottom; the send button is a 36 px circle. On computers the label's light blinks while the agent works.
+- Phones: swipe a sheet down to close it; a thread has ‹ prev, next › and new · 2 ›; a tap on the page puts the cursor in the new comment's box at once.
+- The page waits to reload after a change while a thread, a new comment or the list is open, or a box has focus; it reloads when you close it.
+- A chat ("chat" in the bar): the page's whole conversation in time order, pins (with what they're on) and every reply. A new message is about the page as a whole (no spot, no pin; the agent reads it as "on: the page as a whole"); tap a message to answer it instead. On phones the chat and the list are sheets from the bottom.
+- A comments list ("list · 2 new" in the bar, or L), each comment with a few words of what it's on: new (unread replies), open, resolved (admins) and mine; J/K step through the pins and scroll to each, R replies, E resolves.
+- Draft mode: with "draft mode" on in the list, new pins wait in this browser until "send 3 drafts", so the quick step doesn't start on pin 1 of 10.
+- Phones: a tap only reads; hold a finger still for half a second anywhere to pin (links and buttons too), and the box opens with the keyboard (with comments on, the page's text isn't selectable, so iOS doesn't take the hold for a selection). A new comment or a thread opens as a sheet from the bottom, full width; selected text gets a Comment chip.
 - The quick step, from the fix benchmark:
   - It takes bug reports asked as questions ("why is this here twice?", "nothing happens") and one-line logic slips (a comparison, a rounding, a condition), not only wording and styles. Before, Haiku passed every pin worded as a question.
   - When it passes, it says why ("PASS: needs a change in lib/orders.js"); the session gets that line with the pin.

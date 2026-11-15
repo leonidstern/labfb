@@ -392,3 +392,16 @@ test('quick changes reach the session to check even when no pin was passed', asy
   const again = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.doesNotMatch(again, /Quick changes to check/, 'handed over once');
 });
+
+test('a pin handed to the agent is marked, so the page can show it as being worked on until the agent answers', async () => {
+  const dir = site('handed');
+  const { B } = await lab(dir);
+  const id = await pin(B, 'make it red');
+  await cli(dir, ['wait', '--timeout', '5'], {});
+  const get = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+  const handed = (await get()).find((c) => c.id === id);
+  assert.ok(handed.handedAt, 'marked when handed over');
+  await cli(dir, ['reply', id, 'Done: red'], { CODEX_THREAD_ID: 't1' });
+  const reply = (await get()).find((c) => c.parent === id);
+  assert.ok(reply.session && reply.createdAt >= handed.handedAt, "the agent's answer comes after it");
+});
