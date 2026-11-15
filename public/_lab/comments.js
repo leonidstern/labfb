@@ -1728,7 +1728,7 @@
     const anim = appear ? ' in' : '';
     let quoted = null;
     const done = () => {
-      if (!now && shown && prev && !still.matches && !prev.style.transform) { // not when it already slid away (phones)
+      if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) { // phones slide the sheet away; computers close at once, like the chat // not when it already slid away (phones)
         prev.classList.remove('in');
         prev.classList.add('out');
         prev.inert = true;

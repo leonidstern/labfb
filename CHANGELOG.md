@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- On a computer a thread or new comment closes at once, like the chat (its fade-out flickered); phones still slide the sheet away.
 - Lighter talk between the lab and the agent:
   - A reply in a thread the agent already has comes as one line (the new words, the thread's id and what it's about), not the whole thread again.
   - A new pin wakes the agent after 2 s of quiet (`LAB_SETTLE_MS`), so a quick run of pins goes over together.
