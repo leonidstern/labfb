@@ -26,6 +26,8 @@ import {
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
+import { bindComposer, composer } from './widget/composer.ts';
+import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 
 (() => {
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
@@ -145,6 +147,10 @@ import {
 
   // ---------- anchoring (src/widget/anchoring.ts) ----------
   bindAnchoring({ host, layer, el, store });
+  // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
+  // further down are read when called.
+  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads() });
+  bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), workState: (c) => workState(c) });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -384,25 +390,6 @@ import {
       .filter((c) => c.anchor?.kind !== 'page')
       .filter((c) => (filter === 'new' ? unread(c).length : filter === 'open' ? !c.resolved : filter === 'resolved' ? c.resolved : mine(c)))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  // What a comment is on, in a few words, so the list reads without the page: the quoted words, else the text of the
-  // pinned element or, when that says too little ("4", an icon), of the nearest box around it; else its section.
-  const onWhat = (c) => {
-    const a = c.anchor || {};
-    let w = a.quote?.exact || '';
-    let n = null;
-    try {
-      n = !w && a.selector ? document.querySelector(a.selector) : null;
-    } catch {}
-    for (let up = 0; n && n !== document.body && up < 5; n = n.parentElement, up++) {
-      const t = n.innerText?.replace(/\s+/g, ' ').trim() || '';
-      if (t.length >= 12) {
-        w = t;
-        break;
-      }
-    }
-    w = (w || a.text || a.section || '').replace(/\s+/g, ' ').trim();
-    return w ? `"${w.length > 40 ? `${w.slice(0, 39)}…` : w}"` : '';
-  };
   const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   let stepping = false;
@@ -590,29 +577,6 @@ import {
     (last || bubble).append(room);
     bubble.append(stamp);
   };
-  const stampOf = (m, root, prefix = '') => {
-    const at = new Date(m.createdAt);
-    const time = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' });
-    const stamp = el('span', { class: 'stamp' });
-    stamp.append(el('span', { class: 'tm' }, prefix + time));
-    if (mine(m) && !m.session) {
-      const thread = root ? [root, ...repliesOf(root.id)] : [m];
-      const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
-      const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
-      // The agent is on this very message (its newest one in the thread): the ring, as on the pin. Answered: green ✓.
-      if (!answered && latest && root && workState(root)[0] === 'now') {
-        stamp.classList.add('busy');
-        stamp.append(el('span', { class: 'ring', role: 'img', 'aria-label': 'the agent is on it' }));
-      } else if (answered) {
-        stamp.classList.add('ans');
-        stamp.append(el('span', { class: 'tick', role: 'img', 'aria-label': 'answered' }, '✓'));
-      } else {
-        const got = root?.handedAt && root.handedAt >= m.createdAt;
-        stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, role: 'img', 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
-      }
-    }
-    return stamp;
-  };
   let replyTo = null;
   let newFrom = null;
   function drawChat() {
@@ -773,118 +737,6 @@ import {
     inPage(0);
     return pageEnd.y;
   };
-
-  // The send arrow is drawn with CSS (a stem and a chevron), no picture.
-  const ARROW = '<i class="arr" aria-hidden="true"></i>';
-
-  // One field that grows: a pill while empty, a box with a divider and the name row once you type.
-  function composer({ placeholder, onSubmit, autofocus = false }) {
-    const wrap = el('div', { class: 'composer' });
-    const box = el('div', { class: 'box' });
-    // No autofill or suggestion bar on phones: a comment isn't a form to fill.
-    const text = el('textarea', { placeholder, maxlength: '2000', rows: '1', 'aria-label': placeholder, enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false', writingsuggestions: 'false' });
-    const who = el('label', { class: 'who' });
-    const as = el('span', {}, 'as');
-    const name = el('input', { type: 'text', placeholder: 'your name', maxlength: '60', enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' });
-    name.value = store.get('lab-name');
-    who.append(as, name);
-    const sendBtn = el('button', { class: 'send', type: 'button', 'aria-label': 'send' });
-    // Pressing send keeps the cursor in the box: on phones a blur first drops the keyboard, the sheet moves, and the
-    // tap misses the button.
-    sendBtn.addEventListener('pointerdown', (e) => e.preventDefault());
-    sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
-    sendBtn.innerHTML = ARROW;
-    const error = el('div', { class: 'error' });
-    box.append(text, el('div', { class: 'line' }), who, sendBtn);
-    wrap.append(box, error);
-    // The box is taller than its one line of text: a tap anywhere on it (not the name or send) puts the cursor in, at the end.
-    box.addEventListener('click', (e) => {
-      if (e.target !== box && !e.target.classList?.contains('line')) return;
-      text.focus({ preventScroll: true });
-      text.setSelectionRange(text.value.length, text.value.length);
-    });
-
-    const sync = () => {
-      const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
-      // Opening moves the arrow from the text row to the name row: slide it there while the box grows, no jump.
-      const glide = open !== box.classList.contains('open') && !store.get('lab-name') && box.isConnected && !matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
-      const one = Boolean(store.get('lab-name'));
-      box.classList.toggle('one', one);
-      box.classList.toggle('open', open);
-      as.hidden = !name.value.trim();
-      if (one && !CSS.supports?.('field-sizing', 'content')) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
-      sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
-      text.style.height = 'auto';
-      text.style.height = `${text.scrollHeight}px`;
-      if (glide) {
-        const to = sendBtn.getBoundingClientRect();
-        const timing = { duration: 220, easing: 'cubic-bezier(.2, .7, .3, 1)' };
-        sendBtn.animate([{ transform: `translate(${from.arrow.left - to.left}px, ${from.arrow.top - to.top}px)` }, { transform: 'none' }], timing);
-        box.style.overflow = 'hidden';
-        box.animate([{ height: `${from.height}px` }, { height: `${box.getBoundingClientRect().height}px` }], timing).onfinish = () => (box.style.overflow = '');
-      }
-    };
-    let busy = false;
-    const go = async () => {
-      if (busy) return;
-      if (!text.value.trim()) return text.focus();
-      if (!name.value.trim()) {
-        box.classList.add('open');
-        return name.focus();
-      }
-      store.set('lab-name', name.value.trim());
-      refreshPinCursor(); // the pointer shows your initial
-      syncReads();
-      sendBtn.classList.remove('sent');
-      void sendBtn.offsetWidth; // restart the arrow's flight on a quick second send
-      sendBtn.classList.add('sent');
-      busy = true;
-      error.textContent = '';
-      error.classList.remove('wait');
-      // Taking a while (the lab is restarting): say so; it goes as soon as the lab is back.
-      const slow = setTimeout(() => {
-        error.textContent = 'sending… it goes as soon as the lab is back';
-        error.classList.add('wait');
-      }, 1500);
-      try {
-        const result = await onSubmit(name.value.trim(), text.value.trim());
-        clearTimeout(slow);
-        error.textContent = '';
-        error.classList.remove('wait');
-        if (result?.keep) {
-          text.value = '';
-          sync();
-        }
-      } catch (e) {
-        clearTimeout(slow);
-        error.classList.remove('wait');
-        error.textContent = e.message;
-        sync();
-      }
-      busy = false;
-    };
-    const onKey = (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        go();
-      }
-    };
-    text.addEventListener('input', sync);
-    name.addEventListener('input', sync);
-    name.addEventListener('blur', () => setTimeout(sync, 0));
-    text.addEventListener('keydown', onKey);
-    name.addEventListener('keydown', onKey);
-    sendBtn.addEventListener('click', go);
-    // Keep focus in the field when the send button is pressed.
-    sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
-    requestAnimationFrame(sync);
-    // Right after it's on screen, in the same tap: phones open the keyboard only then.
-    // preventScroll: the sheet is still sliding in from below the screen, and the page must not scroll to meet it.
-    const focus = () => text.focus({ preventScroll: true });
-    if (autofocus) queueMicrotask(() => (text.isConnected ? focus() : setTimeout(focus, 0)));
-    return wrap;
-  }
 
   // Draft composer sits to the right of its pin, like the pin is the avatar; below it when there is no room.
   function placeBeside(node, left, top) {

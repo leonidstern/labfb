@@ -534,16 +534,16 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
     const sets = [img.srcset, ...[...img.closest("picture")?.querySelectorAll("source") || []].map((s) => s.srcset)].filter(Boolean);
     for (const set of sets) {
       for (const part of set.split(/,\s+/)) {
-        const [url, d = "1x"] = part.trim().split(/\s+/);
+        const [url, d3 = "1x"] = part.trim().split(/\s+/);
         let abs = "";
         try {
           abs = new URL(url, location.href).href;
         } catch {
         }
         if (!url || abs !== img.currentSrc || !nw) continue;
-        const v = parseFloat(d);
-        if (d.endsWith("w") && v) return { nw: Math.round(v), nh: Math.round(v * nh / nw) };
-        if (d.endsWith("x") && v) return { nw: Math.round(nw * v), nh: Math.round(nh * v) };
+        const v = parseFloat(d3);
+        if (d3.endsWith("w") && v) return { nw: Math.round(v), nh: Math.round(v * nh / nw) };
+        if (d3.endsWith("x") && v) return { nw: Math.round(nw * v), nh: Math.round(nh * v) };
       }
     }
     return { nw, nh };
@@ -553,11 +553,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   var variantOf = (p) => ["variant", "size", "tone", "intent", "kind"].flatMap((k) => (typeof p?.[k] === "string" || typeof p?.[k] === "number") && /^[\w.-]{1,20}$/.test(String(p[k])) ? [`${k}=${p[k]}`] : []).join(" ");
   var repoPath = (url) => !/^[a-z-]+:\/\//i.test(url) ? url : decodeURIComponent(url.replace(/^[a-z-]+:\/\/\/?(\.\/)?/i, "/").replace(/^\/[^/]*:\d+/, "").split("?")[0]).replace(/^\/(@fs)?/, "").replace(/^\(app-pages-browser\)\/\.?\/?/, "");
   function componentAt(el2) {
-    const name = (t, d = 0) => d > 3 ? "" : typeof t === "function" ? t.displayName || t.name || "" : t && typeof t === "object" ? t.displayName || name(t.render || t.type, d + 1) : "";
+    const name = (t, d3 = 0) => d3 > 3 ? "" : typeof t === "function" ? t.displayName || t.name || "" : t && typeof t === "object" ? t.displayName || name(t.render || t.type, d3 + 1) : "";
     const plain = (n) => PLAIN_NAME.test(n) && !PLUMBING.test(n);
     const srcOf = (f) => {
-      const d = f?._debugSource;
-      if (d?.fileName) return `${repoPath(String(d.fileName))}:${d.lineNumber || 0}`;
+      const d3 = f?._debugSource;
+      if (d3?.fileName) return `${repoPath(String(d3.fileName))}:${d3.lineNumber || 0}`;
       const st = f?._debugStack?.stack;
       if (typeof st !== "string") return "";
       for (const line of st.split("\n").slice(1)) {
@@ -989,8 +989,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
       else if (said && t.startsWith(said.slice(0, 40))) score += 2;
       if (!score && twins.length > 1) continue;
       if (score && anchor.section && sectionOf(n) === anchor.section) score += 2;
-      const d = Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
-      if (score > best || score === best && d < near) [found, best, near] = [n, score, d];
+      const d3 = Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
+      if (score > best || score === best && d3 < near) [found, best, near] = [n, score, d3];
     }
     return best > 0 || !atPath ? found : atPath;
   }
@@ -1247,6 +1247,158 @@ ${line}`;
     return anchor;
   }
 
+  // src/widget/composer.ts
+  var d;
+  function bindComposer(deps) {
+    d = deps;
+  }
+  var ARROW = '<i class="arr" aria-hidden="true"></i>';
+  function composer({ placeholder, onSubmit, autofocus = false }) {
+    const { el: el2, store: store2, root, refreshPinCursor, syncReads } = d;
+    const wrap = el2("div", { class: "composer" });
+    const box = el2("div", { class: "box" });
+    const text = el2("textarea", { placeholder, maxlength: "2000", rows: "1", "aria-label": placeholder, enterkeyhint: "send", autocomplete: "off", autocorrect: "off", spellcheck: "false", writingsuggestions: "false" });
+    const who = el2("label", { class: "who" });
+    const as = el2("span", {}, "as");
+    const name = el2("input", { type: "text", placeholder: "your name", maxlength: "60", enterkeyhint: "send", autocomplete: "off", autocorrect: "off", autocapitalize: "words", spellcheck: "false", writingsuggestions: "false", "data-1p-ignore": "", "data-lpignore": "true" });
+    name.value = store2.get("lab-name");
+    who.append(as, name);
+    const sendBtn = el2("button", { class: "send", type: "button", "aria-label": "send" });
+    sendBtn.addEventListener("pointerdown", (e) => e.preventDefault());
+    sendBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    sendBtn.innerHTML = ARROW;
+    const error = el2("div", { class: "error" });
+    box.append(text, el2("div", { class: "line" }), who, sendBtn);
+    wrap.append(box, error);
+    box.addEventListener("click", (e) => {
+      if (e.target !== box && !e.target.classList?.contains("line")) return;
+      text.focus({ preventScroll: true });
+      text.setSelectionRange(text.value.length, text.value.length);
+    });
+    const sync = () => {
+      const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
+      const glide = open !== box.classList.contains("open") && !store2.get("lab-name") && box.isConnected && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
+      const one = Boolean(store2.get("lab-name"));
+      box.classList.toggle("one", one);
+      box.classList.toggle("open", open);
+      as.hidden = !name.value.trim();
+      if (one && !CSS.supports?.("field-sizing", "content")) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
+      sendBtn.classList.toggle("ready", Boolean(text.value.trim() && name.value.trim()));
+      text.style.height = "auto";
+      text.style.height = `${text.scrollHeight}px`;
+      if (glide) {
+        const to = sendBtn.getBoundingClientRect();
+        const timing = { duration: 220, easing: "cubic-bezier(.2, .7, .3, 1)" };
+        sendBtn.animate([{ transform: `translate(${from.arrow.left - to.left}px, ${from.arrow.top - to.top}px)` }, { transform: "none" }], timing);
+        box.style.overflow = "hidden";
+        box.animate([{ height: `${from.height}px` }, { height: `${box.getBoundingClientRect().height}px` }], timing).onfinish = () => box.style.overflow = "";
+      }
+    };
+    let busy = false;
+    const go = async () => {
+      if (busy) return;
+      if (!text.value.trim()) return text.focus();
+      if (!name.value.trim()) {
+        box.classList.add("open");
+        return name.focus();
+      }
+      store2.set("lab-name", name.value.trim());
+      refreshPinCursor();
+      syncReads();
+      sendBtn.classList.remove("sent");
+      void sendBtn.offsetWidth;
+      sendBtn.classList.add("sent");
+      busy = true;
+      error.textContent = "";
+      error.classList.remove("wait");
+      const slow = setTimeout(() => {
+        error.textContent = "sending\u2026 it goes as soon as the lab is back";
+        error.classList.add("wait");
+      }, 1500);
+      try {
+        const result = await onSubmit(name.value.trim(), text.value.trim());
+        clearTimeout(slow);
+        error.textContent = "";
+        error.classList.remove("wait");
+        if (result?.keep) {
+          text.value = "";
+          sync();
+        }
+      } catch (e) {
+        clearTimeout(slow);
+        error.classList.remove("wait");
+        error.textContent = e.message;
+        sync();
+      }
+      busy = false;
+    };
+    const onKey = (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        go();
+      }
+    };
+    text.addEventListener("input", sync);
+    name.addEventListener("input", sync);
+    name.addEventListener("blur", () => setTimeout(sync, 0));
+    text.addEventListener("keydown", onKey);
+    name.addEventListener("keydown", onKey);
+    sendBtn.addEventListener("click", go);
+    sendBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    requestAnimationFrame(sync);
+    const focus = () => text.focus({ preventScroll: true });
+    if (autofocus) queueMicrotask(() => text.isConnected ? focus() : setTimeout(focus, 0));
+    return wrap;
+  }
+
+  // src/widget/messages.ts
+  var d2;
+  function bindMessages(deps) {
+    d2 = deps;
+  }
+  var onWhat = (c) => {
+    const a = c.anchor || {};
+    let w = a.quote?.exact || "";
+    let n = null;
+    try {
+      n = !w && a.selector ? document.querySelector(a.selector) : null;
+    } catch {
+    }
+    for (let up = 0; n && n !== document.body && up < 5; n = n.parentElement, up++) {
+      const t = n.innerText?.replace(/\s+/g, " ").trim() || "";
+      if (t.length >= 12) {
+        w = t;
+        break;
+      }
+    }
+    w = (w || a.text || a.section || "").replace(/\s+/g, " ").trim();
+    return w ? `"${w.length > 40 ? `${w.slice(0, 39)}\u2026` : w}"` : "";
+  };
+  var stampOf = (m, root, prefix = "") => {
+    const { el: el2, mine, repliesOf, workState } = d2;
+    const at = new Date(m.createdAt);
+    const time = at.toDateString() === (/* @__PURE__ */ new Date()).toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString([], { day: "numeric", month: "short" });
+    const stamp = el2("span", { class: "stamp" });
+    stamp.append(el2("span", { class: "tm" }, prefix + time));
+    if (mine(m) && !m.session) {
+      const thread = root ? [root, ...repliesOf(root.id)] : [m];
+      const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
+      const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
+      if (!answered && latest && root && workState(root)[0] === "now") {
+        stamp.classList.add("busy");
+        stamp.append(el2("span", { class: "ring", role: "img", "aria-label": "the agent is on it" }));
+      } else if (answered) {
+        stamp.classList.add("ans");
+        stamp.append(el2("span", { class: "tick", role: "img", "aria-label": "answered" }, "\u2713"));
+      } else {
+        const got = root?.handedAt && root.handedAt >= m.createdAt;
+        stamp.append(el2("span", { class: `tick${got ? " got" : ""}`, role: "img", "aria-label": got ? "delivered to the agent" : "sent" }, got ? "\u2713\u2713" : "\u2713"));
+      }
+    }
+    return stamp;
+  };
+
   // src/comments.js
   /*!
    * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
@@ -1380,6 +1532,8 @@ ${line}`;
       return node;
     };
     bindAnchoring({ host: host2, layer: layer2, el: el2, store: store2 });
+    bindComposer({ el: el2, store: store2, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads() });
+    bindMessages({ el: el2, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), workState: (c) => workState(c) });
     function patchKids(box, next) {
       const keep = new Set(next);
       for (const n of Array.from(box.childNodes)) if (!keep.has(n)) n.remove();
@@ -1575,24 +1729,6 @@ ${line}`;
       }
     };
     const listed = () => threads().filter((c) => c.anchor?.kind !== "page").filter((c) => filter === "new" ? unread(c).length : filter === "open" ? !c.resolved : filter === "resolved" ? c.resolved : mine(c)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    const onWhat = (c) => {
-      const a = c.anchor || {};
-      let w = a.quote?.exact || "";
-      let n = null;
-      try {
-        n = !w && a.selector ? document.querySelector(a.selector) : null;
-      } catch {
-      }
-      for (let up = 0; n && n !== document.body && up < 5; n = n.parentElement, up++) {
-        const t = n.innerText?.replace(/\s+/g, " ").trim() || "";
-        if (t.length >= 12) {
-          w = t;
-          break;
-        }
-      }
-      w = (w || a.text || a.section || "").replace(/\s+/g, " ").trim();
-      return w ? `"${w.length > 40 ? `${w.slice(0, 39)}\u2026` : w}"` : "";
-    };
     const isPage = (c) => c.anchor?.kind === "page";
     let stepping = false;
     let keepKeys = false;
@@ -1759,28 +1895,6 @@ ${line}`;
       (last || bubble).append(room);
       bubble.append(stamp);
     };
-    const stampOf = (m, root2, prefix = "") => {
-      const at = new Date(m.createdAt);
-      const time = at.toDateString() === (/* @__PURE__ */ new Date()).toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString([], { day: "numeric", month: "short" });
-      const stamp = el2("span", { class: "stamp" });
-      stamp.append(el2("span", { class: "tm" }, prefix + time));
-      if (mine(m) && !m.session) {
-        const thread = root2 ? [root2, ...repliesOf(root2.id)] : [m];
-        const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
-        const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
-        if (!answered && latest && root2 && workState(root2)[0] === "now") {
-          stamp.classList.add("busy");
-          stamp.append(el2("span", { class: "ring", role: "img", "aria-label": "the agent is on it" }));
-        } else if (answered) {
-          stamp.classList.add("ans");
-          stamp.append(el2("span", { class: "tick", role: "img", "aria-label": "answered" }, "\u2713"));
-        } else {
-          const got = root2?.handedAt && root2.handedAt >= m.createdAt;
-          stamp.append(el2("span", { class: `tick${got ? " got" : ""}`, role: "img", "aria-label": got ? "delivered to the agent" : "sent" }, got ? "\u2713\u2713" : "\u2713"));
-        }
-      }
-      return stamp;
-    };
     let replyTo = null;
     let newFrom = null;
     function drawChat() {
@@ -1921,104 +2035,6 @@ ${line}`;
       inPage(0);
       return pageEnd.y;
     };
-    const ARROW = '<i class="arr" aria-hidden="true"></i>';
-    function composer({ placeholder, onSubmit, autofocus = false }) {
-      const wrap = el2("div", { class: "composer" });
-      const box = el2("div", { class: "box" });
-      const text = el2("textarea", { placeholder, maxlength: "2000", rows: "1", "aria-label": placeholder, enterkeyhint: "send", autocomplete: "off", autocorrect: "off", spellcheck: "false", writingsuggestions: "false" });
-      const who = el2("label", { class: "who" });
-      const as = el2("span", {}, "as");
-      const name = el2("input", { type: "text", placeholder: "your name", maxlength: "60", enterkeyhint: "send", autocomplete: "off", autocorrect: "off", autocapitalize: "words", spellcheck: "false", writingsuggestions: "false", "data-1p-ignore": "", "data-lpignore": "true" });
-      name.value = store2.get("lab-name");
-      who.append(as, name);
-      const sendBtn2 = el2("button", { class: "send", type: "button", "aria-label": "send" });
-      sendBtn2.addEventListener("pointerdown", (e) => e.preventDefault());
-      sendBtn2.addEventListener("mousedown", (e) => e.preventDefault());
-      sendBtn2.innerHTML = ARROW;
-      const error = el2("div", { class: "error" });
-      box.append(text, el2("div", { class: "line" }), who, sendBtn2);
-      wrap.append(box, error);
-      box.addEventListener("click", (e) => {
-        if (e.target !== box && !e.target.classList?.contains("line")) return;
-        text.focus({ preventScroll: true });
-        text.setSelectionRange(text.value.length, text.value.length);
-      });
-      const sync = () => {
-        const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
-        const glide = open !== box.classList.contains("open") && !store2.get("lab-name") && box.isConnected && !matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const from = glide && { arrow: sendBtn2.getBoundingClientRect(), height: box.getBoundingClientRect().height };
-        const one = Boolean(store2.get("lab-name"));
-        box.classList.toggle("one", one);
-        box.classList.toggle("open", open);
-        as.hidden = !name.value.trim();
-        if (one && !CSS.supports?.("field-sizing", "content")) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
-        sendBtn2.classList.toggle("ready", Boolean(text.value.trim() && name.value.trim()));
-        text.style.height = "auto";
-        text.style.height = `${text.scrollHeight}px`;
-        if (glide) {
-          const to = sendBtn2.getBoundingClientRect();
-          const timing = { duration: 220, easing: "cubic-bezier(.2, .7, .3, 1)" };
-          sendBtn2.animate([{ transform: `translate(${from.arrow.left - to.left}px, ${from.arrow.top - to.top}px)` }, { transform: "none" }], timing);
-          box.style.overflow = "hidden";
-          box.animate([{ height: `${from.height}px` }, { height: `${box.getBoundingClientRect().height}px` }], timing).onfinish = () => box.style.overflow = "";
-        }
-      };
-      let busy = false;
-      const go = async () => {
-        if (busy) return;
-        if (!text.value.trim()) return text.focus();
-        if (!name.value.trim()) {
-          box.classList.add("open");
-          return name.focus();
-        }
-        store2.set("lab-name", name.value.trim());
-        refreshPinCursor();
-        syncReads();
-        sendBtn2.classList.remove("sent");
-        void sendBtn2.offsetWidth;
-        sendBtn2.classList.add("sent");
-        busy = true;
-        error.textContent = "";
-        error.classList.remove("wait");
-        const slow = setTimeout(() => {
-          error.textContent = "sending\u2026 it goes as soon as the lab is back";
-          error.classList.add("wait");
-        }, 1500);
-        try {
-          const result = await onSubmit(name.value.trim(), text.value.trim());
-          clearTimeout(slow);
-          error.textContent = "";
-          error.classList.remove("wait");
-          if (result?.keep) {
-            text.value = "";
-            sync();
-          }
-        } catch (e) {
-          clearTimeout(slow);
-          error.classList.remove("wait");
-          error.textContent = e.message;
-          sync();
-        }
-        busy = false;
-      };
-      const onKey = (e) => {
-        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-          e.preventDefault();
-          go();
-        }
-      };
-      text.addEventListener("input", sync);
-      name.addEventListener("input", sync);
-      name.addEventListener("blur", () => setTimeout(sync, 0));
-      text.addEventListener("keydown", onKey);
-      name.addEventListener("keydown", onKey);
-      sendBtn2.addEventListener("click", go);
-      sendBtn2.addEventListener("mousedown", (e) => e.preventDefault());
-      requestAnimationFrame(sync);
-      const focus = () => text.focus({ preventScroll: true });
-      if (autofocus) queueMicrotask(() => text.isConnected ? focus() : setTimeout(focus, 0));
-      return wrap;
-    }
     function placeBeside(node, left, top) {
       layer2.append(node);
       const width = node.offsetWidth;
@@ -2607,26 +2623,26 @@ ${line}`;
     );
     const endDrag = (e) => {
       if (!drag) return;
-      const d = drag;
+      const d3 = drag;
       drag = null;
       document.documentElement.classList.remove("lab-dragging");
       cancelAnimationFrame(zoneFrame);
       zoneFrame = 0;
       liveZone?.remove();
       liveZone = null;
-      if (!d.active || e.type === "pointercancel") return;
+      if (!d3.active || e.type === "pointercancel") return;
       afterDrag = true;
       setTimeout(() => afterDrag = false, 0);
       getSelection?.()?.removeAllRanges();
       for (const [a, b] of [["x0", "x1"], ["y0", "y1"]]) {
-        if (Math.abs(d[b] - d[a]) >= 12) continue;
-        const mid = (d[a] + d[b]) / 2;
-        d[a] = mid - 6;
-        d[b] = mid + 6;
+        if (Math.abs(d3[b] - d3[a]) >= 12) continue;
+        const mid = (d3[a] + d3[b]) / 2;
+        d3[a] = mid - 6;
+        d3[b] = mid + 6;
       }
       showAgain();
       openId = null;
-      begin(zoneAnchor(d));
+      begin(zoneAnchor(d3));
     };
     document.addEventListener("pointerup", endDrag, true);
     document.addEventListener("pointercancel", endDrag, true);
@@ -3409,13 +3425,13 @@ ${line}`;
             const base = sheet.href || location.href;
             if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
             const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all);
-            const d = (k) => r.style.getPropertyValue(k) || void 0;
+            const d3 = (k) => r.style.getPropertyValue(k) || void 0;
             try {
               const face = new FontFace(
-                d("font-family").replace(/^["']|["']$/g, ""),
+                d3("font-family").replace(/^["']|["']$/g, ""),
                 again,
                 /** @type {any} */
-                { weight: d("font-weight"), style: d("font-style"), stretch: d("font-stretch"), unicodeRange: d("unicode-range"), display: d("font-display") }
+                { weight: d3("font-weight"), style: d3("font-style"), stretch: d3("font-stretch"), unicodeRange: d3("unicode-range"), display: d3("font-display") }
               );
               face.load().then((f) => document.fonts.add(f)).catch(() => {
               });
