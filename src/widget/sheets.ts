@@ -18,7 +18,7 @@ export const scrollerIn = (e, node) =>
 
 export const SPRING = 'cubic-bezier(.32,.72,0,1)';
 
-const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity'];
+const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin'];
 
 // Where the last touch went down: the sheet it opens grows out of there, as iOS 27's do from the button you tapped.
 let tap = { x: 0, y: 0, at: -1e9 };
@@ -28,6 +28,19 @@ export function fromTap(node: HTMLElement, at?: { x: number; y: number } | null)
   node.style.setProperty('--lab-from', `${Math.round(p.x - node.offsetLeft)}px ${Math.round(p.y - node.offsetTop)}px`);
 }
 
+// Phones, sending with the keyboard up: the box being sent is about to be drawn away, which would drop the keyboard at
+// once, and Safari moves its fixed things ~300 px as the keyboard lets go: the card vanished instead of flying into its
+// pin (iOS 27 simulator, 16 Nov). A hidden field holds the keyboard (and so the screen) still until the card has landed.
+let keeper: HTMLInputElement | null = null;
+export function holdKeyboard() {
+  if (!W.coarse || !W.host.hasAttribute('data-kb') || W.still.matches) return;
+  // The comment box's settings, so the keyboard stays exactly as it was (no suggestion row appearing: a relayout).
+  keeper ??= W.el('input', { 'aria-hidden': 'true', tabindex: '-1', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false', writingsuggestions: 'false',
+    style: 'position:fixed;top:0;left:-200px;width:1px;height:1px;opacity:0;font-size:16px;pointer-events:none' }) as HTMLInputElement;
+  if (!keeper.isConnected) W.root.append(keeper);
+  keeper.focus({ preventScroll: true });
+}
+
 // Phones: the open sheet leaves, and the keyboard (if it's up) goes at the same moment, as a native sheet's does. It
 // used to slide behind the keyboard and vanish there, and the keyboard stayed alone for 0.6 s; after sending, the sheet
 // rode the keyboard halfway down and vanished mid-screen (iOS 27 simulator, 16 Nov). Its box is held where it is (the
@@ -35,9 +48,11 @@ export function fromTap(node: HTMLElement, at?: { x: number; y: number } | null)
 // Closed by a tap (or a send) it shrinks back into where it came from and fades, as iOS 27's share sheet does into its
 // button (measured: ~0.1 s); to: the new pin, after a send. After a swipe (ms) it slides down at the finger's speed,
 // steady, never fading (easing out, its last part crept under Safari's see-through bottom bar, Leo 16 Nov).
+// After a send (to: the new pin's middle) it flies into the pin, shrinking to the pin's size, and fades only at the end;
+// the pin pops in as it arrives (.pin.arrive): lab option B2, Leo 16 Nov.
 // Returns how long it takes; let go of it with letGo().
 export function leave(node: HTMLElement, ms = 0, to?: { x: number; y: number } | null) {
-  const dur = ms || 200;
+  const dur = to ? 360 : ms || 200;
   const ease = ms ? 'linear' : 'cubic-bezier(.4, 0, .9, .4)';
   let moved = 0; // a finger may have it part way down already
   try { moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0; } catch {}
@@ -45,18 +60,32 @@ export function leave(node: HTMLElement, ms = 0, to?: { x: number; y: number } |
   const top = r.top - moved;
   const fade = getComputedStyle(W.scrim).opacity;
   for (const [k, v] of [['top', `${top}px`], ['bottom', 'auto'], ['height', `${r.height}px`], ['max-height', 'none'], ['animation', 'none'],
-    ['transition', 'none'], ['transform', `translateY(${moved}px)`], ['pointer-events', 'none']]) node.style.setProperty(k, v, 'important');
+    ['transition', 'none'], ['transform', to ? '' : `translateY(${moved}px)`], ['pointer-events', 'none']]) node.style.setProperty(k, v, 'important');
   W.host.setAttribute('data-leaving', '');
   W.scrim.style.transition = 'none';
   W.scrim.style.opacity = fade;
-  (W.root.activeElement as HTMLElement | null)?.blur(); // the keyboard goes now, with the sheet
+  // The keyboard goes now, with the sheet; after a send, once the card is in its pin (see holdKeyboard).
+  const letKeysGo = () => (W.root.activeElement as HTMLElement | null)?.blur();
+  if (to) setTimeout(letKeysGo, dur);
+  else letKeysGo();
   // Back into its pin where the pin is now (the page scrolled it into view after the tap); the list and the chat back
   // to where they were tapped open.
-  const pin = !to && W.root.querySelector(node.classList.contains('card') ? '.pin.open' : node.classList.contains('float') ? '.pin.draft' : 'none');
+  const pin = to ? null : W.root.querySelector(node.classList.contains('card') ? '.pin.open' : node.classList.contains('float') ? '.pin.draft' : 'none');
   const p = pin?.getBoundingClientRect();
-  if (to || p) fromTap(node, to || { x: p.left + p.width / 2, y: p.top + p.height / 2 });
+  if (p) fromTap(node, { x: p.left + p.width / 2, y: p.top + p.height / 2 });
   void node.offsetHeight;
-  if (ms) {
+  if (to) {
+    node.style.setProperty('transform-origin', '50% 50%', 'important');
+    const dx = to.x - (r.left + r.width / 2), dy = to.y - (top + r.height / 2);
+    // From the next frame: drawing the sent pin took ~100 ms, which ate the start of the flight (iOS 27 simulator).
+    // The move on iOS's curve; the fade on its own, in the last 30 % of the time (on the move's curve it was nearly gone
+    // halfway, so you never saw it reach the pin).
+    const fly = () => {
+      node.animate([{ transform: 'none' }, { transform: `translate(${dx}px, ${dy}px) scale(${22 / r.width}, ${22 / r.height})` }], { duration: dur, easing: SPRING, fill: 'forwards' });
+      node.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration: dur, fill: 'forwards' });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(fly));
+  } else if (ms) {
     node.style.setProperty('transition', `transform ${dur}ms ${ease}`, 'important');
     node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, 'important');
   } else {
@@ -66,7 +95,7 @@ export function leave(node: HTMLElement, ms = 0, to?: { x: number; y: number } |
   }
   W.scrim.style.transition = `opacity ${dur}ms ${ease}`;
   W.scrim.style.opacity = '0';
-  return dur;
+  return to ? dur + 120 : dur; // a flight starts a frame or two late (see fly)
 }
 export function letGo(node: HTMLElement) {
   for (const k of HELD) node.style.removeProperty(k);
