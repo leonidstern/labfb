@@ -11,6 +11,7 @@ Every PR, forks included, is measured against its own base commit. Takes seconds
 | `pageScriptGzipBytes` | may grow 2 KB per PR, never past 80 KB | every commented page loads `comments.js` |
 | `npmPackBytes` | may grow 4 KB per PR, never past 160 KB | what `npx` users download |
 | `oxlintProblems` | never more | pinned `oxlint@1.93.0` over lib, api, local.mjs, src/comments.js |
+| `typeErrors` | never more | TypeScript (pinned 5.9.3) over the plain JS via `tsconfig.json`; `npm run typecheck` lists them |
 | `staleBuild` | must be 0 | `public/_lab/comments.js` must equal a fresh `npm run build` of `src/comments.js` |
 | `runtimeDependencies` | never more (it's 0) | the README promises none |
 | `readmeClaimsWrong` | never more | the README's size and file-count claims vs what was measured |
@@ -40,5 +41,6 @@ Dependency and README-claim failures are left to you.
 | `comments.js` gzipped | 67.7 KB | 49.4 KB (code comments stripped from the shipped file) |
 | npm package | 139 kB | 121 kB, 11 files |
 | oxlint problems | 27 | 0 |
+| type errors | — | 180 (from here only down) |
 | runtime dependencies | 0 | 0 |
 | README claims that don't match | 4 | 0 |

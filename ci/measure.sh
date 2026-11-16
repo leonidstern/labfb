@@ -3,7 +3,7 @@
 #
 #   ci/measure.sh <tree> <out.json> [<ruler-tree>]
 #
-# ruler-tree: take .oxlintrc.json from here, so base and PR are linted with the same rules.
+# ruler-tree: take .oxlintrc.json and tsconfig.json from here, so base and PR are checked with the same rules.
 #             A PR that adds a rule then isn't blamed for problems that already existed.
 # JUDGE_METRICS: which metrics.mjs to use (CI and the agent pass a trusted copy).
 # RUN_TESTS=1: also run npm test first (the agent loop does; in CI, test.yml does).
@@ -19,7 +19,9 @@ JUDGE_METRICS="$(abs "${JUDGE_METRICS:-$TREE/ci/metrics.mjs}")"
 cd "$TREE"
 
 if [ -n "$RULER" ] && [ "$RULER" != "$TREE" ]; then
-  if [ -f "$RULER/.oxlintrc.json" ]; then cp "$RULER/.oxlintrc.json" .; elif [ -f .oxlintrc.json ]; then rm .oxlintrc.json; fi
+  for f in .oxlintrc.json tsconfig.json; do
+    if [ -f "$RULER/$f" ]; then cp "$RULER/$f" "$f"; elif [ -f "$f" ]; then rm "$f"; fi
+  done
 fi
 
 if [ "${RUN_TESTS:-}" = "1" ]; then npm test --silent; fi
