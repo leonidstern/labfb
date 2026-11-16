@@ -480,7 +480,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .listener { display: none !important; }
   .bar { bottom: 16px !important; }
   .hint { bottom: 64px !important; }
-  .chat-btn .mark { align-self: center; margin: 0 0 0 -2px; }
+  /* Sized and set to the word: its ink about 1.3× the text's height, its foot on the baseline, 6 px from "chat" like the count. */
+  .chat-btn .mark { align-self: center; width: 13px; height: 13px; margin: 0 -2.5px 0 -2px; translate: 0 -1.5px; }
   .chat-btn[data-agent=away] .mark { fill: var(--_muted); opacity: .5; }
   .chat-btn[data-agent=working] .mark { fill: rgb(36, 160, 70); }
   .chat-btn[data-agent=listening] .mark .eye { animation: lab-blink 3.2s ease-in-out infinite; }
