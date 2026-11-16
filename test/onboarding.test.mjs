@@ -42,7 +42,7 @@ test('in a project, a bare run finds the dev server running in that folder', { s
   const dev = spawn(process.execPath, ['-e', `require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');s.end('<h1>dev page</h1>')}).listen(${devPort},'127.0.0.1')`], { cwd: DIR });
   kids.push(dev);
   await new Promise((r) => setTimeout(r, 400));
-  const lab = spawn(process.execPath, [LAB, '--no-open', '--no-fast', '--port', labPort], { cwd: DIR });
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', labPort], { cwd: DIR });
   kids.push(lab);
   let out = '';
   lab.stdout.on('data', (d) => (out += d));
@@ -207,11 +207,16 @@ test('a newer version on npm is announced as the lab starts', async () => {
   const env = { ...process.env, LABFB_HOME: home };
   delete env.CI;
   delete env.LABFB_NO_UPDATE_CHECK;
-  const lab = spawn(process.execPath, [LAB, '--no-open', '--no-fast', '--port', String(5500 + Math.floor(Math.random() * 90))], { cwd: dir, env });
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(5500 + Math.floor(Math.random() * 90))], { cwd: dir, env });
   kids.push(lab);
   let out = '';
   lab.stdout.on('data', (d) => (out += d));
   for (let i = 0; i < 40 && !/is out/.test(out); i++) await new Promise((r) => setTimeout(r, 100));
   assert.match(out, /labfb 99\.0\.0 is out \(you have [\d.]+\): npx @leonidstern\/labfb@latest/);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the npm package ships the widget and the lab screens\' stylesheet', () => {
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const f of ['public/_lab/comments.js', 'public/_lab/lab.css']) assert.ok(pkg.files.includes(f), `${f} is in package.json files`);
 });

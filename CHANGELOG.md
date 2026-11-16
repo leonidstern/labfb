@@ -7,6 +7,10 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - The widget's source is split into modules: its stylesheet is `src/widget/styles.css` and pin anchoring is `src/widget/anchoring.ts` (TypeScript). `npm run build` bundles them into the same single `comments.js`.
 - Needs Node 22 or newer: Node 20 reached end of life in April 2026. CI tests Node 22, 24 and 26.
 - The page script ships without its code comments: 49 KB gzipped instead of 68 KB, same code. Its commented source is `src/comments.js`; `npm run build` writes `public/_lab/comments.js` (`npm run build:watch` while working on it).
+- Local labs keep comments one file per page in `.lab/comments/` (a comment rewrites only its page's file). A lab with the old `.lab/comments.json` moves it over on start and keeps the old file as `.lab/comments.json.bak`.
+- Each page's comments list is kept, compressed, until that page changes, instead of being built and compressed again for every page load.
+- Done threads with nothing new in 30 days move to `.lab/archive/<page>.json` (on start, then once a day): pages no longer load them.
+- Removed the quick model and its router: every pin goes straight to the listening session. Gone with it: `--fast` / `--no-fast`, the `LAB_FAST_*` variables, `.lab/quick.jsonl`, picking a tool or model in the pin ("use haiku", "@codex", "model:…", "!"), and 👍 keep / 👎 put back on quick fixes.
 - Command-Z (Control-Z) takes back the last pin or go placed from the tab, newest first (deleted on this computer, resolved for guests).
 - Keys: C chat, W next new comment (Shift-W the one before), 1 comment, 2 go, 3 cursor (pins shown, clicks are the page's own), M hide; in a text box Control-D goes to the next new comment. The bar marks them in its words: (c)hat, ne(w). Old N, J, K, V, L, A, D keys are gone.
 - Tabs in the background stay connected to the lab, so their pins, chat and "(3)" title count keep up while you're in another tab.
@@ -16,7 +20,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - No pictures left in the widget's controls: the close cross and the send arrow are drawn with CSS, and the picture pointers are gone (where the drawn pin can't show, in an open dialog or before the mouse moves, the system crosshair / copy pointer stands in). Holding Option over a link shows the drawn pin too.
 - ‹ N new › counts new messages in done threads too.
 - A thread's reopen / resolve / delete sit on the right, a size smaller, out of the reading flow.
-- Router (option 10): one-file style fixes the quick model kept ride along with the session's next pins as one line each (id · file · the line it added), so a wrong one is easy to spot.
 - Washes set to 5 / 10 / 15 / 50 % for black and white, 15 / 30 / 50 % and solid for green.
 - Colours are washes, as in Cooking: white, black and green, each with 4 see-through steps (`--lab-black-1…4`, `--lab-white-1…4`, `--lab-green-1…4`); soft fills, hovers, lines and secondary text are washes of black on light and of white on dark.
 - The bar keeps its pills in place: ‹ N new › and "show done" stay (quiet and disabled at 0) instead of appearing and shifting the others.
