@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- A phone on a `--wifi` lab now needs a one-time link (`labit invite`): one use, ten minutes, after which that browser keeps a signed cookie for a day. Being on the same wifi is no longer enough, so finding the port on a public network shows a gate and nothing else. The pages still travel unencrypted over the wifi.
+
 ## 0.6.0 · 2026-11-16
 
 - New npm name: `@leonidstern/labit` (`npx @leonidstern/labit`; npm turned down the plain name `labit` as too close to `lab` and `lit`). The `labit` and `labfb` commands both work once installed. The GitHub repo is now leonidstern/labit (old links redirect).

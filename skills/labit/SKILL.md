@@ -43,7 +43,7 @@ When the person says "use lab", "in lab" or "show it in lab", show the page in l
 4. Give the person the page's URL in one line, then send the page list and listen and answer as in Local lab, steps 2 to 5.
 5. For later changes, edit the file. The page reloads by itself, so there's nothing to republish.
 
-Start local, always. The page stays on this computer (for a phone at home, add `--wifi`). Put it on their cloud lab only when the person asks to upload or share it: then follow Cloud lab, reusing their lab and project. Make an Artifact only if they ask for one.
+Start local, always. The page stays on this computer (for a phone, add `--wifi`, then run `LAB invite` and give the person the link it prints: it lets one device in, once, within ten minutes). Put it on their cloud lab only when the person asks to upload or share it: then follow Cloud lab, reusing their lab and project. Make an Artifact only if they ask for one.
 
 With MCP instead of a terminal: `LAB mcp` gives the tools `comments`, `reply` and `wait` (Codex: `codex mcp add labit -- npx @leonidstern/labit@latest mcp`). Its `wait` returns after 50 seconds by default; call it again to keep listening. In Codex's sandbox, `wait` and `reply` on the command line may be blocked from reaching the lab: use the MCP tools then.
 

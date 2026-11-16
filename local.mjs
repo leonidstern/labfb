@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.mjs';
 
@@ -23,7 +23,8 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       of it: it finds the server run from this folder, even with other projects' servers running. Give
       --proxy <port> to pick one yourself. A folder of HTML files is served as it is at http://localhost:4400
       and reloads when files change. The folder is this one unless you name another.
-      --wifi lets phones and laptops on the same wifi comment too (as guests). Use it at home only.
+      --wifi lets phones and laptops on the same wifi comment too (as guests). Each one needs a one-time link
+      (labit invite), so finding the port isn't enough. The pages still travel in the clear over the wifi.
       A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
@@ -38,6 +39,8 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       Codex: codex mcp add labit -- npx @leonidstern/labit@latest mcp
   labit preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
+  labit invite
+      A one-time link for a phone on the same wifi (--wifi labs only): one use, ten minutes. Hand it over as a link.
 
 For the agent, from the project (any folder under it):
   labit wait [--timeout 1500] [--pages /a,/b]
@@ -313,7 +316,7 @@ if (pos[0] === 'mcp') {
 }
 
 // ---------- Claude's side: wait, reply, resolve ----------
-if (['wait', 'reply', 'resolve'].includes(pos[0])) {
+if (['wait', 'reply', 'resolve', 'invite'].includes(pos[0])) {
   const [cmd, ref, ...words] = pos;
   let dir = path.resolve(opts.dir || '.');
   while (!fs.existsSync(path.join(dir, '.lab/server.json'))) {
@@ -346,6 +349,17 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
       );
       req.end(data);
     });
+
+  // A link for a phone on the same wifi: one use, ten minutes. Claude hands it over in chat; the lab must be --wifi.
+  if (cmd === 'invite') {
+    const out = await call('/_lab/invite', {});
+    if (out.status === 404) die('This lab is open to this computer only. Start it with --wifi to let a phone in.');
+    if (out.status >= 300) die(`Could not make a link: ${out.text}`);
+    const { links } = JSON.parse(out.text);
+    console.log(links.join('\n'));
+    console.log('\nOne use, ten minutes. Over wifi this is plain http: it keeps strangers out, it does not hide the page from someone listening to the network.');
+    process.exit(0);
+  }
 
   if (cmd === 'wait') {
     const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages(true) });
@@ -877,6 +891,43 @@ const prefix64 = (a) => {
 };
 const lanPrefixes = () => new Set(Object.values(os.networkInterfaces()).flat()
   .filter((n) => n && n.family === 'IPv6' && !n.internal && /^[23]/.test(n.address)).map((n) => prefix64(n.address.toLowerCase())));
+// A guest's one-time link (--wifi). Only this computer is in without one: `labit invite` mints a link, opening it
+// once trades the code for a cookie signed with the lab's key, and everyone else meets the gate. On a public wifi
+// this is what stops someone who scanned the network from reading the pages. It is still plain http, so it does not
+// hide anything from someone listening to that network.
+const PASS_LIFE = 600000;
+const passes = new Map(); // code -> the moment it stops working
+const newPass = () => {
+  for (const [code, until] of passes) if (until < Date.now()) passes.delete(code);
+  const code = randomBytes(16).toString('hex');
+  passes.set(code, Date.now() + PASS_LIFE);
+  return code;
+};
+const sign = (id) => createHmac('sha256', TOKEN).update(`lab-guest:${id}`).digest('hex').slice(0, 32);
+const guestOk = (req) => {
+  const raw = /(?:^|;\s*)lab_guest=([0-9a-f]{16})\.([0-9a-f]{32})(?:\s*;|$)/.exec(req.headers.cookie || '');
+  if (!raw) return false;
+  const want = Buffer.from(sign(raw[1])), got = Buffer.from(raw[2]);
+  return want.length === got.length && timingSafeEqual(want, got);
+};
+// Loopback is this computer: the browser here never needs a link. Without --wifi nobody else gets this far anyway.
+const mayIn = (req) => isLoopback(req) || !WIFI || guestOk(req);
+const gate = (res, why = 'This lab opens with a one-time link.') =>
+  res.writeHead(403, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(
+    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<title>lab</title><body style="font:16px/1.5 system-ui;margin:0;display:grid;place-items:center;height:100vh;color:#111">` +
+      `<div style="max-width:22rem;padding:1.5rem;text-align:center"><p style="font-weight:600;margin:0 0 .5rem">${why}</p>` +
+      `<p style="margin:0;color:#666">Ask for a fresh link and open it on this device.</p></div>`);
+const redeem = (req, res, code) => {
+  const until = passes.get(code);
+  passes.delete(code);
+  if (!until || until < Date.now()) return gate(res, 'That link is used up or too old.');
+  console.log(`[lab] a guest opened a one-time link (${String(req.socket.remoteAddress).replace(/^::ffff:/, '')})`);
+  const id = randomBytes(8).toString('hex');
+  return res
+    .writeHead(302, { location: '/', 'set-cookie': `lab_guest=${id}.${sign(id)}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax` })
+    .end();
+};
 const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
 const sessionFrom = (req) => {
   try {
@@ -1253,6 +1304,9 @@ const handler = async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !(req.headers['content-type'] || '').startsWith('application/json')))
       return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
     const pathname = decodeURIComponent(url.pathname);
+    // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
+    if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8));
+    if (!mayIn(req)) return gate(res);
     if (PROXY && !pathname.startsWith('/_lab/')) return proxy.page(req, res, url);
     // .lab (comments, admin key), .git, .env and other dot files are never served.
     if (pathname.split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
@@ -1286,6 +1340,15 @@ const handler = async (req, res) => {
         pagesChanged();
       });
       return;
+    }
+    // `labit invite`: a link for a phone on the same wifi. Only the agent on this computer may ask for one.
+    if (pathname === '/_lab/invite') {
+      if (!isAgent(req)) return res.writeHead(403).end('forbidden');
+      if (!WIFI) return res.writeHead(404).end('this lab is open to this computer only');
+      const code = newPass();
+      const hosts = [`${hostName}.local`, ...wifiAddrs()];
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify({ links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}`) }));
     }
     if (pathname === '/_lab/bye') {
       const { tab } = JSON.parse((await new Response(req).text()) || '{}');
@@ -1488,7 +1551,7 @@ const proxy = PROXY && (await import('./lib/proxy.mjs')).proxy({ PROXY, origin: 
 
 const server = http.createServer(handler);
 server.on('upgrade', (req, socket, head) => {
-  if (!proxy || !nearby(req) || !allowedHost(req.headers.host)) return socket.destroy();
+  if (!proxy || !nearby(req) || !allowedHost(req.headers.host) || !mayIn(req)) return socket.destroy();
   proxy.upgrade(req, socket, head);
 });
 server.on('error', (e) => {
@@ -1529,7 +1592,7 @@ server.on('listening', async () => {
   register();
   await persist();
   console.log(`[lab] ${origin}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
-  console.log(WIFI ? `[lab] other devices on this wifi: http://${hostName}.local:${PORT} or ${wifiAddrs().map((a) => `http://${a}:${PORT}`).join(', ')}`
+  console.log(WIFI ? `[lab] other devices on this wifi need a one-time link: run \`${CMD} invite\`, or ask Claude for one`
     : '[lab] only this computer can open it (--wifi lets phones on the same wifi in)');
   console.log(`[lab] your agent: run \`${CMD} wait\` in the background from ${ROOT}; it ends with the next comment.`);
   // Open a page, not a list of folders: the project's main page when there's no index.html at the top.
