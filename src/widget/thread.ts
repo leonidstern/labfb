@@ -78,7 +78,7 @@ export function grab(pin, c) {
       const under = document.elementsFromPoint(x, y).find((n) => n !== W.host);
       if (ev.type === 'pointercancel' || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(W.OFF)) return W.render();
       const before = c.anchor;
-      c.anchor = W.anchorAt(x, y);
+      c.anchor = { ...W.anchorAt(x, y), ...(before?.zoom ? { zoom: before.zoom } : {}) }; // a zoom stays a zoom where it lands
       W.render();
       try {
         const { comment } = await W.send({ action: 'move', id: c.id, anchor: c.anchor, edit: W.store.get(`lab-edit:${c.id}`) || undefined });
