@@ -49,7 +49,8 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       A one-time link for a phone on the same wifi (--wifi labs only): one use, ten minutes. Hand it over as a link.
 
 For the agent, from the project (any folder under it):
-  labit wait [--timeout 1500] [--pages /a,/b]
+  labit wait [--timeout 1500] [--pages /a,/b] [--name <project>] [--model <your model>]
+      --model: the page says "talking to Claude · Sonnet 5.5" (default: LAB_MODEL or ANTHROPIC_MODEL, if set).
       --pages: only these pages' pins, so two sessions can share one lab (one per page). A wait without it gets every
       page nobody else is listening on.
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
@@ -620,7 +621,7 @@ const sessionFrom = (req) => {
     const str = (v, n) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').slice(0, n) : '');
     const agent = str(s.agent, 30) || 'Claude';
     return {
-      id: str(s.id, 80), name: str(s.name, 40) || agent, agent, kind: AGENTS[s.kind] ? s.kind : '',
+      id: str(s.id, 80), name: str(s.name, 40) || agent, agent, model: str(s.model, 30), kind: AGENTS[s.kind] ? s.kind : '',
       url: /^https:\/\/(claude\.ai|ampcode\.com\/threads)\//.test(s.url) ? str(s.url, 200) : '', resume: str(s.resume, 120),
     };
   } catch {
@@ -681,7 +682,7 @@ const saveReads = () => {
   clearTimeout(readsTimer);
   readsTimer = setTimeout(() => fs.promises.writeFile(READS, JSON.stringify(reads)).catch((e) => console.error('[lab] could not save read marks:', e.message)), 300);
 };
-const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent }) });
+const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };

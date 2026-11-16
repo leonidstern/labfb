@@ -30,7 +30,16 @@ export function agentNow(env: NodeJS.ProcessEnv = process.env): { kind: string; 
 
 // The agent session running this command, if any: its id, a name for the page, a link and a resume command where the
 // agent has them (Claude Code: CLAUDE_CODE_SESSION_ID; Codex: CODEX_THREAD_ID; Amp: AMP_CURRENT_THREAD_ID).
-export function mySession(asked?: string) {
+// The model the session runs on, for the page: "Sonnet 5.5" from --model, LAB_MODEL or ANTHROPIC_MODEL, where an id
+// like claude-sonnet-5-5 reads as "Sonnet 5.5". Agents don't put their model in the shell's environment: they say it.
+export const modelName = (m: unknown = ''): string => {
+  const w = String(m).trim().replace(/\[.*\]$/, '');
+  const id = /^(?:claude-)?(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/i.exec(w);
+  if (id) return `${id[1][0].toUpperCase()}${id[1].slice(1).toLowerCase()} ${id[2]}${id[3] ? `.${id[3]}` : ''}`;
+  return /^(opus|sonnet|haiku|fable)$/i.test(w) ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.replace(/\s+/g, ' ').slice(0, 30);
+};
+
+export function mySession(asked?: string, model?: string) {
   const agent = agentNow();
   const env = process.env;
   const remote = agent.kind === 'claude' || !agent.kind ? env.CLAUDE_CODE_REMOTE_SESSION_ID || '' : '';
@@ -41,6 +50,7 @@ export function mySession(asked?: string) {
     id,
     name: name.replace(/\s+/g, ' ').slice(0, 40),
     agent: agent.name,
+    model: modelName(model || env.LAB_MODEL || env.ANTHROPIC_MODEL),
     kind: agent.kind,
     url: remote ? `https://claude.ai/code/${remote.replace(/^cse_/, 'session_')}` : agent.kind === 'amp' && safe ? `https://ampcode.com/threads/${id}` : '',
     resume: !safe || remote ? '' : { claude: `claude --resume ${id}`, codex: `codex resume ${id}`, amp: `amp threads continue ${id}` }[agent.kind || 'claude'] || '',

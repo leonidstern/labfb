@@ -91,7 +91,7 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       name: 'wait',
       title: 'Wait for the next pin',
       description: 'Wait for the next pin in the local lab and return it (up to `seconds`, default 50, under most clients\' 60-second tool limit; call it again to keep listening). The page shows that an agent is listening.',
-      inputSchema: { type: 'object', properties: { seconds: { type: 'number', minimum: 5, maximum: 1500 }, dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' } }, additionalProperties: false },
+      inputSchema: { type: 'object', properties: { seconds: { type: 'number', minimum: 5, maximum: 1500 }, model: { type: 'string', description: 'The model you run on (e.g. Sonnet 5.5): the page shows it beside your name' }, dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' } }, additionalProperties: false },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
   ];
@@ -149,7 +149,8 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     let n = 0;
     const tick = token === undefined ? null : setInterval(() => send({ method: 'notifications/progress', params: { progressToken: token, progress: ++n * 20, total: s, message: 'Waiting for the next pin' } }), 20000);
     if (a.dir !== undefined && typeof a.dir !== 'string') return text('`dir` must be a folder path.', true);
-    const r = await run(['wait', '--timeout', String(s)], (s + 30) * 1000, m.id, project(a));
+    if (a.model !== undefined && typeof a.model !== 'string') return text('`model` must be a name, e.g. Sonnet 5.5.', true);
+    const r = await run(['wait', '--timeout', String(s), ...(a.model ? ['--model', a.model] : [])], (s + 30) * 1000, m.id, project(a));
     if (tick) clearInterval(tick);
     return text(r.text, !r.ok);
   };
