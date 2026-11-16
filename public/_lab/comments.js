@@ -2247,7 +2247,7 @@ ${line}`;
       who.hidden = true;
       W5.root.querySelector(".left").prepend(who);
       if (!document.querySelector('link[rel~="icon"]')) {
-        fetch("/favicon.ico", { method: "HEAD" }).then((r) => r.ok && /^image\//.test(r.headers.get("content-type") || "")).catch(() => false).then((has) => {
+        fetch("/favicon.ico", { method: "HEAD" }).then((r) => r.ok && (r.headers.get("content-type") || "").startsWith("image/")).catch(() => false).then((has) => {
           if (has || document.querySelector('link[rel~="icon"]')) return;
           document.head.append(Object.assign(document.createElement("link"), { rel: "icon", href: "/_lab/favicon.svg" }));
         });

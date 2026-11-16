@@ -80,7 +80,7 @@ export function startLive() {
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
     if (!document.querySelector('link[rel~="icon"]')) {
       fetch('/favicon.ico', { method: 'HEAD' })
-        .then((r) => r.ok && /^image\//.test(r.headers.get('content-type') || ''))
+        .then((r) => r.ok && (r.headers.get('content-type') || '').startsWith('image/'))
         .catch(() => false)
         .then((has) => {
           if (has || document.querySelector('link[rel~="icon"]')) return;
