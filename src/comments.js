@@ -180,7 +180,7 @@ import { zoomWords } from '../lib/zoom.ts';
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · w new · 1 comment · 2 go · 3 zoom in, 3 again zoom out · 4 pointer · p pause · m hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · w new · 1 comment · 2 go · 3 in, 3 again out · 4 pointer · p pause · m hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -528,7 +528,7 @@ import { zoomWords } from '../lib/zoom.ts';
   function goFace() {
     const gp = goBtn.querySelector('.gp');
     // On phones the switch is a small round pin: zoom shows as its magnifier alone.
-    if (gp) gp.replaceChildren(...(S.zoomMode ? [zoomIcon(S.zoomMode), ...(matchMedia('(pointer: coarse)').matches ? [] : ['zoom'])] : [!S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go']));
+    if (gp) gp.replaceChildren(...(S.zoomMode ? [zoomIcon(S.zoomMode), ...(matchMedia('(pointer: coarse)').matches ? [] : [S.zoomMode])] : [!S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go']));
     // Read out as what a click places, not the letter on it.
     goBtn.setAttribute('aria-label', `a click places: ${S.zoomMode ? `a zoom ${S.zoomMode}` : S.cursorMode ? 'nothing (pointer)' : S.goMode ? 'go' : 'a comment'}`);
     goBtn.setAttribute('aria-keyshortcuts', '1 2 3 4');
