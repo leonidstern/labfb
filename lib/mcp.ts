@@ -142,17 +142,21 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       const r = await run(['reply', a.id, a.text, ...(a.resolve ? ['--resolve'] : [])], 30000, undefined, project(a));
       return text(r.text, !r.ok);
     }
-    // wait: progress notes every 20 s when the client gave a progressToken, so a long wait doesn't time out
+    // wait: progress notes every 20 s when the client gave a progressToken, so a long wait doesn't time out. Checked
+    // first: progress started before a refused argument went on for good after the answer (the spec: it MUST stop).
     if (a.seconds !== undefined && (typeof a.seconds !== 'number' || !Number.isFinite(a.seconds))) return text('`seconds` must be a number.', true);
+    if (a.dir !== undefined && typeof a.dir !== 'string') return text('`dir` must be a folder path.', true);
+    if (a.model !== undefined && typeof a.model !== 'string') return text('`model` must be a name, e.g. Sonnet 5.5.', true);
     const s = Math.min(Math.max(Math.round(a.seconds ?? 50), 5), 1500);
     const token = m.params?._meta?.progressToken;
     let n = 0;
     const tick = token === undefined ? null : setInterval(() => send({ method: 'notifications/progress', params: { progressToken: token, progress: ++n * 20, total: s, message: 'Waiting for the next pin' } }), 20000);
-    if (a.dir !== undefined && typeof a.dir !== 'string') return text('`dir` must be a folder path.', true);
-    if (a.model !== undefined && typeof a.model !== 'string') return text('`model` must be a name, e.g. Sonnet 5.5.', true);
-    const r = await run(['wait', '--timeout', String(s), ...(a.model ? ['--model', a.model] : [])], (s + 30) * 1000, m.id, project(a));
-    if (tick) clearInterval(tick);
-    return text(r.text, !r.ok);
+    try {
+      const r = await run(['wait', '--timeout', String(s), ...(a.model ? ['--model', a.model] : [])], (s + 30) * 1000, m.id, project(a));
+      return text(r.text, !r.ok);
+    } finally {
+      if (tick) clearInterval(tick);
+    }
   };
   const handle = async (m: Msg): Promise<unknown> => {
     const version = m.params?._meta?.[`${META}protocolVersion`];
@@ -166,8 +170,9 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       return done({ supportedVersions: [...MODERN, ...LEGACY], capabilities: { tools: {} }, _meta: { [`${META}serverInfo`]: info }, instructions: INSTRUCTIONS });
     if (m.method === 'initialize') {
       const asked = m.params?.protocolVersion;
-      // A client with roots says which folder it works in: ask once it has our answer.
-      if (m.params?.capabilities?.roots) setTimeout(() => send({ id: 'labit-roots', method: 'roots/list' }), 0);
+      // A client with roots says which folder it works in: asked once it says it's ready (notifications/initialized;
+      // the spec: no request from the server before that).
+      askRoots = Boolean(m.params?.capabilities?.roots);
       return { protocolVersion: LEGACY.includes(asked) ? asked : LEGACY[0], capabilities: { tools: {} }, serverInfo: info, instructions: INSTRUCTIONS };
     }
     if (m.method === 'ping') return done({});
@@ -175,7 +180,11 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     if (m.method === 'tools/call') return done(await call(m));
     throw fail(-32601, `Method not found: ${m.method}`);
   };
+  // Requests being worked on, and those of them cancelled (no answer goes out). A cancel for anything else (answered
+  // already, or never sent) is ignored, so an id used again later still gets its answer.
+  const pending = new Set<Msg['id']>();
   const cancelled = new Set<Msg['id']>();
+  let askRoots = false;
   let buf = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => {
@@ -199,7 +208,12 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
         } catch {}
         continue;
       }
-      if (!m || typeof m !== 'object' || Array.isArray(m) || typeof m.method !== 'string') {
+      // A batch (an array): MCP has none since 2025-06-18, and JSON-RPC answers a bad message rather than staying silent.
+      if (Array.isArray(m)) {
+        send({ id: null, error: { code: -32600, message: 'Invalid request: send one message per line, not a batch' } });
+        continue;
+      }
+      if (!m || typeof m !== 'object' || typeof m.method !== 'string') {
         if (m && m.id !== undefined && typeof m.method !== 'string' && !('result' in m) && !('error' in m)) send({ id: m.id, error: { code: -32600, message: 'Invalid request' } });
         continue;
       }
@@ -207,18 +221,38 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
         // Notifications: a cancelled request stops its work (a wait's child process) and gets no answer.
         if (m.method === 'notifications/cancelled') {
           const id = m.params?.requestId;
-          running.get(id)?.kill();
-          cancelled.add(id);
+          if (pending.has(id)) {
+            cancelled.add(id);
+            running.get(id)?.kill();
+          }
+        }
+        if (m.method === 'notifications/initialized' && askRoots) {
+          askRoots = false;
+          send({ id: 'labit-roots', method: 'roots/list' });
         }
         continue;
       }
+      const id = m.id;
+      pending.add(id);
+      const answer = (msg: Record<string, unknown>) => {
+        pending.delete(id);
+        if (!cancelled.delete(id)) send({ id, ...msg });
+      };
       handle(m).then(
-        (result) => !cancelled.delete(m.id) && send({ id: m.id, result }),
-        (e) => !cancelled.delete(m.id) && send({ id: m.id, error: { code: e.code || -32603, message: e.message, ...(e.data ? { data: e.data } : {}) } }),
+        (result) => answer({ result }),
+        (e) => answer({ error: { code: e.code || -32603, message: e.message, ...(e.data ? { data: e.data } : {}) } }),
       );
     }
   });
-  process.stdin.on('end', () => process.exit(0));
-  process.on('SIGTERM', () => process.exit(0));
+  // The client went away (stdin closed, or SIGTERM / SIGINT): work in flight stops with it, as the SDK aborts every
+  // handler when the connection closes. A wait's child process left running kept the page saying an agent was
+  // listening for up to the wait's length (50 s by default, 25 minutes at most).
+  const quit = () => {
+    for (const child of running.values()) child.kill();
+    process.exit(0);
+  };
+  process.stdin.on('end', quit);
+  process.on('SIGTERM', quit);
+  process.on('SIGINT', quit);
   return new Promise<never>(() => {});
 }
