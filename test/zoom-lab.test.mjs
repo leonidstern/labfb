@@ -73,6 +73,14 @@ test('a pin that is no zoom can\'t take a zoom block', async () => {
   assert.match(no.out, /not a zoom/);
 });
 
+test('a zoom pin moved by its owner stays a zoom', async () => {
+  await up();
+  const { comment, edit } = await post({ page: '/audit', name: 'Leo', text: 'zoom out: the bigger picture', anchor: { ...spot, block: 'a', zoom: 'out' } });
+  const moved = await post({ page: '/audit', action: 'move', id: comment.id, edit, anchor: { ...spot, selector: '#b', block: 'b' } });
+  assert.equal(moved.comment.anchor.zoom, 'out');
+  assert.equal(moved.comment.anchor.block, 'b');
+});
+
 test('only the agent hands a zoom over', async () => {
   await up();
   const res = await fetch(B + '/_lab/api/zoom', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/audit', id: 'x', html: '', what: '' }) });

@@ -364,7 +364,9 @@ export async function POST(request) {
     if (!current) return json({ error: 'not found' }, 404);
     const thread = JSON.parse(current);
     if (thread.parent || !body.anchor || typeof body.anchor !== 'object') return json({ error: 'bad move' }, 400);
-    const comment = { ...thread, anchor: cleanAnchor(body.anchor), movedAt: new Date().toISOString() };
+    const anchor = cleanAnchor(body.anchor);
+    if (thread.anchor?.zoom && !anchor.zoom) anchor.zoom = thread.anchor.zoom; // a moved zoom stays a zoom, whatever the widget sent
+    const comment = { ...thread, anchor, movedAt: new Date().toISOString() };
     await run('HSET', key, id, JSON.stringify(comment));
     return json({ comment });
   }
