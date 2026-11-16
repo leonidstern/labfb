@@ -3199,7 +3199,8 @@
     // ?kbdebug on the page's address: every frame for 1.5 s after the keyboard is asked for or let go, where the open
     // sheet sits on the screen and what Safari reports, sent to the page's chat as "kb-log" 2 s after letting go. For
     // tuning the keyboard slide on a real phone (a simulator's keyboard doesn't move like one).
-    if (/[?&]kbdebug\b/.test(location.search)) {
+    // The shipped (minified) widget leaves this out: the build sets __LAB_DEBUG__ to false (scripts/build.mjs).
+    if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
       let lines = [];
       let t0 = performance.now();
       let sendTimer = 0;

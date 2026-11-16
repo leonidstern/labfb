@@ -17,7 +17,8 @@ const deploy = process.env.LAB_DEPLOY === '1';
 const src = path.join(dir, 'comments.js');
 const out = path.join(dir, 'comments.min.js');
 
-await build({ entryPoints: [src], outfile: out, minify: true, sourcemap: deploy ? 'linked' : false, // a map only on the hosted lab: the package has the readable file beside it
+await build({ entryPoints: [src], outfile: out, minify: true,
+  define: { 'globalThis.__LAB_DEBUG__': 'false' }, // the ?kbdebug phone recorder stays in the readable file only sourcemap: deploy ? 'linked' : false, // a map only on the hosted lab: the package has the readable file beside it
   target: 'es2022', legalComments: 'inline', logLevel: 'warning',
   banner: { js: '/* lab comments · https://github.com/leonidstern/labfb · MIT · readable source: comments.js */' } });
 
