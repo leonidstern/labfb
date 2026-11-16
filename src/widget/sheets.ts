@@ -26,9 +26,12 @@ const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition'
 // Its box is held where it is (the keyboard going would otherwise resize and move it on the way), and the dimmed page
 // fades on the sheet's own curve, so it's as dim as the sheet is still there. ms: after a swipe, the finger's speed
 // carried on. Returns how long it takes; let go of it with letGo().
+// It never slows down on its way out: easing out, its last part crept under Safari's see-through bottom bar and looked
+// like it lagged and faded there (Leo, 16 Nov). A flick goes on at a steady speed; a tap closes it speeding up, as iOS
+// does. The sheet itself never fades.
 export function leave(node: HTMLElement, ms = 0) {
-  const dur = ms || 320;
-  const ease = ms ? 'cubic-bezier(.2, .6, .4, 1)' : SPRING;
+  const dur = ms || 280;
+  const ease = ms ? 'linear' : 'cubic-bezier(.4, 0, 1, 1)';
   let moved = 0; // a finger may have it part way down already
   try { moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0; } catch {}
   const r = node.getBoundingClientRect();
@@ -215,7 +218,8 @@ export function swipeDown(node, close, grows = false) {
     // its height it goes. A short quick flick closes; a slow long drag closes past halfway; a move back up never does.
     const rest = dy + Math.max(0, v) * 499;
     W.S.dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} → ${v > -0.1 && rest > h / 2 ? 'close' : 'stay'}`);
-    if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+    // Off the screen's bottom at the finger's speed (it leaves at a steady pace, see leave).
+    if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (innerHeight - node.getBoundingClientRect().top) / Math.max(v, 1.2))));
     node.style.transition = `transform 380ms ${SPRING}`;
     W.scrim.style.transition = 'opacity 300ms';
     node.style.transform = W.scrim.style.opacity = '';

@@ -1457,8 +1457,8 @@ ${line}`;
   var SPRING = "cubic-bezier(.32,.72,0,1)";
   var HELD = ["top", "bottom", "height", "max-height", "transform", "transition", "animation", "pointer-events"];
   function leave(node, ms = 0) {
-    const dur = ms || 320;
-    const ease = ms ? "cubic-bezier(.2, .6, .4, 1)" : SPRING;
+    const dur = ms || 280;
+    const ease = ms ? "linear" : "cubic-bezier(.4, 0, 1, 1)";
     let moved = 0;
     try {
       moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0;
@@ -1633,7 +1633,7 @@ ${line}`;
       if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), node.classList.contains("card") && (W.S.cardFull = false), settle();
       const rest = dy + Math.max(0, v) * 499;
       W.S.dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} \u2192 ${v > -0.1 && rest > h / 2 ? "close" : "stay"}`);
-      if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+      if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (innerHeight - node.getBoundingClientRect().top) / Math.max(v, 1.2))));
       node.style.transition = `transform 380ms ${SPRING}`;
       W.scrim.style.transition = "opacity 300ms";
       node.style.transform = W.scrim.style.opacity = "";
