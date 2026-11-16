@@ -5,6 +5,7 @@
 //   compare <current.json> <reference.json> [--must-improve <metric>]
 //                                                      exit 1 if the gate fails
 //   pick <current.json> [<reference.json>]             choose a target metric for the agent
+//   types                                              list TypeScript errors (npm run typecheck)
 //
 // Fails closed: if a tool can't run, that's an error, never "0 problems".
 
@@ -15,6 +16,7 @@ import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 
 const OXLINT = "oxlint@1.93.0"; // pinned, so the count only changes when the code or the rules do
+const TYPES = ["typescript@5.9.3", "@types/node@22.20.5"]; // pinned for the same reason
 const LINTED = "lib api local.mjs src/comments.js"; // the commented source; the shipped file is generated
 const PAGE_SCRIPT = "public/_lab/comments.js"; // what pages load: built from src/comments.js by npm run build
 
@@ -37,6 +39,10 @@ const METRICS = {
   runtimeDependencies: {
     kind: "ratchet", dir: "down", ideal: 0, agent: false,
     hint: "labfb promises zero dependencies. Remove the new one, or decide to drop the promise.",
+  },
+  typeErrors: {
+    kind: "ratchet", dir: "down", ideal: 0,
+    hint: "Fix TypeScript errors in the JS (npm run typecheck lists them) with JSDoc types, e.g. /** @type {HTMLTextAreaElement} */ (el). Start with the file that has the most. Never any, @ts-ignore or @ts-nocheck.",
   },
   staleBuild: {
     kind: "ratchet", dir: "down", ideal: 0,
@@ -103,6 +109,12 @@ function collect() {
   if (ox.status !== 0 && oxCount === 0) fail(`oxlint did not run cleanly:\n${ox.out}${ox.err}`);
   m.oxlintProblems = oxCount;
 
+  // TypeScript over the plain JS (tsconfig.json). Counted only where the tree has a tsconfig.
+  if (existsSync("tsconfig.json")) {
+    const out = typeCheck();
+    m.typeErrors = out.split("\n").filter((l) => /error TS\d+/.test(l)).length;
+  }
+
   // The shipped script must be exactly what npm run build makes from the source.
   m.staleBuild = 0;
   const build = read("package.json").scripts?.build ?? "";
@@ -116,6 +128,21 @@ function collect() {
   m.readmeClaims = checkReadme(m);
   m.readmeClaimsWrong = m.readmeClaims.length;
   return m;
+}
+
+// Pinned TypeScript, installed once into a temp folder (labfb itself has no dependencies).
+function typeCheck() {
+  const dir = join(tmpdir(), `labfb-ci-${TYPES.join("_").replace(/[^\w.-]/g, "-")}`);
+  const tsc = join(dir, "node_modules", "typescript", "bin", "tsc");
+  if (!existsSync(tsc)) {
+    const i = run(`npm install --prefix "${dir}" --no-save --no-audit --no-fund --silent ${TYPES.join(" ")}`);
+    if (!existsSync(tsc)) fail(`could not install ${TYPES.join(", ")}:\n${i.err}`);
+  }
+  const r = run(`node "${tsc}" -p tsconfig.json --pretty false --typeRoots "${join(dir, "node_modules", "@types")}"`);
+  // tsc exits 2 when it finds errors; anything without error lines but a failure is a broken setup.
+  if (r.status !== 0 && !/error TS\d+/.test(r.out)) fail(`TypeScript did not run:\n${r.out}${r.err}`);
+  if (/error TS(2688|5\d{3}|6\d{3}):/.test(r.out)) fail(`TypeScript setup is broken:\n${r.out.split("\n").filter((l) => /error TS(2688|5\d{3}|6\d{3})/.test(l)).join("\n")}`);
+  return r.out;
 }
 
 const isBetter = (name, cur, ref) => (METRICS[name].dir === "down" ? cur < ref : cur > ref);
@@ -195,5 +222,6 @@ switch (cmd) {
   case "collect": write(args[0] ?? fail("usage: collect <out.json>"), collect()); break;
   case "compare": compare(args[0], args[1], flag("--must-improve")); break;
   case "pick": pick(args[0], args[1]); break;
-  default: fail("commands: collect | compare | pick");
+  case "types": { const out = typeCheck(); process.stdout.write(out || "No type errors.\n"); process.exit(/error TS\d+/.test(out) ? 1 : 0); }
+  default: fail("commands: collect | compare | pick | types");
 }

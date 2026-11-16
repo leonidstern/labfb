@@ -34,9 +34,9 @@ measure() { bash "$JUDGE/measure.sh" "$@"; }
 trap 'git -C "$ROOT" worktree remove --force "$RUN/base" 2>/dev/null || true' EXIT
 
 # Paths the agent may never touch, so it can't edit the judge, the tests or the claims instead of the code.
-PROTECTED='^(\.github/|ci/|test/|bench/|\.oxlintrc|package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$)'
+PROTECTED='^(\.github/|ci/|test/|bench/|\.oxlintrc|tsconfig\.json$|package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$)'
 # Ways to silence a check instead of fixing the cause.
-SUPPRESS='(oxlint-disable|eslint-disable|@ts-ignore|@ts-expect-error|!important)'
+SUPPRESS='(oxlint-disable|eslint-disable|@ts-ignore|@ts-expect-error|@ts-nocheck|@type \{any\}|\{\*\}|!important)'
 reset_tree() { git reset -q; git checkout -- .; git clean -fdq; }
 
 # Reference = what CI will compare against. For a PR: its base, linted with the PR's rules.
@@ -80,7 +80,7 @@ $FEEDBACK"
 
   # The only non-deterministic step. Limited tools, limited turns.
   claude -p "$PROMPT" --model "$MODEL" --max-turns 30 \
-    --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm test),Bash(npm run build),Bash(node --check:*),Bash(npx --yes oxlint@1.93.0:*)" \
+    --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm test),Bash(npm run build),Bash(npm run typecheck),Bash(node --check:*),Bash(npx --yes oxlint@1.93.0:*)" \
     > "$RUN/agent-$i.log" 2>&1 || true
 
   git add -A
