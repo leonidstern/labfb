@@ -9,12 +9,14 @@
 // Fails closed: if a tool can't run, that's an error, never "0 problems".
 
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 
 const OXLINT = "oxlint@1.93.0"; // pinned, so the count only changes when the code or the rules do
-const LINTED = "lib api local.mjs public/_lab/comments.js";
-const PAGE_SCRIPT = "public/_lab/comments.js";
+const LINTED = "lib api local.mjs src/comments.js"; // the commented source; the shipped file is generated
+const PAGE_SCRIPT = "public/_lab/comments.js"; // what pages load: built from src/comments.js by npm run build
 
 // ratchet: may never get worse. budget: may grow by perPr per PR, never past max.
 // ALLOW_GROWTH=1 (the size-approved label) lifts perPr; raising max means editing this file.
@@ -22,7 +24,7 @@ const PAGE_SCRIPT = "public/_lab/comments.js";
 const METRICS = {
   pageScriptGzipBytes: {
     kind: "budget", dir: "down", perPr: 2048, max: 80_000,
-    hint: "Shrink public/_lab/comments.js without changing behaviour: remove dead code and duplication. No build step, no dependencies.",
+    hint: "Shrink src/comments.js without changing behaviour: remove dead code and duplication, then npm run build. No new dependencies.",
   },
   npmPackBytes: {
     kind: "budget", dir: "down", perPr: 4096, max: 160_000,
@@ -35,6 +37,10 @@ const METRICS = {
   runtimeDependencies: {
     kind: "ratchet", dir: "down", ideal: 0, agent: false,
     hint: "labfb promises zero dependencies. Remove the new one, or decide to drop the promise.",
+  },
+  staleBuild: {
+    kind: "ratchet", dir: "down", ideal: 0,
+    hint: "public/_lab/comments.js doesn't match a fresh build of src/comments.js. Run npm run build and commit the result.",
   },
   readmeClaimsWrong: {
     kind: "ratchet", dir: "down", ideal: 0, agent: false,
@@ -96,6 +102,16 @@ function collect() {
   const oxCount = ox.out.split("\n").filter((l) => /^.+:\d+:\d+: /.test(l)).length;
   if (ox.status !== 0 && oxCount === 0) fail(`oxlint did not run cleanly:\n${ox.out}${ox.err}`);
   m.oxlintProblems = oxCount;
+
+  // The shipped script must be exactly what npm run build makes from the source.
+  m.staleBuild = 0;
+  const build = read("package.json").scripts?.build ?? "";
+  if (existsSync("src/comments.js") && build.includes(`--outfile=${PAGE_SCRIPT}`)) {
+    const fresh = join(mkdtempSync(join(tmpdir(), "build-")), "comments.js");
+    const b = run(build.replace(`--outfile=${PAGE_SCRIPT}`, `--outfile=${fresh}`));
+    if (!existsSync(fresh)) fail(`npm run build did not run:\n${b.out}${b.err}`);
+    m.staleBuild = readFileSync(fresh).equals(readFileSync(PAGE_SCRIPT)) ? 0 : 1;
+  }
 
   m.readmeClaims = checkReadme(m);
   m.readmeClaimsWrong = m.readmeClaims.length;
