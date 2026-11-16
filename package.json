@@ -4,12 +4,11 @@
   "description": "Pin comments on pages, read by your agent as plain text. Local mode: comment on pages on your computer and Claude answers on the pins.",
   "type": "module",
   "bin": {
-    "labit": "local.mjs",
-    "labfb": "local.mjs"
+    "labit": "dist/local.mjs",
+    "labfb": "dist/local.mjs"
   },
   "files": [
-    "local.mjs",
-    "lib/",
+    "dist/",
     "api/",
     "public/_lab/comments.js",
     "public/_lab/lab.css",
@@ -20,6 +19,8 @@
   "scripts": {
     "build": "npx --yes esbuild@0.25.12 src/comments.js --bundle --format=iife --loader:.css=text --legal-comments=inline --log-level=warning --outfile=public/_lab/comments.js",
     "build:watch": "npm run build -- --watch",
+    "build:cli": "npx --yes esbuild@0.25.12 local.mjs --bundle --splitting --format=esm --platform=node --target=node22 --outdir=dist --out-extension:.js=.mjs --log-level=warning",
+    "prepack": "npm run build:cli",
     "typecheck": "node ci/metrics.mjs types",
     "test": "node --import ./test/setup.mjs --test test/*.test.mjs"
   },
