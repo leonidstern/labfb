@@ -4,26 +4,30 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
+/** A server listening on this computer, and the folder its process runs in ('' when lsof can't say). */
+export type DevServer = { port: number; dir: string };
+
 // Every server listening on this computer, with the folder it runs in (lsof: macOS and Linux).
 // Several projects' dev servers often run at once, so a port is only this project's if its folder is.
-function devServers() {
+function devServers(): DevServer[] | null {
   // lsof fails when it can't read one process (root's, or one that just ended) but still prints the rest.
-  const lsof = (args) => {
+  const lsof = (args: string[]): string => {
     try {
       return execFileSync('lsof', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 });
     } catch (e) {
-      if (e.code === 'ENOENT' || !e.stdout) throw e;
-      return e.stdout;
+      const err = e as NodeJS.ErrnoException & { stdout?: string };
+      if (err.code === 'ENOENT' || !err.stdout) throw e;
+      return err.stdout;
     }
   };
-  let out;
+  let out: string;
   try {
     out = lsof(['-nP', '-iTCP', '-sTCP:LISTEN', '-Fpn']);
   } catch {
     return null;
   }
-  const ports = new Map();
-  let pid;
+  const ports = new Map<number, number[]>();
+  let pid = 0;
   for (const line of out.split('\n')) {
     if (line[0] === 'p') pid = Number(line.slice(1));
     else if (line[0] === 'n' && pid !== process.pid) {
@@ -32,7 +36,7 @@ function devServers() {
     }
   }
   if (!ports.size) return [];
-  const cwds = new Map();
+  const cwds = new Map<number, string>();
   try {
     for (const line of lsof(['-a', '-p', [...ports.keys()].join(','), '-d', 'cwd', '-Fpn']).split('\n')) {
       if (line[0] === 'p') pid = Number(line.slice(1));
@@ -43,8 +47,8 @@ function devServers() {
 }
 // This project's server: one running in `root` or a folder inside it (a monorepo's app), never the lab's own port.
 // The others are named in the message when none is found, so a server started in the wrong folder is easy to spot.
-export function findDevServer(root, labPort) {
-  const inRoot = (dir) => dir === root || dir.startsWith(root + path.sep);
+export function findDevServer(root: string, labPort: number): { port: number | null; others: DevServer[] } {
+  const inRoot = (dir: string) => dir === root || dir.startsWith(root + path.sep);
   const all = devServers();
   if (!all) return { port: null, others: [] };
   const mine = all.filter((s) => inRoot(s.dir) && s.port !== labPort).sort((a, b) => a.port - b.port);
@@ -53,6 +57,6 @@ export function findDevServer(root, labPort) {
     .sort((a, b) => a.port - b.port);
   return { port: mine[0]?.port ?? null, others };
 }
-export const tilde = (dir) => dir.replace(os.homedir(), '~');
-export const othersNote = (others) =>
+export const tilde = (dir: string): string => dir.replace(os.homedir(), '~');
+export const othersNote = (others: DevServer[]): string =>
   others.length ? `\nOther projects' servers (not this one): ${others.slice(0, 4).map((s) => `:${s.port} ${tilde(s.dir)}`).join(', ')}` : '';

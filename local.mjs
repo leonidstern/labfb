@@ -10,8 +10,10 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { fileURLToPath } from 'node:url';
 import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.mjs';
 
-const REPO = path.dirname(fileURLToPath(import.meta.url));
-const ME = path.join(REPO, 'local.mjs');
+// The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
+const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.basename(SELF_DIR) === 'dist' ? path.dirname(SELF_DIR) : SELF_DIR;
+const ME = fileURLToPath(import.meta.url);
 // How to call this again: `npx @leonidstern/labit` once installed from npm, else the script's own path.
 const CMD = REPO.split(path.sep).includes('node_modules') ? 'npx @leonidstern/labit' : `node ${ME}`;
 const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
@@ -447,10 +449,10 @@ if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve'].includes(pos[0
   for (const lab of inside) console.log(`[lab] note: ${lab.root} has its own lab at http://localhost:${lab.port}; its comments stay there.`);
 }
 
-// Which port is this project's dev server: lib/devserver.mjs asks lsof, loaded only when there's a server to find
+// Which port is this project's dev server: lib/devserver.ts asks lsof, loaded only when there's a server to find
 // (a bare --proxy, or a project with a dev script and no pages), so starting on a folder of pages skips it.
 const findDevServer = async () => {
-  const { findDevServer: find, tilde, othersNote } = await import('./lib/devserver.mjs');
+  const { findDevServer: find, tilde, othersNote } = await import('./lib/devserver.ts');
   return { ...find(ROOT, Number(opts.port) || 4400), tilde, othersNote };
 };
 
