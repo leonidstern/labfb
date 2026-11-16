@@ -10,16 +10,17 @@ import type { Duplex } from 'node:stream';
 export type ProxyOptions = {
   PROXY: URL;
   origin: () => string;
-  widget: (key: string, admin: boolean) => string;
+  widget: (key: string, admin: boolean, me: string) => string;
   keyFor: (page: string) => string;
   isLoopback: (req: IncomingMessage) => boolean;
+  nameFor: (req: IncomingMessage) => string;
 };
 
-// PROXY: the dev server's URL. origin(): the lab's own address, known once it listens. widget(page, admin): the
+// PROXY: the dev server's URL. origin(): the lab's own address, known once it listens. widget(page, admin, me): the
 // script tag that goes into a page. keyFor and isLoopback: the lab's own, so pages get the same keys either way.
 // Returns page(req, res, url) for requests and upgrade(req, socket, head) for websockets; who may connect at all
 // is checked in local.mjs before either is called.
-export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback }: ProxyOptions) {
+export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, nameFor }: ProxyOptions) {
   const pageKey = (pathname: string) => keyFor(pathname.replace(/^\/+|\/+$/g, '').replace(/\.html?$/i, '') || 'index');
   function proxyTo(req: IncomingMessage, res: ServerResponse, url: URL): void {
     const origin = originNow();
@@ -56,7 +57,7 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback }: 
         res.write(strip(t.slice(0, cut)));
         held = t.slice(cut);
       });
-      r.on('end', () => res.end(strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req))));
+      r.on('end', () => res.end(strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req))));
       r.on('error', () => res.destroy());
     });
     up.on('error', (e: NodeJS.ErrnoException) => {

@@ -7,6 +7,7 @@ type Deps = {
   root: ShadowRoot;
   refreshPinCursor: () => void;
   syncReads: () => void;
+  rememberMe: (name: string) => void;
 };
 
 // Set once by the widget at startup (bindComposer), so importing this module touches nothing.
@@ -28,7 +29,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   empty?: string;
   nameFirst?: boolean;
 }): HTMLElement {
-  const { el, store, root, refreshPinCursor, syncReads } = d;
+  const { el, store, root, refreshPinCursor, syncReads, rememberMe } = d;
   const wrap = el('div', { class: 'composer' });
   const box = el('div', { class: 'box' });
   // No autofill or suggestion bar on phones: a comment isn't a form to fill.
@@ -102,6 +103,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
       return name.focus();
     }
     store.set('lab-name', name.value.trim());
+    rememberMe(name.value.trim()); // so the next lab on this computer knows you already
     refreshPinCursor(); // the pointer shows your initial
     syncReads();
     sendBtn.classList.remove('sent');
