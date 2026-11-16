@@ -4,7 +4,7 @@
 
 Pin comments on pages, and your agent reads them as plain text. Use it on a live domain where anyone with the link can comment, or on your own computer, where your agent (Claude, Codex, Cursor…) answers on the pins while it works.
 
-**Small, no dependencies, runs in any folder.** labfb uses only Node 20+ itself: no packages to install, about 125 kB on npm, 14 files. Run `npx @leonidstern/labfb` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
+**Small, no dependencies, runs in any folder.** labfb uses only Node 20+ itself: no packages to install, about 120 kB on npm, 11 files. Run `npx @leonidstern/labfb` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
 
 ![Comments pinned on a demo page](docs/comments.png)
 
@@ -24,7 +24,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **Quick model first, a small router:** when Claude Code (or Codex, Cursor, opencode, Copilot, Amp, Antigravity) is installed, small, clear changes, and one-line bugs even when asked as a question, are done by its one-shot mode in a few seconds, each checked and put back if it's a pass or too big. What it passes reaches your agent with its reason, and its changes ride along for a glance. `--no-fast` turns it off.
 - **Phone too:** `--wifi` lets a phone at home join. Comments stay in `.lab/`, one store per project.
 
-Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 27 KB gzipped (the script on the page), and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
+Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 49 KB gzipped (the script on the page), and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
 
 ## Cloud lab
 
@@ -150,6 +150,6 @@ In a pin, Claude models ("use fable", "@opus") need the `claude` command, GPT mo
 
 Development: `npm test` runs the local-mode checks (Node 20+, no packages). Changes are in [CHANGELOG.md](CHANGELOG.md).
 
-Tested with Claude: on a page with a photo, code and a video, Fable, Sonnet and Haiku found every spot from the link alone (file, pixel, line, second), see [bench](bench/). Admin links and deleting are tested across three labs in [bench/labs](bench/labs/). The script is 19 KB gzipped and loads after the page. Links are hidden, not locked, so don't put anything confidential there.
+Tested with Claude: on a page with a photo, code and a video, Fable, Sonnet and Haiku found every spot from the link alone (file, pixel, line, second), see [bench](bench/). Admin links and deleting are tested across three labs in [bench/labs](bench/labs/). The script is 49 KB gzipped and loads after the page. Links are hidden, not locked, so don't put anything confidential there.
 
 MIT · made by [leonidstern](https://github.com/LeonidStern) · [OOZE](https://ooze.design)

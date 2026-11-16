@@ -10,7 +10,8 @@ Every PR, forks included, is measured against its own base commit. Takes seconds
 |---|---|---|
 | `pageScriptGzipBytes` | may grow 2 KB per PR, never past 80 KB | every commented page loads `comments.js` |
 | `npmPackBytes` | may grow 4 KB per PR, never past 160 KB | what `npx` users download |
-| `oxlintProblems` | never more | pinned `oxlint@1.93.0` over lib, api, local.mjs, comments.js |
+| `oxlintProblems` | never more | pinned `oxlint@1.93.0` over lib, api, local.mjs, src/comments.js |
+| `staleBuild` | must be 0 | `public/_lab/comments.js` must equal a fresh `npm run build` of `src/comments.js` |
 | `runtimeDependencies` | never more (it's 0) | the README promises none |
 | `readmeClaimsWrong` | never more | the README's size and file-count claims vs what was measured |
 
@@ -32,14 +33,12 @@ and logs. The agent must pass the gate *and* `npm test` *and* move its target. I
 `ci/`, tests, `bench/`, `package.json` or the README, and can't add lint suppressions.
 Dependency and README-claim failures are left to you.
 
-## Today's numbers (2026-11-16)
+## Numbers when this was set up (2026-11-16)
 
-| | measured | README says |
+| | before | now |
 |---|---|---|
-| `comments.js` gzipped | 67.9 KB (229 KB raw) | 27 KB and 19 KB |
-| npm package | 139 kB, 11 files | about 125 kB, 14 files |
-| oxlint problems | 27 | — |
-| runtime dependencies | 0 | none |
-
-The gate doesn't fail on drift that's already there; it stops it getting worse. Closing the gap is
-your call: minify on publish, shrink the script, or update the README.
+| `comments.js` gzipped | 67.7 KB | 49.4 KB (code comments stripped from the shipped file) |
+| npm package | 139 kB | 121 kB, 11 files |
+| oxlint problems | 27 | 0 |
+| runtime dependencies | 0 | 0 |
+| README claims that don't match | 4 | 0 |
