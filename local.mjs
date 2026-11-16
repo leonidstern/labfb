@@ -1392,10 +1392,18 @@ const handler = async (req, res) => {
             if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined }));
           }
           // The agent answering "Done: …" closes the thread itself (Leo, 15 Nov: 37 threads sat open with nothing left to
-          // do). A person writing in it again reopens it, as above. Other answers (a question, options) leave it open.
+          // do), but only when it answered one clear thing: one message from people since the agent last spoke, and not
+          // a list ("1) … 2) …", "- … - …"). Several things going on stay open. A person writing again reopens it, as
+          // above. Other answers (a question, options) leave it open.
           if (agent && stored.parent && h.has(stored.parent) && /^done\b/i.test(String(stored.text).trim())) {
             const root = JSON.parse(h.get(stored.parent));
-            if (!root.resolved && root.anchor?.kind !== 'page') h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
+            const thread = [root, ...[...h.values()].map((v) => JSON.parse(v)).filter((x) => x.parent === root.id && x.id !== stored.id)]
+              .sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
+            const lastAgent = thread.map((x) => Boolean(x.session)).lastIndexOf(true);
+            const asks = thread.slice(lastAgent + 1).filter((x) => !x.session);
+            const listy = (t) => String(t).split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length >= 2;
+            const oneThing = asks.length === 1 && !listy(asks[0].text);
+            if (oneThing && !root.resolved && root.anchor?.kind !== 'page') h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
         }

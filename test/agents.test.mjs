@@ -308,3 +308,17 @@ test('an agent answer that starts with "Done" closes its thread; another answer 
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'still orange', parent: a }) });
   assert.equal(Boolean((await get(a)).resolved), false, 'writing in it reopens it');
 });
+
+test('a "Done" answer leaves the thread open when several things are going on (two messages since, or a list)', async () => {
+  const dir = site('autodone2');
+  const { B } = await lab(dir);
+  const get = async (id) => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === id);
+  const say = (parent, text) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Leo', text, parent }) });
+  const two = await pin(B, 'make it red');
+  await say(two, 'and bigger too');
+  await cli(dir, ['reply', two, 'Done: red'], {});
+  assert.equal(Boolean((await get(two)).resolved), false, 'two asks since the agent spoke');
+  const list = await pin(B, '1) red title\n2) smaller logo');
+  await cli(dir, ['reply', list, 'Done: the title is red'], {});
+  assert.equal(Boolean((await get(list)).resolved), false, 'a list of asks');
+});
