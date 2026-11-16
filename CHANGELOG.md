@@ -4,6 +4,9 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Local labs keep comments one file per page in `.lab/comments/` (a comment rewrites only its page's file). A lab with the old `.lab/comments.json` moves it over on start and keeps the old file as `.lab/comments.json.bak`.
+- Each page's comments list is kept, compressed, until that page changes, instead of being built and compressed again for every page load.
+- Done threads with nothing new in 30 days move to `.lab/archive/<page>.json` (on start, then once a day): pages no longer load them.
 - Removed the quick model and its router: every pin goes straight to the listening session. Gone with it: `--fast` / `--no-fast`, the `LAB_FAST_*` variables, `.lab/quick.jsonl`, picking a tool or model in the pin ("use haiku", "@codex", "model:…", "!"), and 👍 keep / 👎 put back on quick fixes.
 - Command-Z (Control-Z) takes back the last pin or go placed from the tab, newest first (deleted on this computer, resolved for guests).
 - Keys: C chat, W next new comment (Shift-W the one before), 1 comment, 2 go, 3 cursor (pins shown, clicks are the page's own), M hide; in a text box Control-D goes to the next new comment. The bar marks them in its words: (c)hat, ne(w). Old N, J, K, V, L, A, D keys are gone.

@@ -139,7 +139,7 @@ test('posts must come from the lab page itself, as JSON', async () => {
 });
 
 test('dot files, .lab/ and paths outside the folder are never served', async () => {
-  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt']) {
+  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/.lab/comments/index.json', '/.lab/archive/index.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt']) {
     const r = await raw(p);
     assert.ok([403, 404].includes(r.status), `${p} → ${r.status}`);
     assert.doesNotMatch(r.text, /SECRET|outside the folder|root:/);
