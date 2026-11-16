@@ -1984,10 +1984,9 @@
     patchKids(box, msgs.flatMap((m) => {
       const root = m.parent ? byId.get(m.parent) : m;
       const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(agentOf(m) ? { 'data-agent': agentOf(m) } : {}) });
-      // The done mark sits beside the name, not in the words.
-      // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
-      const isDone = Boolean(root?.resolved || /^done\b/i.test(m.text));
-      b.append(nameLine(m.name, isDone));
+      // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
+      // "Done" answer closes the thread.
+      b.append(nameLine(m.name, false));
       // A reply shows what it answers, as in Telegram: the name and the start of that message; a tap there jumps to it.
       if (m.parent && root) {
         const q = el('div', { class: 'quote' });
@@ -2494,7 +2493,7 @@
     body.classList.add('msgs');
     const itemEl = (item) => {
       const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(agentOf(item) ? { 'data-agent': agentOf(item) } : {}) });
-      box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text));
+      box.append(nameLine(item.name, false), ...readable(item.text));
       stamped(box, stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
