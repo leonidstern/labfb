@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The bar's listening pill shows the labit mark instead of a dot: dark with a blink now and then while an agent listens, green with twitching ears while one works, grey and still when nobody listens. Same pill size; phones keep the light on the chat button.
 - A pin whose element is gone now waits beside the content (in the gutter left of what it sat in), not 10 px from the window's left edge. On a wide window with a centred column those pins were hundreds of px from the page and read as lost. Phones and full-width pages are unchanged.
 - The widget is split into TypeScript modules in `src/widget/`: `composer` (the message box), `messages`, `list`, `chat`, `thread`, `sheets` (phone sheets, back gesture, keyboard fit) and `live` (live page updates), beside `anchoring` and `styles`. Its shared state is one object, so the parts can share it. Same behaviour; `src/comments.js` keeps setup, loading, drawing and the events (2,688 → 1,428 lines).
 

@@ -57,18 +57,29 @@ export function startLive() {
       if (!text) return;
       try {
         await navigator.clipboard.writeText(text);
-        const was = [...who.childNodes];
-        who.replaceChildren('copied');
-        setTimeout(() => who.textContent === 'copied' && who.replaceChildren(...was), 1200);
+        const was = [...lbl.childNodes];
+        lbl.replaceChildren('copied');
+        setTimeout(() => lbl.textContent === 'copied' && lbl.replaceChildren(...was), 1200);
       } catch {}
     });
+    // The labit mark, in place of the old dot: our pin as a head, two slabs as ears (the cut for small sizes: a wider
+    // gap and a bigger dot, so neither closes up at 16 px). Its parts are separate so the styles can move them: the
+    // dot blinks now and then while an agent listens, the ears twitch while one works. The words sit in .lbl, so
+    // changing them never rebuilds (and restarts) the mark.
+    who.innerHTML =
+      '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><g transform="translate(-1 -.5)">' +
+      '<path class="e1" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
+      '<path class="e2" d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
+      '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
+      '<circle class="eye" cx="31" cy="45" r="6.2"/></g></svg><div class="lbl"></div>';
+    const lbl = who.querySelector('.lbl');
     who.hidden = true;
     W.root.querySelector('.left').prepend(who);
     let stream = null;
     let beat = 0;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
     const showAway = (word) => {
-      who.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
+      lbl.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
       who.setAttribute('aria-label', word);
       who.classList.add('idle');
       who.classList.remove('working');
@@ -360,9 +371,9 @@ export function startLive() {
         // "Codex is working (ooze)": the agent first, the session's name after it in brackets.
         const agent = s?.agent || 'Claude';
         const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
-        if (mode === 'listening') who.replaceChildren(span('talking to'), agent, ...tag);
-        else if (mode === 'working') who.replaceChildren(agent, span('is working'), ...tag);
-        else who.replaceChildren(span('no agent listening'));
+        if (mode === 'listening') lbl.replaceChildren(span('talking to'), agent, ...tag);
+        else if (mode === 'working') lbl.replaceChildren(agent, span('is working'), ...tag);
+        else lbl.replaceChildren(span('no agent listening'));
         who.classList.toggle('idle', mode === 'away');
         who.classList.toggle('working', mode === 'working');
         W.listBtn.dataset.agent = mode;

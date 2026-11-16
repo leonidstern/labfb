@@ -252,17 +252,24 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
                   box-shadow: var(--_shadow); font: inherit; font-size: 13px; letter-spacing: -.006em; font-weight: 500; white-space: nowrap; }
 .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
        background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; text-decoration: none; white-space: nowrap; }
-.listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
 .listener span { color: var(--_muted); }
-.listener.idle::before { background: var(--_muted); opacity: .5; }
-/* Working: the dot turns green and sends out a soft ring, like a "live" light. */
-/* The ping is a copy of the dot that grows and fades (transform and opacity only), so only it is redrawn. A growing
-   shadow repainted the whole layer with every pin on it, each frame: ~170 ms a second on a page with 40 pins. */
-.listener { position: relative; }
-.listener.working::before { background: rgb(36, 160, 70); }
-.listener.working::after { content: ''; position: absolute; left: 14px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px;
-  border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+/* The mark says the state: dark while an agent listens (its dot blinks now and then), green with twitching ears
+   while one works, grey and still when nobody listens. Only transforms move, on three small shapes, so nothing else
+   on the layer is redrawn (the old dot's ping was kept to transform and opacity for the same reason). */
+.listener .lbl { display: contents; }
+.listener .mark { width: 16px; height: 16px; flex: none; margin: -2px 0 -1px -3px; overflow: visible; fill: var(--_accent); }
+.listener .mark .eye { fill: var(--_bg); }
+.listener.idle .mark { fill: var(--_muted); opacity: .5; }
+.listener.working .mark { fill: rgb(36, 160, 70); }
+.listener .mark :is(.e1, .e2, .eye) { transform-box: fill-box; transform-origin: 35% 100%; }
+.listener .mark .eye { transform-origin: 50% 50%; }
+.listener:not(.idle, .working) .mark .eye { animation: lab-blink 3.2s ease-in-out infinite; }
+.listener.working .mark :is(.e1, .e2) { animation: lab-twitch 2.4s ease-in-out infinite; }
+.listener.working .mark .e2 { animation-delay: .18s; }
+/* The phone's light on the chat button still pings (below). */
 @keyframes lab-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.7); opacity: 0; } }
+@keyframes lab-blink { 0%, 88%, 100% { transform: scaleY(1); } 92%, 96% { transform: scaleY(.08); } }
+@keyframes lab-twitch { 0%, 62%, 100% { transform: rotate(0); } 70% { transform: rotate(-9deg); } 80% { transform: rotate(5deg); } 90% { transform: rotate(-3deg); } }
 .listener { cursor: default; } /* a plain arrow, also where a tap copies the resume command */
 /* Letter spacing follows the size, as Apple's SF text does: looser below 12 px, tighter above (11 +.006em,
    13 \u2212.006, 15 \u2212.016, 17 \u2212.025). Uppercase labels and the \u2713\u2713 overlap keep their own. */
@@ -2170,9 +2177,9 @@ ${line}`;
           const span = (t) => Object.assign(document.createElement("span"), { textContent: t });
           const agent = s?.agent || "Claude";
           const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
-          if (mode === "listening") who.replaceChildren(span("talking to"), agent, ...tag);
-          else if (mode === "working") who.replaceChildren(agent, span("is working"), ...tag);
-          else who.replaceChildren(span("no agent listening"));
+          if (mode === "listening") lbl.replaceChildren(span("talking to"), agent, ...tag);
+          else if (mode === "working") lbl.replaceChildren(agent, span("is working"), ...tag);
+          else lbl.replaceChildren(span("no agent listening"));
           who.classList.toggle("idle", mode === "away");
           who.classList.toggle("working", mode === "working");
           W5.listBtn.dataset.agent = mode;
@@ -2225,18 +2232,20 @@ ${line}`;
         if (!text) return;
         try {
           await navigator.clipboard.writeText(text);
-          const was = [...who.childNodes];
-          who.replaceChildren("copied");
-          setTimeout(() => who.textContent === "copied" && who.replaceChildren(...was), 1200);
+          const was = [...lbl.childNodes];
+          lbl.replaceChildren("copied");
+          setTimeout(() => lbl.textContent === "copied" && lbl.replaceChildren(...was), 1200);
         } catch {
         }
       });
+      who.innerHTML = '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><g transform="translate(-1 -.5)"><path class="e1" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/><path class="e2" d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/><path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/><circle class="eye" cx="31" cy="45" r="6.2"/></g></svg><div class="lbl"></div>';
+      const lbl = who.querySelector(".lbl");
       who.hidden = true;
       W5.root.querySelector(".left").prepend(who);
       let stream = null;
       let beat = 0;
       const showAway = (word) => {
-        who.replaceChildren(Object.assign(document.createElement("span"), { textContent: word }));
+        lbl.replaceChildren(Object.assign(document.createElement("span"), { textContent: word }));
         who.setAttribute("aria-label", word);
         who.classList.add("idle");
         who.classList.remove("working");
