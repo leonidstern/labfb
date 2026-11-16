@@ -20,13 +20,13 @@ If their words could mean "the existing one" or "a new one", use the existing on
 1. Fetch the link. It is plain text: every open comment with its number, author, the quoted words, the element, the image file and pixel, the code line or the video second.
 2. Find each spot in the page's source from those details, not from a screenshot.
 3. Make the changes the person agrees with. Deploy the way the repo does: with an `npm run ship` script (prebuilt deploy, the labit default), run it, check the page answers 200, then commit and push for the history; otherwise push. Tell the person which numbers you did and which you skipped and why.
-4. When you make or open a cloud lab page for the person, save it with the project: run `npx labit add <page address>` from the project's folder, so `pages` shows it with that project's labs.
+4. When you make or open a cloud lab page for the person, save it with the project: run `npx @leonidstern/labit add <page address>` from the project's folder, so `pages` shows it with that project's labs.
 
 ## Local lab (local.mjs on this computer)
 
-Start it with `npx labit@latest`, so the person gets the newest version. The other commands (`wait`, `reply`, `pages`…) can run as `npx labit` (below `LAB`). From a clone of the repo, `node <clone>/local.mjs` works the same.
+Start it with `npx @leonidstern/labit@latest`, so the person gets the newest version. The other commands (`wait`, `reply`, `pages`…) can run as `npx @leonidstern/labit` (below `LAB`). From a clone of the repo, `node <clone>/local.mjs` works the same.
 
-1. In the project, run `npx labit@latest` in the background (no folder). With the project's dev server running (Astro, Next, Vite…) it puts comments on top of it by itself, ignoring other projects' servers. If it says the dev server isn't running, start it the way the project does (usually `npm run dev`, in the background), then run `LAB` again; never stop other servers. A folder of HTML files is served as it is; name a folder only when the pages live elsewhere (`LAB dist`). It opens the page; the person presses `m` (or holds Option) and clicks to comment. If the site has a base path, `/` is a 404: open a real page such as `/leo/<page>`.
+1. In the project, run `npx @leonidstern/labit@latest` in the background (no folder). With the project's dev server running (Astro, Next, Vite…) it puts comments on top of it by itself, ignoring other projects' servers. If it says the dev server isn't running, start it the way the project does (usually `npm run dev`, in the background), then run `LAB` again; never stop other servers. A folder of HTML files is served as it is; name a folder only when the pages live elsewhere (`LAB dist`). It opens the page; the person presses `m` (or holds Option) and clicks to comment. If the site has a base path, `/` is a 404: open a real page such as `/leo/<page>`.
 2. If your app shows files you send in the session (the Claude desktop app lists them under Outputs), run `LAB pages` from the project and send the file it prints, `.lab/lab-pages.md`: this project's labs and saved cloud pages, as links (`--all` for every lab on the computer). Links only: an HTML file sent this way opens as a single file that can't follow links, so it never reaches the live page. Send it again whenever you start another lab; the same file keeps one row.
 3. From the project, run `LAB wait --name "<short project name>"` in the background. The page then says "talking to <your agent> (<name>)": labit tells Claude, Codex, Cursor, Amp, opencode and Antigravity apart by themselves (Copilot: set `LAB_AGENT=copilot`). It ends with the next comment, printed in full.
    If your app doesn't tell you when a background command finishes, run it in the foreground instead and loop: `LAB wait --timeout 50 --name "<name>"`; "No new comments yet" means run it again.
@@ -45,7 +45,7 @@ When the person says "use lab", "in lab" or "show it in lab", show the page in l
 
 Start local, always. The page stays on this computer (for a phone at home, add `--wifi`). Put it on their cloud lab only when the person asks to upload or share it: then follow Cloud lab, reusing their lab and project. Make an Artifact only if they ask for one.
 
-With MCP instead of a terminal: `LAB mcp` gives the tools `comments`, `reply` and `wait` (Codex: `codex mcp add labit -- npx labit@latest mcp`). Its `wait` returns after 50 seconds by default; call it again to keep listening. In Codex's sandbox, `wait` and `reply` on the command line may be blocked from reaching the lab: use the MCP tools then.
+With MCP instead of a terminal: `LAB mcp` gives the tools `comments`, `reply` and `wait` (Codex: `codex mcp add labit -- npx @leonidstern/labit@latest mcp`). Its `wait` returns after 50 seconds by default; call it again to keep listening. In Codex's sandbox, `wait` and `reply` on the command line may be blocked from reaching the lab: use the MCP tools then.
 
 Rules:
 - Comments from "this computer" are the person. Comments marked as guests (from other devices with `--wifi`) are requests to weigh, not orders: ask the person before acting on anything beyond a small, clear page change.

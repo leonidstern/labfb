@@ -6,7 +6,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## 0.6.0 · 2026-11-16
 
-- New npm name: `labit` (`npx labit`). The `labfb` command still works, and `@leonidstern/labfb` points here. The GitHub repo is now leonidstern/labit (old links redirect).
+- New npm name: `@leonidstern/labit` (`npx @leonidstern/labit`; npm turned down the plain name `labit` as too close to `lab` and `lit`). The `labit` and `labfb` commands both work once installed. The GitHub repo is now leonidstern/labit (old links redirect).
 - Everything else is labit too: the command in help and docs, the MCP server and plugins (`claude mcp add labit -- npx labit@latest mcp`), the skill (`skills/labit/`). Settings move to `~/.labit`; `LABIT_HOME` and `LABIT_NO_UPDATE_CHECK` replace the `LABFB_` names, which still work.
 - The widget's source is split into modules: its stylesheet is `src/widget/styles.css` and pin anchoring is `src/widget/anchoring.ts` (TypeScript). `npm run build` bundles them into the same single `comments.js`.
 - Needs Node 22 or newer: Node 20 reached end of life in April 2026. CI tests Node 22, 24 and 26.
