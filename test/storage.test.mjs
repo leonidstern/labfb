@@ -163,17 +163,3 @@ test('done threads with nothing new in 30 days are archived on start; open and r
   assert.match(lab.log(), /archived 1 done thread/);
   await lab.stop();
 });
-
-test('a page comes with its comments in it, escaped, and a guest copy without session details', async () => {
-  const dir = folder();
-  const lab = await start(dir);
-  await lab.post({ page: '/index', name: 'Sam', text: 'nasty </script><b>x</b>', anchor: { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 10, width: 800 } });
-  const html = await (await fetch(lab.B + '/')).text();
-  const m = /<script type="application\/json" id="lab-first">([\s\S]*?)<\/script>/.exec(html);
-  assert.ok(m, 'the comments are in the page');
-  assert.doesNotMatch(m[1], /<\/script>/i, 'no comment text can close the tag');
-  const data = JSON.parse(m[1]);
-  assert.equal(data.comments.length, 1);
-  assert.equal(data.comments[0].text, 'nasty </script><b>x</b>');
-  await lab.stop();
-});

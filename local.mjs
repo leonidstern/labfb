@@ -1159,20 +1159,6 @@ function announce(page, c) {
 const widget = (page, admin) =>
   `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
-// The page's comments go into the page as it's served, so the widget draws its pins without asking for them first (one
-// round trip less: ~20-60 ms on a phone over wifi). The same list the API gives this viewer: a guest's without session
-// details. Escaped so no comment text can close the script tag. Anything odd: nothing inlined, the widget asks as before.
-async function firstComments(page, admin) {
-  try {
-    const res = await api.GET(new Request(`http://localhost/api?page=${encodeURIComponent(page)}`, { headers: { host: 'localhost', ...(admin ? { 'x-lab-admin': TOKEN } : {}) } }));
-    if (!res.ok) return '';
-    const data = await res.json();
-    if (!admin && Array.isArray(data.comments)) data.comments = data.comments.map(forGuests);
-    return `<script type="application/json" id="lab-first">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>\n`;
-  } catch {
-    return '';
-  }
-}
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
 const inject = (html, tag) => {
@@ -1473,7 +1459,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(fs.readFileSync(file, 'utf8'), (await firstComments(keyFor(path.relative(ROOT, file)), isLoopback(req))) + widget(keyFor(path.relative(ROOT, file)), isLoopback(req))));
+        inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req))));
     }
     sendFile(req, res, file);
   } catch (e) {
