@@ -19,10 +19,14 @@ export function bindComposer(deps: Deps) {
 const ARROW = '<i class="arr" aria-hidden="true"></i>';
 
 // One field that grows: a pill while empty, a box with a divider and the name row once you type.
-export function composer({ placeholder, onSubmit, autofocus = false }: {
+// empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a go pin from someone with no name
+// yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
+export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false }: {
   placeholder: string;
   onSubmit: (name: string, text: string) => Promise<unknown>;
   autofocus?: boolean;
+  empty?: string;
+  nameFirst?: boolean;
 }): HTMLElement {
   const { el, store, root, refreshPinCursor, syncReads } = d;
   const wrap = el('div', { class: 'composer' });
@@ -68,7 +72,7 @@ export function composer({ placeholder, onSubmit, autofocus = false }: {
   }
 
   const sync = () => {
-    const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
+    const open = nameFirst || text.value.length > 0 || root.activeElement === name || !!error.textContent;
     // Opening moves the arrow from the text row to the name row: slide it there while the box grows, no jump.
     const glide = open !== box.classList.contains('open') && !store.get('lab-name') && box.isConnected && !matchMedia('(prefers-reduced-motion: reduce)').matches;
     const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
@@ -77,7 +81,7 @@ export function composer({ placeholder, onSubmit, autofocus = false }: {
     box.classList.toggle('open', open);
     as.hidden = !name.value.trim();
     if (one && !CSS.supports?.('field-sizing', 'content')) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
-    sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
+    sendBtn.classList.toggle('ready', Boolean((text.value.trim() || empty) && name.value.trim()));
     text.style.height = 'auto';
     text.style.height = `${text.scrollHeight}px`;
     if (glide) {
@@ -91,7 +95,8 @@ export function composer({ placeholder, onSubmit, autofocus = false }: {
   let busy = false;
   const go = async () => {
     if (busy) return;
-    if (!text.value.trim()) return text.focus();
+    const said = text.value.trim() || empty;
+    if (!said) return text.focus();
     if (!name.value.trim()) {
       box.classList.add('open');
       return name.focus();
@@ -111,7 +116,7 @@ export function composer({ placeholder, onSubmit, autofocus = false }: {
       error.classList.add('wait');
     }, 1500);
     try {
-      const result = (await onSubmit(name.value.trim(), text.value.trim())) as { keep?: boolean } | undefined;
+      const result = (await onSubmit(name.value.trim(), said)) as { keep?: boolean } | undefined;
       clearTimeout(slow);
       error.textContent = '';
       error.classList.remove('wait');
@@ -144,7 +149,9 @@ export function composer({ placeholder, onSubmit, autofocus = false }: {
   requestAnimationFrame(sync);
   // Right after it's on screen, in the same tap: phones open the keyboard only then.
   // preventScroll: the sheet is still sliding in from below the screen, and the page must not scroll to meet it.
-  const focus = () => text.focus({ preventScroll: true });
-  if (autofocus) queueMicrotask(() => (text.isConnected ? focus() : setTimeout(focus, 0)));
+  const first = nameFirst ? name : text;
+  if (nameFirst) name.setAttribute('data-first', '');
+  const focus = () => first.focus({ preventScroll: true });
+  if (autofocus) queueMicrotask(() => (first.isConnected ? focus() : setTimeout(focus, 0)));
   return wrap;
 }
