@@ -1225,8 +1225,16 @@ const handler = async (req, res) => {
             const oneThing = asks.length === 1 && !listy(asks[0].text);
             if (oneThing && !root.resolved && root.anchor?.kind !== 'page') h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
           }
+          // A zoom closes itself once its block is on the page and the agent has answered (Leo, 16 Nov): the block is the
+          // answer. Only while the person hasn't written more in the thread; writing again reopens it, as above.
+          if (agent && stored.parent && h.has(stored.parent)) {
+            const root = JSON.parse(h.get(stored.parent));
+            const more = [...h.values()].map((v) => JSON.parse(v)).some((x) => x.parent === root.id && x.id !== stored.id && !x.session);
+            const placed = root.anchor?.zoom && !root.resolved && !more && parseTrail(readTrail(key.slice('lab:comments:'.length))).some((st) => st.pin === root.id && st.kind === 'make');
+            if (placed) h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
+          }
           // An agent's answer on a pin that sits in a block goes into that page's trail, the pin first (lib/zoom.ts):
-          // the zoom card later shows what was asked and what was done there. A zoom is written by the hand-over.
+          // an agent zooming on that block later reads what was asked and done there. A zoom is written by the hand-over.
           if (agent && stored.parent && h.has(stored.parent)) {
             const root = JSON.parse(h.get(stored.parent));
             const page = key.slice('lab:comments:'.length);

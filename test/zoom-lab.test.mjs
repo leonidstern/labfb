@@ -64,9 +64,12 @@ test('a zoom in: the pin names its block, direction and skill; the lab places th
 
   const got = await (await fetch(`${B}/_lab/api/trail?page=/audit`)).json();
   assert.equal(got.steps.length, 2);
-  // The agent's reply on a zoom pin is not a third step: the hand-over already wrote what was made.
-  await run(['reply', comment.id, 'Done: a deeper look']);
+  // The agent's reply on a zoom pin is not a third step: the hand-over already wrote what was made. And with its block
+  // placed, the reply closes the zoom by itself, even when it doesn't start with "Done".
+  await run(['reply', comment.id, 'Deeper look at 158 ms: #a-deeper']);
   assert.equal(trail().length, 2);
+  const list = await (await fetch(`${B}/_lab/api/comments?page=/audit`, { headers: { origin: B } })).json();
+  assert.equal((list.comments || list).find((c) => c.id === comment.id).resolved, true);
 });
 
 test('a plain pin in a block: the answer goes into the trail; a pin that is no zoom can\'t take a zoom block', async () => {
