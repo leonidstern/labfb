@@ -3268,7 +3268,7 @@ ${line}`;
           if (s?.url && mode !== "away") Object.assign(who, { href: s.url, target: "_blank" });
           else who.removeAttribute("href");
           who.dataset.copy = !s?.url && s?.resume && mode !== "away" ? s.resume : "";
-          who.title = mode === "away" ? "Ask your agent to run: npx labit wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
+          who.title = mode === "away" ? "Ask your agent to run: npx @leonidstern/labit wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
           who.hidden = false;
         }
       };
