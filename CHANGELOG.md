@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+## 0.6.1 · 2026-11-16
+
 - iPhones: a new comment no longer sometimes sits behind the keyboard's bar. When Safari (or Chrome) slid the page up for the keyboard instead of scrolling it, the widget counted that slide twice and saw no keyboard at all; it now measures the slide where WebKit measures boxes, from the screen's top.
 - The page list: newest first, each page with its open comments and when it last changed, a summary line under the folder's name, and a filter once there are more than 8 pages (`/` to focus it).
 - A flat drag no longer draws a green hairline across the page. Marking an area by dragging sideways (or straight down) made a rectangle with no height, which read as a line through everything rather than as something being marked. The outline now keeps a least size of 12 px each way while you drag — the size the saved area was already grown to.
