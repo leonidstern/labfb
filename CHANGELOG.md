@@ -5,6 +5,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 ## Unreleased
 
 - iPhones: a new comment no longer sometimes sits behind the keyboard's bar. When Safari (or Chrome) slid the page up for the keyboard instead of scrolling it, the widget counted that slide twice and saw no keyboard at all; it now measures the slide where WebKit measures boxes, from the screen's top.
+- The page list: newest first, each page with its open comments and when it last changed, a summary line under the folder's name, and a filter once there are more than 8 pages (`/` to focus it).
 - The bar: hover, pressed and "its menu is open" (⋯) use the first grey step after white, not the second, which read as a dirty block on the white bar; menu rows the same. The mode switch's "off" pin (3, cursor) is the pin of 1 now (white, the pins' thin edge, bold letters) with the word in grey; it had a thicker, darker ring.
 - Zoom in the widget: 3 zooms in, 3 again zooms out (the pointer moves to 4; on phones a tap on the switch steps comment → go → in → out). A zoom is placed at once like a go, its pin shows arrows in or out, Command-Z takes it back, and the page scrolls to the block when it lands.
 - A `#id` in a message links to that block on the page.
