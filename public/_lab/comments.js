@@ -2916,7 +2916,7 @@ ${line}`;
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" role="status" hidden>click to comment \xB7 drag to mark an area \xB7 shift-drag to quote words \xB7 c chat \xB7 w new \xB7 1 comment \xB7 2 go \xB7 3 cursor \xB7 m hide</div>
+    <div class="hint" role="status" hidden>click to comment \xB7 drag to mark an area \xB7 shift-drag to quote words \xB7 c chat \xB7 w new \xB7 1 comment \xB7 2 go \xB7 3 cursor \xB7 p pause \xB7 m hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">\u2715</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -2927,6 +2927,7 @@ ${line}`;
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">\u203A</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
+      <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (p)">pause motion</button>
       <button class="secondary go-btn" type="button" hidden title="1 comment \xB7 2 go: every click approves what it's on \xB7 3 cursor: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">\u22EF</button>
@@ -2958,6 +2959,7 @@ ${line}`;
       /** @type {HTMLButtonElement} */
       $(".done-btn")
     );
+    const pauseBtn = $(".pause-btn");
     const LIST_WINDOW = false;
     const tabTitle = { base: "" };
     S.showDone = store2.get("lab-show-done") === "1";
@@ -3189,7 +3191,7 @@ ${line}`;
       return w;
     };
     function placeBar() {
-      const inMenu = S.on ? [doneBtn, copyBtn, toggleBtn] : [];
+      const inMenu = S.on ? [doneBtn, pauseBtn, copyBtn, toggleBtn] : [];
       for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
       if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
       if (!S.on) root.querySelector(".left").append(copyBtn);
@@ -3495,6 +3497,37 @@ ${line}`;
     goBtn.addEventListener("click", () => setGo(!S.goMode));
     newPrev.addEventListener("click", () => stepNew(-1));
     doneBtn.addEventListener("click", () => showDoneBtn.click());
+    S.paused = null;
+    const pageAnim = (a) => {
+      const t = a.effect?.target;
+      return Boolean(t) && t.getRootNode() !== root;
+    };
+    const freeze = () => {
+      for (const a of document.getAnimations()) {
+        if (!pageAnim(a) || a.playState !== "running") continue;
+        a.pause();
+        S.paused.anims.add(a);
+      }
+      for (const v of document.querySelectorAll("video")) {
+        if (v.paused) continue;
+        v.pause();
+        S.paused.videos.add(v);
+      }
+    };
+    pauseBtn.addEventListener("click", () => {
+      if (S.paused) {
+        clearInterval(S.paused.timer);
+        for (const a of S.paused.anims) a.play();
+        for (const v of S.paused.videos) v.play().catch(() => {
+        });
+        S.paused = null;
+      } else {
+        S.paused = { anims: /* @__PURE__ */ new Set(), videos: /* @__PURE__ */ new Set(), timer: setInterval(freeze, 100) };
+        freeze();
+      }
+      pauseBtn.textContent = S.paused ? "play motion" : "pause motion";
+      pauseBtn.setAttribute("aria-pressed", String(Boolean(S.paused)));
+    });
     showDoneBtn.addEventListener("click", () => {
       S.showDone = !S.showDone;
       store2.set("lab-show-done", S.showDone ? "1" : "");
@@ -3589,9 +3622,10 @@ ${line}`;
         return;
       }
       const letter = /^[a-z]$/i.test(e.key || "") ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : "";
-      if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwred]$/.test(letter)) {
+      if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwredp]$/.test(letter)) {
         const k = letter;
         e.preventDefault();
+        if (k === "p") return pauseBtn.click();
         if (k === "c") return chatBtn.click();
         if (k === "w") return stepNew(e.shiftKey ? -1 : 1);
         if (k === "d") return showDoneBtn.click();
@@ -3611,6 +3645,11 @@ ${line}`;
       }
     });
     const INTERACTIVE = 'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], [tabindex]:not([tabindex="-1"]), [onclick]';
+    const control = (t) => {
+      for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
+        if (n.matches(INTERACTIVE) || getComputedStyle(n).cursor === "pointer") return true;
+      return false;
+    };
     const OFF = "[data-uncommentable]";
     S.drag = null;
     S.afterDrag = false;
@@ -3630,7 +3669,7 @@ ${line}`;
     function startDrag(e) {
       if (!S.on && !e.altKey || S.cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host2)) return;
-      if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+      if (!e.altKey && control(e.target)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
       S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
     }
@@ -3640,7 +3679,7 @@ ${line}`;
         if (e.altKey) return;
         if (!S.on && !e.altKey || S.cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
         if (e.composedPath().includes(host2)) return;
-        if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+        if (!e.altKey && control(e.target)) return;
         if (e.target instanceof Element && e.target.closest(OFF)) return;
         S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
       },
@@ -3723,6 +3762,8 @@ ${line}`;
       e.stopImmediatePropagation();
       if (!S.afterDrag) onPageClick(e);
     }, true);
+    S.ctlClick = false;
+    addEventListener("click", (e) => S.ctlClick = control(e.target), true);
     document.addEventListener("click", (e) => onPageClick(e));
     S.lastTouch = 0;
     S.pinnedByHold = false;
@@ -3869,7 +3910,7 @@ ${line}`;
       if (!S.on && !e.altKey || S.cursorMode && !e.altKey || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (S.lastTouch && Date.now() - S.lastTouch < 800) return;
       if (e.altKey) e.preventDefault();
-      else if (e.defaultPrevented || e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+      else if (e.defaultPrevented || S.ctlClick) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
       if (String(getSelection?.() || "").trim()) return;
       showAgain();
@@ -3950,6 +3991,13 @@ ${line}`;
       document.documentElement.classList.add("lab-drawn");
       S.mouse = { x: e.clientX, y: e.clientY };
       const t = e.composedPath()[0];
+      if (t !== S.ctlTarget) {
+        S.ctlTarget = t;
+        document.documentElement.classList.toggle("lab-ctl", !host2.contains(
+          /** @type {Node} */
+          t
+        ) && t !== host2 && control(t));
+      }
       place(e.clientX, e.clientY, t instanceof Element ? t : null);
     }, { capture: true, passive: true });
     addEventListener("scroll", recheck, { capture: true, passive: true });
@@ -3965,7 +4013,7 @@ ${line}`;
       ptr.querySelector(".ini").textContent = ch;
       const plain2 = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
       const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
-      pinCursorStyle.textContent = `@layer lab-pointer { html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *${plain2} { cursor: crosshair; } html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *${plain2}:not(${top}) { cursor: none; } html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
+      pinCursorStyle.textContent = `@layer lab-pointer { html.lab-pinning:not(.lab-shift, .lab-ctl) body, html.lab-pinning:not(.lab-shift, .lab-ctl) body *${plain2} { cursor: crosshair; } html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body *${plain2}:not(${top}) { cursor: none; } html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
     }
     fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
     S.shiftOff = 0;
