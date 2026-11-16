@@ -766,7 +766,10 @@ let fileIndex = null;
 const fileMemo = new Map();
 let fileMemoAt = Date.now();
 const fileFor = (page) => {
-  if (PROXY && Date.now() - fileMemoAt > 30000) fileMemo.clear(), (fileMemoAt = Date.now());
+  if (PROXY && Date.now() - fileMemoAt > 30000) {
+    fileMemo.clear();
+    fileMemoAt = Date.now();
+  }
   if (!fileMemo.has(page)) fileMemo.set(page, findFile(page));
   return fileMemo.get(page);
 };
@@ -868,7 +871,7 @@ function logChanges(page, rev) {
 // A comment as another device sees it: who the agent is, not its session link or resume command; no file notes.
 const forGuests = (c) => {
   if (!c || typeof c !== 'object') return c;
-  const { quickDiff, quickFiles, quickNote, ...rest } = c;
+  const { quickDiff: _quickDiff, quickFiles: _quickFiles, quickNote: _quickNote, ...rest } = c;
   if (rest.session) rest.session = { name: rest.session.name, agent: rest.session.agent, kind: rest.session.kind };
   return rest;
 };
@@ -900,7 +903,7 @@ function persist(page) {
       const all = pages();
       // The store as it is held: each comment is already a JSON string, so nothing is parsed again.
       writeAtomic(DATA, `{${all.map((p) => `${JSON.stringify(p)}:{${[...db.get(`lab:comments:${p}`)].map(([id, v]) => `${JSON.stringify(id)}:${v}`).join(',')}}`).join(',')}}`);
-      for (const p of [...dirty]) {
+      for (const p of Array.from(dirty)) {
         dirty.delete(p); // a change during the rebuild marks it again, and the next round picks it up
         texts.set(p, await agentText(p));
       }
@@ -937,7 +940,7 @@ const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(re
 // only this computer and devices on the local network get in, whatever the router's firewall lets through.
 const nearby = (req) => {
   const a = String(req.socket.remoteAddress || '').toLowerCase().replace(/^::ffff:/, '');
-  if (a === '::1' || /^127\./.test(a)) return true;
+  if (a === '::1' || a.startsWith('127.')) return true;
   if (!WIFI) return false;
   return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a));
 };
@@ -1041,7 +1044,11 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
   else otherSaved = true;
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
-    if (indexStale) (fileIndex = null), fileMemo.clear(), (indexStale = false);
+    if (indexStale) {
+      fileIndex = null;
+      fileMemo.clear();
+      indexStale = false;
+    }
     const hotOnly = !otherSaved && hotSaved.size > 0;
     const hot = [...hotSaved].slice(0, 50).map(([p, kind]) => ({ path: p, kind }));
     hotSaved.clear();
@@ -1125,7 +1132,10 @@ const pagesChanged = () => {
     const all = waiters;
     waiters = [];
     waitEnded = Date.now();
-    for (const w of all) clearTimeout(w.timer), w.res.writeHead(410).end('the page was closed');
+    for (const w of all) {
+      clearTimeout(w.timer);
+      w.res.writeHead(410).end('the page was closed');
+    }
     setMode('away');
   }, Math.max(0, closedSince + CLOSE_GRACE - Date.now()));
 };
@@ -1181,7 +1191,10 @@ async function unseen(scope = pages()) {
   const whole = fresh.filter((f) => !known(f));
   for (const page of new Set(whole.map((f) => f.page))) {
     const block = await threadsText(page, [...new Set(whole.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
-    if (block) blocks.push(block.text), block.ids.forEach((id) => sent.add(`${page}\n${id}`));
+    if (block) {
+      blocks.push(block.text);
+      block.ids.forEach((id) => sent.add(`${page}\n${id}`));
+    }
   }
   const when = (c) => `${new Date(c.createdAt).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
   const lines = [];
@@ -1236,7 +1249,7 @@ function wake() {
   settleTimer = setTimeout(wakeNow, SETTLE_MS);
 }
 async function wakeNow() {
-  for (const w of [...waiters]) {
+  for (const w of Array.from(waiters)) {
     if (!waiters.includes(w)) continue;
     const got = await unseen(scopeOf(w));
     if (!got?.text || !waiters.includes(w)) continue;
@@ -1298,7 +1311,7 @@ const WEAK = 'cursor|amp|copilot|claude';
 const WORD_TOOL = { codex: 'codex', opencode: 'opencode', antigravity: 'antigravity', agy: 'antigravity', gemini: 'antigravity', cursor: 'cursor', amp: 'amp', copilot: 'copilot', claude: 'claude' };
 function routeFor(text = '') {
   const t = text.trim();
-  if (/^!/.test(t)) return { session: true };
+  if (t.startsWith('!')) return { session: true };
   const hit =
     t.match(new RegExp(`(?:^|\\s)@(${STRONG}|${WEAK})(?![\\w.-])`, 'i')) ||
     t.match(new RegExp(`^(${STRONG})\\s*[:,\\-–—]`, 'i')) ||
@@ -1375,7 +1388,12 @@ function refreshSnap() {
   try {
     walk(ROOT);
   } catch {}
-  for (const [f, v] of snap) if (!now.has(f)) (snapBytes -= v.body?.length || 0), snap.delete(f);
+  for (const [f, v] of snap) {
+    if (!now.has(f)) {
+      snapBytes -= v.body?.length || 0;
+      snap.delete(f);
+    }
+  }
 }
 // What changed since \`before\`: files with other contents, new files, removed files; lines added and removed.
 function changesSince(before) {
@@ -1390,7 +1408,10 @@ function changesSince(before) {
     const count = new Map();
     for (const l of lines(a)) count.set(l, (count.get(l) || 0) + 1);
     const added = [];
-    for (const l of lines(b)) count.get(l) ? count.set(l, count.get(l) - 1) : added.push(l);
+    for (const l of lines(b)) {
+      if (count.get(l)) count.set(l, count.get(l) - 1);
+      else added.push(l);
+    }
     const removed = [...count].flatMap(([l, n]) => Array(n).fill(l));
     out.push({ file: f, before: a, added, removed });
   }
@@ -1481,7 +1502,10 @@ function quickRun(prompt, model, limit, tool, asked = '', onEdit = () => {}) {
   const saw = (f) => {
     if (!edited || typeof f !== 'string' || !f) return;
     const full = path.resolve(ROOT, f);
-    if (!edited.has(full)) edited.add(full), onEdit(full);
+    if (!edited.has(full)) {
+      edited.add(full);
+      onEdit(full);
+    }
   };
   let text = ''; // the answer: Claude's result, or the command's own output without its "edited:" lines
   let rest = '';
@@ -1731,7 +1755,7 @@ const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
     if (!nearby(req) || !allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
-    if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !/^application\/json/.test(req.headers['content-type'] || '')))
+    if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !(req.headers['content-type'] || '').startsWith('application/json')))
       return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
     const pathname = decodeURIComponent(url.pathname);
     if (PROXY && !pathname.startsWith('/_lab/')) return proxyTo(req, res, url);
@@ -1781,7 +1805,10 @@ const handler = async (req, res) => {
       const same = (a, b) => (a === null || b === null ? a === b : a.equals(b));
       const moved = saved.filter((x) => !same(now(x.file), x.after)).map((x) => path.relative(ROOT, x.file));
       if (moved.length) return no(`changed since: ${moved.join(', ')}; ask your agent`);
-      for (const x of saved) x.before === null ? fs.rmSync(x.file, { force: true }) : fs.writeFileSync(x.file, x.before);
+      for (const x of saved) {
+        if (x.before === null) fs.rmSync(x.file, { force: true });
+        else fs.writeFileSync(x.file, x.before);
+      }
       quickUndo.delete(id);
       refreshSnap();
       setComment(page, id, { quick: 'rejected', rejectedAt: new Date().toISOString(), quickNote: `the person rejected the quick fix (👎), so it was put back: ${c.quickDiff || ''}`.slice(0, 200) });

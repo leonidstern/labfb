@@ -834,10 +834,16 @@
     if (document.caretPositionFromPoint) {
       // Open shadow roots under the click are passed in, so text inside a web component is found too.
       const p = shadowRoots.length ? document.caretPositionFromPoint(cx, cy, { shadowRoots }) : document.caretPositionFromPoint(cx, cy);
-      if (p) (node = p.offsetNode), (offset = p.offset);
+      if (p) {
+        node = p.offsetNode;
+        offset = p.offset;
+      }
     } else if (document.caretRangeFromPoint) {
       const r = document.caretRangeFromPoint(cx, cy);
-      if (r) (node = r.startContainer), (offset = r.startOffset);
+      if (r) {
+        node = r.startContainer;
+        offset = r.startOffset;
+      }
     }
     if (!node || node.nodeType !== 3 || !node.data.trim()) return null;
     // Only when the click is really on the text, not in empty space next to it.
@@ -877,7 +883,7 @@
     // Code (or any preformatted text): the whole line, its number in the block, and the block's label
     // (a figcaption, data-file, title or aria-label nearby), so an agent can open the file at that line.
     const pre = node.parentElement?.closest('pre, [data-file]') ||
-      (/^pre/.test(getComputedStyle(node.parentElement).whiteSpace) ? node.parentElement : null);
+      (getComputedStyle(node.parentElement).whiteSpace.startsWith('pre') ? node.parentElement : null);
     // A table of code with its own line numbers (one row per line) counts as a block too.
     const codeTable = !pre && node.parentElement?.closest('table[data-file], table[class*="code" i]');
     if (pre || codeTable) {
@@ -1250,7 +1256,11 @@
       const at = []; // for each letter of text: its text piece and place in it
       const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
       for (let t; (t = walker.nextNode()); )
-        for (let i = 0; i < t.data.length; i++) if (!/\s/.test(t.data[i])) (text += t.data[i]), at.push([t, i]);
+        for (let i = 0; i < t.data.length; i++) {
+          if (/\s/.test(t.data[i])) continue;
+          text += t.data[i];
+          at.push([t, i]);
+        }
       let first = null;
       for (let i = text.indexOf(want); i !== -1; i = text.indexOf(want, i + 1)) {
         const range = document.createRange();
@@ -1290,7 +1300,7 @@
   };
   // Messages read in short blocks: a blank line starts a new paragraph, "- " or "1. " lines are a list, and one long
   // paragraph (as agents tend to write) is broken after every second sentence, so a small window isn't a wall of text.
-  const sentences = (t) => t.split(/(?<=[.!?])\s+(?=["'(\[]?[A-Z0-9])/);
+  const sentences = (t) => t.split(/(?<=[.!?])\s+(?=["'([]?[A-Z0-9])/);
   const readable = (text) => {
     const blocks = [];
     for (const [n, para] of String(text || '').trim().split(/\n\s*\n/).entries()) {
@@ -2958,7 +2968,10 @@
     let releasedAt = -1e9;
     node.addEventListener('scroll', () => (scrolledAt = performance.now()), { capture: true, passive: true });
     node.addEventListener('click', (e) => {
-      if (performance.now() - releasedAt < 200) e.preventDefault(), e.stopPropagation();
+      if (performance.now() - releasedAt < 200) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     }, true);
     node.addEventListener('focusin', (e) => {
       if (performance.now() - releasedAt < 200 && e.target.localName === 'textarea') e.target.blur();
@@ -3297,7 +3310,6 @@
   // or go or comments are switched.
   let mouse = null; // the last mouse position
   const place = (x, y, target) => {
-    const h = document.documentElement;
     const show = Boolean(target) && target !== host && !host.contains(target) && getComputedStyle(target).cursor === 'none';
     ptr.classList.toggle('show', show);
     ptr.classList.toggle('go', goMode);
@@ -3414,7 +3426,10 @@
       if (kept !== null) {
         sessionStorage.removeItem(key);
         if (kept.open) openId = kept.open;
-        if (kept.list) (listOpen = true), (filter = ['new', 'open', 'resolved', 'mine'].includes(kept.filter) ? kept.filter : filter);
+        if (kept.list) {
+          listOpen = true;
+          filter = ['new', 'open', 'resolved', 'mine'].includes(kept.filter) ? kept.filter : filter;
+        }
         if (kept.chat) chatOpen = true;
         addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
       }
@@ -3604,8 +3619,8 @@
       }
       if (o.nodeType !== 1) return o;
       // An opened <details> or <dialog> stays open (you opened it; the file doesn't say so).
-      for (const { name } of [...o.attributes]) if (!n.hasAttribute(name) && !(name === 'open' && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
-      for (const { name, value } of [...n.attributes]) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+      for (const { name } of Array.from(o.attributes)) if (!n.hasAttribute(name) && !(name === 'open' && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
+      for (const { name, value } of Array.from(n.attributes)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
       // What you're typing in, a playing video, a canvas, a web component's insides: left as they are.
       if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
       morphKids(o, n);
@@ -3741,7 +3756,11 @@
         hotAt = v.hot;
         if (commentsRev !== null && v.comments !== commentsRev) loadChanges(commentsRev); // keeps typed text: it adds replies in place
         commentsRev = v.comments;
-        if (v.reads !== readsAt) (readsAt = v.reads), syncReads(); // read on another device with your name
+        // read on another device with your name
+        if (v.reads !== readsAt) {
+          readsAt = v.reads;
+          syncReads();
+        }
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
         const mode = s ? v.mode || 'listening' : 'away';
