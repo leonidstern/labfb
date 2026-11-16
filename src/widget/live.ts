@@ -381,9 +381,10 @@ export function startLive() {
         const s = v.session;
         const mode = s ? v.mode || 'listening' : 'away';
         const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
-        // "Codex is working (ooze)": the agent first, the session's name after it in brackets.
-        const agent = s?.agent || 'Claude';
-        const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
+        // "Codex is working (ooze)": the agent first, the session's name after it in brackets. With the model the
+        // session said it runs on: "talking to Claude · Sonnet 5.5 (ooze)".
+        const agent = s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
+        const tag = s && s.name !== (s.agent || 'Claude') ? [span(`(${s.name})`)] : [];
         if (mode === 'listening') lbl.replaceChildren(span('talking to'), agent, ...tag);
         else if (mode === 'working') lbl.replaceChildren(agent, span('is working'), ...tag);
         else lbl.replaceChildren(span('no agent listening'));
