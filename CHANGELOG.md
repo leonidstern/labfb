@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Listening: the MCP server's `wait` is its own request to the lab, no longer a `labit wait` process it starts, so a cancel or the client going away ends it at once by design. A tab that drops its connection without saying bye (crashed, or frozen by a phone) stops counting as open after 90 s without checking in, not after half an hour (LAB_TAB_TTL, in seconds).
 - MCP server, checked against the spec (2025-11-25, 2026-07-28) and the SDK's practice: when the client goes away (stdin closed, SIGTERM, SIGINT) a `wait` in flight stops with it, so the page no longer says an agent is listening for up to the wait's length; a `wait` refused for a bad argument no longer sends progress forever after its answer; a cancel for a request already answered is ignored (an id used again got no answer); roots are asked for after the client's `initialized`, not before; a batch gets an Invalid Request error instead of silence.
 - The last of the old name is gone: no `labfb` command (use `labit`), and `LABFB_HOME` / `LABFB_NO_UPDATE_CHECK` are no longer read (use `LABIT_HOME` / `LABIT_NO_UPDATE_CHECK`).
 

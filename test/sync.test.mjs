@@ -16,8 +16,8 @@ const PORT = String(5700 + Math.floor(Math.random() * 250));
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 fs.writeFileSync(path.join(DIR, 'other.html'), '<!doctype html><title>o</title><h1 id="o">Other</h1>');
-// A 1 s grace once every page is closed, and pins 300 ms apart go over together.
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+// A 1 s grace once every page is closed, and pins 300 ms apart go over together. A tab with neither a stream nor a check-in is gone after 3 s here (90 s in a real lab).
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LAB_TAB_TTL: '3', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
 const procs = new Set();
 after(() => {
@@ -243,4 +243,17 @@ test('a page that only polls the state (a background tab) still counts as open',
   assert.equal(w.over(), false, 'past the grace and still listening');
   assert.equal((await bye('bg-1')).status, 204);
   assert.match((await w.done).out, /page was closed/);
+});
+
+test('a tab that goes silent (no bye, no check-in: it crashed, or a phone froze it) stops counting after the timeout', async () => {
+  await drain();
+  const p = await live('crash-1');
+  const w = wait();
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  const t0 = Date.now();
+  p.hide(); // the stream drops and nothing more comes from the tab
+  const { out } = await w.done;
+  assert.match(out, /page was closed/);
+  const ms = Date.now() - t0;
+  assert.ok(ms > 2500 && ms < 9000, `ended ${ms} ms after the tab went silent (timeout 3 s + grace 1 s)`);
 });
