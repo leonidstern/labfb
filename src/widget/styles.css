@@ -33,6 +33,13 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 button.pin:hover, button.pin.open { transform: scale(1.08); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 4px 14px rgba(0,0,0,.2); }
 button.pin:active { transform: scale(.96); }
 .pin.in { animation: lab-pin .26s var(--_ease); }
+/* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
+   lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
+.pin.swap { animation: lab-swap .36s cubic-bezier(.3, .7, .4, 1.25); }
+@keyframes lab-swap { from { transform: scale(.72); opacity: .35; } }
+.pin .ring.come { animation: lab-fade .3s ease-out; }
+.pin .ring.gone { animation: lab-gone .3s ease-in forwards; }
+@keyframes lab-gone { to { opacity: 0; } }
 /* A new comment lands with one faint halo from its pin. */
 button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
                   animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
@@ -275,8 +282,12 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
   .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
   .bar > button.first { box-shadow: none; }
-  .bar > button:not(:disabled):hover { background: var(--_hover); }
-  .bar > button:active { transform: none; background: var(--_hover); }
+  /* Only with a mouse: on a phone the grey stayed on a tapped segment (iOS keeps :hover after a tap; Leo, 16 Nov). */
+  @media (hover: hover) and (pointer: fine) {
+    .bar > button:not(:disabled):hover { background: var(--_hover); }
+    .bar > button:active { background: var(--_hover); }
+  }
+  .bar > button:active { transform: none; }
   .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
   .bar > button.quiet.first { box-shadow: none; }
   .bar .list-btn, .bar .done-btn { min-width: 0; }
@@ -320,7 +331,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
 @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
 @keyframes lab-sheet-in { from { transform: translateY(100%); } }
-@keyframes lab-sheet-out { to { transform: translateY(100%); } }
 @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
 /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
 /* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a
@@ -397,7 +407,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
      sheet never scrolls the page. */
   :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
   .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
-  .card.out, .float.out { animation: lab-sheet-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+  /* Held at their start until the sheet's first frame is drawn (data-opening, see render): laying out the first sheet
+     after the page loads took 130 ms and used up the slide, so it showed up already open (iOS 27 simulator, 16 Nov). */
+  :host([data-opening]) :is(.card.in, .float.in, .scrim) { animation-play-state: paused; }
+  /* Leaving (see leave() in sheets.ts): the dimmed page stays until the sheet is gone, fading on the sheet's curve. */
+  :host([data-leaving]) .scrim { display: block; }
   .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
           font-size: 15px; letter-spacing: -.016em; z-index: 3; }
   /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
@@ -430,6 +444,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .list .it { padding: 11px 8px; }
   /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
   .pin { scale: .8; }
+  /* …but a 44 pt place to tap (iOS 44 pt, Leo 16 Nov: hard to hit at 22): an invisible circle round the pin, so it
+     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a moved pin (.64) gets 70 px. */
+  .pin .hit { display: block; position: absolute; inset: -14px; border-radius: 50%; }
+  .pin.moved .hit { inset: -21px; }
   /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
   .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }

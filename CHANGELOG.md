@@ -5,6 +5,17 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 ## Unreleased
 
 - A pin whose element is gone now waits beside the content (in the gutter left of what it sat in), not 10 px from the window's left edge. On a wide window with a centred column those pins were hundreds of px from the page and read as lost. Phones and full-width pages are unchanged.
+- Phones move more like native sheets (checked frame by frame in the iOS 27 simulator):
+  - Closing a sheet with the keyboard up takes the keyboard with it at once; the keyboard used to stay alone for 0.6 s after the sheet was gone.
+  - After you send, the sheet slides off with the keyboard; it used to ride the keyboard halfway down and vanish mid-screen.
+  - The dimmed page fades with the sheet's position, as it slides and while a finger drags it; it used to be gone while most of the sheet was still up.
+  - The first sheet after the page loads slides in; it used to show up already open.
+  - A new pin low on the page scrolls up above the sheet, so you see what you're commenting on.
+  - A pin's state change (Claude on it, done, a reply) eases in, and the ring fades in and out; they used to be cuts.
+  - Tapping "your name" no longer drops the sheet behind the keyboard, and Safari no longer offers "AutoFill Contact" there.
+  - The bar's buttons no longer stay grey after a tap.
+  - Pins keep their look but take a 44 pt tap: a finger near one opens it (they were 22 pt to hit).
+
 - The widget is split into TypeScript modules in `src/widget/`: `composer` (the message box), `messages`, `list`, `chat`, `thread`, `sheets` (phone sheets, back gesture, keyboard fit) and `live` (live page updates), beside `anchoring` and `styles`. Its shared state is one object, so the parts can share it. Same behaviour; `src/comments.js` keeps setup, loading, drawing and the events (2,688 → 1,428 lines).
 
 - The server is moving to TypeScript: all of `lib/` is TypeScript now (`dev`, `devserver`, `mcp`, `proxy`), and `local.mjs` hands its command line (`args`), agent detection (`agents`), the running-labs list (`labs`) and the commands that answer and exit (`commands`: preview, add, list, pages, wait, reply, resolve, invite) to their own files; it keeps the server. Node runs the `.ts` source directly while working on labit; npm gets a built copy, `dist/` (made by `npm run build:cli` before every pack), so the package stays plain JavaScript with no dependencies, now 109 kB instead of 120 kB.
