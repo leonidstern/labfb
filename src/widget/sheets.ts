@@ -11,12 +11,12 @@ export function bindSheets(w: unknown) {
 // scrolls them natively; overscroll-behavior keeps the page behind still). Up past where it sits it stretches a
 // little and springs back. Let go fast, or past a third of its height, and it carries on down and away at the
 // finger's speed; else it springs back, the dimmed page fading with it. Text boxes stay the browser's.
-export const grabArea = (t) => Boolean(t.closest?.('.handle, .tabs'));
+const grabArea = (t) => Boolean(t.closest?.('.handle, .tabs'));
 
-export const scrollerIn = (e, node) =>
+const scrollerIn = (e, node) =>
   e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === 'textarea' || /auto|scroll/.test(getComputedStyle(n).overflowY)));
 
-export const SPRING = 'cubic-bezier(.32,.72,0,1)';
+const SPRING = 'cubic-bezier(.32,.72,0,1)';
 
 const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin'];
 

@@ -31,7 +31,7 @@ function elementAt(html: string, m: RegExpExecArray): El | null {
   return null;
 }
 const TAG = '<([a-zA-Z][a-zA-Z0-9-]*)\\b[^>]*';
-export function blockById(html: string, id: string): El | null {
+function blockById(html: string, id: string): El | null {
   const m = new RegExp(`${TAG}\\bid="${reEsc(id)}"[^>]*>`).exec(html);
   return m ? elementAt(html, m) : null;
 }

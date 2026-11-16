@@ -4,8 +4,7 @@
   "description": "Pin comments on pages, read by your agent as plain text. Local mode: comment on pages on your computer and Claude answers on the pins.",
   "type": "module",
   "bin": {
-    "labit": "dist/local.mjs",
-    "labfb": "dist/local.mjs"
+    "labit": "dist/local.mjs"
   },
   "files": [
     "dist/",
@@ -23,6 +22,7 @@
     "build:cli": "npx --yes esbuild@0.25.12 local.mjs --bundle --splitting --format=esm --platform=node --target=node22 --outdir=dist --out-extension:.js=.mjs --log-level=warning",
     "prepack": "npm run build:cli",
     "typecheck": "node ci/metrics.mjs types",
+    "deadcode": "npx --yes knip@5.66.0 --include files,exports,types --no-progress",
     "test": "node --import ./test/setup.mjs --test test/*.test.mjs"
   },
   "engines": {

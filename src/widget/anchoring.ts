@@ -2,7 +2,7 @@
 // that spot again when the page changes. Part of the comment widget (src/comments.js bundles it).
 
 /** Words a pin quotes, with what comes before and after so they can be found again. */
-export type Quote = {
+type Quote = {
   exact: string;
   prefix: string;
   suffix: string;
@@ -15,7 +15,7 @@ export type Quote = {
 };
 
 /** Everything a pin remembers about its spot. Saved with the comment and read by agents. */
-export type Anchor = {
+type Anchor = {
   selector: string;
   /** The nearest element with an id around the spot (zoom: lib/zoom.ts), and on a zoom its direction ("in" or "out"). */
   block?: string;
@@ -62,10 +62,10 @@ export type Anchor = {
 };
 
 /** A rectangle on the page, in document pixels. */
-export type Box = { left: number; top: number; width: number; height: number };
+type Box = { left: number; top: number; width: number; height: number };
 
 /** Where a pin shows: its point, the area it marks (if any), and whether its spot changed. */
-export type Spot = { left: number; top: number; zone: Box | null; moved?: boolean };
+type Spot = { left: number; top: number; zone: Box | null; moved?: boolean };
 
 type Deps = {
   host: HTMLElement;
@@ -80,7 +80,7 @@ export function bindAnchoring(deps: Deps) {
   ({ host, layer, el, store } = deps);
 }
 
-export function selectorFor(node) {
+function selectorFor(node) {
   const parts = [];
   while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
     if (node.id && document.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1) {
@@ -96,14 +96,14 @@ export function selectorFor(node) {
   return parts.length ? (parts[0].startsWith('#') ? '' : 'body > ') + parts.join(' > ') : 'body';
 }
 
-export const docWidth = () => Math.max(document.documentElement.scrollWidth, 1);
+const docWidth = () => Math.max(document.documentElement.scrollWidth, 1);
 
-export const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
+const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
 export const short = (v, n) => (v || '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // A source-file hint from a (possibly proxied, hashed or optimised) image URL: "hero-1" from
 // /_astro/hero-1.Bx3kd9_Z.webp, /_image?href=..., /_vercel/image?url=..., /media/<id>/w800.webp.
-export function fileHint(url) {
+function fileHint(url) {
   if (!url || url.startsWith('data:')) return '';
   try {
     const u = new URL(url, location.href);
@@ -118,7 +118,7 @@ export function fileHint(url) {
   }
 }
 
-export const mediaSrc = (m) => {
+const mediaSrc = (m) => {
   const src = m.currentSrc || m.getAttribute('src') || '';
   if (src && !src.startsWith('data:')) return new URL(src, location.href).href;
   const lazy = m.dataset?.src || (m.getAttribute('srcset') || m.dataset?.srcset || '').split(/\s+/)[0];
@@ -126,7 +126,7 @@ export const mediaSrc = (m) => {
 };
 
 // Where the click is inside the original image/video, taking object-fit and object-position into account.
-export function naturalSpot(m, rect, cx, cy, nw, nh) {
+function naturalSpot(m, rect, cx, cy, nw, nh) {
   if (!nw || !nh || !rect.width || !rect.height) return null;
   const cs = getComputedStyle(m);
   const fit = cs.objectFit || 'fill';
@@ -145,7 +145,7 @@ export function naturalSpot(m, rect, cx, cy, nw, nh) {
 
 // The picture file's own size. With srcset, naturalWidth is the size in CSS pixels, not the file's: read the width
 // descriptor of the candidate the browser picked ("photo-1600.jpg 1600w"), or scale by its density ("2x").
-export function fileSize(img) {
+function fileSize(img) {
   let nw = img.naturalWidth;
   let nh = img.naturalHeight;
   const sets = [img.srcset, ...[...(img.closest('picture')?.querySelectorAll('source') || [])].map((s) => s.srcset)].filter(Boolean);
@@ -167,15 +167,15 @@ export function fileSize(img) {
 
 // Which component drew an element and where, from a framework's dev build (React, Vue 3, Svelte); production
 // builds keep none of it. A small cut of Census's reader (github.com/leonidstern/census).
-export const PLAIN_NAME = /^[A-Z][A-Za-z0-9]{2,}$/;
-export const PLUMBING = /(Provider|Context|Consumer|Boundary|Slot|Portal|Fragment|Presence|Scope|Trap|Root)$/;
-export const variantOf = (p) =>
+const PLAIN_NAME = /^[A-Z][A-Za-z0-9]{2,}$/;
+const PLUMBING = /(Provider|Context|Consumer|Boundary|Slot|Portal|Fragment|Presence|Scope|Trap|Root)$/;
+const variantOf = (p) =>
   ['variant', 'size', 'tone', 'intent', 'kind']
     .flatMap((k) => ((typeof p?.[k] === 'string' || typeof p?.[k] === 'number') && /^[\w.-]{1,20}$/.test(String(p[k])) ? [`${k}=${p[k]}`] : []))
     .join(' ');
 // A served module's address as a repo path: Vite serves /src/x.tsx, webpack and Next say webpack-internal:///./src/x.tsx.
-export const repoPath = (url) => !/^[a-z-]+:\/\//i.test(url) ? url : decodeURIComponent(url.replace(/^[a-z-]+:\/\/\/?(\.\/)?/i, '/').replace(/^\/[^/]*:\d+/, '').split('?')[0]).replace(/^\/(@fs)?/, '').replace(/^\(app-pages-browser\)\/\.?\/?/, '');
-export function componentAt(el) {
+const repoPath = (url) => !/^[a-z-]+:\/\//i.test(url) ? url : decodeURIComponent(url.replace(/^[a-z-]+:\/\/\/?(\.\/)?/i, '/').replace(/^\/[^/]*:\d+/, '').split('?')[0]).replace(/^\/(@fs)?/, '').replace(/^\(app-pages-browser\)\/\.?\/?/, '');
+function componentAt(el) {
   const name = (t, d = 0) => (d > 3 ? '' : typeof t === 'function' ? t.displayName || t.name || '' : t && typeof t === 'object' ? t.displayName || name(t.render || t.type, d + 1) : '');
   const plain = (n) => PLAIN_NAME.test(n) && !PLUMBING.test(n);
   // React 18 writes the JSX's file and line; React 19 only the stack where the element was made.
@@ -222,7 +222,7 @@ export function componentAt(el) {
 
 // How the element looks: fill, text colour, size and weight, corners. A colour that a CSS variable on :root
 // holds is named by it (the page's own tokens).
-export function looksOf(el) {
+function looksOf(el) {
   const cs = getComputedStyle(el);
   const names = new Map();
   // A variable that isn't a colour (a radius, a gap) leaves the probe with its parent's colour, one no page uses:
@@ -248,7 +248,7 @@ export function looksOf(el) {
 }
 
 // A point on an element turned, scaled or skewed by its own CSS transform, in the element's untransformed box.
-export function untransform(el, cx, cy) {
+function untransform(el, cx, cy) {
   const t = getComputedStyle(el).transform;
   if (!t || t === 'none') return null;
   const m = new DOMMatrix(t);
@@ -266,7 +266,7 @@ export function untransform(el, cx, cy) {
 }
 
 // A picture inside an SVG (<image>): its file size, and preserveAspectRatio (default: fit inside, centred).
-export function svgImageSpot(el, anchor, cx, cy) {
+function svgImageSpot(el, anchor, cx, cy) {
   const r = el.getBoundingClientRect();
   const keep = (el.getAttribute('preserveAspectRatio') || 'xMidYMid meet').split(/\s+/);
   const fill = (iw, ih) => {
@@ -289,7 +289,7 @@ export function svgImageSpot(el, anchor, cx, cy) {
 
 // Where the click is inside a CSS background picture: its file size (loaded once, usually from the cache),
 // background-size (cover, contain, auto, lengths) and background-position. Fills the anchor when known.
-export function backgroundSpot(n, url, anchor, cx, cy) {
+function backgroundSpot(n, url, anchor, cx, cy) {
   const r = n.getBoundingClientRect();
   const cs = getComputedStyle(n);
   // Layers are comma lists (a gradient on top of the photo is common): use the photo's own layer.
@@ -330,7 +330,7 @@ export function backgroundSpot(n, url, anchor, cx, cy) {
 }
 
 // A click on empty space: the blocks just above and below it inside the element, by heading or first words.
-export function between(target, cy) {
+function between(target, cy) {
   const kids = [...target.children].filter((k) => k !== host && k.getBoundingClientRect().height > 0);
   let above = null;
   let below = null;
@@ -349,7 +349,7 @@ export function between(target, cy) {
 }
 
 // Light or dark where the pin is: the first background colour behind it that isn't transparent.
-export function schemeAt(target) {
+function schemeAt(target) {
   for (let n = target; n; n = n.parentElement) {
     const m = getComputedStyle(n).backgroundColor.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
     if (!m || (m[4] !== undefined && parseFloat(m[4]) < 0.5)) continue;
@@ -361,7 +361,7 @@ export function schemeAt(target) {
 }
 
 // The word under the click plus ~40 characters either side, so an agent can grep the source.
-export function quoteAt(cx, cy, shadowRoots = []) {
+function quoteAt(cx, cy, shadowRoots = []) {
   let node = null;
   let offset = 0;
   if (document.caretPositionFromPoint) {
@@ -466,7 +466,7 @@ export function quoteAt(cx, cy, shadowRoots = []) {
   return quote;
 }
 
-export function openingTag(node) {
+function openingTag(node) {
   const attrs = [...node.attributes]
     .filter((a) => /^(id|class|alt|role|aria-label|href|data-[\w-]+)$/.test(a.name))
     .map((a) => `${a.name}="${short(a.value, 60)}"`);
@@ -474,7 +474,7 @@ export function openingTag(node) {
 }
 // Is this element the kind a pin was put on? Same tag and id, and at least one of its classes still there: pages
 // add and drop state classes (offscreen, is-active, open), and an exact match of the tag moved those pins away.
-export function sameKind(node, tag) {
+function sameKind(node, tag) {
   if (!tag) return true;
   const want = /^<([\w-]+)/.exec(tag)?.[1];
   if (node.localName !== want) return false;
@@ -623,7 +623,7 @@ export function anchorAt(clientX, clientY) {
 
 // The stored selector can point at a different element after a redeploy; check it against the
 // file / text fingerprint, look for the right one, and otherwise fall back to the page position.
-export function findTarget(anchor) {
+function findTarget(anchor) {
   let node = null;
   try {
     node = anchor.selector ? document.querySelector(anchor.selector) : null;
@@ -701,7 +701,7 @@ export function findTarget(anchor) {
 // added above. If it was on a word ("…before [word] after…"), find that word again and sit on it; if the word is gone,
 // say so (the pin shows faded as moved) instead of pointing at whatever is there now.
 let wordCache: { at: number; text: string; map: [Text, number][] } | null = null;
-export function wordSpot(anchor) {
+function wordSpot(anchor) {
   const m = /^(?:…)?(.*?)\[([^\]]+)\](.*?)(?:…)?$/s.exec(anchor.text || '');
   if (!m) return null;
   const before = m[1].replace(/\s+/g, ' ').slice(-24);
@@ -743,16 +743,16 @@ export const inPage = (y, h = 0) => {
   return Math.max(0, Math.min(y, pageEnd.y - h - 40));
 };
 // An area's pin sits at the corner where the drag ended (where you let go), not where it started.
-export const pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
+const pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
 // A pin whose spot changed waits beside the content at the height it had, small and faded, out of the content's way
 // (it pointed at something that's gone, so its old x means nothing now). Opening it still shows its old area.
 // "Beside the content" is the gutter just left of what it sat in: the nearest box in its selector that is still on the
 // page, else the page's own content. It used to be the window's left edge, which on a wide window with a centred
 // column is hundreds of px from anything people look at: such pins read as lost. EDGE is the least it can be, so on a
 // phone, or a page that fills the window, it is where it was.
-export const EDGE = 10;
+const EDGE = 10;
 const GUTTER = 30; // a moved pin is 22 px wide: its right side stops 8 px short of the content
-export function edgeFor(anchor) {
+function edgeFor(anchor) {
   const beside = (rect) => Math.max(EDGE, Math.round(rect.left + scrollX - GUTTER));
   const parts = String(anchor?.selector || '').split(' > ');
   while (parts.length > 1) {
@@ -775,7 +775,7 @@ export function position(anchor) {
   const at = spotOf(anchor);
   return at.moved ? { ...at, left: edgeFor(anchor) } : at;
 }
-export function spotOf(anchor): Spot {
+function spotOf(anchor): Spot {
   const node = findTarget(anchor);
   if (node && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && /\[[^\]]+\]/.test(anchor.text || '')) {
     const spot = wordSpot(anchor);
@@ -811,7 +811,7 @@ export function spotOf(anchor): Spot {
 // nothing in the page's DOM is touched).
 // The words are matched with spaces left out, across text pieces, so a quote that runs over several items (Shift +
 // select) is found too; the search widens from the pinned element to the few boxes around it.
-export function quoteRange(anchor) {
+function quoteRange(anchor) {
   const q = anchor?.quote;
   let node = q?.exact ? findTarget(anchor) : null;
   if (!node) return null;
@@ -857,7 +857,7 @@ const onPage = (id) => {
   const e = document.getElementById(id);
   return Boolean(e) && !e.closest('[data-lab-comments]');
 };
-export const linked = (text) => {
+const linked = (text) => {
   const out = [];
   let at = 0;
   for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]|(?<![\w&/#])#([A-Za-z][\w:.-]*[\w])/g)) {
@@ -880,7 +880,7 @@ export const linked = (text) => {
 };
 // Messages read in short blocks: a blank line starts a new paragraph, "- " or "1. " lines are a list, and one long
 // paragraph (as agents tend to write) is broken after every second sentence, so a small window isn't a wall of text.
-export const sentences = (t) => t.split(/(?<=[.!?])\s+(?=["'([]?[A-Z0-9])/);
+const sentences = (t) => t.split(/(?<=[.!?])\s+(?=["'([]?[A-Z0-9])/);
 export const readable = (text) => {
   const blocks = [];
   for (const [n, para] of String(text || '').trim().split(/\n\s*\n/).entries()) {
@@ -905,7 +905,7 @@ export const readable = (text) => {
     return node;
   });
 };
-export const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
+const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
 export const markQuote = (anchor) => {
   if (!canMark) return;
   const range = anchor && quoteRange(anchor);

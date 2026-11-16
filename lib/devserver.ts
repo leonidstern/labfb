@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 /** A server listening on this computer, and the folder its process runs in ('' when lsof can't say). */
-export type DevServer = { port: number; dir: string };
+type DevServer = { port: number; dir: string };
 
 // Every server listening on this computer, with the folder it runs in (lsof: macOS and Linux).
 // Several projects' dev servers often run at once, so a port is only this project's if its folder is.

@@ -32,7 +32,7 @@ export function agentNow(env: NodeJS.ProcessEnv = process.env): { kind: string; 
 // agent has them (Claude Code: CLAUDE_CODE_SESSION_ID; Codex: CODEX_THREAD_ID; Amp: AMP_CURRENT_THREAD_ID).
 // The model the session runs on, for the page: "Sonnet 5.5" from --model, LAB_MODEL or ANTHROPIC_MODEL, where an id
 // like claude-sonnet-5-5 reads as "Sonnet 5.5". Agents don't put their model in the shell's environment: they say it.
-export const modelName = (m: unknown = ''): string => {
+const modelName = (m: unknown = ''): string => {
   const w = String(m).trim().replace(/\[.*\]$/, '');
   const id = /^(?:claude-)?(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/i.exec(w);
   if (id) return `${id[1][0].toUpperCase()}${id[1].slice(1).toLowerCase()} ${id[2]}${id[3] ? `.${id[3]}` : ''}`;

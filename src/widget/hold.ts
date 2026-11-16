@@ -13,9 +13,3 @@ export function holdReloads(count: number) {
   L.writing = Math.max(0, count);
   if (!L.writing) L.flush(); // nothing is being written any more: the page can catch up
 }
-
-/** True while a reload is waiting for you to finish. */
-export function reloadWaiting() {
-  const L = holder();
-  return Boolean(L && L.held.length);
-}

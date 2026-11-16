@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 
 /** The local store: Upstash's keys, each a hash (Map) or a counter / string. */
-export type Db = Map<string, any>;
+type Db = Map<string, any>;
 type Handler = (req: Request) => Promise<Response>;
 
 // api/lab-comments.mjs talks to Upstash over REST. This answers the same commands from `db`, a Map of hashes,
@@ -57,7 +57,7 @@ export async function callApi(fn: Handler, req: IncomingMessage, url: string, ex
   return fn(new Request(url, { method: req.method, headers, body: /GET|HEAD/.test(req.method || '') ? undefined : Buffer.concat(chunks) }));
 }
 
-export const TYPES: Record<string, string> = {
+const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif',
   '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
