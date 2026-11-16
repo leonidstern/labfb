@@ -1,0 +1,3 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "what can we honestly claim from the benchmark?"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "two findings, each with one quote from the sources"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "finding-1", "what": "is one quote enough for this?"}

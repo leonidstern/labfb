@@ -1,0 +1,3 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "do page keys hold for every file name?"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "three cases run against keyFor: one fails, two pass"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "case-1", "what": "this one worries me"}

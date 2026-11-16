@@ -1,0 +1,3480 @@
+{
+ "scenarios": {
+  "d-in-1": {
+   "who": "designer",
+   "scale": "one thing",
+   "does": "zoom in ×1 on a look for an empty table",
+   "kind": "in",
+   "passed": 15,
+   "of": 15,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "look-c-v1, look-c-v2, look-c-v3, look-c-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t10 t8 t7 t4 | t10 t8 t7 t4 | t10 t8 t7 t4 | t10 t8 t7 t4"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "111 characters"
+    }
+   ],
+   "distance": [
+    1,
+    2,
+    2,
+    3
+   ],
+   "moved": [
+    0.375,
+    0.786,
+    1.375,
+    1.071
+   ],
+   "looks": null,
+   "judged": null,
+   "reply": "Added 4 more ring looks after C: tight rings, big wide-spaced rings, bolder but fainter, and a large faint one.\n"
+  },
+  "d-in-2": {
+   "who": "designer",
+   "scale": "one thing",
+   "does": "zoom in ×2 on one of its variants",
+   "kind": "in",
+   "passed": 15,
+   "of": 15,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "3 variants",
+     "pass": true,
+     "note": "3 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "look-c-v2-v1, look-c-v2-v2, look-c-v2-v3"
+    },
+    {
+     "name": "data-depth is 2",
+     "pass": true,
+     "note": "2, 2, 2"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t12 t10 t8 t7 t4 | t12 t10 t8 t7 t4 | t12 t10 t8 t7 t4"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "59 characters"
+    }
+   ],
+   "distance": [
+    2,
+    3,
+    3
+   ],
+   "moved": [
+    0.111,
+    0.375,
+    0.178
+   ],
+   "looks": null,
+   "judged": null,
+   "reply": "Three small variants of that look are on the page after it.\n"
+  },
+  "d-in-3": {
+   "who": "designer",
+   "scale": "one detail",
+   "does": "zoom in ×3 on a variant of that variant",
+   "kind": "in",
+   "passed": 16,
+   "of": 16,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "3 variants",
+     "pass": true,
+     "note": "3 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "look-c-v2-v2-v1, look-c-v2-v2-v2, look-c-v2-v2-v3"
+    },
+    {
+     "name": "data-depth is 3",
+     "pass": true,
+     "note": "3, 3, 3"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t14 t12 t10 t8 t7 t4 | t14 t12 t10 t8 t7 t4 | t14 t12 t10 t8 t7 t4"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "94 characters"
+    },
+    {
+     "name": "fine differences (at most 6 tokens each)",
+     "pass": true,
+     "note": "1, 3, 1"
+    }
+   ],
+   "distance": [
+    1,
+    3,
+    1
+   ],
+   "moved": [
+    0.15,
+    0.5,
+    0.067
+   ],
+   "looks": null,
+   "judged": null,
+   "reply": "Added 3 close variants after look-c-v2-v2: fainter tone, slightly thicker rings, larger title.\n"
+  },
+  "d-out-1": {
+   "who": "designer",
+   "scale": "one thing",
+   "does": "zoom out ×1 on the picked look",
+   "kind": "out",
+   "passed": 15,
+   "of": 15,
+   "checks": [
+    {
+     "name": "page.html unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "page.trail.jsonl unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "a reply",
+     "pass": true,
+     "note": "226 characters"
+    },
+    {
+     "name": "names the pick of the illustration direction",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names four looks made",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the comment on C",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names C made calmer",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the pick of C",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "oldest first",
+     "pass": true,
+     "note": "9, 41, 116, 172, 216"
+    },
+    {
+     "name": "quotes the person exactly: \"the illustration one\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"like this but calmer\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"go with C\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the first ask (two steps back)",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the comment on look B (another branch)",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the three directions (two steps back)",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "reply": "t3 Leo: \"the illustration one\"\nt4 Agent: four looks for the illustration: A dot, B block, C rings, D slope\nt6 Leo: \"like this but calmer\" (on look C)\nt7 Agent: look C made calmer: thinner rings, softer tone\nt8 Leo: \"go with C\"\n"
+  },
+  "dev-out-2": {
+   "who": "developer",
+   "scale": "one thing",
+   "does": "zoom out ×2 on a reverted change (labit's real history)",
+   "kind": "out",
+   "passed": 14,
+   "of": 14,
+   "checks": [
+    {
+     "name": "page.html unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "page.trail.jsonl unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "a reply",
+     "pass": true,
+     "note": "568 characters"
+    },
+    {
+     "name": "names the first ask",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the audit",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names comments put into the page",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the comment that turned it",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the revert",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names what was dropped and why",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "oldest first",
+     "pass": true,
+     "note": "39, 85, 264, 376, 416, 528"
+    },
+    {
+     "name": "quotes the person exactly: \"room for improvements?\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"revert it sounds complicated\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the store change (another branch)",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the archive (another branch)",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "reply": "How we came to \"On the page\":\nt1 leo: \"room for improvements?\"\nt2 Agent: performance audit, three findings: whole store file rewritten on every comment, a page's list rebuilt and compressed on every load, pins wait for a round trip after the page.\nt4 Agent: pages come with their comments in them, so the widget draws pins without asking first (one round trip less).\nt5 leo: \"revert it sounds complicated\"\nt6 Agent: reverted, the widget asks for the comments as before. Dropped: comments carried inside the page, because it was too complicated for one round trip less.\n"
+  },
+  "arch-out-3": {
+   "who": "developer",
+   "scale": "the system",
+   "does": "zoom out ×3 on a part of the architecture (labit's real history)",
+   "kind": "out",
+   "passed": 18,
+   "of": 21,
+   "checks": [
+    {
+     "name": "page.html unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "page.trail.jsonl unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "a reply",
+     "pass": true,
+     "note": "846 characters"
+    },
+    {
+     "name": "names ask: faster pins",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names router made",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names benchmark",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names router narrowed",
+     "pass": false,
+     "note": ""
+    },
+    {
+     "name": "names the doubt",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names router parked",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names router removed",
+     "pass": false,
+     "note": ""
+    },
+    {
+     "name": "names ask: too much code",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names own files",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names ask: slow loads",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names one file per page",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "oldest first",
+     "pass": false,
+     "note": "47, 117, 163, -1, 296, 349, -1, 529, 628, 701, 785"
+    },
+    {
+     "name": "quotes the person exactly: \"can small pins get fixed faster?\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"is it worth the trouble?\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"starting the lab loads too much code\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"page loads feel slow with many comments\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "marks the 9 steps that don't lead here as another branch",
+     "pass": true,
+     "note": "9 marked"
+    },
+    {
+     "name": "does not mark its own way as another branch",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "reply": "Everything on the page, oldest first:\nt1 leo: \"can small pins get fixed faster?\" (another branch)\nt2 Agent: made the quick model router (another branch)\nt3 Agent: benchmark of the router on a sample app (another branch)\nt4 Agent: narrowed the router after the benchmark (another branch)\nt5 leo: \"is it worth the trouble?\" (another branch)\nt6 Agent: parked the router behind --fast (another branch)\nt7 Agent: removed the router; dropped it because it put back fixes wrongly and was not worth the trouble (another branch)\nt8 leo: \"starting the lab loads too much code\"\nt9 Agent: moved MCP, --proxy and dev-server finding to their own files in lib/, loaded only when used. This made the block.\nt10 leo: \"page loads feel slow with many comments\" (another branch)\nt11 Agent: comments saved one file per page, old done threads archived (another branch)\n"
+  },
+  "arch-in-1": {
+   "who": "developer",
+   "scale": "the system",
+   "does": "zoom in ×1 on a part of the architecture",
+   "kind": "in",
+   "passed": 15,
+   "of": 15,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "store-v1, store-v2, store-v3, store-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t13 t11 | t13 t11 | t13 t11 | t13 t11"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "167 characters"
+    }
+   ],
+   "distance": [
+    20,
+    21,
+    39,
+    50
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": "whether each keeps one file per page and changes choices inside that",
+   "reply": "Four other takes on the comments store, same idea (files per page, old done threads archived): archive after 7 days, append-only lines, an index file, open/done split.\n"
+  },
+  "dev-in-1": {
+   "who": "developer",
+   "scale": "one thing",
+   "does": "zoom in ×1 on a code fix (labit's real code)",
+   "kind": "in",
+   "passed": 18,
+   "of": 18,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "fix-v1, fix-v2, fix-v3, fix-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t6 t4 t2 | t6 t4 t2 | t6 t4 t2 | t6 t4 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "121 characters"
+    },
+    {
+     "name": "behaves like the block where the tests do not look (8 more inputs)",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant still passes the tests",
+     "pass": true,
+     "note": "pass | pass | pass | pass"
+    },
+    {
+     "name": "the code itself differs each time",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    27,
+    18,
+    30,
+    86
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Added 4 other ways to write the list (loop, one regex, match-based split, helper). Same behavior, all pass node test.mjs.\n"
+  },
+  "test-in-1": {
+   "who": "tester",
+   "scale": "one thing",
+   "does": "zoom in ×1 on a failing case",
+   "kind": "in",
+   "passed": 20,
+   "of": 20,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "case-1-v1, case-1-v2, case-1-v3, case-1-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "178 characters"
+    },
+    {
+     "name": "expected result is right",
+     "pass": true,
+     "note": "README.html → /readme | docs/Guide.html → /docs/guide | About-Us.htm → /about-us | Blog/2026/Launch.html → /blog/2026/launch"
+    },
+    {
+     "name": "still fails on the code as it is",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of case (a capital letter in the name)",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new inputs, no repeats",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the words on the page agree with the data",
+     "pass": true,
+     "note": "README.html / /readme | docs/Guide.html / /docs/guide | About-Us.htm / /about-us | Blog/2026/Launch.html / /blog/2026/launch"
+    }
+   ],
+   "distance": [
+    4,
+    12,
+    14,
+    20
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Added 4 more cases with the same break: capital letters (README, docs/Guide, About-Us, Blog/2026/Launch). keyFor spells every capital as _ and hex, so all four fail like Pricing.\n"
+  },
+  "res-in-1": {
+   "who": "researcher",
+   "scale": "one thing",
+   "does": "zoom in ×1 on a finding with a quote",
+   "kind": "in",
+   "passed": 17,
+   "of": 17,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "finding-1-v1, finding-1-v2, finding-1-v3, finding-1-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "165 characters"
+    },
+    {
+     "name": "every quote is word for word in its source",
+     "pass": true,
+     "note": "real | real | real | real"
+    },
+    {
+     "name": "new quotes, no repeats",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    37,
+    40,
+    33,
+    38
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Added 4 more quotes under finding 1, all from bench.md: the Fable 7 / 7 score, the 8 / 8 checks, the three pinned comments, and the 1.8 KB size of the link's answer.\n"
+  },
+  "copy-in-3": {
+   "who": "writer",
+   "scale": "one detail",
+   "does": "zoom in ×3 on a line of copy",
+   "kind": "in",
+   "passed": 16,
+   "of": 16,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "3 variants",
+     "pass": true,
+     "note": "3 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "line-v1-v1-v1, line-v1-v1-v2, line-v1-v1-v3"
+    },
+    {
+     "name": "data-depth is 3",
+     "pass": true,
+     "note": "3, 3, 3"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t8 t6 t4 t2 | t8 t6 t4 t2 | t8 t6 t4 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "73 characters"
+    },
+    {
+     "name": "at most 3 words changed each (a mark counts as one)",
+     "pass": true,
+     "note": "1, 1, 2"
+    }
+   ],
+   "distance": [
+    1,
+    1,
+    2
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Three very close variants added after the line, one word changed in each.\n"
+  },
+  "none-out-1": {
+   "who": "anyone",
+   "scale": "one thing",
+   "does": "zoom out on a block with no trail",
+   "kind": "none",
+   "passed": 4,
+   "of": 4,
+   "checks": [
+    {
+     "name": "page.html unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "page.trail.jsonl unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "a reply",
+     "pass": true,
+     "note": "31 characters"
+    },
+    {
+     "name": "says only \"No trail recorded for this one.\"",
+     "pass": true,
+     "note": "No trail recorded for this one."
+    }
+   ],
+   "reply": "No trail recorded for this one."
+  },
+  "keep-1": {
+   "who": "anyone",
+   "scale": "one thing",
+   "does": "a plain comment: is the trail kept?",
+   "kind": "keep",
+   "passed": 10,
+   "of": 10,
+   "checks": [
+    {
+     "name": "the change was made",
+     "pass": true,
+     "note": "Nothing here yet"
+    },
+    {
+     "name": "nothing else on the page changed",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "nothing else in the block changed",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t10 t8 t7 t4"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "44 characters"
+    }
+   ],
+   "reply": "Heading on look C is now \"Nothing here yet\".\n"
+  },
+  "ceo-in-1": {
+   "who": "CEO",
+   "scale": "core ideas",
+   "does": "zoom in ×1 on a core idea for the product",
+   "kind": "in",
+   "passed": 15,
+   "of": 15,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "idea-hosted-v1, idea-hosted-v2, idea-hosted-v3, idea-hosted-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "53 characters"
+    }
+   ],
+   "distance": [
+    19,
+    17,
+    25,
+    17
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": "whether each is still the hosted lab idea with other choices in it",
+   "reply": "Four more hosted-lab setups are on the page after it.\n"
+  },
+  "ceo-out-2": {
+   "who": "CEO",
+   "scale": "core ideas",
+   "does": "zoom out ×2 on the product's name (labit's real history)",
+   "kind": "out",
+   "passed": 19,
+   "of": 19,
+   "checks": [
+    {
+     "name": "page.html unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "page.trail.jsonl unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "a reply",
+     "pass": true,
+     "note": "592 characters"
+    },
+    {
+     "name": "names the first ask",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the three names",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the doubt",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the answer to it",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the pick",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the go-ahead",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the rename",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names npm's answer",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names what was dropped and why",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "oldest first",
+     "pass": true,
+     "note": "6, 114, 168, 237, 304, 408, 422, 526"
+    },
+    {
+     "name": "quotes the person exactly: \"how would you call labfb yourself, also so users would open it like artifacts, like do labi or smth\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"labit doesnt sound weird to english speaker?\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"i like labit\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"do it\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the versions ask (another branch)",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the versions change (another branch)",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "reply": "Leo: \"how would you call labfb yourself, also so users would open it like artifacts, like do labi or smth\"\nAgent: three names to choose from: labit, labi, pinlab\nLeo: \"labit doesnt sound weird to english speaker?\"\nAgent: labit reads as \"lab it\", a verb like \"ship it\": it sounds natural in English\nLeo: \"i like labit\"\nDropped: labi (reads as a typo of lab); pinlab (says pins, not what you do with it)\nLeo: \"do it\"\nAgent: renamed everywhere: command, MCP server, plugins, skill, settings\nAgent: npm turned down plain labit as too close to lab and lit, so it is published as @leonidstern/labit\n"
+  },
+  "lead-in-1": {
+   "who": "lead designer",
+   "scale": "the system",
+   "does": "zoom in ×1 on a rule of the design system",
+   "kind": "in",
+   "passed": 18,
+   "of": 18,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "corners-v1, corners-v2, corners-v3, corners-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t8 t4 t2 | t8 t4 t2 | t8 t4 t2 | t8 t4 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "107 characters"
+    },
+    {
+     "name": "each is still a two-size rule (small below box)",
+     "pass": true,
+     "note": "4/10 | 8/16 | 6/16 | 3/8"
+    },
+    {
+     "name": "the words agree with the values",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "a different rule each time (other sizes, or the same sizes for other things)",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    4,
+    4,
+    2,
+    4
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Added 4 other corner pairs after Corners: 4/10, 8/16, 6/16, 3/8 px. Still two sizes, circles only for dots.\n"
+  },
+  "lead-out-1": {
+   "who": "lead designer",
+   "scale": "the system",
+   "does": "zoom out ×1 on a rule of the design system (labit's real history)",
+   "kind": "out",
+   "passed": 12,
+   "of": 12,
+   "checks": [
+    {
+     "name": "page.html unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "page.trail.jsonl unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "a reply",
+     "pass": true,
+     "note": "403 characters"
+    },
+    {
+     "name": "names the first ask",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the system in one file",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the comment on colour",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names colours became washes",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "oldest first",
+     "pass": true,
+     "note": "6, 102, 157, 196"
+    },
+    {
+     "name": "quotes the person exactly: \"the widget and the lab pages should look like one thing\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"do it like Cooking\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the comment on corners (another branch)",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the corners change (another branch)",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "reply": "Leo: \"the widget and the lab pages should look like one thing\"\nAgent: made the lab's design system in one file, lab.css: colours, corners, type, boxes\nLeo: \"do it like Cooking\"\nAgent: colours are washes, as in Cooking: white, black and green with 4 see-through steps each. Dropped: Apple's system greys, four steps a scheme, because solid greys sit wrong on a coloured surface; a wash sits right on any.\n"
+  },
+  "var-again-1": {
+   "who": "variant explorer",
+   "scale": "one thing",
+   "does": "zoom in ×1 again on a look that already has 4 variants",
+   "kind": "in",
+   "passed": 17,
+   "of": 17,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 new variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "the earlier variants are untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "look-c-v5, look-c-v6, look-c-v7, look-c-v8"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the earlier variants, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "none repeats an earlier variant",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t12 t8 t7 t4 | t12 t8 t7 t4 | t12 t8 t7 t4 | t12 t8 t7 t4"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "76 characters"
+    }
+   ],
+   "distance": [
+    2,
+    3,
+    3,
+    3
+   ],
+   "moved": [
+    0.536,
+    0.768,
+    3.125,
+    0.585
+   ],
+   "looks": null,
+   "judged": null,
+   "reply": "Four more takes on C: smaller, bigger, bolder rings, fainter. Added after C.\n"
+  },
+  "var-small-3": {
+   "who": "variant explorer",
+   "scale": "one detail",
+   "does": "zoom in ×3 on a button's label",
+   "kind": "in",
+   "passed": 16,
+   "of": 16,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "3 variants",
+     "pass": true,
+     "note": "3 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "cta-v1-v1-v1, cta-v1-v1-v2, cta-v1-v1-v3"
+    },
+    {
+     "name": "data-depth is 3",
+     "pass": true,
+     "note": "3, 3, 3"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t8 t6 t4 t2 | t8 t6 t4 t2 | t8 t6 t4 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "71 characters"
+    },
+    {
+     "name": "at most 2 words changed each (a mark counts as one)",
+     "pass": true,
+     "note": "1, 1, 1"
+    }
+   ],
+   "distance": [
+    1,
+    2,
+    1
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Added 3 close variants of the button: arrow, title case, 'first order'.\n"
+  },
+  "ceo-wide": {
+   "who": "CEO",
+   "scale": "core ideas",
+   "does": "zoom in wide on a core idea: other ideas for the same problem",
+   "kind": "in",
+   "passed": 16,
+   "of": 16,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-w1, -w2 …",
+     "pass": true,
+     "note": "idea-hosted-w1, idea-hosted-w2, idea-hosted-w3, idea-hosted-w4"
+    },
+    {
+     "name": "data-depth is 0",
+     "pass": true,
+     "note": "0, 0, 0, 0"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "169 characters"
+    },
+    {
+     "name": "each has its own name, not the block's and not another idea's on the page",
+     "pass": true,
+     "note": "Bookmarklet lab | Setup by agent | Lab in one file | Proxy any URL"
+    }
+   ],
+   "distance": [
+    21,
+    27,
+    28,
+    25
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Four other ways to take setup away: a bookmarklet, Claude setting it up for you, a single-file lab, and a local proxy for any URL. They are on the page after Hosted lab.\n"
+  },
+  "arch-wide": {
+   "who": "developer",
+   "scale": "the system",
+   "does": "zoom in wide on a part of the architecture: other ways to build it",
+   "kind": "in",
+   "passed": 16,
+   "of": 16,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-w1, -w2 …",
+     "pass": true,
+     "note": "store-w1, store-w2, store-w3, store-w4"
+    },
+    {
+     "name": "data-depth is 0",
+     "pass": true,
+     "note": "0, 0, 0, 0"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t13 t11 | t13 t11 | t13 t11 | t13 t11"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "267 characters"
+    },
+    {
+     "name": "each builds it another way, not the same way laid out again (rough check: the original's key phrase is gone)",
+     "pass": true,
+     "note": "other | other | other | other"
+    }
+   ],
+   "distance": [
+    47,
+    54,
+    47,
+    48
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Added 4 other ways to build the comments store, after \"store\":\n1. One SQLite file, indexed by page and thread.\n2. Append-only log per page, read into memory at start.\n3. Load only open threads at first, older ones on click.\n4. One file per comment plus a small index.\n"
+  },
+  "lead-wide": {
+   "who": "lead designer",
+   "scale": "the system",
+   "does": "zoom in wide on a rule of the design system: other kinds of rule",
+   "kind": "in",
+   "passed": 15,
+   "of": 15,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-w1, -w2 …",
+     "pass": true,
+     "note": "corners-w1, corners-w2, corners-w3, corners-w4"
+    },
+    {
+     "name": "data-depth is 0",
+     "pass": true,
+     "note": "0, 0, 0, 0"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t8 t4 t2 | t8 t4 t2 | t8 t4 t2 | t8 t4 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "211 characters"
+    }
+   ],
+   "distance": [
+    18,
+    46,
+    34,
+    43
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Added 4 other ways to do corners after the block: one size (8 px), nested corners that follow the box around them, a quarter of the thing's shortest side, and corners by layer (4 px in the page, 14 px floating).\n"
+  },
+  "dev-wide": {
+   "who": "developer",
+   "scale": "one thing",
+   "does": "zoom in wide on a code fix: other ways to solve it",
+   "kind": "in",
+   "passed": 17,
+   "of": 17,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-w1, -w2 …",
+     "pass": true,
+     "note": "fix-w1, fix-w2, fix-w3, fix-w4"
+    },
+    {
+     "name": "data-depth is 0",
+     "pass": true,
+     "note": "0, 0, 0, 0"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t6 t4 t2 | t6 t4 t2 | t6 t4 t2 | t6 t4 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "83 characters"
+    },
+    {
+     "name": "every variant still passes the tests",
+     "pass": true,
+     "note": "pass | pass | pass | pass"
+    },
+    {
+     "name": "the code itself differs each time",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    46,
+    78,
+    58,
+    82
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Four other ways to write the same fix are on the page after it. All pass the tests.\n"
+  },
+  "gfx-logo-1": {
+   "who": "designer",
+   "scale": "graphics",
+   "does": "zoom in ×1 on labit's mark (an SVG drawing)",
+   "kind": "in",
+   "passed": 20,
+   "of": 20,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "mark-v1, mark-v2, mark-v3, mark-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "126 characters"
+    },
+    {
+     "name": "same canvas as the block (viewBox 0 0 64 64)",
+     "pass": true,
+     "note": "0 0 64 64 | 0 0 64 64 | 0 0 64 64 | 0 0 64 64"
+    },
+    {
+     "name": "every variant can be drawn",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "each draws something (not empty, not a filled square)",
+     "pass": true,
+     "note": "27% | 23% | 25% | 28%"
+    },
+    {
+     "name": "each looks different from the block (at least 3.0% of the picture)",
+     "pass": true,
+     "note": "33.0% | 33.3% | 30.4% | 30.4%"
+    },
+    {
+     "name": "no two look the same",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    7,
+    94,
+    95,
+    102
+   ],
+   "moved": null,
+   "looks": [
+    0.33,
+    0.3331,
+    0.3039,
+    0.3038
+   ],
+   "judged": null,
+   "reply": "Four more marks added after this one: mirrored, round with upright strokes, boxy with thin slants, flared with stubby strokes.\n"
+  },
+  "gfx-logo-2": {
+   "who": "designer",
+   "scale": "graphics",
+   "does": "zoom in ×2 on one variant of the mark",
+   "kind": "in",
+   "passed": 20,
+   "of": 20,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "3 variants",
+     "pass": true,
+     "note": "3 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "mark-v2-v1, mark-v2-v2, mark-v2-v3"
+    },
+    {
+     "name": "data-depth is 2",
+     "pass": true,
+     "note": "2, 2, 2"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t7 t5 t3 t2 | t7 t5 t3 t2 | t7 t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "122 characters"
+    },
+    {
+     "name": "same canvas as the block (viewBox 0 0 64 64)",
+     "pass": true,
+     "note": "0 0 64 64 | 0 0 64 64 | 0 0 64 64"
+    },
+    {
+     "name": "every variant can be drawn",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "each draws something (not empty, not a filled square)",
+     "pass": true,
+     "note": "28% | 28% | 28%"
+    },
+    {
+     "name": "each looks different from the block (at least 0.5% of the picture)",
+     "pass": true,
+     "note": "1.0% | 1.3% | 2.1%"
+    },
+    {
+     "name": "no two look the same",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    7,
+    7,
+    1
+   ],
+   "moved": null,
+   "looks": [
+    0.0096,
+    0.0133,
+    0.0209
+   ],
+   "judged": null,
+   "reply": "Added 3 close variants after the small-hole mark: a tinier hole, a slightly bigger one, and the same hole set a bit lower.\n"
+  },
+  "gfx-logo-3": {
+   "who": "designer",
+   "scale": "graphics",
+   "does": "zoom in ×3 on a variant of that variant",
+   "kind": "in",
+   "passed": 20,
+   "of": 20,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "3 variants",
+     "pass": true,
+     "note": "3 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "mark-v2-v2-v1, mark-v2-v2-v2, mark-v2-v2-v3"
+    },
+    {
+     "name": "data-depth is 3",
+     "pass": true,
+     "note": "3, 3, 3"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t9 t7 t5 t3 t2 | t9 t7 t5 t3 t2 | t9 t7 t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "79 characters"
+    },
+    {
+     "name": "same canvas as the block (viewBox 0 0 64 64)",
+     "pass": true,
+     "note": "0 0 64 64 | 0 0 64 64 | 0 0 64 64"
+    },
+    {
+     "name": "every variant can be drawn",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "each draws something (not empty, not a filled square)",
+     "pass": true,
+     "note": "28% | 28% | 28%"
+    },
+    {
+     "name": "each looks different from the block (at least 0.2% of the picture)",
+     "pass": true,
+     "note": "0.3% | 0.2% | 0.9%"
+    },
+    {
+     "name": "no two look the same",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    9,
+    9,
+    3
+   ],
+   "moved": null,
+   "looks": [
+    0.0028,
+    0.0022,
+    0.0087
+   ],
+   "judged": null,
+   "reply": "3 fine variants of the small hole: a hair bigger, a hair smaller, a hair lower.\n"
+  },
+  "gfx-icon-1": {
+   "who": "designer",
+   "scale": "graphics",
+   "does": "zoom in ×1 on an icon for the bar",
+   "kind": "in",
+   "passed": 19,
+   "of": 20,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "icon-v1, icon-v2, icon-v3, icon-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "91 characters"
+    },
+    {
+     "name": "same canvas as the block (viewBox 0 0 24 24)",
+     "pass": true,
+     "note": "0 0 24 24 | 0 0 24 24 | 0 0 24 24 | 0 0 24 24"
+    },
+    {
+     "name": "every variant can be drawn",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "each draws something (not empty, not a filled square)",
+     "pass": true,
+     "note": "19% | 19% | 17% | 19%"
+    },
+    {
+     "name": "each looks different from the block (at least 5.0% of the picture)",
+     "pass": false,
+     "note": "53.0% | 51.9% | 3.5% | 10.8%"
+    },
+    {
+     "name": "no two look the same",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    11,
+    13,
+    23,
+    18
+   ],
+   "moved": null,
+   "looks": [
+    0.5301,
+    0.5195,
+    0.0345,
+    0.1084
+   ],
+   "judged": null,
+   "reply": "Four more zoom icons added after the first: bolder, bigger lens, tinted lens, heavy handle.\n"
+  },
+  "gfx-photo-1": {
+   "who": "designer",
+   "scale": "graphics",
+   "does": "zoom in ×1 on a crop of a picture",
+   "kind": "in",
+   "passed": 21,
+   "of": 21,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "crop-v1, crop-v2, crop-v3, crop-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "166 characters"
+    },
+    {
+     "name": "each crop lies inside the picture",
+     "pass": true,
+     "note": "321 178 232 174 | 340 60 400 300 | 170 120 480 360 | 120 100 400 300"
+    },
+    {
+     "name": "each keeps the 4 by 3 shape",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the sailboat is whole in every crop",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "each is another framing near the block's (shares 20% to 90% with it)",
+     "pass": true,
+     "note": "69% | 39% | 34% | 35%"
+    },
+    {
+     "name": "no two crops are the same",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the picture file is untouched",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    10,
+    8,
+    10,
+    12
+   ],
+   "moved": null,
+   "looks": [
+    0.3135,
+    0.6075,
+    0.6597,
+    0.6516
+   ],
+   "judged": null,
+   "reply": "Four more crops, all 4 by 3, all with the sailboat: tight on it, with the lighthouse, with the red boat and buoys, and off-centre with the sun. Pick the one you like.\n"
+  },
+  "perf-in-1": {
+   "who": "developer",
+   "scale": "performance",
+   "does": "zoom in ×1 on slow code: what can be better",
+   "kind": "in",
+   "passed": 18,
+   "of": 18,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "load-v1, load-v2, load-v3, load-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "140 characters"
+    },
+    {
+     "name": "every variant still gives the right answers",
+     "pass": true,
+     "note": "right | right | right | right"
+    },
+    {
+     "name": "every variant really is faster (at most 90% of the time)",
+     "pass": true,
+     "note": "was 151.5 ms; now 14.9 ms | 34.6 ms | 9.8 ms | 16.1 ms"
+    },
+    {
+     "name": "the code itself differs each time",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "distance": [
+    112,
+    169,
+    114,
+    138
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Four ways to remember the answer per page: plain cache, 20-page limit, fast compression on rebuild, one key per version. All pass bench.mjs.\n"
+  },
+  "perf-out-2": {
+   "who": "developer",
+   "scale": "performance",
+   "does": "zoom out ×2 on a speed-up: why it works like this",
+   "kind": "out",
+   "passed": 17,
+   "of": 17,
+   "checks": [
+    {
+     "name": "page.html unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "page.trail.jsonl unchanged",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "a reply",
+     "pass": true,
+     "note": "522 characters"
+    },
+    {
+     "name": "names the first ask",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names what was measured",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names lists are kept",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the memory question",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the first cap",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the doubt about it",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names the cap by size",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "names what was dropped and why",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "oldest first",
+     "pass": true,
+     "note": "52, 148, 234, 285, 345, 364, 422"
+    },
+    {
+     "name": "quotes the person exactly: \"why is the second load of a page not faster than the first?\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"does this eat memory?\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "quotes the person exactly: \"one big page could fill it\"",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the comment about the limit (another branch)",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "leaves out the limit change (another branch)",
+     "pass": true,
+     "note": ""
+    }
+   ],
+   "reply": "How we came to \"Kept lists\", oldest first:\nt1 leo: \"why is the second load of a page not faster than the first?\"\nt2 Agent: measured that every load builds the page's comments list and compresses it again\nt3 Agent: each page's list is kept, compressed, until that page changes\nt4 leo: \"does this eat memory?\"\nt5 Agent: kept lists capped at up to 200 files\nt6 leo: \"one big page could fill it\"\nt7 Agent: cap is by size now, 10 MB in all, oldest out first. Dropped: a cap of 200 files, because a count says nothing about size\n"
+  },
+  "chart-in-1": {
+   "who": "anyone",
+   "scale": "graphics",
+   "does": "zoom in ×1 on a chart of real numbers",
+   "kind": "in",
+   "passed": 21,
+   "of": 21,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "chart-v1, chart-v2, chart-v3, chart-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "156 characters"
+    },
+    {
+     "name": "every variant can be drawn",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "each draws something (not empty, not a filled square)",
+     "pass": true,
+     "note": "6% | 11% | 7% | 8%"
+    },
+    {
+     "name": "each looks different from the block (at least 3.0% of the picture)",
+     "pass": true,
+     "note": "73.5% | 88.4% | 84.3% | 90.3%"
+    },
+    {
+     "name": "no two look the same",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every chart shows the same five numbers, unchanged",
+     "pass": true,
+     "note": "5 bars | 5 bars | 5 bars | 5 bars"
+    },
+    {
+     "name": "every bar is drawn to scale from zero",
+     "pass": true,
+     "note": "to scale | to scale | to scale | to scale"
+    }
+   ],
+   "distance": [
+    52,
+    243,
+    273,
+    76
+   ],
+   "moved": null,
+   "looks": [
+    0.7352,
+    0.8844,
+    0.843,
+    0.9027
+   ],
+   "judged": null,
+   "reply": "Four other charts of the same five numbers: fastest first, columns, bars with a share of the current time, and long bars with names above. Pick one to keep.\n"
+  },
+  "doc-in-1": {
+   "who": "writer",
+   "scale": "one thing",
+   "does": "zoom in ×1 on a long section of the README",
+   "kind": "in",
+   "passed": 17,
+   "of": 17,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "agents-v1, agents-v2, agents-v3, agents-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t5 t3 t2 | t5 t3 t2 | t5 t3 t2 | t5 t3 t2"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "201 characters"
+    },
+    {
+     "name": "every variant is shorter than the 388 words it started from",
+     "pass": true,
+     "note": "56 | 75 | 61 | 70"
+    },
+    {
+     "name": "no command or name that is not in the original",
+     "pass": true,
+     "note": "none | none | none | none"
+    }
+   ],
+   "distance": [
+    1081,
+    1010,
+    1122,
+    1090
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Added 4 shorter versions of the section right after it, each cut a different way: plugin commands only, one install table, skill-only, and no-install first. Pick one and I'll cut the original to match.\n"
+  },
+  "notrail-in-1": {
+   "who": "anyone",
+   "scale": "one thing",
+   "does": "zoom in ×1 on a block with no trail",
+   "kind": "in",
+   "passed": 15,
+   "of": 15,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-v1, -v2 …",
+     "pass": true,
+     "note": "hero-v1, hero-v2, hero-v3, hero-v4"
+    },
+    {
+     "name": "data-depth is 1",
+     "pass": true,
+     "note": "1, 1, 1, 1"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t4 | t4 | t4 | t4"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "156 characters"
+    }
+   ],
+   "distance": [
+    26,
+    28,
+    26,
+    21
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": "what it goes on when there is no reason on record",
+   "reply": "Four new takes on the hero, placed after it. Note: the hero has no trail recorded, so I took the question from the block itself: how else could it say this?\n"
+  },
+  "ctx-wide": {
+   "who": "developer",
+   "scale": "the system",
+   "does": "zoom in wide on the store when another lab page rules out a database",
+   "kind": "in",
+   "passed": 16,
+   "of": 16,
+   "checks": [
+    {
+     "name": "the selected block is untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "4 variants",
+     "pass": true,
+     "note": "4 found"
+    },
+    {
+     "name": "ids are <block>-w1, -w2 …",
+     "pass": true,
+     "note": "store-w1, store-w2, store-w3, store-w4"
+    },
+    {
+     "name": "data-depth is 0",
+     "pass": true,
+     "note": "0, 0, 0, 0"
+    },
+    {
+     "name": "placed right after the block, nothing in between",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "the rest of the page is as it was",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "same kind of element as the block",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "every variant differs from the block and from the others",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "earlier trail lines untouched",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "new trail lines are valid",
+     "pass": true,
+     "note": "2 new"
+    },
+    {
+     "name": "the request is in the trail, in the person's exact words",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "its own step points back at the request",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "step ids continue the count",
+     "pass": true,
+     "note": ""
+    },
+    {
+     "name": "data-from: its new step first, then the block's steps",
+     "pass": true,
+     "note": "t13 t11 | t13 t11 | t13 t11 | t13 t11"
+    },
+    {
+     "name": "a short reply",
+     "pass": true,
+     "note": "172 characters"
+    },
+    {
+     "name": "keeps to what another page of the lab decided: plain text files, no database",
+     "pass": true,
+     "note": "ok | ok | ok | ok"
+    }
+   ],
+   "distance": [
+    46,
+    27,
+    48,
+    45
+   ],
+   "moved": null,
+   "looks": null,
+   "judged": null,
+   "reply": "Four other ways to store comments so loads stay fast: newest 50 only, append-only log, memory copy, summary file with threads opened on demand. Added after the store block.\n"
+  }
+ },
+ "closer": {
+  "means": [
+   0.90175,
+   0.2213333333333333,
+   0.23900000000000002
+  ],
+  "pass": false
+ },
+ "drawn": {
+  "means": [
+   0.31770000000000004,
+   0.014599999999999997,
+   0.004566666666666667
+  ],
+  "pass": true
+ },
+ "pass": 558,
+ "total": 562
+}

@@ -1,0 +1,6 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "room for improvements?"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "performance audit, three findings: the whole store file is rewritten on every comment, a page's list is built and compressed again on every load, and pins wait for a round trip after the page"}
+{"id": "t3", "kind": "change", "by": "agent", "from": ["t2"], "on": "store", "what": "comments saved one file per page, each page's list kept until it changes, month-old done threads archived"}
+{"id": "t4", "kind": "change", "by": "agent", "from": ["t2"], "on": "first-paint", "what": "pages come with their comments in them: the widget draws its pins without asking first, one round trip less"}
+{"id": "t5", "kind": "pin", "by": "leo", "from": ["t4"], "on": "first-paint", "what": "revert it sounds complicated"}
+{"id": "t6", "kind": "change", "by": "agent", "from": ["t5"], "on": "first-paint", "what": "reverted: pages no longer carry their comments in them, the widget asks for them as before", "dropped": [{"what": "comments carried inside the page", "why": "too complicated for one round trip less"}]}

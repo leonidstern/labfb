@@ -12,6 +12,7 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
 import { REGISTRY, runningLabs } from './lib/labs.ts';
+import { ZoomError, dirOf, parseTrail, place, record, zoomName } from './lib/zoom.ts';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,11 @@ For the agent, from the project (any folder under it):
   labit reply <id> "what you did" [--resolve] [--wait] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread; --wait listens again right after.
   labit resolve <id> [--page /path]
+  labit zoom <id> <file> "what it is"
+      A zoom (a pin that says zoom: out or zoom: in): hand the block you wrote to the lab. <file> holds one element:
+      the bigger picture, or the deeper look. The lab puts it on the page (a bigger picture above the part the block is
+      in, a deeper look right after it), names it and adds the request and your step to the page's trail
+      (<page>.trail.jsonl). If it refuses, it says what to fix.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
 page), archive/ (done threads with nothing new in 30 days), server.json (port, key, session; owner-only), seen.
@@ -78,7 +84,7 @@ if (unknownFlags.length) die(`Unknown option ${unknownFlags[0]}. See: ${CMD} --h
 const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 
 // The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, invite): lib/commands.ts.
-if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite'].includes(pos[0])) {
+if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite', 'zoom'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -108,7 +114,7 @@ const alreadyRunning = (() => {
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
-if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve'].includes(pos[0])) {
+if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'zoom'].includes(pos[0])) {
   const home = runningLabs().find((lab) => ROOT.startsWith(lab.root + path.sep));
   if (home) {
     const url = `http://localhost:${home.port}/${path.relative(home.root, ROOT).split(path.sep).map(encodeURIComponent).join('/')}/`;
@@ -325,6 +331,21 @@ const fileFor = (page) => {
   }
   if (!fileMemo.has(page)) fileMemo.set(page, findFile(page));
   return fileMemo.get(page);
+};
+// The zoom skill an agent reads before answering a zoom (skills/ ships in the package, beside dist/).
+const ZOOM_SKILL = path.join(REPO, 'skills/labit/zoom.md');
+// A page's trail (lib/zoom.ts): a text file beside the page, <page>.trail.jsonl. Only where pages are plain files.
+const trailFile = (page) => {
+  const f = !PROXY && fileFor(page);
+  return f && /\.html?$/i.test(f) ? path.join(ROOT, f.replace(/\.html?$/i, '') + '.trail.jsonl') : null;
+};
+const readTrail = (page) => {
+  const f = trailFile(page);
+  try {
+    return f ? fs.readFileSync(f, 'utf8') : '';
+  } catch {
+    return '';
+  }
 };
 const findFile = (page) => {
   if (!fileIndex) {
@@ -691,6 +712,7 @@ const hotSaved = new Map(); // served path -> kind
 let otherSaved = false;
 if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
   if (!file || file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules')) return;
+  if (/\.trail\.jsonl$/i.test(file)) return; // a page's trail: the widget asks for it when a zoom card opens, no page reloads for it
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
   // event's name can't tell; a CSS or JS save leaves the index alone.)
   if (/\.html?$/i.test(file) || !path.extname(file)) indexStale = true;
@@ -857,6 +879,7 @@ async function unseen(scope = pages()) {
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n` + (blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '') +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
+    (/\nzoom: (in|out)\b/.test(blocks.join('\n')) ? `\nA pin that says "zoom": read ${ZOOM_SKILL} first, and the skill there that fits the page. Write one block to a file, then ${CMD} zoom <id> <file> "what it is", then reply.` : '') +
     `\n${WRITE_SHORT}`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
@@ -1131,6 +1154,38 @@ const handler = async (req, res) => {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ ids }));
     }
+    // Zoom (lib/zoom.ts). A page's trail, for the zoom card's "how we got here"; and an agent handing over the block it
+    // wrote for a zoom, which the lab puts on the page and into the trail, so nothing else on the page is touched.
+    if (pathname === '/_lab/api/trail' && req.method === 'GET') {
+      const page = url.searchParams.get('page') || '';
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify({ steps: parseTrail(readTrail(page)), kept: Boolean(trailFile(page)) }));
+    }
+    if (pathname === '/_lab/api/zoom' && req.method === 'POST') {
+      if (!isAgent(req)) return res.writeHead(403).end();
+      const b = JSON.parse((await new Response(req).text()) || '{}');
+      const fail = (status, error) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ error }));
+      const page = String(b.page || '');
+      const c = commentsOf(page).find((x) => x.id === b.id && !x.parent);
+      const dir = dirOf(c?.anchor?.zoom);
+      if (!c || !dir) return fail(404, 'that pin is not a zoom');
+      if (!c.anchor.block) return fail(409, `the spot is in no element with an id: put the ${zoomName(dir)} on the page yourself, next to the spot`);
+      const rel = !PROXY && fileFor(page);
+      const tf = trailFile(page);
+      if (!rel || !tf) return fail(409, `this page is not a plain HTML file the lab can write: put the ${zoomName(dir)} on the page yourself`);
+      try {
+        const out = place({ html: fs.readFileSync(path.join(ROOT, rel), 'utf8'), trail: readTrail(page), block: c.anchor.block, dir, made: String(b.html || ''), what: String(b.what || ''), by: c.name, words: c.text, pin: c.id, at: new Date().toISOString() });
+        // Written in place, not through a .tmp beside it: the watcher takes a .tmp for "something else changed" and
+        // reloads the page, where a saved page alone is patched in place.
+        fs.writeFileSync(tf, out.trail);
+        fs.writeFileSync(path.join(ROOT, rel), out.html);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ id: out.id, dir, steps: out.steps.map((s) => s.id), file: rel }));
+      } catch (e) {
+        if (e instanceof ZoomError) return fail(422, e.message);
+        throw e;
+      }
+    }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);
       // The widget's list (GET ?page=/x and nothing else) is sent as kept while that page hasn't changed. Kept apart for
@@ -1169,6 +1224,22 @@ const handler = async (req, res) => {
             const listy = (t) => String(t).split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length >= 2;
             const oneThing = asks.length === 1 && !listy(asks[0].text);
             if (oneThing && !root.resolved && root.anchor?.kind !== 'page') h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
+          }
+          // An agent's answer on a pin that sits in a block goes into that page's trail, the pin first (lib/zoom.ts):
+          // the zoom card later shows what was asked and what was done there. A zoom is written by the hand-over.
+          if (agent && stored.parent && h.has(stored.parent)) {
+            const root = JSON.parse(h.get(stored.parent));
+            const page = key.slice('lab:comments:'.length);
+            const tf = root.anchor?.block && !root.anchor.zoom ? trailFile(page) : null;
+            if (tf) {
+              try {
+                const had = readTrail(page);
+                const add = record(had, { pin: root.id, block: root.anchor.block, by: root.name, words: root.text, pinAt: root.createdAt, reply: stored.text, at: stored.createdAt });
+                if (add) fs.appendFileSync(tf, (had && !had.endsWith('\n') ? '\n' : '') + add);
+              } catch (e) {
+                console.error('[lab] could not write the trail:', e.message);
+              }
+            }
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
         }

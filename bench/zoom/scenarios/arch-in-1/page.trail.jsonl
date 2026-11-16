@@ -1,0 +1,11 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "can small pins get fixed faster?"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "on": "pins-path", "what": "quick model router: small pins go to a fast model first, and the session checks the risky ones"}
+{"id": "t3", "kind": "make", "by": "agent", "from": ["t2"], "what": "benchmark of the router on a sample app"}
+{"id": "t4", "kind": "change", "by": "agent", "from": ["t3"], "on": "pins-path", "what": "router narrowed after the benchmark: it put back 15 fixes a run, 11 of them wrongly"}
+{"id": "t5", "kind": "pin", "by": "leo", "from": ["t4"], "on": "pins-path", "what": "is it worth the trouble?"}
+{"id": "t6", "kind": "change", "by": "agent", "from": ["t5"], "on": "pins-path", "what": "router parked: the quick model is off unless the lab starts with --fast"}
+{"id": "t7", "kind": "change", "by": "agent", "from": ["t6"], "on": "pins-path", "what": "router removed: pins go straight to the listening session", "dropped": [{"what": "the quick model router", "why": "it put back fixes wrongly and was not worth the trouble"}]}
+{"id": "t8", "kind": "ask", "by": "leo", "what": "starting the lab loads too much code"}
+{"id": "t9", "kind": "change", "by": "agent", "from": ["t8"], "on": "mcp", "what": "MCP, --proxy and dev-server finding moved to their own files in lib/, loaded only when used"}
+{"id": "t10", "kind": "ask", "by": "leo", "what": "page loads feel slow with many comments"}
+{"id": "t11", "kind": "change", "by": "agent", "from": ["t10"], "on": "store", "what": "comments saved one file per page in .lab/comments/, month-old done threads archived"}

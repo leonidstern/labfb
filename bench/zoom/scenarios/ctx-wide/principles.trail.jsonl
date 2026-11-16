@@ -1,0 +1,4 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "write down what labit must never lose"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "two principles: plain files, and small"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "plain-files", "what": "this one is not up for discussion"}
+{"id": "t4", "kind": "change", "by": "agent", "from": ["t3"], "on": "plain-files", "what": "plain files marked as fixed: no database, no binary formats, ever"}

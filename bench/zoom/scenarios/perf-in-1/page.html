@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a page load is served</title>
+<link rel="stylesheet" href="/_lab/lab.css">
+<body class="lab">
+<main>
+<h1 id="title" data-from="t2">How a page load is served</h1>
+<section id="load" data-from="t3 t2">
+  <p>Every load of a page sorts that page's comments, turns them into JSON and compresses them. It is in <code>src/list.mjs</code>; <code>node bench.mjs</code> times 600 loads and checks every answer.</p>
+  <pre data-code>import zlib from 'node:zlib';
+
+// What a page load sends: that page's comments, oldest first, as gzipped JSON.
+// store.get(page) is the page's comments (an array, in the order they came in).
+// store.version(page) is a number that goes up each time that page gets a comment.
+export function makeLoader(store) {
+  return function load(page) {
+    const list = [...store.get(page)].sort((a, b) =&gt; a.at - b.at);
+    return zlib.gzipSync(JSON.stringify(list));
+  };
+}
+</pre>
+</section>
+</main>

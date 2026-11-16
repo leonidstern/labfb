@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>README: other agents</title>
+<link rel="stylesheet" href="/_lab/lab.css">
+<body class="lab">
+<main>
+<h1 id="title" data-from="t2">README: other agents</h1>
+<section id="agents" data-from="t3 t2">
+  <h2>Other agents</h2>
+  <p>labit works with any agent that can use a terminal or MCP. Comments are plain text, the local loop is a few shell commands, and the skill is in the shared Agent Skills format.</p>
+  <ul>
+  <li><b>The plugin (skill + MCP server):</b></li>
+  <li>Codex: <code>codex plugin marketplace add leonidstern/labit</code>, then <code>codex plugin add labit@leonidstern</code>.</li>
+  <li>Cursor: add the repo as a plugin (Dashboard → Plugins &amp; MCPs → Import from Repo), or copy it to <code>~/.cursor/plugins/local/labit</code>.</li>
+  <li>Copilot CLI: <code>copilot plugin marketplace add leonidstern/labit</code> (it reads the Claude plugin files).</li>
+  <li>Others with Agent Plugins: <code>plugin.json</code> and <code>mcp.json</code> at the repo root.</li>
+  <li><b>Just the skill:</b> <code>npx skills add leonidstern/labit</code> puts it where your agent reads skills (<code>.agents/skills/</code> for most). Then "start labit" works as in Claude. To point every session at it, add to your <code>AGENTS.md</code>:</li>
+  <pre>Pin comments on pages: labit. Say "start labit" to listen; see .agents/skills/labit/SKILL.md.</pre>
+  <li><b>Cloud lab:</b> give the agent the <code>/_lab/agent/&lt;page path&gt;</code> link. It's plain text with every open comment.</li>
+  <li><b>Local lab:</b> paste the prompt from Local lab, or use the skill. labit tells the agent apart by itself: the page says "talking to Codex", and replies are signed "Codex".</li>
+  <li><b>Agents that aren't woken when a background command ends</b> (Codex, Antigravity): run <code>wait --timeout 50</code> in the foreground, in a loop. The MCP <code>wait</code> returns after 50 seconds by default for the same reason (Codex and Cursor stop tool calls at 60).</li>
+  </ul>
+  <table><tr><th>Agent</th><th>Known by</th><th>MCP</th><th>Back to the session</th></tr><tr><td>Claude Code</td><td><code>CLAUDECODE</code></td><td><code>claude mcp add labit -- npx @leonidstern/labit@latest mcp</code></td><td>link, or <code>claude --resume</code></td></tr><tr><td>Codex</td><td><code>CODEX_THREAD_ID</code></td><td><code>codex mcp add labit -- npx @leonidstern/labit@latest mcp</code></td><td><code>codex resume &lt;id&gt;</code> (tap the label to copy)</td></tr><tr><td>Cursor</td><td><code>CURSOR_AGENT</code></td><td>its MCP settings</td><td></td></tr><tr><td>Amp</td><td><code>AMP_CURRENT_THREAD_ID</code></td><td>its MCP settings</td><td>thread link</td></tr><tr><td>opencode</td><td><code>OPENCODE_CLIENT</code></td><td>its MCP settings</td><td></td></tr><tr><td>Antigravity</td><td><code>ANTIGRAVITY_AGENT</code></td><td>its MCP settings</td><td></td></tr><tr><td>Copilot CLI</td><td>set <code>LAB_AGENT=copilot</code></td><td>its MCP settings</td><td></td></tr></table>
+  <ul>
+  <li><b>Choose:</b> <code>LAB_AGENT=&lt;name&gt;</code> overrides who is listening (any name), and <code>LAB_AGENT_NAME</code> signs replies.</li>
+  <li><b>Codex's sandbox:</b> if <code>wait</code> or <code>reply</code> can't reach the lab, labit says so. Use the MCP tools, or allow it: <code>-c sandbox_workspace_write.network_access=true</code>.</li>
+  <pre>npx @leonidstern/labit@latest                 # start the lab in the project
+npx @leonidstern/labit reply &lt;id&gt; "Done: …"   # the agent answers on a pin</pre>
+  </ul>
+  <p>The MCP server finds the project from the client's root folder or the shell's folder; if it can't, its tools take a <code>dir</code>.</p>
+</section>
+</main>

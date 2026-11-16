@@ -1,0 +1,3 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "labit needs a mark"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "a batch of marks: a beaker with two strokes coming out of the top and a round hole"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "mark", "what": "this one only interesting from this batch"}

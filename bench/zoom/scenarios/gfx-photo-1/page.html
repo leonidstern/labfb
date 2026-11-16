@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home page: the picture</title>
+<link rel="stylesheet" href="/_lab/lab.css">
+<style>
+  .crop { margin: 0; padding: 12px; background: var(--lab-bg); border-radius: 12px; display: inline-block; }
+  .crop svg { width: 280px; height: 210px; display: block; border-radius: 6px; }
+  .crop figcaption { font-size: 12px; color: var(--lab-muted); margin-top: 8px; }
+</style>
+<body class="lab">
+<main>
+<h1 id="title" data-from="t2">Home page: the picture</h1>
+<p id="about" data-from="t2">The picture is <code>media/harbour-800.jpg</code>, 800 by 533. A crop is the part of it the <code>viewBox</code> shows: left, top, width, height. Crops here are 4 by 3.</p>
+<section id="crops">
+<figure id="crop" class="crop" data-from="t3 t2">
+  <svg viewBox="300 150 280 210" role="img" aria-label="The sailboat"><image href="media/harbour-800.jpg" width="800" height="533"/></svg>
+  <figcaption>The sailboat</figcaption>
+</figure>
+</section>
+</main>

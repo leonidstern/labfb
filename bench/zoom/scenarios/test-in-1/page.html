@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page keys: cases</title>
+<link rel="stylesheet" href="/_lab/lab.css">
+<body class="lab">
+<main>
+<h1 id="title" data-from="t2">Page keys: cases</h1>
+<p id="rule" data-from="t2">Pages are keyed by their file: <code>Pricing.html</code> is <code>/pricing</code>, <code>a/index.html</code> is <code>/a/index</code>. Anything the page format doesn't allow (dots, spaces, other scripts) is spelled as <code>_</code> and its hex bytes. The code is <code>keyFor</code> in <code>src/key.mjs</code>.</p>
+<ul id="cases">
+<li id="case-1" data-from="t3 t2" data-input="Pricing.html" data-expected="/pricing"><code>Pricing.html</code> should be <code>/pricing</code>. Fails.</li>
+<li id="case-2" data-from="t2" data-input="a b.html" data-expected="/a_20b"><code>a b.html</code> should be <code>/a_20b</code>. Passes.</li>
+<li id="case-3" data-from="t2" data-input="a/index.html" data-expected="/a/index"><code>a/index.html</code> should be <code>/a/index</code>. Passes.</li>
+</ul>
+</main>

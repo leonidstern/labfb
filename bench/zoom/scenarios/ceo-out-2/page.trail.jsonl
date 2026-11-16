@@ -1,0 +1,10 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "how would you call labfb yourself, also so users would open it like artifacts, like do labi or smth"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "three names to choose from: labit, labi, pinlab"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "name", "what": "labit doesnt sound weird to english speaker?"}
+{"id": "t4", "kind": "change", "by": "agent", "from": ["t3"], "on": "name", "what": "labit reads as \"lab it\", a verb like \"ship it\": it sounds natural in English"}
+{"id": "t5", "kind": "pick", "by": "leo", "from": ["t4"], "on": "name", "what": "i like labit", "dropped": [{"what": "labi", "why": "reads as a typo of lab"}, {"what": "pinlab", "why": "says pins, not what you do with it"}]}
+{"id": "t6", "kind": "pin", "by": "leo", "from": ["t5"], "on": "name", "what": "do it"}
+{"id": "t7", "kind": "change", "by": "agent", "from": ["t6"], "on": "name", "what": "renamed everywhere: command, MCP server, plugins, skill, settings"}
+{"id": "t8", "kind": "change", "by": "agent", "from": ["t7"], "on": "name", "what": "npm turned down plain labit as too close to lab and lit, so it is published as @leonidstern/labit"}
+{"id": "t9", "kind": "ask", "by": "leo", "what": "small versions please, not big jumps"}
+{"id": "t10", "kind": "change", "by": "agent", "from": ["t9"], "on": "versions", "what": "patch releases soon after merges: 0.5.1, 0.5.2"}

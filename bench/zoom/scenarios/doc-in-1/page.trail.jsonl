@@ -1,0 +1,3 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "can other agents use it too, not only Claude?"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "on": "agents", "what": "a README section on other agents: the plugin, the skill, cloud and local labs, and a table of seven agents"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "agents", "what": "too long, people stop reading"}

@@ -1,0 +1,6 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "the first line of the README should say what it is in one breath"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "on": "line", "what": "a first line for the README"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "line", "what": "zoom in ×1: more like this one"}
+{"id": "t4", "kind": "make", "by": "agent", "from": ["t3"], "what": "a variant of the line that says pin"}
+{"id": "t5", "kind": "pin", "by": "leo", "from": ["t4"], "on": "line-v1", "what": "zoom in ×2: more like this one"}
+{"id": "t6", "kind": "make", "by": "agent", "from": ["t5"], "what": "a variant that says plain text"}

@@ -17,6 +17,9 @@ export type Quote = {
 /** Everything a pin remembers about its spot. Saved with the comment and read by agents. */
 export type Anchor = {
   selector: string;
+  /** The nearest element with an id around the spot (zoom: lib/zoom.ts), and on a zoom its direction ("in" or "out"). */
+  block?: string;
+  zoom?: string;
   /** Where in the element, as shares of its width and height. */
   x: number;
   y: number;
@@ -608,6 +611,14 @@ export function anchorAt(clientX, clientY) {
     }
   }
   Object.assign(anchor, schemeAt(target));
+  // The nearest element with an id around the spot: the block a zoom is on (lib/zoom.ts). With it, the lab keeps what
+  // was asked and answered there in the page's trail.
+  for (let b: Element | null = target; b && b !== document.body && b !== document.documentElement; b = b.parentElement) {
+    if (b.id) {
+      anchor.block = b.id;
+      break;
+    }
+  }
   return anchor;
 }
 

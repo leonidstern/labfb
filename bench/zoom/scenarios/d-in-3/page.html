@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Empty table looks</title>
+<link rel="stylesheet" href="/_lab/lab.css">
+<style>
+  .looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+  .look { background: var(--lab-bg); border-radius: 12px; padding: 24px; display: grid; justify-items: center; gap: 10px; text-align: center; }
+  .look .art { width: var(--size, 56px); height: var(--size, 56px); opacity: var(--tone, .5); }
+  .look .dot { border-radius: 50%; background: currentColor; }
+  .look .block { border-radius: 10px; background: currentColor; }
+  .look .rings { border-radius: 50%; background: repeating-radial-gradient(circle, currentColor 0 var(--ring, 2px), transparent var(--ring, 2px) var(--gap, 8px)); }
+  .look .slope { background: currentColor; clip-path: polygon(50% 6%, 96% 94%, 4% 94%); }
+  .look h3 { margin: 0; font-size: var(--title, 15px); }
+  .look p { margin: 0; color: var(--lab-muted); font-size: 13px; }
+</style>
+<body class="lab">
+<main>
+<h1 id="title" data-from="t4">Empty table: four looks</h1>
+<section class="looks" id="looks">
+<article id="look-a" class="look" data-from="t4" style="--size:56px;--tone:.5;--title:15px">
+  <div class="art dot"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Place an order</button>
+</article>
+<article id="look-b" class="look" data-from="t4" style="--size:72px;--tone:.8;--title:15px">
+  <div class="art block"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Place an order</button>
+</article>
+<article id="look-c" class="look" data-from="t8 t7 t4" style="--size:56px;--ring:1px;--gap:8px;--tone:.4;--title:15px">
+  <div class="art rings"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Place an order</button>
+</article>
+<article id="look-c-v1" class="look" data-variant-of="look-c" data-depth="1" data-from="t10 t8 t7 t4" style="--size:56px;--ring:1px;--gap:5px;--tone:.4;--title:15px">
+  <div class="art rings"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Place an order</button>
+</article>
+<article id="look-c-v2" class="look" data-variant-of="look-c" data-depth="1" data-from="t10 t8 t7 t4" style="--size:72px;--ring:1px;--gap:8px;--tone:.4;--title:15px">
+  <div class="art rings"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Start an order</button>
+</article>
+<article id="look-c-v2-v1" class="look" data-variant-of="look-c-v2" data-depth="2" data-from="t12 t10 t8 t7 t4" style="--size:68px;--ring:1px;--gap:8px;--tone:.4;--title:15px">
+  <div class="art rings"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Start an order</button>
+</article>
+<article id="look-c-v2-v2" class="look" data-variant-of="look-c-v2" data-depth="2" data-from="t12 t10 t8 t7 t4" style="--size:72px;--ring:1px;--gap:9px;--tone:.4;--title:15px">
+  <div class="art rings"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Start an order</button>
+</article>
+<article id="look-c-v2-v3" class="look" data-variant-of="look-c-v2" data-depth="2" data-from="t12 t10 t8 t7 t4" style="--size:72px;--ring:1px;--gap:8px;--tone:.4;--title:15px">
+  <div class="art rings"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Start order</button>
+</article>
+<article id="look-c-v3" class="look" data-variant-of="look-c" data-depth="1" data-from="t10 t8 t7 t4" style="--size:56px;--ring:1px;--gap:12px;--tone:.3;--title:15px">
+  <div class="art rings"></div>
+  <h3>Nothing ordered yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Place an order</button>
+</article>
+<article id="look-c-v4" class="look" data-variant-of="look-c" data-depth="1" data-from="t10 t8 t7 t4" style="--size:56px;--ring:2px;--gap:8px;--tone:.5;--title:15px">
+  <div class="art rings"></div>
+  <h3>No orders yet</h3>
+  <p>Your orders will be listed here.</p>
+  <button type="button">Place an order</button>
+</article>
+<article id="look-d" class="look" data-from="t4" style="--size:56px;--tone:.5;--title:15px">
+  <div class="art slope"></div>
+  <h3>No orders yet</h3>
+  <p>Orders you place will show up here.</p>
+  <button type="button">Place an order</button>
+</article>
+</section>
+</main>

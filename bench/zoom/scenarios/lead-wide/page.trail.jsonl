@@ -1,0 +1,6 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "the widget and the lab pages should look like one thing"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "the lab's design system in one file, lab.css: colours, corners, type, boxes"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "corners", "what": "too many corner sizes"}
+{"id": "t4", "kind": "change", "by": "agent", "from": ["t3"], "on": "corners", "what": "two corner sizes in all: 6 px small, 12 px boxes, circles only for dots"}
+{"id": "t5", "kind": "pin", "by": "leo", "from": ["t2"], "on": "colour", "what": "do it like Cooking"}
+{"id": "t6", "kind": "change", "by": "agent", "from": ["t5"], "on": "colour", "what": "colours are washes, as in Cooking: white, black and green with 4 see-through steps each", "dropped": [{"what": "Apple's system greys, four steps a scheme", "why": "solid greys sit wrong on a coloured surface; a wash sits right on any"}]}

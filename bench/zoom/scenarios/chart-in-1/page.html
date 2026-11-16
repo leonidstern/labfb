@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page load: what each version costs</title>
+<link rel="stylesheet" href="/_lab/lab.css">
+<style>
+  .chart { margin: 0; padding: 16px; background: var(--lab-bg); border-radius: 12px; color: var(--lab-fg); max-width: 360px; }
+  .chart svg { width: 100%; display: block; font: 10px system-ui, sans-serif; }
+  .chart rect { fill: currentColor; }
+  .chart text { fill: currentColor; }
+  .chart figcaption { font-size: 12px; color: var(--lab-muted); margin-top: 8px; }
+</style>
+<body class="lab">
+<main>
+<h1 id="title" data-from="t2">Page load: what each version costs</h1>
+<p id="about" data-from="t2">The numbers are in <code>data.json</code>: milliseconds for 600 loads. Each bar is a <code>rect</code> that carries its name and value, and is drawn to scale from zero.</p>
+<section id="charts">
+<figure id="chart" class="chart" data-from="t3 t2">
+  <svg viewBox="0 0 330 160" role="img" aria-label="Time for 600 loads, in milliseconds">
+    <text x="146" y="23" text-anchor="end">As it is</text><rect data-name="As it is" data-value="144" x="152" y="10" width="144" height="18"/><text x="302" y="23">144</text>
+    <text x="146" y="53" text-anchor="end">Kept until the page changes</text><rect data-name="Kept until the page changes" data-value="15" x="152" y="40" width="15" height="18"/><text x="173" y="53">15</text>
+    <text x="146" y="83" text-anchor="end">Kept for the last 8 pages</text><rect data-name="Kept for the last 8 pages" data-value="88" x="152" y="70" width="88" height="18"/><text x="246" y="83">88</text>
+    <text x="146" y="113" text-anchor="end">Kept, compressed fast</text><rect data-name="Kept, compressed fast" data-value="9" x="152" y="100" width="9" height="18"/><text x="167" y="113">9</text>
+    <text x="146" y="143" text-anchor="end">Kept, compressed small</text><rect data-name="Kept, compressed small" data-value="24" x="152" y="130" width="24" height="18"/><text x="182" y="143">24</text>
+  </svg>
+  <figcaption>Time for 600 loads, in milliseconds</figcaption>
+</figure>
+</section>
+</main>

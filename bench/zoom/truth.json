@@ -1,0 +1,684 @@
+{
+ "d-in-1": {
+  "who": "designer",
+  "does": "zoom in ×1 on a look for an empty table",
+  "kind": "in",
+  "block": "look-c",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "scale": "one thing"
+ },
+ "d-in-2": {
+  "who": "designer",
+  "does": "zoom in ×2 on one of its variants",
+  "kind": "in",
+  "block": "look-c-v2",
+  "depth": 2,
+  "count": 3,
+  "words": "zoom in ×2: more like this one",
+  "scale": "one thing"
+ },
+ "d-in-3": {
+  "who": "designer",
+  "does": "zoom in ×3 on a variant of that variant",
+  "kind": "in",
+  "block": "look-c-v2-v2",
+  "depth": 3,
+  "count": 3,
+  "words": "zoom in ×3: more like this one",
+  "fine": 6,
+  "scale": "one detail"
+ },
+ "d-out-1": {
+  "who": "designer",
+  "does": "zoom out ×1 on the picked look",
+  "kind": "out",
+  "block": "look-c",
+  "required": [
+   [
+    "the pick of the illustration direction",
+    "the illustration one"
+   ],
+   [
+    "four looks made",
+    "(four|4) looks"
+   ],
+   [
+    "the comment on C",
+    "like this but calmer"
+   ],
+   [
+    "C made calmer",
+    "thinner|softer|calmer:"
+   ],
+   [
+    "the pick of C",
+    "go with C"
+   ]
+  ],
+  "quotes": [
+   "the illustration one",
+   "like this but calmer",
+   "go with C"
+  ],
+  "forbidden": [
+   [
+    "the first ask (two steps back)",
+    "empty tables feel dead"
+   ],
+   [
+    "the comment on look B (another branch)",
+    "this one is too heavy"
+   ],
+   [
+    "the three directions (two steps back)",
+    "three directions"
+   ]
+  ],
+  "scale": "one thing"
+ },
+ "dev-out-2": {
+  "who": "developer",
+  "does": "zoom out ×2 on a reverted change (labit's real history)",
+  "kind": "out",
+  "block": "first-paint",
+  "required": [
+   [
+    "the first ask",
+    "room for improvements\\?"
+   ],
+   [
+    "the audit",
+    "audit|three findings"
+   ],
+   [
+    "comments put into the page",
+    "round trip less|come with their comments"
+   ],
+   [
+    "the comment that turned it",
+    "revert it sounds complicated"
+   ],
+   [
+    "the revert",
+    "as before|no longer carry|reverted"
+   ],
+   [
+    "what was dropped and why",
+    "too complicated"
+   ]
+  ],
+  "quotes": [
+   "room for improvements?",
+   "revert it sounds complicated"
+  ],
+  "forbidden": [
+   [
+    "the store change (another branch)",
+    "one file per page"
+   ],
+   [
+    "the archive (another branch)",
+    "archiv"
+   ]
+  ],
+  "scale": "one thing"
+ },
+ "arch-out-3": {
+  "who": "developer",
+  "does": "zoom out ×3 on a part of the architecture (labit's real history)",
+  "kind": "out",
+  "block": "mcp",
+  "required": [
+   [
+    "ask: faster pins",
+    "can small pins get fixed faster\\?"
+   ],
+   [
+    "router made",
+    "quick model router|fast model first"
+   ],
+   [
+    "benchmark",
+    "benchmark"
+   ],
+   [
+    "router narrowed",
+    "15 fixes|11 of them"
+   ],
+   [
+    "the doubt",
+    "is it worth the trouble\\?"
+   ],
+   [
+    "router parked",
+    "--fast|parked"
+   ],
+   [
+    "router removed",
+    "straight to the listening session"
+   ],
+   [
+    "ask: too much code",
+    "starting the lab loads too much code"
+   ],
+   [
+    "own files",
+    "own files|lib/"
+   ],
+   [
+    "ask: slow loads",
+    "page loads feel slow with many comments"
+   ],
+   [
+    "one file per page",
+    "one file per page"
+   ]
+  ],
+  "quotes": [
+   "can small pins get fixed faster?",
+   "is it worth the trouble?",
+   "starting the lab loads too much code",
+   "page loads feel slow with many comments"
+  ],
+  "forbidden": [],
+  "branch": {
+   "min": 9,
+   "not_on": "starting the lab loads too much code|own files in lib"
+  },
+  "scale": "the system"
+ },
+ "arch-in-1": {
+  "who": "developer",
+  "does": "zoom in ×1 on a part of the architecture",
+  "kind": "in",
+  "block": "store",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "scale": "the system",
+  "judged": "whether each keeps one file per page and changes choices inside that"
+ },
+ "dev-in-1": {
+  "who": "developer",
+  "does": "zoom in ×1 on a code fix (labit's real code)",
+  "kind": "in",
+  "block": "fix",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "code": "test.mjs",
+  "scale": "one thing",
+  "same_as_original": [
+   "/a,/a",
+   ",",
+   " , ,",
+   "/a/,b",
+   "x.HTML",
+   "/a.html,/a",
+   "a//b",
+   "/"
+  ]
+ },
+ "test-in-1": {
+  "who": "tester",
+  "does": "zoom in ×1 on a failing case",
+  "kind": "in",
+  "block": "case-1",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "cases": true,
+  "scale": "one thing"
+ },
+ "res-in-1": {
+  "who": "researcher",
+  "does": "zoom in ×1 on a finding with a quote",
+  "kind": "in",
+  "block": "finding-1",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "quotes_from": true,
+  "scale": "one thing"
+ },
+ "copy-in-3": {
+  "who": "writer",
+  "does": "zoom in ×3 on a line of copy",
+  "kind": "in",
+  "block": "line-v1-v1",
+  "depth": 3,
+  "count": 3,
+  "words": "zoom in ×3: more like this one",
+  "max_words": 3,
+  "scale": "one detail"
+ },
+ "none-out-1": {
+  "who": "anyone",
+  "does": "zoom out on a block with no trail",
+  "kind": "none",
+  "block": "hero",
+  "reply": "No trail recorded for this one.",
+  "scale": "one thing"
+ },
+ "keep-1": {
+  "who": "anyone",
+  "does": "a plain comment: is the trail kept?",
+  "kind": "keep",
+  "block": "look-c",
+  "heading": "Nothing here yet",
+  "words": "make this card's heading say: Nothing here yet",
+  "scale": "one thing"
+ },
+ "ceo-in-1": {
+  "who": "CEO",
+  "scale": "core ideas",
+  "does": "zoom in ×1 on a core idea for the product",
+  "kind": "in",
+  "block": "idea-hosted",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "judged": "whether each is still the hosted lab idea with other choices in it"
+ },
+ "ceo-out-2": {
+  "who": "CEO",
+  "scale": "core ideas",
+  "does": "zoom out ×2 on the product's name (labit's real history)",
+  "kind": "out",
+  "block": "name",
+  "required": [
+   [
+    "the first ask",
+    "how would you call labfb yourself"
+   ],
+   [
+    "the three names",
+    "labit, labi, pinlab|three names"
+   ],
+   [
+    "the doubt",
+    "labit doesnt sound weird to english speaker\\?"
+   ],
+   [
+    "the answer to it",
+    "lab it"
+   ],
+   [
+    "the pick",
+    "i like labit"
+   ],
+   [
+    "the go-ahead",
+    "do it"
+   ],
+   [
+    "the rename",
+    "renamed"
+   ],
+   [
+    "npm's answer",
+    "too close to lab and lit|@leonidstern/labit"
+   ],
+   [
+    "what was dropped and why",
+    "pinlab"
+   ]
+  ],
+  "ordered_first": 8,
+  "quotes": [
+   "how would you call labfb yourself, also so users would open it like artifacts, like do labi or smth",
+   "labit doesnt sound weird to english speaker?",
+   "i like labit",
+   "do it"
+  ],
+  "forbidden": [
+   [
+    "the versions ask (another branch)",
+    "small versions please"
+   ],
+   [
+    "the versions change (another branch)",
+    "patch releases"
+   ]
+  ]
+ },
+ "lead-in-1": {
+  "who": "lead designer",
+  "scale": "the system",
+  "does": "zoom in ×1 on a rule of the design system",
+  "kind": "in",
+  "block": "corners",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "pair": [
+   "data-small",
+   "data-box"
+  ]
+ },
+ "lead-out-1": {
+  "who": "lead designer",
+  "scale": "the system",
+  "does": "zoom out ×1 on a rule of the design system (labit's real history)",
+  "kind": "out",
+  "block": "colour",
+  "required": [
+   [
+    "the first ask",
+    "the widget and the lab pages should look like one thing"
+   ],
+   [
+    "the system in one file",
+    "lab\\.css|one file"
+   ],
+   [
+    "the comment on colour",
+    "do it like Cooking"
+   ],
+   [
+    "colours became washes",
+    "washes"
+   ]
+  ],
+  "quotes": [
+   "the widget and the lab pages should look like one thing",
+   "do it like Cooking"
+  ],
+  "forbidden": [
+   [
+    "the comment on corners (another branch)",
+    "too many corner sizes"
+   ],
+   [
+    "the corners change (another branch)",
+    "two corner sizes"
+   ]
+  ]
+ },
+ "var-again-1": {
+  "who": "variant explorer",
+  "scale": "one thing",
+  "does": "zoom in ×1 again on a look that already has 4 variants",
+  "kind": "in",
+  "block": "look-c",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "again": true
+ },
+ "var-small-3": {
+  "who": "variant explorer",
+  "scale": "one detail",
+  "does": "zoom in ×3 on a button's label",
+  "kind": "in",
+  "block": "cta-v1-v1",
+  "depth": 3,
+  "count": 3,
+  "words": "zoom in ×3: more like this one",
+  "max_words": 2
+ },
+ "ceo-wide": {
+  "who": "CEO",
+  "scale": "core ideas",
+  "does": "zoom in wide on a core idea: other ideas for the same problem",
+  "kind": "in",
+  "level": "wide",
+  "block": "idea-hosted",
+  "count": 4,
+  "words": "zoom in wide: other ways to do this",
+  "headings": [
+   "Zoom",
+   "Pins on PR previews"
+  ]
+ },
+ "arch-wide": {
+  "who": "developer",
+  "scale": "the system",
+  "does": "zoom in wide on a part of the architecture: other ways to build it",
+  "kind": "in",
+  "level": "wide",
+  "block": "store",
+  "count": 4,
+  "words": "zoom in wide: other ways to do this",
+  "not_same": "one (json )?file per page"
+ },
+ "lead-wide": {
+  "who": "lead designer",
+  "scale": "the system",
+  "does": "zoom in wide on a rule of the design system: other kinds of rule",
+  "kind": "in",
+  "level": "wide",
+  "block": "corners",
+  "count": 4,
+  "words": "zoom in wide: other ways to do this"
+ },
+ "dev-wide": {
+  "who": "developer",
+  "scale": "one thing",
+  "does": "zoom in wide on a code fix: other ways to solve it",
+  "kind": "in",
+  "level": "wide",
+  "block": "fix",
+  "count": 4,
+  "words": "zoom in wide: other ways to do this",
+  "code": "test.mjs"
+ },
+ "gfx-logo-1": {
+  "who": "designer",
+  "scale": "graphics",
+  "does": "zoom in ×1 on labit's mark (an SVG drawing)",
+  "kind": "in",
+  "block": "mark",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "svg": {
+   "viewBox": "0 0 64 64",
+   "min": 0.03
+  }
+ },
+ "gfx-logo-2": {
+  "who": "designer",
+  "scale": "graphics",
+  "does": "zoom in ×2 on one variant of the mark",
+  "kind": "in",
+  "block": "mark-v2",
+  "depth": 2,
+  "count": 3,
+  "words": "zoom in ×2: more like this one",
+  "svg": {
+   "viewBox": "0 0 64 64",
+   "min": 0.005
+  }
+ },
+ "gfx-logo-3": {
+  "who": "designer",
+  "scale": "graphics",
+  "does": "zoom in ×3 on a variant of that variant",
+  "kind": "in",
+  "block": "mark-v2-v2",
+  "depth": 3,
+  "count": 3,
+  "words": "zoom in ×3: more like this one",
+  "svg": {
+   "viewBox": "0 0 64 64",
+   "min": 0.002
+  }
+ },
+ "gfx-icon-1": {
+  "who": "designer",
+  "scale": "graphics",
+  "does": "zoom in ×1 on an icon for the bar",
+  "kind": "in",
+  "block": "icon",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "svg": {
+   "viewBox": "0 0 24 24",
+   "min": 0.05
+  }
+ },
+ "gfx-photo-1": {
+  "who": "designer",
+  "scale": "graphics",
+  "does": "zoom in ×1 on a crop of a picture",
+  "kind": "in",
+  "block": "crop",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "crop": {
+   "image": [
+    800,
+    533
+   ],
+   "subject": [
+    375,
+    183,
+    502,
+    350
+   ],
+   "ratio": 1.3333,
+   "near": [
+    0.2,
+    0.9
+   ]
+  }
+ },
+ "perf-in-1": {
+  "who": "developer",
+  "scale": "performance",
+  "does": "zoom in ×1 on slow code: what can be better",
+  "kind": "in",
+  "block": "load",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "bench": {
+   "file": "bench.mjs",
+   "src": "src/list.mjs",
+   "faster": 0.9
+  }
+ },
+ "perf-out-2": {
+  "who": "developer",
+  "scale": "performance",
+  "does": "zoom out ×2 on a speed-up: why it works like this",
+  "kind": "out",
+  "block": "cache",
+  "required": [
+   [
+    "the first ask",
+    "why is the second load of a page not faster than the first\\?"
+   ],
+   [
+    "what was measured",
+    "compresses it again|builds the page"
+   ],
+   [
+    "lists are kept",
+    "kept, compressed, until that page changes"
+   ],
+   [
+    "the memory question",
+    "does this eat memory\\?"
+   ],
+   [
+    "the first cap",
+    "200 files"
+   ],
+   [
+    "the doubt about it",
+    "one big page could fill it"
+   ],
+   [
+    "the cap by size",
+    "10 MB"
+   ],
+   [
+    "what was dropped and why",
+    "a count says nothing about size"
+   ]
+  ],
+  "ordered_first": 7,
+  "quotes": [
+   "why is the second load of a page not faster than the first?",
+   "does this eat memory?",
+   "one big page could fill it"
+  ],
+  "forbidden": [
+   [
+    "the comment about the limit (another branch)",
+    "a phone at home hit the limit"
+   ],
+   [
+    "the limit change (another branch)",
+    "600 new comments"
+   ]
+  ]
+ },
+ "chart-in-1": {
+  "who": "anyone",
+  "scale": "graphics",
+  "does": "zoom in ×1 on a chart of real numbers",
+  "kind": "in",
+  "block": "chart",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "chart": {
+   "data": {
+    "As it is": 144,
+    "Kept until the page changes": 15,
+    "Kept for the last 8 pages": 88,
+    "Kept, compressed fast": 9,
+    "Kept, compressed small": 24
+   }
+  },
+  "svg": {
+   "min": 0.03,
+   "any_box": true
+  }
+ },
+ "doc-in-1": {
+  "who": "writer",
+  "scale": "one thing",
+  "does": "zoom in ×1 on a long section of the README",
+  "kind": "in",
+  "block": "agents",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "doc": {
+   "shorter": true
+  }
+ },
+ "notrail-in-1": {
+  "who": "anyone",
+  "scale": "one thing",
+  "does": "zoom in ×1 on a block with no trail",
+  "kind": "in",
+  "block": "hero",
+  "depth": 1,
+  "count": 4,
+  "words": "zoom in ×1: more like this one",
+  "judged": "what it goes on when there is no reason on record"
+ },
+ "ctx-wide": {
+  "who": "developer",
+  "scale": "the system",
+  "does": "zoom in wide on the store when another lab page rules out a database",
+  "kind": "in",
+  "level": "wide",
+  "block": "store",
+  "count": 4,
+  "words": "zoom in wide: other ways to do this",
+  "must_not": [
+   "sqlite|database|\\bdb\\b|binary|leveldb|lmdb|indexeddb",
+   "keeps to what another page of the lab decided: plain text files, no database"
+  ]
+ }
+}

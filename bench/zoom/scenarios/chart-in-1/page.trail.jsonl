@@ -1,0 +1,3 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "why is the second load of a page not faster than the first?"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "four faster versions of the load, each timed over 600 loads"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "chart", "what": "show me what each one costs"}

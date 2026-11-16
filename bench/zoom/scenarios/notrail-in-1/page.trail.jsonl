@@ -1,0 +1,2 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "the setup should fit in three steps"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "on": "steps", "what": "three steps to start"}

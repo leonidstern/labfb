@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>labit: how it is put together</title>
+<link rel="stylesheet" href="/_lab/lab.css">
+<body class="lab">
+<main>
+<h1 id="title" data-from="t2">labit: how it is put together</h1>
+<section id="pins-path" data-from="t7 t6 t4 t2">
+  <h2>Where a pin goes</h2>
+  <p>Every pin goes straight to the listening session. There is no quick model in between.</p>
+</section>
+<section id="mcp" data-from="t9">
+  <h2>MCP server</h2>
+  <p><code>lib/mcp.mjs</code>, with <code>--proxy</code> in <code>lib/proxy.mjs</code> and dev-server finding in <code>lib/devserver.mjs</code>. Each is loaded only when it is used.</p>
+</section>
+<section id="store" data-from="t11">
+  <h2>Comments store</h2>
+  <p>One JSON file per page in <code>.lab/comments/</code>. A new comment rewrites only its page's file. Done threads with nothing new in 30 days move to <code>.lab/archive/</code>.</p>
+</section>
+</main>

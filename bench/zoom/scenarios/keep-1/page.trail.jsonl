@@ -1,0 +1,8 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "empty tables feel dead"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "three directions for an empty table: an illustration, plain text, an action first"}
+{"id": "t3", "kind": "pick", "by": "leo", "from": ["t2"], "what": "the illustration one", "dropped": [{"what": "plain text", "why": "says nothing"}, {"what": "an action first", "why": "pushy before the person has anything"}]}
+{"id": "t4", "kind": "make", "by": "agent", "from": ["t3"], "what": "four looks for the illustration: A dot, B block, C rings, D slope"}
+{"id": "t5", "kind": "pin", "by": "leo", "from": ["t4"], "on": "look-b", "what": "this one is too heavy"}
+{"id": "t6", "kind": "pin", "by": "leo", "from": ["t4"], "on": "look-c", "what": "like this but calmer"}
+{"id": "t7", "kind": "change", "by": "agent", "from": ["t6"], "on": "look-c", "what": "look C made calmer: thinner rings, softer tone"}
+{"id": "t8", "kind": "pick", "by": "leo", "from": ["t7"], "on": "look-c", "what": "go with C", "dropped": [{"what": "look A", "why": "too plain"}, {"what": "look B", "why": "heavier than the table itself"}, {"what": "look D", "why": "reads as a warning sign"}]}

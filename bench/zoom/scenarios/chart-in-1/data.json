@@ -1,0 +1,22 @@
+[
+ {
+  "name": "As it is",
+  "ms": 144
+ },
+ {
+  "name": "Kept until the page changes",
+  "ms": 15
+ },
+ {
+  "name": "Kept for the last 8 pages",
+  "ms": 88
+ },
+ {
+  "name": "Kept, compressed fast",
+  "ms": 9
+ },
+ {
+  "name": "Kept, compressed small",
+  "ms": 24
+ }
+]

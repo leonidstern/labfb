@@ -1,0 +1,4 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "two sessions take each other's pins on one lab"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "on": "fix", "what": "wait --pages /a,/b: a wait can listen on some pages only"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "fix", "what": "it missed /zoom.html"}
+{"id": "t4", "kind": "change", "by": "agent", "from": ["t3"], "on": "fix", "what": "the list takes file names too: .html is cut off, and extra slashes at the start"}

@@ -1,0 +1,5 @@
+{"id": "t1", "kind": "ask", "by": "leo", "what": "labit needs a mark"}
+{"id": "t2", "kind": "make", "by": "agent", "from": ["t1"], "what": "a batch of marks: a beaker with two strokes coming out of the top and a round hole"}
+{"id": "t3", "kind": "pin", "by": "leo", "from": ["t2"], "on": "mark", "what": "this one only interesting from this batch"}
+{"id": "t4", "kind": "pin", "by": "leo", "from": ["t3"], "on": "mark", "what": "zoom in ×1: more like this one"}
+{"id": "t5", "kind": "make", "by": "agent", "from": ["t4"], "on": "mark", "what": "4 variants of the mark: bigger hole, smaller hole, hole higher up, square hole"}
