@@ -734,12 +734,36 @@ export const inPage = (y, h = 0) => {
 };
 // An area's pin sits at the corner where the drag ended (where you let go), not where it started.
 export const pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
-// A pin whose spot changed waits on the page's left edge at the height it had, small and faded, out of the content's
-// way (it pointed at something that's gone, so its old x means nothing now). Opening it still shows its old area.
+// A pin whose spot changed waits beside the content at the height it had, small and faded, out of the content's way
+// (it pointed at something that's gone, so its old x means nothing now). Opening it still shows its old area.
+// "Beside the content" is the gutter just left of what it sat in: the nearest box in its selector that is still on the
+// page, else the page's own content. It used to be the window's left edge, which on a wide window with a centred
+// column is hundreds of px from anything people look at: such pins read as lost. EDGE is the least it can be, so on a
+// phone, or a page that fills the window, it is where it was.
 export const EDGE = 10;
+const GUTTER = 30; // a moved pin is 22 px wide: its right side stops 8 px short of the content
+export function edgeFor(anchor) {
+  const beside = (rect) => Math.max(EDGE, Math.round(rect.left + scrollX - GUTTER));
+  const parts = String(anchor?.selector || '').split(' > ');
+  while (parts.length > 1) {
+    parts.pop();
+    let node = null;
+    try {
+      node = document.querySelector(parts.join(' > '));
+    } catch {}
+    if (!node || /^(html|body)$/.test(node.localName) || host.contains(node)) continue;
+    const rect = node.getBoundingClientRect();
+    if (rect.width) return beside(rect);
+  }
+  const boxes = [...document.body.children]
+    .filter((c) => c !== host && !host.contains(c))
+    .map((c) => c.getBoundingClientRect())
+    .filter((r) => r.width && r.height);
+  return boxes.length ? beside({ left: Math.min(...boxes.map((r) => r.left)) }) : EDGE;
+}
 export function position(anchor) {
   const at = spotOf(anchor);
-  return at.moved ? { ...at, left: EDGE } : at;
+  return at.moved ? { ...at, left: edgeFor(anchor) } : at;
 }
 export function spotOf(anchor): Spot {
   const node = findTarget(anchor);

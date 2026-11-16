@@ -1035,9 +1035,27 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   };
   var pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
   var EDGE = 10;
+  var GUTTER = 30;
+  function edgeFor(anchor) {
+    const beside = (rect) => Math.max(EDGE, Math.round(rect.left + scrollX - GUTTER));
+    const parts = String(anchor?.selector || "").split(" > ");
+    while (parts.length > 1) {
+      parts.pop();
+      let node = null;
+      try {
+        node = document.querySelector(parts.join(" > "));
+      } catch {
+      }
+      if (!node || /^(html|body)$/.test(node.localName) || host.contains(node)) continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.width) return beside(rect);
+    }
+    const boxes = [...document.body.children].filter((c) => c !== host && !host.contains(c)).map((c) => c.getBoundingClientRect()).filter((r) => r.width && r.height);
+    return boxes.length ? beside({ left: Math.min(...boxes.map((r) => r.left)) }) : EDGE;
+  }
   function position(anchor) {
     const at = spotOf(anchor);
-    return at.moved ? { ...at, left: EDGE } : at;
+    return at.moved ? { ...at, left: edgeFor(anchor) } : at;
   }
   function spotOf(anchor) {
     const node = findTarget(anchor);
