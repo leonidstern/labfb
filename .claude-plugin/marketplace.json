@@ -6,9 +6,9 @@
   },
   "plugins": [
     {
-      "name": "labfb",
+      "name": "labit",
       "source": "./",
-      "description": "Read and answer labfb pin comments: cloud lab links and local mode."
+      "description": "Read and answer labit pin comments: cloud lab links and local mode."
     }
   ]
 }

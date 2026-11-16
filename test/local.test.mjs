@@ -8,7 +8,7 @@ import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-test-'));
+const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-test-'));
 const PORT = String(4600 + Math.floor(Math.random() * 300));
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');

@@ -1,6 +1,6 @@
 # Task: find what each comment points at
 
-People pinned 30 comments on five pages of a small website. You get the comments the way an agent gets them from labfb: as plain text. For every comment, find exactly what it points at in the source.
+People pinned 30 comments on five pages of a small website. You get the comments the way an agent gets them from labit: as plain text. For every comment, find exactly what it points at in the source.
 
 ## What you have
 

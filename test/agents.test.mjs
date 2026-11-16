@@ -1,4 +1,4 @@
-// Any agent: labfb tells which one runs wait / reply, signs and labels with its name, gives Codex and Amp their way
+// Any agent: labit tells which one runs wait / reply, signs and labels with its name, gives Codex and Amp their way
 // back to the session, and hints when Codex's sandbox blocks it.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +12,7 @@ const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 // No agent of our own: these tests run inside agents too.
 const AGENT_VARS = /^(CLAUDE|CODEX|CURSOR|AMP_|ANTIGRAVITY|GEMINI|OPENCODE|LAB_AGENT|AGENT$|AI_AGENT$)/;
 const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !AGENT_VARS.test(k)));
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-'));
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
 const kids = [];
 const dirs = [];
 after(() => {
@@ -20,7 +20,7 @@ after(() => {
   dirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
 });
 const tmp = (name) => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `labfb-${name}-`)));
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `labit-${name}-`)));
   dirs.push(d);
   return d;
 };
@@ -32,7 +32,7 @@ const site = (name) => {
 let port = 6100 + Math.floor(Math.random() * 300);
 async function lab(dir, args = [], env = {}) {
   const p = port++;
-  const child = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(p), ...args], { cwd: dir, env: { ...clean, LABFB_HOME: home, ...env } });
+  const child = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(p), ...args], { cwd: dir, env: { ...clean, LABIT_HOME: home, ...env } });
   kids.push(child);
   let log = '';
   child.stdout.on('data', (d) => (log += d));
@@ -63,7 +63,7 @@ const replies = async (B, id, wantOne = true) => {
   return [];
 };
 const cli = (dir, args, env) =>
-  new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env: { ...clean, LABFB_HOME: home, ...env } }, (e, out, err) => resolve(out + err)));
+  new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env: { ...clean, LABIT_HOME: home, ...env } }, (e, out, err) => resolve(out + err)));
 
 test('replies are signed by the agent that runs reply', async () => {
   const dir = site('sign');
@@ -80,7 +80,7 @@ test('replies are signed by the agent that runs reply', async () => {
     [{ LAB_AGENT: 'My Bot' }, 'My Bot'],
     [{ AGENT: 'amp' }, 'Amp'],
     [{ CODEX_THREAD_ID: 'abc', AI_AGENT: 'claude-code_2_agent' }, 'Codex · session abc'], // a Codex run inside a Claude Code shell
-    [{ AGENT: 'something-else' }, 'Claude'], // AGENT only counts when it names an agent labfb knows
+    [{ AGENT: 'something-else' }, 'Claude'], // AGENT only counts when it names an agent labit knows
     [{ CODEX_THREAD_ID: 'abc', LAB_AGENT_NAME: 'Robot' }, 'Robot · session abc'],
   ];
   for (const [env, name] of cases) {
@@ -94,7 +94,7 @@ test('replies are signed by the agent that runs reply', async () => {
 test('a listening Codex session is shown by name, with its resume command', async () => {
   const dir = site('listen');
   await lab(dir);
-  const wait = spawn(process.execPath, [LAB, 'wait', '--timeout', '30'], { cwd: dir, env: { ...clean, LABFB_HOME: home, CODEX_THREAD_ID: '0199a-codex' } });
+  const wait = spawn(process.execPath, [LAB, 'wait', '--timeout', '30'], { cwd: dir, env: { ...clean, LABIT_HOME: home, CODEX_THREAD_ID: '0199a-codex' } });
   kids.push(wait);
   let s = null;
   for (let i = 0; i < 50 && !s; i++) {
@@ -113,7 +113,7 @@ test("Codex's sandbox: a blocked call says so and how to get around it", async (
   fs.writeFileSync(path.join(dir, '.lab/server.json'), JSON.stringify({ port: 9, token: 'x' }));
   const out = await cli(dir, ['wait', '--timeout', '5'], { CODEX_SANDBOX_NETWORK_DISABLED: '1', CODEX_THREAD_ID: 't' });
   assert.match(out, /Codex's sandbox blocks/);
-  assert.match(out, /codex mcp add labfb/);
+  assert.match(out, /codex mcp add labit/);
   const plain = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(plain, /isn't running/);
 });
@@ -122,7 +122,7 @@ test('MCP: the client\'s name signs replies when the agent\'s own variables are 
   const dir = site('mcp');
   const { B } = await lab(dir);
   const id = await pin(B, 'hello');
-  const mcp = spawn(process.execPath, [LAB, 'mcp'], { cwd: dir, env: { ...clean, LABFB_HOME: home } });
+  const mcp = spawn(process.execPath, [LAB, 'mcp'], { cwd: dir, env: { ...clean, LABIT_HOME: home } });
   kids.push(mcp);
   let buf = '';
   const answers = new Map();
@@ -150,13 +150,13 @@ test('the plugin files agree with the package (name, version) and declare the MC
   const read = (f) => JSON.parse(fs.readFileSync(fileURLToPath(new URL(`../${f}`, import.meta.url)), 'utf8'));
   const { version } = read('package.json');
   for (const f of ['plugin.json', '.claude-plugin/plugin.json', '.cursor-plugin/plugin.json']) {
-    assert.equal(read(f).name, 'labfb', f);
+    assert.equal(read(f).name, 'labit', f);
     assert.equal(read(f).version, version, `${f} is at ${version}`);
   }
   assert.equal(read('plugin.json').$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json');
   const mcp = read('mcp.json');
   assert.equal(mcp.$schema, 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json');
-  assert.deepEqual(mcp.mcpServers.labfb, { type: 'stdio', command: 'npx', args: ['-y', 'labit@latest', 'mcp'] });
+  assert.deepEqual(mcp.mcpServers.labit, { type: 'stdio', command: 'npx', args: ['-y', 'labit@latest', 'mcp'] });
   assert.equal(read('.agents/plugins/marketplace.json').plugins[0].source.path, './');
 });
 
@@ -166,7 +166,7 @@ test('MCP started in a plugin folder finds the project: by the client root, the 
   await pin(B, 'project pin');
   const pluginDir = tmp('plugin');
   const start = (env) => {
-    const mcp = spawn(process.execPath, [LAB, 'mcp'], { cwd: pluginDir, env: { ...clean, LABFB_HOME: home, ...env } });
+    const mcp = spawn(process.execPath, [LAB, 'mcp'], { cwd: pluginDir, env: { ...clean, LABIT_HOME: home, ...env } });
     kids.push(mcp);
     let buf = '';
     const answers = new Map();

@@ -2256,7 +2256,7 @@ import {
   fonts.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
   fonts.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
-  // Phones: with comments on, a hold is labfb's (a pin), not the start of a text selection: iOS would cancel the touch
+  // Phones: with comments on, a hold is labit's (a pin), not the start of a text selection: iOS would cancel the touch
   // for its selection, and the lift that lets the box open the keyboard would never come.
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
   fonts.textContent += `@media (pointer: coarse) { html.lab-pinning body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;

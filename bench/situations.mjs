@@ -15,7 +15,7 @@ process.env.PORT ||= '4391';
 process.env.BENCH_SITE = 'bench/situations';
 process.env.BENCH_AT = '/sit';
 process.env.LAB_COMMENTS_PER_HOUR ||= '1000';
-process.env.LABFB_HOME ||= fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-bench-'));
+process.env.LABIT_HOME ||= fs.mkdtempSync(path.join(os.tmpdir(), 'labit-bench-'));
 const { ready } = await import('./serve.mjs');
 await ready;
 const BASE = `http://localhost:${process.env.PORT}`;

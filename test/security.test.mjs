@@ -96,8 +96,8 @@ test("a comment's text can't fake a heading or a field in the agent text", async
 // ---------- local server ----------
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-guard-')));
-const OUTSIDE = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-outside-')));
+const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-guard-')));
+const OUTSIDE = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-outside-')));
 fs.writeFileSync(path.join(DIR, 'index.html'), '<h1>page</h1>');
 fs.writeFileSync(path.join(DIR, '.env'), 'SECRET=1');
 fs.writeFileSync(path.join(OUTSIDE, 'private.txt'), 'outside the folder');
@@ -105,7 +105,7 @@ fs.symlinkSync(path.join(OUTSIDE, 'private.txt'), path.join(DIR, 'link.txt'));
 const PORT = 5000 + Math.floor(Math.random() * 90);
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], {
   cwd: DIR,
-  env: { ...process.env, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-')), LABFB_NO_UPDATE_CHECK: '1' },
+  env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' },
 });
 after(() => {
   server.kill();
