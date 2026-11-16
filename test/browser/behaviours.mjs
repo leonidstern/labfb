@@ -37,7 +37,7 @@ write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
 write('pic.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="42"><rect width="320" height="42" fill="#cde"/></svg>');
 
 let server;
-const start = () => (server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--no-fast', '--port', PORT], { cwd: DIR, env }));
+const start = () => (server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env }));
 const up = async () => {
   for (let i = 0; i < 80; i++) {
     try {

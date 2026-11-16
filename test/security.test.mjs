@@ -103,7 +103,7 @@ fs.writeFileSync(path.join(DIR, '.env'), 'SECRET=1');
 fs.writeFileSync(path.join(OUTSIDE, 'private.txt'), 'outside the folder');
 fs.symlinkSync(path.join(OUTSIDE, 'private.txt'), path.join(DIR, 'link.txt'));
 const PORT = 5000 + Math.floor(Math.random() * 90);
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--no-fast', '--port', String(PORT)], {
+const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], {
   cwd: DIR,
   env: { ...process.env, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-')), LABFB_NO_UPDATE_CHECK: '1' },
 });
@@ -139,7 +139,7 @@ test('posts must come from the lab page itself, as JSON', async () => {
 });
 
 test('dot files, .lab/ and paths outside the folder are never served', async () => {
-  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt']) {
+  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/.lab/comments/index.json', '/.lab/archive/index.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt']) {
     const r = await raw(p);
     assert.ok([403, 404].includes(r.status), `${p} → ${r.status}`);
     assert.doesNotMatch(r.text, /SECRET|outside the folder|root:/);

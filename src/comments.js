@@ -72,6 +72,8 @@ import {
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   let on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
   let openId = null;
+  let closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
+  let cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
   let draft = null; // { anchor, docX, docY }
 
   // ---------- DOM ----------
@@ -104,13 +106,13 @@ import {
   const hint = root.querySelector('.hint');
   if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'hold to comment';
   const toggleBtn = root.querySelector('.toggle');
-  const bar = root.querySelector('.bar');
+  const bar = /** @type {HTMLElement} */ (root.querySelector('.bar'));
   const moreBtn = root.querySelector('.more');
   const moreMenu = root.querySelector('.more-menu');
   const copyBtn = root.querySelector('.copy-all');
   // The comments list (new / open / resolved / mine; J/K step, R reply, E resolve, L shows it), and drafts: with
   // "drafts" on, new pins wait in this browser until "send 3 drafts", so nothing starts on pin 1 of 10.
-  const listBtn = root.querySelector('.list-btn');
+  const listBtn = /** @type {HTMLElement} */ (root.querySelector('.list-btn'));
   const goBtn = root.querySelector('.go-btn');
   const newPrev = root.querySelector('.new-prev');
   const showDoneBtn = root.querySelector('.show-done');
@@ -125,7 +127,7 @@ import {
   const listEl = root.querySelector('.list');
   const holdBtn = listEl.querySelector('.hold');
   const chatEl = root.querySelector('.chatwin');
-  const chatBtn = root.querySelector('.chat-btn');
+  const chatBtn = /** @type {HTMLElement} */ (root.querySelector('.chat-btn'));
   let listOpen = false;
   let filter = 'open';
   let refit = () => {}; // phones: fit the sheets to the keyboard again (below)
@@ -140,6 +142,26 @@ import {
 
   // ---------- anchoring (src/widget/anchoring.ts) ----------
   bindAnchoring({ host, layer, el, store });
+
+  // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
+  // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
+  function patchKids(box, next) {
+    const keep = new Set(next);
+    for (const n of Array.from(box.childNodes)) if (!keep.has(n)) n.remove();
+    let at = box.firstChild;
+    for (const n of next) {
+      if (n === at) at = at.nextSibling;
+      else box.insertBefore(n, at);
+    }
+  }
+
+  // Which agent wrote a message, for its brand colour: the session's kind, else the first word of its name.
+  const AGENT_KINDS = ['claude', 'codex', 'cursor', 'gemini', 'antigravity', 'copilot', 'amp', 'opencode'];
+  const agentOf = (m) => {
+    if (!m?.session) return '';
+    const k = String(m.session.kind || m.name || '').trim().split(/\W/)[0].toLowerCase();
+    return AGENT_KINDS.includes(k) ? (k === 'antigravity' ? 'gemini' : k) : '';
+  };
 
   // ---------- data ----------
   const headers = () => ({ 'content-type': 'application/json', ...(adminToken ? { 'x-lab-admin': adminToken } : {}) });
@@ -408,7 +430,7 @@ import {
     }
     scrollTo({ top: Math.max(0, top), behavior: still.matches ? 'auto' : 'smooth' });
   };
-  // Done: resolved, fixed by the quick model, or answered "Done: …" by someone other than its author (the agent).
+  // Done: resolved, or answered "Done: …" by someone other than its author (the agent).
   // Done means the same everywhere (the list, the pins, show done): what workState says.
   const isDone = (c) => c.resolved || workState(c)[0] === 'done';
   // Computers (Leo, 2026-11-15, option 1b): one bar of segments (chat, new, go, ⋯) at the bottom right; the less used
@@ -499,7 +521,7 @@ import {
     if (filter === 'work') return listEl.querySelector('.items').replaceChildren(...workItems());
     const items = listed().map((c) => {
       const b = el('button', { class: `it${openId === c.id ? ' cur' : ''}`, type: 'button' });
-      b.append(document.createTextNode(`${c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(onWhat(c) ? [el('span', {}, `on ${onWhat(c)} `)] : []), el('span', {}, `· ${c.name}${c.quick === 'done' ? ' · done by quick' : !c.resolved && isDone(c) ? ' · ✅ done' : ''}`), ...(unread(c).length ? [' ', el('span', { class: 'tag' }, `${unread(c).length} new`)] : []));
+      b.append(document.createTextNode(`${c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(onWhat(c) ? [el('span', {}, `on ${onWhat(c)} `)] : []), el('span', {}, `· ${c.name}${!c.resolved && isDone(c) ? ' · ✅ done' : ''}`), ...(unread(c).length ? [' ', el('span', { class: 'tag' }, `${unread(c).length} new`)] : []));
       b.addEventListener('click', () => goTo(c));
       return b;
     });
@@ -517,7 +539,7 @@ import {
     const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || '';
     const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
     const answered = answer && answer.createdAt > lastPerson;
-    if (c.resolved || c.quick === 'done' || (answered && /^done\b/i.test(answer.text))) return ['done', answered ? answer.createdAt : c.createdAt];
+    if (c.resolved || (answered && /^done\b/i.test(answer.text))) return ['done', answered ? answer.createdAt : c.createdAt];
     if (answered && /^on it\b/i.test(answer.text)) return ['now', answer.createdAt];
     if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['now', c.handedAt];
     return answered ? [null, ''] : ['next', lastPerson];
@@ -552,6 +574,18 @@ import {
   // a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.
   // The time in a bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent, ✓✓ handed to
   // the agent (its thread went to the agent at or after you wrote it). Chat and threads alike.
+  // The time and its mark sit pinned in the bubble's bottom-right corner, as WhatsApp and Telegram do: an invisible
+  // copy at the end of the last line keeps room for it there, so it shares that line when it fits and gets a line of
+  // its own when it doesn't. Smaller than the words, it sits a touch below their line: a stamp on the bubble.
+  const stamped = (bubble, stamp) => {
+    const room = stamp.cloneNode(true);
+    room.className = 'stamp-room';
+    room.setAttribute('aria-hidden', 'true');
+    for (const n of room.querySelectorAll('[role]')) n.removeAttribute('role');
+    const last = [...bubble.children].reverse().find((n) => n.classList?.contains('p'));
+    (last || bubble).append(room);
+    bubble.append(stamp);
+  };
   const stampOf = (m, root, prefix = '') => {
     const at = new Date(m.createdAt);
     const time = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' });
@@ -606,13 +640,19 @@ import {
     // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
     const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
     const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
-    box.replaceChildren(...msgs.flatMap((m) => {
+    // A message already on screen that hasn't changed keeps its own node: a redraw for one new message used to rebuild
+    // every bubble (a phone showed the chat blink as messages arrived).
+    const kept = new Map([...box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+    const same = (n) => {
+      const old = kept.get(n.dataset?.id);
+      return old && old.outerHTML.replace(' fresh', '') === n.outerHTML ? old : n;
+    };
+    patchKids(box, msgs.flatMap((m) => {
       const root = m.parent ? byId.get(m.parent) : m;
-      const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id });
-      // The done mark sits beside the name, not in the words.
-      // Done (the thread is resolved, or the message says it made the change): ✅ beside the reply mark.
-      const isDone = Boolean(root?.resolved || /^done\b/i.test(m.text));
-      b.append(nameLine(m.name, isDone));
+      const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(agentOf(m) ? { 'data-agent': agentOf(m) } : {}) });
+      // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
+      // "Done" answer closes the thread.
+      b.append(nameLine(m.name, false));
       // A reply shows what it answers, as in Telegram: the name and the start of that message; a tap there jumps to it.
       if (m.parent && root) {
         const q = el('div', { class: 'quote' });
@@ -628,9 +668,9 @@ import {
         b.append(q);
       }
       b.append(...readable(m.text));
-      b.append(stampOf(m, root));
+      stamped(b, stampOf(m, root));
       return m.id === newFrom && m !== msgs[0] ? [el('div', { class: 'newline' }, 'new'), b] : [b];
-    }));
+    }).map(same));
     const strip = chatEl.querySelector('.replying');
     const target = replyTo && byId.get(replyTo);
     strip.hidden = !target;
@@ -869,7 +909,7 @@ import {
   function render() {
     grabbing = false; // a pin being dragged is replaced: its drag ends here
     dropDrag?.();
-    const prev = layer.querySelector('.card:not(.out), .float:not(.out)');
+    const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
     const prevHeight = stepping && coarse && prev ? prev.offsetHeight : 0; // stepping on a phone: the sheet's top doesn't drop
     // The same thread drawn again (reopened, resolved, a reply came in): it keeps where its messages were scrolled to.
     const prevScroll = prev ? prev.querySelector('.body')?.scrollTop ?? null : null;
@@ -882,7 +922,14 @@ import {
     const anim = appear ? ' in' : '';
     let quoted = null;
     const done = () => {
-      if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) { // phones slide the sheet away; computers close at once, like the chat // not when it already slid away (phones)
+      if (closeFast && !now && prev) {
+        closeFast = false;
+        prev.inert = true;
+        layer.append(prev);
+        const gone = () => prev.remove();
+        if (still.matches || !prev.animate) gone();
+        else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'ease-out', fill: 'forwards' }).finished.then(gone, gone);
+      } else if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) { // phones slide the sheet away; computers close at once, like the chat // not when it already slid away (phones)
         prev.classList.remove('in');
         prev.classList.add('out');
         prev.inert = true;
@@ -967,7 +1014,9 @@ import {
       if (openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
-        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (!stepping || keepKeys)); // the reply box takes the cursor, phones too
+        // The reply box takes the cursor on a computer. Phones don't (no keyboard popping up over what you came to read,
+        // Leo 15 Nov); a keyboard already up while stepping to the next one stays up.
+        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? keepKeys : !stepping || keepKeys));
         openCard = card;
         if (appear && !stepping) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
@@ -977,11 +1026,15 @@ import {
         // the first message).
         if (!appear && prevScroll != null) card.querySelector('.body').scrollTop = prevScroll;
         else if (appear) {
+          // Computers: at the first new message when there is one. Phones: already at the end when it shows, the last
+          // message in view, as the chat opens (Leo, 15 Nov: no scroll you can see; the sheet's height is fixed now, so
+          // nothing grows after it's set).
           const body = card.querySelector('.body');
-          const first = body.querySelector('.fresh, .newline');
+          const first = coarse ? null : body.querySelector('.fresh, .newline');
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
         }
-        swipeDown(card, () => ((openId = null), render()));
+        if (coarse && cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
+        swipeDown(card, () => ((openId = null), (cardFull = false), render()), true);
         markSeen(news);
         if (news.length) drawList(); // opened is read: the "N new" pill and the tab title count it off at once
         quoted = zone ? null : c.anchor; // an area's outline says what it's on; only selected words get the highlight
@@ -1105,8 +1158,9 @@ import {
     // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.
     body.classList.add('msgs');
     const itemEl = (item) => {
-      const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id });
-      box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
+      const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(agentOf(item) ? { 'data-agent': agentOf(item) } : {}) });
+      box.append(nameLine(item.name, false), ...readable(item.text));
+      stamped(box, stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
     const shown = new Set();
@@ -1140,7 +1194,8 @@ import {
           const closing = !c.resolved; // resolved: the thread is done, so its card closes (reopen keeps it open)
           const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id, ...(ownKey ? { edit: ownKey } : {}) });
           Object.assign(c, comment);
-          if (closing && openId === c.id) return slideAway(openCard, () => ((openId = null), render()));
+          // Resolving closes the comment at once, a quick fade where it is, not the slow slide down (Leo, 15 Nov).
+          if (closing && openId === c.id) return (closeFast = true), (openId = null), render();
           render();
         } catch {
           failed(resolve);
@@ -1177,26 +1232,6 @@ import {
       });
       actions.append(...(isAdmin ? [resolve, del] : [resolve]));
       body.append(actions);
-      // A fix the quick model made: keep it (resolves) or put it back (the agent gets the pin). Local labs only.
-      if (c.quick === 'done' && !c.resolved) {
-        const verdict = el('div', { class: 'row' });
-        const keep = el('button', { class: 'btn', type: 'button' }, '👍 keep');
-        const back = el('button', { class: 'btn', type: 'button' }, '👎 put back');
-        keep.addEventListener('click', () => resolve.click());
-        back.addEventListener('click', async () => {
-          try {
-            const r = await fetch(new URL('/_lab/quick-undo', new URL(API, location.href)), { method: 'POST', headers: headers(), body: JSON.stringify({ page, id: c.id }) });
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(data.error);
-            c.quick = 'rejected';
-            render();
-          } catch (e) {
-            back.textContent = e.message || 'failed, try again';
-          }
-        });
-        verdict.append(keep, back);
-        body.append(verdict);
-      }
     }
     // Phones: step through the threads from the sheet (J and K on a keyboard).
     if (coarse) {
@@ -1213,9 +1248,10 @@ import {
         b.addEventListener('click', () => goTo(fresh[0][0]));
         nav.append(b);
       }
-      // One row on phones: new on the left, reopen / delete on the right, so the sheet keeps its room for messages.
-      if (nav.firstChild && actions) nav.append(actions);
-      if (nav.firstChild) foot.append(nav);
+      // One row on phones: new on the left, reopen / delete on the right, at the top under the handle like a header, so
+      // the reply box below stands alone as the chat's does (and the messages fade under it the same way).
+      if (actions) nav.append(actions);
+      if (nav.firstChild) card.insertBefore(nav, body);
     }
     foot.append(
       composer({
@@ -1574,9 +1610,10 @@ import {
   // and buttons too (the phone's Option-click). Text selected the phone's way gets a "Comment" chip that pins on it.
   let lastTouch = 0;
   let pinnedByHold = false; // a hold just made a pin: the lift that ends it puts the cursor in its box (phones open the keyboard only then)
-  const selChip = root.querySelector('.sel-chip');
-  const scrim = root.querySelector('.scrim');
+  const selChip = /** @type {HTMLElement} */ (root.querySelector('.sel-chip'));
+  const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
+  /** @returns {HTMLElement | null} */
   const openSheet = () => root.querySelector('.card:not(.out), .float:not(.out)') || (listOpen ? listEl : chatOpen ? chatEl : null);
   const closeAll = () => {
     draft = null;
@@ -1592,16 +1629,11 @@ import {
     if (![...root.querySelectorAll('textarea')].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
     node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: 260, easing: 'ease-out' });
   };
-  scrim.addEventListener('click', closeOrNudge);
+  // A tap on the dimmed page closes the sheet; a pull on it moves the sheet with the finger (see swipeDown), and the
+  // click that ends such a pull isn't a tap.
+  let sheetDraggedAt = -1e9;
+  scrim.addEventListener('click', () => performance.now() - sheetDraggedAt > 300 && closeOrNudge());
   scrim.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false }); // the page stays still behind it
-  // A swipe down on the dimmed page closes the sheet too, like a tap there.
-  let scrimY = null;
-  scrim.addEventListener('touchstart', (e) => (scrimY = e.touches[0].clientY), { passive: true });
-  scrim.addEventListener('touchend', (e) => {
-    const dy = scrimY === null ? 0 : e.changedTouches[0].clientY - scrimY;
-    scrimY = null;
-    if (dy > 30) closeOrNudge();
-  });
   // Phones: a sheet slides down and away, the dim fading with it, then it closes.
   // After a swipe it goes on at the finger's speed (ms), so it doesn't stop and restart.
   function slideAway(node, close, ms = 0) {
@@ -1614,11 +1646,14 @@ import {
     scrim.style.transition = `opacity ${ms || 220}ms`;
     node.style.transform = 'translateY(100%)';
     scrim.style.opacity = '0';
+    bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
+    host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
     setTimeout(() => {
       root.activeElement?.blur();
       close();
       node.style.pointerEvents = '';
-      node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = '';
+      node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = bar.style.transition = '';
+      host.style.removeProperty('--lab-p');
     }, ms || 220);
   }
   // A sheet follows the finger like a native one: from the handle and the header, from any part that doesn't scroll,
@@ -1651,6 +1686,7 @@ import {
       } catch {}
     }
   }
+  let dbg = null; // ?kbdebug: a line into the phone's log (sheet drags)
   function swipeDown(node, close, grows = false) {
     if (!coarse) return;
     // A sheet that grows (the chat) has two heights, as iOS and Android sheets do: pull it up (or flick) to fill the
@@ -1678,42 +1714,71 @@ import {
     let last = null;
     let mode = null; // 'drag' the sheet, 'hold' (sideways on a part that doesn't scroll), 'off' (the browser's)
     let box = null; // the scrolling part the touch began in
-    node.addEventListener('touchstart', (e) => {
+    let fromScrim = false; // the touch began on the dimmed page under the sheet: that pulls the sheet too
+    const onStart = (e) => {
+      fromScrim = e.currentTarget === scrim;
+      if (fromScrim && openSheet() !== node) return void (mode = 'off');
       const t = e.touches[0];
       x0 = t.clientX;
       y0 = t.clientY;
       dy = v = raw = 0;
       last = { y: y0, at: e.timeStamp };
-      box = scrollerIn(e, node);
+      box = fromScrim ? null : scrollerIn(e, node);
       mode = e.touches.length > 1 || box?.localName === 'textarea' ? 'off' : null;
-    }, { passive: true });
-    node.addEventListener('touchmove', (e) => {
-      if (mode === 'off') return;
-      if (mode === 'hold') return e.preventDefault();
+    };
+    node.addEventListener('touchstart', onStart, { passive: true });
+    scrim.addEventListener('touchstart', onStart, { passive: true });
+    const onMove = (e) => {
+      if (fromScrim !== (e.currentTarget === scrim)) return;
       const t = e.touches[0];
+      // Scrolling the messages up to their top and pulling on in the same move hands the sheet to the finger, as iOS
+      // sheets do (it used to take a second swipe). Only while the browser still lets the move be taken over.
+      if (mode === 'off' && box && box.localName !== 'textarea' && e.touches.length === 1 && e.cancelable && box.scrollTop <= 0 && t.clientY > last.y + 1) {
+        mode = 'drag';
+        y0 = t.clientY;
+        v = 0;
+        last = { y: t.clientY, at: e.timeStamp };
+      }
+      if (mode === 'off') return void (last = { y: t.clientY, at: e.timeStamp });
+      if (mode === 'hold') return e.preventDefault();
       if (!mode) {
         const down = t.clientY - y0;
         const across = t.clientX - x0;
         if (!down && !across) return; // iOS sends moves for pressure changes too
         const sideways = Math.abs(across) > Math.abs(down);
-        if (grabArea(e.target)) mode = sideways && e.target.closest('.tabs') ? 'off' : 'drag'; // the list's tabs scroll sideways
+        // The sheet's top quarter pulls it down too, messages and all, as does the dimmed page above it (Leo, 15 Nov);
+        // below that a pull scrolls the messages until they reach their top.
+        const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.25;
+        if (fromScrim) mode = sideways ? 'hold' : 'drag';
+        else if (grabArea(e.target)) mode = sideways && e.target.closest('.tabs') ? 'off' : 'drag'; // the list's tabs scroll sideways
+        else if (nearTop && box?.localName !== 'textarea') mode = 'drag';
         else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? 'drag' : 'off';
         else mode = sideways ? 'hold' : 'drag';
+        dbg?.(`touch ${String(e.target.className || e.target.localName).slice(0, 20)} at ${Math.round(y0 - node.getBoundingClientRect().top)}/${node.offsetHeight} down${Math.round(down)} → ${mode}${e.cancelable ? '' : ' (not cancelable)'}${box ? ` box${Math.round(box.scrollTop)}` : ''}`);
         if (mode === 'off') return;
         if (mode === 'hold') return e.preventDefault();
       }
       e.preventDefault();
       raw = t.clientY - y0;
-      dy = raw >= 0 ? raw : -12 * Math.log1p(-raw / 24); // up: a short stretch that gets stiffer
+      // Up past where it sits: iOS's rubber band (UIScrollView's: offset = (1 − 1 / (pull × 0.55 / size + 1)) × size),
+      // so it follows the finger, more and more slowly (it barely moved before: 100 px of pull gave 20 px, now ~50).
+      const size = node.offsetHeight || 400;
+      dy = raw >= 0 ? raw : -(1 - 1 / ((-raw * 0.55) / size + 1)) * size;
       if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
       last = { y: t.clientY, at: e.timeStamp };
       node.style.transition = scrim.style.transition = 'none';
       node.style.transform = `translateY(${dy}px)`;
       scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
-    }, { passive: false });
+      bar.style.transition = 'none';
+      host.style.setProperty('--lab-p', String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
+    };
+    node.addEventListener('touchmove', onMove, { passive: false });
+    scrim.addEventListener('touchmove', onMove, { passive: false });
     const end = (e) => {
+      if (fromScrim !== (e.currentTarget === scrim)) return;
       const was = mode;
       mode = null;
+      if (was === 'drag') sheetDraggedAt = performance.now();
       if (was !== 'drag') return;
       releasedAt = performance.now();
       if (e.timeStamp - last.at > 80) v = 0; // held still before letting go
@@ -1722,17 +1787,28 @@ import {
         node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
         scrim.style.transition = 'opacity 300ms';
         node.style.transform = scrim.style.opacity = '';
+        bar.style.transition = '';
+        host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
         setTimeout(() => (node.style.transition = scrim.style.transition = ''), 400);
       };
-      if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), settle();
-      if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove('full'), settle();
-      if (v > 0.4 || (dy > h / 3 && v > -0.1)) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+      if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), node.classList.contains('card') && (cardFull = true), settle();
+      if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove('full'), node.classList.contains('card') && (cardFull = false), settle();
+      // Where the sheet would come to rest if let go now, as iOS judges a throw (Apple's "Designing Fluid Interfaces":
+      // the distance plus the speed carried on at the normal deceleration, 0.998 a millisecond, so v × 499): past half
+      // its height it goes. A short quick flick closes; a slow long drag closes past halfway; a move back up never does.
+      const rest = dy + Math.max(0, v) * 499;
+      dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} → ${v > -0.1 && rest > h / 2 ? 'close' : 'stay'}`);
+      if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
       node.style.transition = `transform 380ms ${SPRING}`;
       scrim.style.transition = 'opacity 300ms';
       node.style.transform = scrim.style.opacity = '';
+      bar.style.transition = '';
+      host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
       setTimeout(() => (node.style.transition = scrim.style.transition = ''), 400);
     };
     node.addEventListener('touchend', end);
+    scrim.addEventListener('touchend', end);
+    scrim.addEventListener('touchcancel', end);
     node.addEventListener('touchcancel', end);
   }
   // iOS lays fixed things out on the page's full height while the keyboard covers its bottom part (and Safari may
@@ -1746,6 +1822,7 @@ import {
     const strip = el('i', { style: 'position:absolute;left:0;width:100vw;display:none;background:var(--_bg);z-index:3;pointer-events:none' });
     root.append(probe, strip);
     let fitted = '';
+    /** @type {(() => void) & { sheet?: HTMLElement | null, top?: number, done?: any, vh?: number, kbUp?: boolean }} */
     const fit = () => {
       const zoomed = Math.abs(vv.scale - 1) > 0.01; // pinch-zoomed: that isn't a keyboard
       const r = probe.getBoundingClientRect();
@@ -1762,7 +1839,13 @@ import {
       // a half sheet resting on that layer, which sits right, and the strip below it is covered.
       const sheet = host.hasAttribute('data-sheet');
       const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
-      if (key === fitted) return;
+      if (key === fitted) {
+        // Nothing to lay out again, but where the open sheet sits now is where the next keyboard slide starts from (it
+        // was last read when the chat opened, hidden, at 0: the slide jumped to the screen's top first).
+        const open = sheet ? openSheet() : null;
+        if (open?.offsetHeight && !open.style.transform) Object.assign(fit, { sheet: open, top: open.getBoundingClientRect().top });
+        return;
+      }
       fitted = key;
       host.style.setProperty('--lab-kb', `${kb}px`);
       host.style.setProperty('--lab-top', `${Math.round(top)}px`);
@@ -1774,13 +1857,33 @@ import {
       strip.style.height = `${gap}px`;
       // The keyboard came or went: the open sheet moves from where it was to its new place instead of jumping there
       // (filling the screen above the keyboard, or resting on the screen's bottom again). Not while a finger drags it.
+      // Its place as the browser reports it: on iOS 26 a fixed sheet's box is already where you see it (it rests on
+      // the keyboard while Safari pans the page), so subtracting the pan put the slide's start 276 px off (15 Nov,
+      // ?kbdebug on Leo's iPhone: the visible height jumps 686 → 410 → 686 in one step each way).
       const open = sheet ? openSheet() : null;
-      const at = open?.getBoundingClientRect().top;
+      // Without any slide in progress (its own or the sheet's opening one): the place it is going to, not passing through.
+      const slid = (n) => { try { return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0; } catch { return 0; } };
       const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
-      if (open && open === fit.sheet && keyboardMoved && Math.abs(fit.top - at) > 8 && !open.style.transform && !still.matches) {
-        open.animate([{ transform: `translateY(${fit.top - at}px)` }, { transform: 'none' }], { duration: 340, easing: SPRING });
+      const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !still.matches;
+      // Its own height change (the chat eases its height) jumps to the end first, so the place measured is where it
+      // ends up: measured mid-change, the slide started 84 px too high (?kbdebug, 15 Nov).
+      if (sliding) {
+        open.style.transition = 'none';
+        void open.offsetHeight;
       }
-      Object.assign(fit, { sheet: open, top: at, vh, kbUp: kb > 60 });
+      const at = open ? open.getBoundingClientRect().top - slid(open) : null;
+      if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = '';
+      if (sliding && Math.abs(fit.top - at) > 8) {
+        // Set at once, then eased away: an animate() call waits a frame to start, and that frame showed the sheet at
+        // its new place before it jumped back to slide (the flicker a ?kbdebug run on Leo's iPhone showed, 15 Nov).
+        open.style.transform = `translateY(${fit.top - at}px)`;
+        void open.offsetHeight;
+        open.style.transition = `transform 340ms ${SPRING}`;
+        open.style.transform = '';
+        clearTimeout(fit.done);
+        fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ''), 360);
+      }
+      Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null }); // a hidden one has no place yet
     };
     refit = fit;
     root.addEventListener('focusin', () => setTimeout(fit, 50));
@@ -1788,6 +1891,65 @@ import {
     vv.addEventListener('resize', fit);
     vv.addEventListener('scroll', fit);
     fit();
+    // ?kbdebug on the page's address: every frame for 1.5 s after the keyboard is asked for or let go, where the open
+    // sheet sits on the screen and what Safari reports, sent to the page's chat as "kb-log" 2 s after letting go. For
+    // tuning the keyboard slide on a real phone (a simulator's keyboard doesn't move like one).
+    // Only with ?kbdebug in the address; nothing runs otherwise.
+    if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
+      let lines = [];
+      let t0 = performance.now();
+      let sendTimer = 0;
+      const row = (what) => {
+        const open = openSheet();
+        const r = open?.getBoundingClientRect();
+        lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(vv.height)} top${Math.round(vv.offsetTop)} in${innerHeight} kb${host.hasAttribute('data-kb') ? 1 : 0}` +
+          (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? ' anim' : ''}` : '') +
+          // What is moving anywhere (the page, the pins, the dimming): for a flicker that isn't the keyboard.
+          ` [${[...document.getAnimations(), ...root.getAnimations()].map((a) => /** @type {any} */ (a).animationName || /** @type {any} */ (a).transitionProperty || 'js').slice(0, 6).join(',')}]` +
+          ` scrim${getComputedStyle(scrim).opacity.slice(0, 4)} scroll${Math.round(scrollY)}`);
+      };
+      const watch = (what) => {
+        row(what);
+        const end = performance.now() + 1500;
+        let prev = '';
+        const f = () => {
+          const before = lines.length;
+          row('f');
+          const last = lines[lines.length - 1].replace(/^\d+ f /, '');
+          if (last === prev) lines.length = before; // only frames where something moved
+          prev = last;
+          if (performance.now() < end) requestAnimationFrame(f);
+        };
+        requestAnimationFrame(f);
+      };
+      root.addEventListener('focusin', () => ((t0 = performance.now()), watch('focus')));
+      // Sent 2 s after the last thing that moved (a keyboard, Safari's address bar), so one run is one message.
+      const sendSoon = () => {
+        clearTimeout(sendTimer);
+        sendTimer = setTimeout(async () => {
+          const text = lines.join('\n');
+          lines = [];
+          for (let i = 0; i < text.length; i += 1900) {
+            await send({ name: 'kb-log', text: text.slice(i, i + 1900), anchor: { kind: 'page', selector: 'body', x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {});
+          }
+        }, 2000);
+      };
+      root.addEventListener('focusout', () => {
+        lines.push('--- let go');
+        t0 = performance.now();
+        watch('blur');
+        sendSoon();
+      });
+      dbg = (line) => {
+        lines.push(`${Math.round(performance.now() - t0)} ${line}`);
+        sendSoon();
+      };
+      // The address bar growing or shrinking resizes the view too: each resize is followed for 1.5 s like a keyboard.
+      vv.addEventListener('resize', () => {
+        watch('resize');
+        if (lines.length > 1) sendSoon();
+      });
+    }
   }
   // The chat stays at its newest message while it gets shorter (the keyboard coming up, the reply strip), unless
   // you scrolled back to read.
@@ -2394,6 +2556,7 @@ import {
     // A tab in front keeps one live stream. A tab in the background lets it go after 30 s and asks for the lab's
     // state every 20 s instead (a quick request each time), so its "(3)" title and pins keep up without holding a
     // connection: browsers allow only 6 to one lab at a time, and held ones by background tabs made the rest hang.
+    /** @type {any} */
     let pollTimer = 0;
     let dropTimer = 0;
     const poll = async () => {

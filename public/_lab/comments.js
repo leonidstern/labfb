@@ -18,7 +18,7 @@
           --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
 }
 * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
-    font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: 0;
+    font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: -.011em;
     font-feature-settings: var(--lab-font-features, normal); font-synthesis: none; font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
     caret-color: var(--_accent); -webkit-tap-highlight-color: transparent; }
@@ -27,8 +27,8 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
 .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
        background: var(--_bg); border: 0; box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
-       display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12.5px; font-weight: 500;
-       font-variant-numeric: tabular-nums; letter-spacing: .01em; transform-origin: 0 100%;
+       display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12px; font-weight: 500;
+       font-variant-numeric: tabular-nums; letter-spacing: 0; transform-origin: 0 100%;
        transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
 /* A 1 px edge in the text colour (dark on light pins, light in dark mode) so a pin shows on white and black alike;
    the one you point at or have open gets a green edge. */
@@ -41,7 +41,7 @@ button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius
 .pin.resolved { color: var(--_muted); }
 /* Statuses. A go pin says "go": green in a green outline when placed, the turning stroke while the agent is on it,
    white on green once done (a \u2713 is only ever a done comment). A comment pin: your initial, the stroke, then a green tick. */
-button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 11px; font-weight: 600; letter-spacing: .01em;
+button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 11px; font-weight: 600; letter-spacing: .006em;
                 box-shadow: inset 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
 button.pin.go.done { background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16); }
 button.pin.done:not(.go) { color: rgb(36, 160, 70); }
@@ -72,8 +72,8 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
        display: grid; place-items: center; pointer-events: none; z-index: 2147483647; opacity: 0; will-change: transform;
        transition: opacity .12s ease-out, background-color .16s ease-out; }
 .ptr.show { opacity: 1; }
-.ptr span { grid-area: 1 / 1; font-size: 12px; font-weight: 600; line-height: 1; transition: opacity .16s ease-out, transform .16s ease-out; }
-.ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 11px; letter-spacing: .01em; }
+.ptr span { grid-area: 1 / 1; font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 1; transition: opacity .16s ease-out, transform .16s ease-out; }
+.ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 11px; letter-spacing: .006em; }
 .ptr.go { background: rgb(36, 160, 70); }
 .ptr.go .ini { opacity: 0; transform: scale(.5); }
 .ptr.go .tick { opacity: 1; transform: none; }
@@ -92,29 +92,30 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .item + .item { margin-top: 14px; }
 .msg.item { display: block; } .msg.item + .msg.item { margin-top: 0; }
 .meta { display: flex; align-items: baseline; gap: .5em; font-size: 12px; color: var(--_muted); margin: 0;
-        white-space: nowrap; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
-.meta b { font-weight: 500; font-size: 13px; letter-spacing: .005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        white-space: nowrap; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.meta b { font-weight: 500; font-size: 13px; letter-spacing: -.006em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .meta .dot { flex: none; align-self: center; margin: 0; }
 .meta .ago { white-space: nowrap; }
 .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
 .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
 /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
-.card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 11.5px; }
+.card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 12px; letter-spacing: 0; }
 button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
-             letter-spacing: .01em; border-radius: var(--_r-s); transition: color .12s; }
+             letter-spacing: 0; border-radius: var(--_r-s); transition: color .12s; }
 button.btn:hover { color: var(--_fg); }
 button.btn.danger, button.btn.danger:hover { color: #e5484d; }
-.row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: .01em; padding: 2px 0; animation: lab-fade .12s ease-out; }
+.row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: 0; padding: 2px 0; animation: lab-fade .12s ease-out; }
 .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
 .card .composer { margin-top: 6px; } /* close under resolve / delete */
 .card > .body > .row:not(.nav) { margin-right: 7px; } /* resolve / delete end where the send button does */
 .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
-       background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
-/* The new comment box: the chat's box (no border), with only a soft shadow so it stands out on any page. */
-/* The new comment box has the pins' 1 px edge in the text colour, so it shows on white and black pages alike. */
-.float .box, .float .box:focus-within { box-shadow: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
-.card .box { background: var(--_soft); border-radius: var(--_radius); margin: 0; }
-.card .box, .card .box.open, .card .box:focus-within { box-shadow: none; } /* the same box as the chat's: soft grey, no border */
+       border-radius: var(--_radius); padding: 7px 7px 7px 14px; margin: 0; transition: box-shadow .15s;
+       /* One box for the chat, threads and new comments: its look comes only from these two, which a place sets on
+          its container (never by restyling the box, idle or typing), so the three can't drift apart (Leo, 15 Nov). */
+       background: var(--_box-bg, var(--_soft)); box-shadow: var(--_box-edge, none); }
+/* The new comment box on a computer floats over the page: the page's colour, the pins' 1 px edge in the text colour
+   (it shows on white and black pages alike) and a soft shadow. */
+.float { --_box-bg: var(--_bg); --_box-edge: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
 /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
 /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
@@ -122,8 +123,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
                 min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
-.who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: .005em; }
-.who * { font-size: 13px; }
+.who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: -.006em; }
+.who * { font-size: 13px; letter-spacing: -.006em; }
 .who span { color: var(--_muted); }
 .who input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; outline: none; color: var(--_muted); text-overflow: ellipsis; }
 .who input:focus { color: var(--_fg); }
@@ -144,17 +145,17 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
 .send .arr { display: block; position: relative; left: -1px; width: 12px; height: 11px; background: currentColor; clip-path: polygon(0 42%, 100% 0, 66% 100%, 46% 60%); }
 .send * { color: inherit; }
-.error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
+.error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }
 .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
 .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
               box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
-              letter-spacing: .005em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color .15s, transform .15s var(--_ease); }
+              letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color .15s, transform .15s var(--_ease); }
 .bar button:active { transform: scale(.97); }
 /* The list and the chat: a header, a part that scrolls, and (the chat) a box at the bottom that doesn't. */
 .list { position: fixed; right: 16px; bottom: 66px; width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: hidden;
-        display: flex; flex-direction: column; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow); font-size: 13px; }
+        display: flex; flex-direction: column; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; }
 .list .tabs { display: flex; flex-wrap: wrap; gap: 2px; flex: none; padding: 12px 8px 6px; }
 .list .items, .msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .list .items { padding: 0 6px 6px; }
@@ -166,7 +167,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .list .it { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line per pin; the rest is in its thread */
 .list .it span, .list .none { color: var(--_muted); }
 .list .it .tag { display: inline-block; padding: 0 7px; border-radius: var(--_r-s); background: var(--_accent); color: var(--_accent-fg);
-                 font-size: 11.5px; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
+                 font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
 .list .none { padding: 8px; }
 /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
@@ -189,7 +190,6 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .list .tabs .x:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; }
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
 .chatwin .replying { flex: none; }
-.chatwin .chat .box { background: var(--_soft); }
 .chatwin .tabs b { padding: 4px 8px; font-weight: 600; margin-right: auto; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
@@ -200,45 +200,58 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 @keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
 .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
 .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
-.msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
+.msg b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; opacity: .7; margin-bottom: 1px; }
+/* Each agent's messages in its own brand colour: the name in it, the bubble a soft wash of it (Leo, 15 Nov). */
+.msg[data-agent=claude] { --_brand: #d97757; } .msg[data-agent=codex] { --_brand: #10a37f; } .msg[data-agent=cursor] { --_brand: #8a8a8e; }
+.msg[data-agent=gemini] { --_brand: #4285f4; } .msg[data-agent=copilot] { --_brand: #8957e5; } .msg[data-agent=amp] { --_brand: #f34e3f; }
+.msg[data-agent=opencode] { --_brand: #8a8a8e; }
+.msg[data-agent] { background: color-mix(in srgb, var(--_brand) 11%, var(--_bg)); }
+.msg[data-agent] > b { color: var(--_brand); opacity: 1; }
 .msg.mine b { display: none; }
-.msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; } /* a small green tick, as the ticks on messages */
-.msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12.5px; line-height: 1.35;
+.msg { position: relative; } .mark { font-weight: 400; font-size: 11px; letter-spacing: .006em; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; letter-spacing: 0; } /* a small green tick, as the ticks on messages */
+.msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12px; letter-spacing: 0; line-height: 1.35;
               color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.msg .quote b { display: block; font-size: 11.5px; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
-.msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; } .msg .p.gap { margin-top: 6px; }
+.msg .quote b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+.msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; } /* no lone last word */ .msg .p.gap { margin-top: 6px; }
 .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
-.msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
+.msg i { display: block; font-style: normal; font-size: 12px; letter-spacing: 0; opacity: .7; margin-bottom: 1px; }
 .msg b, .msg i { color: inherit; }
-.msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 10px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
+.msg .stamp { text-indent: 0; color: inherit; position: absolute; right: 10px; bottom: 6px; font-size: 10px; letter-spacing: .012em; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
+.msg .stamp-room { text-indent: 0; visibility: hidden; display: inline-block; margin-left: 10px; font-size: 10px; letter-spacing: .012em; line-height: 1; height: 10px; white-space: nowrap; }
+.msg .stamp-room * { font-size: inherit; }
 .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* \u2713 drawn as tall as the time's digits */
 .msg .tick.got { font-weight: 600; }
 /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green \u2713. */
 .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .tm { opacity: .55; }
 .msg .stamp .tm { font-size: inherit; line-height: inherit; color: inherit; } /* every element gets 14 px by default: the time keeps the stamp's 10 */
-.msg .stamp .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
+.msg :is(.stamp, .stamp-room) .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
                     -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
                     mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
 .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
-.replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
+/* One slot for the mark, whatever it is (\u2713, \u2713\u2713, the turning ring, the green \u2713): 12 px wide after a 4 px gap, so the
+   time doesn't shift when one turns into another (Leo, 15 Nov: it flicked as \u2713 became the ring). */
+.msg :is(.stamp, .stamp-room) .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
+.msg :is(.stamp, .stamp-room) .ring { margin: .5px 1.5px 0 5.5px; vertical-align: top; } /* the same 10 px tall as a \u2713, so the bubble keeps its height */
+.msg .stamp { height: 10px; }
+.replying { display: flex; gap: 6px; align-items: center; font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 2px 6px; }
 .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
 .bar button * { color: inherit; font-weight: inherit; }
 .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
 .bar button.secondary { color: var(--_muted); }
 .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
 .bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
-.bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; line-height: 1; color: var(--_fg); }
+.bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; letter-spacing: -.016em; line-height: 1; color: var(--_fg); }
 .bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
 .bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
 .bar button.go-btn.on kbd { color: #fff !important; }
-.newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 500; color: var(--_muted); }
+.newline { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0; font-weight: 500; color: var(--_muted); }
 .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
 /* The left side: who's listening, then copy link; the right side is the bar. */
 .left { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
 .left .copy-all { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_muted);
-                  box-shadow: var(--_shadow); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; }
+                  box-shadow: var(--_shadow); font: inherit; font-size: 13px; letter-spacing: -.006em; font-weight: 500; white-space: nowrap; }
 .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
-       background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
+       background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; text-decoration: none; white-space: nowrap; }
 .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
 .listener span { color: var(--_muted); }
 .listener.idle::before { background: var(--_muted); opacity: .5; }
@@ -251,8 +264,10 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
   border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
 @keyframes lab-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.7); opacity: 0; } }
 .listener { cursor: default; } /* a plain arrow, also where a tap copies the resume command */
+/* Letter spacing follows the size, as Apple's SF text does: looser below 12 px, tighter above (11 +.006em,
+   13 \u2212.006, 15 \u2212.016, 17 \u2212.025). Uppercase labels and the \u2713\u2713 overlap keep their own. */
 /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
-kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
+kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
       color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
 .bar:hover kbd { opacity: .75; }
 .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
@@ -271,24 +286,24 @@ kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-a
   /* Words stay grey (as the bar's buttons were); the count is the one thing in the text colour: a plain number. */
   .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
   .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
-  .bar .cnt { font-size: 12px; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
+  .bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
   .bar .cnt.zero { color: var(--_muted); }
   .bar button.go-btn.on { background: none; color: var(--_fg); }
   .bar button.go-btn.on kbd { color: var(--_muted) !important; }
-  .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; font-weight: 600;
+  .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
         color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
   .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
   /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
-  .go-btn:not(.on):not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; }
+  .go-btn:not(.on):not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
   /* 3, cursor: the switch is the same pin in grey, saying "off" (regular, a touch bigger than go's bold). */
   .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
   .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
-                              font-size: 9.5px; font-weight: 400; letter-spacing: .01em; }
+                              font-size: 10px; font-weight: 400; letter-spacing: .012em; }
   .more { font-size: 15px !important; letter-spacing: .05em; }
   .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
                border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
   .more-menu[hidden] { display: none; }
-  .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; color: var(--_fg); padding: 7px 10px;
+  .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
                       border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
   .more-menu button:hover:not(:disabled) { background: var(--_hover); }
   .more-menu button:disabled { color: var(--_muted); cursor: default; }
@@ -298,9 +313,9 @@ kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-a
 kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
 .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
         box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
-        letter-spacing: .005em; animation: lab-fade .2s ease-out; }
+        letter-spacing: -.006em; animation: lab-fade .2s ease-out; }
 /* 16px fields keep iOS from zooming the page when one is focused. */
-@media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.006em; } kbd { display: none; }
+@media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.019em; } kbd { display: none; }
   .box textarea { line-height: 22px; padding: 7px 0; } /* phones: 22 + 7 + 7 = 36, the send button's size */
   .box.one .who { line-height: 22px; padding-bottom: 7px; } }
 @keyframes lab-fade { from { opacity: 0; } }
@@ -317,7 +332,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
   *, *::before, *::after { corner-shape: squircle; }
   .pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
-  .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring, .gp { corner-shape: round; } /* circles stay circles */
+  .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg :is(.stamp, .stamp-room) .ring, .gp { corner-shape: round; } /* circles stay circles */
 }
 @keyframes lab-pin { from { transform: scale(1.1); } }
 @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
@@ -342,33 +357,42 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
                   max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: var(--_radius) var(--_radius) 0 0; padding: 8px 0 0; z-index: 3; }
   .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
-  .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 4px; margin-right: 0; }
-  .card > .foot, .float > .composer { flex: none; padding: 0 14px var(--_pb); }
-  .card > .foot { margin-top: auto; }
-  .card .composer { margin-top: 10px; }
-  .card .nav { margin-top: 2px; gap: 20px; }
-  .card .nav .btn { font-size: 14px; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
+  /* The same 12 px sides as the chat's, so a thread's reply box sits exactly where the chat's message box does. */
+  .card > .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 4px; margin-right: 0; }
+  /* A thread keeps one height, as the chat does (Leo, 15 Nov: it jumped while the chat stays put): the sheet's full
+     height whatever its length, a short thread sitting by the reply box, so new replies and the keyboard never
+     move its top. */
+  .card { height: var(--_sheet-max); }
+  .card > .foot, .float > .composer { flex: none; padding: 0 12px var(--_pb); }
+  .card > .foot { margin-top: 0; padding-top: 6px; }
+  .card .composer { margin-top: 0; }
+  .card > .nav { flex: none; margin: -6px 0 0; padding: 0 12px; gap: 20px; }
+  .card .nav .btn { font-size: 14px; letter-spacing: -.011em; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
   .card .nav { gap: 16px; }
   .card .nav { flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
   .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
-  .box.one .who span { font-size: 16px; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
-  .card .nav .acts button.btn { font-size: 14px; }
+  .box.one .who span { font-size: 16px; letter-spacing: -.019em; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
+  .card .nav .acts button.btn { font-size: 14px; letter-spacing: -.011em; }
   .float { background: var(--_bg); box-shadow: var(--_shadow); }
-  .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
   /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
-  /* 44 px to grab (iOS 44 pt, Android 48 dp), reaching 18 px above the sheet's edge; the bar and the layout stay as they were. */
-  .handle { display: block; flex: none; height: 44px; margin-top: -26px; touch-action: none; position: relative;
-          background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 26px / 36px 4px no-repeat; }
+  /* Reaching 60 px above the sheet's edge over the dimmed page (Leo, 15 Nov: "the whole top and a bit above", then
+     "do more"); the bar and the layout stay as they were. The chat's and the list's header reach up the same way. */
+  .handle { display: block; flex: none; height: 86px; margin-top: -68px; touch-action: none; position: relative;
+          background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 68px / 36px 4px no-repeat; }
+  .list .tabs { position: relative; }
+  .list .tabs::before { content: ''; position: absolute; left: 0; right: 0; top: -60px; height: 60px; }
   .list .tabs { touch-action: pan-x; }
   .chatwin .tabs { touch-action: none; }
   .list .items, .msgs, .card > .body { touch-action: pan-y; }
   .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
 
   :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
-  /* The bar steps down under the screen's edge while a sheet is open and rises back once it has gone, on the
-     sheets' own curve (it used to blink out and back). */
+  /* The bar steps down under the screen's edge while a sheet is open and comes back as the sheet goes: --lab-p is
+     how far the sheet is on its way out (0 open, 1 gone), set while a finger drags it and while it slides away,
+     so the bar rises with it, in step, instead of after it (Leo, 15 Nov). */
   .bar { transition: transform .34s cubic-bezier(.32, .72, 0, 1), opacity .2s; }
-  :host([data-sheet]) .bar { transform: translateY(calc(100% + 16px + env(safe-area-inset-bottom, 0px))); opacity: 0; pointer-events: none;
+  :host([data-sheet]) .bar { transform: translateY(calc((100% + 16px + env(safe-area-inset-bottom, 0px)) * (1 - var(--lab-p, 0))));
+                             opacity: var(--lab-p, 0); pointer-events: none;
                              transition: transform .24s cubic-bezier(.4, 0, 1, 1), opacity .2s .04s; }
   :host([data-sheet]) .bar button { pointer-events: none; }
   /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
@@ -377,11 +401,12 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
   .card.out, .float.out { animation: lab-sheet-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
   .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
-          font-size: 15px; z-index: 3; }
+          font-size: 15px; letter-spacing: -.016em; z-index: 3; }
   /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
   .chatwin { height: var(--_sheet-max); transition: height .38s cubic-bezier(.32, .72, 0, 1); }
   /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
-  .chatwin.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
+  .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
+  .card { transition: height .38s cubic-bezier(.32, .72, 0, 1); } /* a comment pulls up to full height as the chat does */
   /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
   .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
                 background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat, var(--_bg); }
@@ -389,18 +414,33 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chatwin .msgs { padding: 4px 12px 8px; }
   .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
   .chatwin .chat { padding: 6px 12px var(--_pb); }
+  /* Glass reply boxes (Leo, 15 Nov; iOS 26's look, Android too): the messages scroll on under the box and show
+     through it, blurred. Only the box's own strip overlaps; the new / resolve / delete row stays on the sheet. */
+  .chatwin .msgs { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
+  .card > .body { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
+  /* \u2026and fade out behind the box (iOS's scroll edge): from 4 px above its top to 12% at its bottom (Leo, 15 Nov:
+     "behind input bottom", "a bit more", "less, it's just black", then "more, darker there"). */
+  .chatwin .msgs { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
+                           mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
+  .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
+                          mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
+  .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
+  :host { --_box-bg: color-mix(in srgb, var(--_bg) 72%, transparent);
+          --_box-edge: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
+  .float { --_box-bg: inherit; --_box-edge: inherit; } /* phones: the new comment sheet's box is the same glass */
+  .box { -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); }
   .list .it { padding: 11px 8px; }
   /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
   .pin { scale: .8; }
   /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
-  .msg .p { font-size: 15px; line-height: 21px; }
-  .msg .quote { font-size: 13.5px; }
-  .msg b, .msg .quote b { font-size: 12.5px; }
+  .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
+  .msg .quote { font-size: 14px; letter-spacing: -.011em; }
+  .msg b, .msg .quote b { font-size: 12px; letter-spacing: 0; }
   .pin.moved { scale: .64; }
   /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
   .bar > button { padding: 12px 14px; min-height: 44px; }
   .more-menu { bottom: 72px; min-width: 200px; }
-  .more-menu button { padding: 11px 12px; font-size: 15px; }
+  .more-menu button { padding: 11px 12px; font-size: 15px; letter-spacing: -.016em; }
 }
 /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
 .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
@@ -1258,6 +1298,8 @@ ${line}`;
     let isAdmin = false;
     let on = store2.get("lab-on") ? store2.get("lab-on") === "1" : script?.dataset.on === "1";
     let openId = null;
+    let closeFast = false;
+    let cardFull = false;
     let draft = null;
     const host2 = document.createElement("div");
     host2.setAttribute("data-lab-comments", "");
@@ -1288,11 +1330,17 @@ ${line}`;
     const hint = root.querySelector(".hint");
     if (matchMedia("(pointer: coarse)").matches) hint.textContent = "hold to comment";
     const toggleBtn = root.querySelector(".toggle");
-    const bar = root.querySelector(".bar");
+    const bar = (
+      /** @type {HTMLElement} */
+      root.querySelector(".bar")
+    );
     const moreBtn = root.querySelector(".more");
     const moreMenu = root.querySelector(".more-menu");
     const copyBtn = root.querySelector(".copy-all");
-    const listBtn = root.querySelector(".list-btn");
+    const listBtn = (
+      /** @type {HTMLElement} */
+      root.querySelector(".list-btn")
+    );
     const goBtn = root.querySelector(".go-btn");
     const newPrev = root.querySelector(".new-prev");
     const showDoneBtn = root.querySelector(".show-done");
@@ -1305,7 +1353,10 @@ ${line}`;
     const listEl = root.querySelector(".list");
     const holdBtn = listEl.querySelector(".hold");
     const chatEl = root.querySelector(".chatwin");
-    const chatBtn = root.querySelector(".chat-btn");
+    const chatBtn = (
+      /** @type {HTMLElement} */
+      root.querySelector(".chat-btn")
+    );
     let listOpen = false;
     let filter = "open";
     let refit = () => {
@@ -1318,6 +1369,21 @@ ${line}`;
       return node;
     };
     bindAnchoring({ host: host2, layer: layer2, el: el2, store: store2 });
+    function patchKids(box, next) {
+      const keep = new Set(next);
+      for (const n of Array.from(box.childNodes)) if (!keep.has(n)) n.remove();
+      let at = box.firstChild;
+      for (const n of next) {
+        if (n === at) at = at.nextSibling;
+        else box.insertBefore(n, at);
+      }
+    }
+    const AGENT_KINDS = ["claude", "codex", "cursor", "gemini", "antigravity", "copilot", "amp", "opencode"];
+    const agentOf = (m) => {
+      if (!m?.session) return "";
+      const k = String(m.session.kind || m.name || "").trim().split(/\W/)[0].toLowerCase();
+      return AGENT_KINDS.includes(k) ? k === "antigravity" ? "gemini" : k : "";
+    };
     const headers = () => ({ "content-type": "application/json", ...adminToken ? { "x-lab-admin": adminToken } : {} });
     let gone = false;
     let loaded = false;
@@ -1619,7 +1685,7 @@ ${line}`;
       if (filter === "work") return listEl.querySelector(".items").replaceChildren(...workItems());
       const items = listed().map((c) => {
         const b = el2("button", { class: `it${openId === c.id ? " cur" : ""}`, type: "button" });
-        b.append(document.createTextNode(`${c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), ...onWhat(c) ? [el2("span", {}, `on ${onWhat(c)} `)] : [], el2("span", {}, `\xB7 ${c.name}${c.quick === "done" ? " \xB7 done by quick" : !c.resolved && isDone(c) ? " \xB7 \u2705 done" : ""}`), ...unread(c).length ? [" ", el2("span", { class: "tag" }, `${unread(c).length} new`)] : []);
+        b.append(document.createTextNode(`${c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), ...onWhat(c) ? [el2("span", {}, `on ${onWhat(c)} `)] : [], el2("span", {}, `\xB7 ${c.name}${!c.resolved && isDone(c) ? " \xB7 \u2705 done" : ""}`), ...unread(c).length ? [" ", el2("span", { class: "tag" }, `${unread(c).length} new`)] : []);
         b.addEventListener("click", () => goTo(c));
         return b;
       });
@@ -1634,7 +1700,7 @@ ${line}`;
       const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || "";
       const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
       const answered = answer && answer.createdAt > lastPerson;
-      if (c.resolved || c.quick === "done" || answered && /^done\b/i.test(answer.text)) return ["done", answered ? answer.createdAt : c.createdAt];
+      if (c.resolved || answered && /^done\b/i.test(answer.text)) return ["done", answered ? answer.createdAt : c.createdAt];
       if (answered && /^on it\b/i.test(answer.text)) return ["now", answer.createdAt];
       if (!answered && c.handedAt && c.handedAt >= lastPerson) return ["now", c.handedAt];
       return answered ? [null, ""] : ["next", lastPerson];
@@ -1664,6 +1730,15 @@ ${line}`;
       ];
       return out.length ? out : [el2("div", { class: "none" }, "nothing in progress on this page")];
     }
+    const stamped = (bubble, stamp) => {
+      const room = stamp.cloneNode(true);
+      room.className = "stamp-room";
+      room.setAttribute("aria-hidden", "true");
+      for (const n of room.querySelectorAll("[role]")) n.removeAttribute("role");
+      const last = [...bubble.children].reverse().find((n) => n.classList?.contains("p"));
+      (last || bubble).append(room);
+      bubble.append(stamp);
+    };
     const stampOf = (m, root2, prefix = "") => {
       const at = new Date(m.createdAt);
       const time = at.toDateString() === (/* @__PURE__ */ new Date()).toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString([], { day: "numeric", month: "short" });
@@ -1711,11 +1786,15 @@ ${line}`;
       const box = chatEl.querySelector(".msgs");
       const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
       const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
-      box.replaceChildren(...msgs.flatMap((m) => {
+      const kept = new Map([...box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+      const same = (n) => {
+        const old = kept.get(n.dataset?.id);
+        return old && old.outerHTML.replace(" fresh", "") === n.outerHTML ? old : n;
+      };
+      patchKids(box, msgs.flatMap((m) => {
         const root2 = m.parent ? byId.get(m.parent) : m;
-        const b = el2("div", { class: `msg${mine(m) && !m.session ? " mine" : ""}${root2 && replyTo === root2.id ? " to" : ""}${before.size && !before.has(m.id) ? " fresh" : ""}`, "data-id": m.id });
-        const isDone2 = Boolean(root2?.resolved || /^done\b/i.test(m.text));
-        b.append(nameLine(m.name, isDone2));
+        const b = el2("div", { class: `msg${mine(m) && !m.session ? " mine" : ""}${root2 && replyTo === root2.id ? " to" : ""}${before.size && !before.has(m.id) ? " fresh" : ""}`, "data-id": m.id, ...agentOf(m) ? { "data-agent": agentOf(m) } : {} });
+        b.append(nameLine(m.name, false));
         if (m.parent && root2) {
           const q = el2("div", { class: "quote" });
           q.append(el2("b", {}, String(root2.name || "").replace(/\s*·\s*session\s+\S+$/i, "")), document.createTextNode(root2.text.replace(/\s+/g, " ").slice(0, 90)));
@@ -1730,9 +1809,9 @@ ${line}`;
           b.append(q);
         }
         b.append(...readable(m.text));
-        b.append(stampOf(m, root2));
+        stamped(b, stampOf(m, root2));
         return m.id === newFrom && m !== msgs[0] ? [el2("div", { class: "newline" }, "new"), b] : [b];
-      }));
+      }).map(same));
       const strip = chatEl.querySelector(".replying");
       const target = replyTo && byId.get(replyTo);
       strip.hidden = !target;
@@ -1940,7 +2019,10 @@ ${line}`;
     function render() {
       grabbing = false;
       dropDrag?.();
-      const prev = layer2.querySelector(".card:not(.out), .float:not(.out)");
+      const prev = (
+        /** @type {HTMLElement | null} */
+        layer2.querySelector(".card:not(.out), .float:not(.out)")
+      );
       const prevHeight = stepping && coarse && prev ? prev.offsetHeight : 0;
       const prevScroll = prev ? prev.querySelector(".body")?.scrollTop ?? null : null;
       const places = new Map(on ? threads().filter((c) => c.anchor?.kind !== "page").map((c) => [c.id, position(c.anchor || {})]) : []);
@@ -1951,7 +2033,14 @@ ${line}`;
       const anim = appear ? " in" : "";
       let quoted = null;
       const done = () => {
-        if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) {
+        if (closeFast && !now && prev) {
+          closeFast = false;
+          prev.inert = true;
+          layer2.append(prev);
+          const gone2 = () => prev.remove();
+          if (still.matches || !prev.animate) gone2();
+          else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "ease-out", fill: "forwards" }).finished.then(gone2, gone2);
+        } else if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) {
           prev.classList.remove("in");
           prev.classList.add("out");
           prev.inert = true;
@@ -2029,7 +2118,7 @@ ${line}`;
         layer2.append(pin);
         pinsById.set(c.id, pin);
         if (openId === c.id) {
-          const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (!stepping || keepKeys));
+          const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? keepKeys : !stepping || keepKeys));
           openCard = card;
           if (appear && !stepping) card.classList.add("in");
           if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
@@ -2038,10 +2127,11 @@ ${line}`;
           if (!appear && prevScroll != null) card.querySelector(".body").scrollTop = prevScroll;
           else if (appear) {
             const body = card.querySelector(".body");
-            const first = body.querySelector(".fresh, .newline");
+            const first = coarse ? null : body.querySelector(".fresh, .newline");
             body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
           }
-          swipeDown(card, () => (openId = null, render()));
+          if (coarse && cardFull) card.classList.add("full");
+          swipeDown(card, () => (openId = null, cardFull = false, render()), true);
           markSeen(news);
           if (news.length) drawList();
           quoted = zone ? null : c.anchor;
@@ -2155,8 +2245,9 @@ ${line}`;
       card.addEventListener("click", (e) => e.stopPropagation());
       body.classList.add("msgs");
       const itemEl = (item) => {
-        const box = el2("div", { class: `item msg${mine(item) && !item.session ? " mine" : ""}`, "data-id": item.id });
-        box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} \xB7 ` : ""));
+        const box = el2("div", { class: `item msg${mine(item) && !item.session ? " mine" : ""}`, "data-id": item.id, ...agentOf(item) ? { "data-agent": agentOf(item) } : {} });
+        box.append(nameLine(item.name, false), ...readable(item.text));
+        stamped(box, stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} \xB7 ` : ""));
         return box;
       };
       const shown2 = /* @__PURE__ */ new Set();
@@ -2189,7 +2280,7 @@ ${line}`;
             const closing = !c.resolved;
             const { comment } = await send({ action: c.resolved ? "reopen" : "resolve", id: c.id, ...ownKey ? { edit: ownKey } : {} });
             Object.assign(c, comment);
-            if (closing && openId === c.id) return slideAway(openCard, () => (openId = null, render()));
+            if (closing && openId === c.id) return closeFast = true, openId = null, render();
             render();
           } catch {
             failed(resolve);
@@ -2225,25 +2316,6 @@ ${line}`;
         });
         actions.append(...isAdmin ? [resolve, del] : [resolve]);
         body.append(actions);
-        if (c.quick === "done" && !c.resolved) {
-          const verdict = el2("div", { class: "row" });
-          const keep = el2("button", { class: "btn", type: "button" }, "\u{1F44D} keep");
-          const back2 = el2("button", { class: "btn", type: "button" }, "\u{1F44E} put back");
-          keep.addEventListener("click", () => resolve.click());
-          back2.addEventListener("click", async () => {
-            try {
-              const r = await fetch(new URL("/_lab/quick-undo", new URL(API, location.href)), { method: "POST", headers: headers(), body: JSON.stringify({ page, id: c.id }) });
-              const data = await r.json().catch(() => ({}));
-              if (!r.ok) throw new Error(data.error);
-              c.quick = "rejected";
-              render();
-            } catch (e) {
-              back2.textContent = e.message || "failed, try again";
-            }
-          });
-          verdict.append(keep, back2);
-          body.append(verdict);
-        }
       }
       if (coarse) {
         const topOf = (x) => position(x.anchor || {}).top;
@@ -2257,8 +2329,8 @@ ${line}`;
           b.addEventListener("click", () => goTo(fresh2[0][0]));
           nav.append(b);
         }
-        if (nav.firstChild && actions) nav.append(actions);
-        if (nav.firstChild) foot.append(nav);
+        if (actions) nav.append(actions);
+        if (nav.firstChild) card.insertBefore(nav, body);
       }
       foot.append(
         composer({
@@ -2562,8 +2634,14 @@ ${line}`;
     document.addEventListener("click", (e) => onPageClick(e));
     let lastTouch = 0;
     let pinnedByHold = false;
-    const selChip = root.querySelector(".sel-chip");
-    const scrim = root.querySelector(".scrim");
+    const selChip = (
+      /** @type {HTMLElement} */
+      root.querySelector(".sel-chip")
+    );
+    const scrim = (
+      /** @type {HTMLElement} */
+      root.querySelector(".scrim")
+    );
     const openSheet = () => root.querySelector(".card:not(.out), .float:not(.out)") || (listOpen ? listEl : chatOpen ? chatEl : null);
     const closeAll = () => {
       draft = null;
@@ -2577,15 +2655,9 @@ ${line}`;
       if (![...root.querySelectorAll("textarea")].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
       node?.animate?.([{ transform: "none" }, { transform: "translateY(12px)" }, { transform: "none" }], { duration: 260, easing: "ease-out" });
     };
-    scrim.addEventListener("click", closeOrNudge);
+    let sheetDraggedAt = -1e9;
+    scrim.addEventListener("click", () => performance.now() - sheetDraggedAt > 300 && closeOrNudge());
     scrim.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
-    let scrimY = null;
-    scrim.addEventListener("touchstart", (e) => scrimY = e.touches[0].clientY, { passive: true });
-    scrim.addEventListener("touchend", (e) => {
-      const dy = scrimY === null ? 0 : e.changedTouches[0].clientY - scrimY;
-      scrimY = null;
-      if (dy > 30) closeOrNudge();
-    });
     function slideAway(node, close, ms = 0) {
       if (!coarse || !node || still.matches) return close();
       if (!host2.hasAttribute("data-kb")) root.activeElement?.blur();
@@ -2594,11 +2666,14 @@ ${line}`;
       scrim.style.transition = `opacity ${ms || 220}ms`;
       node.style.transform = "translateY(100%)";
       scrim.style.opacity = "0";
+      bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
+      host2.style.setProperty("--lab-p", "1");
       setTimeout(() => {
         root.activeElement?.blur();
         close();
         node.style.pointerEvents = "";
-        node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = "";
+        node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = bar.style.transition = "";
+        host2.style.removeProperty("--lab-p");
       }, ms || 220);
     }
     const grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
@@ -2624,6 +2699,7 @@ ${line}`;
         }
       }
     }
+    let dbg = null;
     function swipeDown(node, close, grows = false) {
       if (!coarse) return;
       let raw = 0;
@@ -2646,42 +2722,65 @@ ${line}`;
       let last = null;
       let mode = null;
       let box = null;
-      node.addEventListener("touchstart", (e) => {
+      let fromScrim = false;
+      const onStart = (e) => {
+        fromScrim = e.currentTarget === scrim;
+        if (fromScrim && openSheet() !== node) return void (mode = "off");
         const t = e.touches[0];
         x0 = t.clientX;
         y0 = t.clientY;
         dy = v = raw = 0;
         last = { y: y0, at: e.timeStamp };
-        box = scrollerIn(e, node);
+        box = fromScrim ? null : scrollerIn(e, node);
         mode = e.touches.length > 1 || box?.localName === "textarea" ? "off" : null;
-      }, { passive: true });
-      node.addEventListener("touchmove", (e) => {
-        if (mode === "off") return;
-        if (mode === "hold") return e.preventDefault();
+      };
+      node.addEventListener("touchstart", onStart, { passive: true });
+      scrim.addEventListener("touchstart", onStart, { passive: true });
+      const onMove = (e) => {
+        if (fromScrim !== (e.currentTarget === scrim)) return;
         const t = e.touches[0];
+        if (mode === "off" && box && box.localName !== "textarea" && e.touches.length === 1 && e.cancelable && box.scrollTop <= 0 && t.clientY > last.y + 1) {
+          mode = "drag";
+          y0 = t.clientY;
+          v = 0;
+          last = { y: t.clientY, at: e.timeStamp };
+        }
+        if (mode === "off") return void (last = { y: t.clientY, at: e.timeStamp });
+        if (mode === "hold") return e.preventDefault();
         if (!mode) {
           const down = t.clientY - y0;
           const across = t.clientX - x0;
           if (!down && !across) return;
           const sideways = Math.abs(across) > Math.abs(down);
-          if (grabArea(e.target)) mode = sideways && e.target.closest(".tabs") ? "off" : "drag";
+          const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.25;
+          if (fromScrim) mode = sideways ? "hold" : "drag";
+          else if (grabArea(e.target)) mode = sideways && e.target.closest(".tabs") ? "off" : "drag";
+          else if (nearTop && box?.localName !== "textarea") mode = "drag";
           else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? "drag" : "off";
           else mode = sideways ? "hold" : "drag";
+          dbg?.(`touch ${String(e.target.className || e.target.localName).slice(0, 20)} at ${Math.round(y0 - node.getBoundingClientRect().top)}/${node.offsetHeight} down${Math.round(down)} \u2192 ${mode}${e.cancelable ? "" : " (not cancelable)"}${box ? ` box${Math.round(box.scrollTop)}` : ""}`);
           if (mode === "off") return;
           if (mode === "hold") return e.preventDefault();
         }
         e.preventDefault();
         raw = t.clientY - y0;
-        dy = raw >= 0 ? raw : -12 * Math.log1p(-raw / 24);
+        const size = node.offsetHeight || 400;
+        dy = raw >= 0 ? raw : -(1 - 1 / (-raw * 0.55 / size + 1)) * size;
         if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
         last = { y: t.clientY, at: e.timeStamp };
         node.style.transition = scrim.style.transition = "none";
         node.style.transform = `translateY(${dy}px)`;
         scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
-      }, { passive: false });
+        bar.style.transition = "none";
+        host2.style.setProperty("--lab-p", String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
+      };
+      node.addEventListener("touchmove", onMove, { passive: false });
+      scrim.addEventListener("touchmove", onMove, { passive: false });
       const end = (e) => {
+        if (fromScrim !== (e.currentTarget === scrim)) return;
         const was = mode;
         mode = null;
+        if (was === "drag") sheetDraggedAt = performance.now();
         if (was !== "drag") return;
         releasedAt = performance.now();
         if (e.timeStamp - last.at > 80) v = 0;
@@ -2690,17 +2789,25 @@ ${line}`;
           node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
           scrim.style.transition = "opacity 300ms";
           node.style.transform = scrim.style.opacity = "";
+          bar.style.transition = "";
+          host2.style.removeProperty("--lab-p");
           setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
         };
-        if (grows && !node.classList.contains("full") && (raw < -40 || v < -0.4)) return node.classList.add("full"), settle();
-        if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), settle();
-        if (v > 0.4 || dy > h / 3 && v > -0.1) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+        if (grows && !node.classList.contains("full") && (raw < -40 || v < -0.4)) return node.classList.add("full"), node.classList.contains("card") && (cardFull = true), settle();
+        if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), node.classList.contains("card") && (cardFull = false), settle();
+        const rest = dy + Math.max(0, v) * 499;
+        dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} \u2192 ${v > -0.1 && rest > h / 2 ? "close" : "stay"}`);
+        if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
         node.style.transition = `transform 380ms ${SPRING}`;
         scrim.style.transition = "opacity 300ms";
         node.style.transform = scrim.style.opacity = "";
+        bar.style.transition = "";
+        host2.style.removeProperty("--lab-p");
         setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
       };
       node.addEventListener("touchend", end);
+      scrim.addEventListener("touchend", end);
+      scrim.addEventListener("touchcancel", end);
       node.addEventListener("touchcancel", end);
     }
     const vv = window.visualViewport;
@@ -2721,7 +2828,11 @@ ${line}`;
         const vh = zoomed ? 0 : Math.round(vv.height);
         const sheet = host2.hasAttribute("data-sheet");
         const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
-        if (key === fitted) return;
+        if (key === fitted) {
+          const open2 = sheet ? openSheet() : null;
+          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.getBoundingClientRect().top });
+          return;
+        }
         fitted = key;
         host2.style.setProperty("--lab-kb", `${kb}px`);
         host2.style.setProperty("--lab-top", `${Math.round(top)}px`);
@@ -2732,12 +2843,30 @@ ${line}`;
         strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
         strip.style.height = `${gap}px`;
         const open = sheet ? openSheet() : null;
-        const at = open?.getBoundingClientRect().top;
+        const slid = (n) => {
+          try {
+            return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0;
+          } catch {
+            return 0;
+          }
+        };
         const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
-        if (open && open === fit.sheet && keyboardMoved && Math.abs(fit.top - at) > 8 && !open.style.transform && !still.matches) {
-          open.animate([{ transform: `translateY(${fit.top - at}px)` }, { transform: "none" }], { duration: 340, easing: SPRING });
+        const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !still.matches;
+        if (sliding) {
+          open.style.transition = "none";
+          void open.offsetHeight;
         }
-        Object.assign(fit, { sheet: open, top: at, vh, kbUp: kb > 60 });
+        const at = open ? open.getBoundingClientRect().top - slid(open) : null;
+        if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = "";
+        if (sliding && Math.abs(fit.top - at) > 8) {
+          open.style.transform = `translateY(${fit.top - at}px)`;
+          void open.offsetHeight;
+          open.style.transition = `transform 340ms ${SPRING}`;
+          open.style.transform = "";
+          clearTimeout(fit.done);
+          fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ""), 360);
+        }
+        Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null });
       };
       refit = fit;
       root.addEventListener("focusin", () => setTimeout(fit, 50));
@@ -2745,6 +2874,61 @@ ${line}`;
       vv.addEventListener("resize", fit);
       vv.addEventListener("scroll", fit);
       fit();
+      if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
+        let lines = [];
+        let t0 = performance.now();
+        let sendTimer = 0;
+        const row = (what) => {
+          const open = openSheet();
+          const r = open?.getBoundingClientRect();
+          lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(vv.height)} top${Math.round(vv.offsetTop)} in${innerHeight} kb${host2.hasAttribute("data-kb") ? 1 : 0}` + (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? " anim" : ""}` : "") + // What is moving anywhere (the page, the pins, the dimming): for a flicker that isn't the keyboard.
+          ` [${[...document.getAnimations(), ...root.getAnimations()].map((a) => (
+            /** @type {any} */
+            a.animationName || /** @type {any} */
+            a.transitionProperty || "js"
+          )).slice(0, 6).join(",")}] scrim${getComputedStyle(scrim).opacity.slice(0, 4)} scroll${Math.round(scrollY)}`);
+        };
+        const watch = (what) => {
+          row(what);
+          const end = performance.now() + 1500;
+          let prev = "";
+          const f = () => {
+            const before = lines.length;
+            row("f");
+            const last = lines[lines.length - 1].replace(/^\d+ f /, "");
+            if (last === prev) lines.length = before;
+            prev = last;
+            if (performance.now() < end) requestAnimationFrame(f);
+          };
+          requestAnimationFrame(f);
+        };
+        root.addEventListener("focusin", () => (t0 = performance.now(), watch("focus")));
+        const sendSoon = () => {
+          clearTimeout(sendTimer);
+          sendTimer = setTimeout(async () => {
+            const text = lines.join("\n");
+            lines = [];
+            for (let i = 0; i < text.length; i += 1900) {
+              await send({ name: "kb-log", text: text.slice(i, i + 1900), anchor: { kind: "page", selector: "body", x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {
+              });
+            }
+          }, 2e3);
+        };
+        root.addEventListener("focusout", () => {
+          lines.push("--- let go");
+          t0 = performance.now();
+          watch("blur");
+          sendSoon();
+        });
+        dbg = (line) => {
+          lines.push(`${Math.round(performance.now() - t0)} ${line}`);
+          sendSoon();
+        };
+        vv.addEventListener("resize", () => {
+          watch("resize");
+          if (lines.length > 1) sendSoon();
+        });
+      }
     }
     const msgsEl = chatEl.querySelector(".msgs");
     let stick = true;

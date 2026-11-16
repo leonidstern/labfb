@@ -18,7 +18,7 @@ fs.writeFileSync(path.join(DIR, 'app.js'), 'console.log(1)');
 fs.writeFileSync(path.join(DIR, 'pic.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
 
 let server = null;
-const start = () => (server = spawn(process.execPath, [LAB, '.', '--no-open', '--no-fast', '--new', '--port', PORT], { cwd: DIR, env: { ...process.env, PORT } }));
+const start = () => (server = spawn(process.execPath, [LAB, '.', '--no-open', '--new', '--port', PORT], { cwd: DIR, env: { ...process.env, PORT } }));
 start();
 after(() => {
   server?.kill();
