@@ -17,7 +17,7 @@ import { gzipSync } from "node:zlib";
 
 const OXLINT = "oxlint@1.93.0"; // pinned, so the count only changes when the code or the rules do
 const TYPES = ["typescript@5.9.3", "@types/node@22.20.5"]; // pinned for the same reason
-const LINTED = "lib api local.mjs src/comments.js"; // the commented source; the shipped file is generated
+const LINTED = "lib api local.mjs src"; // the commented sources (JS and TS); the shipped file is generated
 const PAGE_SCRIPT = "public/_lab/comments.js"; // what pages load: built from src/comments.js by npm run build
 
 // ratchet: may never get worse. budget: may grow by perPr per PR, never past max.

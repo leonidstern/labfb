@@ -1,537 +1,439 @@
-/*!
- * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
- * https://github.com/leonidstern/labfb · MIT
- * Comments are off by default; the bar button or c turns them on (remembered per browser). When on, click anywhere that isn't a link or control to pin one (alt/option-click pins on those too). c (or the bar button) hides
- * and shows them; esc or a click outside closes an open comment. Dragging (mouse/pen) marks an area instead of a point.
- * Include on a page served through your lab domain:
- *   <script src="https://lab.example.com/_lab/comments.js" defer><\/script>
- * The layer only turns on when the page is opened on the host the script is loaded from (or data-host),
- * so the deployment's own address and local dev stay clean. data-enable="always" turns it on everywhere.
- * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
- */
 (() => {
-  const script = document.currentScript;
-  const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
-  const enabled = location.hostname === labHost || script?.dataset.enable === "always";
-  if (!enabled || window.__labComments) return;
-  window.__labComments = true;
-  const API = script?.dataset.api || "/_lab/api/comments";
-  const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, "") || "/";
-  let page = pageNow();
-  const store = {
-    get: (k) => {
-      try {
-        return localStorage.getItem(k) || "";
-      } catch {
-        return "";
-      }
-    },
-    set: (k, v) => {
-      try {
-        localStorage.setItem(k, v);
-      } catch {
-      }
-    }
-  };
-  const scopeOf = (key) => key.split(".").length === 3 ? key.split(".")[1] : "";
-  const adminParam = new URLSearchParams(location.hash.slice(1)).get("lab-admin") || new URLSearchParams(location.search).get("lab-admin");
-  if (adminParam) {
-    const scope = scopeOf(adminParam);
-    store.set(scope ? `lab-admin:${scope}` : "lab-admin", adminParam);
-    const url = new URL(location.href);
-    url.searchParams.delete("lab-admin");
-    if (/lab-admin=/.test(url.hash)) url.hash = "";
-    history.replaceState(null, "", url);
-  }
-  const adminToken = script?.dataset.admin || store.get(`lab-admin:${page.split("/")[1] || ""}`) || store.get("lab-admin:*") || store.get("lab-admin");
-  let comments = [];
-  let isAdmin = false;
-  let on = store.get("lab-on") ? store.get("lab-on") === "1" : script?.dataset.on === "1";
-  let openId = null;
-  let draft = null;
-  const host = document.createElement("div");
-  host.setAttribute("data-lab-comments", "");
-  host.style.cssText = "position:absolute;top:0;left:0;width:0;height:0;z-index:2147483000;";
-  const root = host.attachShadow({ mode: "open" });
-  root.innerHTML = `
-    <style>
-      /* Theme: set --lab-accent, --lab-accent-fg, --lab-bg, --lab-fg, --lab-radius, --lab-font or --lab-font-features on the
-         [data-lab-comments] element (or on :root). Everything else is mixed from those. */
-      :host { all: initial;
-        --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
-        --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
-        --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
-        /* Washes of black (white in dark mode), four steps: soft, hover, line, muted, as lab.css. */
-        --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_edge: var(--lab-edge, #c7c7cc); --_muted: var(--lab-muted, rgba(0,0,0,.50));
-        --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
-        --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
-        --_ease: cubic-bezier(.2, .8, .2, 1); }
-      @media (prefers-color-scheme: dark) {
-        :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
-                --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
-                --_soft: var(--lab-soft, rgba(255,255,255,.05)); --_hover: var(--lab-hover, rgba(255,255,255,.10)); --_line: var(--lab-line, rgba(255,255,255,.15)); --_edge: var(--lab-edge, #48484a); --_muted: var(--lab-muted, rgba(255,255,255,.50));
-                --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
-      }
-      * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
-          font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: 0;
-          font-feature-settings: var(--lab-font-features, normal); font-synthesis: none; font-optical-sizing: auto;
-          -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
-          caret-color: var(--_accent); -webkit-tap-highlight-color: transparent; }
-      ::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
-      button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
-      .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
-      .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
-             background: var(--_bg); border: 0; box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
-             display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12.5px; font-weight: 500;
-             font-variant-numeric: tabular-nums; letter-spacing: .01em; transform-origin: 0 100%;
-             transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
-      /* A 1 px edge in the text colour (dark on light pins, light in dark mode) so a pin shows on white and black alike;
-         the one you point at or have open gets a green edge. */
-      button.pin:hover, button.pin.open { transform: scale(1.08); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 4px 14px rgba(0,0,0,.2); }
-      button.pin:active { transform: scale(.96); }
-      .pin.in { animation: lab-pin .26s var(--_ease); }
-      /* A new comment lands with one faint halo from its pin. */
-      button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-                        animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
-      .pin.resolved { color: var(--_muted); }
-      /* Statuses. A go pin says "go": green in a green outline when placed, the turning stroke while the agent is on it,
-         white on green once done (a \u2713 is only ever a done comment). A comment pin: your initial, the stroke, then a green tick. */
-      button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 11px; font-weight: 600; letter-spacing: .01em;
-                      box-shadow: inset 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
-      button.pin.go.done { background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16); }
-      button.pin.done:not(.go) { color: rgb(36, 160, 70); }
-      .pin.moved { opacity: .5; scale: .8; }
-      button.pin.moved:hover, button.pin.moved.open { opacity: 1; }
-      .pin.grab { touch-action: none; }
-      button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
-      .zone { position: absolute; background: none;
-              border-radius: var(--_radius); pointer-events: none; }
-      .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-      .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--lab-radius, 12px); ry: var(--lab-radius, 12px); }
-      /* Green dots, the same green as quoted words, with no dark ring under them. */
-      .zone rect.ring { display: none; }
-      .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
-      .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
-      /* The agent is on it: a green stroke runs round the pin's own teardrop outline. The ring (a still 2 px teardrop mask)
-         holds a conic gradient that turns by transform, so the screen turns it without redrawing: 30 such pins cost ~1 ms
-         a second, against ~125 ms when the gradient's angle itself was animated. */
-      .pin .ring { position: absolute; inset: -4px; border-radius: 18px 18px 18px 6px; padding: 2px; overflow: hidden; pointer-events: none;
-                   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-                   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
-      .ring::before { content: ''; position: absolute; inset: -50%; will-change: transform;
-                      background: conic-gradient(rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%); animation: lab-turn 1.2s linear infinite; }
-      @keyframes lab-turn { to { transform: rotate(360deg); } }
-      /* The drawn pointer: your pin, following the mouse (it moves without a transition; only its look eases). */
-      .ptr { position: fixed; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px 14px 14px 2px; corner-shape: round;
-             background: var(--_bg); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 2px 6px rgba(0,0,0,.18);
-             display: grid; place-items: center; pointer-events: none; z-index: 2147483647; opacity: 0; will-change: transform;
-             transition: opacity .12s ease-out, background-color .16s ease-out; }
-      .ptr.show { opacity: 1; }
-      .ptr span { grid-area: 1 / 1; font-size: 12px; font-weight: 600; line-height: 1; transition: opacity .16s ease-out, transform .16s ease-out; }
-      .ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 11px; letter-spacing: .01em; }
-      .ptr.go { background: rgb(36, 160, 70); }
-      .ptr.go .ini { opacity: 0; transform: scale(.5); }
-      .ptr.go .tick { opacity: 1; transform: none; }
-      .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
-                        background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
-      .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
-      .card { position: absolute; width: 320px; max-width: calc(100vw - 24px); background: var(--_bg); border-radius: var(--_radius);
-              box-shadow: var(--_shadow); padding: 12px 14px 14px; transform-origin: 14px 0; z-index: 1;
-              display: flex; flex-direction: column; max-height: min(460px, 62vh); }
-      /* A long thread scrolls inside the card, which keeps one size; the step buttons and the reply box stay put. */
-      .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; }
-      .card > .foot { flex: none; }
-      .card.in, .float.in { animation: lab-in .18s var(--_ease); }
-      .card.out, .float.out { animation: lab-out .14s ease-in forwards; pointer-events: none; }
-      .item { display: grid; row-gap: 3px; }
-      .item + .item { margin-top: 14px; }
-      .msg.item { display: block; } .msg.item + .msg.item { margin-top: 0; }
-      .meta { display: flex; align-items: baseline; gap: .5em; font-size: 12px; color: var(--_muted); margin: 0;
-              white-space: nowrap; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
-      .meta b { font-weight: 500; font-size: 13px; letter-spacing: .005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-      .meta .dot { flex: none; align-self: center; margin: 0; }
-      .meta .ago { white-space: nowrap; }
-      .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
-      .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
-      /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
-      .card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 11.5px; }
-      button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
-                   letter-spacing: .01em; border-radius: var(--_r-s); transition: color .12s; }
-      button.btn:hover { color: var(--_fg); }
-      button.btn.danger, button.btn.danger:hover { color: #e5484d; }
-      .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: .01em; padding: 2px 0; animation: lab-fade .12s ease-out; }
-      .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
-      .card .composer { margin-top: 6px; } /* close under resolve / delete */
-      .card > .body > .row:not(.nav) { margin-right: 7px; } /* resolve / delete end where the send button does */
-      .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
-             background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
-      /* The new comment box: the chat's box (no border), with only a soft shadow so it stands out on any page. */
-      /* The new comment box has the pins' 1 px edge in the text colour, so it shows on white and black pages alike. */
-      .float .box, .float .box:focus-within { box-shadow: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
-      .card .box { background: var(--_soft); border-radius: var(--_radius); margin: 0; }
-      .card .box, .card .box.open, .card .box:focus-within { box-shadow: none; } /* the same box as the chat's: soft grey, no border */
-      /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
-      .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
-      /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
-      .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
-                      min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
-      .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
-      .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
-      .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: .005em; }
-      .who * { font-size: 13px; }
-      .who span { color: var(--_muted); }
-      .who input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; outline: none; color: var(--_muted); text-overflow: ellipsis; }
-      .who input:focus { color: var(--_fg); }
-      .box.open .line { display: block; animation: lab-fade .16s ease-out; }
-      .box.open .who { display: flex; animation: lab-fade .16s ease-out; }
-      /* One line once your name is known: text, a quiet "as <name>" (still editable) and the arrow, side by side.
-         The text grows upward; the name and arrow stay on its last line. Only a first comment, with no name yet, opens
-         the second row to ask for it. */
-      .box.one, .box.one.open { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "text who send"; align-items: end; row-gap: 0; padding: 7px 7px 7px 14px; }
-      .box.one .line { display: none !important; }
-      .box.one .who { align-self: end; line-height: 20px; padding-bottom: 2px; max-width: 40%; } /* the text's last line box, so they share a line */
-      .box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
-      .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
-              background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
-      .send.ready:hover { transform: scale(1.06); }
-      .send.ready:active { transform: scale(.94); }
-      .send.ready { background: var(--_accent); color: var(--_accent-fg); }
-      /* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
-      .send .arr { display: block; position: relative; left: -1px; width: 12px; height: 11px; background: currentColor; clip-path: polygon(0 42%, 100% 0, 66% 100%, 46% 60%); }
-      .send * { color: inherit; }
-      .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
-      .error:empty { display: none; }
-      .error.wait { color: var(--_muted); }
-      .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
-      .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
-                    box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
-                    letter-spacing: .005em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color .15s, transform .15s var(--_ease); }
-      .bar button:active { transform: scale(.97); }
-      /* The list and the chat: a header, a part that scrolls, and (the chat) a box at the bottom that doesn't. */
-      .list { position: fixed; right: 16px; bottom: 66px; width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: hidden;
-              display: flex; flex-direction: column; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow); font-size: 13px; }
-      .list .tabs { display: flex; flex-wrap: wrap; gap: 2px; flex: none; padding: 12px 8px 6px; }
-      .list .items, .msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-      .list .items { padding: 0 6px 6px; }
-      .list .tabs button { border: 0; border-radius: var(--_r-s); padding: 4px 8px; white-space: nowrap; background: none; color: var(--_muted); cursor: pointer; font: inherit; }
-      .list .tabs button.on { background: var(--_fg); color: var(--_bg); }
-      .list .tabs .hold { margin-left: auto; }
-      .list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: var(--_r-s); cursor: pointer; font: inherit; }
-      .list .it:hover, .list .it.cur { background: var(--_hover); }
-      .list .it { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line per pin; the rest is in its thread */
-      .list .it span, .list .none { color: var(--_muted); }
-      .list .it .tag { display: inline-block; padding: 0 7px; border-radius: var(--_r-s); background: var(--_accent); color: var(--_accent-fg);
-                       font-size: 11.5px; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
-      .list .none { padding: 8px; }
-      /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
-      * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
-      @supports not (scrollbar-width: thin) {
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--_fg) 24%, transparent); border-radius: 999px; }
-      }
-      .list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
-      .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
-      /* Close: a round, quiet button with a drawn cross (not the \u2715 character), darker on hover. */
-      .list .tabs .show-done { color: var(--_muted); }
-      .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
-      .list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
-                       font-size: 0; color: var(--_muted); background: transparent; }
-      /* The cross is drawn with CSS: two thin bars, no picture. */
-      .list .tabs .x::before, .list .tabs .x::after { content: ''; grid-area: 1 / 1; width: 12px; height: 1.6px; border-radius: 1px; background: currentColor; transform: rotate(45deg); }
-      .list .tabs .x::after { transform: rotate(-45deg); }
-      .list .tabs .x:hover { color: var(--_fg); } /* hover: the cross darkens, nothing drawn behind it */
-      .list .tabs .x:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; }
-      .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
-      .chatwin .replying { flex: none; }
-      .chatwin .chat .box { background: var(--_soft); }
-      .chatwin .tabs b { padding: 4px 8px; font-weight: 600; margin-right: auto; }
-      .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
-      .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
-      /* Something just sent eases in; the arrow flies off and comes back. */
-      .fresh { animation: lab-rise .2s var(--_ease); }
-      .send.sent .arr { animation: lab-fly .32s var(--_ease); }
-      @keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
-      @keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
-      .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
-      .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
-      .msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
-      .msg.mine b { display: none; }
-      .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; } /* a small green tick, as the ticks on messages */
-      .msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12.5px; line-height: 1.35;
-                    color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-      .msg .quote b { display: block; font-size: 11.5px; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
-      .msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; } .msg .p.gap { margin-top: 6px; }
-      .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
-      .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
-      .msg b, .msg i { color: inherit; }
-      .msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 10px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
-      .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* \u2713 drawn as tall as the time's digits */
-      .msg .tick.got { font-weight: 600; }
-      /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green \u2713. */
-      .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .tm { opacity: .55; }
-      .msg .stamp .tm { font-size: inherit; line-height: inherit; color: inherit; } /* every element gets 14 px by default: the time keeps the stamp's 10 */
-      .msg .stamp .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
-                          -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
-                          mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
-      .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
-      .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
-      .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
-      .bar button * { color: inherit; font-weight: inherit; }
-      .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
-      .bar button.secondary { color: var(--_muted); }
-      .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
-      .bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
-      .bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; line-height: 1; color: var(--_fg); }
-      .bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
-      .bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
-      .bar button.go-btn.on kbd { color: #fff !important; }
-      .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 500; color: var(--_muted); }
-      .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
-      /* The left side: who's listening, then copy link; the right side is the bar. */
-      .left { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
-      .left .copy-all { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_muted);
-                        box-shadow: var(--_shadow); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; }
-      .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
-             background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
-      .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
-      .listener span { color: var(--_muted); }
-      .listener.idle::before { background: var(--_muted); opacity: .5; }
-      /* Working: the dot turns green and sends out a soft ring, like a "live" light. */
-      /* The ping is a copy of the dot that grows and fades (transform and opacity only), so only it is redrawn. A growing
-         shadow repainted the whole layer with every pin on it, each frame: ~170 ms a second on a page with 40 pins. */
-      .listener { position: relative; }
-      .listener.working::before { background: rgb(36, 160, 70); }
-      .listener.working::after { content: ''; position: absolute; left: 14px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px;
-        border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
-      @keyframes lab-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.7); opacity: 0; } }
-      .listener { cursor: default; } /* a plain arrow, also where a tap copies the resume command */
-      /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
-      kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
-            color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
-      .bar:hover kbd { opacity: .75; }
-      .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
-      .bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/2/3) reads like (c)hat and ne(w) */
-      /* One bar of segments, a hairline between them; the less used ones in the \u22EF menu above it (phones too: same bar, bigger to tap). */
-      @media all {
-        .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
-        .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
-        .bar > button.first { box-shadow: none; }
-        .bar > button:not(:disabled):hover { background: var(--_hover); }
-        .bar > button:active { transform: none; background: var(--_hover); }
-        .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
-        .bar > button.quiet.first { box-shadow: none; }
-        .bar .list-btn, .bar .done-btn { min-width: 0; }
-        .bar .mn { color: var(--_muted); font-weight: 400; }
-        /* Words stay grey (as the bar's buttons were); the count is the one thing in the text colour: a plain number. */
-        .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
-        .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
-        .bar .cnt { font-size: 12px; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
-        .bar .cnt.zero { color: var(--_muted); }
-        .bar button.go-btn.on { background: none; color: var(--_fg); }
-        .bar button.go-btn.on kbd { color: var(--_muted) !important; }
-        .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; font-weight: 600;
-              color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
-        .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
-        /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
-        .go-btn:not(.on):not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; }
-        /* 3, cursor: the switch is the same pin in grey, saying "off" (regular, a touch bigger than go's bold). */
-        .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
-        .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
-                                    font-size: 9.5px; font-weight: 400; letter-spacing: .01em; }
-        .more { font-size: 15px !important; letter-spacing: .05em; }
-        .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
-                     border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
-        .more-menu[hidden] { display: none; }
-        .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; color: var(--_fg); padding: 7px 10px;
-                            border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
-        .more-menu button:hover:not(:disabled) { background: var(--_hover); }
-        .more-menu button:disabled { color: var(--_muted); cursor: default; }
-        .more-menu button[hidden] { display: none; }
-        .more-menu kbd { margin: 0; }
-      }
-      kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
-      .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
-              box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
-              letter-spacing: .005em; animation: lab-fade .2s ease-out; }
-      /* 16px fields keep iOS from zooming the page when one is focused. */
-      @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.006em; } kbd { display: none; }
-        .box textarea { line-height: 22px; padding: 7px 0; } /* phones: 22 + 7 + 7 = 36, the send button's size */
-        .box.one .who { line-height: 22px; padding-bottom: 7px; } }
-      @keyframes lab-fade { from { opacity: 0; } }
-      /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
-      @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
-      @keyframes lab-sheet-in { from { transform: translateY(100%); } }
-      @keyframes lab-sheet-out { to { transform: translateY(100%); } }
-      @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
-      /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
-      /* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a
-         smooth curve instead of a circle arc (a squircle needs about 1.8 times the radius to look the same size).
-         Circles and the pin's teardrop stay as they are. */
-      @supports (corner-shape: squircle) {
-        :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
-        *, *::before, *::after { corner-shape: squircle; }
-        .pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
-        .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring, .gp { corner-shape: round; } /* circles stay circles */
-      }
-      @keyframes lab-pin { from { transform: scale(1.1); } }
-      @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
-                            to { box-shadow: 0 0 0 16px color-mix(in srgb, var(--_fg) 0%, transparent); } }
-      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-      @media (max-width: 480px) { kbd { display: none; } }
-      .handle { display: none; }
-      /* Phones: a thread or a new comment opens as a sheet from the bottom, full width, instead of beside the pin. */
-      @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
-        /* Sheets fit what the screen shows (--lab-vh, the visible height, and --lab-kb, the keyboard over the page's
-           bottom, are kept up to date from visualViewport); their bottom part is solid down past the screen's edge,
-           behind the home bar, the keyboard and Safari's toolbar, so nothing of the page shows below the box. */
-        :host { --_safe: env(safe-area-inset-bottom, 0px); --_kb: var(--lab-kb, 0px);
-                --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb)); }
-        :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
-        /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
-           panning the page can't push it up and nothing of the page shows above or below it. */
-        :host([data-kb]) :is(.card, .list:not([hidden])) { top: var(--lab-top, 0px) !important; bottom: auto !important;
-          height: var(--lab-vh, 100dvh) !important; max-height: none !important; border-radius: 0; }
-        /* A new comment stays small, just above the keyboard, with the page (dimmed) above it: you see what you comment on. */
-        :host([data-kb]) .float { top: auto !important; bottom: var(--lab-kb, 0px) !important; height: auto !important; border-radius: var(--_radius) var(--_radius) 0 0; }
-        .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
-                        max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: var(--_radius) var(--_radius) 0 0; padding: 8px 0 0; z-index: 3; }
-        .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
-        .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 4px; margin-right: 0; }
-        .card > .foot, .float > .composer { flex: none; padding: 0 14px var(--_pb); }
-        .card > .foot { margin-top: auto; }
-        .card .composer { margin-top: 10px; }
-        .card .nav { margin-top: 2px; gap: 20px; }
-        .card .nav .btn { font-size: 14px; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
-        .card .nav { gap: 16px; }
-        .card .nav { flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
-        .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
-        .box.one .who span { font-size: 16px; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
-        .card .nav .acts button.btn { font-size: 14px; }
-        .float { background: var(--_bg); box-shadow: var(--_shadow); }
-        .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
-        /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
-        /* 44 px to grab (iOS 44 pt, Android 48 dp), reaching 18 px above the sheet's edge; the bar and the layout stay as they were. */
-        .handle { display: block; flex: none; height: 44px; margin-top: -26px; touch-action: none; position: relative;
-                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 26px / 36px 4px no-repeat; }
-        .list .tabs { touch-action: pan-x; }
-        .chatwin .tabs { touch-action: none; }
-        .list .items, .msgs, .card > .body { touch-action: pan-y; }
-        .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
+  // src/widget/styles.css
+  var styles_default = `/* Theme: set --lab-accent, --lab-accent-fg, --lab-bg, --lab-fg, --lab-radius, --lab-font or --lab-font-features on the
+   [data-lab-comments] element (or on :root). Everything else is mixed from those. */
+:host { all: initial;
+  --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
+  --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
+  --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
+  /* Washes of black (white in dark mode), four steps: soft, hover, line, muted, as lab.css. */
+  --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_edge: var(--lab-edge, #c7c7cc); --_muted: var(--lab-muted, rgba(0,0,0,.50));
+  --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
+  --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
+  --_ease: cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-color-scheme: dark) {
+  :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
+          --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
+          --_soft: var(--lab-soft, rgba(255,255,255,.05)); --_hover: var(--lab-hover, rgba(255,255,255,.10)); --_line: var(--lab-line, rgba(255,255,255,.15)); --_edge: var(--lab-edge, #48484a); --_muted: var(--lab-muted, rgba(255,255,255,.50));
+          --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
+}
+* { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
+    font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: 0;
+    font-feature-settings: var(--lab-font-features, normal); font-synthesis: none; font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+    caret-color: var(--_accent); -webkit-tap-highlight-color: transparent; }
+::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
+button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
+.layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
+.pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
+       background: var(--_bg); border: 0; box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
+       display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12.5px; font-weight: 500;
+       font-variant-numeric: tabular-nums; letter-spacing: .01em; transform-origin: 0 100%;
+       transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
+/* A 1 px edge in the text colour (dark on light pins, light in dark mode) so a pin shows on white and black alike;
+   the one you point at or have open gets a green edge. */
+button.pin:hover, button.pin.open { transform: scale(1.08); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 4px 14px rgba(0,0,0,.2); }
+button.pin:active { transform: scale(.96); }
+.pin.in { animation: lab-pin .26s var(--_ease); }
+/* A new comment lands with one faint halo from its pin. */
+button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+                  animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
+.pin.resolved { color: var(--_muted); }
+/* Statuses. A go pin says "go": green in a green outline when placed, the turning stroke while the agent is on it,
+   white on green once done (a \u2713 is only ever a done comment). A comment pin: your initial, the stroke, then a green tick. */
+button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 11px; font-weight: 600; letter-spacing: .01em;
+                box-shadow: inset 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
+button.pin.go.done { background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16); }
+button.pin.done:not(.go) { color: rgb(36, 160, 70); }
+.pin.moved { opacity: .5; scale: .8; }
+button.pin.moved:hover, button.pin.moved.open { opacity: 1; }
+.pin.grab { touch-action: none; }
+button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
+.zone { position: absolute; background: none;
+        border-radius: var(--_radius); pointer-events: none; }
+.zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--lab-radius, 12px); ry: var(--lab-radius, 12px); }
+/* Green dots, the same green as quoted words, with no dark ring under them. */
+.zone rect.ring { display: none; }
+.zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
+.zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
+/* The agent is on it: a green stroke runs round the pin's own teardrop outline. The ring (a still 2 px teardrop mask)
+   holds a conic gradient that turns by transform, so the screen turns it without redrawing: 30 such pins cost ~1 ms
+   a second, against ~125 ms when the gradient's angle itself was animated. */
+.pin .ring { position: absolute; inset: -4px; border-radius: 18px 18px 18px 6px; padding: 2px; overflow: hidden; pointer-events: none;
+             -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+             mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.ring::before { content: ''; position: absolute; inset: -50%; will-change: transform;
+                background: conic-gradient(rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%); animation: lab-turn 1.2s linear infinite; }
+@keyframes lab-turn { to { transform: rotate(360deg); } }
+/* The drawn pointer: your pin, following the mouse (it moves without a transition; only its look eases). */
+.ptr { position: fixed; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px 14px 14px 2px; corner-shape: round;
+       background: var(--_bg); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 2px 6px rgba(0,0,0,.18);
+       display: grid; place-items: center; pointer-events: none; z-index: 2147483647; opacity: 0; will-change: transform;
+       transition: opacity .12s ease-out, background-color .16s ease-out; }
+.ptr.show { opacity: 1; }
+.ptr span { grid-area: 1 / 1; font-size: 12px; font-weight: 600; line-height: 1; transition: opacity .16s ease-out, transform .16s ease-out; }
+.ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 11px; letter-spacing: .01em; }
+.ptr.go { background: rgb(36, 160, 70); }
+.ptr.go .ini { opacity: 0; transform: scale(.5); }
+.ptr.go .tick { opacity: 1; transform: none; }
+.pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
+                  background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
+.card { position: absolute; width: 320px; max-width: calc(100vw - 24px); background: var(--_bg); border-radius: var(--_radius);
+        box-shadow: var(--_shadow); padding: 12px 14px 14px; transform-origin: 14px 0; z-index: 1;
+        display: flex; flex-direction: column; max-height: min(460px, 62vh); }
+/* A long thread scrolls inside the card, which keeps one size; the step buttons and the reply box stay put. */
+.card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; }
+.card > .foot { flex: none; }
+.card.in, .float.in { animation: lab-in .18s var(--_ease); }
+.card.out, .float.out { animation: lab-out .14s ease-in forwards; pointer-events: none; }
+.item { display: grid; row-gap: 3px; }
+.item + .item { margin-top: 14px; }
+.msg.item { display: block; } .msg.item + .msg.item { margin-top: 0; }
+.meta { display: flex; align-items: baseline; gap: .5em; font-size: 12px; color: var(--_muted); margin: 0;
+        white-space: nowrap; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+.meta b { font-weight: 500; font-size: 13px; letter-spacing: .005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.meta .dot { flex: none; align-self: center; margin: 0; }
+.meta .ago { white-space: nowrap; }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
+.row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
+/* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
+.card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 11.5px; }
+button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
+             letter-spacing: .01em; border-radius: var(--_r-s); transition: color .12s; }
+button.btn:hover { color: var(--_fg); }
+button.btn.danger, button.btn.danger:hover { color: #e5484d; }
+.row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: .01em; padding: 2px 0; animation: lab-fade .12s ease-out; }
+.float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
+.card .composer { margin-top: 6px; } /* close under resolve / delete */
+.card > .body > .row:not(.nav) { margin-right: 7px; } /* resolve / delete end where the send button does */
+.box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
+       background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
+/* The new comment box: the chat's box (no border), with only a soft shadow so it stands out on any page. */
+/* The new comment box has the pins' 1 px edge in the text colour, so it shows on white and black pages alike. */
+.float .box, .float .box:focus-within { box-shadow: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
+.card .box { background: var(--_soft); border-radius: var(--_radius); margin: 0; }
+.card .box, .card .box.open, .card .box:focus-within { box-shadow: none; } /* the same box as the chat's: soft grey, no border */
+/* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
+.box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
+/* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
+.box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
+                min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
+.box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
+.line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
+.who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: .005em; }
+.who * { font-size: 13px; }
+.who span { color: var(--_muted); }
+.who input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; outline: none; color: var(--_muted); text-overflow: ellipsis; }
+.who input:focus { color: var(--_fg); }
+.box.open .line { display: block; animation: lab-fade .16s ease-out; }
+.box.open .who { display: flex; animation: lab-fade .16s ease-out; }
+/* One line once your name is known: text, a quiet "as <name>" (still editable) and the arrow, side by side.
+   The text grows upward; the name and arrow stay on its last line. Only a first comment, with no name yet, opens
+   the second row to ask for it. */
+.box.one, .box.one.open { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "text who send"; align-items: end; row-gap: 0; padding: 7px 7px 7px 14px; }
+.box.one .line { display: none !important; }
+.box.one .who { align-self: end; line-height: 20px; padding-bottom: 2px; max-width: 40%; } /* the text's last line box, so they share a line */
+.box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
+.send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+        background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
+.send.ready:hover { transform: scale(1.06); }
+.send.ready:active { transform: scale(.94); }
+.send.ready { background: var(--_accent); color: var(--_accent-fg); }
+/* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
+.send .arr { display: block; position: relative; left: -1px; width: 12px; height: 11px; background: currentColor; clip-path: polygon(0 42%, 100% 0, 66% 100%, 46% 60%); }
+.send * { color: inherit; }
+.error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
+.error:empty { display: none; }
+.error.wait { color: var(--_muted); }
+.bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
+.bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
+              box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
+              letter-spacing: .005em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color .15s, transform .15s var(--_ease); }
+.bar button:active { transform: scale(.97); }
+/* The list and the chat: a header, a part that scrolls, and (the chat) a box at the bottom that doesn't. */
+.list { position: fixed; right: 16px; bottom: 66px; width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: hidden;
+        display: flex; flex-direction: column; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow); font-size: 13px; }
+.list .tabs { display: flex; flex-wrap: wrap; gap: 2px; flex: none; padding: 12px 8px 6px; }
+.list .items, .msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.list .items { padding: 0 6px 6px; }
+.list .tabs button { border: 0; border-radius: var(--_r-s); padding: 4px 8px; white-space: nowrap; background: none; color: var(--_muted); cursor: pointer; font: inherit; }
+.list .tabs button.on { background: var(--_fg); color: var(--_bg); }
+.list .tabs .hold { margin-left: auto; }
+.list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: var(--_r-s); cursor: pointer; font: inherit; }
+.list .it:hover, .list .it.cur { background: var(--_hover); }
+.list .it { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line per pin; the rest is in its thread */
+.list .it span, .list .none { color: var(--_muted); }
+.list .it .tag { display: inline-block; padding: 0 7px; border-radius: var(--_r-s); background: var(--_accent); color: var(--_accent-fg);
+                 font-size: 11.5px; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
+.list .none { padding: 8px; }
+/* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
+@supports not (scrollbar-width: thin) {
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--_fg) 24%, transparent); border-radius: 999px; }
+}
+.list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
+.pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
+/* Close: a round, quiet button with a drawn cross (not the \u2715 character), darker on hover. */
+.list .tabs .show-done { color: var(--_muted); }
+.chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
+.list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
+                 font-size: 0; color: var(--_muted); background: transparent; }
+/* The cross is drawn with CSS: two thin bars, no picture. */
+.list .tabs .x::before, .list .tabs .x::after { content: ''; grid-area: 1 / 1; width: 12px; height: 1.6px; border-radius: 1px; background: currentColor; transform: rotate(45deg); }
+.list .tabs .x::after { transform: rotate(-45deg); }
+.list .tabs .x:hover { color: var(--_fg); } /* hover: the cross darkens, nothing drawn behind it */
+.list .tabs .x:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; }
+.chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
+.chatwin .replying { flex: none; }
+.chatwin .chat .box { background: var(--_soft); }
+.chatwin .tabs b { padding: 4px 8px; font-weight: 600; margin-right: auto; }
+.msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
+.msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
+/* Something just sent eases in; the arrow flies off and comes back. */
+.fresh { animation: lab-rise .2s var(--_ease); }
+.send.sent .arr { animation: lab-fly .32s var(--_ease); }
+@keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
+.msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
+.msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
+.msg b { display: block; font-size: 11.5px; font-weight: 600; opacity: .7; margin-bottom: 1px; }
+.msg.mine b { display: none; }
+.msg { position: relative; } .mark { font-weight: 400; font-size: 11px; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; } /* a small green tick, as the ticks on messages */
+.msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12.5px; line-height: 1.35;
+              color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.msg .quote b { display: block; font-size: 11.5px; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+.msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; } .msg .p.gap { margin-top: 6px; }
+.msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
+.msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
+.msg b, .msg i { color: inherit; }
+.msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 10px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
+.msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* \u2713 drawn as tall as the time's digits */
+.msg .tick.got { font-weight: 600; }
+/* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green \u2713. */
+.msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .tm { opacity: .55; }
+.msg .stamp .tm { font-size: inherit; line-height: inherit; color: inherit; } /* every element gets 14 px by default: the time keeps the stamp's 10 */
+.msg .stamp .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
+                    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
+                    mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
+.msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
+.replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
+.replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
+.bar button * { color: inherit; font-weight: inherit; }
+.bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
+.bar button.secondary { color: var(--_muted); }
+.bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
+.bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
+.bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; line-height: 1; color: var(--_fg); }
+.bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
+.bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
+.bar button.go-btn.on kbd { color: #fff !important; }
+.newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 500; color: var(--_muted); }
+.newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
+/* The left side: who's listening, then copy link; the right side is the bar. */
+.left { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
+.left .copy-all { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_muted);
+                  box-shadow: var(--_shadow); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
+       background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
+.listener span { color: var(--_muted); }
+.listener.idle::before { background: var(--_muted); opacity: .5; }
+/* Working: the dot turns green and sends out a soft ring, like a "live" light. */
+/* The ping is a copy of the dot that grows and fades (transform and opacity only), so only it is redrawn. A growing
+   shadow repainted the whole layer with every pin on it, each frame: ~170 ms a second on a page with 40 pins. */
+.listener { position: relative; }
+.listener.working::before { background: rgb(36, 160, 70); }
+.listener.working::after { content: ''; position: absolute; left: 14px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px;
+  border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+@keyframes lab-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.7); opacity: 0; } }
+.listener { cursor: default; } /* a plain arrow, also where a tap copies the resume command */
+/* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
+kbd { font-size: 10.5px; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
+      color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
+.bar:hover kbd { opacity: .75; }
+.bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
+.bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/2/3) reads like (c)hat and ne(w) */
+/* One bar of segments, a hairline between them; the less used ones in the \u22EF menu above it (phones too: same bar, bigger to tap). */
+@media all {
+  .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
+  .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
+  .bar > button.first { box-shadow: none; }
+  .bar > button:not(:disabled):hover { background: var(--_hover); }
+  .bar > button:active { transform: none; background: var(--_hover); }
+  .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
+  .bar > button.quiet.first { box-shadow: none; }
+  .bar .list-btn, .bar .done-btn { min-width: 0; }
+  .bar .mn { color: var(--_muted); font-weight: 400; }
+  /* Words stay grey (as the bar's buttons were); the count is the one thing in the text colour: a plain number. */
+  .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
+  .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
+  .bar .cnt { font-size: 12px; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
+  .bar .cnt.zero { color: var(--_muted); }
+  .bar button.go-btn.on { background: none; color: var(--_fg); }
+  .bar button.go-btn.on kbd { color: var(--_muted) !important; }
+  .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; font-weight: 600;
+        color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
+  .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
+  /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
+  .go-btn:not(.on):not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; }
+  /* 3, cursor: the switch is the same pin in grey, saying "off" (regular, a touch bigger than go's bold). */
+  .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
+  .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
+                              font-size: 9.5px; font-weight: 400; letter-spacing: .01em; }
+  .more { font-size: 15px !important; letter-spacing: .05em; }
+  .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
+               border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
+  .more-menu[hidden] { display: none; }
+  .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; color: var(--_fg); padding: 7px 10px;
+                      border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
+  .more-menu button:hover:not(:disabled) { background: var(--_hover); }
+  .more-menu button:disabled { color: var(--_muted); cursor: default; }
+  .more-menu button[hidden] { display: none; }
+  .more-menu kbd { margin: 0; }
+}
+kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
+.hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
+        box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
+        letter-spacing: .005em; animation: lab-fade .2s ease-out; }
+/* 16px fields keep iOS from zooming the page when one is focused. */
+@media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.006em; } kbd { display: none; }
+  .box textarea { line-height: 22px; padding: 7px 0; } /* phones: 22 + 7 + 7 = 36, the send button's size */
+  .box.one .who { line-height: 22px; padding-bottom: 7px; } }
+@keyframes lab-fade { from { opacity: 0; } }
+/* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
+@keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
+@keyframes lab-sheet-in { from { transform: translateY(100%); } }
+@keyframes lab-sheet-out { to { transform: translateY(100%); } }
+@keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
+/* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
+/* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a
+   smooth curve instead of a circle arc (a squircle needs about 1.8 times the radius to look the same size).
+   Circles and the pin's teardrop stay as they are. */
+@supports (corner-shape: squircle) {
+  :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
+  *, *::before, *::after { corner-shape: squircle; }
+  .pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
+  .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring, .gp { corner-shape: round; } /* circles stay circles */
+}
+@keyframes lab-pin { from { transform: scale(1.1); } }
+@keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
+                      to { box-shadow: 0 0 0 16px color-mix(in srgb, var(--_fg) 0%, transparent); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+@media (max-width: 480px) { kbd { display: none; } }
+.handle { display: none; }
+/* Phones: a thread or a new comment opens as a sheet from the bottom, full width, instead of beside the pin. */
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
+  /* Sheets fit what the screen shows (--lab-vh, the visible height, and --lab-kb, the keyboard over the page's
+     bottom, are kept up to date from visualViewport); their bottom part is solid down past the screen's edge,
+     behind the home bar, the keyboard and Safari's toolbar, so nothing of the page shows below the box. */
+  :host { --_safe: env(safe-area-inset-bottom, 0px); --_kb: var(--lab-kb, 0px);
+          --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb)); }
+  :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
+  /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
+     panning the page can't push it up and nothing of the page shows above or below it. */
+  :host([data-kb]) :is(.card, .list:not([hidden])) { top: var(--lab-top, 0px) !important; bottom: auto !important;
+    height: var(--lab-vh, 100dvh) !important; max-height: none !important; border-radius: 0; }
+  /* A new comment stays small, just above the keyboard, with the page (dimmed) above it: you see what you comment on. */
+  :host([data-kb]) .float { top: auto !important; bottom: var(--lab-kb, 0px) !important; height: auto !important; border-radius: var(--_radius) var(--_radius) 0 0; }
+  .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
+                  max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: var(--_radius) var(--_radius) 0 0; padding: 8px 0 0; z-index: 3; }
+  .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
+  .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 4px; margin-right: 0; }
+  .card > .foot, .float > .composer { flex: none; padding: 0 14px var(--_pb); }
+  .card > .foot { margin-top: auto; }
+  .card .composer { margin-top: 10px; }
+  .card .nav { margin-top: 2px; gap: 20px; }
+  .card .nav .btn { font-size: 14px; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
+  .card .nav { gap: 16px; }
+  .card .nav { flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
+  .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
+  .box.one .who span { font-size: 16px; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
+  .card .nav .acts button.btn { font-size: 14px; }
+  .float { background: var(--_bg); box-shadow: var(--_shadow); }
+  .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
+  /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
+  /* 44 px to grab (iOS 44 pt, Android 48 dp), reaching 18 px above the sheet's edge; the bar and the layout stay as they were. */
+  .handle { display: block; flex: none; height: 44px; margin-top: -26px; touch-action: none; position: relative;
+          background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 26px / 36px 4px no-repeat; }
+  .list .tabs { touch-action: pan-x; }
+  .chatwin .tabs { touch-action: none; }
+  .list .items, .msgs, .card > .body { touch-action: pan-y; }
+  .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
 
-        :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
-        /* The bar steps down under the screen's edge while a sheet is open and rises back once it has gone, on the
-           sheets' own curve (it used to blink out and back). */
-        .bar { transition: transform .34s cubic-bezier(.32, .72, 0, 1), opacity .2s; }
-        :host([data-sheet]) .bar { transform: translateY(calc(100% + 16px + env(safe-area-inset-bottom, 0px))); opacity: 0; pointer-events: none;
-                                   transition: transform .24s cubic-bezier(.4, 0, 1, 1), opacity .2s .04s; }
-        :host([data-sheet]) .bar button { pointer-events: none; }
-        /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
-           sheet never scrolls the page. */
-        :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
-        .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
-        .card.out, .float.out { animation: lab-sheet-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
-        .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
-                font-size: 15px; z-index: 3; }
-        /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
-        .chatwin { height: var(--_sheet-max); transition: height .38s cubic-bezier(.32, .72, 0, 1); }
-        /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
-        .chatwin.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
-        /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
-        .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
-                      background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat, var(--_bg); }
-        .list .items { padding: 0 12px calc(10px + var(--_safe)); }
-        .chatwin .msgs { padding: 4px 12px 8px; }
-        .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
-        .chatwin .chat { padding: 6px 12px var(--_pb); }
-        .list .it { padding: 11px 8px; }
-        /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
-        .pin { scale: .8; }
-        /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
-        .msg .p { font-size: 15px; line-height: 21px; }
-        .msg .quote { font-size: 13.5px; }
-        .msg b, .msg .quote b { font-size: 12.5px; }
-        .pin.moved { scale: .64; }
-        /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
-        .bar > button { padding: 12px 14px; min-height: 44px; }
-        .more-menu { bottom: 72px; min-width: 200px; }
-        .more-menu button { padding: 11px 12px; font-size: 15px; }
-      }
-      /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
-      .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
-      .sel-chip { position: fixed; transform: translateX(-50%); border: 0; border-radius: var(--_radius); padding: 8px 14px; background: var(--_fg);
-                  color: var(--_bg); font: 500 14px/1 var(--_font, inherit); box-shadow: var(--_shadow); z-index: 4; }
-      /* Phones: the listening label is a light in the "list" button (steady: listening, blinking: working, grey:
-         nobody), the bar goes back to the bottom, and the send button is big enough for a thumb. */
-      @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
-        .listener { display: none !important; }
-        .bar { bottom: 16px !important; }
-        .hint { bottom: 64px !important; }
-        .chat-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
-        .chat-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
-        .chat-btn[data-agent=working]::before { background: rgb(36, 160, 70); }
-        .chat-btn[data-agent] { position: relative; }
-        .chat-btn[data-agent=working]::after { content: ''; position: absolute; left: 14px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
-          border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
-        .send { width: 36px; height: 36px; }
-        .send .arr { width: 17px; height: 15px; margin: auto; }
-      }
-      /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
-      @media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
-      [hidden] { display: none !important; }
-    </style>
-    <div class="scrim"></div>
-    <div class="layer"></div>
-    <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" role="status" hidden>click to comment \xB7 drag to mark an area \xB7 shift-drag to quote words \xB7 c chat \xB7 w new \xB7 1 comment \xB7 2 go \xB7 3 cursor \xB7 m hide</div>
-    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">\u2715</button></div><div class="items"></div></div>
-    <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
-    <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
-    <div class="bar">
-      <button class="secondary send-all" type="button" hidden></button>
-      <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
-      <button class="secondary new-prev" type="button" hidden aria-label="previous new comment">\u2039</button>
-      <button class="secondary list-btn" type="button" hidden>list</button>
-      <button class="secondary new-next" type="button" hidden aria-label="next new comment">\u203A</button>
-      <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
-      <button class="secondary go-btn" type="button" hidden title="1 comment \xB7 2 go: every click approves what it's on \xB7 3 cursor: clicks are the page's own">go</button>
-      <button class="toggle" type="button"></button>
-      <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">\u22EF</button>
-    </div>
-    <div class="more-menu" id="lab-more" hidden></div>`;
-  const layer = root.querySelector(".layer");
-  const hint = root.querySelector(".hint");
-  if (matchMedia("(pointer: coarse)").matches) hint.textContent = "hold to comment";
-  const toggleBtn = root.querySelector(".toggle");
-  const bar = root.querySelector(".bar");
-  const moreBtn = root.querySelector(".more");
-  const moreMenu = root.querySelector(".more-menu");
-  const copyBtn = root.querySelector(".copy-all");
-  const listBtn = root.querySelector(".list-btn");
-  const goBtn = root.querySelector(".go-btn");
-  const newPrev = root.querySelector(".new-prev");
-  const showDoneBtn = root.querySelector(".show-done");
-  const doneBtn = root.querySelector(".done-btn");
-  const LIST_WINDOW = false;
-  const tabTitle = { base: "" };
-  let showDone = store.get("lab-show-done") === "1";
-  const newNext = root.querySelector(".new-next");
-  const sendBtn = root.querySelector(".send-all");
-  const listEl = root.querySelector(".list");
-  const holdBtn = listEl.querySelector(".hold");
-  const chatEl = root.querySelector(".chatwin");
-  const chatBtn = root.querySelector(".chat-btn");
-  let listOpen = false;
-  let filter = "open";
-  let refit = () => {
-  };
-  let chatOpen = false;
-  const el = (tag, attrs = {}, text) => {
-    const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    if (text != null) node.textContent = text;
-    return node;
-  };
+  :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
+  /* The bar steps down under the screen's edge while a sheet is open and rises back once it has gone, on the
+     sheets' own curve (it used to blink out and back). */
+  .bar { transition: transform .34s cubic-bezier(.32, .72, 0, 1), opacity .2s; }
+  :host([data-sheet]) .bar { transform: translateY(calc(100% + 16px + env(safe-area-inset-bottom, 0px))); opacity: 0; pointer-events: none;
+                             transition: transform .24s cubic-bezier(.4, 0, 1, 1), opacity .2s .04s; }
+  :host([data-sheet]) .bar button { pointer-events: none; }
+  /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
+     sheet never scrolls the page. */
+  :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
+  .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
+  .card.out, .float.out { animation: lab-sheet-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+  .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
+          font-size: 15px; z-index: 3; }
+  /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
+  .chatwin { height: var(--_sheet-max); transition: height .38s cubic-bezier(.32, .72, 0, 1); }
+  /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
+  .chatwin.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
+  /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
+  .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
+                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat, var(--_bg); }
+  .list .items { padding: 0 12px calc(10px + var(--_safe)); }
+  .chatwin .msgs { padding: 4px 12px 8px; }
+  .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
+  .chatwin .chat { padding: 6px 12px var(--_pb); }
+  .list .it { padding: 11px 8px; }
+  /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
+  .pin { scale: .8; }
+  /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
+  .msg .p { font-size: 15px; line-height: 21px; }
+  .msg .quote { font-size: 13.5px; }
+  .msg b, .msg .quote b { font-size: 12.5px; }
+  .pin.moved { scale: .64; }
+  /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
+  .bar > button { padding: 12px 14px; min-height: 44px; }
+  .more-menu { bottom: 72px; min-width: 200px; }
+  .more-menu button { padding: 11px 12px; font-size: 15px; }
+}
+/* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
+.scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
+.sel-chip { position: fixed; transform: translateX(-50%); border: 0; border-radius: var(--_radius); padding: 8px 14px; background: var(--_fg);
+            color: var(--_bg); font: 500 14px/1 var(--_font, inherit); box-shadow: var(--_shadow); z-index: 4; }
+/* Phones: the listening label is a light in the "list" button (steady: listening, blinking: working, grey:
+   nobody), the bar goes back to the bottom, and the send button is big enough for a thumb. */
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
+  .listener { display: none !important; }
+  .bar { bottom: 16px !important; }
+  .hint { bottom: 64px !important; }
+  .chat-btn[data-agent]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--_accent); }
+  .chat-btn[data-agent=away]::before { background: var(--_muted); opacity: .5; }
+  .chat-btn[data-agent=working]::before { background: rgb(36, 160, 70); }
+  .chat-btn[data-agent] { position: relative; }
+  .chat-btn[data-agent=working]::after { content: ''; position: absolute; left: 14px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
+    border-radius: 50%; corner-shape: round; background: rgb(52, 199, 89); pointer-events: none; will-change: transform, opacity; animation: lab-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+  .send { width: 36px; height: 36px; }
+  .send .arr { width: 17px; height: 15px; margin: auto; }
+}
+/* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
+@media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
+[hidden] { display: none !important; }
+`;
+
+  // src/widget/anchoring.ts
+  var host;
+  var layer;
+  var el;
+  var store;
+  function bindAnchoring(deps) {
+    ({ host, layer, el, store } = deps);
+  }
   function selectorFor(node) {
     const parts = [];
     while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
@@ -547,9 +449,9 @@
     }
     return parts.length ? (parts[0].startsWith("#") ? "" : "body > ") + parts.join(" > ") : "body";
   }
-  const docWidth = () => Math.max(document.documentElement.scrollWidth, 1);
-  const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
-  const short = (v, n) => (v || "").replace(/\s+/g, " ").trim().slice(0, n);
+  var docWidth = () => Math.max(document.documentElement.scrollWidth, 1);
+  var clamp01 = (v) => Math.min(Math.max(v, 0), 1);
+  var short = (v, n) => (v || "").replace(/\s+/g, " ").trim().slice(0, n);
   function fileHint(url) {
     if (!url || url.startsWith("data:")) return "";
     try {
@@ -564,7 +466,7 @@
       return "";
     }
   }
-  const mediaSrc = (m) => {
+  var mediaSrc = (m) => {
     const src = m.currentSrc || m.getAttribute("src") || "";
     if (src && !src.startsWith("data:")) return new URL(src, location.href).href;
     const lazy = m.dataset?.src || (m.getAttribute("srcset") || m.dataset?.srcset || "").split(/\s+/)[0];
@@ -606,13 +508,13 @@
     }
     return { nw, nh };
   }
-  const PLAIN_NAME = /^[A-Z][A-Za-z0-9]{2,}$/;
-  const PLUMBING = /(Provider|Context|Consumer|Boundary|Slot|Portal|Fragment|Presence|Scope|Trap|Root)$/;
-  const variantOf = (p) => ["variant", "size", "tone", "intent", "kind"].flatMap((k) => (typeof p?.[k] === "string" || typeof p?.[k] === "number") && /^[\w.-]{1,20}$/.test(String(p[k])) ? [`${k}=${p[k]}`] : []).join(" ");
-  const repoPath = (url) => !/^[a-z-]+:\/\//i.test(url) ? url : decodeURIComponent(url.replace(/^[a-z-]+:\/\/\/?(\.\/)?/i, "/").replace(/^\/[^/]*:\d+/, "").split("?")[0]).replace(/^\/(@fs)?/, "").replace(/^\(app-pages-browser\)\/\.?\/?/, "");
+  var PLAIN_NAME = /^[A-Z][A-Za-z0-9]{2,}$/;
+  var PLUMBING = /(Provider|Context|Consumer|Boundary|Slot|Portal|Fragment|Presence|Scope|Trap|Root)$/;
+  var variantOf = (p) => ["variant", "size", "tone", "intent", "kind"].flatMap((k) => (typeof p?.[k] === "string" || typeof p?.[k] === "number") && /^[\w.-]{1,20}$/.test(String(p[k])) ? [`${k}=${p[k]}`] : []).join(" ");
+  var repoPath = (url) => !/^[a-z-]+:\/\//i.test(url) ? url : decodeURIComponent(url.replace(/^[a-z-]+:\/\/\/?(\.\/)?/i, "/").replace(/^\/[^/]*:\d+/, "").split("?")[0]).replace(/^\/(@fs)?/, "").replace(/^\(app-pages-browser\)\/\.?\/?/, "");
   function componentAt(el2) {
     const name = (t, d = 0) => d > 3 ? "" : typeof t === "function" ? t.displayName || t.name || "" : t && typeof t === "object" ? t.displayName || name(t.render || t.type, d + 1) : "";
-    const plain2 = (n) => PLAIN_NAME.test(n) && !PLUMBING.test(n);
+    const plain = (n) => PLAIN_NAME.test(n) && !PLUMBING.test(n);
     const srcOf = (f) => {
       const d = f?._debugSource;
       if (d?.fileName) return `${repoPath(String(d.fileName))}:${d.lineNumber || 0}`;
@@ -632,7 +534,7 @@
       for (let f = host2?.return, i = 0; f && parts.length < 2 && i < 80; f = f.return, i++) {
         if (typeof f.type === "string") continue;
         const n = name(f.type);
-        if (!plain2(n)) continue;
+        if (!plain(n)) continue;
         if (!parts.length) usedAt = srcOf(f);
         const v = variantOf(f.memoizedProps);
         parts.push(v ? `${n} ${v}` : n);
@@ -667,10 +569,10 @@
       if (v && v !== NONE && !names.has(v)) names.set(v, prop);
     }
     wrap.remove();
-    const say2 = (v) => names.has(v) ? `${names.get(v)} ${v}` : v;
+    const say = (v) => names.has(v) ? `${names.get(v)} ${v}` : v;
     const out = [];
-    if (!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor)) out.push(`fill ${say2(cs.backgroundColor)}`);
-    out.push(`text ${say2(cs.color)} ${cs.fontSize}/${cs.fontWeight}`);
+    if (!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor)) out.push(`fill ${say(cs.backgroundColor)}`);
+    out.push(`text ${say(cs.color)} ${cs.fontSize}/${cs.fontWeight}`);
     if (parseFloat(cs.borderTopLeftRadius)) out.push(`radius ${cs.borderTopLeftRadius}`);
     return short(out.join(", "), 200);
   }
@@ -757,12 +659,12 @@
       else if (kr.top >= cy && !below) below = k;
       else if (kr.top < cy && kr.bottom > cy) return null;
     }
-    const say2 = (k) => {
+    const say = (k) => {
       if (!k) return void 0;
       const h = k.matches("h1, h2, h3, h4, h5, h6") ? k : k.querySelector("h1, h2, h3, h4, h5, h6");
       return short(`${openingTag(k)} "${short((h || k).textContent, 60)}"`, 160);
     };
-    return above || below ? { above: say2(above), below: say2(below) } : null;
+    return above || below ? { above: say(above), below: say(below) } : null;
   }
   function schemeAt(target) {
     for (let n = target; n; n = n.parentElement) {
@@ -943,23 +845,24 @@
       const r = media.getBoundingClientRect();
       anchor.kind = media.localName === "img" ? "image" : media.localName;
       if (media.localName === "img" || media.localName === "video") {
+        const img = media, video = media;
         anchor.src = mediaSrc(media);
         anchor.file = fileHint(anchor.src);
-        if (media.alt) anchor.alt = short(media.alt, 120);
+        if (img.alt) anchor.alt = short(img.alt, 120);
         const local = untransform(media, clientX, clientY);
         const [box, px, py] = local ? [local.rect, local.x, local.y] : [r, clientX, clientY];
-        const spot = media.localName === "img" ? naturalSpot(media, box, px, py, fileSize(media).nw, fileSize(media).nh) : naturalSpot(media, box, px, py, media.videoWidth, media.videoHeight);
+        const spot = media.localName === "img" ? naturalSpot(media, box, px, py, fileSize(media).nw, fileSize(media).nh) : naturalSpot(media, box, px, py, video.videoWidth, video.videoHeight);
         if (spot) Object.assign(anchor, spot);
         if (local) anchor.transform = short(getComputedStyle(media).transform, 80);
-        if (media.localName === "img" && /\.(gif|webp|apng)(\?|#|$)/i.test(media.currentSrc || media.src)) {
-          const entry = performance.getEntriesByName(media.currentSrc || media.src)[0];
+        if (media.localName === "img" && /\.(gif|webp|apng)(\?|#|$)/i.test(img.currentSrc || img.src)) {
+          const entry = performance.getEntriesByName(img.currentSrc || img.src)[0];
           const since = entry ? (performance.now() - entry.responseEnd) / 1e3 : performance.now() / 1e3;
           anchor.shownFor = Math.round(since * 10) / 10;
         }
         if (media.localName === "video") {
-          anchor.time = Math.round(media.currentTime * 10) / 10;
-          if (Number.isFinite(media.duration)) anchor.duration = Math.round(media.duration * 10) / 10;
-          if (!anchor.file && media.poster) anchor.file = fileHint(media.poster);
+          anchor.time = Math.round(video.currentTime * 10) / 10;
+          if (Number.isFinite(video.duration)) anchor.duration = Math.round(video.duration * 10) / 10;
+          if (!anchor.file && video.poster) anchor.file = fileHint(video.poster);
         }
       } else {
         anchor.time = Math.round(performance.now() / 100) / 10;
@@ -1051,12 +954,13 @@
     }
     return best > 0 || !atPath ? found : atPath;
   }
+  var wordCache = null;
   function wordSpot(anchor) {
     const m = /^(?:…)?(.*?)\[([^\]]+)\](.*?)(?:…)?$/s.exec(anchor.text || "");
     if (!m) return null;
     const before = m[1].replace(/\s+/g, " ").slice(-24);
     const word = m[2];
-    if (!wordSpot.cache || performance.now() - wordSpot.cache.at > 400) {
+    if (!wordCache || performance.now() - wordCache.at > 400) {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (t) => host.contains(t.parentNode) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
       let text2 = "";
       const at2 = [];
@@ -1065,9 +969,9 @@
         for (let i2 = 0; i2 < v.length; i2++) at2.push([t, i2]);
         text2 += v;
       }
-      wordSpot.cache = { at: performance.now(), text: text2, map: at2 };
+      wordCache = { at: performance.now(), text: text2, map: at2 };
     }
-    const { text, map: at } = wordSpot.cache;
+    const { text, map: at } = wordCache;
     let i = text.indexOf(before + word);
     if (i < 0) return { gone: true };
     i += before.length;
@@ -1081,16 +985,16 @@
     const r = range.getBoundingClientRect();
     return r.width || r.height ? { left: r.left + scrollX + Math.min(6, r.width / 2), top: r.top + scrollY + r.height / 2 } : { gone: true };
   }
-  let pageEnd = { at: -Infinity, y: 0 };
-  const inPage = (y, h = 0) => {
+  var pageEnd = { at: -Infinity, y: 0 };
+  var inPage = (y, h = 0) => {
     if (performance.now() - pageEnd.at > 300) {
       const bottoms = [...document.body.children].filter((c) => c !== host && !host.contains(c)).map((c) => c.getBoundingClientRect().bottom + scrollY);
       pageEnd = { at: performance.now(), y: Math.max(innerHeight, ...bottoms) };
     }
     return Math.max(0, Math.min(y, pageEnd.y - h - 40));
   };
-  const pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
-  const EDGE = 10;
+  var pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
+  var EDGE = 10;
   function position(anchor) {
     const at = spotOf(anchor);
     return at.moved ? { ...at, left: EDGE } : at;
@@ -1150,14 +1054,14 @@
     }
     return null;
   }
-  const nameLine = (name, done) => {
+  var nameLine = (name, done) => {
     const b = el("b", {}, String(name || "").replace(/\s*·\s*session\s+\S+$/i, ""));
     if (done) b.append(el("span", { class: "mark done", role: "img", "aria-label": "done" }, "\u2713"));
     return b;
   };
-  const DRAFT_MODE = false;
-  const drafting = () => DRAFT_MODE && store.get("lab-hold") === "1";
-  const linked = (text) => {
+  var DRAFT_MODE = false;
+  var drafting = () => DRAFT_MODE && store.get("lab-hold") === "1";
+  var linked = (text) => {
     const out = [];
     let at = 0;
     for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]/g)) {
@@ -1170,8 +1074,8 @@
     if (at < text.length) out.push(document.createTextNode(text.slice(at)));
     return out;
   };
-  const sentences = (t) => t.split(/(?<=[.!?])\s+(?=["'([]?[A-Z0-9])/);
-  const readable = (text) => {
+  var sentences = (t) => t.split(/(?<=[.!?])\s+(?=["'([]?[A-Z0-9])/);
+  var readable = (text) => {
     const blocks = [];
     for (const [n, para] of String(text || "").trim().split(/\n\s*\n/).entries()) {
       const lines = para.split("\n");
@@ -1196,19 +1100,19 @@ ${line}`;
       return node;
     });
   };
-  const canMark = typeof Highlight === "function" && Boolean(CSS.highlights);
-  const markQuote = (anchor) => {
+  var canMark = typeof Highlight === "function" && Boolean(CSS.highlights);
+  var markQuote = (anchor) => {
     if (!canMark) return;
     const range = anchor && quoteRange(anchor);
     if (range) CSS.highlights.set("lab-quote", new Highlight(range));
     else CSS.highlights.delete("lab-quote");
   };
-  const zoneEl = (cls) => {
+  var zoneEl = (cls) => {
     const z = el("div", { class: `zone ${cls}` });
     z.innerHTML = '<svg aria-hidden="true"><rect class="ring" width="100%" height="100%"/><rect class="dots" width="100%" height="100%"/></svg>';
     return z;
   };
-  const drawZone = (box, cls) => {
+  var drawZone = (box, cls) => {
     if (!box) return;
     const z = zoneEl(cls);
     Object.assign(z.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
@@ -1302,2050 +1206,2163 @@ ${line}`;
     }
     return anchor;
   }
-  const headers = () => ({ "content-type": "application/json", ...adminToken ? { "x-lab-admin": adminToken } : {} });
-  let gone = false;
-  let loaded = false;
-  let retried = false;
-  const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll("textarea")].some((t) => t.value.trim());
-  async function load() {
-    try {
-      const res = await fetch(`${API}?page=${encodeURIComponent(page)}`, { headers: headers(), cache: "no-store" });
-      if (res.status === 404 && !loaded && script?.dataset.enable !== "always") {
-        if (!retried) {
-          retried = true;
-          setTimeout(load, 1500);
+
+  // src/comments.js
+  /*!
+   * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
+   * https://github.com/leonidstern/labfb · MIT
+   * Comments are off by default; the bar button or c turns them on (remembered per browser). When on, click anywhere that isn't a link or control to pin one (alt/option-click pins on those too). c (or the bar button) hides
+   * and shows them; esc or a click outside closes an open comment. Dragging (mouse/pen) marks an area instead of a point.
+   * Include on a page served through your lab domain:
+   *   <script src="https://lab.example.com/_lab/comments.js" defer><\/script>
+   * The layer only turns on when the page is opened on the host the script is loaded from (or data-host),
+   * so the deployment's own address and local dev stay clean. data-enable="always" turns it on everywhere.
+   * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
+   */
+  (() => {
+    const script = document.currentScript;
+    const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
+    const enabled = location.hostname === labHost || script?.dataset.enable === "always";
+    if (!enabled || window.__labComments) return;
+    window.__labComments = true;
+    const API = script?.dataset.api || "/_lab/api/comments";
+    const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, "") || "/";
+    let page = pageNow();
+    const store2 = {
+      get: (k) => {
+        try {
+          return localStorage.getItem(k) || "";
+        } catch {
+          return "";
+        }
+      },
+      set: (k, v) => {
+        try {
+          localStorage.setItem(k, v);
+        } catch {
+        }
+      }
+    };
+    const scopeOf = (key) => key.split(".").length === 3 ? key.split(".")[1] : "";
+    const adminParam = new URLSearchParams(location.hash.slice(1)).get("lab-admin") || new URLSearchParams(location.search).get("lab-admin");
+    if (adminParam) {
+      const scope = scopeOf(adminParam);
+      store2.set(scope ? `lab-admin:${scope}` : "lab-admin", adminParam);
+      const url = new URL(location.href);
+      url.searchParams.delete("lab-admin");
+      if (/lab-admin=/.test(url.hash)) url.hash = "";
+      history.replaceState(null, "", url);
+    }
+    const adminToken = script?.dataset.admin || store2.get(`lab-admin:${page.split("/")[1] || ""}`) || store2.get("lab-admin:*") || store2.get("lab-admin");
+    let comments = [];
+    let isAdmin = false;
+    let on = store2.get("lab-on") ? store2.get("lab-on") === "1" : script?.dataset.on === "1";
+    let openId = null;
+    let draft = null;
+    const host2 = document.createElement("div");
+    host2.setAttribute("data-lab-comments", "");
+    host2.style.cssText = "position:absolute;top:0;left:0;width:0;height:0;z-index:2147483000;";
+    const root = host2.attachShadow({ mode: "open" });
+    root.innerHTML = `
+    <style>${styles_default}</style>
+    <div class="scrim"></div>
+    <div class="layer"></div>
+    <button class="sel-chip" type="button" hidden>Comment</button>
+    <div class="hint" role="status" hidden>click to comment \xB7 drag to mark an area \xB7 shift-drag to quote words \xB7 c chat \xB7 w new \xB7 1 comment \xB7 2 go \xB7 3 cursor \xB7 m hide</div>
+    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">\u2715</button></div><div class="items"></div></div>
+    <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
+    <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
+    <div class="bar">
+      <button class="secondary send-all" type="button" hidden></button>
+      <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
+      <button class="secondary new-prev" type="button" hidden aria-label="previous new comment">\u2039</button>
+      <button class="secondary list-btn" type="button" hidden>list</button>
+      <button class="secondary new-next" type="button" hidden aria-label="next new comment">\u203A</button>
+      <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
+      <button class="secondary go-btn" type="button" hidden title="1 comment \xB7 2 go: every click approves what it's on \xB7 3 cursor: clicks are the page's own">go</button>
+      <button class="toggle" type="button"></button>
+      <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">\u22EF</button>
+    </div>
+    <div class="more-menu" id="lab-more" hidden></div>`;
+    const layer2 = root.querySelector(".layer");
+    const hint = root.querySelector(".hint");
+    if (matchMedia("(pointer: coarse)").matches) hint.textContent = "hold to comment";
+    const toggleBtn = root.querySelector(".toggle");
+    const bar = root.querySelector(".bar");
+    const moreBtn = root.querySelector(".more");
+    const moreMenu = root.querySelector(".more-menu");
+    const copyBtn = root.querySelector(".copy-all");
+    const listBtn = root.querySelector(".list-btn");
+    const goBtn = root.querySelector(".go-btn");
+    const newPrev = root.querySelector(".new-prev");
+    const showDoneBtn = root.querySelector(".show-done");
+    const doneBtn = root.querySelector(".done-btn");
+    const LIST_WINDOW = false;
+    const tabTitle = { base: "" };
+    let showDone = store2.get("lab-show-done") === "1";
+    const newNext = root.querySelector(".new-next");
+    const sendBtn = root.querySelector(".send-all");
+    const listEl = root.querySelector(".list");
+    const holdBtn = listEl.querySelector(".hold");
+    const chatEl = root.querySelector(".chatwin");
+    const chatBtn = root.querySelector(".chat-btn");
+    let listOpen = false;
+    let filter = "open";
+    let refit = () => {
+    };
+    let chatOpen = false;
+    const el2 = (tag, attrs = {}, text) => {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      if (text != null) node.textContent = text;
+      return node;
+    };
+    bindAnchoring({ host: host2, layer: layer2, el: el2, store: store2 });
+    const headers = () => ({ "content-type": "application/json", ...adminToken ? { "x-lab-admin": adminToken } : {} });
+    let gone = false;
+    let loaded = false;
+    let retried = false;
+    const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll("textarea")].some((t) => t.value.trim());
+    async function load() {
+      try {
+        const res = await fetch(`${API}?page=${encodeURIComponent(page)}`, { headers: headers(), cache: "no-store" });
+        if (res.status === 404 && !loaded && script?.dataset.enable !== "always") {
+          if (!retried) {
+            retried = true;
+            setTimeout(load, 1500);
+            return;
+          }
+          gone = true;
+          on = false;
+          document.documentElement.classList.remove("lab-pinning");
+          host2.remove();
+          fonts.remove();
           return;
         }
-        gone = true;
-        on = false;
-        document.documentElement.classList.remove("lab-pinning");
-        host.remove();
-        fonts.remove();
-        return;
-      }
-      if (!res.ok) throw new Error(res.status);
-      const data = await res.json();
-      comments = data.comments || [];
-      isAdmin = Boolean(data.admin);
-      loaded = true;
-    } catch {
-    }
-    shownAgain();
-  }
-  async function loadChanges(since) {
-    try {
-      const url = new URL("/_lab/api/changes", new URL(API, location.href));
-      url.search = new URLSearchParams({ page, since: String(since) });
-      const res = await fetch(url, { cache: "no-store" });
-      const data = res.ok ? await res.json() : { full: true };
-      if (data.full || !loaded) return load();
-      const gone2 = new Set(data.del);
-      const fresh = new Map(data.set.map((c) => [c.id, c]));
-      comments = comments.filter((c) => !gone2.has(c.id)).map((c) => fresh.get(c.id) || c);
-      const had = new Set(comments.map((c) => c.id));
-      for (const c of data.set) if (!had.has(c.id)) comments.push(c);
-      comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    } catch {
-      return load();
-    }
-    shownAgain();
-  }
-  function shownAgain() {
-    if (!typed() && !grabbing) render();
-    else {
-      if (openCard?.isConnected) openCard.sync();
-      if (chatOpen) drawChat();
-      drawList();
-    }
-  }
-  let goMode = store.get("lab-go") === "1";
-  let cursorMode = store.get("lab-cursor") === "1";
-  const setCursor = (v) => {
-    cursorMode = v;
-    store.set("lab-cursor", v ? "1" : "");
-    goBtn.classList.toggle("cursor", v);
-    goBtn.classList.toggle("on", goMode && !v);
-    goFace();
-    document.documentElement.classList.toggle("lab-pinning", on && !v);
-    document.documentElement.classList.toggle("lab-go", on && goMode && !v);
-    recheck();
-  };
-  const setGo = (v) => {
-    if (cursorMode) setCursor(false);
-    goMode = v;
-    queueMicrotask(goFace);
-    store.set("lab-go", v ? "1" : "");
-    goBtn.classList.toggle("on", v);
-    goBtn.setAttribute("aria-pressed", String(v && !cursorMode));
-    document.documentElement.classList.toggle("lab-go", on && v);
-    ptr.classList.toggle("go", v);
-    recheck();
-  };
-  function begin(anchor) {
-    const name = store.get("lab-name").trim();
-    if (!goMode || !name) {
-      draft = { anchor };
-      return render();
-    }
-    if (drafting()) {
-      store.set(heldKey(), JSON.stringify([...held(), { name, text: "go", anchor }]));
-      return render();
-    }
-    send({ name, text: "go", anchor }).then(({ comment, edit }) => {
-      if (edit) store.set(`lab-edit:${comment.id}`, edit);
-      comments.push(comment);
-      markSeen([comment]);
-      posted = comment.id;
-      render();
-    }).catch(() => (draft = { anchor }, render()));
-  }
-  async function send(payload) {
-    let res = null;
-    if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
-    for (let tries = 0; !res; tries++) {
-      try {
-        res = await fetch(API, { method: "POST", headers: headers(), body: JSON.stringify({ page, ...payload }) });
+        if (!res.ok) throw new Error(res.status);
+        const data = await res.json();
+        comments = data.comments || [];
+        isAdmin = Boolean(data.admin);
+        loaded = true;
       } catch {
-        if (tries >= 150) throw new Error("couldn't reach the lab; your text is still here");
-        await new Promise((r) => setTimeout(r, 2e3));
       }
-    }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `could not save (${res.status})`);
-    if (data.comment && !payload.parent && !payload.action && payload.anchor?.kind !== "page") placed.push(data.comment.id);
-    return data;
-  }
-  const placed = [];
-  async function undoLast() {
-    const id = placed.pop();
-    const c = id && comments.find((x) => x.id === id);
-    if (!c) return;
-    const ownKey = store.get(`lab-edit:${id}`);
-    try {
-      if (isAdmin) {
-        await send({ action: "delete", id });
-        comments = comments.filter((x) => x.id !== id && x.parent !== id);
-      } else if (ownKey) {
-        const { comment } = await send({ action: "resolve", id, edit: ownKey });
-        Object.assign(c, comment);
-      } else return void placed.push(id);
-    } catch {
-      return void placed.push(id);
-    }
-    if (openId === id) openId = null;
-    render();
-    say(`took back ${/^go$/i.test(c.text.trim()) ? "a go" : "a pin"} \xB7 ${placed.length ? "again for the one before" : "nothing more to take back"}`);
-  }
-  function say(words) {
-    say.was ??= hint.textContent;
-    hint.textContent = words;
-    hint.hidden = false;
-    clearTimeout(say.t);
-    say.t = setTimeout(() => {
-      hint.hidden = true;
-      hint.textContent = say.was;
-      say.was = void 0;
-    }, 1800);
-  }
-  const agentLink = () => new URL("/_lab/agent" + page, new URL(API, location.href)).href;
-  async function copy(textPromise, button) {
-    const textValue = await textPromise;
-    try {
-      await navigator.clipboard.writeText(textValue);
-    } catch {
-      const area = document.createElement("textarea");
-      area.value = textValue;
-      area.style.cssText = "position:fixed;opacity:0;";
-      document.body.append(area);
-      area.select();
-      document.execCommand("copy");
-      area.remove();
-    }
-    if (moreMenu.contains(button)) return say("link copied");
-    const label = button.textContent;
-    button.style.width = `${button.getBoundingClientRect().width}px`;
-    button.style.justifyContent = "center";
-    button.textContent = "copied";
-    setTimeout(() => {
-      button.textContent = label;
-      button.style.width = button.style.justifyContent = "";
-    }, 1400);
-  }
-  const threads = () => comments.filter((c) => !c.parent);
-  const heldKey = () => `lab-held:${page}`;
-  const held = () => {
-    try {
-      return JSON.parse(store.get(heldKey()) || "[]");
-    } catch {
-      return [];
-    }
-  };
-  const listed = () => threads().filter((c) => c.anchor?.kind !== "page").filter((c) => filter === "new" ? unread(c).length : filter === "open" ? !c.resolved : filter === "resolved" ? c.resolved : mine(c)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const onWhat = (c) => {
-    const a = c.anchor || {};
-    let w = a.quote?.exact || "";
-    let n = null;
-    try {
-      n = !w && a.selector ? document.querySelector(a.selector) : null;
-    } catch {
-    }
-    for (let up = 0; n && n !== document.body && up < 5; n = n.parentElement, up++) {
-      const t = n.innerText?.replace(/\s+/g, " ").trim() || "";
-      if (t.length >= 12) {
-        w = t;
-        break;
-      }
-    }
-    w = (w || a.text || a.section || "").replace(/\s+/g, " ").trim();
-    return w ? `"${w.length > 40 ? `${w.slice(0, 39)}\u2026` : w}"` : "";
-  };
-  const isPage = (c) => c.anchor?.kind === "page";
-  let stepping = false;
-  let keepKeys = false;
-  const goTo = (c, keys = false) => {
-    stepping = Boolean(openId);
-    keepKeys = stepping && (keys || root.activeElement?.localName === "textarea");
-    openId = c.id;
-    draft = null;
-    if (coarse) listOpen = false;
-    render();
-    const pinTop = position(c.anchor || {}).top;
-    let top = pinTop - Math.max(40, coarse && openCard?.isConnected ? (innerHeight - openCard.offsetHeight) / 2 : innerHeight / 3);
-    if (!coarse && openCard?.isConnected) {
-      const bottom = openCard.getBoundingClientRect().bottom + scrollY;
-      const tall = bottom - pinTop + 28;
-      top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
-    }
-    if (coarse) {
-      const de = document.documentElement;
-      const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
-      const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
-      de.style.setProperty("--lab-room", `${room}px`);
-      de.classList.toggle("lab-room", room > 0);
-    }
-    scrollTo({ top: Math.max(0, top), behavior: still.matches ? "auto" : "smooth" });
-  };
-  const isDone = (c) => c.resolved || workState(c)[0] === "done";
-  const keyWord = (before, key, after) => {
-    const w = el("span", { class: "kw" });
-    w.append(before, el("span", { class: "mn", "aria-hidden": "true" }, `(${key})`), after);
-    return w;
-  };
-  function placeBar() {
-    const inMenu = on ? [doneBtn, copyBtn, toggleBtn] : [];
-    for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
-    if (!on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
-    if (!on) root.querySelector(".left").append(copyBtn);
-    moreBtn.hidden = !on;
-    if (!on && !moreMenu.hidden) setMenu(false);
-    let first = true;
-    for (const b of bar.children) {
-      b.classList.toggle("first", first && !b.hidden);
-      if (!b.hidden) first = false;
-    }
-  }
-  function goFace() {
-    const gp = goBtn.querySelector(".gp");
-    if (gp) gp.textContent = !goMode && !cursorMode ? initial(store.get("lab-name")) || "+" : "go";
-    goBtn.setAttribute("aria-label", `a click places: ${cursorMode ? "nothing (cursor)" : goMode ? "go" : "a comment"}`);
-    goBtn.setAttribute("aria-keyshortcuts", "1 2 3");
-  }
-  function drawList() {
-    const all = threads();
-    listBtn.hidden = !on || !coarse && !all.length && !held().length;
-    goBtn.hidden = !on;
-    if (!goBtn.firstElementChild) goBtn.replaceChildren(el("span", { class: "gp" }, "go"), el("kbd", { "aria-hidden": "true" }, "1/2/3"));
-    goFace();
-    goBtn.classList.toggle("on", goMode && !cursorMode);
-    goBtn.classList.toggle("cursor", cursorMode);
-    goBtn.setAttribute("aria-pressed", String(goMode && !cursorMode));
-    const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
-    listBtn.replaceChildren(document.createTextNode(freshAll ? `list \xB7 ${freshAll} new` : "list"), el("kbd", { "aria-hidden": "true" }, "l"));
-    newPrev.hidden = newNext.hidden = !on || !all.some((c) => !isPage(c) && unread(c).length);
-    if (!LIST_WINDOW) {
-      newPrev.hidden = newNext.hidden = true;
-      listBtn.hidden = !on;
-      {
-        listBtn.replaceChildren(coarse ? "new" : keyWord("ne", "w", ""), el("b", { class: `cnt${freshAll ? "" : " zero"}` }, String(freshAll)));
-        listBtn.setAttribute("aria-label", `next new comment, ${freshAll} new`);
-        listBtn.setAttribute("aria-keyshortcuts", "w");
-      }
-      listBtn.title = "next new comment: W, or Control-D while typing (Shift for the one before)";
-      listBtn.disabled = !freshAll;
-      listBtn.classList.toggle("quiet", !freshAll);
-      const doneCount2 = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
-      doneBtn.hidden = !on;
-      doneBtn.disabled = !doneCount2 && !showDone;
-      doneBtn.classList.toggle("quiet", doneBtn.disabled);
-      doneBtn.replaceChildren(showDone ? `hide done \xB7 ${doneCount2}` : `show done \xB7 ${doneCount2}`, el("kbd", { "aria-hidden": "true" }, "d"));
-      doneBtn.setAttribute("aria-keyshortcuts", "d");
-    }
-    placeBar();
-    const tabNew = all.reduce((n, c) => n + unread(c).length, 0);
-    if (!tabTitle.base || !document.title.startsWith("(")) tabTitle.base = document.title.replace(/^\(\d+\) /, "");
-    const want = tabNew ? `(${tabNew}) ${tabTitle.base}` : tabTitle.base;
-    if (document.title !== want) document.title = want;
-    listBtn.classList.toggle("has-new", freshAll > 0);
-    const h = held().length;
-    sendBtn.hidden = !h;
-    sendBtn.textContent = `send ${h} draft${h === 1 ? "" : "s"}`;
-    listEl.hidden = !on || !listOpen;
-    if (listEl.hidden) return;
-    for (const b of listEl.querySelectorAll("[data-f]")) b.classList.toggle("on", b.dataset.f === filter);
-    const fresh = all.filter((c) => !isPage(c) && unread(c).length).length;
-    listEl.querySelector('[data-f="new"]').textContent = fresh ? `new \xB7 ${fresh}` : "new";
-    for (const f of ["work", "resolved", "mine"]) listEl.querySelector(`[data-f="${f}"]`).hidden = true;
-    holdBtn.hidden = !DRAFT_MODE;
-    const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
-    showDoneBtn.hidden = !doneCount;
-    showDoneBtn.textContent = showDone ? `hide done \xB7 ${doneCount}` : `show done \xB7 ${doneCount}`;
-    holdBtn.classList.toggle("on", drafting());
-    if (filter === "work") return listEl.querySelector(".items").replaceChildren(...workItems());
-    const items = listed().map((c) => {
-      const b = el("button", { class: `it${openId === c.id ? " cur" : ""}`, type: "button" });
-      b.append(document.createTextNode(`${c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), ...onWhat(c) ? [el("span", {}, `on ${onWhat(c)} `)] : [], el("span", {}, `\xB7 ${c.name}${c.quick === "done" ? " \xB7 done by quick" : !c.resolved && isDone(c) ? " \xB7 \u2705 done" : ""}`), ...unread(c).length ? [" ", el("span", { class: "tag" }, `${unread(c).length} new`)] : []);
-      b.addEventListener("click", () => goTo(c));
-      return b;
-    });
-    listEl.querySelector(".items").replaceChildren(...items.length ? items : [el("div", { class: "none" }, "nothing here")]);
-  }
-  const ago = (iso) => {
-    const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 6e4));
-    return m < 1 ? "just now" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
-  };
-  const workState = (c) => {
-    const thread = [c, ...repliesOf(c.id)];
-    const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || "";
-    const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
-    const answered = answer && answer.createdAt > lastPerson;
-    if (c.resolved || c.quick === "done" || answered && /^done\b/i.test(answer.text)) return ["done", answered ? answer.createdAt : c.createdAt];
-    if (answered && /^on it\b/i.test(answer.text)) return ["now", answer.createdAt];
-    if (!answered && c.handedAt && c.handedAt >= lastPerson) return ["now", c.handedAt];
-    return answered ? [null, ""] : ["next", lastPerson];
-  };
-  function workItems() {
-    const today = (/* @__PURE__ */ new Date()).toDateString();
-    const now = [];
-    const next = [];
-    const done = [];
-    for (const c of comments.filter((x) => !x.parent)) {
-      const [state, at] = workState(c);
-      if (state === "now") now.push([c, at]);
-      else if (state === "next") next.push([c, at]);
-      else if (state === "done" && new Date(at).toDateString() === today) done.push([c, at]);
-    }
-    const row = ([c, at], when) => {
-      const b = el("button", { class: `it${openId === c.id ? " cur" : ""}`, type: "button" });
-      b.append(document.createTextNode(`${isPage(c) ? "chat" : c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), el("span", {}, `\xB7 ${when(at)}`));
-      b.addEventListener("click", () => isPage(c) ? (chatOpen = true, listOpen = false, render()) : goTo(c));
-      return b;
-    };
-    const part = (title, list, when, newest = false) => list.length ? [el("div", { class: "group" }, `${title} \xB7 ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
-    const out = [
-      ...part("Now", now, (at) => `on it ${ago(at)}`.replace("on it just now", "just started")),
-      ...part("Next", next, (at) => `sent ${ago(at)} ago`.replace("just now ago", "just now")),
-      ...part("Done today", done, (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), true)
-    ];
-    return out.length ? out : [el("div", { class: "none" }, "nothing in progress on this page")];
-  }
-  const stampOf = (m, root2, prefix = "") => {
-    const at = new Date(m.createdAt);
-    const time = at.toDateString() === (/* @__PURE__ */ new Date()).toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString([], { day: "numeric", month: "short" });
-    const stamp = el("span", { class: "stamp" });
-    stamp.append(el("span", { class: "tm" }, prefix + time));
-    if (mine(m) && !m.session) {
-      const thread = root2 ? [root2, ...repliesOf(root2.id)] : [m];
-      const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
-      const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
-      if (!answered && latest && root2 && workState(root2)[0] === "now") {
-        stamp.classList.add("busy");
-        stamp.append(el("span", { class: "ring", role: "img", "aria-label": "the agent is on it" }));
-      } else if (answered) {
-        stamp.classList.add("ans");
-        stamp.append(el("span", { class: "tick", role: "img", "aria-label": "answered" }, "\u2713"));
-      } else {
-        const got = root2?.handedAt && root2.handedAt >= m.createdAt;
-        stamp.append(el("span", { class: `tick${got ? " got" : ""}`, role: "img", "aria-label": got ? "delivered to the agent" : "sent" }, got ? "\u2713\u2713" : "\u2713"));
-      }
-    }
-    return stamp;
-  };
-  let replyTo = null;
-  let newFrom = null;
-  function drawChat() {
-    const byId = new Map(comments.map((c) => [c.id, c]));
-    const msgs = comments.filter((c) => isPage(c) || c.parent && isPage(byId.get(c.parent) || {})).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(-150);
-    if (on && chatOpen && chatEl.hidden) newFrom = msgs.find(isNew)?.id || null;
-    if (!chatOpen) newFrom = null;
-    if (on && chatOpen) markSeen(msgs.filter(isNew));
-    const fresh = msgs.filter(isNew).length;
-    chatBtn.hidden = !on;
-    {
-      chatBtn.replaceChildren(coarse ? "chat" : keyWord("", "c", "hat"), el("b", { class: `cnt${fresh ? "" : " zero"}` }, String(fresh)));
-      chatBtn.setAttribute("aria-label", `chat, ${fresh} new`);
-      chatBtn.setAttribute("aria-keyshortcuts", "c");
-    }
-    chatBtn.classList.toggle("has-new", fresh > 0);
-    placeBar();
-    const opening = chatEl.hidden;
-    chatEl.hidden = !on || !chatOpen;
-    if (chatEl.hidden) chatEl.classList.remove("full");
-    if (chatEl.hidden && chatEl.contains(root.activeElement)) root.activeElement.blur();
-    if (chatEl.hidden) return;
-    const box = chatEl.querySelector(".msgs");
-    const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-    const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
-    box.replaceChildren(...msgs.flatMap((m) => {
-      const root2 = m.parent ? byId.get(m.parent) : m;
-      const b = el("div", { class: `msg${mine(m) && !m.session ? " mine" : ""}${root2 && replyTo === root2.id ? " to" : ""}${before.size && !before.has(m.id) ? " fresh" : ""}`, "data-id": m.id });
-      const isDone2 = Boolean(root2?.resolved || /^done\b/i.test(m.text));
-      b.append(nameLine(m.name, isDone2));
-      if (m.parent && root2) {
-        const q = el("div", { class: "quote" });
-        q.append(el("b", {}, String(root2.name || "").replace(/\s*·\s*session\s+\S+$/i, "")), document.createTextNode(root2.text.replace(/\s+/g, " ").slice(0, 90)));
-        q.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const box2 = chatEl.querySelector(".msgs");
-          const to = box2.querySelector(`[data-id="${root2.id}"]`);
-          if (!to) return;
-          box2.scrollTo({ top: to.offsetTop - box2.offsetTop - 12, behavior: still.matches ? "auto" : "smooth" });
-          to.animate?.([{ boxShadow: "0 0 0 2px rgb(52,199,89)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
-        });
-        b.append(q);
-      }
-      b.append(...readable(m.text));
-      b.append(stampOf(m, root2));
-      return m.id === newFrom && m !== msgs[0] ? [el("div", { class: "newline" }, "new"), b] : [b];
-    }));
-    const strip = chatEl.querySelector(".replying");
-    const target = replyTo && byId.get(replyTo);
-    strip.hidden = !target;
-    if (target) {
-      const x = el("button", { type: "button", title: "about the page instead" }, "\u2715");
-      x.addEventListener("click", () => (replyTo = null, drawChat()));
-      strip.replaceChildren(document.createTextNode(`\u21A9 ${target.name}: ${target.text.replace(/\s+/g, " ").slice(0, 40)}`), x);
-    }
-    if (!box.firstChild) box.append(el("div", { class: "none" }, "say something about the page as a whole"));
-    const chat = chatEl.querySelector(".chat");
-    if (!chat.firstChild)
-      chat.append(
-        composer({
-          placeholder: "message",
-          onSubmit: async (name, text) => {
-            const { comment } = await send(
-              replyTo ? { name, text, parent: replyTo } : { name, text, anchor: { kind: "page", width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } }
-            );
-            const answered = replyTo && comments.find((x) => x.id === replyTo);
-            if (answered?.resolved) answered.resolved = false;
-            replyTo = null;
-            comments.push(comment);
-            markSeen([comment]);
-            box.scrollTop = box.scrollHeight;
-            render();
-            return { keep: true };
-          }
-        })
-      );
-    chat.querySelector("textarea").placeholder = target ? "reply" : "message";
-    if (atEnd) box.scrollTop = box.scrollHeight;
-  }
-  const numberOf = (c) => comments.filter((x) => !x.parent && !x.resolved).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).indexOf(c) + 1;
-  const seenKey = () => `lab-seen:${page}`;
-  const readSeen = () => new Set(store.get(seenKey()).split(",").filter(Boolean));
-  let seen = readSeen();
-  const plain = (n) => String(n || "").replace(/\s+/g, " ").trim().toLowerCase();
-  const mine = (c) => plain(c.name) && plain(c.name) === plain(store.get("lab-name")) || Boolean(store.get(`lab-edit:${c.id}`));
-  const isNew = (c) => !seen.has(c.id) && !mine(c);
-  const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
-  const markSeen = (items) => {
-    const fresh = items.filter((item) => !seen.has(item.id)).map((item) => item.id);
-    for (const item of items) seen.add(item.id);
-    store.set(seenKey(), [...seen].join(","));
-    if (fresh.length) shareReads(fresh);
-  };
-  const READS = script?.dataset.live ? script.dataset.live.replace(/live$/, "api/reads") : "";
-  const shareReads = (ids) => {
-    const who = store.get("lab-name").trim();
-    if (!READS || !who || !ids.length) return;
-    fetch(READS, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: who, page, ids }) }).catch(() => {
-    });
-  };
-  async function syncReads() {
-    const who = store.get("lab-name").trim();
-    if (!READS || !who) return;
-    const at = page;
-    try {
-      const { ids } = await (await fetch(`${READS}?name=${encodeURIComponent(who)}&page=${encodeURIComponent(at)}`, { cache: "no-store" })).json();
-      if (at !== page) return;
-      const theirs = new Set(ids);
-      const mineOnly = [...seen].filter((id) => !theirs.has(id));
-      const added = ids.filter((id) => !seen.has(id));
-      if (mineOnly.length) shareReads(mineOnly);
-      if (!added.length) return;
-      for (const id of added) seen.add(id);
-      store.set(seenKey(), [...seen].join(","));
       shownAgain();
-    } catch {
     }
-  }
-  const repliesOf = (id) => comments.filter((c) => c.parent === id);
-  const initial = (name) => [...String(name || "").trim()][0]?.toUpperCase() || "";
-  function placeCard(card, left, top) {
-    layer.append(card);
-    const width = card.offsetWidth;
-    const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
-    card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;
-    const h = card.offsetHeight;
-    const below = top + 10 + h > contentEnd();
-    card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
-    card.style.transformOrigin = below ? "14px 100%" : "";
-  }
-  const contentEnd = () => {
-    inPage(0);
-    return pageEnd.y;
-  };
-  const ARROW = '<i class="arr" aria-hidden="true"></i>';
-  function composer({ placeholder, onSubmit, autofocus }) {
-    const wrap = el("div", { class: "composer" });
-    const box = el("div", { class: "box" });
-    const text = el("textarea", { placeholder, maxlength: "2000", rows: "1", "aria-label": placeholder, enterkeyhint: "send", autocomplete: "off", autocorrect: "off", spellcheck: "false", writingsuggestions: "false" });
-    const who = el("label", { class: "who" });
-    const as = el("span", {}, "as");
-    const name = el("input", { type: "text", placeholder: "your name", maxlength: "60", enterkeyhint: "send", autocomplete: "off", autocorrect: "off", autocapitalize: "words", spellcheck: "false", writingsuggestions: "false", "data-1p-ignore": "", "data-lpignore": "true" });
-    name.value = store.get("lab-name");
-    who.append(as, name);
-    const sendBtn2 = el("button", { class: "send", type: "button", "aria-label": "send" });
-    sendBtn2.addEventListener("pointerdown", (e) => e.preventDefault());
-    sendBtn2.addEventListener("mousedown", (e) => e.preventDefault());
-    sendBtn2.innerHTML = ARROW;
-    const error = el("div", { class: "error" });
-    box.append(text, el("div", { class: "line" }), who, sendBtn2);
-    wrap.append(box, error);
-    box.addEventListener("click", (e) => {
-      if (e.target !== box && !e.target.classList?.contains("line")) return;
-      text.focus({ preventScroll: true });
-      text.setSelectionRange(text.value.length, text.value.length);
-    });
-    const sync = () => {
-      const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
-      const glide = open !== box.classList.contains("open") && !store.get("lab-name") && box.isConnected && !matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const from = glide && { arrow: sendBtn2.getBoundingClientRect(), height: box.getBoundingClientRect().height };
-      const one = Boolean(store.get("lab-name"));
-      box.classList.toggle("one", one);
-      box.classList.toggle("open", open);
-      as.hidden = !name.value.trim();
-      if (one && !CSS.supports?.("field-sizing", "content")) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
-      sendBtn2.classList.toggle("ready", Boolean(text.value.trim() && name.value.trim()));
-      text.style.height = "auto";
-      text.style.height = `${text.scrollHeight}px`;
-      if (glide) {
-        const to = sendBtn2.getBoundingClientRect();
-        const timing = { duration: 220, easing: "cubic-bezier(.2, .7, .3, 1)" };
-        sendBtn2.animate([{ transform: `translate(${from.arrow.left - to.left}px, ${from.arrow.top - to.top}px)` }, { transform: "none" }], timing);
-        box.style.overflow = "hidden";
-        box.animate([{ height: `${from.height}px` }, { height: `${box.getBoundingClientRect().height}px` }], timing).onfinish = () => box.style.overflow = "";
-      }
-    };
-    let busy = false;
-    const go = async () => {
-      if (busy) return;
-      if (!text.value.trim()) return text.focus();
-      if (!name.value.trim()) {
-        box.classList.add("open");
-        return name.focus();
-      }
-      store.set("lab-name", name.value.trim());
-      refreshPinCursor();
-      syncReads();
-      sendBtn2.classList.remove("sent");
-      void sendBtn2.offsetWidth;
-      sendBtn2.classList.add("sent");
-      busy = true;
-      error.textContent = "";
-      error.classList.remove("wait");
-      const slow = setTimeout(() => {
-        error.textContent = "sending\u2026 it goes as soon as the lab is back";
-        error.classList.add("wait");
-      }, 1500);
+    async function loadChanges(since) {
       try {
-        const result = await onSubmit(name.value.trim(), text.value.trim());
-        clearTimeout(slow);
-        error.textContent = "";
-        error.classList.remove("wait");
-        if (result?.keep) {
-          text.value = "";
-          sync();
-        }
-      } catch (e) {
-        clearTimeout(slow);
-        error.classList.remove("wait");
-        error.textContent = e.message;
-        sync();
+        const url = new URL("/_lab/api/changes", new URL(API, location.href));
+        url.search = new URLSearchParams({ page, since: String(since) });
+        const res = await fetch(url, { cache: "no-store" });
+        const data = res.ok ? await res.json() : { full: true };
+        if (data.full || !loaded) return load();
+        const gone2 = new Set(data.del);
+        const fresh = new Map(data.set.map((c) => [c.id, c]));
+        comments = comments.filter((c) => !gone2.has(c.id)).map((c) => fresh.get(c.id) || c);
+        const had = new Set(comments.map((c) => c.id));
+        for (const c of data.set) if (!had.has(c.id)) comments.push(c);
+        comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      } catch {
+        return load();
       }
-      busy = false;
+      shownAgain();
+    }
+    function shownAgain() {
+      if (!typed() && !grabbing) render();
+      else {
+        if (openCard?.isConnected) openCard.sync();
+        if (chatOpen) drawChat();
+        drawList();
+      }
+    }
+    let goMode = store2.get("lab-go") === "1";
+    let cursorMode = store2.get("lab-cursor") === "1";
+    const setCursor = (v) => {
+      cursorMode = v;
+      store2.set("lab-cursor", v ? "1" : "");
+      goBtn.classList.toggle("cursor", v);
+      goBtn.classList.toggle("on", goMode && !v);
+      goFace();
+      document.documentElement.classList.toggle("lab-pinning", on && !v);
+      document.documentElement.classList.toggle("lab-go", on && goMode && !v);
+      recheck();
     };
-    const onKey = (e) => {
-      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        go();
-      }
+    const setGo = (v) => {
+      if (cursorMode) setCursor(false);
+      goMode = v;
+      queueMicrotask(goFace);
+      store2.set("lab-go", v ? "1" : "");
+      goBtn.classList.toggle("on", v);
+      goBtn.setAttribute("aria-pressed", String(v && !cursorMode));
+      document.documentElement.classList.toggle("lab-go", on && v);
+      ptr.classList.toggle("go", v);
+      recheck();
     };
-    text.addEventListener("input", sync);
-    name.addEventListener("input", sync);
-    name.addEventListener("blur", () => setTimeout(sync, 0));
-    text.addEventListener("keydown", onKey);
-    name.addEventListener("keydown", onKey);
-    sendBtn2.addEventListener("click", go);
-    sendBtn2.addEventListener("mousedown", (e) => e.preventDefault());
-    requestAnimationFrame(sync);
-    const focus = () => text.focus({ preventScroll: true });
-    if (autofocus) queueMicrotask(() => text.isConnected ? focus() : setTimeout(focus, 0));
-    return wrap;
-  }
-  function placeBeside(node, left, top) {
-    layer.append(node);
-    const width = node.offsetWidth;
-    const right = scrollX + document.documentElement.clientWidth - 12;
-    const h = node.offsetHeight;
-    const end = contentEnd();
-    if (left + 36 + width <= right) {
-      node.style.left = `${left + 36}px`;
-      node.style.top = `${Math.min(top - 37, end - h - 8)}px`;
-    } else {
-      node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
-      node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
-    }
-  }
-  let shown = null;
-  let posted = null;
-  const still = matchMedia("(prefers-reduced-motion: reduce)");
-  const pinsById = /* @__PURE__ */ new Map();
-  let dropDrag = null;
-  function render() {
-    grabbing = false;
-    dropDrag?.();
-    const prev = layer.querySelector(".card:not(.out), .float:not(.out)");
-    const prevHeight = stepping && coarse && prev ? prev.offsetHeight : 0;
-    const prevScroll = prev ? prev.querySelector(".body")?.scrollTop ?? null : null;
-    const places = new Map(on ? threads().filter((c) => c.anchor?.kind !== "page").map((c) => [c.id, position(c.anchor || {})]) : []);
-    layer.replaceChildren();
-    pinsById.clear();
-    const now = on ? draft || openId : null;
-    const appear = now !== shown;
-    const anim = appear ? " in" : "";
-    let quoted = null;
-    const done = () => {
-      if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) {
-        prev.classList.remove("in");
-        prev.classList.add("out");
-        prev.inert = true;
-        layer.append(prev);
-        setTimeout(() => prev.remove(), coarse ? 230 : 150);
+    function begin(anchor) {
+      const name = store2.get("lab-name").trim();
+      if (!goMode || !name) {
+        draft = { anchor };
+        return render();
       }
-      markQuote(quoted);
-      shown = now;
-      posted = null;
-    };
-    const list = threads();
-    const open = list.filter((c) => !c.resolved && c.anchor?.kind !== "page").length;
-    const fresh = list.filter((c) => !c.resolved && c.anchor?.kind !== "page").reduce((n, c) => n + unread(c).length, 0);
-    toggleBtn.replaceChildren(
-      document.createTextNode((on ? "hide comments" : open ? `comments \xB7 ${open}` : "comments") + (!on && fresh ? ` \xB7 ${fresh} new` : "")),
-      el("kbd", { "aria-hidden": "true" }, "m")
-    );
-    toggleBtn.classList.toggle("secondary", on);
-    host.toggleAttribute("data-sheet", Boolean(on && (draft || openId || listOpen || chatOpen)));
-    document.documentElement.classList.toggle("lab-sheet", host.hasAttribute("data-sheet"));
-    backCloses();
-    refit();
-    document.documentElement.classList.toggle("lab-pinning", on && !cursorMode);
-    document.documentElement.classList.toggle("lab-go", on && goMode && !cursorMode);
-    copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
-    drawList();
-    drawChat();
-    if (!on) return done();
-    for (const h of held()) {
-      const { left, top } = position(h.anchor);
-      const p = el("div", { class: "pin held", title: `${h.name}: ${h.text} \xB7 draft, not sent yet` }, initial(h.name));
-      p.style.left = `${left}px`;
-      p.style.top = `${top}px`;
-      layer.append(p);
-    }
-    list.forEach((c) => {
-      if (isPage(c)) return;
-      if (!showDone && openId !== c.id && (c.resolved || workState(c)[0] === "done") && !unread(c).length) return;
-      const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
-      if (openId === c.id) drawZone(zone, `saved${anim}`);
-      const news = unread(c);
-      const movable = !zone && (isAdmin || store.get(`lab-edit:${c.id}`));
-      const [state] = workState(c);
-      const pin = el(
-        "button",
-        {
-          class: `pin${/^go$/i.test(c.text.trim()) ? " go" : ""}${c.resolved ? " resolved" : ""}${state === "done" ? " done" : ""}${state === "now" ? " working" : ""}${news.length ? " new" : ""}${moved ? " moved" : ""}${posted === c.id ? " in" : ""}${movable ? " grab" : ""}${openId === c.id ? " open" : ""}`,
-          type: "button",
-          title: `${c.resolved ? "" : `${numberOf(c)} \xB7 `}${c.name}${moved ? " \xB7 the spot it was pinned to has changed" : ""}${movable ? " \xB7 drag to move" : ""}`,
-          // Its state in words too (the ring, the tick and the new dot are only seen).
-          "aria-label": `${/^go$/i.test(c.text.trim()) ? "go" : "comment"}${c.resolved ? "" : ` ${numberOf(c)}`} by ${c.name}${state === "now" ? ", agent working on it" : state === "done" || c.resolved ? ", done" : ""}${news.length ? `, ${news.length} new` : ""}${moved ? ", moved" : ""}`
-        },
-        /^go$/i.test(c.text.trim()) ? "go" : state === "done" || c.resolved ? "\u2713" : initial(c.name)
-      );
-      if (state === "now") pin.append(el("i", { class: "ring", "aria-hidden": "true" }));
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
-      if (movable) grab(pin, c);
-      if (!coarse && zone && openId !== c.id) {
-        let shown2 = null;
-        pin.addEventListener("pointerenter", () => shown2 = drawZone(zone, "saved"));
-        pin.addEventListener("pointerleave", () => (shown2?.remove(), shown2 = null));
-      } else if (!coarse && c.anchor?.quote && !zone) {
-        pin.addEventListener("pointerenter", () => markQuote(c.anchor));
-        pin.addEventListener("pointerleave", () => markQuote(quoted));
+      if (drafting()) {
+        store2.set(heldKey(), JSON.stringify([...held(), { name, text: "go", anchor }]));
+        return render();
       }
-      pin.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (pin.dataset.dragged) return;
-        if (coarse && openId !== c.id) return goTo(c);
-        openId = openId === c.id ? null : c.id;
-        draft = null;
-        render();
-      });
-      layer.append(pin);
-      pinsById.set(c.id, pin);
-      if (openId === c.id) {
-        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (!stepping || keepKeys));
-        openCard = card;
-        if (appear && !stepping) card.classList.add("in");
-        if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
-        stepping = keepKeys = false;
-        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
-        if (!appear && prevScroll != null) card.querySelector(".body").scrollTop = prevScroll;
-        else if (appear) {
-          const body = card.querySelector(".body");
-          const first = body.querySelector(".fresh, .newline");
-          body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
-        }
-        swipeDown(card, () => (openId = null, render()));
-        markSeen(news);
-        if (news.length) drawList();
-        quoted = zone ? null : c.anchor;
-      }
-    });
-    if (draft) {
-      const { anchor } = draft;
-      const { left, top, zone } = position(anchor);
-      drawZone(zone, "draft");
-      quoted = zone ? null : anchor;
-      const pin = el("div", { class: `pin draft${anim}` }, initial(store.get("lab-name")));
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
-      layer.append(pin);
-      const float = el("div", { class: `float${anim}` });
-      float.append(
-        el("div", { class: "handle" }),
-        composer({
-          placeholder: "add a comment",
-          autofocus: true,
-          onSubmit: async (name, text) => {
-            if (drafting()) {
-              store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
-              draft = null;
-              return render();
-            }
-            const { comment, edit } = await send({ name, text, anchor });
-            if (edit) store.set(`lab-edit:${comment.id}`, edit);
-            comments.push(comment);
-            markSeen([comment]);
-            draft = null;
-            openId = null;
-            posted = comment.id;
-            render();
-          }
-        })
-      );
-      swipeDown(float, () => (draft = null, render()));
-      if (zone) placeCard(float, left + 14, zone.top + zone.height);
-      else placeBeside(float, left, top);
-    }
-    done();
-  }
-  let grabbing = false;
-  function grab(pin, c) {
-    pin.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0) return;
-      const r = pin.getBoundingClientRect();
-      const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
-      const start2 = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
-      let moving = false;
-      let last = e;
-      grabbing = true;
-      pin.setPointerCapture(e.pointerId);
-      const place2 = () => {
-        pin.style.left = `${start2.left + last.clientX - start2.x + scrollX - start2.sx}px`;
-        pin.style.top = `${start2.top + last.clientY - start2.y + scrollY - start2.sy}px`;
-      };
-      const move = (ev) => {
-        last = ev;
-        if (!moving && Math.hypot(ev.clientX - start2.x, ev.clientY - start2.y) < 5) return;
-        moving = true;
-        pin.classList.add("dragging");
-        place2();
-      };
-      const scrolled = () => moving && place2();
-      addEventListener("scroll", scrolled, true);
-      dropDrag = () => {
-        removeEventListener("scroll", scrolled, true);
-        dropDrag = null;
-      };
-      const up = async (ev) => {
-        pin.removeEventListener("pointermove", move);
-        pin.removeEventListener("pointerup", up);
-        pin.removeEventListener("pointercancel", up);
-        pin.removeEventListener("lostpointercapture", up);
-        dropDrag?.();
-        if (!grabbing) return;
-        grabbing = false;
-        if (!moving) return;
-        pin.dataset.dragged = "1";
-        setTimeout(() => delete pin.dataset.dragged, 0);
-        const x = ev.clientX - tip.dx;
-        const y = ev.clientY - tip.dy;
-        const under = document.elementsFromPoint(x, y).find((n) => n !== host);
-        if (ev.type === "pointercancel" || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(OFF)) return render();
-        const before = c.anchor;
-        c.anchor = anchorAt(x, y);
-        render();
-        try {
-          const { comment } = await send({ action: "move", id: c.id, anchor: c.anchor, edit: store.get(`lab-edit:${c.id}`) || void 0 });
-          Object.assign(c, comment);
-        } catch {
-          c.anchor = before;
-          render();
-        }
-      };
-      pin.addEventListener("pointermove", move);
-      pin.addEventListener("pointerup", up);
-      pin.addEventListener("pointercancel", up);
-      pin.addEventListener("lostpointercapture", up);
-    });
-  }
-  let openCard = null;
-  const coarse = matchMedia("(pointer: coarse)").matches;
-  function threadCard(c, fresh = /* @__PURE__ */ new Set(), focus = false) {
-    const card = el("div", { class: "card" });
-    const body = el("div", { class: "body" });
-    const foot = el("div", { class: "foot" });
-    card.append(el("div", { class: "handle" }), body, foot);
-    card.addEventListener("click", (e) => e.stopPropagation());
-    body.classList.add("msgs");
-    const itemEl = (item) => {
-      const box = el("div", { class: `item msg${mine(item) && !item.session ? " mine" : ""}`, "data-id": item.id });
-      box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} \xB7 ` : ""));
-      return box;
-    };
-    const shown2 = /* @__PURE__ */ new Set();
-    const all = [c, ...repliesOf(c.id)];
-    const firstNew = all.find((x) => fresh.has(x.id));
-    for (const item of all) {
-      if (item === firstNew && item !== c) body.append(el("div", { class: "newline" }, "new"));
-      body.append(itemEl(item));
-      shown2.add(item.id);
-    }
-    card.sync = () => {
-      for (const r of repliesOf(c.id)) {
-        if (shown2.has(r.id)) continue;
-        const items = card.querySelectorAll(".item");
-        const added = itemEl(r);
-        added.classList.add("fresh");
-        items[items.length - 1].after(added);
-        shown2.add(r.id);
-        markSeen([r]);
-      }
-    };
-    const ownKey = store.get(`lab-edit:${c.id}`);
-    let actions = null;
-    if (isAdmin || ownKey) {
-      actions = el("div", { class: "row acts" });
-      const resolve = el("button", { class: "btn", type: "button" }, c.resolved ? "reopen" : "resolve");
-      const failed = (btn) => btn.textContent = "failed, try again";
-      resolve.addEventListener("click", async () => {
-        try {
-          const closing = !c.resolved;
-          const { comment } = await send({ action: c.resolved ? "reopen" : "resolve", id: c.id, ...ownKey ? { edit: ownKey } : {} });
-          Object.assign(c, comment);
-          if (closing && openId === c.id) return slideAway(openCard, () => (openId = null, render()));
-          render();
-        } catch {
-          failed(resolve);
-        }
-      });
-      const del = el("button", { class: "btn", type: "button" }, "delete");
-      const yes = el("button", { class: "btn danger", type: "button" }, "delete");
-      const no = el("button", { class: "btn", type: "button" }, "cancel");
-      const back = () => {
-        actions.replaceChildren(resolve, del);
-        del.focus();
-      };
-      del.addEventListener("click", () => {
-        actions.replaceChildren(el("span", { class: "ask" }, repliesOf(c.id).length ? "delete thread?" : "delete comment?"), yes, no);
-        no.focus();
-      });
-      no.addEventListener("click", back);
-      actions.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && yes.isConnected) {
-          e.stopPropagation();
-          back();
-        }
-      });
-      yes.addEventListener("click", async () => {
-        try {
-          await send({ action: "delete", id: c.id });
-        } catch {
-          return failed(yes);
-        }
-        comments = comments.filter((x) => x.id !== c.id && x.parent !== c.id);
-        openId = null;
-        render();
-      });
-      actions.append(...isAdmin ? [resolve, del] : [resolve]);
-      body.append(actions);
-      if (c.quick === "done" && !c.resolved) {
-        const verdict = el("div", { class: "row" });
-        const keep = el("button", { class: "btn", type: "button" }, "\u{1F44D} keep");
-        const back2 = el("button", { class: "btn", type: "button" }, "\u{1F44E} put back");
-        keep.addEventListener("click", () => resolve.click());
-        back2.addEventListener("click", async () => {
-          try {
-            const r = await fetch(new URL("/_lab/quick-undo", new URL(API, location.href)), { method: "POST", headers: headers(), body: JSON.stringify({ page, id: c.id }) });
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(data.error);
-            c.quick = "rejected";
-            render();
-          } catch (e) {
-            back2.textContent = e.message || "failed, try again";
-          }
-        });
-        verdict.append(keep, back2);
-        body.append(verdict);
-      }
-    }
-    if (coarse) {
-      const topOf = (x) => position(x.anchor || {}).top;
-      const here = topOf(c);
-      const fresh2 = threads().filter((x) => !isPage(x) && x.id !== c.id && unread(x).length).map((x) => [x, topOf(x)]);
-      fresh2.sort((p, q) => (p[1] > here ? 0 : 1) - (q[1] > here ? 0 : 1) || p[1] - q[1]);
-      const nav = el("div", { class: "row nav" });
-      if (fresh2.length) {
-        const b = el("button", { class: "btn", type: "button" }, `new \xB7 ${fresh2.length} \u203A`);
-        b.addEventListener("pointerdown", (e) => e.preventDefault());
-        b.addEventListener("click", () => goTo(fresh2[0][0]));
-        nav.append(b);
-      }
-      if (nav.firstChild && actions) nav.append(actions);
-      if (nav.firstChild) foot.append(nav);
-    }
-    foot.append(
-      composer({
-        placeholder: "reply",
-        autofocus: focus,
-        onSubmit: async (name, text) => {
-          const { comment } = await send({ name, text, parent: c.id });
-          comments.push(comment);
-          markSeen([comment]);
-          if (c.resolved) {
-            c.resolved = false;
-            render();
-            const again = openCard?.querySelector(".body");
-            if (again) again.scrollTop = again.scrollHeight;
-            openCard?.querySelector("textarea")?.focus({ preventScroll: true });
-            return { keep: true };
-          }
-          shown2.add(comment.id);
-          const items = card.querySelectorAll(".item");
-          const added = itemEl(comment, false);
-          added.classList.add("fresh");
-          items[items.length - 1].after(added);
-          body.scrollTop = body.scrollHeight;
-          return { keep: true };
-        }
-      })
-    );
-    return card;
-  }
-  const showHint = () => {
-    if (store.get("lab-hint-seen") === "1") return;
-    hint.hidden = false;
-    store.set("lab-hint-seen", "1");
-    setTimeout(() => hint.hidden = true, 5e3);
-  };
-  const setOn = (value) => {
-    on = value;
-    if (!on) ptr.classList.remove("show");
-    else recheck();
-    store.set("lab-on", on ? "1" : "0");
-    if (on) showHint();
-    draft = null;
-    openId = null;
-    render();
-  };
-  toggleBtn.addEventListener("click", () => setOn(!on));
-  function setMenu(open, refocus = false) {
-    moreMenu.hidden = !open;
-    moreBtn.setAttribute("aria-expanded", String(open));
-    if (open) [...moreMenu.querySelectorAll("button")].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
-    else if (refocus) moreBtn.focus({ preventScroll: true });
-  }
-  moreBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    setMenu(moreMenu.hidden);
-  });
-  moreMenu.addEventListener("click", () => setTimeout(() => setMenu(false, true), 0));
-  addEventListener("pointerdown", (e) => {
-    if (!moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) setMenu(false);
-  }, true);
-  addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !moreMenu.hidden) {
-      setMenu(false, true);
-      e.stopPropagation();
-    }
-  }, true);
-  goBtn.addEventListener("click", () => setGo(!goMode));
-  const stepNew = (dir) => {
-    const fresh = threads().filter((c) => !isPage(c) && unread(c).length);
-    if (!fresh.length) return;
-    const top = (c) => position(c.anchor || {}).top;
-    fresh.sort((a, b) => top(a) - top(b));
-    const open = openId && threads().find((c) => c.id === openId);
-    const here = open ? top(open) : null;
-    const after = here == null ? -1 : fresh.findIndex((c) => top(c) > here);
-    const at = fresh.findIndex((c) => c.id === openId);
-    const next = at >= 0 ? (at + dir + fresh.length) % fresh.length : here == null ? dir > 0 ? 0 : fresh.length - 1 : dir > 0 ? after < 0 ? 0 : after : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
-    chatOpen = false;
-    goTo(fresh[next], !coarse);
-  };
-  newPrev.addEventListener("click", () => stepNew(-1));
-  doneBtn.addEventListener("click", () => showDoneBtn.click());
-  showDoneBtn.addEventListener("click", () => {
-    showDone = !showDone;
-    store.set("lab-show-done", showDone ? "1" : "");
-    render();
-  });
-  newNext.addEventListener("click", () => stepNew(1));
-  const showAgain = () => {
-    if (on) return;
-    on = true;
-    store.set("lab-on", "1");
-  };
-  copyBtn.addEventListener("click", () => copy(agentLink(), copyBtn));
-  listBtn.addEventListener("click", () => LIST_WINDOW ? (listOpen = !listOpen, listOpen && (filter = "new"), chatOpen = false, hint.hidden = true, render()) : stepNew(1));
-  listEl.querySelector(".x").addEventListener("click", () => slideAway(listEl, () => (listOpen = false, render())));
-  chatBtn.addEventListener("click", () => {
-    chatOpen = !chatOpen;
-    listOpen = false;
-    if (chatOpen && !coarse) {
-      openId = null;
-      if (draft && !root.querySelector(".float textarea")?.value.trim()) draft = null;
-    }
-    hint.hidden = true;
-    render();
-    if (chatOpen && !coarse) chatEl.querySelector(".chat textarea")?.focus({ preventScroll: true });
-  });
-  let closingClick = false;
-  document.addEventListener("pointerdown", (e) => {
-    closingClick = false;
-    if (coarse || !chatOpen || e.button !== 0) return;
-    const path = e.composedPath();
-    if (path.includes(chatEl) || path.includes(chatBtn)) return;
-    chatOpen = false;
-    if (path.includes(host)) return void addEventListener("click", () => render(), { once: true });
-    closingClick = true;
-    render();
-  }, true);
-  addEventListener("click", (e) => {
-    if (!closingClick) return;
-    closingClick = false;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  }, true);
-  for (const b of listEl.querySelectorAll("[data-f]")) b.addEventListener("click", () => (filter = b.dataset.f, drawList()));
-  holdBtn.addEventListener("click", () => (store.set("lab-hold", drafting() ? "" : "1"), drawList()));
-  sendBtn.addEventListener("click", async () => {
-    const list = held();
-    for (let i = 0; i < list.length; i++) {
-      try {
-        const { comment, edit } = await send(list[i]);
-        if (edit) store.set(`lab-edit:${comment.id}`, edit);
+      send({ name, text: "go", anchor }).then(({ comment, edit }) => {
+        if (edit) store2.set(`lab-edit:${comment.id}`, edit);
         comments.push(comment);
         markSeen([comment]);
-        store.set(heldKey(), JSON.stringify(list.slice(i + 1)));
+        posted = comment.id;
+        render();
+      }).catch(() => (draft = { anchor }, render()));
+    }
+    async function send(payload) {
+      let res = null;
+      if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
+      for (let tries = 0; !res; tries++) {
+        try {
+          res = await fetch(API, { method: "POST", headers: headers(), body: JSON.stringify({ page, ...payload }) });
+        } catch {
+          if (tries >= 150) throw new Error("couldn't reach the lab; your text is still here");
+          await new Promise((r) => setTimeout(r, 2e3));
+        }
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `could not save (${res.status})`);
+      if (data.comment && !payload.parent && !payload.action && payload.anchor?.kind !== "page") placed.push(data.comment.id);
+      return data;
+    }
+    const placed = [];
+    async function undoLast() {
+      const id = placed.pop();
+      const c = id && comments.find((x) => x.id === id);
+      if (!c) return;
+      const ownKey = store2.get(`lab-edit:${id}`);
+      try {
+        if (isAdmin) {
+          await send({ action: "delete", id });
+          comments = comments.filter((x) => x.id !== id && x.parent !== id);
+        } else if (ownKey) {
+          const { comment } = await send({ action: "resolve", id, edit: ownKey });
+          Object.assign(c, comment);
+        } else return void placed.push(id);
       } catch {
-        sendBtn.textContent = "send failed, try again";
-        return;
+        return void placed.push(id);
+      }
+      if (openId === id) openId = null;
+      render();
+      say(`took back ${/^go$/i.test(c.text.trim()) ? "a go" : "a pin"} \xB7 ${placed.length ? "again for the one before" : "nothing more to take back"}`);
+    }
+    function say(words) {
+      say.was ??= hint.textContent;
+      hint.textContent = words;
+      hint.hidden = false;
+      clearTimeout(say.t);
+      say.t = setTimeout(() => {
+        hint.hidden = true;
+        hint.textContent = say.was;
+        say.was = void 0;
+      }, 1800);
+    }
+    const agentLink = () => new URL("/_lab/agent" + page, new URL(API, location.href)).href;
+    async function copy(textPromise, button) {
+      const textValue = await textPromise;
+      try {
+        await navigator.clipboard.writeText(textValue);
+      } catch {
+        const area = document.createElement("textarea");
+        area.value = textValue;
+        area.style.cssText = "position:fixed;opacity:0;";
+        document.body.append(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+      if (moreMenu.contains(button)) return say("link copied");
+      const label = button.textContent;
+      button.style.width = `${button.getBoundingClientRect().width}px`;
+      button.style.justifyContent = "center";
+      button.textContent = "copied";
+      setTimeout(() => {
+        button.textContent = label;
+        button.style.width = button.style.justifyContent = "";
+      }, 1400);
+    }
+    const threads = () => comments.filter((c) => !c.parent);
+    const heldKey = () => `lab-held:${page}`;
+    const held = () => {
+      try {
+        return JSON.parse(store2.get(heldKey()) || "[]");
+      } catch {
+        return [];
+      }
+    };
+    const listed = () => threads().filter((c) => c.anchor?.kind !== "page").filter((c) => filter === "new" ? unread(c).length : filter === "open" ? !c.resolved : filter === "resolved" ? c.resolved : mine(c)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const onWhat = (c) => {
+      const a = c.anchor || {};
+      let w = a.quote?.exact || "";
+      let n = null;
+      try {
+        n = !w && a.selector ? document.querySelector(a.selector) : null;
+      } catch {
+      }
+      for (let up = 0; n && n !== document.body && up < 5; n = n.parentElement, up++) {
+        const t = n.innerText?.replace(/\s+/g, " ").trim() || "";
+        if (t.length >= 12) {
+          w = t;
+          break;
+        }
+      }
+      w = (w || a.text || a.section || "").replace(/\s+/g, " ").trim();
+      return w ? `"${w.length > 40 ? `${w.slice(0, 39)}\u2026` : w}"` : "";
+    };
+    const isPage = (c) => c.anchor?.kind === "page";
+    let stepping = false;
+    let keepKeys = false;
+    const goTo = (c, keys = false) => {
+      stepping = Boolean(openId);
+      keepKeys = stepping && (keys || root.activeElement?.localName === "textarea");
+      openId = c.id;
+      draft = null;
+      if (coarse) listOpen = false;
+      render();
+      const pinTop = position(c.anchor || {}).top;
+      let top = pinTop - Math.max(40, coarse && openCard?.isConnected ? (innerHeight - openCard.offsetHeight) / 2 : innerHeight / 3);
+      if (!coarse && openCard?.isConnected) {
+        const bottom = openCard.getBoundingClientRect().bottom + scrollY;
+        const tall = bottom - pinTop + 28;
+        top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
+      }
+      if (coarse) {
+        const de = document.documentElement;
+        const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
+        const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
+        de.style.setProperty("--lab-room", `${room}px`);
+        de.classList.toggle("lab-room", room > 0);
+      }
+      scrollTo({ top: Math.max(0, top), behavior: still.matches ? "auto" : "smooth" });
+    };
+    const isDone = (c) => c.resolved || workState(c)[0] === "done";
+    const keyWord = (before, key, after) => {
+      const w = el2("span", { class: "kw" });
+      w.append(before, el2("span", { class: "mn", "aria-hidden": "true" }, `(${key})`), after);
+      return w;
+    };
+    function placeBar() {
+      const inMenu = on ? [doneBtn, copyBtn, toggleBtn] : [];
+      for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
+      if (!on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
+      if (!on) root.querySelector(".left").append(copyBtn);
+      moreBtn.hidden = !on;
+      if (!on && !moreMenu.hidden) setMenu(false);
+      let first = true;
+      for (const b of bar.children) {
+        b.classList.toggle("first", first && !b.hidden);
+        if (!b.hidden) first = false;
       }
     }
-    render();
-  });
-  const typing = (e) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
-  document.addEventListener("keydown", (e) => {
-    if (gone) return;
-    const inOtherWidget = document.activeElement?.localName.includes("-") && document.activeElement !== host;
-    if ((e.key === "m" || e.key === "M" || e.code === "KeyM") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
-      e.preventDefault();
-      setOn(!on);
-      return;
+    function goFace() {
+      const gp = goBtn.querySelector(".gp");
+      if (gp) gp.textContent = !goMode && !cursorMode ? initial(store2.get("lab-name")) || "+" : "go";
+      goBtn.setAttribute("aria-label", `a click places: ${cursorMode ? "nothing (cursor)" : goMode ? "go" : "a comment"}`);
+      goBtn.setAttribute("aria-keyshortcuts", "1 2 3");
     }
-    if (on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || "") || !/^[a-z]$/i.test(e.key || "") && e.code === "KeyZ") && !typing(e) && !inOtherWidget && placed.length) {
-      e.preventDefault();
-      return void undoLast();
+    function drawList() {
+      const all = threads();
+      listBtn.hidden = !on || !coarse && !all.length && !held().length;
+      goBtn.hidden = !on;
+      if (!goBtn.firstElementChild) goBtn.replaceChildren(el2("span", { class: "gp" }, "go"), el2("kbd", { "aria-hidden": "true" }, "1/2/3"));
+      goFace();
+      goBtn.classList.toggle("on", goMode && !cursorMode);
+      goBtn.classList.toggle("cursor", cursorMode);
+      goBtn.setAttribute("aria-pressed", String(goMode && !cursorMode));
+      const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
+      listBtn.replaceChildren(document.createTextNode(freshAll ? `list \xB7 ${freshAll} new` : "list"), el2("kbd", { "aria-hidden": "true" }, "l"));
+      newPrev.hidden = newNext.hidden = !on || !all.some((c) => !isPage(c) && unread(c).length);
+      if (!LIST_WINDOW) {
+        newPrev.hidden = newNext.hidden = true;
+        listBtn.hidden = !on;
+        {
+          listBtn.replaceChildren(coarse ? "new" : keyWord("ne", "w", ""), el2("b", { class: `cnt${freshAll ? "" : " zero"}` }, String(freshAll)));
+          listBtn.setAttribute("aria-label", `next new comment, ${freshAll} new`);
+          listBtn.setAttribute("aria-keyshortcuts", "w");
+        }
+        listBtn.title = "next new comment: W, or Control-D while typing (Shift for the one before)";
+        listBtn.disabled = !freshAll;
+        listBtn.classList.toggle("quiet", !freshAll);
+        const doneCount2 = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
+        doneBtn.hidden = !on;
+        doneBtn.disabled = !doneCount2 && !showDone;
+        doneBtn.classList.toggle("quiet", doneBtn.disabled);
+        doneBtn.replaceChildren(showDone ? `hide done \xB7 ${doneCount2}` : `show done \xB7 ${doneCount2}`, el2("kbd", { "aria-hidden": "true" }, "d"));
+        doneBtn.setAttribute("aria-keyshortcuts", "d");
+      }
+      placeBar();
+      const tabNew = all.reduce((n, c) => n + unread(c).length, 0);
+      if (!tabTitle.base || !document.title.startsWith("(")) tabTitle.base = document.title.replace(/^\(\d+\) /, "");
+      const want = tabNew ? `(${tabNew}) ${tabTitle.base}` : tabTitle.base;
+      if (document.title !== want) document.title = want;
+      listBtn.classList.toggle("has-new", freshAll > 0);
+      const h = held().length;
+      sendBtn.hidden = !h;
+      sendBtn.textContent = `send ${h} draft${h === 1 ? "" : "s"}`;
+      listEl.hidden = !on || !listOpen;
+      if (listEl.hidden) return;
+      for (const b of listEl.querySelectorAll("[data-f]")) b.classList.toggle("on", b.dataset.f === filter);
+      const fresh = all.filter((c) => !isPage(c) && unread(c).length).length;
+      listEl.querySelector('[data-f="new"]').textContent = fresh ? `new \xB7 ${fresh}` : "new";
+      for (const f of ["work", "resolved", "mine"]) listEl.querySelector(`[data-f="${f}"]`).hidden = true;
+      holdBtn.hidden = !DRAFT_MODE;
+      const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
+      showDoneBtn.hidden = !doneCount;
+      showDoneBtn.textContent = showDone ? `hide done \xB7 ${doneCount}` : `show done \xB7 ${doneCount}`;
+      holdBtn.classList.toggle("on", drafting());
+      if (filter === "work") return listEl.querySelector(".items").replaceChildren(...workItems());
+      const items = listed().map((c) => {
+        const b = el2("button", { class: `it${openId === c.id ? " cur" : ""}`, type: "button" });
+        b.append(document.createTextNode(`${c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), ...onWhat(c) ? [el2("span", {}, `on ${onWhat(c)} `)] : [], el2("span", {}, `\xB7 ${c.name}${c.quick === "done" ? " \xB7 done by quick" : !c.resolved && isDone(c) ? " \xB7 \u2705 done" : ""}`), ...unread(c).length ? [" ", el2("span", { class: "tag" }, `${unread(c).length} new`)] : []);
+        b.addEventListener("click", () => goTo(c));
+        return b;
+      });
+      listEl.querySelector(".items").replaceChildren(...items.length ? items : [el2("div", { class: "none" }, "nothing here")]);
     }
-    if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === "KeyD" && !(typing(e) && !e.composedPath().includes(host))) {
-      e.preventDefault();
-      const typed2 = root.querySelector(".card textarea, .float textarea");
-      if (typed2?.value.trim()) return typed2.closest(".card, .float")?.animate([{ transform: "none" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "none" }], { duration: 260 });
-      return stepNew(e.shiftKey ? -1 : 1);
+    const ago = (iso) => {
+      const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 6e4));
+      return m < 1 ? "just now" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+    };
+    const workState = (c) => {
+      const thread = [c, ...repliesOf(c.id)];
+      const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || "";
+      const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
+      const answered = answer && answer.createdAt > lastPerson;
+      if (c.resolved || c.quick === "done" || answered && /^done\b/i.test(answer.text)) return ["done", answered ? answer.createdAt : c.createdAt];
+      if (answered && /^on it\b/i.test(answer.text)) return ["now", answer.createdAt];
+      if (!answered && c.handedAt && c.handedAt >= lastPerson) return ["now", c.handedAt];
+      return answered ? [null, ""] : ["next", lastPerson];
+    };
+    function workItems() {
+      const today = (/* @__PURE__ */ new Date()).toDateString();
+      const now = [];
+      const next = [];
+      const done = [];
+      for (const c of comments.filter((x) => !x.parent)) {
+        const [state, at] = workState(c);
+        if (state === "now") now.push([c, at]);
+        else if (state === "next") next.push([c, at]);
+        else if (state === "done" && new Date(at).toDateString() === today) done.push([c, at]);
+      }
+      const row = ([c, at], when) => {
+        const b = el2("button", { class: `it${openId === c.id ? " cur" : ""}`, type: "button" });
+        b.append(document.createTextNode(`${isPage(c) ? "chat" : c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), el2("span", {}, `\xB7 ${when(at)}`));
+        b.addEventListener("click", () => isPage(c) ? (chatOpen = true, listOpen = false, render()) : goTo(c));
+        return b;
+      };
+      const part = (title, list, when, newest = false) => list.length ? [el2("div", { class: "group" }, `${title} \xB7 ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
+      const out = [
+        ...part("Now", now, (at) => `on it ${ago(at)}`.replace("on it just now", "just started")),
+        ...part("Next", next, (at) => `sent ${ago(at)} ago`.replace("just now ago", "just now")),
+        ...part("Done today", done, (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), true)
+      ];
+      return out.length ? out : [el2("div", { class: "none" }, "nothing in progress on this page")];
     }
-    if (on && /^(Digit|Numpad)[123]$/.test(e.code || "") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
-      e.preventDefault();
-      if (e.code.endsWith("3")) setCursor(true);
-      else setGo(e.code.endsWith("2"));
-      return;
+    const stampOf = (m, root2, prefix = "") => {
+      const at = new Date(m.createdAt);
+      const time = at.toDateString() === (/* @__PURE__ */ new Date()).toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString([], { day: "numeric", month: "short" });
+      const stamp = el2("span", { class: "stamp" });
+      stamp.append(el2("span", { class: "tm" }, prefix + time));
+      if (mine(m) && !m.session) {
+        const thread = root2 ? [root2, ...repliesOf(root2.id)] : [m];
+        const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
+        const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
+        if (!answered && latest && root2 && workState(root2)[0] === "now") {
+          stamp.classList.add("busy");
+          stamp.append(el2("span", { class: "ring", role: "img", "aria-label": "the agent is on it" }));
+        } else if (answered) {
+          stamp.classList.add("ans");
+          stamp.append(el2("span", { class: "tick", role: "img", "aria-label": "answered" }, "\u2713"));
+        } else {
+          const got = root2?.handedAt && root2.handedAt >= m.createdAt;
+          stamp.append(el2("span", { class: `tick${got ? " got" : ""}`, role: "img", "aria-label": got ? "delivered to the agent" : "sent" }, got ? "\u2713\u2713" : "\u2713"));
+        }
+      }
+      return stamp;
+    };
+    let replyTo = null;
+    let newFrom = null;
+    function drawChat() {
+      const byId = new Map(comments.map((c) => [c.id, c]));
+      const msgs = comments.filter((c) => isPage(c) || c.parent && isPage(byId.get(c.parent) || {})).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(-150);
+      if (on && chatOpen && chatEl.hidden) newFrom = msgs.find(isNew)?.id || null;
+      if (!chatOpen) newFrom = null;
+      if (on && chatOpen) markSeen(msgs.filter(isNew));
+      const fresh = msgs.filter(isNew).length;
+      chatBtn.hidden = !on;
+      {
+        chatBtn.replaceChildren(coarse ? "chat" : keyWord("", "c", "hat"), el2("b", { class: `cnt${fresh ? "" : " zero"}` }, String(fresh)));
+        chatBtn.setAttribute("aria-label", `chat, ${fresh} new`);
+        chatBtn.setAttribute("aria-keyshortcuts", "c");
+      }
+      chatBtn.classList.toggle("has-new", fresh > 0);
+      placeBar();
+      const opening = chatEl.hidden;
+      chatEl.hidden = !on || !chatOpen;
+      if (chatEl.hidden) chatEl.classList.remove("full");
+      if (chatEl.hidden && chatEl.contains(root.activeElement)) root.activeElement.blur();
+      if (chatEl.hidden) return;
+      const box = chatEl.querySelector(".msgs");
+      const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+      const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
+      box.replaceChildren(...msgs.flatMap((m) => {
+        const root2 = m.parent ? byId.get(m.parent) : m;
+        const b = el2("div", { class: `msg${mine(m) && !m.session ? " mine" : ""}${root2 && replyTo === root2.id ? " to" : ""}${before.size && !before.has(m.id) ? " fresh" : ""}`, "data-id": m.id });
+        const isDone2 = Boolean(root2?.resolved || /^done\b/i.test(m.text));
+        b.append(nameLine(m.name, isDone2));
+        if (m.parent && root2) {
+          const q = el2("div", { class: "quote" });
+          q.append(el2("b", {}, String(root2.name || "").replace(/\s*·\s*session\s+\S+$/i, "")), document.createTextNode(root2.text.replace(/\s+/g, " ").slice(0, 90)));
+          q.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const box2 = chatEl.querySelector(".msgs");
+            const to = box2.querySelector(`[data-id="${root2.id}"]`);
+            if (!to) return;
+            box2.scrollTo({ top: to.offsetTop - box2.offsetTop - 12, behavior: still.matches ? "auto" : "smooth" });
+            to.animate?.([{ boxShadow: "0 0 0 2px rgb(52,199,89)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
+          });
+          b.append(q);
+        }
+        b.append(...readable(m.text));
+        b.append(stampOf(m, root2));
+        return m.id === newFrom && m !== msgs[0] ? [el2("div", { class: "newline" }, "new"), b] : [b];
+      }));
+      const strip = chatEl.querySelector(".replying");
+      const target = replyTo && byId.get(replyTo);
+      strip.hidden = !target;
+      if (target) {
+        const x = el2("button", { type: "button", title: "about the page instead" }, "\u2715");
+        x.addEventListener("click", () => (replyTo = null, drawChat()));
+        strip.replaceChildren(document.createTextNode(`\u21A9 ${target.name}: ${target.text.replace(/\s+/g, " ").slice(0, 40)}`), x);
+      }
+      if (!box.firstChild) box.append(el2("div", { class: "none" }, "say something about the page as a whole"));
+      const chat = chatEl.querySelector(".chat");
+      if (!chat.firstChild)
+        chat.append(
+          composer({
+            placeholder: "message",
+            onSubmit: async (name, text) => {
+              const { comment } = await send(
+                replyTo ? { name, text, parent: replyTo } : { name, text, anchor: { kind: "page", width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } }
+              );
+              const answered = replyTo && comments.find((x) => x.id === replyTo);
+              if (answered?.resolved) answered.resolved = false;
+              replyTo = null;
+              comments.push(comment);
+              markSeen([comment]);
+              box.scrollTop = box.scrollHeight;
+              render();
+              return { keep: true };
+            }
+          })
+        );
+      chat.querySelector("textarea").placeholder = target ? "reply" : "message";
+      if (atEnd) box.scrollTop = box.scrollHeight;
     }
-    const letter = /^[a-z]$/i.test(e.key || "") ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : "";
-    if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwred]$/.test(letter)) {
-      const k = letter;
-      e.preventDefault();
-      if (k === "c") return chatBtn.click();
-      if (k === "w") return stepNew(e.shiftKey ? -1 : 1);
-      if (k === "d") return showDoneBtn.click();
-      if (k === "r" && openId) root.querySelector(".card textarea")?.focus({ preventScroll: true });
-      else if (k === "e" && openId && isAdmin) [...root.querySelectorAll(".card .btn")].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
-      return;
+    const numberOf = (c) => comments.filter((x) => !x.parent && !x.resolved).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).indexOf(c) + 1;
+    const seenKey = () => `lab-seen:${page}`;
+    const readSeen = () => new Set(store2.get(seenKey()).split(",").filter(Boolean));
+    let seen = readSeen();
+    const plain = (n) => String(n || "").replace(/\s+/g, " ").trim().toLowerCase();
+    const mine = (c) => plain(c.name) && plain(c.name) === plain(store2.get("lab-name")) || Boolean(store2.get(`lab-edit:${c.id}`));
+    const isNew = (c) => !seen.has(c.id) && !mine(c);
+    const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
+    const markSeen = (items) => {
+      const fresh = items.filter((item) => !seen.has(item.id)).map((item) => item.id);
+      for (const item of items) seen.add(item.id);
+      store2.set(seenKey(), [...seen].join(","));
+      if (fresh.length) shareReads(fresh);
+    };
+    const READS = script?.dataset.live ? script.dataset.live.replace(/live$/, "api/reads") : "";
+    const shareReads = (ids) => {
+      const who = store2.get("lab-name").trim();
+      if (!READS || !who || !ids.length) return;
+      fetch(READS, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: who, page, ids }) }).catch(() => {
+      });
+    };
+    async function syncReads() {
+      const who = store2.get("lab-name").trim();
+      if (!READS || !who) return;
+      const at = page;
+      try {
+        const { ids } = await (await fetch(`${READS}?name=${encodeURIComponent(who)}&page=${encodeURIComponent(at)}`, { cache: "no-store" })).json();
+        if (at !== page) return;
+        const theirs = new Set(ids);
+        const mineOnly = [...seen].filter((id) => !theirs.has(id));
+        const added = ids.filter((id) => !seen.has(id));
+        if (mineOnly.length) shareReads(mineOnly);
+        if (!added.length) return;
+        for (const id of added) seen.add(id);
+        store2.set(seenKey(), [...seen].join(","));
+        shownAgain();
+      } catch {
+      }
     }
-    if (e.key === "Escape" && (draft || openId)) {
+    const repliesOf = (id) => comments.filter((c) => c.parent === id);
+    const initial = (name) => [...String(name || "").trim()][0]?.toUpperCase() || "";
+    function placeCard(card, left, top) {
+      layer2.append(card);
+      const width = card.offsetWidth;
+      const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
+      card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;
+      const h = card.offsetHeight;
+      const below = top + 10 + h > contentEnd();
+      card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
+      card.style.transformOrigin = below ? "14px 100%" : "";
+    }
+    const contentEnd = () => {
+      inPage(0);
+      return pageEnd.y;
+    };
+    const ARROW = '<i class="arr" aria-hidden="true"></i>';
+    function composer({ placeholder, onSubmit, autofocus }) {
+      const wrap = el2("div", { class: "composer" });
+      const box = el2("div", { class: "box" });
+      const text = el2("textarea", { placeholder, maxlength: "2000", rows: "1", "aria-label": placeholder, enterkeyhint: "send", autocomplete: "off", autocorrect: "off", spellcheck: "false", writingsuggestions: "false" });
+      const who = el2("label", { class: "who" });
+      const as = el2("span", {}, "as");
+      const name = el2("input", { type: "text", placeholder: "your name", maxlength: "60", enterkeyhint: "send", autocomplete: "off", autocorrect: "off", autocapitalize: "words", spellcheck: "false", writingsuggestions: "false", "data-1p-ignore": "", "data-lpignore": "true" });
+      name.value = store2.get("lab-name");
+      who.append(as, name);
+      const sendBtn2 = el2("button", { class: "send", type: "button", "aria-label": "send" });
+      sendBtn2.addEventListener("pointerdown", (e) => e.preventDefault());
+      sendBtn2.addEventListener("mousedown", (e) => e.preventDefault());
+      sendBtn2.innerHTML = ARROW;
+      const error = el2("div", { class: "error" });
+      box.append(text, el2("div", { class: "line" }), who, sendBtn2);
+      wrap.append(box, error);
+      box.addEventListener("click", (e) => {
+        if (e.target !== box && !e.target.classList?.contains("line")) return;
+        text.focus({ preventScroll: true });
+        text.setSelectionRange(text.value.length, text.value.length);
+      });
+      const sync = () => {
+        const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
+        const glide = open !== box.classList.contains("open") && !store2.get("lab-name") && box.isConnected && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const from = glide && { arrow: sendBtn2.getBoundingClientRect(), height: box.getBoundingClientRect().height };
+        const one = Boolean(store2.get("lab-name"));
+        box.classList.toggle("one", one);
+        box.classList.toggle("open", open);
+        as.hidden = !name.value.trim();
+        if (one && !CSS.supports?.("field-sizing", "content")) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
+        sendBtn2.classList.toggle("ready", Boolean(text.value.trim() && name.value.trim()));
+        text.style.height = "auto";
+        text.style.height = `${text.scrollHeight}px`;
+        if (glide) {
+          const to = sendBtn2.getBoundingClientRect();
+          const timing = { duration: 220, easing: "cubic-bezier(.2, .7, .3, 1)" };
+          sendBtn2.animate([{ transform: `translate(${from.arrow.left - to.left}px, ${from.arrow.top - to.top}px)` }, { transform: "none" }], timing);
+          box.style.overflow = "hidden";
+          box.animate([{ height: `${from.height}px` }, { height: `${box.getBoundingClientRect().height}px` }], timing).onfinish = () => box.style.overflow = "";
+        }
+      };
+      let busy = false;
+      const go = async () => {
+        if (busy) return;
+        if (!text.value.trim()) return text.focus();
+        if (!name.value.trim()) {
+          box.classList.add("open");
+          return name.focus();
+        }
+        store2.set("lab-name", name.value.trim());
+        refreshPinCursor();
+        syncReads();
+        sendBtn2.classList.remove("sent");
+        void sendBtn2.offsetWidth;
+        sendBtn2.classList.add("sent");
+        busy = true;
+        error.textContent = "";
+        error.classList.remove("wait");
+        const slow = setTimeout(() => {
+          error.textContent = "sending\u2026 it goes as soon as the lab is back";
+          error.classList.add("wait");
+        }, 1500);
+        try {
+          const result = await onSubmit(name.value.trim(), text.value.trim());
+          clearTimeout(slow);
+          error.textContent = "";
+          error.classList.remove("wait");
+          if (result?.keep) {
+            text.value = "";
+            sync();
+          }
+        } catch (e) {
+          clearTimeout(slow);
+          error.classList.remove("wait");
+          error.textContent = e.message;
+          sync();
+        }
+        busy = false;
+      };
+      const onKey = (e) => {
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
+          go();
+        }
+      };
+      text.addEventListener("input", sync);
+      name.addEventListener("input", sync);
+      name.addEventListener("blur", () => setTimeout(sync, 0));
+      text.addEventListener("keydown", onKey);
+      name.addEventListener("keydown", onKey);
+      sendBtn2.addEventListener("click", go);
+      sendBtn2.addEventListener("mousedown", (e) => e.preventDefault());
+      requestAnimationFrame(sync);
+      const focus = () => text.focus({ preventScroll: true });
+      if (autofocus) queueMicrotask(() => text.isConnected ? focus() : setTimeout(focus, 0));
+      return wrap;
+    }
+    function placeBeside(node, left, top) {
+      layer2.append(node);
+      const width = node.offsetWidth;
+      const right = scrollX + document.documentElement.clientWidth - 12;
+      const h = node.offsetHeight;
+      const end = contentEnd();
+      if (left + 36 + width <= right) {
+        node.style.left = `${left + 36}px`;
+        node.style.top = `${Math.min(top - 37, end - h - 8)}px`;
+      } else {
+        node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
+        node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
+      }
+    }
+    let shown = null;
+    let posted = null;
+    const still = matchMedia("(prefers-reduced-motion: reduce)");
+    const pinsById = /* @__PURE__ */ new Map();
+    let dropDrag = null;
+    function render() {
+      grabbing = false;
+      dropDrag?.();
+      const prev = layer2.querySelector(".card:not(.out), .float:not(.out)");
+      const prevHeight = stepping && coarse && prev ? prev.offsetHeight : 0;
+      const prevScroll = prev ? prev.querySelector(".body")?.scrollTop ?? null : null;
+      const places = new Map(on ? threads().filter((c) => c.anchor?.kind !== "page").map((c) => [c.id, position(c.anchor || {})]) : []);
+      layer2.replaceChildren();
+      pinsById.clear();
+      const now = on ? draft || openId : null;
+      const appear = now !== shown;
+      const anim = appear ? " in" : "";
+      let quoted = null;
+      const done = () => {
+        if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) {
+          prev.classList.remove("in");
+          prev.classList.add("out");
+          prev.inert = true;
+          layer2.append(prev);
+          setTimeout(() => prev.remove(), coarse ? 230 : 150);
+        }
+        markQuote(quoted);
+        shown = now;
+        posted = null;
+      };
+      const list = threads();
+      const open = list.filter((c) => !c.resolved && c.anchor?.kind !== "page").length;
+      const fresh = list.filter((c) => !c.resolved && c.anchor?.kind !== "page").reduce((n, c) => n + unread(c).length, 0);
+      toggleBtn.replaceChildren(
+        document.createTextNode((on ? "hide comments" : open ? `comments \xB7 ${open}` : "comments") + (!on && fresh ? ` \xB7 ${fresh} new` : "")),
+        el2("kbd", { "aria-hidden": "true" }, "m")
+      );
+      toggleBtn.classList.toggle("secondary", on);
+      host2.toggleAttribute("data-sheet", Boolean(on && (draft || openId || listOpen || chatOpen)));
+      document.documentElement.classList.toggle("lab-sheet", host2.hasAttribute("data-sheet"));
+      backCloses();
+      refit();
+      document.documentElement.classList.toggle("lab-pinning", on && !cursorMode);
+      document.documentElement.classList.toggle("lab-go", on && goMode && !cursorMode);
+      copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
+      drawList();
+      drawChat();
+      if (!on) return done();
+      for (const h of held()) {
+        const { left, top } = position(h.anchor);
+        const p = el2("div", { class: "pin held", title: `${h.name}: ${h.text} \xB7 draft, not sent yet` }, initial(h.name));
+        p.style.left = `${left}px`;
+        p.style.top = `${top}px`;
+        layer2.append(p);
+      }
+      list.forEach((c) => {
+        if (isPage(c)) return;
+        if (!showDone && openId !== c.id && (c.resolved || workState(c)[0] === "done") && !unread(c).length) return;
+        const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
+        if (openId === c.id) drawZone(zone, `saved${anim}`);
+        const news = unread(c);
+        const movable = !zone && (isAdmin || store2.get(`lab-edit:${c.id}`));
+        const [state] = workState(c);
+        const pin = el2(
+          "button",
+          {
+            class: `pin${/^go$/i.test(c.text.trim()) ? " go" : ""}${c.resolved ? " resolved" : ""}${state === "done" ? " done" : ""}${state === "now" ? " working" : ""}${news.length ? " new" : ""}${moved ? " moved" : ""}${posted === c.id ? " in" : ""}${movable ? " grab" : ""}${openId === c.id ? " open" : ""}`,
+            type: "button",
+            title: `${c.resolved ? "" : `${numberOf(c)} \xB7 `}${c.name}${moved ? " \xB7 the spot it was pinned to has changed" : ""}${movable ? " \xB7 drag to move" : ""}`,
+            // Its state in words too (the ring, the tick and the new dot are only seen).
+            "aria-label": `${/^go$/i.test(c.text.trim()) ? "go" : "comment"}${c.resolved ? "" : ` ${numberOf(c)}`} by ${c.name}${state === "now" ? ", agent working on it" : state === "done" || c.resolved ? ", done" : ""}${news.length ? `, ${news.length} new` : ""}${moved ? ", moved" : ""}`
+          },
+          /^go$/i.test(c.text.trim()) ? "go" : state === "done" || c.resolved ? "\u2713" : initial(c.name)
+        );
+        if (state === "now") pin.append(el2("i", { class: "ring", "aria-hidden": "true" }));
+        pin.style.left = `${left}px`;
+        pin.style.top = `${top}px`;
+        if (movable) grab(pin, c);
+        if (!coarse && zone && openId !== c.id) {
+          let shown2 = null;
+          pin.addEventListener("pointerenter", () => shown2 = drawZone(zone, "saved"));
+          pin.addEventListener("pointerleave", () => (shown2?.remove(), shown2 = null));
+        } else if (!coarse && c.anchor?.quote && !zone) {
+          pin.addEventListener("pointerenter", () => markQuote(c.anchor));
+          pin.addEventListener("pointerleave", () => markQuote(quoted));
+        }
+        pin.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (pin.dataset.dragged) return;
+          if (coarse && openId !== c.id) return goTo(c);
+          openId = openId === c.id ? null : c.id;
+          draft = null;
+          render();
+        });
+        layer2.append(pin);
+        pinsById.set(c.id, pin);
+        if (openId === c.id) {
+          const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (!stepping || keepKeys));
+          openCard = card;
+          if (appear && !stepping) card.classList.add("in");
+          if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
+          stepping = keepKeys = false;
+          placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
+          if (!appear && prevScroll != null) card.querySelector(".body").scrollTop = prevScroll;
+          else if (appear) {
+            const body = card.querySelector(".body");
+            const first = body.querySelector(".fresh, .newline");
+            body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
+          }
+          swipeDown(card, () => (openId = null, render()));
+          markSeen(news);
+          if (news.length) drawList();
+          quoted = zone ? null : c.anchor;
+        }
+      });
+      if (draft) {
+        const { anchor } = draft;
+        const { left, top, zone } = position(anchor);
+        drawZone(zone, "draft");
+        quoted = zone ? null : anchor;
+        const pin = el2("div", { class: `pin draft${anim}` }, initial(store2.get("lab-name")));
+        pin.style.left = `${left}px`;
+        pin.style.top = `${top}px`;
+        layer2.append(pin);
+        const float = el2("div", { class: `float${anim}` });
+        float.append(
+          el2("div", { class: "handle" }),
+          composer({
+            placeholder: "add a comment",
+            autofocus: true,
+            onSubmit: async (name, text) => {
+              if (drafting()) {
+                store2.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
+                draft = null;
+                return render();
+              }
+              const { comment, edit } = await send({ name, text, anchor });
+              if (edit) store2.set(`lab-edit:${comment.id}`, edit);
+              comments.push(comment);
+              markSeen([comment]);
+              draft = null;
+              openId = null;
+              posted = comment.id;
+              render();
+            }
+          })
+        );
+        swipeDown(float, () => (draft = null, render()));
+        if (zone) placeCard(float, left + 14, zone.top + zone.height);
+        else placeBeside(float, left, top);
+      }
+      done();
+    }
+    let grabbing = false;
+    function grab(pin, c) {
+      pin.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        const r = pin.getBoundingClientRect();
+        const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
+        const start2 = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+        let moving = false;
+        let last = e;
+        grabbing = true;
+        pin.setPointerCapture(e.pointerId);
+        const place2 = () => {
+          pin.style.left = `${start2.left + last.clientX - start2.x + scrollX - start2.sx}px`;
+          pin.style.top = `${start2.top + last.clientY - start2.y + scrollY - start2.sy}px`;
+        };
+        const move = (ev) => {
+          last = ev;
+          if (!moving && Math.hypot(ev.clientX - start2.x, ev.clientY - start2.y) < 5) return;
+          moving = true;
+          pin.classList.add("dragging");
+          place2();
+        };
+        const scrolled = () => moving && place2();
+        addEventListener("scroll", scrolled, true);
+        dropDrag = () => {
+          removeEventListener("scroll", scrolled, true);
+          dropDrag = null;
+        };
+        const up = async (ev) => {
+          pin.removeEventListener("pointermove", move);
+          pin.removeEventListener("pointerup", up);
+          pin.removeEventListener("pointercancel", up);
+          pin.removeEventListener("lostpointercapture", up);
+          dropDrag?.();
+          if (!grabbing) return;
+          grabbing = false;
+          if (!moving) return;
+          pin.dataset.dragged = "1";
+          setTimeout(() => delete pin.dataset.dragged, 0);
+          const x = ev.clientX - tip.dx;
+          const y = ev.clientY - tip.dy;
+          const under = document.elementsFromPoint(x, y).find((n) => n !== host2);
+          if (ev.type === "pointercancel" || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(OFF)) return render();
+          const before = c.anchor;
+          c.anchor = anchorAt(x, y);
+          render();
+          try {
+            const { comment } = await send({ action: "move", id: c.id, anchor: c.anchor, edit: store2.get(`lab-edit:${c.id}`) || void 0 });
+            Object.assign(c, comment);
+          } catch {
+            c.anchor = before;
+            render();
+          }
+        };
+        pin.addEventListener("pointermove", move);
+        pin.addEventListener("pointerup", up);
+        pin.addEventListener("pointercancel", up);
+        pin.addEventListener("lostpointercapture", up);
+      });
+    }
+    let openCard = null;
+    const coarse = matchMedia("(pointer: coarse)").matches;
+    function threadCard(c, fresh = /* @__PURE__ */ new Set(), focus = false) {
+      const card = el2("div", { class: "card" });
+      const body = el2("div", { class: "body" });
+      const foot = el2("div", { class: "foot" });
+      card.append(el2("div", { class: "handle" }), body, foot);
+      card.addEventListener("click", (e) => e.stopPropagation());
+      body.classList.add("msgs");
+      const itemEl = (item) => {
+        const box = el2("div", { class: `item msg${mine(item) && !item.session ? " mine" : ""}`, "data-id": item.id });
+        box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} \xB7 ` : ""));
+        return box;
+      };
+      const shown2 = /* @__PURE__ */ new Set();
+      const all = [c, ...repliesOf(c.id)];
+      const firstNew = all.find((x) => fresh.has(x.id));
+      for (const item of all) {
+        if (item === firstNew && item !== c) body.append(el2("div", { class: "newline" }, "new"));
+        body.append(itemEl(item));
+        shown2.add(item.id);
+      }
+      card.sync = () => {
+        for (const r of repliesOf(c.id)) {
+          if (shown2.has(r.id)) continue;
+          const items = card.querySelectorAll(".item");
+          const added = itemEl(r);
+          added.classList.add("fresh");
+          items[items.length - 1].after(added);
+          shown2.add(r.id);
+          markSeen([r]);
+        }
+      };
+      const ownKey = store2.get(`lab-edit:${c.id}`);
+      let actions = null;
+      if (isAdmin || ownKey) {
+        actions = el2("div", { class: "row acts" });
+        const resolve = el2("button", { class: "btn", type: "button" }, c.resolved ? "reopen" : "resolve");
+        const failed = (btn) => btn.textContent = "failed, try again";
+        resolve.addEventListener("click", async () => {
+          try {
+            const closing = !c.resolved;
+            const { comment } = await send({ action: c.resolved ? "reopen" : "resolve", id: c.id, ...ownKey ? { edit: ownKey } : {} });
+            Object.assign(c, comment);
+            if (closing && openId === c.id) return slideAway(openCard, () => (openId = null, render()));
+            render();
+          } catch {
+            failed(resolve);
+          }
+        });
+        const del = el2("button", { class: "btn", type: "button" }, "delete");
+        const yes = el2("button", { class: "btn danger", type: "button" }, "delete");
+        const no = el2("button", { class: "btn", type: "button" }, "cancel");
+        const back = () => {
+          actions.replaceChildren(resolve, del);
+          del.focus();
+        };
+        del.addEventListener("click", () => {
+          actions.replaceChildren(el2("span", { class: "ask" }, repliesOf(c.id).length ? "delete thread?" : "delete comment?"), yes, no);
+          no.focus();
+        });
+        no.addEventListener("click", back);
+        actions.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && yes.isConnected) {
+            e.stopPropagation();
+            back();
+          }
+        });
+        yes.addEventListener("click", async () => {
+          try {
+            await send({ action: "delete", id: c.id });
+          } catch {
+            return failed(yes);
+          }
+          comments = comments.filter((x) => x.id !== c.id && x.parent !== c.id);
+          openId = null;
+          render();
+        });
+        actions.append(...isAdmin ? [resolve, del] : [resolve]);
+        body.append(actions);
+        if (c.quick === "done" && !c.resolved) {
+          const verdict = el2("div", { class: "row" });
+          const keep = el2("button", { class: "btn", type: "button" }, "\u{1F44D} keep");
+          const back2 = el2("button", { class: "btn", type: "button" }, "\u{1F44E} put back");
+          keep.addEventListener("click", () => resolve.click());
+          back2.addEventListener("click", async () => {
+            try {
+              const r = await fetch(new URL("/_lab/quick-undo", new URL(API, location.href)), { method: "POST", headers: headers(), body: JSON.stringify({ page, id: c.id }) });
+              const data = await r.json().catch(() => ({}));
+              if (!r.ok) throw new Error(data.error);
+              c.quick = "rejected";
+              render();
+            } catch (e) {
+              back2.textContent = e.message || "failed, try again";
+            }
+          });
+          verdict.append(keep, back2);
+          body.append(verdict);
+        }
+      }
+      if (coarse) {
+        const topOf = (x) => position(x.anchor || {}).top;
+        const here = topOf(c);
+        const fresh2 = threads().filter((x) => !isPage(x) && x.id !== c.id && unread(x).length).map((x) => [x, topOf(x)]);
+        fresh2.sort((p, q) => (p[1] > here ? 0 : 1) - (q[1] > here ? 0 : 1) || p[1] - q[1]);
+        const nav = el2("div", { class: "row nav" });
+        if (fresh2.length) {
+          const b = el2("button", { class: "btn", type: "button" }, `new \xB7 ${fresh2.length} \u203A`);
+          b.addEventListener("pointerdown", (e) => e.preventDefault());
+          b.addEventListener("click", () => goTo(fresh2[0][0]));
+          nav.append(b);
+        }
+        if (nav.firstChild && actions) nav.append(actions);
+        if (nav.firstChild) foot.append(nav);
+      }
+      foot.append(
+        composer({
+          placeholder: "reply",
+          autofocus: focus,
+          onSubmit: async (name, text) => {
+            const { comment } = await send({ name, text, parent: c.id });
+            comments.push(comment);
+            markSeen([comment]);
+            if (c.resolved) {
+              c.resolved = false;
+              render();
+              const again = openCard?.querySelector(".body");
+              if (again) again.scrollTop = again.scrollHeight;
+              openCard?.querySelector("textarea")?.focus({ preventScroll: true });
+              return { keep: true };
+            }
+            shown2.add(comment.id);
+            const items = card.querySelectorAll(".item");
+            const added = itemEl(comment, false);
+            added.classList.add("fresh");
+            items[items.length - 1].after(added);
+            body.scrollTop = body.scrollHeight;
+            return { keep: true };
+          }
+        })
+      );
+      return card;
+    }
+    const showHint = () => {
+      if (store2.get("lab-hint-seen") === "1") return;
+      hint.hidden = false;
+      store2.set("lab-hint-seen", "1");
+      setTimeout(() => hint.hidden = true, 5e3);
+    };
+    const setOn = (value) => {
+      on = value;
+      if (!on) ptr.classList.remove("show");
+      else recheck();
+      store2.set("lab-on", on ? "1" : "0");
+      if (on) showHint();
       draft = null;
       openId = null;
       render();
-    } else if (e.key === "Escape" && (chatOpen || listOpen)) {
-      if (chatOpen) chatOpen = false;
-      else listOpen = false;
-      render();
+    };
+    toggleBtn.addEventListener("click", () => setOn(!on));
+    function setMenu(open, refocus = false) {
+      moreMenu.hidden = !open;
+      moreBtn.setAttribute("aria-expanded", String(open));
+      if (open) [...moreMenu.querySelectorAll("button")].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
+      else if (refocus) moreBtn.focus({ preventScroll: true });
     }
-  });
-  const INTERACTIVE = 'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], [tabindex]:not([tabindex="-1"]), [onclick]';
-  const OFF = "[data-uncommentable]";
-  let drag = null;
-  let afterDrag = false;
-  let liveZone = null;
-  let zoneFrame = 0;
-  const paintZone = () => {
-    zoneFrame = 0;
-    if (!drag?.active || !liveZone) return;
-    const x = Math.min(drag.x0, drag.x1) + scrollX;
-    const y = Math.min(drag.y0, drag.y1) + scrollY;
-    liveZone.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    liveZone.style.width = `${Math.abs(drag.x1 - drag.x0)}px`;
-    liveZone.style.height = `${Math.abs(drag.y1 - drag.y0)}px`;
-  };
-  const draftHasText = () => Boolean(draft) && [...root.querySelectorAll(".float textarea")].some((t) => t.value.trim());
-  function startDrag(e) {
-    if (!on && !e.altKey || cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
-    if (e.composedPath().includes(host)) return;
-    if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
-    if (e.target instanceof Element && e.target.closest(OFF)) return;
-    drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
-  }
-  document.addEventListener(
-    "pointerdown",
-    (e) => {
-      if (e.altKey) return;
-      if (!on && !e.altKey || cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      if (e.composedPath().includes(host)) return;
-      if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
-      if (e.target instanceof Element && e.target.closest(OFF)) return;
-      drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
-    },
-    true
-  );
-  document.addEventListener(
-    "pointermove",
-    (e) => {
-      if (!drag) return;
-      drag.x1 = e.clientX;
-      drag.y1 = e.clientY;
-      if (!drag.active && Math.hypot(drag.x1 - drag.x0, drag.y1 - drag.y0) > 8) {
-        drag.active = true;
-        getSelection?.()?.removeAllRanges();
-        document.documentElement.classList.add("lab-dragging");
-        liveZone = zoneEl("draft live");
-        layer.append(liveZone);
-      }
-      if (!drag.active) return;
-      e.preventDefault();
-      zoneFrame ||= requestAnimationFrame(paintZone);
-    },
-    true
-  );
-  const endDrag = (e) => {
-    if (!drag) return;
-    const d = drag;
-    drag = null;
-    document.documentElement.classList.remove("lab-dragging");
-    cancelAnimationFrame(zoneFrame);
-    zoneFrame = 0;
-    liveZone?.remove();
-    liveZone = null;
-    if (!d.active || e.type === "pointercancel") return;
-    afterDrag = true;
-    setTimeout(() => afterDrag = false, 0);
-    getSelection?.()?.removeAllRanges();
-    for (const [a, b] of [["x0", "x1"], ["y0", "y1"]]) {
-      if (Math.abs(d[b] - d[a]) >= 12) continue;
-      const mid = (d[a] + d[b]) / 2;
-      d[a] = mid - 6;
-      d[b] = mid + 6;
-    }
-    showAgain();
-    openId = null;
-    begin(zoneAnchor(d));
-  };
-  document.addEventListener("pointerup", endDrag, true);
-  document.addEventListener("pointercancel", endDrag, true);
-  document.addEventListener(
-    "dragstart",
-    (e) => {
-      const media = on && e.target instanceof Element && e.target.closest("img, video") && !e.composedPath().includes(host);
-      if (drag || media) e.preventDefault();
-    },
-    true
-  );
-  document.addEventListener(
-    "click",
-    (e) => {
-      if (!afterDrag) return;
-      e.preventDefault();
+    moreBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-    },
-    true
-  );
-  const optionPress = (e) => e.altKey && !e.metaKey && !e.ctrlKey && e.button === 0 && !e.composedPath().includes(host) && !(e.target instanceof Element && e.target.closest(OFF));
-  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
-    addEventListener(type, (e) => {
-      if (!optionPress(e)) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (type === "pointerdown") startDrag(e);
-      if (type === "pointerup") endDrag(e);
+      setMenu(moreMenu.hidden);
+    });
+    moreMenu.addEventListener("click", () => setTimeout(() => setMenu(false, true), 0));
+    addEventListener("pointerdown", (e) => {
+      if (!moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) setMenu(false);
     }, true);
-  }
-  addEventListener("click", (e) => {
-    if (!optionPress(e)) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    if (!afterDrag) onPageClick(e);
-  }, true);
-  document.addEventListener("click", (e) => onPageClick(e));
-  let lastTouch = 0;
-  let pinnedByHold = false;
-  const selChip = root.querySelector(".sel-chip");
-  const scrim = root.querySelector(".scrim");
-  const openSheet = () => root.querySelector(".card:not(.out), .float:not(.out)") || (listOpen ? listEl : chatOpen ? chatEl : null);
-  const closeAll = () => {
-    draft = null;
-    openId = null;
-    listOpen = false;
-    chatOpen = false;
-    render();
-  };
-  const closeOrNudge = () => {
-    const node = openSheet();
-    if (![...root.querySelectorAll("textarea")].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
-    node?.animate?.([{ transform: "none" }, { transform: "translateY(12px)" }, { transform: "none" }], { duration: 260, easing: "ease-out" });
-  };
-  scrim.addEventListener("click", closeOrNudge);
-  scrim.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
-  let scrimY = null;
-  scrim.addEventListener("touchstart", (e) => scrimY = e.touches[0].clientY, { passive: true });
-  scrim.addEventListener("touchend", (e) => {
-    const dy = scrimY === null ? 0 : e.changedTouches[0].clientY - scrimY;
-    scrimY = null;
-    if (dy > 30) closeOrNudge();
-  });
-  function slideAway(node, close, ms = 0) {
-    if (!coarse || !node || still.matches) return close();
-    if (!host.hasAttribute("data-kb")) root.activeElement?.blur();
-    node.style.pointerEvents = "none";
-    node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : "transform .22s cubic-bezier(.4, 0, 1, 1)";
-    scrim.style.transition = `opacity ${ms || 220}ms`;
-    node.style.transform = "translateY(100%)";
-    scrim.style.opacity = "0";
-    setTimeout(() => {
-      root.activeElement?.blur();
-      close();
-      node.style.pointerEvents = "";
-      node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = "";
-    }, ms || 220);
-  }
-  const grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
-  const scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
-  const SPRING = "cubic-bezier(.32,.72,0,1)";
-  function backCloses() {
-    const open = matchMedia("(pointer: coarse)").matches && host.hasAttribute("data-sheet");
-    if (!open && backCloses.w) {
-      const w = backCloses.w;
-      backCloses.w = null;
-      w.destroy();
-    }
-    if (open && !backCloses.w && "CloseWatcher" in window) {
-      try {
-        const w = new CloseWatcher();
-        w.onclose = () => {
-          if (backCloses.w === w) backCloses.w = null;
-          closeOrNudge();
-          backCloses();
-        };
-        backCloses.w = w;
-      } catch {
-      }
-    }
-  }
-  function swipeDown(node, close, grows = false) {
-    if (!coarse) return;
-    let raw = 0;
-    let scrolledAt = -1e9;
-    let releasedAt = -1e9;
-    node.addEventListener("scroll", () => scrolledAt = performance.now(), { capture: true, passive: true });
-    node.addEventListener("click", (e) => {
-      if (performance.now() - releasedAt < 200) {
-        e.preventDefault();
+    addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !moreMenu.hidden) {
+        setMenu(false, true);
         e.stopPropagation();
       }
     }, true);
-    node.addEventListener("focusin", (e) => {
-      if (performance.now() - releasedAt < 200 && e.target.localName === "textarea") e.target.blur();
+    goBtn.addEventListener("click", () => setGo(!goMode));
+    const stepNew = (dir) => {
+      const fresh = threads().filter((c) => !isPage(c) && unread(c).length);
+      if (!fresh.length) return;
+      const top = (c) => position(c.anchor || {}).top;
+      fresh.sort((a, b) => top(a) - top(b));
+      const open = openId && threads().find((c) => c.id === openId);
+      const here = open ? top(open) : null;
+      const after = here == null ? -1 : fresh.findIndex((c) => top(c) > here);
+      const at = fresh.findIndex((c) => c.id === openId);
+      const next = at >= 0 ? (at + dir + fresh.length) % fresh.length : here == null ? dir > 0 ? 0 : fresh.length - 1 : dir > 0 ? after < 0 ? 0 : after : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
+      chatOpen = false;
+      goTo(fresh[next], !coarse);
+    };
+    newPrev.addEventListener("click", () => stepNew(-1));
+    doneBtn.addEventListener("click", () => showDoneBtn.click());
+    showDoneBtn.addEventListener("click", () => {
+      showDone = !showDone;
+      store2.set("lab-show-done", showDone ? "1" : "");
+      render();
     });
-    let x0 = 0;
-    let y0 = 0;
-    let dy = 0;
-    let v = 0;
-    let last = null;
-    let mode = null;
-    let box = null;
-    node.addEventListener("touchstart", (e) => {
-      const t = e.touches[0];
-      x0 = t.clientX;
-      y0 = t.clientY;
-      dy = v = raw = 0;
-      last = { y: y0, at: e.timeStamp };
-      box = scrollerIn(e, node);
-      mode = e.touches.length > 1 || box?.localName === "textarea" ? "off" : null;
-    }, { passive: true });
-    node.addEventListener("touchmove", (e) => {
-      if (mode === "off") return;
-      if (mode === "hold") return e.preventDefault();
-      const t = e.touches[0];
-      if (!mode) {
-        const down = t.clientY - y0;
-        const across = t.clientX - x0;
-        if (!down && !across) return;
-        const sideways = Math.abs(across) > Math.abs(down);
-        if (grabArea(e.target)) mode = sideways && e.target.closest(".tabs") ? "off" : "drag";
-        else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? "drag" : "off";
-        else mode = sideways ? "hold" : "drag";
+    newNext.addEventListener("click", () => stepNew(1));
+    const showAgain = () => {
+      if (on) return;
+      on = true;
+      store2.set("lab-on", "1");
+    };
+    copyBtn.addEventListener("click", () => copy(agentLink(), copyBtn));
+    listBtn.addEventListener("click", () => LIST_WINDOW ? (listOpen = !listOpen, listOpen && (filter = "new"), chatOpen = false, hint.hidden = true, render()) : stepNew(1));
+    listEl.querySelector(".x").addEventListener("click", () => slideAway(listEl, () => (listOpen = false, render())));
+    chatBtn.addEventListener("click", () => {
+      chatOpen = !chatOpen;
+      listOpen = false;
+      if (chatOpen && !coarse) {
+        openId = null;
+        if (draft && !root.querySelector(".float textarea")?.value.trim()) draft = null;
+      }
+      hint.hidden = true;
+      render();
+      if (chatOpen && !coarse) chatEl.querySelector(".chat textarea")?.focus({ preventScroll: true });
+    });
+    let closingClick = false;
+    document.addEventListener("pointerdown", (e) => {
+      closingClick = false;
+      if (coarse || !chatOpen || e.button !== 0) return;
+      const path = e.composedPath();
+      if (path.includes(chatEl) || path.includes(chatBtn)) return;
+      chatOpen = false;
+      if (path.includes(host2)) return void addEventListener("click", () => render(), { once: true });
+      closingClick = true;
+      render();
+    }, true);
+    addEventListener("click", (e) => {
+      if (!closingClick) return;
+      closingClick = false;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+    for (const b of listEl.querySelectorAll("[data-f]")) b.addEventListener("click", () => (filter = b.dataset.f, drawList()));
+    holdBtn.addEventListener("click", () => (store2.set("lab-hold", drafting() ? "" : "1"), drawList()));
+    sendBtn.addEventListener("click", async () => {
+      const list = held();
+      for (let i = 0; i < list.length; i++) {
+        try {
+          const { comment, edit } = await send(list[i]);
+          if (edit) store2.set(`lab-edit:${comment.id}`, edit);
+          comments.push(comment);
+          markSeen([comment]);
+          store2.set(heldKey(), JSON.stringify(list.slice(i + 1)));
+        } catch {
+          sendBtn.textContent = "send failed, try again";
+          return;
+        }
+      }
+      render();
+    });
+    const typing = (e) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
+    document.addEventListener("keydown", (e) => {
+      if (gone) return;
+      const inOtherWidget = document.activeElement?.localName.includes("-") && document.activeElement !== host2;
+      if ((e.key === "m" || e.key === "M" || e.code === "KeyM") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+        e.preventDefault();
+        setOn(!on);
+        return;
+      }
+      if (on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || "") || !/^[a-z]$/i.test(e.key || "") && e.code === "KeyZ") && !typing(e) && !inOtherWidget && placed.length) {
+        e.preventDefault();
+        return void undoLast();
+      }
+      if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === "KeyD" && !(typing(e) && !e.composedPath().includes(host2))) {
+        e.preventDefault();
+        const typed2 = root.querySelector(".card textarea, .float textarea");
+        if (typed2?.value.trim()) return typed2.closest(".card, .float")?.animate([{ transform: "none" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "none" }], { duration: 260 });
+        return stepNew(e.shiftKey ? -1 : 1);
+      }
+      if (on && /^(Digit|Numpad)[123]$/.test(e.code || "") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+        e.preventDefault();
+        if (e.code.endsWith("3")) setCursor(true);
+        else setGo(e.code.endsWith("2"));
+        return;
+      }
+      const letter = /^[a-z]$/i.test(e.key || "") ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : "";
+      if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwred]$/.test(letter)) {
+        const k = letter;
+        e.preventDefault();
+        if (k === "c") return chatBtn.click();
+        if (k === "w") return stepNew(e.shiftKey ? -1 : 1);
+        if (k === "d") return showDoneBtn.click();
+        if (k === "r" && openId) root.querySelector(".card textarea")?.focus({ preventScroll: true });
+        else if (k === "e" && openId && isAdmin) [...root.querySelectorAll(".card .btn")].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
+        return;
+      }
+      if (e.key === "Escape" && (draft || openId)) {
+        draft = null;
+        openId = null;
+        render();
+      } else if (e.key === "Escape" && (chatOpen || listOpen)) {
+        if (chatOpen) chatOpen = false;
+        else listOpen = false;
+        render();
+      }
+    });
+    const INTERACTIVE = 'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], [tabindex]:not([tabindex="-1"]), [onclick]';
+    const OFF = "[data-uncommentable]";
+    let drag = null;
+    let afterDrag = false;
+    let liveZone = null;
+    let zoneFrame = 0;
+    const paintZone = () => {
+      zoneFrame = 0;
+      if (!drag?.active || !liveZone) return;
+      const x = Math.min(drag.x0, drag.x1) + scrollX;
+      const y = Math.min(drag.y0, drag.y1) + scrollY;
+      liveZone.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      liveZone.style.width = `${Math.abs(drag.x1 - drag.x0)}px`;
+      liveZone.style.height = `${Math.abs(drag.y1 - drag.y0)}px`;
+    };
+    const draftHasText = () => Boolean(draft) && [...root.querySelectorAll(".float textarea")].some((t) => t.value.trim());
+    function startDrag(e) {
+      if (!on && !e.altKey || cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (e.composedPath().includes(host2)) return;
+      if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+      if (e.target instanceof Element && e.target.closest(OFF)) return;
+      drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
+    }
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (e.altKey) return;
+        if (!on && !e.altKey || cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
+        if (e.composedPath().includes(host2)) return;
+        if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+        if (e.target instanceof Element && e.target.closest(OFF)) return;
+        drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
+      },
+      true
+    );
+    document.addEventListener(
+      "pointermove",
+      (e) => {
+        if (!drag) return;
+        drag.x1 = e.clientX;
+        drag.y1 = e.clientY;
+        if (!drag.active && Math.hypot(drag.x1 - drag.x0, drag.y1 - drag.y0) > 8) {
+          drag.active = true;
+          getSelection?.()?.removeAllRanges();
+          document.documentElement.classList.add("lab-dragging");
+          liveZone = zoneEl("draft live");
+          layer2.append(liveZone);
+        }
+        if (!drag.active) return;
+        e.preventDefault();
+        zoneFrame ||= requestAnimationFrame(paintZone);
+      },
+      true
+    );
+    const endDrag = (e) => {
+      if (!drag) return;
+      const d = drag;
+      drag = null;
+      document.documentElement.classList.remove("lab-dragging");
+      cancelAnimationFrame(zoneFrame);
+      zoneFrame = 0;
+      liveZone?.remove();
+      liveZone = null;
+      if (!d.active || e.type === "pointercancel") return;
+      afterDrag = true;
+      setTimeout(() => afterDrag = false, 0);
+      getSelection?.()?.removeAllRanges();
+      for (const [a, b] of [["x0", "x1"], ["y0", "y1"]]) {
+        if (Math.abs(d[b] - d[a]) >= 12) continue;
+        const mid = (d[a] + d[b]) / 2;
+        d[a] = mid - 6;
+        d[b] = mid + 6;
+      }
+      showAgain();
+      openId = null;
+      begin(zoneAnchor(d));
+    };
+    document.addEventListener("pointerup", endDrag, true);
+    document.addEventListener("pointercancel", endDrag, true);
+    document.addEventListener(
+      "dragstart",
+      (e) => {
+        const media = on && e.target instanceof Element && e.target.closest("img, video") && !e.composedPath().includes(host2);
+        if (drag || media) e.preventDefault();
+      },
+      true
+    );
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (!afterDrag) return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      true
+    );
+    const optionPress = (e) => e.altKey && !e.metaKey && !e.ctrlKey && e.button === 0 && !e.composedPath().includes(host2) && !(e.target instanceof Element && e.target.closest(OFF));
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
+      addEventListener(type, (e) => {
+        if (!optionPress(e)) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (type === "pointerdown") startDrag(e);
+        if (type === "pointerup") endDrag(e);
+      }, true);
+    }
+    addEventListener("click", (e) => {
+      if (!optionPress(e)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!afterDrag) onPageClick(e);
+    }, true);
+    document.addEventListener("click", (e) => onPageClick(e));
+    let lastTouch = 0;
+    let pinnedByHold = false;
+    const selChip = root.querySelector(".sel-chip");
+    const scrim = root.querySelector(".scrim");
+    const openSheet = () => root.querySelector(".card:not(.out), .float:not(.out)") || (listOpen ? listEl : chatOpen ? chatEl : null);
+    const closeAll = () => {
+      draft = null;
+      openId = null;
+      listOpen = false;
+      chatOpen = false;
+      render();
+    };
+    const closeOrNudge = () => {
+      const node = openSheet();
+      if (![...root.querySelectorAll("textarea")].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
+      node?.animate?.([{ transform: "none" }, { transform: "translateY(12px)" }, { transform: "none" }], { duration: 260, easing: "ease-out" });
+    };
+    scrim.addEventListener("click", closeOrNudge);
+    scrim.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+    let scrimY = null;
+    scrim.addEventListener("touchstart", (e) => scrimY = e.touches[0].clientY, { passive: true });
+    scrim.addEventListener("touchend", (e) => {
+      const dy = scrimY === null ? 0 : e.changedTouches[0].clientY - scrimY;
+      scrimY = null;
+      if (dy > 30) closeOrNudge();
+    });
+    function slideAway(node, close, ms = 0) {
+      if (!coarse || !node || still.matches) return close();
+      if (!host2.hasAttribute("data-kb")) root.activeElement?.blur();
+      node.style.pointerEvents = "none";
+      node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : "transform .22s cubic-bezier(.4, 0, 1, 1)";
+      scrim.style.transition = `opacity ${ms || 220}ms`;
+      node.style.transform = "translateY(100%)";
+      scrim.style.opacity = "0";
+      setTimeout(() => {
+        root.activeElement?.blur();
+        close();
+        node.style.pointerEvents = "";
+        node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = "";
+      }, ms || 220);
+    }
+    const grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
+    const scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
+    const SPRING = "cubic-bezier(.32,.72,0,1)";
+    function backCloses() {
+      const open = matchMedia("(pointer: coarse)").matches && host2.hasAttribute("data-sheet");
+      if (!open && backCloses.w) {
+        const w = backCloses.w;
+        backCloses.w = null;
+        w.destroy();
+      }
+      if (open && !backCloses.w && "CloseWatcher" in window) {
+        try {
+          const w = new CloseWatcher();
+          w.onclose = () => {
+            if (backCloses.w === w) backCloses.w = null;
+            closeOrNudge();
+            backCloses();
+          };
+          backCloses.w = w;
+        } catch {
+        }
+      }
+    }
+    function swipeDown(node, close, grows = false) {
+      if (!coarse) return;
+      let raw = 0;
+      let scrolledAt = -1e9;
+      let releasedAt = -1e9;
+      node.addEventListener("scroll", () => scrolledAt = performance.now(), { capture: true, passive: true });
+      node.addEventListener("click", (e) => {
+        if (performance.now() - releasedAt < 200) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+      node.addEventListener("focusin", (e) => {
+        if (performance.now() - releasedAt < 200 && e.target.localName === "textarea") e.target.blur();
+      });
+      let x0 = 0;
+      let y0 = 0;
+      let dy = 0;
+      let v = 0;
+      let last = null;
+      let mode = null;
+      let box = null;
+      node.addEventListener("touchstart", (e) => {
+        const t = e.touches[0];
+        x0 = t.clientX;
+        y0 = t.clientY;
+        dy = v = raw = 0;
+        last = { y: y0, at: e.timeStamp };
+        box = scrollerIn(e, node);
+        mode = e.touches.length > 1 || box?.localName === "textarea" ? "off" : null;
+      }, { passive: true });
+      node.addEventListener("touchmove", (e) => {
         if (mode === "off") return;
         if (mode === "hold") return e.preventDefault();
-      }
-      e.preventDefault();
-      raw = t.clientY - y0;
-      dy = raw >= 0 ? raw : -12 * Math.log1p(-raw / 24);
-      if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
-      last = { y: t.clientY, at: e.timeStamp };
-      node.style.transition = scrim.style.transition = "none";
-      node.style.transform = `translateY(${dy}px)`;
-      scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
-    }, { passive: false });
-    const end = (e) => {
-      const was = mode;
-      mode = null;
-      if (was !== "drag") return;
-      releasedAt = performance.now();
-      if (e.timeStamp - last.at > 80) v = 0;
-      const h = node.offsetHeight || innerHeight;
-      const settle = () => {
-        node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
+        const t = e.touches[0];
+        if (!mode) {
+          const down = t.clientY - y0;
+          const across = t.clientX - x0;
+          if (!down && !across) return;
+          const sideways = Math.abs(across) > Math.abs(down);
+          if (grabArea(e.target)) mode = sideways && e.target.closest(".tabs") ? "off" : "drag";
+          else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? "drag" : "off";
+          else mode = sideways ? "hold" : "drag";
+          if (mode === "off") return;
+          if (mode === "hold") return e.preventDefault();
+        }
+        e.preventDefault();
+        raw = t.clientY - y0;
+        dy = raw >= 0 ? raw : -12 * Math.log1p(-raw / 24);
+        if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
+        last = { y: t.clientY, at: e.timeStamp };
+        node.style.transition = scrim.style.transition = "none";
+        node.style.transform = `translateY(${dy}px)`;
+        scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
+      }, { passive: false });
+      const end = (e) => {
+        const was = mode;
+        mode = null;
+        if (was !== "drag") return;
+        releasedAt = performance.now();
+        if (e.timeStamp - last.at > 80) v = 0;
+        const h = node.offsetHeight || innerHeight;
+        const settle = () => {
+          node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
+          scrim.style.transition = "opacity 300ms";
+          node.style.transform = scrim.style.opacity = "";
+          setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
+        };
+        if (grows && !node.classList.contains("full") && (raw < -40 || v < -0.4)) return node.classList.add("full"), settle();
+        if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), settle();
+        if (v > 0.4 || dy > h / 3 && v > -0.1) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+        node.style.transition = `transform 380ms ${SPRING}`;
         scrim.style.transition = "opacity 300ms";
         node.style.transform = scrim.style.opacity = "";
         setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
       };
-      if (grows && !node.classList.contains("full") && (raw < -40 || v < -0.4)) return node.classList.add("full"), settle();
-      if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), settle();
-      if (v > 0.4 || dy > h / 3 && v > -0.1) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
-      node.style.transition = `transform 380ms ${SPRING}`;
-      scrim.style.transition = "opacity 300ms";
-      node.style.transform = scrim.style.opacity = "";
-      setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
-    };
-    node.addEventListener("touchend", end);
-    node.addEventListener("touchcancel", end);
-  }
-  const vv = window.visualViewport;
-  if (coarse && vv) {
-    const probe = el("i", { style: "position:fixed;top:0;bottom:0;left:0;width:0;visibility:hidden;pointer-events:none" });
-    const strip = el("i", { style: "position:absolute;left:0;width:100vw;display:none;background:var(--_bg);z-index:3;pointer-events:none" });
-    root.append(probe, strip);
-    let fitted = "";
-    const fit = () => {
-      const zoomed = Math.abs(vv.scale - 1) > 0.01;
-      const r = probe.getBoundingClientRect();
-      const field = root.activeElement || document.activeElement;
-      const typing2 = /^(textarea|input|select)$/.test(field?.localName || "") || Boolean(field?.isContentEditable);
-      const top = zoomed || !typing2 ? 0 : vv.offsetTop;
-      const seen2 = top + vv.height;
-      const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen2));
-      const gap = zoomed ? 0 : Math.max(0, Math.round(seen2 - r.bottom));
-      const vh = zoomed ? 0 : Math.round(vv.height);
-      const sheet = host.hasAttribute("data-sheet");
-      const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
-      if (key === fitted) return;
-      fitted = key;
-      host.style.setProperty("--lab-kb", `${kb}px`);
-      host.style.setProperty("--lab-top", `${Math.round(top)}px`);
-      if (vh) host.style.setProperty("--lab-vh", `${vh}px`);
-      else host.style.removeProperty("--lab-vh");
-      host.toggleAttribute("data-kb", kb > 60);
-      strip.style.display = sheet && gap ? "block" : "none";
-      strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
-      strip.style.height = `${gap}px`;
-      const open = sheet ? openSheet() : null;
-      const at = open?.getBoundingClientRect().top;
-      const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
-      if (open && open === fit.sheet && keyboardMoved && Math.abs(fit.top - at) > 8 && !open.style.transform && !still.matches) {
-        open.animate([{ transform: `translateY(${fit.top - at}px)` }, { transform: "none" }], { duration: 340, easing: SPRING });
-      }
-      Object.assign(fit, { sheet: open, top: at, vh, kbUp: kb > 60 });
-    };
-    refit = fit;
-    root.addEventListener("focusin", () => setTimeout(fit, 50));
-    root.addEventListener("focusout", () => setTimeout(fit, 50));
-    vv.addEventListener("resize", fit);
-    vv.addEventListener("scroll", fit);
-    fit();
-  }
-  const msgsEl = chatEl.querySelector(".msgs");
-  let stick = true;
-  msgsEl.addEventListener("scroll", () => stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48, { passive: true });
-  if ("ResizeObserver" in window) new ResizeObserver(() => stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
-  swipeDown(listEl, () => (listOpen = false, render()));
-  swipeDown(chatEl, () => (chatOpen = false, render()), true);
-  let press = null;
-  const stopPress = () => press && (clearTimeout(press.timer), press = null);
-  document.addEventListener(
-    "pointerdown",
-    (e) => {
-      stopPress();
-      pinnedByHold = false;
-      if (e.pointerType === "touch") lastTouch = Date.now();
-      if (e.pointerType !== "touch" || draft || !(e.target instanceof Element) || e.composedPath().includes(host) || e.target.closest(OFF)) return;
-      const { clientX: x, clientY: y } = e;
-      press = {
-        x,
-        y,
-        timer: setTimeout(() => {
-          press = null;
-          pinnedByHold = true;
-          navigator.vibrate?.(8);
-          getSelection?.()?.removeAllRanges();
-          afterDrag = true;
-          setTimeout(() => afterDrag = false, 800);
-          showAgain();
-          openId = null;
-          begin(anchorAt(x, y));
-        }, 500)
+      node.addEventListener("touchend", end);
+      node.addEventListener("touchcancel", end);
+    }
+    const vv = window.visualViewport;
+    if (coarse && vv) {
+      const probe = el2("i", { style: "position:fixed;top:0;bottom:0;left:0;width:0;visibility:hidden;pointer-events:none" });
+      const strip = el2("i", { style: "position:absolute;left:0;width:100vw;display:none;background:var(--_bg);z-index:3;pointer-events:none" });
+      root.append(probe, strip);
+      let fitted = "";
+      const fit = () => {
+        const zoomed = Math.abs(vv.scale - 1) > 0.01;
+        const r = probe.getBoundingClientRect();
+        const field = root.activeElement || document.activeElement;
+        const typing2 = /^(textarea|input|select)$/.test(field?.localName || "") || Boolean(field?.isContentEditable);
+        const top = zoomed || !typing2 ? 0 : vv.offsetTop;
+        const seen2 = top + vv.height;
+        const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen2));
+        const gap = zoomed ? 0 : Math.max(0, Math.round(seen2 - r.bottom));
+        const vh = zoomed ? 0 : Math.round(vv.height);
+        const sheet = host2.hasAttribute("data-sheet");
+        const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
+        if (key === fitted) return;
+        fitted = key;
+        host2.style.setProperty("--lab-kb", `${kb}px`);
+        host2.style.setProperty("--lab-top", `${Math.round(top)}px`);
+        if (vh) host2.style.setProperty("--lab-vh", `${vh}px`);
+        else host2.style.removeProperty("--lab-vh");
+        host2.toggleAttribute("data-kb", kb > 60);
+        strip.style.display = sheet && gap ? "block" : "none";
+        strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
+        strip.style.height = `${gap}px`;
+        const open = sheet ? openSheet() : null;
+        const at = open?.getBoundingClientRect().top;
+        const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
+        if (open && open === fit.sheet && keyboardMoved && Math.abs(fit.top - at) > 8 && !open.style.transform && !still.matches) {
+          open.animate([{ transform: `translateY(${fit.top - at}px)` }, { transform: "none" }], { duration: 340, easing: SPRING });
+        }
+        Object.assign(fit, { sheet: open, top: at, vh, kbUp: kb > 60 });
       };
-    },
-    true
-  );
-  document.addEventListener("pointermove", (e) => press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10 && stopPress(), true);
-  document.addEventListener("pointerup", (e) => {
-    if (e.pointerType === "touch") lastTouch = Date.now();
-    stopPress();
-    if (pinnedByHold) root.querySelector(".float textarea")?.focus({ preventScroll: true });
-  }, true);
-  document.addEventListener("touchend", (e) => {
-    if (!pinnedByHold) return;
-    pinnedByHold = false;
-    e.preventDefault();
-    root.querySelector(".float textarea")?.focus({ preventScroll: true });
-  }, { capture: true, passive: false });
-  document.addEventListener("pointercancel", stopPress, true);
-  addEventListener("scroll", stopPress, { passive: true, capture: true });
-  document.addEventListener("contextmenu", (e) => (press || afterDrag) && e.preventDefault(), true);
-  let selRect = null;
-  document.addEventListener("selectionchange", () => {
-    const sel = getSelection?.();
-    const range = sel?.rangeCount && sel.getRangeAt(0);
-    const text = String(sel || "").trim();
-    const inside = range && host.contains(range.commonAncestorContainer);
-    selRect = coarse && on && !draft && text && range && !inside ? range.getClientRects()[0] || range.getBoundingClientRect() : null;
-    selChip.hidden = !selRect;
-    if (!selRect) return;
-    const below = selRect.bottom + 52 < innerHeight;
-    selChip.style.left = `${Math.min(Math.max(selRect.left + selRect.width / 2, 60), innerWidth - 60)}px`;
-    selChip.style.top = `${below ? selRect.bottom + 10 : Math.max(selRect.top - 46, 8)}px`;
-  });
-  const commentOnSelection = () => {
-    const sel = getSelection?.();
-    const range = sel?.rangeCount && sel.getRangeAt(0);
-    const exact = String(sel || "").replace(/\s+/g, " ").trim();
-    if (!range || !exact || host.contains(range.commonAncestorContainer)) return false;
-    const rects = range.getClientRects();
-    const first = rects[0] || range.getBoundingClientRect();
-    const last = rects[rects.length - 1] || first;
-    const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
-    const endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
-    const anchor = startEl && (startEl === endEl || startEl.contains(endEl)) ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2) : anchorAt(first.left + 2, first.top + first.height / 2);
-    const at = range.commonAncestorContainer;
-    const block = (at.nodeType === 1 ? at : at.parentElement)?.closest("p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div") || document.body;
-    const side = (a, b) => {
-      const r = document.createRange();
-      r.setStart(...a);
-      r.setEnd(...b);
-      return String(r).replace(/\s+/g, " ");
+      refit = fit;
+      root.addEventListener("focusin", () => setTimeout(fit, 50));
+      root.addEventListener("focusout", () => setTimeout(fit, 50));
+      vv.addEventListener("resize", fit);
+      vv.addEventListener("scroll", fit);
+      fit();
+    }
+    const msgsEl = chatEl.querySelector(".msgs");
+    let stick = true;
+    msgsEl.addEventListener("scroll", () => stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48, { passive: true });
+    if ("ResizeObserver" in window) new ResizeObserver(() => stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
+    swipeDown(listEl, () => (listOpen = false, render()));
+    swipeDown(chatEl, () => (chatOpen = false, render()), true);
+    let press = null;
+    const stopPress = () => press && (clearTimeout(press.timer), press = null);
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        stopPress();
+        pinnedByHold = false;
+        if (e.pointerType === "touch") lastTouch = Date.now();
+        if (e.pointerType !== "touch" || draft || !(e.target instanceof Element) || e.composedPath().includes(host2) || e.target.closest(OFF)) return;
+        const { clientX: x, clientY: y } = e;
+        press = {
+          x,
+          y,
+          timer: setTimeout(() => {
+            press = null;
+            pinnedByHold = true;
+            navigator.vibrate?.(8);
+            getSelection?.()?.removeAllRanges();
+            afterDrag = true;
+            setTimeout(() => afterDrag = false, 800);
+            showAgain();
+            openId = null;
+            begin(anchorAt(x, y));
+          }, 500)
+        };
+      },
+      true
+    );
+    document.addEventListener("pointermove", (e) => press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10 && stopPress(), true);
+    document.addEventListener("pointerup", (e) => {
+      if (e.pointerType === "touch") lastTouch = Date.now();
+      stopPress();
+      if (pinnedByHold) root.querySelector(".float textarea")?.focus({ preventScroll: true });
+    }, true);
+    document.addEventListener("touchend", (e) => {
+      if (!pinnedByHold) return;
+      pinnedByHold = false;
+      e.preventDefault();
+      root.querySelector(".float textarea")?.focus({ preventScroll: true });
+    }, { capture: true, passive: false });
+    document.addEventListener("pointercancel", stopPress, true);
+    addEventListener("scroll", stopPress, { passive: true, capture: true });
+    document.addEventListener("contextmenu", (e) => (press || afterDrag) && e.preventDefault(), true);
+    let selRect = null;
+    document.addEventListener("selectionchange", () => {
+      const sel = getSelection?.();
+      const range = sel?.rangeCount && sel.getRangeAt(0);
+      const text = String(sel || "").trim();
+      const inside = range && host2.contains(range.commonAncestorContainer);
+      selRect = coarse && on && !draft && text && range && !inside ? range.getClientRects()[0] || range.getBoundingClientRect() : null;
+      selChip.hidden = !selRect;
+      if (!selRect) return;
+      const below = selRect.bottom + 52 < innerHeight;
+      selChip.style.left = `${Math.min(Math.max(selRect.left + selRect.width / 2, 60), innerWidth - 60)}px`;
+      selChip.style.top = `${below ? selRect.bottom + 10 : Math.max(selRect.top - 46, 8)}px`;
+    });
+    const commentOnSelection = () => {
+      const sel = getSelection?.();
+      const range = sel?.rangeCount && sel.getRangeAt(0);
+      const exact = String(sel || "").replace(/\s+/g, " ").trim();
+      if (!range || !exact || host2.contains(range.commonAncestorContainer)) return false;
+      const rects = range.getClientRects();
+      const first = rects[0] || range.getBoundingClientRect();
+      const last = rects[rects.length - 1] || first;
+      const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+      const endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
+      const anchor = startEl && (startEl === endEl || startEl.contains(endEl)) ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2) : anchorAt(first.left + 2, first.top + first.height / 2);
+      const at = range.commonAncestorContainer;
+      const block = (at.nodeType === 1 ? at : at.parentElement)?.closest("p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div") || document.body;
+      const side = (a, b) => {
+        const r = document.createRange();
+        r.setStart(...a);
+        r.setEnd(...b);
+        return String(r).replace(/\s+/g, " ");
+      };
+      anchor.kind = "text";
+      anchor.quote = {
+        exact: short(exact, 300),
+        prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, "").slice(-40),
+        suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, "").slice(0, 40)
+      };
+      sel.removeAllRanges();
+      selChip.hidden = true;
+      showAgain();
+      openId = null;
+      begin(anchor);
+      return true;
     };
-    anchor.kind = "text";
-    anchor.quote = {
-      exact: short(exact, 300),
-      prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, "").slice(-40),
-      suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, "").slice(0, 40)
+    selChip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (selRect) commentOnSelection();
+    });
+    document.addEventListener("mouseup", (e) => {
+      if (on && !cursorMode && !draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host2)) setTimeout(commentOnSelection, 0);
+    }, true);
+    function onPageClick(e) {
+      if (e.composedPath().includes(host2)) return;
+      if (draft || openId) {
+        if ([...root.querySelectorAll("textarea")].some((t) => t.value.trim())) return;
+        draft = null;
+        openId = null;
+        render();
+        return;
+      }
+      if (!on && !e.altKey || cursorMode && !e.altKey || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (lastTouch && Date.now() - lastTouch < 800) return;
+      if (e.altKey) e.preventDefault();
+      else if (e.defaultPrevented || e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+      if (e.target instanceof Element && e.target.closest(OFF)) return;
+      if (String(getSelection?.() || "").trim()) return;
+      showAgain();
+      begin(anchorAt(e.clientX, e.clientY));
+    }
+    const movePins = () => {
+      const list = threads().filter((c) => c.anchor?.kind !== "page");
+      if (!on || openId || list.length !== pinsById.size) return render();
+      const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
+      if (places.some(([pin]) => !pin)) return render();
+      for (const [pin, { left, top, moved }] of places) {
+        pin.style.left = `${left}px`;
+        pin.style.top = `${top}px`;
+        pin.classList.toggle("moved", Boolean(moved));
+      }
     };
-    sel.removeAllRanges();
-    selChip.hidden = true;
-    showAgain();
-    openId = null;
-    begin(anchor);
-    return true;
-  };
-  selChip.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (selRect) commentOnSelection();
-  });
-  document.addEventListener("mouseup", (e) => {
-    if (on && !cursorMode && !draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host)) setTimeout(commentOnSelection, 0);
-  }, true);
-  function onPageClick(e) {
-    if (e.composedPath().includes(host)) return;
-    if (draft || openId) {
-      if ([...root.querySelectorAll("textarea")].some((t) => t.value.trim())) return;
+    let frame = 0;
+    const reflow = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (draft || root.activeElement || grabbing) return;
+        movePins();
+      });
+    };
+    addEventListener("resize", reflow);
+    addEventListener("scroll", (e) => e.target !== document && !host2.contains(e.target) && reflow(), { capture: true, passive: true });
+    const navigated = () => {
+      if (gone) return;
+      if (!host2.isConnected && document.body) document.body.append(host2);
+      if (!fonts.isConnected) document.head.append(fonts);
+      if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
+      if (pageNow() === page) return;
+      page = pageNow();
+      seen = readSeen();
+      syncReads();
+      comments = [];
       draft = null;
       openId = null;
       render();
-      return;
-    }
-    if (!on && !e.altKey || cursorMode && !e.altKey || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
-    if (lastTouch && Date.now() - lastTouch < 800) return;
-    if (e.altKey) e.preventDefault();
-    else if (e.defaultPrevented || e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
-    if (e.target instanceof Element && e.target.closest(OFF)) return;
-    if (String(getSelection?.() || "").trim()) return;
-    showAgain();
-    begin(anchorAt(e.clientX, e.clientY));
-  }
-  const movePins = () => {
-    const list = threads().filter((c) => c.anchor?.kind !== "page");
-    if (!on || openId || list.length !== pinsById.size) return render();
-    const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
-    if (places.some(([pin]) => !pin)) return render();
-    for (const [pin, { left, top, moved }] of places) {
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
-      pin.classList.toggle("moved", Boolean(moved));
-    }
-  };
-  let frame = 0;
-  const reflow = () => {
-    cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => {
-      if (draft || root.activeElement || grabbing) return;
-      movePins();
-    });
-  };
-  addEventListener("resize", reflow);
-  addEventListener("scroll", (e) => e.target !== document && !host.contains(e.target) && reflow(), { capture: true, passive: true });
-  const navigated = () => {
-    if (gone) return;
-    if (!host.isConnected && document.body) document.body.append(host);
-    if (!fonts.isConnected) document.head.append(fonts);
-    if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
-    if (pageNow() === page) return;
-    page = pageNow();
-    seen = readSeen();
-    syncReads();
-    comments = [];
-    draft = null;
-    openId = null;
-    render();
-    load();
-  };
-  for (const m of ["pushState", "replaceState"]) {
-    const original = history[m];
-    history[m] = function(...args) {
-      const out = original.apply(this, args);
-      queueMicrotask(navigated);
-      return out;
+      load();
     };
-  }
-  addEventListener("popstate", navigated);
-  document.addEventListener("astro:after-swap", navigated);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && !draft && !root.activeElement) load();
-  });
-  if ("ResizeObserver" in window) new ResizeObserver(reflow).observe(document.body);
-  const fonts = document.createElement("style");
-  if (script?.dataset.fontUrl)
-    fonts.textContent = `@font-face{font-family:'lab comments';font-display:swap;src:url('${new URL(script.dataset.fontUrl, script.src || location.href)}') format('woff2');}`;
-  const fontName = script?.dataset.fontUrl ? "lab comments" : script?.dataset.font;
-  if (fontName) host.style.setProperty("--lab-font", `'${fontName.replace(/'/g, "")}', system-ui, sans-serif`);
-  const pinCursorStyle = document.createElement("style");
-  const ptr = el("div", { class: "ptr", "aria-hidden": "true" });
-  ptr.append(el("span", { class: "ini" }, "+"), el("span", { class: "tick" }, "go"));
-  root.append(ptr);
-  let mouse = null;
-  const place = (x, y, target) => {
-    const show = Boolean(target) && target !== host && !host.contains(target) && getComputedStyle(target).cursor === "none";
-    ptr.classList.toggle("show", show);
-    ptr.classList.toggle("go", goMode);
-    ptr.style.transform = `translate(${x - 1}px, ${y - 27}px)`;
-  };
-  const recheck = () => mouse && requestAnimationFrame(() => mouse && place(mouse.x, mouse.y, document.elementFromPoint(mouse.x, mouse.y)));
-  addEventListener("pointermove", (e) => {
-    if (e.pointerType !== "mouse") return;
-    document.documentElement.classList.add("lab-drawn");
-    mouse = { x: e.clientX, y: e.clientY };
-    const t = e.composedPath()[0];
-    place(e.clientX, e.clientY, t instanceof Element ? t : null);
-  }, { capture: true, passive: true });
-  addEventListener("scroll", recheck, { capture: true, passive: true });
-  addEventListener("keydown", (e) => (e.key === "Shift" || e.key === "Alt") && recheck(), true);
-  addEventListener("keyup", (e) => (e.key === "Shift" || e.key === "Alt") && recheck(), true);
-  document.documentElement.addEventListener("mouseleave", () => (mouse = null, ptr.classList.remove("show")));
-  addEventListener("blur", () => (mouse = null, ptr.classList.remove("show")));
-  let cursorKey = "";
-  function refreshPinCursor() {
-    const ch = (initial(store.get("lab-name")) || "+").replace(/[<>&'"]/g, "");
-    if (ch === cursorKey) return;
-    cursorKey = ch;
-    ptr.querySelector(".ini").textContent = ch;
-    const plain2 = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
-    const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
-    pinCursorStyle.textContent = `@layer lab-pointer { html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *${plain2} { cursor: crosshair; } html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *${plain2}:not(${top}) { cursor: none; } html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
-  }
-  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
-  let shiftOff = 0;
-  const shiftKey = (e) => {
-    clearTimeout(shiftOff);
-    if (e.shiftKey) document.documentElement.classList.add("lab-shift");
-    else shiftOff = setTimeout(() => (document.documentElement.classList.remove("lab-shift"), recheck()), 400);
-  };
-  addEventListener("keydown", shiftKey, true);
-  addEventListener("keyup", shiftKey, true);
-  addEventListener("pointerdown", (e) => {
-    if (e.shiftKey) return shiftKey(e);
-    clearTimeout(shiftOff);
-    document.documentElement.classList.remove("lab-shift");
-  }, true);
-  addEventListener("blur", () => document.documentElement.classList.remove("lab-shift"));
-  fonts.textContent += "html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }";
-  fonts.textContent += "html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }";
-  fonts.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
-  addEventListener("scroll", () => {
-    const de = document.documentElement;
-    const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
-    if (!had || host.hasAttribute("data-sheet")) return;
-    const room = Math.max(0, Math.ceil(scrollY + innerHeight - (de.scrollHeight - had)));
-    if (room >= had) return;
-    de.style.setProperty("--lab-room", `${room}px`);
-    if (!room) de.classList.remove("lab-room");
-  }, { passive: true });
-  fonts.textContent += "@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }";
-  fonts.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
-  fonts.textContent += `@media (pointer: coarse) { html.lab-pinning body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
-  const setAlt = (down) => document.documentElement.classList.toggle("lab-alt", Boolean(down));
-  addEventListener("keydown", (e) => e.key === "Alt" && setAlt(true), true);
-  addEventListener("keyup", (e) => e.key === "Alt" && setAlt(false), true);
-  addEventListener("pointermove", (e) => setAlt(e.altKey), { capture: true, passive: true });
-  addEventListener("blur", () => setAlt(false));
-  const start = () => {
-    document.head.append(fonts, pinCursorStyle);
-    refreshPinCursor();
-    if (on) showHint();
-    document.body.append(host);
-    const paint = "background-color: rgba(52, 199, 89, .3); color: inherit;";
-    fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
-    load();
-  };
-  if (document.body) start();
-  else document.addEventListener("DOMContentLoaded", start);
-  if (script?.dataset.live) {
-    let onState = function(v) {
-      {
-        if (v.widget && script.dataset.widget && v.widget !== script.dataset.widget) return reload();
-        if (v.lab && script.dataset.lab && v.lab !== script.dataset.lab) {
-          script.dataset.lab = v.lab;
-          script.dataset.version = String(v.files);
-          hotAt = v.hot;
-          commentsRev = v.comments;
-          morphPage();
-          load();
-        }
-        if (String(v.files) !== script.dataset.version) return reload();
-        if (hotAt !== null && v.hot !== hotAt) {
-          if (v.hot - hotAt > 1) hotUpdate([{ kind: "html" }, { kind: "css", path: "" }]);
-          else hotUpdate(v.hotFiles || []);
-        }
-        hotAt = v.hot;
-        if (commentsRev !== null && v.comments !== commentsRev) loadChanges(commentsRev);
-        commentsRev = v.comments;
-        if (v.reads !== readsAt) {
-          readsAt = v.reads;
-          syncReads();
-        }
-        const s = v.session;
-        const mode = s ? v.mode || "listening" : "away";
-        const span = (t) => Object.assign(document.createElement("span"), { textContent: t });
-        const agent = s?.agent || "Claude";
-        const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
-        if (mode === "listening") who.replaceChildren(span("talking to"), agent, ...tag);
-        else if (mode === "working") who.replaceChildren(agent, span("is working"), ...tag);
-        else who.replaceChildren(span("no agent listening"));
-        who.classList.toggle("idle", mode === "away");
-        who.classList.toggle("working", mode === "working");
-        listBtn.dataset.agent = mode;
-        chatBtn.dataset.agent = mode;
-        if (coarse) chatBtn.title = who.textContent;
-        who.setAttribute("aria-label", who.textContent);
-        if (s?.url && mode !== "away") Object.assign(who, { href: s.url, target: "_blank" });
-        else who.removeAttribute("href");
-        who.dataset.copy = !s?.url && s?.resume && mode !== "away" ? s.resume : "";
-        who.title = mode === "away" ? "Ask your agent to run: npx @leonidstern/labfb wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
-        who.hidden = false;
-      }
-    };
-    const key = "lab-scroll:" + location.pathname;
-    try {
-      const kept = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (kept !== null) {
-        sessionStorage.removeItem(key);
-        if (kept.open) openId = kept.open;
-        if (kept.list) {
-          listOpen = true;
-          filter = ["new", "open", "resolved", "mine"].includes(kept.filter) ? kept.filter : filter;
-        }
-        if (kept.chat) chatOpen = true;
-        addEventListener("load", () => scrollTo(0, +(kept.y ?? kept)));
-      }
-    } catch {
-    }
-    let touchedAt = 0;
-    for (const t of ["pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(t, () => touchedAt = performance.now(), { capture: true, passive: true });
-    const busy = () => draft || grabbing || openId || chatOpen || listOpen || coarse && /^(textarea|input)$/.test(root.activeElement?.localName || "") || [...root.querySelectorAll("textarea")].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
-    let reloadWhenShown = false;
-    let reloadTimer = 0;
-    const reload = () => {
-      if (document.hidden) return void (reloadWhenShown = true);
-      if (busy()) {
-        if (!reloadTimer) reloadTimer = setTimeout(() => (reloadTimer = 0, reload()), 500);
-        return;
-      }
-      try {
-        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: openId, list: listOpen, filter, chat: chatOpen }));
-      } catch {
-      }
-      location.reload();
-    };
-    const who = document.createElement("a");
-    who.className = "listener";
-    who.addEventListener("click", async () => {
-      const text = who.dataset.copy;
-      if (!text) return;
-      try {
-        await navigator.clipboard.writeText(text);
-        const was = [...who.childNodes];
-        who.replaceChildren("copied");
-        setTimeout(() => who.textContent === "copied" && who.replaceChildren(...was), 1200);
-      } catch {
-      }
-    });
-    who.hidden = true;
-    root.querySelector(".left").prepend(who);
-    let stream = null;
-    let beat = 0;
-    const showAway = (word) => {
-      who.replaceChildren(Object.assign(document.createElement("span"), { textContent: word }));
-      who.setAttribute("aria-label", word);
-      who.classList.add("idle");
-      who.classList.remove("working");
-      who.hidden = false;
-    };
-    let commentsRev = null;
-    let readsAt = null;
-    let hotAt = null;
-    const swapCss = (files) => {
-      const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
-      const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
-      for (const link of named.length ? named : links) {
-        const url = new URL(link.href, location.href);
-        url.searchParams.set("lab-v", Date.now().toString(36));
-        const next = link.cloneNode();
-        next.href = url.href;
-        next.dataset.labSwap = "";
-        const path = url.pathname;
-        next.addEventListener("load", () => {
-          for (const l of document.querySelectorAll('link[rel~="stylesheet"][href]')) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
-          delete next.dataset.labSwap;
-        }, { once: true });
-        next.addEventListener("error", () => next.remove(), { once: true });
-        link.after(next);
-      }
-    };
-    const fresh = (u) => {
-      const url = new URL(u, location.href);
-      url.searchParams.set("lab-v", Date.now().toString(36));
-      return url.href;
-    };
-    const samePath = (u, paths) => {
-      try {
-        const url = new URL(u, location.href);
-        return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
-      } catch {
-        return false;
-      }
-    };
-    const swapImages = (paths) => {
-      let hit = 0;
-      for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
-        if (host.contains(n)) continue;
-        for (const attr of ["src", "href", "poster", "xlink:href"]) {
-          const v = n.getAttribute(attr);
-          if (!v || !samePath(v.split("#")[0], paths)) continue;
-          const next = fresh(v.split("#")[0]);
-          const im = new Image();
-          im.src = next;
-          (im.decode ? im.decode() : Promise.resolve()).catch(() => {
-          }).finally(() => n.setAttribute(attr, next + (v.includes("#") ? v.slice(v.indexOf("#")) : "")));
-          hit++;
-        }
-        const set = n.getAttribute("srcset");
-        if (set && set.split(",").some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
-          n.setAttribute("srcset", set.split(",").map((c) => {
-            const [u, ...rest] = c.trim().split(/\s+/);
-            return [samePath(u, paths) ? fresh(u) : u, ...rest].join(" ");
-          }).join(", "));
-          hit++;
-        }
-      }
-      if (!hit) swapCss([]);
-    };
-    const reloadFonts = (paths) => {
-      for (const sheet of document.styleSheets) {
-        let rules;
-        try {
-          rules = sheet.cssRules;
-        } catch {
-          continue;
-        }
-        for (const r of rules || []) {
-          if (!(r instanceof CSSFontFaceRule)) continue;
-          const src = r.style.getPropertyValue("src");
-          const base = sheet.href || location.href;
-          if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
-          const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all);
-          const d = (k) => r.style.getPropertyValue(k) || void 0;
-          try {
-            const face = new FontFace(d("font-family").replace(/^["']|["']$/g, ""), again, { weight: d("font-weight"), style: d("font-style"), stretch: d("font-stretch"), unicodeRange: d("unicode-range"), display: d("font-display") });
-            face.load().then((f) => document.fonts.add(f)).catch(() => {
-            });
-          } catch {
-          }
-        }
-      }
-    };
-    const ownStyles = () => /* @__PURE__ */ new Set([fonts, pinCursorStyle]);
-    const scriptsOf = (doc) => [...doc.querySelectorAll("script")].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute("src") || "")).map((x) => x.getAttribute("src") || x.textContent);
-    const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => {
-      try {
-        return new URL(l.getAttribute("href"), location.href).pathname;
-      } catch {
-        return "";
-      }
-    });
-    const keepOut = (n) => n === host || n.nodeType === 1 && n.localName === "script";
-    const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || "") === (n.id || ""));
-    const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute("class") === n.getAttribute("class") : o.nodeType !== 3 || o.data === n.data);
-    const morphKids = (a, b) => {
-      const olds = [...a.childNodes].filter((n) => !keepOut(n));
-      const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === "script"));
-      let j = 0;
-      let prev = null;
-      const put = (n) => {
-        const c = document.importNode(n, true);
-        a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
-        return c;
+    for (const m of ["pushState", "replaceState"]) {
+      const original = history[m];
+      history[m] = function(...args) {
+        const out = original.apply(this, args);
+        queueMicrotask(navigated);
+        return out;
       };
-      news.forEach((n, i) => {
-        const o = olds[j];
-        if (!o) return void (prev = put(n));
-        if (alike(o, n)) return void (prev = morphNode(o, n), j++);
-        if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
-        const k = olds.slice(j + 1, j + 8).findIndex((m) => alike(m, n));
-        if (k >= 0) {
-          for (const gone2 of olds.slice(j, j + 1 + k)) gone2.remove();
-          j += k + 1;
-          return void (prev = morphNode(olds[j], n), j++);
+    }
+    addEventListener("popstate", navigated);
+    document.addEventListener("astro:after-swap", navigated);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && !draft && !root.activeElement) load();
+    });
+    if ("ResizeObserver" in window) new ResizeObserver(reflow).observe(document.body);
+    const fonts = document.createElement("style");
+    if (script?.dataset.fontUrl)
+      fonts.textContent = `@font-face{font-family:'lab comments';font-display:swap;src:url('${new URL(script.dataset.fontUrl, script.src || location.href)}') format('woff2');}`;
+    const fontName = script?.dataset.fontUrl ? "lab comments" : script?.dataset.font;
+    if (fontName) host2.style.setProperty("--lab-font", `'${fontName.replace(/'/g, "")}', system-ui, sans-serif`);
+    const pinCursorStyle = document.createElement("style");
+    const ptr = el2("div", { class: "ptr", "aria-hidden": "true" });
+    ptr.append(el2("span", { class: "ini" }, "+"), el2("span", { class: "tick" }, "go"));
+    root.append(ptr);
+    let mouse = null;
+    const place = (x, y, target) => {
+      const show = Boolean(target) && target !== host2 && !host2.contains(target) && getComputedStyle(target).cursor === "none";
+      ptr.classList.toggle("show", show);
+      ptr.classList.toggle("go", goMode);
+      ptr.style.transform = `translate(${x - 1}px, ${y - 27}px)`;
+    };
+    const recheck = () => mouse && requestAnimationFrame(() => mouse && place(mouse.x, mouse.y, document.elementFromPoint(mouse.x, mouse.y)));
+    addEventListener("pointermove", (e) => {
+      if (e.pointerType !== "mouse") return;
+      document.documentElement.classList.add("lab-drawn");
+      mouse = { x: e.clientX, y: e.clientY };
+      const t = e.composedPath()[0];
+      place(e.clientX, e.clientY, t instanceof Element ? t : null);
+    }, { capture: true, passive: true });
+    addEventListener("scroll", recheck, { capture: true, passive: true });
+    addEventListener("keydown", (e) => (e.key === "Shift" || e.key === "Alt") && recheck(), true);
+    addEventListener("keyup", (e) => (e.key === "Shift" || e.key === "Alt") && recheck(), true);
+    document.documentElement.addEventListener("mouseleave", () => (mouse = null, ptr.classList.remove("show")));
+    addEventListener("blur", () => (mouse = null, ptr.classList.remove("show")));
+    let cursorKey = "";
+    function refreshPinCursor() {
+      const ch = (initial(store2.get("lab-name")) || "+").replace(/[<>&'"]/g, "");
+      if (ch === cursorKey) return;
+      cursorKey = ch;
+      ptr.querySelector(".ini").textContent = ch;
+      const plain2 = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
+      const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
+      pinCursorStyle.textContent = `@layer lab-pointer { html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *${plain2} { cursor: crosshair; } html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *${plain2}:not(${top}) { cursor: none; } html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
+    }
+    fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+    let shiftOff = 0;
+    const shiftKey = (e) => {
+      clearTimeout(shiftOff);
+      if (e.shiftKey) document.documentElement.classList.add("lab-shift");
+      else shiftOff = setTimeout(() => (document.documentElement.classList.remove("lab-shift"), recheck()), 400);
+    };
+    addEventListener("keydown", shiftKey, true);
+    addEventListener("keyup", shiftKey, true);
+    addEventListener("pointerdown", (e) => {
+      if (e.shiftKey) return shiftKey(e);
+      clearTimeout(shiftOff);
+      document.documentElement.classList.remove("lab-shift");
+    }, true);
+    addEventListener("blur", () => document.documentElement.classList.remove("lab-shift"));
+    fonts.textContent += "html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }";
+    fonts.textContent += "html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }";
+    fonts.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
+    addEventListener("scroll", () => {
+      const de = document.documentElement;
+      const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
+      if (!had || host2.hasAttribute("data-sheet")) return;
+      const room = Math.max(0, Math.ceil(scrollY + innerHeight - (de.scrollHeight - had)));
+      if (room >= had) return;
+      de.style.setProperty("--lab-room", `${room}px`);
+      if (!room) de.classList.remove("lab-room");
+    }, { passive: true });
+    fonts.textContent += "@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }";
+    fonts.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
+    fonts.textContent += `@media (pointer: coarse) { html.lab-pinning body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
+    const setAlt = (down) => document.documentElement.classList.toggle("lab-alt", Boolean(down));
+    addEventListener("keydown", (e) => e.key === "Alt" && setAlt(true), true);
+    addEventListener("keyup", (e) => e.key === "Alt" && setAlt(false), true);
+    addEventListener("pointermove", (e) => setAlt(e.altKey), { capture: true, passive: true });
+    addEventListener("blur", () => setAlt(false));
+    const start = () => {
+      document.head.append(fonts, pinCursorStyle);
+      refreshPinCursor();
+      if (on) showHint();
+      document.body.append(host2);
+      const paint = "background-color: rgba(52, 199, 89, .3); color: inherit;";
+      fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+      load();
+    };
+    if (document.body) start();
+    else document.addEventListener("DOMContentLoaded", start);
+    if (script?.dataset.live) {
+      let onState = function(v) {
+        {
+          if (v.widget && script.dataset.widget && v.widget !== script.dataset.widget) return reload();
+          if (v.lab && script.dataset.lab && v.lab !== script.dataset.lab) {
+            script.dataset.lab = v.lab;
+            script.dataset.version = String(v.files);
+            hotAt = v.hot;
+            commentsRev = v.comments;
+            morphPage();
+            load();
+          }
+          if (String(v.files) !== script.dataset.version) return reload();
+          if (hotAt !== null && v.hot !== hotAt) {
+            if (v.hot - hotAt > 1) hotUpdate([{ kind: "html" }, { kind: "css", path: "" }]);
+            else hotUpdate(v.hotFiles || []);
+          }
+          hotAt = v.hot;
+          if (commentsRev !== null && v.comments !== commentsRev) loadChanges(commentsRev);
+          commentsRev = v.comments;
+          if (v.reads !== readsAt) {
+            readsAt = v.reads;
+            syncReads();
+          }
+          const s = v.session;
+          const mode = s ? v.mode || "listening" : "away";
+          const span = (t) => Object.assign(document.createElement("span"), { textContent: t });
+          const agent = s?.agent || "Claude";
+          const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
+          if (mode === "listening") who.replaceChildren(span("talking to"), agent, ...tag);
+          else if (mode === "working") who.replaceChildren(agent, span("is working"), ...tag);
+          else who.replaceChildren(span("no agent listening"));
+          who.classList.toggle("idle", mode === "away");
+          who.classList.toggle("working", mode === "working");
+          listBtn.dataset.agent = mode;
+          chatBtn.dataset.agent = mode;
+          if (coarse) chatBtn.title = who.textContent;
+          who.setAttribute("aria-label", who.textContent);
+          if (s?.url && mode !== "away") Object.assign(who, { href: s.url, target: "_blank" });
+          else who.removeAttribute("href");
+          who.dataset.copy = !s?.url && s?.resume && mode !== "away" ? s.resume : "";
+          who.title = mode === "away" ? "Ask your agent to run: npx @leonidstern/labfb wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
+          who.hidden = false;
         }
-        prev = morphNode(o, n);
-        j++;
+      };
+      const key = "lab-scroll:" + location.pathname;
+      try {
+        const kept = JSON.parse(sessionStorage.getItem(key) || "null");
+        if (kept !== null) {
+          sessionStorage.removeItem(key);
+          if (kept.open) openId = kept.open;
+          if (kept.list) {
+            listOpen = true;
+            filter = ["new", "open", "resolved", "mine"].includes(kept.filter) ? kept.filter : filter;
+          }
+          if (kept.chat) chatOpen = true;
+          addEventListener("load", () => scrollTo(0, +(kept.y ?? kept)));
+        }
+      } catch {
+      }
+      let touchedAt = 0;
+      for (const t of ["pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(t, () => touchedAt = performance.now(), { capture: true, passive: true });
+      const busy = () => draft || grabbing || openId || chatOpen || listOpen || coarse && /^(textarea|input)$/.test(root.activeElement?.localName || "") || [...root.querySelectorAll("textarea")].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
+      let reloadWhenShown = false;
+      let reloadTimer = 0;
+      const reload = () => {
+        if (document.hidden) return void (reloadWhenShown = true);
+        if (busy()) {
+          if (!reloadTimer) reloadTimer = setTimeout(() => (reloadTimer = 0, reload()), 500);
+          return;
+        }
+        try {
+          sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: openId, list: listOpen, filter, chat: chatOpen }));
+        } catch {
+        }
+        location.reload();
+      };
+      const who = document.createElement("a");
+      who.className = "listener";
+      who.addEventListener("click", async () => {
+        const text = who.dataset.copy;
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          const was = [...who.childNodes];
+          who.replaceChildren("copied");
+          setTimeout(() => who.textContent === "copied" && who.replaceChildren(...was), 1200);
+        } catch {
+        }
       });
-      for (const o of olds.slice(j)) o.remove();
-    };
-    const morphNode = (o, n) => {
-      if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || o.nodeType === 1 && (o.id || "") !== (n.id || "")) {
-        const c = document.importNode(n, true);
-        o.replaceWith(c);
-        return c;
-      }
-      if (o.nodeType === 3 || o.nodeType === 8) {
-        if (o.data !== n.data) o.data = n.data;
-        return o;
-      }
-      if (o.nodeType !== 1) return o;
-      for (const { name } of Array.from(o.attributes)) if (!n.hasAttribute(name) && !(name === "open" && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
-      for (const { name, value } of Array.from(n.attributes)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
-      if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
-      morphKids(o, n);
-      return o;
-    };
-    const ownScripts = () => scriptsOf(document).length > 0;
-    let morphRun = 0;
-    const morphPage = async () => {
-      if (ownScripts()) return reload();
-      const run = ++morphRun;
-      try {
-        const res = await fetch(location.href, { cache: "no-store", headers: { accept: "text/html" } });
-        if (!res.ok) return reload();
-        const html = await res.text();
-        if (run !== morphRun) return;
-        const doc = new DOMParser().parseFromString(html, "text/html");
-        if (scriptsOf(doc).join("\n") !== scriptsOf(document).join("\n") || sheetsOf(doc).join("\n") !== sheetsOf(document).join("\n")) return reload();
-        let mark = null;
-        for (const y of [Math.min(innerHeight / 3, 240), innerHeight / 2, 80]) {
-          const e = document.elementFromPoint(innerWidth / 2, y);
-          if (e && e !== document.body && e !== document.documentElement && !host.contains(e) && e !== host) {
-            mark = e;
-            break;
+      who.hidden = true;
+      root.querySelector(".left").prepend(who);
+      let stream = null;
+      let beat = 0;
+      const showAway = (word) => {
+        who.replaceChildren(Object.assign(document.createElement("span"), { textContent: word }));
+        who.setAttribute("aria-label", word);
+        who.classList.add("idle");
+        who.classList.remove("working");
+        who.hidden = false;
+      };
+      let commentsRev = null;
+      let readsAt = null;
+      let hotAt = null;
+      const swapCss = (files) => {
+        const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
+        const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
+        for (const link of named.length ? named : links) {
+          const url = new URL(link.href, location.href);
+          url.searchParams.set("lab-v", Date.now().toString(36));
+          const next = link.cloneNode();
+          next.href = url.href;
+          next.dataset.labSwap = "";
+          const path = url.pathname;
+          next.addEventListener("load", () => {
+            for (const l of document.querySelectorAll('link[rel~="stylesheet"][href]')) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
+            delete next.dataset.labSwap;
+          }, { once: true });
+          next.addEventListener("error", () => next.remove(), { once: true });
+          link.after(next);
+        }
+      };
+      const fresh = (u) => {
+        const url = new URL(u, location.href);
+        url.searchParams.set("lab-v", Date.now().toString(36));
+        return url.href;
+      };
+      const samePath = (u, paths) => {
+        try {
+          const url = new URL(u, location.href);
+          return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
+        } catch {
+          return false;
+        }
+      };
+      const swapImages = (paths) => {
+        let hit = 0;
+        for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
+          if (host2.contains(n)) continue;
+          for (const attr of ["src", "href", "poster", "xlink:href"]) {
+            const v = n.getAttribute(attr);
+            if (!v || !samePath(v.split("#")[0], paths)) continue;
+            const next = fresh(v.split("#")[0]);
+            const im = new Image();
+            im.src = next;
+            (im.decode ? im.decode() : Promise.resolve()).catch(() => {
+            }).finally(() => n.setAttribute(attr, next + (v.includes("#") ? v.slice(v.indexOf("#")) : "")));
+            hit++;
+          }
+          const set = n.getAttribute("srcset");
+          if (set && set.split(",").some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
+            n.setAttribute("srcset", set.split(",").map((c) => {
+              const [u, ...rest] = c.trim().split(/\s+/);
+              return [samePath(u, paths) ? fresh(u) : u, ...rest].join(" ");
+            }).join(", "));
+            hit++;
           }
         }
-        const markTop = mark?.getBoundingClientRect().top;
-        const apply = () => {
-          if (doc.title !== tabTitle.base) {
-            tabTitle.base = doc.title;
-            document.title = doc.title;
-            drawList();
-          }
-          const mine2 = ownStyles();
-          const olds = [...document.head.querySelectorAll("style")].filter((x) => !mine2.has(x));
-          const news = [...doc.head.querySelectorAll("style")];
-          news.forEach((n, i) => olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true)));
-          for (const o of olds.slice(news.length)) o.remove();
-          morphKids(document.body, doc.body);
-          if (mark?.isConnected) {
-            const moved = mark.getBoundingClientRect().top - markTop;
-            if (Math.abs(moved) > 1) scrollBy(0, moved);
-          }
-          reflow();
-        };
-        const safe = () => {
+        if (!hit) swapCss([]);
+      };
+      const reloadFonts = (paths) => {
+        for (const sheet of document.styleSheets) {
+          let rules;
           try {
-            apply();
+            rules = sheet.cssRules;
           } catch {
-            reload();
+            continue;
           }
+          for (const r of rules || []) {
+            if (!(r instanceof CSSFontFaceRule)) continue;
+            const src = r.style.getPropertyValue("src");
+            const base = sheet.href || location.href;
+            if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
+            const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all);
+            const d = (k) => r.style.getPropertyValue(k) || void 0;
+            try {
+              const face = new FontFace(d("font-family").replace(/^["']|["']$/g, ""), again, { weight: d("font-weight"), style: d("font-style"), stretch: d("font-stretch"), unicodeRange: d("unicode-range"), display: d("font-display") });
+              face.load().then((f) => document.fonts.add(f)).catch(() => {
+              });
+            } catch {
+            }
+          }
+        }
+      };
+      const ownStyles = () => /* @__PURE__ */ new Set([fonts, pinCursorStyle]);
+      const scriptsOf = (doc) => [...doc.querySelectorAll("script")].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute("src") || "")).map((x) => x.getAttribute("src") || x.textContent);
+      const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => {
+        try {
+          return new URL(l.getAttribute("href"), location.href).pathname;
+        } catch {
+          return "";
+        }
+      });
+      const keepOut = (n) => n === host2 || n.nodeType === 1 && n.localName === "script";
+      const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || "") === (n.id || ""));
+      const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute("class") === n.getAttribute("class") : o.nodeType !== 3 || o.data === n.data);
+      const morphKids = (a, b) => {
+        const olds = [...a.childNodes].filter((n) => !keepOut(n));
+        const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === "script"));
+        let j = 0;
+        let prev = null;
+        const put = (n) => {
+          const c = document.importNode(n, true);
+          a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
+          return c;
         };
-        if (document.startViewTransition && !still.matches) document.startViewTransition(safe);
-        else safe();
-      } catch {
-        reload();
-      }
-    };
-    const hotUpdate = (files) => {
-      const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
-      const here = decodeURIComponent(location.pathname).replace(/\/$/, "/index").replace(/\.html?$/i, "");
-      if (of("html").some((p) => !p || p.replace(/\.html?$/i, "") === here)) morphPage();
-      if (of("css").length) swapCss(of("css"));
-      if (of("img").length) swapImages(of("img"));
-      if (of("font").length) reloadFonts(of("font"));
-    };
-    const tab = Math.random().toString(36).slice(2, 12);
-    let pollTimer = 0;
-    let dropTimer = 0;
-    const poll = async () => {
-      try {
-        onState(await (await fetch(`${script.dataset.live.replace(/live$/, "state")}?tab=${tab}`, { cache: "no-store" })).json());
-      } catch {
-      }
-    };
-    const toBackground = () => {
-      clearTimeout(dropTimer);
-      dropTimer = setTimeout(() => {
+        news.forEach((n, i) => {
+          const o = olds[j];
+          if (!o) return void (prev = put(n));
+          if (alike(o, n)) return void (prev = morphNode(o, n), j++);
+          if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
+          const k = olds.slice(j + 1, j + 8).findIndex((m) => alike(m, n));
+          if (k >= 0) {
+            for (const gone2 of olds.slice(j, j + 1 + k)) gone2.remove();
+            j += k + 1;
+            return void (prev = morphNode(olds[j], n), j++);
+          }
+          prev = morphNode(o, n);
+          j++;
+        });
+        for (const o of olds.slice(j)) o.remove();
+      };
+      const morphNode = (o, n) => {
+        if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || o.nodeType === 1 && (o.id || "") !== (n.id || "")) {
+          const c = document.importNode(n, true);
+          o.replaceWith(c);
+          return c;
+        }
+        if (o.nodeType === 3 || o.nodeType === 8) {
+          if (o.data !== n.data) o.data = n.data;
+          return o;
+        }
+        if (o.nodeType !== 1) return o;
+        for (const { name } of Array.from(o.attributes)) if (!n.hasAttribute(name) && !(name === "open" && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
+        for (const { name, value } of Array.from(n.attributes)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+        if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
+        morphKids(o, n);
+        return o;
+      };
+      const ownScripts = () => scriptsOf(document).length > 0;
+      let morphRun = 0;
+      const morphPage = async () => {
+        if (ownScripts()) return reload();
+        const run = ++morphRun;
+        try {
+          const res = await fetch(location.href, { cache: "no-store", headers: { accept: "text/html" } });
+          if (!res.ok) return reload();
+          const html = await res.text();
+          if (run !== morphRun) return;
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          if (scriptsOf(doc).join("\n") !== scriptsOf(document).join("\n") || sheetsOf(doc).join("\n") !== sheetsOf(document).join("\n")) return reload();
+          let mark = null;
+          for (const y of [Math.min(innerHeight / 3, 240), innerHeight / 2, 80]) {
+            const e = document.elementFromPoint(innerWidth / 2, y);
+            if (e && e !== document.body && e !== document.documentElement && !host2.contains(e) && e !== host2) {
+              mark = e;
+              break;
+            }
+          }
+          const markTop = mark?.getBoundingClientRect().top;
+          const apply = () => {
+            if (doc.title !== tabTitle.base) {
+              tabTitle.base = doc.title;
+              document.title = doc.title;
+              drawList();
+            }
+            const mine2 = ownStyles();
+            const olds = [...document.head.querySelectorAll("style")].filter((x) => !mine2.has(x));
+            const news = [...doc.head.querySelectorAll("style")];
+            news.forEach((n, i) => olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true)));
+            for (const o of olds.slice(news.length)) o.remove();
+            morphKids(document.body, doc.body);
+            if (mark?.isConnected) {
+              const moved = mark.getBoundingClientRect().top - markTop;
+              if (Math.abs(moved) > 1) scrollBy(0, moved);
+            }
+            reflow();
+          };
+          const safe = () => {
+            try {
+              apply();
+            } catch {
+              reload();
+            }
+          };
+          if (document.startViewTransition && !still.matches) document.startViewTransition(safe);
+          else safe();
+        } catch {
+          reload();
+        }
+      };
+      const hotUpdate = (files) => {
+        const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
+        const here = decodeURIComponent(location.pathname).replace(/\/$/, "/index").replace(/\.html?$/i, "");
+        if (of("html").some((p) => !p || p.replace(/\.html?$/i, "") === here)) morphPage();
+        if (of("css").length) swapCss(of("css"));
+        if (of("img").length) swapImages(of("img"));
+        if (of("font").length) reloadFonts(of("font"));
+      };
+      const tab = Math.random().toString(36).slice(2, 12);
+      let pollTimer = 0;
+      let dropTimer = 0;
+      const poll = async () => {
+        try {
+          onState(await (await fetch(`${script.dataset.live.replace(/live$/, "state")}?tab=${tab}`, { cache: "no-store" })).json());
+        } catch {
+        }
+      };
+      const toBackground = () => {
+        clearTimeout(dropTimer);
+        dropTimer = setTimeout(() => {
+          stream?.close();
+          stream = null;
+          clearInterval(pollTimer);
+          pollTimer = setInterval(poll, 2e4);
+        }, 3e4);
+      };
+      const toFront = () => {
+        clearTimeout(dropTimer);
+        clearInterval(pollTimer);
+        pollTimer = 0;
+        connect();
+      };
+      const connect = () => {
+        if (stream) return;
+        stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
+        beat = Date.now();
+        stream.addEventListener("beat", () => beat = Date.now());
+        stream.onerror = () => showAway("reconnecting");
+        stream.onmessage = (e) => {
+          beat = Date.now();
+          onState(JSON.parse(e.data));
+        };
+      };
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) return toBackground();
+        if (reloadWhenShown) return reload();
+        toFront();
+      });
+      addEventListener("pagehide", () => {
         stream?.close();
         stream = null;
-        clearInterval(pollTimer);
-        pollTimer = setInterval(poll, 2e4);
-      }, 3e4);
-    };
-    const toFront = () => {
-      clearTimeout(dropTimer);
-      clearInterval(pollTimer);
-      pollTimer = 0;
-      connect();
-    };
-    const connect = () => {
-      if (stream) return;
-      stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
-      beat = Date.now();
-      stream.addEventListener("beat", () => beat = Date.now());
-      stream.onerror = () => showAway("reconnecting");
-      stream.onmessage = (e) => {
-        beat = Date.now();
-        onState(JSON.parse(e.data));
-      };
-    };
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) return toBackground();
-      if (reloadWhenShown) return reload();
-      toFront();
-    });
-    addEventListener("pagehide", () => {
-      stream?.close();
-      stream = null;
-      fetch(script.dataset.live.replace(/live$/, "bye"), { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ tab }) }).catch(() => {
+        fetch(script.dataset.live.replace(/live$/, "bye"), { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ tab }) }).catch(() => {
+        });
       });
-    });
-    addEventListener("pageshow", (e) => e.persisted && connect());
-    let tick = Date.now();
-    const freshStream = () => {
-      stream?.close();
-      stream = null;
-      showAway("reconnecting");
+      addEventListener("pageshow", (e) => e.persisted && connect());
+      let tick = Date.now();
+      const freshStream = () => {
+        stream?.close();
+        stream = null;
+        showAway("reconnecting");
+        connect();
+      };
+      setInterval(() => {
+        const now = Date.now();
+        const slept = now - tick > 2e4;
+        tick = now;
+        if (document.hidden) return;
+        if (slept || stream && now - beat > 4e4) freshStream();
+      }, 5e3);
+      addEventListener("online", () => !document.hidden && freshStream());
       connect();
-    };
-    setInterval(() => {
-      const now = Date.now();
-      const slept = now - tick > 2e4;
-      tick = now;
-      if (document.hidden) return;
-      if (slept || stream && now - beat > 4e4) freshStream();
-    }, 5e3);
-    addEventListener("online", () => !document.hidden && freshStream());
-    connect();
-    if (document.hidden) toBackground();
-  }
+      if (document.hidden) toBackground();
+    }
+  })();
 })();
