@@ -35,11 +35,13 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 button.pin:hover, button.pin.open { transform: scale(1.08); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 4px 14px rgba(0,0,0,.2); }
 button.pin:active { transform: scale(.96); }
 .pin.in { animation: lab-pin .26s var(--_ease); }
+/* Phones: a new pin pops in from 70% with a small overshoot as the sent card lands in it (lab B2, Leo 16 Nov). */
+.pin.arrive { animation: lab-arrive .46s cubic-bezier(.34, 1.56, .64, 1) both; }
+@keyframes lab-arrive { from { opacity: 0; transform: scale(.7); } }
 /* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
    lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
 .pin.swap { animation: lab-swap .36s cubic-bezier(.3, .7, .4, 1.25); }
 @keyframes lab-swap { from { transform: scale(.72); opacity: .35; } }
-.pin .ring.come { animation: lab-fade .3s ease-out; }
 .pin .ring.gone { animation: lab-gone .3s ease-in forwards; }
 @keyframes lab-gone { to { opacity: 0; } }
 /* A new comment lands with one faint halo from its pin. */
@@ -71,8 +73,11 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
              -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
              mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 .ring::before { content: ''; position: absolute; inset: -50%; will-change: transform;
-                background: conic-gradient(rgb(52, 199, 89) 0 28%, rgba(52, 199, 89, .22) 28% 100%); animation: lab-turn 1.2s linear infinite; }
+                background: conic-gradient(rgb(52, 199, 89) 0 var(--lab-arc, 66%), rgba(52, 199, 89, .22) var(--lab-arc, 66%) 100%); animation: lab-turn 1.2s linear infinite; }
 @keyframes lab-turn { to { transform: rotate(360deg); } }
+/* The agent takes it: the green arc draws itself in while it turns (lab C2, Leo 16 Nov; --lab-arc is registered on the page). */
+.pin .ring.come::before { animation: lab-draw .4s ease-out, lab-turn 1.2s linear infinite; }
+@keyframes lab-draw { from { --lab-arc: 0%; } }
 /* The drawn pointer: your pin, following the mouse (it moves without a transition; only its look eases). */
 .ptr { position: fixed; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px 14px 14px 2px; corner-shape: round;
        background: var(--_bg); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 2px 6px rgba(0,0,0,.18);
@@ -148,7 +153,9 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
         background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
 .send.ready:hover { transform: scale(1.06); }
 .send.ready:active { transform: scale(.94); }
-.send.ready { background: var(--_accent); color: var(--_accent-fg); }
+.send.ready { background: var(--_accent); color: var(--_accent-fg); animation: lab-ready .16s ease-out; }
+/* The first letter typed: the arrow turns dark with a tiny pop, so you see it's ready (lab A5, Leo 16 Nov). */
+@keyframes lab-ready { 50% { transform: scale(1.08); } }
 /* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
 .send .arr { display: block; position: relative; left: -1px; width: 12px; height: 11px; background: currentColor; clip-path: polygon(0 42%, 100% 0, 66% 100%, 46% 60%); }
 .send * { color: inherit; }
@@ -332,7 +339,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @keyframes lab-fade { from { opacity: 0; } }
 /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
 @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
-@keyframes lab-sheet-in { from { transform: translateY(100%); } }
 @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
 /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
 /* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a
@@ -408,7 +414,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
      sheet never scrolls the page. */
   :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
-  .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
   /* Held at their start until the sheet's first frame is drawn (data-opening, see render): laying out the first sheet
      after the page loads took 130 ms and used up the slide, so it showed up already open (iOS 27 simulator, 16 Nov). */
   :host([data-opening]) :is(.card.in, .float.in, .scrim) { animation-play-state: paused; }
@@ -482,6 +487,23 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
 @media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
 [hidden] { display: none !important; }
+/* Phones: sheets float as cards, as iOS 27's do (Leo, 16 Nov): 8 px in from the screen's sides and bottom (from the
+   keyboard's top when it's up), round at every corner, a soft shadow, and the page behind not dimmed (a tap there still
+   closes it). A tapped sheet grows out of what you tapped (--lab-from, set in render) and shrinks back into it. */
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
+  :host { --_gap: 8px; --_card-r: 30px; }
+  .card, .float, .list { left: var(--_gap) !important; right: var(--_gap); bottom: var(--_gap) !important; border-radius: var(--_card-r) !important;
+    background: var(--_bg);
+    box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px rgba(0, 0, 0, .18); transform-origin: var(--lab-from, 50% 100%); }
+  .list .tabs { background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat; border-radius: var(--_card-r) var(--_card-r) 0 0; }
+  .card::after, .float::after, .list::after { content: none; }
+  :host([data-kb]) :is(.card, .list:not([hidden])) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
+  :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
+  .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px - var(--_gap) + var(--_kb)); }
+  .scrim { background: transparent; }
+  .card.in, .float.in, .list:not([hidden]) { animation: lab-card-in .3s cubic-bezier(.2, .9, .25, 1); }
+}
+@keyframes lab-card-in { from { transform: scale(.3); opacity: 0; } 40% { opacity: 1; } }
 `;
 
   // src/widget/anchoring.ts
@@ -1455,10 +1477,32 @@ ${line}`;
   var grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
   var scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
   var SPRING = "cubic-bezier(.32,.72,0,1)";
-  var HELD = ["top", "bottom", "height", "max-height", "transform", "transition", "animation", "pointer-events"];
-  function leave(node, ms = 0) {
-    const dur = ms || 280;
-    const ease = ms ? "linear" : "cubic-bezier(.4, 0, 1, 1)";
+  var HELD = ["top", "bottom", "height", "max-height", "transform", "transition", "animation", "pointer-events", "opacity", "transform-origin"];
+  var tap = { x: 0, y: 0, at: -1e9 };
+  function fromTap(node, at) {
+    const p = at || (performance.now() - tap.at < 1500 ? tap : null);
+    if (!p) return node.style.removeProperty("--lab-from");
+    node.style.setProperty("--lab-from", `${Math.round(p.x - node.offsetLeft)}px ${Math.round(p.y - node.offsetTop)}px`);
+  }
+  var keeper = null;
+  function holdKeyboard() {
+    if (!W.coarse || !W.host.hasAttribute("data-kb") || W.still.matches) return;
+    keeper ??= W.el("input", {
+      "aria-hidden": "true",
+      tabindex: "-1",
+      autocomplete: "off",
+      autocorrect: "off",
+      autocapitalize: "off",
+      spellcheck: "false",
+      writingsuggestions: "false",
+      style: "position:fixed;top:0;left:-200px;width:1px;height:1px;opacity:0;font-size:16px;pointer-events:none"
+    });
+    if (!keeper.isConnected) W.root.append(keeper);
+    keeper.focus({ preventScroll: true });
+  }
+  function leave(node, ms = 0, to) {
+    const dur = to ? 360 : ms || 200;
+    const ease = ms ? "linear" : "cubic-bezier(.4, 0, .9, .4)";
     let moved = 0;
     try {
       moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0;
@@ -1474,19 +1518,38 @@ ${line}`;
       ["max-height", "none"],
       ["animation", "none"],
       ["transition", "none"],
-      ["transform", `translateY(${moved}px)`],
+      ["transform", to ? "" : `translateY(${moved}px)`],
       ["pointer-events", "none"]
     ]) node.style.setProperty(k, v, "important");
     W.host.setAttribute("data-leaving", "");
     W.scrim.style.transition = "none";
     W.scrim.style.opacity = fade;
-    W.root.activeElement?.blur();
+    const letKeysGo = () => W.root.activeElement?.blur();
+    if (to) setTimeout(letKeysGo, dur);
+    else letKeysGo();
+    const pin = to ? null : W.root.querySelector(node.classList.contains("card") ? ".pin.open" : node.classList.contains("float") ? ".pin.draft" : "none");
+    const p = pin?.getBoundingClientRect();
+    if (p) fromTap(node, { x: p.left + p.width / 2, y: p.top + p.height / 2 });
     void node.offsetHeight;
-    node.style.setProperty("transition", `transform ${dur}ms ${ease}`, "important");
-    node.style.setProperty("transform", `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, "important");
+    if (to) {
+      node.style.setProperty("transform-origin", "50% 50%", "important");
+      const dx = to.x - (r.left + r.width / 2), dy = to.y - (top + r.height / 2);
+      const fly = () => {
+        node.animate([{ transform: "none" }, { transform: `translate(${dx}px, ${dy}px) scale(${22 / r.width}, ${22 / r.height})` }], { duration: dur, easing: SPRING, fill: "forwards" });
+        node.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration: dur, fill: "forwards" });
+      };
+      requestAnimationFrame(() => requestAnimationFrame(fly));
+    } else if (ms) {
+      node.style.setProperty("transition", `transform ${dur}ms ${ease}`, "important");
+      node.style.setProperty("transform", `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, "important");
+    } else {
+      node.style.setProperty("transition", `transform ${dur}ms ${ease}, opacity ${dur}ms ease-in`, "important");
+      node.style.setProperty("transform", `translateY(${moved}px) scale(.3)`, "important");
+      node.style.setProperty("opacity", "0", "important");
+    }
     W.scrim.style.transition = `opacity ${dur}ms ${ease}`;
     W.scrim.style.opacity = "0";
-    return dur;
+    return to ? dur + 120 : dur;
   }
   function letGo(node) {
     for (const k of HELD) node.style.removeProperty(k);
@@ -1666,7 +1729,7 @@ ${line}`;
         const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
         if (key === fitted) {
           const open2 = sheet ? W.openSheet() : null;
-          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.getBoundingClientRect().top });
+          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.offsetTop });
           return;
         }
         fitted = key;
@@ -1679,20 +1742,13 @@ ${line}`;
         strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
         strip.style.height = `${gap}px`;
         const open = sheet ? W.openSheet() : null;
-        const slid = (n) => {
-          try {
-            return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0;
-          } catch {
-            return 0;
-          }
-        };
         const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
         const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !W.still.matches;
         if (sliding) {
           open.style.transition = "none";
           void open.offsetHeight;
         }
-        const at = open ? open.getBoundingClientRect().top - slid(open) : null;
+        const at = open ? open.offsetTop : null;
         if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = "";
         if (sliding && Math.abs(fit.top - at) > 8) {
           open.style.transform = `translateY(${fit.top - at}px)`;
@@ -1719,6 +1775,7 @@ ${line}`;
       W.root.addEventListener("focusout", () => setTimeout(fit, 50));
       W.vv.addEventListener("resize", fit);
       W.vv.addEventListener("scroll", fit);
+      addEventListener("pointerdown", (e) => tap = { x: e.clientX, y: e.clientY, at: performance.now() }, { capture: true, passive: true });
       fit();
       if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
         let lines = [];
@@ -3240,8 +3297,20 @@ ${line}`;
           prev.classList.add("out");
           prev.inert = true;
           layer2.append(prev);
-          const dur = leave(prev);
+          const newPin = S.posted && pinsById.get(S.posted);
+          const sent = newPin?.getBoundingClientRect();
+          if (newPin) newPin.style.animationDelay = "250ms";
+          const dur = leave(prev, 0, sent && { x: sent.left + sent.width / 2, y: sent.top + sent.height / 2 });
           setTimeout(() => (prev.remove(), letGo(prev)), dur);
+        }
+        if (coarse) {
+          const sheet = (
+            /** @type {HTMLElement | null} */
+            root.querySelector(".card:not(.out), .float:not(.out)") || (S.listOpen ? listEl : S.chatOpen ? chatEl : null)
+          );
+          const key = sheet && (S.draft ? "draft" : S.openId || (S.listOpen ? "list" : S.chatOpen ? "chat" : ""));
+          if (sheet && key !== S.sheetKey) fromTap(sheet);
+          S.sheetKey = key;
         }
         markQuote(quoted);
         S.shown = now;
@@ -3287,7 +3356,7 @@ ${line}`;
         const pin = el2(
           "button",
           {
-            class: `pin${/^go$/i.test(c.text.trim()) ? " go" : ""}${c.resolved ? " resolved" : ""}${state === "done" ? " done" : ""}${state === "now" ? " working" : ""}${news.length ? " new" : ""}${moved ? " moved" : ""}${S.posted === c.id ? " in" : ""}${movable ? " grab" : ""}${S.openId === c.id ? " open" : ""}`,
+            class: `pin${/^go$/i.test(c.text.trim()) ? " go" : ""}${c.resolved ? " resolved" : ""}${state === "done" ? " done" : ""}${state === "now" ? " working" : ""}${news.length ? " new" : ""}${moved ? " moved" : ""}${S.posted === c.id ? coarse ? " arrive" : " in" : ""}${movable ? " grab" : ""}${S.openId === c.id ? " open" : ""}`,
             type: "button",
             title: `${c.resolved ? "" : `${numberOf(c)} \xB7 `}${c.name}${moved ? " \xB7 the spot it was pinned to has changed" : ""}${movable ? " \xB7 drag to move" : ""}`,
             // Its state in words too (the ring, the tick and the new dot are only seen).
@@ -3372,6 +3441,7 @@ ${line}`;
               S.draft = null;
               S.openId = null;
               S.posted = comment.id;
+              holdKeyboard();
               render();
             }
           })
@@ -3914,6 +3984,7 @@ ${line}`;
     addEventListener("blur", () => document.documentElement.classList.remove("lab-shift"));
     fonts.textContent += "html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }";
     fonts.textContent += "html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }";
+    fonts.textContent += '@property --lab-arc { syntax: "<percentage>"; inherits: false; initial-value: 66%; }';
     fonts.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
     addEventListener("scroll", () => {
       const de = document.documentElement;
