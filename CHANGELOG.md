@@ -5,6 +5,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 ## Unreleased
 
 - A pin whose element is gone now waits beside the content (in the gutter left of what it sat in), not 10 px from the window's left edge. On a wide window with a centred column those pins were hundreds of px from the page and read as lost. Phones and full-width pages are unchanged.
+- Computers: a click on the page's own controls is the page's, and the pin pointer steps aside over them: links and buttons as before, and now anything the page gives a hand pointer (a card, a demo you tap to play). Option-click still pins there.
+- Pause motion (⋯ menu, P): everything that moves on the page stops where it is, so you can pin a moment of an animation; again to play on.
 - Phones move more like native sheets (checked frame by frame in the iOS 27 simulator):
   - Closing a sheet with the keyboard up takes the keyboard with it at once; the keyboard used to stay alone for 0.6 s after the sheet was gone.
   - After you send, the sheet slides off with the keyboard; it used to ride the keyboard halfway down and vanish mid-screen.
