@@ -1221,6 +1221,12 @@ const handler = async (req, res) => {
             const root = JSON.parse(h.get(stored.parent));
             if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined }));
           }
+          // The agent answering "Done: …" closes the thread itself (Leo, 15 Nov: 37 threads sat open with nothing left to
+          // do). A person writing in it again reopens it, as above. Other answers (a question, options) leave it open.
+          if (agent && stored.parent && h.has(stored.parent) && /^done\b/i.test(String(stored.text).trim())) {
+            const root = JSON.parse(h.get(stored.parent));
+            if (!root.resolved && root.anchor?.kind !== 'page') h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
+          }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
         }
         // The page that changed (a delete leaves no comment to find it by: then all pages are rebuilt).

@@ -294,3 +294,17 @@ test('two sessions share one lab by page: wait --pages takes only its pages, a p
   const again = await cli(dir, ['wait', '--page', '/other.html', '--timeout', '2'], { LAB_SETTLE_MS: '0' });
   assert.match(again, /second on other/, 'again: ' + again);
 });
+
+test('an agent answer that starts with "Done" closes its thread; another answer leaves it open; a person writing reopens it', async () => {
+  const dir = site('autodone');
+  const { B } = await lab(dir);
+  const get = async (id) => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === id);
+  const a = await pin(B, 'make it red');
+  const q = await pin(B, 'nicer title');
+  await cli(dir, ['reply', a, 'Done: made it red'], {});
+  await cli(dir, ['reply', q, 'Which one, the h1 or the tab title?'], {});
+  assert.equal((await get(a)).resolved, true);
+  assert.equal(Boolean((await get(q)).resolved), false);
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'still orange', parent: a }) });
+  assert.equal(Boolean((await get(a)).resolved), false, 'writing in it reopens it');
+});
