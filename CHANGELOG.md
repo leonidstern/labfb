@@ -4,7 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- The widget's message box (`src/widget/composer.ts`) and a message's small pieces (`src/widget/messages.ts`: what a comment is on, the time and mark in a bubble) are their own TypeScript modules. Same behaviour.
+- The widget is split into TypeScript modules in `src/widget/`: `composer` (the message box), `messages`, `list`, `chat`, `thread`, `sheets` (phone sheets, back gesture, keyboard fit) and `live` (live page updates), beside `anchoring` and `styles`. Its shared state is one object, so the parts can share it. Same behaviour; `src/comments.js` keeps setup, loading, drawing and the events (2,688 → 1,428 lines).
 
 - The server is moving to TypeScript: all of `lib/` is TypeScript now (`dev`, `devserver`, `mcp`, `proxy`), and `local.mjs` hands its command line (`args`), agent detection (`agents`), the running-labs list (`labs`) and the commands that answer and exit (`commands`: preview, add, list, pages, wait, reply, resolve, invite) to their own files; it keeps the server. Node runs the `.ts` source directly while working on labit; npm gets a built copy, `dist/` (made by `npm run build:cli` before every pack), so the package stays plain JavaScript with no dependencies, now 109 kB instead of 120 kB.
 - A phone on a `--wifi` lab now needs a one-time link (`labit invite`): one use, ten minutes, after which that browser keeps a signed cookie for a day. Being on the same wifi is no longer enough, so finding the port on a public network shows a gate and nothing else. The pages still travel unencrypted over the wifi.

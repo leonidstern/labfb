@@ -2117,6 +2117,378 @@ ${line}`;
     return card;
   }
 
+  // src/widget/live.ts
+  var W5;
+  function bindLive(w) {
+    W5 = w;
+  }
+  function startLive() {
+    if (W5.script?.dataset.live) {
+      let onState = function(v) {
+        {
+          if (v.widget && W5.script.dataset.widget && v.widget !== W5.script.dataset.widget) return reload();
+          if (v.lab && W5.script.dataset.lab && v.lab !== W5.script.dataset.lab) {
+            W5.script.dataset.lab = v.lab;
+            W5.script.dataset.version = String(v.files);
+            hotAt = v.hot;
+            commentsRev = v.comments;
+            morphPage();
+            W5.load();
+          }
+          if (String(v.files) !== W5.script.dataset.version) return reload();
+          if (hotAt !== null && v.hot !== hotAt) {
+            if (v.hot - hotAt > 1) hotUpdate([{ kind: "html" }, { kind: "css", path: "" }]);
+            else hotUpdate(v.hotFiles || []);
+          }
+          hotAt = v.hot;
+          if (commentsRev !== null && v.comments !== commentsRev) W5.loadChanges(commentsRev);
+          commentsRev = v.comments;
+          if (v.reads !== readsAt) {
+            readsAt = v.reads;
+            W5.syncReads();
+          }
+          const s = v.session;
+          const mode = s ? v.mode || "listening" : "away";
+          const span = (t) => Object.assign(document.createElement("span"), { textContent: t });
+          const agent = s?.agent || "Claude";
+          const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
+          if (mode === "listening") who.replaceChildren(span("talking to"), agent, ...tag);
+          else if (mode === "working") who.replaceChildren(agent, span("is working"), ...tag);
+          else who.replaceChildren(span("no agent listening"));
+          who.classList.toggle("idle", mode === "away");
+          who.classList.toggle("working", mode === "working");
+          W5.listBtn.dataset.agent = mode;
+          W5.chatBtn.dataset.agent = mode;
+          if (W5.coarse) W5.chatBtn.title = who.textContent;
+          who.setAttribute("aria-label", who.textContent);
+          if (s?.url && mode !== "away") Object.assign(who, { href: s.url, target: "_blank" });
+          else who.removeAttribute("href");
+          who.dataset.copy = !s?.url && s?.resume && mode !== "away" ? s.resume : "";
+          who.title = mode === "away" ? "Ask your agent to run: npx @leonidstern/labit wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
+          who.hidden = false;
+        }
+      };
+      const key = "lab-scroll:" + location.pathname;
+      try {
+        const kept = JSON.parse(sessionStorage.getItem(key) || "null");
+        if (kept !== null) {
+          sessionStorage.removeItem(key);
+          if (kept.open) W5.S.openId = kept.open;
+          if (kept.list) {
+            W5.S.listOpen = true;
+            W5.S.filter = ["new", "open", "resolved", "mine"].includes(kept.filter) ? kept.filter : W5.S.filter;
+          }
+          if (kept.chat) W5.S.chatOpen = true;
+          addEventListener("load", () => scrollTo(0, +(kept.y ?? kept)));
+        }
+      } catch {
+      }
+      let touchedAt = 0;
+      for (const t of ["pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(t, () => touchedAt = performance.now(), { capture: true, passive: true });
+      const busy = () => W5.S.draft || W5.S.grabbing || W5.S.openId || W5.S.chatOpen || W5.S.listOpen || W5.coarse && /^(textarea|input)$/.test(W5.root.activeElement?.localName || "") || [...W5.root.querySelectorAll("textarea")].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
+      let reloadWhenShown = false;
+      let reloadTimer = 0;
+      const reload = () => {
+        if (document.hidden) return void (reloadWhenShown = true);
+        if (busy()) {
+          if (!reloadTimer) reloadTimer = setTimeout(() => (reloadTimer = 0, reload()), 500);
+          return;
+        }
+        try {
+          sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W5.S.openId, list: W5.S.listOpen, filter: W5.S.filter, chat: W5.S.chatOpen }));
+        } catch {
+        }
+        location.reload();
+      };
+      const who = document.createElement("a");
+      who.className = "listener";
+      who.addEventListener("click", async () => {
+        const text = who.dataset.copy;
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          const was = [...who.childNodes];
+          who.replaceChildren("copied");
+          setTimeout(() => who.textContent === "copied" && who.replaceChildren(...was), 1200);
+        } catch {
+        }
+      });
+      who.hidden = true;
+      W5.root.querySelector(".left").prepend(who);
+      let stream = null;
+      let beat = 0;
+      const showAway = (word) => {
+        who.replaceChildren(Object.assign(document.createElement("span"), { textContent: word }));
+        who.setAttribute("aria-label", word);
+        who.classList.add("idle");
+        who.classList.remove("working");
+        who.hidden = false;
+      };
+      let commentsRev = null;
+      let readsAt = null;
+      let hotAt = null;
+      const swapCss = (files) => {
+        const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
+        const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
+        for (const link of named.length ? named : links) {
+          const url = new URL(link.href, location.href);
+          url.searchParams.set("lab-v", Date.now().toString(36));
+          const next = link.cloneNode();
+          next.href = url.href;
+          next.dataset.labSwap = "";
+          const path = url.pathname;
+          next.addEventListener("load", () => {
+            for (const l of document.querySelectorAll('link[rel~="stylesheet"][href]')) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
+            delete next.dataset.labSwap;
+          }, { once: true });
+          next.addEventListener("error", () => next.remove(), { once: true });
+          link.after(next);
+        }
+      };
+      const fresh = (u) => {
+        const url = new URL(u, location.href);
+        url.searchParams.set("lab-v", Date.now().toString(36));
+        return url.href;
+      };
+      const samePath = (u, paths) => {
+        try {
+          const url = new URL(u, location.href);
+          return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
+        } catch {
+          return false;
+        }
+      };
+      const swapImages = (paths) => {
+        let hit = 0;
+        for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
+          if (W5.host.contains(n)) continue;
+          for (const attr of ["src", "href", "poster", "xlink:href"]) {
+            const v = n.getAttribute(attr);
+            if (!v || !samePath(v.split("#")[0], paths)) continue;
+            const next = fresh(v.split("#")[0]);
+            const im = new Image();
+            im.src = next;
+            (im.decode ? im.decode() : Promise.resolve()).catch(() => {
+            }).finally(() => n.setAttribute(attr, next + (v.includes("#") ? v.slice(v.indexOf("#")) : "")));
+            hit++;
+          }
+          const set = n.getAttribute("srcset");
+          if (set && set.split(",").some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
+            n.setAttribute("srcset", set.split(",").map((c) => {
+              const [u, ...rest] = c.trim().split(/\s+/);
+              return [samePath(u, paths) ? fresh(u) : u, ...rest].join(" ");
+            }).join(", "));
+            hit++;
+          }
+        }
+        if (!hit) swapCss([]);
+      };
+      const reloadFonts = (paths) => {
+        for (const sheet of document.styleSheets) {
+          let rules;
+          try {
+            rules = sheet.cssRules;
+          } catch {
+            continue;
+          }
+          for (const r of rules || []) {
+            if (!(r instanceof CSSFontFaceRule)) continue;
+            const src = r.style.getPropertyValue("src");
+            const base = sheet.href || location.href;
+            if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
+            const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all);
+            const d3 = (k) => r.style.getPropertyValue(k) || void 0;
+            try {
+              const face = new FontFace(d3("font-family").replace(/^["']|["']$/g, ""), again, { weight: d3("font-weight"), style: d3("font-style"), stretch: d3("font-stretch"), unicodeRange: d3("unicode-range"), display: d3("font-display") });
+              face.load().then((f) => document.fonts.add(f)).catch(() => {
+              });
+            } catch {
+            }
+          }
+        }
+      };
+      const ownStyles = () => /* @__PURE__ */ new Set([W5.fonts, W5.pinCursorStyle]);
+      const scriptsOf = (doc) => [...doc.querySelectorAll("script")].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute("src") || "")).map((x) => x.getAttribute("src") || x.textContent);
+      const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => {
+        try {
+          return new URL(l.getAttribute("href"), location.href).pathname;
+        } catch {
+          return "";
+        }
+      });
+      const keepOut = (n) => n === W5.host || n.nodeType === 1 && n.localName === "script";
+      const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || "") === (n.id || ""));
+      const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute("class") === n.getAttribute("class") : o.nodeType !== 3 || o.data === n.data);
+      const morphKids = (a, b) => {
+        const olds = [...a.childNodes].filter((n) => !keepOut(n));
+        const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === "script"));
+        let j = 0;
+        let prev = null;
+        const put = (n) => {
+          const c = document.importNode(n, true);
+          a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
+          return c;
+        };
+        news.forEach((n, i) => {
+          const o = olds[j];
+          if (!o) return void (prev = put(n));
+          if (alike(o, n)) return void (prev = morphNode(o, n), j++);
+          if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
+          const k = olds.slice(j + 1, j + 8).findIndex((m) => alike(m, n));
+          if (k >= 0) {
+            for (const gone of olds.slice(j, j + 1 + k)) gone.remove();
+            j += k + 1;
+            return void (prev = morphNode(olds[j], n), j++);
+          }
+          prev = morphNode(o, n);
+          j++;
+        });
+        for (const o of olds.slice(j)) o.remove();
+      };
+      const morphNode = (o, n) => {
+        if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || o.nodeType === 1 && (o.id || "") !== (n.id || "")) {
+          const c = document.importNode(n, true);
+          o.replaceWith(c);
+          return c;
+        }
+        if (o.nodeType === 3 || o.nodeType === 8) {
+          if (o.data !== n.data) o.data = n.data;
+          return o;
+        }
+        if (o.nodeType !== 1) return o;
+        for (const { name } of Array.from(o.attributes)) if (!n.hasAttribute(name) && !(name === "open" && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
+        for (const { name, value } of Array.from(n.attributes)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+        if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
+        morphKids(o, n);
+        return o;
+      };
+      const ownScripts = () => scriptsOf(document).length > 0;
+      let morphRun = 0;
+      const morphPage = async () => {
+        if (ownScripts()) return reload();
+        const run = ++morphRun;
+        try {
+          const res = await fetch(location.href, { cache: "no-store", headers: { accept: "text/html" } });
+          if (!res.ok) return reload();
+          const html = await res.text();
+          if (run !== morphRun) return;
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          if (scriptsOf(doc).join("\n") !== scriptsOf(document).join("\n") || sheetsOf(doc).join("\n") !== sheetsOf(document).join("\n")) return reload();
+          let mark = null;
+          for (const y of [Math.min(innerHeight / 3, 240), innerHeight / 2, 80]) {
+            const e = document.elementFromPoint(innerWidth / 2, y);
+            if (e && e !== document.body && e !== document.documentElement && !W5.host.contains(e) && e !== W5.host) {
+              mark = e;
+              break;
+            }
+          }
+          const markTop = mark?.getBoundingClientRect().top;
+          const apply = () => {
+            if (doc.title !== W5.tabTitle.base) {
+              W5.tabTitle.base = doc.title;
+              document.title = doc.title;
+              W5.drawList();
+            }
+            const mine = ownStyles();
+            const olds = [...document.head.querySelectorAll("style")].filter((x) => !mine.has(x));
+            const news = [...doc.head.querySelectorAll("style")];
+            news.forEach((n, i) => olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true)));
+            for (const o of olds.slice(news.length)) o.remove();
+            morphKids(document.body, doc.body);
+            if (mark?.isConnected) {
+              const moved = mark.getBoundingClientRect().top - markTop;
+              if (Math.abs(moved) > 1) scrollBy(0, moved);
+            }
+            W5.reflow();
+          };
+          const safe = () => {
+            try {
+              apply();
+            } catch {
+              reload();
+            }
+          };
+          if (document.startViewTransition && !W5.still.matches) document.startViewTransition(safe);
+          else safe();
+        } catch {
+          reload();
+        }
+      };
+      const hotUpdate = (files) => {
+        const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
+        const here = decodeURIComponent(location.pathname).replace(/\/$/, "/index").replace(/\.html?$/i, "");
+        if (of("html").some((p) => !p || p.replace(/\.html?$/i, "") === here)) morphPage();
+        if (of("css").length) swapCss(of("css"));
+        if (of("img").length) swapImages(of("img"));
+        if (of("font").length) reloadFonts(of("font"));
+      };
+      const tab = Math.random().toString(36).slice(2, 12);
+      let pollTimer = 0;
+      let dropTimer = 0;
+      const poll = async () => {
+        try {
+          onState(await (await fetch(`${W5.script.dataset.live.replace(/live$/, "state")}?tab=${tab}`, { cache: "no-store" })).json());
+        } catch {
+        }
+      };
+      const toBackground = () => {
+        clearTimeout(dropTimer);
+        dropTimer = setTimeout(() => {
+          stream?.close();
+          stream = null;
+          clearInterval(pollTimer);
+          pollTimer = setInterval(poll, 2e4);
+        }, 3e4);
+      };
+      const toFront = () => {
+        clearTimeout(dropTimer);
+        clearInterval(pollTimer);
+        pollTimer = 0;
+        connect();
+      };
+      const connect = () => {
+        if (stream) return;
+        stream = new EventSource(`${W5.script.dataset.live}?tab=${tab}`);
+        beat = Date.now();
+        stream.addEventListener("beat", () => beat = Date.now());
+        stream.onerror = () => showAway("reconnecting");
+        stream.onmessage = (e) => {
+          beat = Date.now();
+          onState(JSON.parse(e.data));
+        };
+      };
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) return toBackground();
+        if (reloadWhenShown) return reload();
+        toFront();
+      });
+      addEventListener("pagehide", () => {
+        stream?.close();
+        stream = null;
+        fetch(W5.script.dataset.live.replace(/live$/, "bye"), { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ tab }) }).catch(() => {
+        });
+      });
+      addEventListener("pageshow", (e) => e.persisted && connect());
+      let tick = Date.now();
+      const freshStream = () => {
+        stream?.close();
+        stream = null;
+        showAway("reconnecting");
+        connect();
+      };
+      setInterval(() => {
+        const now = Date.now();
+        const slept = now - tick > 2e4;
+        tick = now;
+        if (document.hidden) return;
+        if (slept || stream && now - beat > 4e4) freshStream();
+      }, 5e3);
+      addEventListener("online", () => !document.hidden && freshStream());
+      connect();
+      if (document.hidden) toBackground();
+    }
+  }
+
   // src/comments.js
   /*!
    * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
@@ -2131,7 +2503,7 @@ ${line}`;
    */
   (() => {
     const S = { dbg: null };
-    const W5 = {
+    const W6 = {
       get $() {
         return $;
       },
@@ -2183,8 +2555,14 @@ ${line}`;
       get drafting() {
         return drafting;
       },
+      get drawList() {
+        return drawList;
+      },
       get el() {
         return el2;
+      },
+      get fonts() {
+        return fonts;
       },
       get goBtn() {
         return goBtn;
@@ -2228,6 +2606,12 @@ ${line}`;
       get listed() {
         return listed;
       },
+      get load() {
+        return load;
+      },
+      get loadChanges() {
+        return loadChanges;
+      },
       get markSeen() {
         return markSeen;
       },
@@ -2255,6 +2639,9 @@ ${line}`;
       get patchKids() {
         return patchKids;
       },
+      get pinCursorStyle() {
+        return pinCursorStyle;
+      },
       get placeBar() {
         return placeBar;
       },
@@ -2263,6 +2650,9 @@ ${line}`;
       },
       get readable() {
         return readable;
+      },
+      get reflow() {
+        return reflow;
       },
       get render() {
         return render;
@@ -2275,6 +2665,9 @@ ${line}`;
       },
       get scrim() {
         return scrim;
+      },
+      get script() {
+        return script;
       },
       get send() {
         return send;
@@ -2297,6 +2690,9 @@ ${line}`;
       get store() {
         return store2;
       },
+      get syncReads() {
+        return syncReads;
+      },
       get tabTitle() {
         return tabTitle;
       },
@@ -2310,10 +2706,11 @@ ${line}`;
         return vv;
       }
     };
-    bindList(W5);
-    bindChat(W5);
-    bindThread(W5);
-    bindSheets(W5);
+    bindLive(W6);
+    bindList(W6);
+    bindChat(W6);
+    bindThread(W6);
+    bindSheets(W6);
     const script = (
       /** @type {HTMLScriptElement | null} */
       document.currentScript
@@ -3439,382 +3836,6 @@ ${line}`;
     };
     if (document.body) start();
     else document.addEventListener("DOMContentLoaded", start);
-    if (script?.dataset.live) {
-      let onState = function(v) {
-        {
-          if (v.widget && script.dataset.widget && v.widget !== script.dataset.widget) return reload();
-          if (v.lab && script.dataset.lab && v.lab !== script.dataset.lab) {
-            script.dataset.lab = v.lab;
-            script.dataset.version = String(v.files);
-            hotAt = v.hot;
-            commentsRev = v.comments;
-            morphPage();
-            load();
-          }
-          if (String(v.files) !== script.dataset.version) return reload();
-          if (hotAt !== null && v.hot !== hotAt) {
-            if (v.hot - hotAt > 1) hotUpdate([{ kind: "html" }, { kind: "css", path: "" }]);
-            else hotUpdate(v.hotFiles || []);
-          }
-          hotAt = v.hot;
-          if (commentsRev !== null && v.comments !== commentsRev) loadChanges(commentsRev);
-          commentsRev = v.comments;
-          if (v.reads !== readsAt) {
-            readsAt = v.reads;
-            syncReads();
-          }
-          const s = v.session;
-          const mode = s ? v.mode || "listening" : "away";
-          const span = (t) => Object.assign(document.createElement("span"), { textContent: t });
-          const agent = s?.agent || "Claude";
-          const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
-          if (mode === "listening") who.replaceChildren(span("talking to"), agent, ...tag);
-          else if (mode === "working") who.replaceChildren(agent, span("is working"), ...tag);
-          else who.replaceChildren(span("no agent listening"));
-          who.classList.toggle("idle", mode === "away");
-          who.classList.toggle("working", mode === "working");
-          listBtn.dataset.agent = mode;
-          chatBtn.dataset.agent = mode;
-          if (coarse) chatBtn.title = who.textContent;
-          who.setAttribute("aria-label", who.textContent);
-          if (s?.url && mode !== "away") Object.assign(who, { href: s.url, target: "_blank" });
-          else who.removeAttribute("href");
-          who.dataset.copy = !s?.url && s?.resume && mode !== "away" ? s.resume : "";
-          who.title = mode === "away" ? "Ask your agent to run: npx @leonidstern/labit wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
-          who.hidden = false;
-        }
-      };
-      const key = "lab-scroll:" + location.pathname;
-      try {
-        const kept = JSON.parse(sessionStorage.getItem(key) || "null");
-        if (kept !== null) {
-          sessionStorage.removeItem(key);
-          if (kept.open) S.openId = kept.open;
-          if (kept.list) {
-            S.listOpen = true;
-            S.filter = ["new", "open", "resolved", "mine"].includes(kept.filter) ? kept.filter : S.filter;
-          }
-          if (kept.chat) S.chatOpen = true;
-          addEventListener("load", () => scrollTo(0, +(kept.y ?? kept)));
-        }
-      } catch {
-      }
-      let touchedAt = 0;
-      for (const t of ["pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(t, () => touchedAt = performance.now(), { capture: true, passive: true });
-      const busy = () => S.draft || S.grabbing || S.openId || S.chatOpen || S.listOpen || coarse && /^(textarea|input)$/.test(root.activeElement?.localName || "") || [...root.querySelectorAll("textarea")].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
-      let reloadWhenShown = false;
-      let reloadTimer = 0;
-      const reload = () => {
-        if (document.hidden) return void (reloadWhenShown = true);
-        if (busy()) {
-          if (!reloadTimer) reloadTimer = setTimeout(() => (reloadTimer = 0, reload()), 500);
-          return;
-        }
-        try {
-          sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: S.openId, list: S.listOpen, filter: S.filter, chat: S.chatOpen }));
-        } catch {
-        }
-        location.reload();
-      };
-      const who = document.createElement("a");
-      who.className = "listener";
-      who.addEventListener("click", async () => {
-        const text = who.dataset.copy;
-        if (!text) return;
-        try {
-          await navigator.clipboard.writeText(text);
-          const was = [...who.childNodes];
-          who.replaceChildren("copied");
-          setTimeout(() => who.textContent === "copied" && who.replaceChildren(...was), 1200);
-        } catch {
-        }
-      });
-      who.hidden = true;
-      root.querySelector(".left").prepend(who);
-      let stream = null;
-      let beat = 0;
-      const showAway = (word) => {
-        who.replaceChildren(Object.assign(document.createElement("span"), { textContent: word }));
-        who.setAttribute("aria-label", word);
-        who.classList.add("idle");
-        who.classList.remove("working");
-        who.hidden = false;
-      };
-      let commentsRev = null;
-      let readsAt = null;
-      let hotAt = null;
-      const swapCss = (files) => {
-        const links = [.../** @type {NodeListOf<HTMLLinkElement>} */
-        document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
-        const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
-        for (const link of named.length ? named : links) {
-          const url = new URL(link.href, location.href);
-          url.searchParams.set("lab-v", Date.now().toString(36));
-          const next = (
-            /** @type {HTMLLinkElement} */
-            link.cloneNode()
-          );
-          next.href = url.href;
-          next.dataset.labSwap = "";
-          const path = url.pathname;
-          next.addEventListener("load", () => {
-            for (
-              const l of
-              /** @type {NodeListOf<HTMLLinkElement>} */
-              document.querySelectorAll('link[rel~="stylesheet"][href]')
-            ) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
-            delete next.dataset.labSwap;
-          }, { once: true });
-          next.addEventListener("error", () => next.remove(), { once: true });
-          link.after(next);
-        }
-      };
-      const fresh = (u) => {
-        const url = new URL(u, location.href);
-        url.searchParams.set("lab-v", Date.now().toString(36));
-        return url.href;
-      };
-      const samePath = (u, paths) => {
-        try {
-          const url = new URL(u, location.href);
-          return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
-        } catch {
-          return false;
-        }
-      };
-      const swapImages = (paths) => {
-        let hit = 0;
-        for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
-          if (host2.contains(n)) continue;
-          for (const attr of ["src", "href", "poster", "xlink:href"]) {
-            const v = n.getAttribute(attr);
-            if (!v || !samePath(v.split("#")[0], paths)) continue;
-            const next = fresh(v.split("#")[0]);
-            const im = new Image();
-            im.src = next;
-            (im.decode ? im.decode() : Promise.resolve()).catch(() => {
-            }).finally(() => n.setAttribute(attr, next + (v.includes("#") ? v.slice(v.indexOf("#")) : "")));
-            hit++;
-          }
-          const set = n.getAttribute("srcset");
-          if (set && set.split(",").some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
-            n.setAttribute("srcset", set.split(",").map((c) => {
-              const [u, ...rest] = c.trim().split(/\s+/);
-              return [samePath(u, paths) ? fresh(u) : u, ...rest].join(" ");
-            }).join(", "));
-            hit++;
-          }
-        }
-        if (!hit) swapCss([]);
-      };
-      const reloadFonts = (paths) => {
-        for (const sheet of document.styleSheets) {
-          let rules;
-          try {
-            rules = sheet.cssRules;
-          } catch {
-            continue;
-          }
-          for (const r of rules || []) {
-            if (!(r instanceof CSSFontFaceRule)) continue;
-            const src = r.style.getPropertyValue("src");
-            const base = sheet.href || location.href;
-            if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
-            const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all);
-            const d3 = (k) => r.style.getPropertyValue(k) || void 0;
-            try {
-              const face = new FontFace(
-                d3("font-family").replace(/^["']|["']$/g, ""),
-                again,
-                /** @type {any} */
-                { weight: d3("font-weight"), style: d3("font-style"), stretch: d3("font-stretch"), unicodeRange: d3("unicode-range"), display: d3("font-display") }
-              );
-              face.load().then((f) => document.fonts.add(f)).catch(() => {
-              });
-            } catch {
-            }
-          }
-        }
-      };
-      const ownStyles = () => /* @__PURE__ */ new Set([fonts, pinCursorStyle]);
-      const scriptsOf = (doc) => [...doc.querySelectorAll("script")].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute("src") || "")).map((x) => x.getAttribute("src") || x.textContent);
-      const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => {
-        try {
-          return new URL(l.getAttribute("href"), location.href).pathname;
-        } catch {
-          return "";
-        }
-      });
-      const keepOut = (n) => n === host2 || n.nodeType === 1 && n.localName === "script";
-      const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || "") === (n.id || ""));
-      const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute("class") === n.getAttribute("class") : o.nodeType !== 3 || o.data === n.data);
-      const morphKids = (a, b) => {
-        const olds = [...a.childNodes].filter((n) => !keepOut(n));
-        const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === "script"));
-        let j = 0;
-        let prev = null;
-        const put = (n) => {
-          const c = document.importNode(n, true);
-          a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
-          return c;
-        };
-        news.forEach((n, i) => {
-          const o = olds[j];
-          if (!o) return void (prev = put(n));
-          if (alike(o, n)) return void (prev = morphNode(o, n), j++);
-          if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
-          const k = olds.slice(j + 1, j + 8).findIndex((m) => alike(m, n));
-          if (k >= 0) {
-            for (const gone of olds.slice(j, j + 1 + k)) gone.remove();
-            j += k + 1;
-            return void (prev = morphNode(olds[j], n), j++);
-          }
-          prev = morphNode(o, n);
-          j++;
-        });
-        for (const o of olds.slice(j)) o.remove();
-      };
-      const morphNode = (o, n) => {
-        if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || o.nodeType === 1 && (o.id || "") !== (n.id || "")) {
-          const c = document.importNode(n, true);
-          o.replaceWith(c);
-          return c;
-        }
-        if (o.nodeType === 3 || o.nodeType === 8) {
-          if (o.data !== n.data) o.data = n.data;
-          return o;
-        }
-        if (o.nodeType !== 1) return o;
-        for (const { name } of Array.from(o.attributes)) if (!n.hasAttribute(name) && !(name === "open" && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
-        for (const { name, value } of Array.from(n.attributes)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
-        if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
-        morphKids(o, n);
-        return o;
-      };
-      const ownScripts = () => scriptsOf(document).length > 0;
-      let morphRun = 0;
-      const morphPage = async () => {
-        if (ownScripts()) return reload();
-        const run = ++morphRun;
-        try {
-          const res = await fetch(location.href, { cache: "no-store", headers: { accept: "text/html" } });
-          if (!res.ok) return reload();
-          const html = await res.text();
-          if (run !== morphRun) return;
-          const doc = new DOMParser().parseFromString(html, "text/html");
-          if (scriptsOf(doc).join("\n") !== scriptsOf(document).join("\n") || sheetsOf(doc).join("\n") !== sheetsOf(document).join("\n")) return reload();
-          let mark = null;
-          for (const y of [Math.min(innerHeight / 3, 240), innerHeight / 2, 80]) {
-            const e = document.elementFromPoint(innerWidth / 2, y);
-            if (e && e !== document.body && e !== document.documentElement && !host2.contains(e) && e !== host2) {
-              mark = e;
-              break;
-            }
-          }
-          const markTop = mark?.getBoundingClientRect().top;
-          const apply = () => {
-            if (doc.title !== tabTitle.base) {
-              tabTitle.base = doc.title;
-              document.title = doc.title;
-              drawList();
-            }
-            const mine2 = ownStyles();
-            const olds = [...document.head.querySelectorAll("style")].filter((x) => !mine2.has(x));
-            const news = [...doc.head.querySelectorAll("style")];
-            news.forEach((n, i) => olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true)));
-            for (const o of olds.slice(news.length)) o.remove();
-            morphKids(document.body, doc.body);
-            if (mark?.isConnected) {
-              const moved = mark.getBoundingClientRect().top - markTop;
-              if (Math.abs(moved) > 1) scrollBy(0, moved);
-            }
-            reflow();
-          };
-          const safe = () => {
-            try {
-              apply();
-            } catch {
-              reload();
-            }
-          };
-          if (document.startViewTransition && !still.matches) document.startViewTransition(safe);
-          else safe();
-        } catch {
-          reload();
-        }
-      };
-      const hotUpdate = (files) => {
-        const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
-        const here = decodeURIComponent(location.pathname).replace(/\/$/, "/index").replace(/\.html?$/i, "");
-        if (of("html").some((p) => !p || p.replace(/\.html?$/i, "") === here)) morphPage();
-        if (of("css").length) swapCss(of("css"));
-        if (of("img").length) swapImages(of("img"));
-        if (of("font").length) reloadFonts(of("font"));
-      };
-      const tab = Math.random().toString(36).slice(2, 12);
-      let pollTimer = 0;
-      let dropTimer = 0;
-      const poll = async () => {
-        try {
-          onState(await (await fetch(`${script.dataset.live.replace(/live$/, "state")}?tab=${tab}`, { cache: "no-store" })).json());
-        } catch {
-        }
-      };
-      const toBackground = () => {
-        clearTimeout(dropTimer);
-        dropTimer = setTimeout(() => {
-          stream?.close();
-          stream = null;
-          clearInterval(pollTimer);
-          pollTimer = setInterval(poll, 2e4);
-        }, 3e4);
-      };
-      const toFront = () => {
-        clearTimeout(dropTimer);
-        clearInterval(pollTimer);
-        pollTimer = 0;
-        connect();
-      };
-      const connect = () => {
-        if (stream) return;
-        stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
-        beat = Date.now();
-        stream.addEventListener("beat", () => beat = Date.now());
-        stream.onerror = () => showAway("reconnecting");
-        stream.onmessage = (e) => {
-          beat = Date.now();
-          onState(JSON.parse(e.data));
-        };
-      };
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) return toBackground();
-        if (reloadWhenShown) return reload();
-        toFront();
-      });
-      addEventListener("pagehide", () => {
-        stream?.close();
-        stream = null;
-        fetch(script.dataset.live.replace(/live$/, "bye"), { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ tab }) }).catch(() => {
-        });
-      });
-      addEventListener("pageshow", (e) => e.persisted && connect());
-      let tick = Date.now();
-      const freshStream = () => {
-        stream?.close();
-        stream = null;
-        showAway("reconnecting");
-        connect();
-      };
-      setInterval(() => {
-        const now = Date.now();
-        const slept = now - tick > 2e4;
-        tick = now;
-        if (document.hidden) return;
-        if (slept || stream && now - beat > 4e4) freshStream();
-      }, 5e3);
-      addEventListener("online", () => !document.hidden && freshStream());
-      connect();
-      if (document.hidden) toBackground();
-    }
+    startLive();
   })();
 })();

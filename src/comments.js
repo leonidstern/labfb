@@ -32,6 +32,7 @@ import { bindSheets, backCloses, slideAway, startSheets, swipeDown } from './wid
 import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
+import { bindLive, startLive } from './widget/live.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -56,7 +57,9 @@ import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/t
     get contentEnd() { return contentEnd; },
     get doneBtn() { return doneBtn; },
     get drafting() { return drafting; },
+    get drawList() { return drawList; },
     get el() { return el; },
+    get fonts() { return fonts; },
     get goBtn() { return goBtn; },
     get goFace() { return goFace; },
     get goTo() { return goTo; },
@@ -71,6 +74,8 @@ import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/t
     get listBtn() { return listBtn; },
     get listEl() { return listEl; },
     get listed() { return listed; },
+    get load() { return load; },
+    get loadChanges() { return loadChanges; },
     get markSeen() { return markSeen; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
@@ -80,13 +85,16 @@ import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/t
     get onWhat() { return onWhat; },
     get openSheet() { return openSheet; },
     get patchKids() { return patchKids; },
+    get pinCursorStyle() { return pinCursorStyle; },
     get placeBar() { return placeBar; },
     get position() { return position; },
     get readable() { return readable; },
+    get reflow() { return reflow; },
     get render() { return render; },
     get repliesOf() { return repliesOf; },
     get root() { return root; },
     get scrim() { return scrim; },
+    get script() { return script; },
     get send() { return send; },
     get sendBtn() { return sendBtn; },
     get showDoneBtn() { return showDoneBtn; },
@@ -94,11 +102,13 @@ import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/t
     get stamped() { return stamped; },
     get still() { return still; },
     get store() { return store; },
+    get syncReads() { return syncReads; },
     get tabTitle() { return tabTitle; },
     get threads() { return threads; },
     get unread() { return unread; },
     get vv() { return vv; },
   };
+  bindLive(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
@@ -1414,410 +1424,5 @@ import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/t
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
-
-  // Local mode (local.mjs sets data-live): one event stream while the tab is visible, so many tabs don't use up
-  // the browser's connections. The page reloads when its files change, keeping the scroll position, and the
-  // comments refresh when someone else, like an agent, changes them. A label says which Claude session listens.
-  if (script?.dataset.live) {
-    const key = 'lab-scroll:' + location.pathname;
-    try {
-      // The scroll position and the open thread come back after a reload, so an answer shows where you left it.
-      const kept = JSON.parse(sessionStorage.getItem(key) || 'null');
-      if (kept !== null) {
-        sessionStorage.removeItem(key);
-        if (kept.open) S.openId = kept.open;
-        if (kept.list) {
-          S.listOpen = true;
-          S.filter = ['new', 'open', 'resolved', 'mine'].includes(kept.filter) ? kept.filter : S.filter;
-        }
-        if (kept.chat) S.chatOpen = true;
-        addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
-      }
-    } catch {}
-    // Hold a reload while anything is open (a thread, a new comment, the list) or a box has focus or text: the page
-    // reloads once you close it, where you were.
-    // A newer version reloads the page when it's safe: not while you read a thread, the list or the chat (it waits
-    // until they're closed, so nothing moves under you), type, have words in a box, place a new comment, have a phone's
-    // keyboard up or have just touched the page.
-    let touchedAt = 0;
-    for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
-    const busy = () =>
-      S.draft || S.grabbing || S.openId || S.chatOpen || S.listOpen || (coarse && /^(textarea|input)$/.test(root.activeElement?.localName || '')) ||
-      [...root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
-    let reloadWhenShown = false;
-    /** @type {any} */
-    let reloadTimer = 0;
-    const reload = () => {
-      // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
-      if (document.hidden) return void (reloadWhenShown = true);
-      if (busy()) {
-        if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
-        return;
-      }
-      try {
-        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: S.openId, list: S.listOpen, filter: S.filter, chat: S.chatOpen }));
-      } catch {}
-      location.reload();
-    };
-    const who = document.createElement('a');
-    who.className = 'listener';
-    who.addEventListener('click', async () => {
-      const text = who.dataset.copy;
-      if (!text) return;
-      try {
-        await navigator.clipboard.writeText(text);
-        const was = [...who.childNodes];
-        who.replaceChildren('copied');
-        setTimeout(() => who.textContent === 'copied' && who.replaceChildren(...was), 1200);
-      } catch {}
-    });
-    who.hidden = true;
-    root.querySelector('.left').prepend(who);
-    let stream = null;
-    let beat = 0;
-    // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
-    const showAway = (word) => {
-      who.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
-      who.setAttribute('aria-label', word);
-      who.classList.add('idle');
-      who.classList.remove('working');
-      who.hidden = false;
-    };
-    let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
-    let readsAt = null;
-    let hotAt = null;
-    // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
-    // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
-    const swapCss = (files) => {
-      // A clone still loading from an earlier save is skipped (its original is swapped instead) and dropped once a newer one is in.
-      const links = [.../** @type {NodeListOf<HTMLLinkElement>} */ (document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])'))].filter((l) => new URL(l.href, location.href).origin === location.origin);
-      const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
-      for (const link of named.length ? named : links) {
-        const url = new URL(link.href, location.href);
-        url.searchParams.set('lab-v', Date.now().toString(36));
-        const next = /** @type {HTMLLinkElement} */ (link.cloneNode());
-        next.href = url.href;
-        next.dataset.labSwap = '';
-        const path = url.pathname;
-        next.addEventListener('load', () => {
-          for (const l of /** @type {NodeListOf<HTMLLinkElement>} */ (document.querySelectorAll('link[rel~="stylesheet"][href]'))) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
-          delete next.dataset.labSwap;
-        }, { once: true });
-        next.addEventListener('error', () => next.remove(), { once: true });
-        link.after(next);
-      }
-    };
-    const fresh = (u) => {
-      const url = new URL(u, location.href);
-      url.searchParams.set('lab-v', Date.now().toString(36));
-      return url.href;
-    };
-    const samePath = (u, paths) => {
-      try {
-        const url = new URL(u, location.href);
-        return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
-      } catch {
-        return false;
-      }
-    };
-    // A picture or SVG: every element that shows it gets the new file (img, srcset, poster, SVG image/use, the tab
-    // icon). Nothing shows it directly: it's a CSS background, so the stylesheets are swapped.
-    const swapImages = (paths) => {
-      let hit = 0;
-      for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
-        if (host.contains(n)) continue;
-        for (const attr of ['src', 'href', 'poster', 'xlink:href']) {
-          const v = n.getAttribute(attr);
-          if (!v || !samePath(v.split('#')[0], paths)) continue;
-          // The new file is loaded and decoded first, then shown: the picture never blinks empty.
-          const next = fresh(v.split('#')[0]);
-          const im = new Image();
-          im.src = next;
-          (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).finally(() => n.setAttribute(attr, next + (v.includes('#') ? v.slice(v.indexOf('#')) : '')));
-          hit++;
-        }
-        const set = n.getAttribute('srcset');
-        if (set && set.split(',').some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
-          n.setAttribute('srcset', set.split(',').map((c) => {
-            const [u, ...rest] = c.trim().split(/\s+/);
-            return [samePath(u, paths) ? fresh(u) : u, ...rest].join(' ');
-          }).join(', '));
-          hit++;
-        }
-      }
-      if (!hit) swapCss([]);
-    };
-    // A font: each @font-face that uses it is loaded again as a new face, which takes over from the old one.
-    const reloadFonts = (paths) => {
-      for (const sheet of document.styleSheets) {
-        let rules;
-        try {
-          rules = sheet.cssRules;
-        } catch {
-          continue; // another site's stylesheet
-        }
-        for (const r of rules || []) {
-          if (!(r instanceof CSSFontFaceRule)) continue;
-          const src = r.style.getPropertyValue('src');
-          const base = sheet.href || location.href;
-          if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
-          const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => (samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all));
-          const d = (k) => r.style.getPropertyValue(k) || undefined;
-          try {
-            const face = new FontFace(d('font-family').replace(/^["']|["']$/g, ''), again, /** @type {any} */ ({ weight: d('font-weight'), style: d('font-style'), stretch: d('font-stretch'), unicodeRange: d('unicode-range'), display: d('font-display') }));
-            face.load().then((f) => document.fonts.add(f)).catch(() => {});
-          } catch {}
-        }
-      }
-    };
-    // An HTML page: fetch it and change only what differs, in place (scroll, open things and typed text stay). A
-    // changed script or stylesheet list can't be patched safely: then it's a normal reload.
-    const ownStyles = () => new Set([fonts, pinCursorStyle]);
-    const scriptsOf = (doc) => [...doc.querySelectorAll('script')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
-    const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
-    const keepOut = (n) => n === host || (n.nodeType === 1 && n.localName === 'script');
-    // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
-    // everything after it (an open <details> further down stays the same element, and stays open).
-    const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || '') === (n.id || ''));
-    const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute('class') === n.getAttribute('class') : o.nodeType !== 3 || o.data === n.data);
-    const morphKids = (a, b) => {
-      const olds = [...a.childNodes].filter((n) => !keepOut(n));
-      const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === 'script'));
-      let j = 0;
-      let prev = null;
-      const put = (n) => {
-        const c = document.importNode(n, true);
-        a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
-        return c;
-      };
-      news.forEach((n, i) => {
-        const o = olds[j];
-        if (!o) return void (prev = put(n));
-        if (alike(o, n)) return void ((prev = morphNode(o, n)), j++);
-        // The old one comes back a little later: this new one was added before it.
-        if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
-        // This new one is a little further on among the old ones: the ones before it were removed.
-        const k = olds.slice(j + 1, j + 8).findIndex((m) => alike(m, n));
-        if (k >= 0) {
-          for (const gone of olds.slice(j, j + 1 + k)) gone.remove();
-          j += k + 1;
-          return void (prev = morphNode(olds[j], n), j++);
-        }
-        prev = morphNode(o, n);
-        j++;
-      });
-      for (const o of olds.slice(j)) o.remove();
-    };
-    const morphNode = (o, n) => {
-      if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || (o.nodeType === 1 && (o.id || '') !== (n.id || ''))) {
-        const c = document.importNode(n, true);
-        o.replaceWith(c);
-        return c;
-      }
-      if (o.nodeType === 3 || o.nodeType === 8) {
-        if (o.data !== n.data) o.data = n.data;
-        return o;
-      }
-      if (o.nodeType !== 1) return o;
-      // An opened <details> or <dialog> stays open (you opened it; the file doesn't say so).
-      for (const { name } of Array.from(o.attributes)) if (!n.hasAttribute(name) && !(name === 'open' && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
-      for (const { name, value } of Array.from(n.attributes)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
-      // What you're typing in, a playing video, a canvas, a web component's insides: left as they are.
-      if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
-      morphKids(o, n);
-      return o;
-    };
-    // A page with scripts of its own is reloaded instead: patching it toward its file would undo what its scripts built.
-    const ownScripts = () => scriptsOf(document).length > 0;
-    let morphRun = 0;
-    const morphPage = async () => {
-      if (ownScripts()) return reload();
-      const run = ++morphRun;
-      try {
-        const res = await fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html' } });
-        if (!res.ok) return reload();
-        const html = await res.text();
-        if (run !== morphRun) return; // a newer save is already being fetched: only the latest is applied
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        if (scriptsOf(doc).join('\n') !== scriptsOf(document).join('\n') || sheetsOf(doc).join('\n') !== sheetsOf(document).join('\n')) return reload();
-        // What you're looking at stays put: an element a third down the window keeps its place on screen. Found before
-        // the change (during a cross-fade the page can't be hit-tested).
-        let mark = null;
-        for (const y of [Math.min(innerHeight / 3, 240), innerHeight / 2, 80]) {
-          const e = document.elementFromPoint(innerWidth / 2, y);
-          if (e && e !== document.body && e !== document.documentElement && !host.contains(e) && e !== host) {
-            mark = e;
-            break;
-          }
-        }
-        const markTop = mark?.getBoundingClientRect().top;
-        // The browser cross-fades the old page into the new one (View Transitions, Safari 18+ and Chrome; others just swap).
-        const apply = () => {
-          // The page's own new title, with the "(3)" of new messages kept in front.
-          if (doc.title !== tabTitle.base) {
-            tabTitle.base = doc.title;
-            document.title = doc.title; // drawList puts the "(3)" back in front
-            drawList();
-          }
-          const mine = ownStyles();
-          const olds = [...document.head.querySelectorAll('style')].filter((x) => !mine.has(x));
-          const news = [...doc.head.querySelectorAll('style')];
-          news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
-          for (const o of olds.slice(news.length)) o.remove();
-          morphKids(document.body, doc.body);
-          if (mark?.isConnected) {
-            const moved = mark.getBoundingClientRect().top - markTop;
-            if (Math.abs(moved) > 1) scrollBy(0, moved);
-          }
-          reflow();
-        };
-        // An error inside the cross-fade would go unseen: any failure falls back to a reload.
-        const safe = () => {
-          try {
-            apply();
-          } catch {
-            reload();
-          }
-        };
-        if (document.startViewTransition && !still.matches) document.startViewTransition(safe);
-        else safe();
-      } catch {
-        reload();
-      }
-    };
-    const hotUpdate = (files) => {
-      const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
-      // Only a save of this page's own file patches it (another page saved in the lab changes nothing here).
-      const here = decodeURIComponent(location.pathname).replace(/\/$/, '/index').replace(/\.html?$/i, '');
-      if (of('html').some((p) => !p || p.replace(/\.html?$/i, '') === here)) morphPage();
-      if (of('css').length) swapCss(of('css'));
-      if (of('img').length) swapImages(of('img'));
-      if (of('font').length) reloadFonts(of('font'));
-    };
-    // The server counts open tabs: a tab in the background still counts, and says bye when it closes, so closing
-    // the page stops Claude listening.
-    const tab = Math.random().toString(36).slice(2, 12);
-    // A tab in front keeps one live stream. A tab in the background lets it go after 30 s and asks for the lab's
-    // state every 20 s instead (a quick request each time), so its "(3)" title and pins keep up without holding a
-    // connection: browsers allow only 6 to one lab at a time, and held ones by background tabs made the rest hang.
-    /** @type {any} */
-    let pollTimer = 0;
-    /** @type {any} */
-    let dropTimer = 0;
-    const poll = async () => {
-      try {
-        onState(await (await fetch(`${script.dataset.live.replace(/live$/, 'state')}?tab=${tab}`, { cache: 'no-store' })).json());
-      } catch {}
-    };
-    const toBackground = () => {
-      clearTimeout(dropTimer);
-      dropTimer = setTimeout(() => {
-        stream?.close();
-        stream = null;
-        clearInterval(pollTimer);
-        pollTimer = setInterval(poll, 20000);
-      }, 30000);
-    };
-    const toFront = () => {
-      clearTimeout(dropTimer);
-      clearInterval(pollTimer);
-      pollTimer = 0;
-      connect();
-    };
-    const connect = () => {
-      if (stream) return;
-      stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
-      beat = Date.now();
-      stream.addEventListener('beat', () => (beat = Date.now()));
-      stream.onerror = () => showAway('reconnecting');
-      stream.onmessage = (e) => {
-        beat = Date.now();
-        onState(JSON.parse(e.data));
-      };
-    };
-    function onState(v) {
-      {
-        // A new widget script: this page needs it, so it reloads (when it's safe, as always).
-        if (v.widget && script.dataset.widget && v.widget !== script.dataset.widget) return reload();
-        // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
-        // and patched (only if its file changed does anything move), and the comments are loaded again.
-        if (v.lab && script.dataset.lab && v.lab !== script.dataset.lab) {
-          script.dataset.lab = v.lab;
-          script.dataset.version = String(v.files);
-          hotAt = v.hot;
-          commentsRev = v.comments;
-          morphPage();
-          load();
-        }
-        if (String(v.files) !== script.dataset.version) return reload();
-        // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
-        // and picture, instead of only the last batch of files.
-        if (hotAt !== null && v.hot !== hotAt) {
-          if (v.hot - hotAt > 1) hotUpdate([{ kind: 'html' }, { kind: 'css', path: '' }]);
-          else hotUpdate(v.hotFiles || []);
-        }
-        hotAt = v.hot;
-        if (commentsRev !== null && v.comments !== commentsRev) loadChanges(commentsRev); // keeps typed text: it adds replies in place
-        commentsRev = v.comments;
-        // read on another device with your name
-        if (v.reads !== readsAt) {
-          readsAt = v.reads;
-          syncReads();
-        }
-        // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
-        const s = v.session;
-        const mode = s ? v.mode || 'listening' : 'away';
-        const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
-        // "Codex is working (ooze)": the agent first, the session's name after it in brackets.
-        const agent = s?.agent || 'Claude';
-        const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
-        if (mode === 'listening') who.replaceChildren(span('talking to'), agent, ...tag);
-        else if (mode === 'working') who.replaceChildren(agent, span('is working'), ...tag);
-        else who.replaceChildren(span('no agent listening'));
-        who.classList.toggle('idle', mode === 'away');
-        who.classList.toggle('working', mode === 'working');
-        listBtn.dataset.agent = mode;
-        chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's light
-        if (coarse) chatBtn.title = who.textContent; // phones: the light on the chat button says who's listening
-        who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
-        if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
-        else who.removeAttribute('href');
-        // No link, but a resume command (codex resume …): a tap copies it.
-        who.dataset.copy = !s?.url && s?.resume && mode !== 'away' ? s.resume : '';
-        who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labit wait' : s?.resume ? `${s.resume}${who.dataset.copy ? ' (tap to copy)' : ''}` : '';
-        who.hidden = false;
-      }
-    }
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) return toBackground();
-      if (reloadWhenShown) return reload();
-      toFront(); // back in front: the live stream again, and the first message says what changed meanwhile
-    });
-    addEventListener('pagehide', () => {
-      stream?.close();
-      stream = null;
-      fetch(script.dataset.live.replace(/live$/, 'bye'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab }) }).catch(() => {});
-    });
-    addEventListener('pageshow', (e) => e.persisted && connect()); // back from the back-forward cache
-    // Back from sleep, or the connection went quiet: connect again at once and catch up on what was missed (the first
-    // message after it says what changed). A clock that jumped (the laptop slept) or 40 s without a beat both count.
-    let tick = Date.now();
-    const freshStream = () => {
-      stream?.close();
-      stream = null;
-      showAway('reconnecting');
-      connect();
-    };
-    // Hidden tabs' timers are slowed to about once a minute, which would look like sleep: only a tab in front checks.
-    setInterval(() => {
-      const now = Date.now();
-      const slept = now - tick > 20000;
-      tick = now;
-      if (document.hidden) return;
-      if (slept || (stream && now - beat > 40000)) freshStream();
-    }, 5000);
-    addEventListener('online', () => !document.hidden && freshStream());
-    connect();
-    if (document.hidden) toBackground();
-  }
+  startLive();
 })();
