@@ -2974,7 +2974,7 @@ ${line}`;
           watch("blur");
           sendSoon();
         });
-        S.dbg = (line) => {
+        S["dbg"] = (line) => {
           lines.push(`${Math.round(performance.now() - t0)} ${line}`);
           sendSoon();
         };

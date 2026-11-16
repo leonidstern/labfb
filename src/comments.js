@@ -1801,7 +1801,7 @@ import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
         watch('blur');
         sendSoon();
       });
-      S.dbg = (line) => {
+      S['dbg'] = (line) => { // (not S.dbg = …: TypeScript would read a second declaration of it)
         lines.push(`${Math.round(performance.now() - t0)} ${line}`);
         sendSoon();
       };
