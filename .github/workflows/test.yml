@@ -16,3 +16,16 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node --check local.mjs && node --check src/comments.js && node --check public/_lab/comments.js && node --check api/lab-comments.mjs
       - run: npm test
+
+  # The widget in real browsers: Safari's engine (WebKit) and Chrome's. Playwright is installed
+  # only here (--no-save), so labfb itself keeps zero dependencies.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
+      - run: npx playwright install --with-deps chromium webkit
+      - run: node test/browser/behaviours.mjs

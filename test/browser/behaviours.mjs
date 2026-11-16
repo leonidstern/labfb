@@ -1,5 +1,5 @@
 // Browser checks of how a lab page behaves, in Safari's engine (WebKit) and Chrome's, with Playwright.
-// Not part of `npm test` (CI has no browsers). Run: node test/browser/behaviours.mjs   (needs the playwright package;
+// Not part of `npm test`; CI runs it as the `browser` job. Run: node test/browser/behaviours.mjs   (needs the playwright package;
 // NODE_PATH can point at a node_modules that has it). Prints one line per check and exits 1 if any fails.
 import fs from 'node:fs';
 import os from 'node:os';
