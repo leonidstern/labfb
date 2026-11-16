@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-fast-'));
+const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fast-'));
 const BIN = path.join(DIR, 'bin');
 fs.mkdirSync(BIN);
 fs.writeFileSync(path.join(BIN, 'claude'), '#!/bin/sh\necho "Done: nothing"\n', { mode: 0o755 });

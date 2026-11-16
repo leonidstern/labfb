@@ -1,6 +1,6 @@
 /*!
  * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
- * https://github.com/leonidstern/labfb · MIT
+ * https://github.com/leonidstern/labit · MIT
  * Comments are off by default; the bar button or c turns them on (remembered per browser). When on, click anywhere that isn't a link or control to pin one (alt/option-click pins on those too). c (or the bar button) hides
  * and shows them; esc or a click outside closes an open comment. Dragging (mouse/pen) marks an area instead of a point.
  * Include on a page served through your lab domain:
@@ -2086,7 +2086,7 @@ import {
   fonts.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
   fonts.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
-  // Phones: with comments on, a hold is labfb's (a pin), not the start of a text selection: iOS would cancel the touch
+  // Phones: with comments on, a hold is labit's (a pin), not the start of a text selection: iOS would cancel the touch
   // for its selection, and the lift that lets the box open the keyboard would never come.
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
   fonts.textContent += `@media (pointer: coarse) { html.lab-pinning body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
@@ -2476,7 +2476,7 @@ import {
         else who.removeAttribute('href');
         // No link, but a resume command (codex resume …): a tap copies it.
         who.dataset.copy = !s?.url && s?.resume && mode !== 'away' ? s.resume : '';
-        who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labfb wait' : s?.resume ? `${s.resume}${who.dataset.copy ? ' (tap to copy)' : ''}` : '';
+        who.title = mode === 'away' ? 'Ask your agent to run: npx labit wait' : s?.resume ? `${s.resume}${who.dataset.copy ? ' (tap to copy)' : ''}` : '';
         who.hidden = false;
       }
     }

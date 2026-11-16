@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Renamed to **labit**: the npm package is `labit` (was `@leonidstern/labfb`), so it's `npx labit`, the command `labit`, the MCP server and plugins `labit`, the repository github.com/leonidstern/labit. Settings move to `~/.labit`; `LABIT_HOME` and `LABIT_NO_UPDATE_CHECK` replace the `LABFB_` names, which still work. Add the MCP server again under the new name: `claude mcp add labit -- npx labit@latest mcp`.
 - The widget's source is split into modules: its stylesheet is `src/widget/styles.css` and pin anchoring is `src/widget/anchoring.ts` (TypeScript). `npm run build` bundles them into the same single `comments.js`.
 - Needs Node 22 or newer: Node 20 reached end of life in April 2026. CI tests Node 22, 24 and 26.
 - The page script ships without its code comments: 49 KB gzipped instead of 68 KB, same code. Its commented source is `src/comments.js`; `npm run build` writes `public/_lab/comments.js` (`npm run build:watch` while working on it).

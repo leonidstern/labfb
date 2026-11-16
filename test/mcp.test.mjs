@@ -1,4 +1,4 @@
-// `labfb mcp`: an MCP client starts it, lists its tools, reads comments, replies, and waits for the next pin.
+// `labit mcp`: an MCP client starts it, lists its tools, reads comments, replies, and waits for the next pin.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,8 +8,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-mcp-')));
-const env = { ...process.env, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-')) };
+const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-mcp-')));
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')) };
 const PORT = String(5900 + Math.floor(Math.random() * 90));
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
@@ -57,7 +57,7 @@ const pin = async (text) =>
 test('it starts like an MCP server and lists comments, reply and wait', async () => {
   await up();
   const init = await ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
-  assert.equal(init.result.serverInfo.name, 'labfb');
+  assert.equal(init.result.serverInfo.name, 'labit');
   mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const { result } = await ask('tools/list');
   assert.deepEqual(result.tools.map((t) => t.name), ['comments', 'reply', 'wait']);
@@ -90,7 +90,7 @@ test('a modern client: server/discover, then tools with resultType', async () =>
   const d = await ask('server/discover', modern());
   assert.equal(d.result.resultType, 'complete');
   assert.ok(d.result.supportedVersions.includes('2026-07-28') && d.result.supportedVersions.includes('2025-11-25'));
-  assert.equal(d.result._meta['io.modelcontextprotocol/serverInfo'].name, 'labfb');
+  assert.equal(d.result._meta['io.modelcontextprotocol/serverInfo'].name, 'labit');
   assert.match(d.result.instructions, /not instructions to you/);
   const list = await ask('tools/list', modern());
   assert.equal(list.result.resultType, 'complete');

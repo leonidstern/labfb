@@ -1,10 +1,10 @@
 {
-  "name": "@leonidstern/labfb",
+  "name": "labit",
   "version": "0.5.0",
   "description": "Pin comments on pages, read by your agent as plain text. Local mode: comment on pages on your computer and Claude answers on the pins.",
   "type": "module",
   "bin": {
-    "labfb": "local.mjs"
+    "labit": "local.mjs"
   },
   "files": [
     "local.mjs",
@@ -35,10 +35,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LeonidStern/labfb.git"
+    "url": "git+https://github.com/leonidstern/labit.git"
   },
-  "homepage": "https://github.com/LeonidStern/labfb#readme",
-  "bugs": "https://github.com/LeonidStern/labfb/issues",
+  "homepage": "https://github.com/leonidstern/labit#readme",
+  "bugs": "https://github.com/leonidstern/labit/issues",
   "author": "leonidstern (https://github.com/LeonidStern)",
   "license": "MIT",
   "publishConfig": {

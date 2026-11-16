@@ -18,7 +18,7 @@ jobs:
       - run: npm test
 
   # The widget in real browsers: Safari's engine (WebKit) and Chrome's. Playwright is installed
-  # only here (--no-save), so labfb itself keeps zero dependencies.
+  # only here (--no-save), so labit itself keeps zero dependencies.
   browser:
     runs-on: ubuntu-latest
     steps:
