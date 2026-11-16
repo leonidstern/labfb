@@ -22,12 +22,15 @@ const ARROW = '<i class="arr" aria-hidden="true"></i>';
 // One field that grows: a pill while empty, a box with a divider and the name row once you type.
 // empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a go pin from someone with no name
 // yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
-export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false }: {
+export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false, draftKey = '' }: {
   placeholder: string;
   onSubmit: (name: string, text: string) => Promise<unknown>;
   autofocus?: boolean;
   empty?: string;
   nameFirst?: boolean;
+  /** Where to keep what is typed but not sent, so a page that reloads under you (a dev server rebuilding,
+   *  a crash, a tab closed by mistake) does not take the words with it. Empty: not kept. */
+  draftKey?: string;
 }): HTMLElement {
   const { el, store, root, refreshPinCursor, syncReads, rememberMe } = d;
   const wrap = el('div', { class: 'composer' });
@@ -40,6 +43,16 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   // says search it leaves alone.
   const name = el('input', { type: 'text', name: 'search-lab-who', placeholder: 'your name', maxlength: '60', enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' }) as HTMLInputElement;
   name.value = store.get('lab-name');
+  // What was typed here last time and never sent. A dev server rebuilding the page used to wipe it.
+  if (draftKey) {
+    const kept = store.get(draftKey);
+    if (kept) {
+      text.value = kept;
+      queueMicrotask(() => sync());
+    }
+  }
+  const keepDraft = () => draftKey && store.set(draftKey, text.value.trim() ? text.value : '');
+  const dropDraft = () => draftKey && store.set(draftKey, '');
   who.append(as, name);
   const sendBtn = el('button', { class: 'send', type: 'button', 'aria-label': 'send' });
   // Pressing send keeps the cursor in the box: on phones a blur first drops the keyboard, the sheet moves, and the
@@ -119,6 +132,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     }, 1500);
     try {
       const result = (await onSubmit(name.value.trim(), said)) as { keep?: boolean } | undefined;
+      dropDraft(); // it is sent; nothing left to keep
       clearTimeout(slow);
       error.textContent = '';
       error.classList.remove('wait');
@@ -141,6 +155,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     }
   };
   text.addEventListener('input', sync);
+  text.addEventListener('input', keepDraft);
   name.addEventListener('input', sync);
   name.addEventListener('blur', () => setTimeout(sync, 0));
   text.addEventListener('keydown', onKey);

@@ -183,6 +183,17 @@ import { zoomWords } from '../lib/zoom.ts';
   S.closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
   S.cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
   S.draft = null; // { anchor, docX, docY }
+  // An unsent comment is kept whole — the words (composer.ts) and the spot they were pinned to — so a page that
+  // reloads under you, a dev server rebuilding it most of all, gives both back instead of eating them.
+  const spotKey = () => `lab-spot:${S.page}`;
+  const keepSpot = (anchor) => store.set(spotKey(), anchor ? JSON.stringify(anchor) : '');
+  const keptSpot = () => {
+    try {
+      return JSON.parse(store.get(spotKey()) || 'null');
+    } catch {
+      return null;
+    }
+  };
 
   // ---------- DOM ----------
   const host = document.createElement('div');
@@ -310,6 +321,14 @@ import { zoomWords } from '../lib/zoom.ts';
       const data = await res.json();
       S.comments = data.comments || [];
       S.isAdmin = Boolean(data.admin);
+      // A thread you were part-way through writing in opens again: the page may have reloaded under you
+      // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.
+      if (!S.loaded && !S.openId) {
+        const half = S.comments.find((c) => !c.parent && store.get(`lab-typing:${S.page}:${c.id}`));
+        if (half) S.openId = half.id;
+        // A comment that was being written but never sent: its words and its spot both come back.
+        else if (!S.draft && store.get(`lab-typing:${S.page}:new`) && keptSpot()) S.draft = { anchor: keptSpot() };
+      }
       S.loaded = true;
     } catch {
       // Keep what is already on screen when a refresh fails.
@@ -386,6 +405,7 @@ import { zoomWords } from '../lib/zoom.ts';
     // Go or zoom with no name yet (a guest's first): the card asks only the name; the go or zoom is implied (Leo, 16 Nov).
     if ((!S.goMode && !zoom) || !name) {
       S.draft = { anchor, go: S.goMode && !zoom };
+      keepSpot(anchor);
       return render();
     }
     const text = zoom ? zoomWords(zoom) : 'go';
@@ -402,7 +422,7 @@ import { zoomWords } from '../lib/zoom.ts';
         if (zoom && anchor.block) zoomAsked(anchor.block, zoom); // the page goes to what comes back
         render();
       })
-      .catch(() => ((S.draft = { anchor }), render())); // couldn't post: the usual box, so nothing is lost
+      .catch(() => ((S.draft = { anchor }), keepSpot(anchor), render())); // couldn't post: the usual box, so nothing is lost
   }
   // Sent once the lab answers: while it can't be reached (restarting, the laptop just woke), the message waits and is
   // tried again every 2 s for up to 5 minutes, instead of failing. Only a lab that answers with an error fails it.
@@ -799,10 +819,12 @@ import { zoomWords } from '../lib/zoom.ts';
           empty: zoom ? zoomWords(zoom) : S.draft.go ? 'go' : '',
           nameFirst: Boolean(S.draft.go || zoom),
           autofocus: true,
+          draftKey: `lab-typing:${S.page}:new`,
           onSubmit: async (name, text) => {
             if (drafting()) {
               store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
               S.draft = null;
+            keepSpot(null);
               return render();
             }
             const { comment, edit } = await send({ name, text, anchor });
@@ -811,6 +833,7 @@ import { zoomWords } from '../lib/zoom.ts';
             S.comments.push(comment);
             markSeen([comment]);
             S.draft = null;
+            keepSpot(null);
             S.openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
             S.posted = comment.id;
             holdKeyboard(); // the keyboard waits until the card has flown into its pin (sheets.ts)
@@ -818,7 +841,7 @@ import { zoomWords } from '../lib/zoom.ts';
           },
         }),
       );
-      swipeDown(float, () => ((S.draft = null), render()));
+      swipeDown(float, () => ((S.draft = null), keepSpot(null), render()));
       if (zone) placeCard(float, left + 14, zone.top + zone.height);
       else placeBeside(float, left, top);
     }
