@@ -205,6 +205,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     W.composer({
       placeholder: 'reply',
       autofocus: focus,
+      draftKey: `lab-typing:${W.S.page}:${c.id}`,
       onSubmit: async (name, text) => {
         const { comment } = await W.send({ name, text, parent: c.id });
         W.S.comments.push(comment);

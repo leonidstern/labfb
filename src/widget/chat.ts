@@ -101,6 +101,7 @@ export function drawChat() {
     chat.append(
       W.composer({
         placeholder: 'message',
+        draftKey: `lab-typing:${W.S.page}:chat`,
         onSubmit: async (name, text) => {
           const { comment } = await W.send(
             W.S.replyTo ? { name, text, parent: W.S.replyTo } : { name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } },

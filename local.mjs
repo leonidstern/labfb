@@ -962,7 +962,29 @@ const inject = (html, tag) => {
   const lower = html.toLowerCase();
   const at = lower.lastIndexOf('</body>');
   const inScript = at !== -1 && lower.lastIndexOf('<script', at) > lower.lastIndexOf('</script>', at);
-  return at === -1 || inScript ? html + tag : html.slice(0, at) + tag + html.slice(at);
+  html = at === -1 || inScript ? html + tag : html.slice(0, at) + tag + html.slice(at);
+  return holdFirst(html);
+};
+// A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
+// where it sits: Chrome's location.reload is its own, and cannot be replaced, and by the time the widget loads the
+// dev server's client already holds its socket. So this goes in first, before anything else on the page: it wraps
+// WebSocket, and while a box holds words nobody has sent (window.__lab.writing, set by the widget) a reload message
+// waits instead of being handed on. It is handed on the moment the words are sent or cleared, so the page is never
+// more than one comment behind.
+const HOLD = `<script>(()=>{const L=window.__lab={writing:0,held:[],flush(){const h=L.held;L.held=[];for(const f of h)f()}};
+const isReload=d=>typeof d==='string'&&(d.includes('"full-reload"')||d.includes('"type":"reload"')||d.includes('astro:reload'));
+const W=window.WebSocket;if(!W)return;window.WebSocket=new Proxy(W,{construct(T,a){const ws=new T(...a);
+const wrap=f=>function(e){if(L.writing&&isReload(e&&e.data)){L.held.push(()=>f.call(this,e));return;}return f.call(this,e)};
+const add=ws.addEventListener.bind(ws);ws.addEventListener=(t,f,o)=>add(t,t==='message'&&typeof f==='function'?wrap(f):f,o);
+let on=null;Object.defineProperty(ws,'onmessage',{configurable:true,get:()=>on,set(f){on=f;add('message',f?wrap(f):()=>{})}});
+return ws;}});})()</script>`;
+// Right after <head> (or at the top): it has to run before the dev server's own client script.
+const holdFirst = (html) => {
+  if (!PROXY || /__lab=\{writing/.test(html)) return html; // only a dev server reloads pages; never twice
+  const head = /<head[^>]*>/i.exec(html);
+  if (head) return html.slice(0, head.index + head[0].length) + HOLD + html.slice(head.index + head[0].length);
+  const doc = /<!doctype[^>]*>/i.exec(html);
+  return doc ? html.slice(0, doc[0].length) + HOLD + html.slice(doc[0].length) : HOLD + html;
 };
 // Every page under a folder, as paths relative to it: the shallowest index pages first, then by path.
 const pagesUnder = (top) => {
@@ -1351,7 +1373,7 @@ const handler = async (req, res) => {
 
 // ---------- in front of a dev server (--proxy) ----------
 // Passing pages and websockets through to the dev server lives in lib/proxy.ts, loaded only when there is one.
-const proxy = PROXY && (await import('./lib/proxy.ts')).proxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback, nameFor });
+const proxy = PROXY && (await import('./lib/proxy.ts')).proxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback, nameFor, dress: holdFirst });
 
 const server = http.createServer(handler);
 server.on('upgrade', (req, socket, head) => {
