@@ -174,12 +174,13 @@
       .card .composer { margin-top: 6px; } /* close under resolve / delete */
       .card > .body > .row:not(.nav) { margin-right: 7px; } /* resolve / delete end where the send button does */
       .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
-             background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
-      /* The new comment box: the chat's box (no border), with only a soft shadow so it stands out on any page. */
-      /* The new comment box has the pins' 1 px edge in the text colour, so it shows on white and black pages alike. */
-      .float .box, .float .box:focus-within { box-shadow: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
-      .card .box { background: var(--_soft); border-radius: var(--_radius); margin: 0; }
-      .card .box, .card .box.open, .card .box:focus-within { box-shadow: none; } /* the same box as the chat's: soft grey, no border */
+             border-radius: var(--_radius); padding: 7px 7px 7px 14px; margin: 0; transition: box-shadow .15s;
+             /* One box for the chat, threads and new comments: its look comes only from these two, which a place sets on
+                its container (never by restyling the box, idle or typing), so the three can't drift apart (Leo, 15 Nov). */
+             background: var(--_box-bg, var(--_soft)); box-shadow: var(--_box-edge, none); }
+      /* The new comment box on a computer floats over the page: the page's colour, the pins' 1 px edge in the text colour
+         (it shows on white and black pages alike) and a soft shadow. */
+      .float { --_box-bg: var(--_bg); --_box-edge: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
       /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
       .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
       /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
@@ -254,7 +255,6 @@
       .list .tabs .x:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; }
       .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
       .chatwin .replying { flex: none; }
-      .chatwin .chat .box { background: var(--_soft); }
       .chatwin .tabs b { padding: 4px 8px; font-weight: 600; margin-right: auto; }
       .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
       .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
@@ -435,7 +435,6 @@
         .box.one .who span { font-size: 16px; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
         .card .nav .acts button.btn { font-size: 14px; }
         .float { background: var(--_bg); box-shadow: var(--_shadow); }
-        .float .box, .float .box:focus-within { background: var(--_soft); box-shadow: none; } /* the same box as a thread's and the chat's */
         /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
         /* Reaching 60 px above the sheet's edge over the dimmed page (Leo, 15 Nov: "the whole top and a bit above", then
            "do more"); the bar and the layout stay as they were. The chat's and the list's header reach up the same way. */
@@ -487,10 +486,10 @@
         .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
                                 mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
         .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
-        .chatwin .chat .box, .chatwin .chat .box:focus-within, .card .box, .card .box.open, .card .box:focus-within, .float .box, .float .box:focus-within { /* typing too: its edge stayed only while idle */
-          background: color-mix(in srgb, var(--_bg) 72%, transparent);
-          -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
-          box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
+        :host { --_box-bg: color-mix(in srgb, var(--_bg) 72%, transparent);
+                --_box-edge: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
+        .float { --_box-bg: inherit; --_box-edge: inherit; } /* phones: the new comment sheet's box is the same glass */
+        .box { -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); }
         .list .it { padding: 11px 8px; }
         /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
         .pin { scale: .8; }
