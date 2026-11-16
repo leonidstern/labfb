@@ -109,6 +109,13 @@ for (const eng of ['webkit', 'chromium']) {
   const pins = await shadow(() => { return [...r.querySelectorAll('button.pin')].map((b) => [b.classList.contains('moved'), b.style.left, b.style.top]); });
   check(eng, 'a pin keeps its element when the page adds a class to it', pins.every(([m, l]) => !m || l === '10px'), JSON.stringify(pins));
   check(eng, 'a pin whose element is gone waits on the left edge at its height', pins.some(([m, l, t]) => m && l === '10px' && t === '400px'), JSON.stringify(pins));
+  // With wide margins (a centred column on a wide window) it waits beside the content, not at the window's edge.
+  write('s.css', 'h1{color:rgb(0,0,255)} body{margin:30px 300px}');
+  await sleep(1300);
+  const wide = await shadow(() => { return [...r.querySelectorAll('button.pin.moved')].map((b) => b.style.left); });
+  check(eng, 'on a page with wide margins it waits beside the content', wide.length > 0 && wide.every((l) => l === '270px'), JSON.stringify(wide));
+  write('s.css', 'h1{color:rgb(0,0,255)} body{margin:30px}');
+  await sleep(1300);
 
   // Areas
   const img = await p.locator('#pic').boundingBox();
