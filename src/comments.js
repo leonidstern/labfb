@@ -28,7 +28,7 @@ import {
 } from './widget/anchoring.ts';
 import { bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
-import { bindSheets, backCloses, leave, letGo, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { bindSheets, backCloses, fromTap, leave, letGo, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
@@ -610,8 +610,17 @@ import { bindLive, startLive } from './widget/live.ts';
         prev.classList.add('out');
         prev.inert = true;
         layer.append(prev);
-        const dur = leave(prev); // down past the screen's bottom with the keyboard, the dim fading with it (sheets.ts)
+        // It shrinks back with the keyboard going (sheets.ts): after a send, into the new pin.
+        const sent = S.posted && pinsById.get(S.posted)?.getBoundingClientRect();
+        const dur = leave(prev, 0, sent && { x: sent.left + sent.width / 2, y: sent.top + sent.height / 2 });
         setTimeout(() => (prev.remove(), letGo(prev)), dur);
+      }
+      // Phones: a sheet that opens grows out of what was tapped (sheets.ts).
+      if (coarse) {
+        const sheet = /** @type {HTMLElement | null} */ (root.querySelector('.card:not(.out), .float:not(.out)')) || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
+        const key = sheet && (S.draft ? 'draft' : S.openId || (S.listOpen ? 'list' : S.chatOpen ? 'chat' : ''));
+        if (sheet && key !== S.sheetKey) fromTap(sheet);
+        S.sheetKey = key;
       }
       markQuote(quoted);
       S.shown = now;

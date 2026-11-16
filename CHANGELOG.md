@@ -15,6 +15,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
   - Tapping "your name" no longer drops the sheet behind the keyboard, and Safari no longer offers "AutoFill Contact" there.
   - The bar's buttons no longer stay grey after a tap.
   - Pins keep their look but take a 44 pt tap: a finger near one opens it (they were 22 pt to hit).
+  - Sheets float as cards, as iOS 27's do: inset from the screen's edges, round at every corner, the page behind not dimmed. A tapped sheet grows out of what you tapped and shrinks back into it (after a send, into the new pin); a swipe still slides it down.
+  - The new comment card moves up with the keyboard instead of jumping there.
 
 - The widget is split into TypeScript modules in `src/widget/`: `composer` (the message box), `messages`, `list`, `chat`, `thread`, `sheets` (phone sheets, back gesture, keyboard fit) and `live` (live page updates), beside `anchoring` and `styles`. Its shared state is one object, so the parts can share it. Same behaviour; `src/comments.js` keeps setup, loading, drawing and the events (2,688 → 1,428 lines).
 

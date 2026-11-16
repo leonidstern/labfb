@@ -18,20 +18,27 @@ export const scrollerIn = (e, node) =>
 
 export const SPRING = 'cubic-bezier(.32,.72,0,1)';
 
-const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events'];
+const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity'];
 
-// Phones: the open sheet leaves, down past the screen's bottom, and the keyboard (if it's up) goes at the same moment,
-// as a native sheet's does. It used to slide behind the keyboard and vanish there, and the keyboard stayed alone for
-// 0.6 s; after sending, the sheet rode the keyboard halfway down and vanished mid-screen (iOS 27 simulator, 16 Nov).
-// Its box is held where it is (the keyboard going would otherwise resize and move it on the way), and the dimmed page
-// fades on the sheet's own curve, so it's as dim as the sheet is still there. ms: after a swipe, the finger's speed
-// carried on. Returns how long it takes; let go of it with letGo().
-// It never slows down on its way out: easing out, its last part crept under Safari's see-through bottom bar and looked
-// like it lagged and faded there (Leo, 16 Nov). A flick goes on at a steady speed; a tap closes it speeding up, as iOS
-// does. The sheet itself never fades.
-export function leave(node: HTMLElement, ms = 0) {
-  const dur = ms || 280;
-  const ease = ms ? 'linear' : 'cubic-bezier(.4, 0, 1, 1)';
+// Where the last touch went down: the sheet it opens grows out of there, as iOS 27's do from the button you tapped.
+let tap = { x: 0, y: 0, at: -1e9 };
+export function fromTap(node: HTMLElement, at?: { x: number; y: number } | null) {
+  const p = at || (performance.now() - tap.at < 1500 ? tap : null);
+  if (!p) return node.style.removeProperty('--lab-from'); // no tap (a key, a link): from the bottom middle
+  node.style.setProperty('--lab-from', `${Math.round(p.x - node.offsetLeft)}px ${Math.round(p.y - node.offsetTop)}px`);
+}
+
+// Phones: the open sheet leaves, and the keyboard (if it's up) goes at the same moment, as a native sheet's does. It
+// used to slide behind the keyboard and vanish there, and the keyboard stayed alone for 0.6 s; after sending, the sheet
+// rode the keyboard halfway down and vanished mid-screen (iOS 27 simulator, 16 Nov). Its box is held where it is (the
+// keyboard going would otherwise resize and move it on the way).
+// Closed by a tap (or a send) it shrinks back into where it came from and fades, as iOS 27's share sheet does into its
+// button (measured: ~0.1 s); to: the new pin, after a send. After a swipe (ms) it slides down at the finger's speed,
+// steady, never fading (easing out, its last part crept under Safari's see-through bottom bar, Leo 16 Nov).
+// Returns how long it takes; let go of it with letGo().
+export function leave(node: HTMLElement, ms = 0, to?: { x: number; y: number } | null) {
+  const dur = ms || 200;
+  const ease = ms ? 'linear' : 'cubic-bezier(.4, 0, .9, .4)';
   let moved = 0; // a finger may have it part way down already
   try { moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0; } catch {}
   const r = node.getBoundingClientRect();
@@ -43,9 +50,20 @@ export function leave(node: HTMLElement, ms = 0) {
   W.scrim.style.transition = 'none';
   W.scrim.style.opacity = fade;
   (W.root.activeElement as HTMLElement | null)?.blur(); // the keyboard goes now, with the sheet
+  // Back into its pin where the pin is now (the page scrolled it into view after the tap); the list and the chat back
+  // to where they were tapped open.
+  const pin = !to && W.root.querySelector(node.classList.contains('card') ? '.pin.open' : node.classList.contains('float') ? '.pin.draft' : 'none');
+  const p = pin?.getBoundingClientRect();
+  if (to || p) fromTap(node, to || { x: p.left + p.width / 2, y: p.top + p.height / 2 });
   void node.offsetHeight;
-  node.style.setProperty('transition', `transform ${dur}ms ${ease}`, 'important');
-  node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, 'important');
+  if (ms) {
+    node.style.setProperty('transition', `transform ${dur}ms ${ease}`, 'important');
+    node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, 'important');
+  } else {
+    node.style.setProperty('transition', `transform ${dur}ms ${ease}, opacity ${dur}ms ease-in`, 'important');
+    node.style.setProperty('transform', `translateY(${moved}px) scale(.3)`, 'important');
+    node.style.setProperty('opacity', '0', 'important');
+  }
   W.scrim.style.transition = `opacity ${dur}ms ${ease}`;
   W.scrim.style.opacity = '0';
   return dur;
@@ -261,7 +279,7 @@ export function startSheets() {
         // Nothing to lay out again, but where the open sheet sits now is where the next keyboard slide starts from (it
         // was last read when the chat opened, hidden, at 0: the slide jumped to the screen's top first).
         const open = sheet ? W.openSheet() : null;
-        if (open?.offsetHeight && !open.style.transform) Object.assign(fit, { sheet: open, top: open.getBoundingClientRect().top });
+        if (open?.offsetHeight && !open.style.transform) Object.assign(fit, { sheet: open, top: open.offsetTop });
         return;
       }
       fitted = key;
@@ -279,8 +297,8 @@ export function startSheets() {
       // the keyboard while Safari pans the page), so subtracting the pan put the slide's start 276 px off (15 Nov,
       // ?kbdebug on Leo's iPhone: the visible height jumps 686 → 410 → 686 in one step each way).
       const open = sheet ? W.openSheet() : null;
-      // Without any slide in progress (its own or the sheet's opening one): the place it is going to, not passing through.
-      const slid = (n) => { try { return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0; } catch { return 0; } };
+      // Its box, without any slide or opening growth in progress: the place it is going to, not passing through. (Read
+      // mid-growth, a new comment's slide up with the keyboard started 266 px too high and it jumped, 16 Nov.)
       const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
       const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !W.still.matches;
       // Its own height change (the chat eases its height) jumps to the end first, so the place measured is where it
@@ -289,7 +307,7 @@ export function startSheets() {
         open.style.transition = 'none';
         void open.offsetHeight;
       }
-      const at = open ? open.getBoundingClientRect().top - slid(open) : null;
+      const at = open ? open.offsetTop : null;
       if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = '';
       if (sliding && Math.abs(fit.top - at) > 8) {
         // Set at once, then eased away: an animate() call waits a frame to start, and that frame showed the sheet at
@@ -321,6 +339,7 @@ export function startSheets() {
     W.root.addEventListener('focusout', () => setTimeout(fit, 50));
     W.vv.addEventListener('resize', fit);
     W.vv.addEventListener('scroll', fit);
+    addEventListener('pointerdown', (e) => (tap = { x: e.clientX, y: e.clientY, at: performance.now() }), { capture: true, passive: true });
     fit();
     // ?kbdebug on the page's address: every frame for 1.5 s after the keyboard is asked for or let go, where the open
     // sheet sits on the screen and what Safari reports, sent to the page's chat as "kb-log" 2 s after letting go. For

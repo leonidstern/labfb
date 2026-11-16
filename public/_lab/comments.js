@@ -332,7 +332,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @keyframes lab-fade { from { opacity: 0; } }
 /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
 @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
-@keyframes lab-sheet-in { from { transform: translateY(100%); } }
 @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
 /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
 /* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a
@@ -408,7 +407,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
      sheet never scrolls the page. */
   :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
-  .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
   /* Held at their start until the sheet's first frame is drawn (data-opening, see render): laying out the first sheet
      after the page loads took 130 ms and used up the slide, so it showed up already open (iOS 27 simulator, 16 Nov). */
   :host([data-opening]) :is(.card.in, .float.in, .scrim) { animation-play-state: paused; }
@@ -482,6 +480,23 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
 @media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
 [hidden] { display: none !important; }
+/* Phones: sheets float as cards, as iOS 27's do (Leo, 16 Nov): 8 px in from the screen's sides and bottom (from the
+   keyboard's top when it's up), round at every corner, a soft shadow, and the page behind not dimmed (a tap there still
+   closes it). A tapped sheet grows out of what you tapped (--lab-from, set in render) and shrinks back into it. */
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
+  :host { --_gap: 8px; --_card-r: 30px; }
+  .card, .float, .list { left: var(--_gap) !important; right: var(--_gap); bottom: var(--_gap) !important; border-radius: var(--_card-r) !important;
+    background: var(--_bg);
+    box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px rgba(0, 0, 0, .18); transform-origin: var(--lab-from, 50% 100%); }
+  .list .tabs { background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 36px 4px no-repeat; border-radius: var(--_card-r) var(--_card-r) 0 0; }
+  .card::after, .float::after, .list::after { content: none; }
+  :host([data-kb]) :is(.card, .list:not([hidden])) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
+  :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
+  .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px - var(--_gap) + var(--_kb)); }
+  .scrim { background: transparent; }
+  .card.in, .float.in, .list:not([hidden]) { animation: lab-card-in .3s cubic-bezier(.2, .9, .25, 1); }
+}
+@keyframes lab-card-in { from { transform: scale(.3); opacity: 0; } 40% { opacity: 1; } }
 `;
 
   // src/widget/anchoring.ts
@@ -1455,10 +1470,16 @@ ${line}`;
   var grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
   var scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
   var SPRING = "cubic-bezier(.32,.72,0,1)";
-  var HELD = ["top", "bottom", "height", "max-height", "transform", "transition", "animation", "pointer-events"];
-  function leave(node, ms = 0) {
-    const dur = ms || 280;
-    const ease = ms ? "linear" : "cubic-bezier(.4, 0, 1, 1)";
+  var HELD = ["top", "bottom", "height", "max-height", "transform", "transition", "animation", "pointer-events", "opacity"];
+  var tap = { x: 0, y: 0, at: -1e9 };
+  function fromTap(node, at) {
+    const p = at || (performance.now() - tap.at < 1500 ? tap : null);
+    if (!p) return node.style.removeProperty("--lab-from");
+    node.style.setProperty("--lab-from", `${Math.round(p.x - node.offsetLeft)}px ${Math.round(p.y - node.offsetTop)}px`);
+  }
+  function leave(node, ms = 0, to) {
+    const dur = ms || 200;
+    const ease = ms ? "linear" : "cubic-bezier(.4, 0, .9, .4)";
     let moved = 0;
     try {
       moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0;
@@ -1481,9 +1502,18 @@ ${line}`;
     W.scrim.style.transition = "none";
     W.scrim.style.opacity = fade;
     W.root.activeElement?.blur();
+    const pin = !to && W.root.querySelector(node.classList.contains("card") ? ".pin.open" : node.classList.contains("float") ? ".pin.draft" : "none");
+    const p = pin?.getBoundingClientRect();
+    if (to || p) fromTap(node, to || { x: p.left + p.width / 2, y: p.top + p.height / 2 });
     void node.offsetHeight;
-    node.style.setProperty("transition", `transform ${dur}ms ${ease}`, "important");
-    node.style.setProperty("transform", `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, "important");
+    if (ms) {
+      node.style.setProperty("transition", `transform ${dur}ms ${ease}`, "important");
+      node.style.setProperty("transform", `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, "important");
+    } else {
+      node.style.setProperty("transition", `transform ${dur}ms ${ease}, opacity ${dur}ms ease-in`, "important");
+      node.style.setProperty("transform", `translateY(${moved}px) scale(.3)`, "important");
+      node.style.setProperty("opacity", "0", "important");
+    }
     W.scrim.style.transition = `opacity ${dur}ms ${ease}`;
     W.scrim.style.opacity = "0";
     return dur;
@@ -1666,7 +1696,7 @@ ${line}`;
         const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
         if (key === fitted) {
           const open2 = sheet ? W.openSheet() : null;
-          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.getBoundingClientRect().top });
+          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.offsetTop });
           return;
         }
         fitted = key;
@@ -1679,20 +1709,13 @@ ${line}`;
         strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
         strip.style.height = `${gap}px`;
         const open = sheet ? W.openSheet() : null;
-        const slid = (n) => {
-          try {
-            return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0;
-          } catch {
-            return 0;
-          }
-        };
         const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
         const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !W.still.matches;
         if (sliding) {
           open.style.transition = "none";
           void open.offsetHeight;
         }
-        const at = open ? open.getBoundingClientRect().top - slid(open) : null;
+        const at = open ? open.offsetTop : null;
         if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = "";
         if (sliding && Math.abs(fit.top - at) > 8) {
           open.style.transform = `translateY(${fit.top - at}px)`;
@@ -1719,6 +1742,7 @@ ${line}`;
       W.root.addEventListener("focusout", () => setTimeout(fit, 50));
       W.vv.addEventListener("resize", fit);
       W.vv.addEventListener("scroll", fit);
+      addEventListener("pointerdown", (e) => tap = { x: e.clientX, y: e.clientY, at: performance.now() }, { capture: true, passive: true });
       fit();
       if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
         let lines = [];
@@ -3240,8 +3264,18 @@ ${line}`;
           prev.classList.add("out");
           prev.inert = true;
           layer2.append(prev);
-          const dur = leave(prev);
+          const sent = S.posted && pinsById.get(S.posted)?.getBoundingClientRect();
+          const dur = leave(prev, 0, sent && { x: sent.left + sent.width / 2, y: sent.top + sent.height / 2 });
           setTimeout(() => (prev.remove(), letGo(prev)), dur);
+        }
+        if (coarse) {
+          const sheet = (
+            /** @type {HTMLElement | null} */
+            root.querySelector(".card:not(.out), .float:not(.out)") || (S.listOpen ? listEl : S.chatOpen ? chatEl : null)
+          );
+          const key = sheet && (S.draft ? "draft" : S.openId || (S.listOpen ? "list" : S.chatOpen ? "chat" : ""));
+          if (sheet && key !== S.sheetKey) fromTap(sheet);
+          S.sheetKey = key;
         }
         markQuote(quoted);
         S.shown = now;
