@@ -1,8 +1,8 @@
-# labit
+<h1><picture><source media="(prefers-color-scheme: dark)" srcset="docs/labit-mark-dark.svg"><img src="docs/labit-mark-light.svg" alt="" width="34" height="34" align="top"></picture> labit</h1>
 
 [![npm](https://img.shields.io/npm/v/@leonidstern/labit)](https://www.npmjs.com/package/@leonidstern/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
-Pin comments on your pages. Your coding agent reads them, changes the code, and answers on the pin.
+**Review is the new build.** Pin comments on your pages. Your coding agent reads them, changes the code, and answers on the pin.
 
 ![Comments pinned on a demo page](docs/comments.png)
 
