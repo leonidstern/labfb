@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The page script ships without its code comments: 49 KB gzipped instead of 68 KB, same code. Its commented source is `src/comments.js`; `npm run build` writes `public/_lab/comments.js` (`npm run build:watch` while working on it).
 - Command-Z (Control-Z) takes back the last pin or go placed from the tab, newest first (deleted on this computer, resolved for guests).
 - Keys: C chat, W next new comment (Shift-W the one before), 1 comment, 2 go, 3 cursor (pins shown, clicks are the page's own), M hide; in a text box Control-D goes to the next new comment. The bar marks them in its words: (c)hat, ne(w). Old N, J, K, V, L, A, D keys are gone.
 - Tabs in the background stay connected to the lab, so their pins, chat and "(3)" title count keep up while you're in another tab.

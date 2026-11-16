@@ -80,7 +80,7 @@ $FEEDBACK"
 
   # The only non-deterministic step. Limited tools, limited turns.
   claude -p "$PROMPT" --model "$MODEL" --max-turns 30 \
-    --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm test),Bash(node --check:*),Bash(npx --yes oxlint@1.93.0:*)" \
+    --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm test),Bash(npm run build),Bash(node --check:*),Bash(npx --yes oxlint@1.93.0:*)" \
     > "$RUN/agent-$i.log" 2>&1 || true
 
   git add -A

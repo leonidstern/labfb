@@ -16,6 +16,8 @@
     "CHANGELOG.md"
   ],
   "scripts": {
+    "build": "npx --yes esbuild@0.25.12 src/comments.js --legal-comments=inline --log-level=warning --outfile=public/_lab/comments.js",
+    "build:watch": "npm run build -- --watch",
     "test": "node --import ./test/setup.mjs --test test/*.test.mjs"
   },
   "engines": {
