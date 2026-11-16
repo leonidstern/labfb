@@ -66,15 +66,27 @@ export function startLive() {
     // gap and a bigger dot, so neither closes up at 16 px). Its parts are separate so the styles can move them: the
     // dot blinks now and then while an agent listens, the ears twitch while one works. The words sit in .lbl, so
     // changing them never rebuilds (and restarts) the mark.
-    who.innerHTML =
+    const MARK =
       '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><g transform="translate(-1 -.5)">' +
       '<path class="e1" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
       '<path class="e2" d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
       '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
-      '<circle class="eye" cx="31" cy="45" r="6.2"/></g></svg><div class="lbl"></div>';
+      '<circle class="eye" cx="31" cy="45" r="6.2"/></g></svg>';
+    who.innerHTML = MARK + '<div class="lbl"></div>';
     const lbl = who.querySelector('.lbl');
     who.hidden = true;
     W.root.querySelector('.left').prepend(who);
+    // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
+    // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
+    if (!document.querySelector('link[rel~="icon"]')) {
+      fetch('/favicon.ico', { method: 'HEAD' })
+        .then((r) => r.ok && /^image\//.test(r.headers.get('content-type') || ''))
+        .catch(() => false)
+        .then((has) => {
+          if (has || document.querySelector('link[rel~="icon"]')) return;
+          document.head.append(Object.assign(document.createElement('link'), { rel: 'icon', href: '/_lab/favicon.svg' }));
+        });
+    }
     let stream = null;
     let beat = 0;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
@@ -377,7 +389,8 @@ export function startLive() {
         who.classList.toggle('idle', mode === 'away');
         who.classList.toggle('working', mode === 'working');
         W.listBtn.dataset.agent = mode;
-        W.chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's light
+        W.chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's mark
+        if (W.coarse && !W.chatBtn.querySelector('.mark')) W.chatBtn.insertAdjacentHTML('afterbegin', MARK);
         if (W.coarse) W.chatBtn.title = who.textContent; // phones: the light on the chat button says who's listening
         who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });

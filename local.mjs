@@ -586,11 +586,17 @@ const guestOk = (req) => {
 };
 // Loopback is this computer: the browser here never needs a link. Without --wifi nobody else gets this far anyway.
 const mayIn = (req) => isLoopback(req) || !WIFI || guestOk(req);
+// The labit mark (the cut for small sizes), drawn in the text colour: on the lab's own screens. The widget has the
+// same shapes split into parts (src/widget/live.ts); the tab icon is public/_lab/favicon.svg.
+const markSvg = (size, style = '') =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true"${style ? ` style="${style}"` : ''}><path transform="translate(-1 -.5)" fill="currentColor" fill-rule="evenodd" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67ZM37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02ZM31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26ZM24.8 45a6.2 6.2 0 1 0 12.4 0a6.2 6.2 0 1 0-12.4 0Z"/></svg>`;
+// Someone at this screen isn't let in yet, so nothing of the lab loads for them: the tab icon rides in the page.
+const GATE_ICON = `data:image/svg+xml,${encodeURIComponent(markSvg(64).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('currentColor', '#141414'))}`;
 const gate = (res, why = 'This lab opens with a one-time link.') =>
   res.writeHead(403, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(
     `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-      `<title>lab</title><body style="font:16px/1.5 system-ui;margin:0;display:grid;place-items:center;height:100vh;color:#111">` +
-      `<div style="max-width:22rem;padding:1.5rem;text-align:center"><p style="font-weight:600;margin:0 0 .5rem">${why}</p>` +
+      `<title>labit</title><link rel="icon" href="${GATE_ICON}"><body style="font:16px/1.5 system-ui;margin:0;display:grid;place-items:center;height:100vh;color:#111">` +
+      `<div style="max-width:22rem;padding:1.5rem;text-align:center">${markSvg(32, 'display:block;margin:0 auto .75rem')}<p style="font-weight:600;margin:0 0 .5rem">${why}</p>` +
       `<p style="margin:0;color:#666">Ask for a fresh link and open it on this device.</p></div>`);
 const redeem = (req, res, code) => {
   const until = passes.get(code);
@@ -945,7 +951,8 @@ const titleOf = (file) => {
 // The lab's own screens (the page list, "not found") in the lab's design system, /_lab/lab.css.
 const labPage = (title, body) =>
   `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1, viewport-fit=cover">` +
-  `<title>${title}</title><link rel=stylesheet href="/_lab/lab.css"><body class=lab><main>${body}</main></body>`;
+  `<title>${title}</title><link rel=icon href="/_lab/favicon.svg"><link rel=stylesheet href="/_lab/lab.css">` +
+  `<body class=lab><main><a class="lab-brand" href="/">${markSvg(20)}labit</a>${body}</main></body>`;
 const notFound = (req, res, what) => {
   if (!/text\/html/.test(req.headers.accept || '')) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
   const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
