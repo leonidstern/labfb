@@ -212,7 +212,7 @@ test('a newer version on npm is announced as the lab starts', async () => {
   let out = '';
   lab.stdout.on('data', (d) => (out += d));
   for (let i = 0; i < 40 && !/is out/.test(out); i++) await new Promise((r) => setTimeout(r, 100));
-  assert.match(out, /labfb 99\.0\.0 is out \(you have [\d.]+\): npx @leonidstern\/labfb@latest/);
+  assert.match(out, /labfb 99\.0\.0 is out \(you have [\d.]+\): npx labit@latest/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
