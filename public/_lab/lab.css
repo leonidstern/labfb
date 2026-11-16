@@ -102,6 +102,15 @@ body.lab {
 .lab-rows a { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; border-radius: var(--lab-corner-s); text-decoration: none; }
 .lab-rows a:hover { background: var(--lab-hover); }
 .lab-rows .lab-muted { font-size: 13px; }
+/* The page list: title and when it changed on one line, the file under it; open comments as a green count. */
+.lab-pages a { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 1px; align-items: baseline; padding: 9px 10px; }
+.lab-page-t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab-page-f { grid-column: 1; font-size: 12.5px; color: var(--lab-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab-page-m { grid-row: 1; grid-column: 2; display: inline-flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--lab-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lab-page-m b { font-weight: 600; color: var(--lab-green); }
+.lab-filter { width: 100%; box-sizing: border-box; margin: 0; padding: 9px 12px; border: 0; border-radius: var(--lab-corner); background: var(--lab-soft); color: inherit; font: inherit; outline: none; }
+.lab-filter:focus { box-shadow: 0 0 0 2px var(--lab-green-soft); }
+.lab-hint { font-size: 13px; margin: 0; }
 
 /* Tables */
 .lab-table { width: 100%; border-collapse: collapse; font-size: 14px; }
