@@ -4,7 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- The server is moving to TypeScript: all of `lib/` is TypeScript now (`dev`, `devserver`, `mcp`, `proxy`). Node runs the `.ts` source directly while working on labit; npm gets a built copy, `dist/` (made by `npm run build:cli` before every pack), so the package stays plain JavaScript with no dependencies, now 109 kB instead of 120 kB.
+- The server is moving to TypeScript: all of `lib/` is TypeScript now (`dev`, `devserver`, `mcp`, `proxy`), and `local.mjs` hands its command line (`args`), agent detection (`agents`), the running-labs list (`labs`) and the commands that answer and exit (`commands`: preview, add, list, pages, wait, reply, resolve, invite) to their own files; it keeps the server. Node runs the `.ts` source directly while working on labit; npm gets a built copy, `dist/` (made by `npm run build:cli` before every pack), so the package stays plain JavaScript with no dependencies, now 109 kB instead of 120 kB.
 - A phone on a `--wifi` lab now needs a one-time link (`labit invite`): one use, ten minutes, after which that browser keeps a signed cookie for a day. Being on the same wifi is no longer enough, so finding the port on a public network shows a gate and nothing else. The pages still travel unencrypted over the wifi.
 
 ## 0.6.0 · 2026-11-16
