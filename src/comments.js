@@ -1062,14 +1062,21 @@ import { zoomWords } from '../lib/zoom.ts';
   S.liveZone = null;
   S.zoneFrame = 0;
   // One write per frame, position by transform: the frame follows the pointer without forcing layout in between.
+  // The least an area is, each way. A flat drag drew a hairline as wide as the window, which reads as a line
+  // across the page rather than as something being marked. The saved area grows to the same (see endDrag).
+  const ZONE_MIN = 12;
   const paintZone = () => {
     S.zoneFrame = 0;
     if (!S.drag?.active || !S.liveZone) return;
-    const x = Math.min(S.drag.x0, S.drag.x1) + scrollX;
-    const y = Math.min(S.drag.y0, S.drag.y1) + scrollY;
-    S.liveZone.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    S.liveZone.style.width = `${Math.abs(S.drag.x1 - S.drag.x0)}px`;
-    S.liveZone.style.height = `${Math.abs(S.drag.y1 - S.drag.y0)}px`;
+    const span = (a, b) => {
+      const size = Math.max(Math.abs(b - a), ZONE_MIN);
+      return { start: (a + b) / 2 - size / 2, size };
+    };
+    const across = span(S.drag.x0, S.drag.x1);
+    const down = span(S.drag.y0, S.drag.y1);
+    S.liveZone.style.transform = `translate3d(${across.start + scrollX}px, ${down.start + scrollY}px, 0)`;
+    S.liveZone.style.width = `${across.size}px`;
+    S.liveZone.style.height = `${down.size}px`;
   };
   // An open new-comment box with nothing typed in it doesn't block drawing an area (a stray click had opened one, and
   // every drag after it silently did nothing until it was closed); one with words in it does, so they aren't lost.
@@ -1128,13 +1135,13 @@ import { zoomWords } from '../lib/zoom.ts';
     S.afterDrag = true;
     setTimeout(() => (S.afterDrag = false), 0);
     getSelection?.()?.removeAllRanges();
-    // A thin drag (a line of text, a small icon) still makes an area: it grows to at least 12 px each way around its middle,
-    // instead of silently doing nothing.
+    // A thin drag (a line of text, a small icon) still makes an area: it keeps the size it was drawn at,
+    // ZONE_MIN each way around its middle, instead of silently doing nothing.
     for (const [a, b] of [['x0', 'x1'], ['y0', 'y1']]) {
-      if (Math.abs(d[b] - d[a]) >= 12) continue;
+      if (Math.abs(d[b] - d[a]) >= ZONE_MIN) continue;
       const mid = (d[a] + d[b]) / 2;
-      d[a] = mid - 6;
-      d[b] = mid + 6;
+      d[a] = mid - ZONE_MIN / 2;
+      d[b] = mid + ZONE_MIN / 2;
     }
     showAgain();
     S.openId = null;
