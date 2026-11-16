@@ -6,6 +6,7 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "target": "es2022",
     "module": "nodenext",
@@ -13,5 +14,5 @@
     "lib": ["es2023", "dom", "dom.iterable"],
     "types": ["node"]
   },
-  "files": ["src/comments.js", "local.mjs", "lib/dev.mjs", "api/lab-comments.mjs"]
+  "include": ["src/**/*", "local.mjs", "lib/**/*.mjs", "api/**/*.mjs"]
 }

@@ -1,0 +1,979 @@
+// Where a pin points: the element, words, picture pixel, code line or video second under it, and how to find
+// that spot again when the page changes. Part of the comment widget (src/comments.js bundles it).
+
+/** Words a pin quotes, with what comes before and after so they can be found again. */
+export type Quote = {
+  exact: string;
+  prefix: string;
+  suffix: string;
+  /** In code: the whole line, its number in the block and on the page, and the block's label. */
+  line?: string;
+  lineNo?: number;
+  pageLineNo?: number;
+  lines?: number;
+  label?: string;
+};
+
+/** Everything a pin remembers about its spot. Saved with the comment and read by agents. */
+export type Anchor = {
+  selector: string;
+  /** Where in the element, as shares of its width and height. */
+  x: number;
+  y: number;
+  /** Where on the page, and the window it was seen in. */
+  docX: number;
+  docY: number;
+  width: number;
+  height: number;
+  dpr: number;
+  /** The element's opening tag, and its height then. */
+  element: string;
+  eh: number;
+  kind?: string;
+  text?: string;
+  inside?: string;
+  section?: string;
+  shadow?: string;
+  component?: string;
+  source?: string;
+  looks?: string;
+  chosen?: string;
+  cssText?: string;
+  quote?: Quote;
+  /** Pictures and video: the file, the pixel in its natural size, the second. */
+  src?: string;
+  alt?: string;
+  file?: string;
+  nw?: number;
+  nh?: number;
+  imgX?: number;
+  imgY?: number;
+  time?: number;
+  duration?: number;
+  transform?: string;
+  /** An area dragged out, and what was inside it. */
+  zoneItems?: string[];
+  zoneText?: string;
+  shownFor?: number;
+  build?: string;
+};
+
+/** A rectangle on the page, in document pixels. */
+export type Box = { left: number; top: number; width: number; height: number };
+
+/** Where a pin shows: its point, the area it marks (if any), and whether its spot changed. */
+export type Spot = { left: number; top: number; zone: Box | null; moved?: boolean };
+
+type Deps = {
+  host: HTMLElement;
+  layer: HTMLElement;
+  el: (tag: string, attrs?: Record<string, string>, text?: string) => HTMLElement;
+  store: { get: (k: string) => string; set: (k: string, v: string) => void };
+};
+
+// Set once by the widget at startup (bindAnchoring), so importing this module touches nothing.
+let host: Deps['host'], layer: Deps['layer'], el: Deps['el'], store: Deps['store'];
+export function bindAnchoring(deps: Deps) {
+  ({ host, layer, el, store } = deps);
+}
+
+export function selectorFor(node) {
+  const parts = [];
+  while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
+    if (node.id && document.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1) {
+      parts.unshift(`#${CSS.escape(node.id)}`);
+      break;
+    }
+    const tag = node.localName;
+    let index = 1;
+    for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) if (sib.localName === tag) index++;
+    parts.unshift(`${tag}:nth-of-type(${index})`);
+    node = node.parentElement;
+  }
+  return parts.length ? (parts[0].startsWith('#') ? '' : 'body > ') + parts.join(' > ') : 'body';
+}
+
+export const docWidth = () => Math.max(document.documentElement.scrollWidth, 1);
+
+export const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
+export const short = (v, n) => (v || '').replace(/\s+/g, ' ').trim().slice(0, n);
+
+// A source-file hint from a (possibly proxied, hashed or optimised) image URL: "hero-1" from
+// /_astro/hero-1.Bx3kd9_Z.webp, /_image?href=..., /_vercel/image?url=..., /media/<id>/w800.webp.
+export function fileHint(url) {
+  if (!url || url.startsWith('data:')) return '';
+  try {
+    const u = new URL(url, location.href);
+    const inner = u.searchParams.get('href') || u.searchParams.get('url');
+    if (inner && /\/_(image|vercel\/image|next\/image)/.test(u.pathname)) return fileHint(inner);
+    const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    let name = parts.pop() || '';
+    if (/^w?\d+(x\d+)?\.\w+$/i.test(name) && parts.length) name = parts.pop();
+    return name.replace(/\.(avif|webp|jpe?g|png|gif|svg|mp4|webm|mov)$/i, '').replace(/[._-][A-Za-z0-9_-]{8}$/, '');
+  } catch {
+    return '';
+  }
+}
+
+export const mediaSrc = (m) => {
+  const src = m.currentSrc || m.getAttribute('src') || '';
+  if (src && !src.startsWith('data:')) return new URL(src, location.href).href;
+  const lazy = m.dataset?.src || (m.getAttribute('srcset') || m.dataset?.srcset || '').split(/\s+/)[0];
+  return lazy ? new URL(lazy, location.href).href : '';
+};
+
+// Where the click is inside the original image/video, taking object-fit and object-position into account.
+export function naturalSpot(m, rect, cx, cy, nw, nh) {
+  if (!nw || !nh || !rect.width || !rect.height) return null;
+  const cs = getComputedStyle(m);
+  const fit = cs.objectFit || 'fill';
+  const pos = (cs.objectPosition || '50% 50%').split(/\s+/).map((v) =>
+    v.endsWith('%') ? parseFloat(v) / 100 : { left: 0, top: 0, right: 1, bottom: 1 }[v] ?? 0.5,
+  );
+  const sx = rect.width / nw;
+  const sy = rect.height / nh;
+  const scale = { cover: Math.max(sx, sy), contain: Math.min(sx, sy), none: 1, 'scale-down': Math.min(1, sx, sy) }[fit];
+  const dw = nw * (scale ?? sx);
+  const dh = nh * (scale ?? sy);
+  const ox = (rect.width - dw) * (pos[0] ?? 0.5);
+  const oy = (rect.height - dh) * (pos[1] ?? pos[0] ?? 0.5);
+  return { fit, nw, nh, imgX: clamp01((cx - rect.left - ox) / dw), imgY: clamp01((cy - rect.top - oy) / dh) };
+}
+
+// The picture file's own size. With srcset, naturalWidth is the size in CSS pixels, not the file's: read the width
+// descriptor of the candidate the browser picked ("photo-1600.jpg 1600w"), or scale by its density ("2x").
+export function fileSize(img) {
+  let nw = img.naturalWidth;
+  let nh = img.naturalHeight;
+  const sets = [img.srcset, ...[...(img.closest('picture')?.querySelectorAll('source') || [])].map((s) => s.srcset)].filter(Boolean);
+  for (const set of sets) {
+    for (const part of set.split(/,\s+/)) {
+      const [url, d = '1x'] = part.trim().split(/\s+/);
+      let abs = '';
+      try {
+        abs = new URL(url, location.href).href;
+      } catch {}
+      if (!url || abs !== img.currentSrc || !nw) continue;
+      const v = parseFloat(d);
+      if (d.endsWith('w') && v) return { nw: Math.round(v), nh: Math.round((v * nh) / nw) };
+      if (d.endsWith('x') && v) return { nw: Math.round(nw * v), nh: Math.round(nh * v) };
+    }
+  }
+  return { nw, nh };
+}
+
+// Which component drew an element and where, from a framework's dev build (React, Vue 3, Svelte); production
+// builds keep none of it. A small cut of Census's reader (github.com/leonidstern/census).
+export const PLAIN_NAME = /^[A-Z][A-Za-z0-9]{2,}$/;
+export const PLUMBING = /(Provider|Context|Consumer|Boundary|Slot|Portal|Fragment|Presence|Scope|Trap|Root)$/;
+export const variantOf = (p) =>
+  ['variant', 'size', 'tone', 'intent', 'kind']
+    .flatMap((k) => ((typeof p?.[k] === 'string' || typeof p?.[k] === 'number') && /^[\w.-]{1,20}$/.test(String(p[k])) ? [`${k}=${p[k]}`] : []))
+    .join(' ');
+// A served module's address as a repo path: Vite serves /src/x.tsx, webpack and Next say webpack-internal:///./src/x.tsx.
+export const repoPath = (url) => !/^[a-z-]+:\/\//i.test(url) ? url : decodeURIComponent(url.replace(/^[a-z-]+:\/\/\/?(\.\/)?/i, '/').replace(/^\/[^/]*:\d+/, '').split('?')[0]).replace(/^\/(@fs)?/, '').replace(/^\(app-pages-browser\)\/\.?\/?/, '');
+export function componentAt(el) {
+  const name = (t, d = 0) => (d > 3 ? '' : typeof t === 'function' ? t.displayName || t.name || '' : t && typeof t === 'object' ? t.displayName || name(t.render || t.type, d + 1) : '');
+  const plain = (n) => PLAIN_NAME.test(n) && !PLUMBING.test(n);
+  // React 18 writes the JSX's file and line; React 19 only the stack where the element was made.
+  const srcOf = (f) => {
+    const d = f?._debugSource;
+    if (d?.fileName) return `${repoPath(String(d.fileName))}:${d.lineNumber || 0}`;
+    const st = f?._debugStack?.stack;
+    if (typeof st !== 'string') return '';
+    for (const line of st.split('\n').slice(1)) {
+      const m = /((?:https?|webpack-internal|file):\/\/[^\s()]+?):(\d+):\d+\)?\s*$/.exec(line);
+      if (m && !/node_modules|react-dom|react-jsx|jsx-dev-runtime|react-server|scheduler/.test(m[1])) return `${repoPath(m[1])} (line ${m[2]} as served, may differ from the source)`;
+    }
+    return '';
+  };
+  const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+  if (key) {
+    const host = el[key];
+    const parts = [];
+    let usedAt = '';
+    // Up through the plain elements around it (a <span> in a <td> in a <tr>…) to the component that rendered it.
+    for (let f = host?.return, i = 0; f && parts.length < 2 && i < 80; f = f.return, i++) {
+      if (typeof f.type === 'string') continue;
+      const n = name(f.type);
+      if (!plain(n)) continue;
+      if (!parts.length) usedAt = srcOf(f);
+      const v = variantOf(f.memoizedProps);
+      parts.push(v ? `${n} ${v}` : n);
+    }
+    if (!parts.length) return srcOf(host) ? { source: srcOf(host) } : {};
+    return { component: parts.length > 1 ? `${parts[0]} (in ${parts[1]})` : parts[0], source: srcOf(host) || undefined, usedAt: usedAt || undefined };
+  }
+  const vue = el.__vueParentComponent;
+  if (vue?.type) {
+    const n = vue.type.name || vue.type.__name || (vue.type.__file || '').replace(/^.*\//, '').replace(/\.vue$/, '');
+    const parent = vue.parent?.type;
+    const pn = parent && (parent.name || parent.__name);
+    const v = variantOf(vue.props);
+    return { component: `${n}${v ? ' ' + v : ''}${pn ? ` (in ${pn})` : ''}`, source: vue.type.__file ? repoPath(vue.type.__file) : undefined, usedAt: parent?.__file ? repoPath(parent.__file) : undefined };
+  }
+  const loc = el.__svelte_meta?.loc;
+  if (loc?.file) return { component: loc.file.replace(/^.*\//, '').replace(/\.svelte$/, ''), source: `${repoPath(loc.file)}:${loc.line ?? 0}` };
+  return {};
+}
+
+// How the element looks: fill, text colour, size and weight, corners. A colour that a CSS variable on :root
+// holds is named by it (the page's own tokens).
+export function looksOf(el) {
+  const cs = getComputedStyle(el);
+  const names = new Map();
+  // A variable that isn't a colour (a radius, a gap) leaves the probe with its parent's colour, one no page uses:
+  // those are skipped, so "--radius-sm" never names a text colour.
+  const NONE = 'rgb(1, 2, 3)';
+  const wrap = document.createElement('i');
+  wrap.style.cssText = `display:none;color:${NONE}`;
+  const probe = wrap.appendChild(document.createElement('i'));
+  document.body.append(wrap);
+  for (const prop of [...getComputedStyle(document.documentElement)].filter((p) => p.startsWith('--')).slice(0, 400)) {
+    probe.style.color = '';
+    probe.style.color = `var(${prop})`;
+    const v = getComputedStyle(probe).color;
+    if (v && v !== NONE && !names.has(v)) names.set(v, prop);
+  }
+  wrap.remove();
+  const say = (v) => (names.has(v) ? `${names.get(v)} ${v}` : v);
+  const out = [];
+  if (!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor)) out.push(`fill ${say(cs.backgroundColor)}`);
+  out.push(`text ${say(cs.color)} ${cs.fontSize}/${cs.fontWeight}`);
+  if (parseFloat(cs.borderTopLeftRadius)) out.push(`radius ${cs.borderTopLeftRadius}`);
+  return short(out.join(', '), 200);
+}
+
+// A point on an element turned, scaled or skewed by its own CSS transform, in the element's untransformed box.
+export function untransform(el, cx, cy) {
+  const t = getComputedStyle(el).transform;
+  if (!t || t === 'none') return null;
+  const m = new DOMMatrix(t);
+  if (m.isIdentity) return null;
+  const w = el.offsetWidth || el.getBoundingClientRect().width;
+  const h = el.offsetHeight || el.getBoundingClientRect().height;
+  const [ox, oy] = getComputedStyle(el).transformOrigin.split(' ').map(parseFloat);
+  const at = (x, y) => m.transformPoint(new DOMPoint(x - ox, y - oy));
+  const corners = [at(0, 0), at(w, 0), at(0, h), at(w, h)];
+  const r = el.getBoundingClientRect();
+  // Where the transform origin is on screen: the drawn box's top left, minus how far the corners reach.
+  const origin = { x: r.left - Math.min(...corners.map((p) => p.x)), y: r.top - Math.min(...corners.map((p) => p.y)) };
+  const q = m.inverse().transformPoint(new DOMPoint(cx - origin.x, cy - origin.y));
+  return { rect: { left: 0, top: 0, width: w, height: h }, x: q.x + ox, y: q.y + oy };
+}
+
+// A picture inside an SVG (<image>): its file size, and preserveAspectRatio (default: fit inside, centred).
+export function svgImageSpot(el, anchor, cx, cy) {
+  const r = el.getBoundingClientRect();
+  const keep = (el.getAttribute('preserveAspectRatio') || 'xMidYMid meet').split(/\s+/);
+  const fill = (iw, ih) => {
+    if (!iw || !ih || !r.width || !r.height) return;
+    let [dw, dh] = [r.width, r.height];
+    if (keep[0] !== 'none') {
+      const k = (keep[1] === 'slice' ? Math.max : Math.min)(r.width / iw, r.height / ih);
+      [dw, dh] = [iw * k, ih * k];
+    }
+    const align = (v, room) => (v === 'Min' ? 0 : v === 'Max' ? room : room / 2);
+    const ox = keep[0] === 'none' ? 0 : align(keep[0].slice(1, 4), r.width - dw);
+    const oy = keep[0] === 'none' ? 0 : align(keep[0].slice(5, 8), r.height - dh);
+    Object.assign(anchor, { nw: iw, nh: ih, imgX: clamp01((cx - r.left - ox) / dw), imgY: clamp01((cy - r.top - oy) / dh) });
+  };
+  const probe = new Image();
+  probe.onload = () => fill(probe.naturalWidth, probe.naturalHeight);
+  probe.src = anchor.src;
+  if (probe.complete) fill(probe.naturalWidth, probe.naturalHeight);
+}
+
+// Where the click is inside a CSS background picture: its file size (loaded once, usually from the cache),
+// background-size (cover, contain, auto, lengths) and background-position. Fills the anchor when known.
+export function backgroundSpot(n, url, anchor, cx, cy) {
+  const r = n.getBoundingClientRect();
+  const cs = getComputedStyle(n);
+  // Layers are comma lists (a gradient on top of the photo is common): use the photo's own layer.
+  const layers = (v) => v.split(/,(?![^(]*\))/).map((x) => x.trim());
+  const at = Math.max(0, layers(cs.backgroundImage).findIndex((l) => l.includes(url)));
+  const pick = (v) => {
+    const l = layers(v);
+    return l[at % l.length];
+  };
+  const fill = (iw, ih) => {
+    if (!iw || !ih || !r.width || !r.height) return;
+    const size = pick(cs.backgroundSize);
+    let dw = iw;
+    let dh = ih;
+    if (size === 'cover' || size === 'contain') {
+      const k = (size === 'cover' ? Math.max : Math.min)(r.width / iw, r.height / ih);
+      dw = iw * k;
+      dh = ih * k;
+    } else if (size !== 'auto' && size !== 'auto auto') {
+      const [w, h = 'auto'] = size.split(/\s+/);
+      const len = (v, of) => (v.endsWith('%') ? (parseFloat(v) / 100) * of : parseFloat(v));
+      dw = w === 'auto' ? NaN : len(w, r.width);
+      dh = h === 'auto' ? NaN : len(h, r.height);
+      if (Number.isNaN(dw) && Number.isNaN(dh)) [dw, dh] = [iw, ih];
+      else if (Number.isNaN(dw)) dw = (dh * iw) / ih;
+      else if (Number.isNaN(dh)) dh = (dw * ih) / iw;
+    }
+    const [px = '50%', py = '50%'] = pick(cs.backgroundPosition).split(/\s+/);
+    const off = (v, room) => (v.endsWith('%') ? (parseFloat(v) / 100) * room : parseFloat(v) || 0);
+    const ox = off(px, r.width - dw);
+    const oy = off(py, r.height - dh);
+    Object.assign(anchor, { nw: iw, nh: ih, fit: `background ${size}`, imgX: clamp01((cx - r.left - ox) / dw), imgY: clamp01((cy - r.top - oy) / dh) });
+  };
+  const probe = new Image();
+  probe.onload = () => fill(probe.naturalWidth, probe.naturalHeight);
+  probe.src = url;
+  if (probe.complete) fill(probe.naturalWidth, probe.naturalHeight);
+}
+
+// A click on empty space: the blocks just above and below it inside the element, by heading or first words.
+export function between(target, cy) {
+  const kids = [...target.children].filter((k) => k !== host && k.getBoundingClientRect().height > 0);
+  let above = null;
+  let below = null;
+  for (const k of kids) {
+    const kr = k.getBoundingClientRect();
+    if (kr.bottom <= cy) above = k;
+    else if (kr.top >= cy && !below) below = k;
+    else if (kr.top < cy && kr.bottom > cy) return null; // inside a block, not between two
+  }
+  const say = (k) => {
+    if (!k) return undefined;
+    const h = k.matches('h1, h2, h3, h4, h5, h6') ? k : k.querySelector('h1, h2, h3, h4, h5, h6');
+    return short(`${openingTag(k)} "${short((h || k).textContent, 60)}"`, 160);
+  };
+  return above || below ? { above: say(above), below: say(below) } : null;
+}
+
+// Light or dark where the pin is: the first background colour behind it that isn't transparent.
+export function schemeAt(target) {
+  for (let n = target; n; n = n.parentElement) {
+    const m = getComputedStyle(n).backgroundColor.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
+    if (!m || (m[4] !== undefined && parseFloat(m[4]) < 0.5)) continue;
+    const [r, g, b] = [m[1], m[2], m[3]].map(Number);
+    const hex = '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+    return { scheme: 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? 'dark' : 'light', background: hex };
+  }
+  return { scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' };
+}
+
+// The word under the click plus ~40 characters either side, so an agent can grep the source.
+export function quoteAt(cx, cy, shadowRoots = []) {
+  let node = null;
+  let offset = 0;
+  if (document.caretPositionFromPoint) {
+    // Open shadow roots under the click are passed in, so text inside a web component is found too.
+    const p = shadowRoots.length ? document.caretPositionFromPoint(cx, cy, { shadowRoots }) : document.caretPositionFromPoint(cx, cy);
+    if (p) {
+      node = p.offsetNode;
+      offset = p.offset;
+    }
+  } else if (document.caretRangeFromPoint) {
+    const r = document.caretRangeFromPoint(cx, cy);
+    if (r) {
+      node = r.startContainer;
+      offset = r.startOffset;
+    }
+  }
+  if (!node || node.nodeType !== 3 || !node.data.trim()) return null;
+  // Only when the click is really on the text, not in empty space next to it.
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  const hit = [...range.getClientRects()].some((r) => cx >= r.left - 4 && cx <= r.right + 4 && cy >= r.top - 4 && cy <= r.bottom + 4);
+  if (!hit) return null;
+  const text = node.data;
+  let a = offset;
+  let b = offset;
+  // Chinese, Japanese, Korean and Thai don't put spaces between words: ask the browser where the word is.
+  const seg = /[\u0e00-\u0e7f\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/.test(text) && typeof Intl !== 'undefined' && Intl.Segmenter
+    ? new Intl.Segmenter(node.parentElement?.closest('[lang]')?.lang || undefined, { granularity: 'word' })
+    : null;
+  if (seg) {
+    for (const w of seg.segment(text)) {
+      if (offset >= w.index && offset <= w.index + w.segment.length && w.segment.trim()) {
+        a = w.index;
+        b = w.index + w.segment.length;
+        if (offset < b) break;
+      }
+    }
+  } else {
+    while (a > 0 && /\S/.test(text[a - 1])) a--;
+    while (b < text.length && /\S/.test(text[b])) b++;
+  }
+  const block = node.parentElement?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, a, button, label, span, div') || node.parentElement;
+  const full = block?.textContent || text;
+  const before = full.slice(0, full.indexOf(text) + a);
+  const after = full.slice(full.indexOf(text) + b);
+  const squash = (v) => v.replace(/\s+/g, ' ');
+  const quote: Quote = {
+    exact: short(text.slice(a, b), 80),
+    prefix: squash(before.slice(-80)).replace(/^\s+/, '').slice(-40),
+    suffix: squash(after.slice(0, 80)).replace(/\s+$/, '').slice(0, 40),
+  };
+  // Code (or any preformatted text): the whole line, its number in the block, and the block's label
+  // (a figcaption, data-file, title or aria-label nearby), so an agent can open the file at that line.
+  const pre = node.parentElement?.closest('pre, [data-file]') ||
+    (getComputedStyle(node.parentElement).whiteSpace.startsWith('pre') ? node.parentElement : null);
+  // A table of code with its own line numbers (one row per line) counts as a block too.
+  const codeTable = !pre && node.parentElement?.closest('table[data-file], table[class*="code" i]');
+  if (pre || codeTable) {
+    const box = pre || codeTable;
+    const r = document.createRange();
+    r.setStart(box, 0);
+    r.setEnd(node, offset);
+    let upto = r.toString();
+    let all = box.textContent;
+    // Lines drawn as elements (a <br> or a row per line, no newline characters): count those instead.
+    const breaks = [...box.querySelectorAll('br, tr')];
+    // A code table counts its rows, whatever line breaks its markup has.
+    if ((box.localName === 'table' || !all.includes('\n')) && breaks.length) {
+      const ends = box.querySelectorAll('br').length ? [...box.querySelectorAll('br')] : [...box.querySelectorAll('tr')].slice(0, -1);
+      const before = ends.filter((e) => e.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING && !e.contains(node)).length;
+      const lineRange = document.createRange();
+      if (before) lineRange.setStartAfter(ends[before - 1]);
+      else lineRange.setStart(box, 0);
+      if (ends[before]) lineRange.setEndBefore(ends[before]);
+      else lineRange.setEnd(box, box.childNodes.length);
+      // Rows are the lines themselves; with <br> a line is what lies between two of them.
+      const row = box.querySelectorAll('br').length ? null : node.parentElement?.closest('tr');
+      quote.line = short((row ? row.textContent : lineRange.toString()).trim(), 200);
+      quote.lineNo = before + 1;
+      quote.lines = ends.length + (box.querySelectorAll('br').length ? 0 : 1);
+    } else {
+      const from = upto.lastIndexOf('\n') + 1;
+      const to = all.indexOf('\n', upto.length);
+      quote.line = short(all.slice(from, to < 0 ? undefined : to).trim(), 200);
+      quote.lineNo = upto.split('\n').length;
+      quote.lines = all.replace(/\n$/, '').split('\n').length;
+    }
+    // The page's own line number, when it shows one (a number cell, or data-line on the row or cell).
+    const row = node.parentElement?.closest('tr, [data-line], [data-line-number]');
+    if (row) {
+      const cell = row.matches('[data-line], [data-line-number]') ? row : row.querySelector('[data-line], [data-line-number]');
+      const n = cell?.getAttribute('data-line') || cell?.getAttribute('data-line-number') || [...row.children].map((c) => c.textContent.trim()).find((t) => /^\d+$/.test(t));
+      if (n && /^\d+$/.test(n)) quote.pageLineNo = Number(n);
+    }
+    // The block's label: data-file, a caption, or a title bar next to the block (Docusaurus, Expressive Code).
+    let label = box.closest('[data-file]')?.getAttribute('data-file') || box.getAttribute('title') || box.getAttribute('aria-label') || '';
+    for (let el = box.parentElement, i = 0; !label.trim() && el && el !== document.body && i < 3; el = el.parentElement, i++) {
+      label = el.querySelector(':scope > figcaption, :scope > [class*="title" i]')?.textContent || '';
+    }
+    if (label.trim()) quote.label = short(label.trim(), 120);
+  }
+  return quote;
+}
+
+export function openingTag(node) {
+  const attrs = [...node.attributes]
+    .filter((a) => /^(id|class|alt|role|aria-label|href|data-[\w-]+)$/.test(a.name))
+    .map((a) => `${a.name}="${short(a.value, 60)}"`);
+  return `<${node.localName}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`.slice(0, 200);
+}
+// Is this element the kind a pin was put on? Same tag and id, and at least one of its classes still there: pages
+// add and drop state classes (offscreen, is-active, open), and an exact match of the tag moved those pins away.
+export function sameKind(node, tag) {
+  if (!tag) return true;
+  const want = /^<([\w-]+)/.exec(tag)?.[1];
+  if (node.localName !== want) return false;
+  const id = / id="([^"]*)"/.exec(tag)?.[1];
+  if ((id || '') !== short(node.id || '', 60)) return false;
+  const classes = (/ class="([^"]*)"/.exec(tag)?.[1] || '').split(/\s+/).filter((c) => c && c !== '…' && !c.endsWith('…'));
+  return !classes.length || classes.some((c) => node.classList.contains(c));
+}
+
+export function anchorAt(clientX, clientY) {
+  let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
+  // Inside open web components: follow the click into each shadow root.
+  const shadowRoots = [];
+  let shadowHost = null;
+  for (let top = stack[0]; top?.shadowRoot && !host.contains(top) && shadowRoots.length < 5; top = stack[0]) {
+    shadowHost ||= top;
+    shadowRoots.push(top.shadowRoot);
+    const inner = top.shadowRoot.elementsFromPoint(clientX, clientY).filter((n) => n !== top);
+    if (!inner.length) break;
+    stack = [...inner, ...stack];
+  }
+  // data-comment-target: a click anywhere inside snaps to that element (same attribute as Claude artifacts).
+  const target = stack[0]?.closest('[data-comment-target]') || stack[0] || document.body;
+  const rect = target.getBoundingClientRect();
+  const anchor: Anchor = {
+    selector: selectorFor(target),
+    x: rect.width ? (clientX - rect.left) / rect.width : 0,
+    y: rect.height ? (clientY - rect.top) / rect.height : 0,
+    docX: (clientX + scrollX) / docWidth(),
+    docY: clientY + scrollY,
+    width: innerWidth,
+    height: innerHeight,
+    dpr: Math.round((devicePixelRatio || 1) * 100) / 100,
+    element: openingTag(target),
+    eh: Math.round(rect.height), // its height then: a pin on a big container can tell if the page grew under it
+  };
+  const own = short(target.textContent, 200);
+  if (own && target !== document.body && (target.textContent || '').length < 400) anchor.text = short(own, 80);
+  const inside = target.parentElement?.closest<HTMLElement>('[id], [data-lab]');
+  if (inside) anchor.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
+  let heading = null;
+  for (const h of document.querySelectorAll('h1, h2, h3')) {
+    if (h.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(target)) heading = h;
+  }
+  if (heading) anchor.section = short(heading.textContent, 100);
+  if (shadowHost) anchor.shadow = openingTag(shadowHost);
+  for (const [k, v] of Object.entries(componentAt(target))) if (v) anchor[k] = short(v, 200);
+  if (target !== document.body) anchor.looks = looksOf(target);
+  // A <select>: which option is chosen (its text is every option in a row).
+  const select = target.closest?.('select');
+  if (select && select.selectedIndex >= 0) {
+    anchor.chosen = short(`${select.selectedIndex + 1} of ${select.options.length}: "${select.options[select.selectedIndex].text}"`, 120);
+  }
+  // Text that CSS adds with ::before / ::after content (a badge, a label): it isn't in the HTML.
+  for (const el of [target, target.parentElement]) {
+    if (!el || el === document.body) continue;
+    for (const which of ['::before', '::after']) {
+      const c = getComputedStyle(el, which).content;
+      const m = c && c.match(/^"(.+)"$/);
+      if (m && m[1].trim()) {
+        anchor.cssText = short(`"${m[1]}" from ${which} of ${openingTag(el)}`, 160);
+        break;
+      }
+    }
+    if (anchor.cssText) break;
+  }
+  const build = document.querySelector<HTMLMetaElement>('meta[name="lab-build"]')?.content;
+  if (build) anchor.build = short(build, 40);
+
+  // What the pin sits on: media first (even under a transparent overlay), then text, then a background image.
+  const media = stack.slice(0, 5).find((n) => /^(img|video|canvas|svg|image)$/.test(n.localName) && !host.contains(n));
+  if (media?.localName === 'image' && media.namespaceURI === 'http://www.w3.org/2000/svg') {
+    // A picture placed inside an SVG with <image href>: a picture file, not a drawing.
+    anchor.kind = 'image';
+    anchor.src = new URL(media.getAttribute('href') || media.getAttribute('xlink:href') || '', location.href).href;
+    anchor.file = fileHint(anchor.src);
+    svgImageSpot(media, anchor, clientX, clientY);
+  } else if (media) {
+    const r = media.getBoundingClientRect();
+    anchor.kind = media.localName === 'img' ? 'image' : media.localName;
+    if (media.localName === 'img' || media.localName === 'video') {
+      const img = media as HTMLImageElement, video = media as HTMLVideoElement; // the same element, by kind
+      anchor.src = mediaSrc(media);
+      anchor.file = fileHint(anchor.src);
+      if (img.alt) anchor.alt = short(img.alt, 120);
+      // Turned or skewed by a CSS transform: undo it, so the spot is measured on the picture itself.
+      const local = untransform(media, clientX, clientY);
+      const [box, px, py] = local ? [local.rect, local.x, local.y] : [r, clientX, clientY];
+      const spot = media.localName === 'img'
+        ? naturalSpot(media, box, px, py, fileSize(media).nw, fileSize(media).nh)
+        : naturalSpot(media, box, px, py, video.videoWidth, video.videoHeight);
+      if (spot) Object.assign(anchor, spot);
+      if (local) anchor.transform = short(getComputedStyle(media).transform, 80);
+      // An animated picture (GIF, WebP, APNG): how long it had been showing, to find the frame.
+      if (media.localName === 'img' && /\.(gif|webp|apng)(\?|#|$)/i.test(img.currentSrc || img.src)) {
+        const entry = performance.getEntriesByName(img.currentSrc || img.src)[0] as PerformanceResourceTiming | undefined;
+        const since = entry ? (performance.now() - entry.responseEnd) / 1000 : performance.now() / 1000;
+        anchor.shownFor = Math.round(since * 10) / 10;
+      }
+      if (media.localName === 'video') {
+        anchor.time = Math.round(video.currentTime * 10) / 10;
+        if (Number.isFinite(video.duration)) anchor.duration = Math.round(video.duration * 10) / 10;
+        if (!anchor.file && video.poster) anchor.file = fileHint(video.poster);
+      }
+    } else {
+      // canvas / svg animation: when it was, and where inside it.
+      anchor.time = Math.round(performance.now() / 100) / 10;
+      anchor.imgX = clamp01((clientX - r.left) / (r.width || 1));
+      anchor.imgY = clamp01((clientY - r.top) / (r.height || 1));
+      anchor.nw = Math.round(r.width);
+      anchor.nh = Math.round(r.height);
+    }
+  } else {
+    const quote = quoteAt(clientX, clientY, shadowRoots);
+    if (quote) {
+      anchor.kind = 'text';
+      anchor.quote = quote;
+    } else {
+      for (let n = target, i = 0; n && n !== document.documentElement && i < 4; n = n.parentElement, i++) {
+        const bg = getComputedStyle(n).backgroundImage.match(/url\(["']?(.+?)["']?\)/);
+        if (bg) {
+          anchor.kind = 'background';
+          anchor.src = new URL(bg[1], location.href).href;
+          anchor.file = fileHint(anchor.src);
+          backgroundSpot(n, anchor.src, anchor, clientX, clientY);
+          break;
+        }
+      }
+      anchor.kind ||= 'element';
+      if (anchor.kind === 'element') {
+        const gap = between(target, clientY);
+        if (gap) Object.assign(anchor, { gapAbove: gap.above, gapBelow: gap.below });
+      }
+    }
+  }
+  Object.assign(anchor, schemeAt(target));
+  return anchor;
+}
+
+// The stored selector can point at a different element after a redeploy; check it against the
+// file / text fingerprint, look for the right one, and otherwise fall back to the page position.
+export function findTarget(anchor) {
+  let node = null;
+  try {
+    node = anchor.selector ? document.querySelector(anchor.selector) : null;
+  } catch {}
+  const matches = (n) => {
+    if (!n) return false;
+    if (anchor.file && /^(image|video)$/.test(anchor.kind)) {
+      const m = n.closest?.('img, video') || n;
+      return fileHint(mediaSrc(m)) === anchor.file;
+    }
+    if (anchor.element && !sameKind(n, anchor.element)) return false;
+    // Its words start here (a quote from a selection can run on into the next items); spaces don't count. A short quote
+    // ("lab", "above") is found anywhere, so the words around it must be there too, or it's another element.
+    if (anchor.quote?.exact) {
+      const t = (n.textContent || '').replace(/\s+/g, '');
+      const q = anchor.quote.exact.replace(/\s+/g, '').slice(0, 24);
+      const before = (anchor.quote.prefix || '').replace(/\s+/g, '').slice(-10);
+      const after = (anchor.quote.suffix || '').replace(/\s+/g, '').slice(0, 10);
+      return t.includes(q) && (q.length >= 16 || (!before && !after) || t.includes(before + q) || t.includes(q + after));
+    }
+    return true;
+  };
+  const said = short(anchor.text, 400);
+  const sectionOf = (n) => {
+    let heading = null;
+    for (const h of document.querySelectorAll('h1, h2, h3')) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
+    return heading ? short(heading.textContent, 100) : '';
+  };
+  const squash = (t) => String(t || '').replace(/\s+/g, '');
+  const areaWords = squash(anchor.zoneText).slice(0, 30);
+  // The element at the old path is only the same one if it still says the same: its words, an area's words, or at
+  // least the same section (a box with no words of its own, like a grid, otherwise matched its twin in the next section).
+  const saysSame = (n) =>
+    anchor.quote?.exact ? true
+    : said ? short(n.textContent, 400).startsWith(said.slice(0, 40))
+    : areaWords ? squash(n.textContent).includes(areaWords)
+    : anchor.section ? sectionOf(n) === anchor.section
+    : true;
+  const atPath = node && node !== document.body && matches(node) ? node : null;
+  if (atPath && saysSame(atPath)) return atPath;
+  if (anchor.file && /^(image|video)$/.test(anchor.kind)) {
+    return [...document.querySelectorAll('img, video')].find((m) => fileHint(mediaSrc(m)) === anchor.file) || null;
+  }
+  // The page changed above it (a section added, a list reordered) and the path no longer leads there: look for the
+  // same element by what it is and what it says. Among elements with the same tag and classes, the best one has the
+  // same words (or the quote), sits under the same heading, and is nearest to where the pin was; a lone exact twin
+  // counts too. So the pin lands back on its element, at the same spot inside it, instead of where the page was.
+  const tag = /^<([\w-]+)/.exec(anchor.element || '')?.[1];
+  if (!tag || tag === 'body' || tag === 'html') return atPath;
+  const flat = (t) => short(t, 400);
+  let found = null;
+  let best = -1;
+  let near = Infinity;
+  const twins = [...document.querySelectorAll(tag)].slice(0, 400).filter((n) => !host.contains(n) && sameKind(n, anchor.element));
+  for (const n of twins) {
+    const t = flat(n.textContent);
+    let score = 0;
+    if (anchor.quote?.exact && matches(n)) score += 4;
+    if (said && t === said) score += 4;
+    if (areaWords && squash(n.textContent).includes(areaWords)) score += 4;
+    else if (said && t.startsWith(said.slice(0, 40))) score += 2;
+    // The same section only breaks a tie between elements that say the right thing; on its own it would pick a
+    // neighbour (an option removed from a list put its pins on the next one).
+    if (!score && twins.length > 1) continue;
+    if (score && anchor.section && sectionOf(n) === anchor.section) score += 2;
+    const d = Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
+    if (score > best || (score === best && d < near)) [found, best, near] = [n, score, d];
+  }
+  // Nothing better found (the words were edited, say): the element at the old path, if it's still the same kind.
+  return best > 0 || !atPath ? found : atPath;
+}
+
+// Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
+// A pin on a big container (the page's body or main) is placed by a share of its size, which drifts when content is
+// added above. If it was on a word ("…before [word] after…"), find that word again and sit on it; if the word is gone,
+// say so (the pin shows faded as moved) instead of pointing at whatever is there now.
+let wordCache: { at: number; text: string; map: [Text, number][] } | null = null;
+export function wordSpot(anchor) {
+  const m = /^(?:…)?(.*?)\[([^\]]+)\](.*?)(?:…)?$/s.exec(anchor.text || '');
+  if (!m) return null;
+  const before = m[1].replace(/\s+/g, ' ').slice(-24);
+  const word = m[2];
+  // The page's text, read once per moment and shared by all such pins.
+  if (!wordCache || performance.now() - wordCache.at > 400) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (t) => (host.contains(t.parentNode) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+    let text = '';
+    const at: [Text, number][] = [];
+    for (let t = walker.nextNode() as Text | null; t; t = walker.nextNode() as Text | null) {
+      const v = t.data.replace(/\s+/g, ' ');
+      for (let i = 0; i < v.length; i++) at.push([t, i]);
+      text += v;
+    }
+    wordCache = { at: performance.now(), text, map: at };
+  }
+  const { text, map: at } = wordCache;
+  let i = text.indexOf(before + word);
+  if (i < 0) return { gone: true };
+  i += before.length;
+  const range = document.createRange();
+  try {
+    range.setStart(...at[i]);
+    range.setEnd(at[i + word.length - 1][0], at[i + word.length - 1][1] + 1);
+  } catch {
+    return { gone: true };
+  }
+  const r = range.getBoundingClientRect();
+  return r.width || r.height ? { left: r.left + scrollX + Math.min(6, r.width / 2), top: r.top + scrollY + r.height / 2 } : { gone: true };
+}
+// A pin kept at its old spot never sits below the page's end (the page got shorter, say after a cleanup): it moves up
+// to just above the end, so it doesn't make the page longer. The end is the page's own content, not the pins' layer.
+export let pageEnd = { at: -Infinity, y: 0 }; // never fresh at first: a pin drawn in the page's first 300 ms sat at the top
+export const inPage = (y, h = 0) => {
+  if (performance.now() - pageEnd.at > 300) {
+    const bottoms = [...document.body.children].filter((c) => c !== host && !host.contains(c)).map((c) => c.getBoundingClientRect().bottom + scrollY);
+    pageEnd = { at: performance.now(), y: Math.max(innerHeight, ...bottoms) };
+  }
+  return Math.max(0, Math.min(y, pageEnd.y - h - 40));
+};
+// An area's pin sits at the corner where the drag ended (where you let go), not where it started.
+export const pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width : 0), top: zone.top + (anchor.pinY ? zone.height : 0) });
+// A pin whose spot changed waits on the page's left edge at the height it had, small and faded, out of the content's
+// way (it pointed at something that's gone, so its old x means nothing now). Opening it still shows its old area.
+export const EDGE = 10;
+export function position(anchor) {
+  const at = spotOf(anchor);
+  return at.moved ? { ...at, left: EDGE } : at;
+}
+export function spotOf(anchor): Spot {
+  const node = findTarget(anchor);
+  if (node && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && /\[[^\]]+\]/.test(anchor.text || '')) {
+    const spot = wordSpot(anchor);
+    if (spot && !spot.gone) return { left: spot.left, top: spot.top, zone: null };
+    if (spot?.gone) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY), zone: null, moved: true };
+  }
+  // On a big container with no word to find: if the container's height changed since, the share of it no longer points
+  // at the same thing, so the pin keeps its old place and shows faded as moved rather than pointing at something else.
+  if (node && anchor.eh && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && !/\[[^\]]+\]/.test(anchor.text || '')) {
+    if (Math.abs(node.getBoundingClientRect().height - anchor.eh) > 40) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY), zone: null, moved: true };
+  }
+  if (node) {
+    const rect = node.getBoundingClientRect();
+    if (rect.width || rect.height) {
+      const left = rect.left + scrollX + anchor.x * rect.width;
+      // An area on a box much taller than itself (a section, the page) keeps its px offset and size: as a share of the
+      // box it jumped onto other text when pictures above it loaded or the page grew.
+      const tall = anchor.zw && Number.isFinite(anchor.oy) && anchor.docH && rect.height > 2 * anchor.docH;
+      const top = rect.top + scrollY + (tall ? anchor.oy : anchor.y * rect.height);
+      const zone = anchor.zw ? { left, top, width: anchor.zw * rect.width, height: tall ? anchor.docH : anchor.zh * rect.height } : null;
+      return zone ? { ...pinOf(zone, anchor), zone } : { left, top, zone };
+    }
+  }
+  const left = anchor.docX * docWidth();
+  const top = inPage(anchor.docY, anchor.docH || 0);
+  const zone = anchor.docW ? { left, top, width: anchor.docW, height: anchor.docH } : null;
+  if (zone) return { ...pinOf(zone, anchor), zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
+  // Anchored to the page itself (a margin, or an area wider than any element): nothing has moved.
+  return { left, top, zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
+}
+
+// The quoted words of a text comment, found again in the page, for the highlight (CSS Custom Highlight API:
+// nothing in the page's DOM is touched).
+// The words are matched with spaces left out, across text pieces, so a quote that runs over several items (Shift +
+// select) is found too; the search widens from the pinned element to the few boxes around it.
+export function quoteRange(anchor) {
+  const q = anchor?.quote;
+  let node = q?.exact ? findTarget(anchor) : null;
+  if (!node) return null;
+  const want = q.exact.replace(/\s+/g, '');
+  const tail = (q.prefix || '').replace(/\s+/g, '').slice(-12);
+  for (let up = 0; node && up < 4; node = node.parentElement, up++) {
+    let text = '';
+    const at: [Text, number][] = []; // for each letter of text: its text piece and place in it
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    for (let t = walker.nextNode() as Text | null; t; t = walker.nextNode() as Text | null)
+      for (let i = 0; i < t.data.length; i++) {
+        if (/\s/.test(t.data[i])) continue;
+        text += t.data[i];
+        at.push([t, i]);
+      }
+    let first = null;
+    for (let i = text.indexOf(want); i !== -1; i = text.indexOf(want, i + 1)) {
+      const range = document.createRange();
+      range.setStart(...at[i]);
+      const [end, k] = at[i + want.length - 1];
+      range.setEnd(end, k + 1);
+      if (!tail || text.slice(0, i).endsWith(tail)) return range;
+      first ||= range;
+    }
+    if (first) return first;
+  }
+  return null;
+}
+// A message's name with its small marks: ↩ replied, ✅ done.
+// A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
+export const nameLine = (name, done) => {
+  const b = el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
+  if (done) b.append(el('span', { class: 'mark done', role: 'img', 'aria-label': 'done' }, '✓'));
+  return b;
+};
+// Draft mode is parked for now (Leo, 2026-11-15): its button is hidden and new pins post at once.
+export const DRAFT_MODE = false;
+export const drafting = () => DRAFT_MODE && store.get('lab-hold') === '1';
+// Messages show web addresses as links that open in a new tab.
+export const linked = (text) => {
+  const out = [];
+  let at = 0;
+  for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]/g)) {
+    if (m.index > at) out.push(document.createTextNode(text.slice(at, m.index)));
+    const a = el('a', { href: m[0], target: '_blank', rel: 'noopener noreferrer', class: 'link' }, m[0]);
+    a.addEventListener('click', (e) => e.stopPropagation());
+    out.push(a);
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) out.push(document.createTextNode(text.slice(at)));
+  return out;
+};
+// Messages read in short blocks: a blank line starts a new paragraph, "- " or "1. " lines are a list, and one long
+// paragraph (as agents tend to write) is broken after every second sentence, so a small window isn't a wall of text.
+export const sentences = (t) => t.split(/(?<=[.!?])\s+(?=["'([]?[A-Z0-9])/);
+export const readable = (text) => {
+  const blocks = [];
+  for (const [n, para] of String(text || '').trim().split(/\n\s*\n/).entries()) {
+    const lines = para.split('\n');
+    if (lines.length === 1 && para.length > 240) { // one long paragraph: two sentences a block
+      const ss = sentences(para);
+      for (let i = 0; i < ss.length; i += 2) blocks.push({ text: ss.slice(i, i + 2).join(' '), gap: n > 0 || i > 0 });
+      continue;
+    }
+    lines.forEach((line, i) => {
+      const item = /^\s*(?:[-•*]|\d+[.)])\s+/.exec(line);
+      const prev = i > 0 ? blocks.at(-1) : null;
+      if (item) blocks.push({ li: /\d/.test(item[0]) ? item[0].trim() : '•', text: line.slice(item[0].length), gap: n > 0 && i === 0 });
+      else if (prev && !prev.li) prev.text += `\n${line}`;
+      else blocks.push({ text: line, gap: (n > 0 && i === 0) || Boolean(prev) });
+    });
+  }
+  return blocks.map((b) => {
+    const node = el('span', { class: `p${b.li ? ' li' : ''}${b.gap ? ' gap' : ''}` });
+    if (b.li) node.append(el('span', { class: 'mk' }, b.li));
+    node.append(...linked(b.text));
+    return node;
+  });
+};
+export const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
+export const markQuote = (anchor) => {
+  if (!canMark) return;
+  const range = anchor && quoteRange(anchor);
+  if (range) CSS.highlights.set('lab-quote', new Highlight(range));
+  else CSS.highlights.delete('lab-quote');
+};
+
+// The area's outline: round dots with room between them (CSS dotted borders can't space their dots).
+export const zoneEl = (cls) => {
+  const z = el('div', { class: `zone ${cls}` });
+  z.innerHTML = '<svg aria-hidden="true"><rect class="ring" width="100%" height="100%"/><rect class="dots" width="100%" height="100%"/></svg>';
+  return z;
+};
+export const drawZone = (box, cls) => {
+  if (!box) return;
+  const z = zoneEl(cls);
+  Object.assign(z.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+  layer.append(z);
+  return z;
+};
+
+// An area comment: facts come from the middle of the zone; the anchor element is the smallest one that
+// contains the whole zone, so the zone is stored as fractions of it and follows it like a pin.
+export function zoneAnchor({ x0, y0, x1, y1 }) {
+  const left = Math.min(x0, x1);
+  const top = Math.min(y0, y1);
+  const right = Math.max(x0, x1);
+  const bottom = Math.max(y0, y1);
+  const anchor = anchorAt((left + right) / 2, (top + bottom) / 2);
+  let box = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2).find((n) => n !== host && !host.contains(n));
+  // The area is on the smallest element that holds most of it (80%): a narrow strip drawn a little past a picture's
+  // edge stays on the picture, instead of climbing to the page itself.
+  const area = Math.max(1, (right - left) * (bottom - top));
+  const contains = (r) => (Math.max(0, Math.min(r.right, right) - Math.max(r.left, left)) * Math.max(0, Math.min(r.bottom, bottom) - Math.max(r.top, top))) / area >= 0.8;
+  while (box && box !== document.body && !contains(box.getBoundingClientRect())) box = box.parentElement;
+  box ||= document.body;
+  const r = box.getBoundingClientRect();
+  Object.assign(anchor, {
+    selector: box === document.body ? 'body' : selectorFor(box),
+    element: openingTag(box),
+    x: r.width ? (left - r.left) / r.width : 0,
+    y: r.height ? (top - r.top) / r.height : 0,
+    zw: r.width ? (right - left) / r.width : 0, // may pass 1 a little: the area can reach past its element's edge
+    zh: r.height ? (bottom - top) / r.height : 0,
+    oy: Math.round(top - r.top), // px below the element's top: a share of a tall box drifts when it grows (pictures load)
+    docX: (left + scrollX) / docWidth(),
+    docY: top + scrollY,
+    docW: Math.round(right - left),
+    docH: Math.round(bottom - top),
+    pinX: x1 >= x0 ? 1 : 0, // the drag ended on the right / at the bottom: the pin goes there
+    pinY: y1 >= y0 ? 1 : 0,
+  });
+  Object.assign(anchor, schemeAt(box));
+  // The middle of an area often lands on one word (a caption under a picture): that word is not what the area is
+  // on, so no quote (it lit up green as if it alone was picked); the area's words are in zoneText below.
+  if (anchor.kind === 'text') {
+    delete anchor.quote;
+    anchor.kind = 'element';
+  }
+  const boxText = box === document.body ? '' : short(box.textContent, 200);
+  if (boxText && (box.textContent || '').length < 400) anchor.text = short(boxText, 80);
+  else delete anchor.text;
+  if (box !== document.body) anchor.looks = looksOf(box);
+  // Text inside the zone: the words whose middle falls inside it, in reading order. (Reading it like a selection
+  // between the zone's corners took the whole paragraph whenever a corner sat above or below a line of text.)
+  const words = [];
+  const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  for (let n = walker.nextNode() as Text | null; n && words.length < 80; n = walker.nextNode() as Text | null) {
+    if (host.contains(n)) continue;
+    const pr = n.parentElement?.getBoundingClientRect();
+    if (!pr || pr.bottom < top || pr.top > bottom || pr.right < left || pr.left > right) continue;
+    for (const m of n.data.matchAll(/\S+/g)) {
+      range.setStart(n, m.index);
+      range.setEnd(n, m.index + m[0].length);
+      const w = range.getBoundingClientRect();
+      const cx = (w.left + w.right) / 2;
+      const cy = (w.top + w.bottom) / 2;
+      if (w.width && cx >= left && cx <= right && cy >= top && cy <= bottom) words.push(m[0]);
+    }
+  }
+  const text = short(words.join(' '), 300);
+  if (text) anchor.zoneText = text;
+  // What the area holds: the outermost elements that sit wholly inside it (two cards, not the page around them),
+  // each with its text and, on a dev build, the component and line that wrote it.
+  const inArea = [];
+  const all = box.querySelectorAll('*');
+  for (let i = 0; i < all.length && i < 3000; i++) {
+    const el = all[i];
+    if (host.contains(el) || inArea.some((x) => x.contains(el))) continue;
+    const er = el.getBoundingClientRect();
+    if (er.width < 8 || er.height < 8 || er.left < left - 4 || er.right > right + 4 || er.top < top - 4 || er.bottom > bottom + 4) continue;
+    inArea.push(el);
+  }
+  if (inArea.length) {
+    anchor.zoneItems = inArea.slice(0, 5).map((el) => {
+      const c = componentAt(el);
+      const t = short(el.textContent, 50);
+      return short([openingTag(el), t && `"${t}"`, c.component, c.source && `written at ${c.source}`, c.usedAt && `used at ${c.usedAt}`].filter(Boolean).join(' · '), 500);
+    });
+    if (inArea.length > 5) anchor.zoneItems.push(`and ${inArea.length - 5} more`);
+  }
+  // The same area inside the original image or video file, when the zone is on one.
+  if (/^(img|video)$/.test(box.localName)) {
+    const nw = box.localName === 'img' ? fileSize(box).nw : (box as HTMLVideoElement).videoWidth;
+    const nh = box.localName === 'img' ? fileSize(box).nh : (box as HTMLVideoElement).videoHeight;
+    const a = naturalSpot(box, r, left, top, nw, nh);
+    const b = naturalSpot(box, r, right, bottom, nw, nh);
+    if (a && b) Object.assign(anchor, { imgX: a.imgX, imgY: a.imgY, imgX2: b.imgX, imgY2: b.imgY });
+  } else if (anchor.kind === 'image' || anchor.kind === 'video') {
+    // Zone is bigger than the media it is centred on: drop the single-point spot, keep the file as a hint. It's on
+    // the box, not the picture: as an 'image' it was placed on the picture by its file, with the box's shares, and
+    // jumped somewhere else on the page.
+    delete anchor.imgX;
+    delete anchor.imgY;
+    anchor.kind = 'element';
+  }
+  return anchor;
+}
