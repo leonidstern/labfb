@@ -217,6 +217,7 @@ import { zoomWords } from '../lib/zoom.ts';
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (p)">pause motion</button>
+      <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
       <button class="secondary go-btn" type="button" hidden title="tap: comment → go → zoom in → zoom out · keys: 1 comment · 2 go: every click approves what it's on · 3 zoom in, 3 again zoom out: ask the agent for a deeper look or the bigger picture · 4 pointer: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
@@ -241,6 +242,7 @@ import { zoomWords } from '../lib/zoom.ts';
   const showDoneBtn = $('.show-done');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
   const pauseBtn = $('.pause-btn');
+  const overBtn = $('.over-btn');
   // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
   // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
   const LIST_WINDOW = false;
@@ -372,6 +374,22 @@ import { zoomWords } from '../lib/zoom.ts';
   // Pointer (4): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
   // Option-click still pins. 1 comment, 2 go and 3 zoom leave it.
   S.cursorMode = store.get('lab-cursor') === '1';
+  // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
+  // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
+  S.overControls = store.get('lab-over') === '1';
+  const sayOver = () => {
+    overBtn.textContent = S.overControls ? 'controls keep clicks' : 'pin over controls';
+    overBtn.setAttribute('aria-pressed', String(S.overControls));
+  };
+  const setOver = (v) => {
+    S.overControls = v;
+    store.set('lab-over', v ? '1' : '');
+    sayOver();
+    S.ctlTarget = null; // what the mouse is over is worked out again: the answer has just changed
+    S.recheckCtl?.(); // without waiting for the mouse to move
+    setPinning();
+  };
+  sayOver();
   // Switching only changes the button and the pointer: nothing on the page is redrawn, so nothing flickers.
   // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
@@ -550,7 +568,7 @@ import { zoomWords } from '../lib/zoom.ts';
     return w;
   };
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, pauseBtn, copyBtn, toggleBtn] : [];
+    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn] : [];
     for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
@@ -927,6 +945,7 @@ import { zoomWords } from '../lib/zoom.ts';
       S.paused.videos.add(v);
     }
   };
+  overBtn.addEventListener('click', () => setOver(!S.overControls));
   pauseBtn.addEventListener('click', () => {
     if (S.paused) {
       clearInterval(S.paused.timer);
@@ -1091,7 +1110,16 @@ import { zoomWords } from '../lib/zoom.ts';
   // The page's own controls: links, buttons and fields, and anything the page gives a hand pointer (a clickable card, a
   // demo you tap to play), or that's inside one. A click there is the page's, as its pointer says; the widget's pointer
   // steps aside over them (lab-ctl). Clicking demos dropped stray pins (Leo, 16 Nov).
+  // Whether the thing under the mouse keeps its own click, said in the class the pointer rules read.
+  const sayCtl = (t) =>
+    document.documentElement.classList.toggle(
+      'lab-ctl',
+      !S.overControls && !host.contains(/** @type {Node} */ (t)) && t !== host && control(t),
+    );
+  // Said again without waiting for the mouse to move (the switch in the ⋯ menu changes the answer under it).
+  S.recheckCtl = () => S.mouse && sayCtl(document.elementFromPoint(S.mouse.x, S.mouse.y));
   const control = (t) => {
+    if (S.overControls) return false; // with the switch on, nothing on the page keeps its click
     for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
       if (n.matches(INTERACTIVE) || getComputedStyle(n).cursor === 'pointer') return true;
     return false;
@@ -1506,7 +1534,7 @@ import { zoomWords } from '../lib/zoom.ts';
     // Over the page's own controls the widget's pin pointer steps aside (the page's hand shows): a click there is theirs.
     if (t !== S.ctlTarget) {
       S.ctlTarget = t;
-      document.documentElement.classList.toggle('lab-ctl', !host.contains(/** @type {Node} */ (t)) && t !== host && control(t));
+      sayCtl(t);
     }
     place(e.clientX, e.clientY, t instanceof Element ? t : null);
   }, { capture: true, passive: true });

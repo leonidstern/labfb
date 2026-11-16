@@ -146,6 +146,10 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     void sendBtn.offsetWidth; // restart the arrow's flight on a quick second send
     sendBtn.classList.add('sent');
     busy = true;
+    // Let the kept draft go before the send, not after: posting redraws the box, and a draft still in the store
+    // would be read straight back into the new one — the words you just sent, sitting there again.
+    const sending = text.value;
+    dropDraft();
     error.textContent = '';
     error.classList.remove('wait');
     // Taking a while (the lab is restarting): say so; it goes as soon as the lab is back.
@@ -155,7 +159,6 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     }, 1500);
     try {
       const result = (await onSubmit(name.value.trim(), said)) as { keep?: boolean } | undefined;
-      dropDraft(); // it is sent; nothing left to keep
       clearTimeout(slow);
       error.textContent = '';
       error.classList.remove('wait');
@@ -167,6 +170,9 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
       clearTimeout(slow);
       error.classList.remove('wait');
       error.textContent = e.message;
+      // It did not go: the words are yours again, kept as they were.
+      text.value = sending;
+      keepDraft();
       sync();
     }
     busy = false;
