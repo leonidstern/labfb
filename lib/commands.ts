@@ -154,7 +154,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       dir = path.dirname(dir);
     }
     const server = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8'));
-    const session = mySession(opts.name);
+    const session = mySession(opts.name, opts.model);
     // node:http, not fetch: a wait can last longer than fetch's 5-minute header timeout.
     const call = (pathname: string, body: object) =>
       new Promise<{ status: number; text: string }>((resolve) => {
