@@ -966,21 +966,50 @@ const notFound = (req, res, what) => {
   res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
   return res.end(labPage('labit · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));
 };
+// The page list: newest first, each page with its open comments and when it last changed, so the page you were just on
+// is at the top. A filter shows once the list is long.
+const ago = (ms) => {
+  const s = (Date.now() - ms) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)} d ago`;
+  return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+};
 const listing = (res, dir, urlPath) => {
   const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
-  const li = pagesUnder(dir)
+  const pages = pagesUnder(dir)
     .map((rel) => {
-      const title = titleOf(path.join(dir, rel));
-      const href = urlPath.replace(/\/$/, '') + urlOf(rel);
-      return `<li><a href="${esc(href)}"><span>${esc(title || rel)}</span>${title ? `<span class="lab-muted">${esc(rel)}</span>` : ''}</a></li>`;
+      const file = path.join(dir, rel);
+      let mtime = 0;
+      try {
+        mtime = fs.statSync(file).mtimeMs;
+      } catch {}
+      const open = commentsOf(keyFor(path.relative(ROOT, file))).filter((c) => !c.parent && !c.resolved).length;
+      return { rel, title: titleOf(file), href: urlPath.replace(/\/$/, '') + urlOf(rel), mtime, open };
     })
+    .sort((a, b) => b.mtime - a.mtime);
+  const open = pages.reduce((n, p) => n + p.open, 0);
+  const li = pages
+    .map(
+      (p) =>
+        `<li><a href="${esc(p.href)}"><span class="lab-page-t">${esc(p.title || p.rel)}</span>` +
+        `<span class="lab-page-m">${p.open ? `<b>${p.open} open</b>` : ''}<span>${ago(p.mtime)}</span></span>` +
+        `${p.title ? `<span class="lab-page-f">${esc(p.rel)}</span>` : ''}</a></li>`,
+    )
     .join('');
+  const many = pages.length > 8;
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(
     labPage(
       `labit · ${esc(path.basename(dir))}`,
-      `<header><h1>Pages in ${esc(path.basename(dir))}</h1><p class="lede">Open one, then press <kbd>m</kbd> to show comments (or hold Option) and click to comment.</p></header>` +
-        `<ul class="lab-box lab-rows">${li || '<li class="lab-muted" style="padding:8px 10px">No HTML pages here. Running a dev server? Start it, then run labit again.</li>'}</ul>`,
+      `<header><h1>${esc(path.basename(dir))}</h1><p class="lede">${pages.length} page${pages.length === 1 ? '' : 's'}${open ? ` · ${open} open comment${open === 1 ? '' : 's'}` : ''} · newest first</p></header>` +
+        (many ? `<input class="lab-filter" type="search" placeholder="Filter pages" aria-label="Filter pages" autocomplete="off">` : '') +
+        `<ul class="lab-box lab-rows lab-pages">${li || '<li class="lab-muted" style="padding:8px 10px">No HTML pages here. Running a dev server? Start it, then run labit again.</li>'}</ul>` +
+        `<p class="lab-muted lab-hint">On a page, press <kbd>m</kbd> to show comments, or hold <kbd>⌥</kbd> and click.</p>` +
+        (many
+          ? `<script>const f=document.querySelector('.lab-filter'),r=[...document.querySelectorAll('.lab-pages li')];f.addEventListener('input',()=>{const q=f.value.trim().toLowerCase();for(const l of r)l.hidden=!!q&&!l.textContent.toLowerCase().includes(q)});addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement!==f){e.preventDefault();f.focus()}})</script>`
+          : ''),
     ),
   );
 };
