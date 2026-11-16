@@ -7,7 +7,7 @@ import { listenPages, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
 import { runningLabs, type Lab } from './labs.ts';
 
-export type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
+type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
 
 export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promise<void> {
   // ---------- the Claude desktop app's preview pane ----------

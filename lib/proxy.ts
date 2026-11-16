@@ -7,7 +7,7 @@ import net from 'node:net';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 import type { Duplex } from 'node:stream';
 
-export type ProxyOptions = {
+type ProxyOptions = {
   PROXY: URL;
   origin: () => string;
   widget: (key: string, admin: boolean, me: string) => string;

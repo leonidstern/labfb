@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The last of the old name is gone: no `labfb` command (use `labit`), and `LABFB_HOME` / `LABFB_NO_UPDATE_CHECK` are no longer read (use `LABIT_HOME` / `LABIT_NO_UPDATE_CHECK`).
+
 ## 0.6.1 · 2026-11-16
 
 - iPhones: a new comment no longer sometimes sits behind the keyboard's bar. When Safari (or Chrome) slid the page up for the keyboard instead of scrolling it, the widget counted that slide twice and saw no keyboard at all; it now measures the slide where WebKit measures boxes, from the screen's top.

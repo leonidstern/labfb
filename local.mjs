@@ -1389,7 +1389,7 @@ server.on('error', (e) => {
 // A newer labit on npm: said once when the lab starts. Checked at most once a day (kept in ~/.labit/latest.json)
 // with a short timeout, never in CI or with LABIT_NO_UPDATE_CHECK=1. The request names only the package.
 async function newerVersion() {
-  if (process.env.LABIT_NO_UPDATE_CHECK || process.env.LABFB_NO_UPDATE_CHECK || process.env.CI) return null;
+  if (process.env.LABIT_NO_UPDATE_CHECK || process.env.CI) return null;
   const file = path.join(path.dirname(REGISTRY), 'latest.json');
   let latest = null;
   try {

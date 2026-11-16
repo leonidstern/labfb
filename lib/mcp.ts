@@ -9,7 +9,7 @@ import { execFile, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 /** What runMcp needs from local.mjs. */
-export type McpOptions = {
+type McpOptions = {
   HERE: string;
   ME: string;
   CMD: string;

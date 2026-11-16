@@ -103,7 +103,7 @@ export const workState = (c) => {
   return answered ? [null, ''] : ['next', lastPerson];
 };
 
-export function workItems() {
+function workItems() {
   const today = new Date().toDateString();
   const now = [];
   const next = [];
