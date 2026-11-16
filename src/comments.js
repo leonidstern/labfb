@@ -171,7 +171,7 @@ import { bindLive, startLive } from './widget/live.ts';
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · w new · 1 comment · 2 go · 3 cursor · m hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · w new · 1 comment · 2 go · 3 cursor · p pause · m hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -182,6 +182,7 @@ import { bindLive, startLive } from './widget/live.ts';
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
+      <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (p)">pause motion</button>
       <button class="secondary go-btn" type="button" hidden title="1 comment · 2 go: every click approves what it's on · 3 cursor: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
@@ -205,6 +206,7 @@ import { bindLive, startLive } from './widget/live.ts';
   const newPrev = $('.new-prev');
   const showDoneBtn = $('.show-done');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
+  const pauseBtn = $('.pause-btn');
   // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
   // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
   const LIST_WINDOW = false;
@@ -489,7 +491,7 @@ import { bindLive, startLive } from './widget/live.ts';
     return w;
   };
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, copyBtn, toggleBtn] : [];
+    const inMenu = S.on ? [doneBtn, pauseBtn, copyBtn, toggleBtn] : [];
     for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
@@ -833,6 +835,35 @@ import { bindLive, startLive } from './widget/live.ts';
   goBtn.addEventListener('click', () => setGo(!S.goMode));
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
+  // Pause motion (p): everything that moves on the page stops where it is, to pin a moment of an animation (Leo,
+  // 16 Nov); again to play on. Animations that start while paused stop too (checked every 100 ms). The widget moves on.
+  S.paused = null;
+  const pageAnim = (a) => { const t = a.effect?.target; return Boolean(t) && t.getRootNode() !== root; };
+  const freeze = () => {
+    for (const a of document.getAnimations()) {
+      if (!pageAnim(a) || a.playState !== 'running') continue;
+      a.pause();
+      S.paused.anims.add(a);
+    }
+    for (const v of document.querySelectorAll('video')) {
+      if (v.paused) continue;
+      v.pause();
+      S.paused.videos.add(v);
+    }
+  };
+  pauseBtn.addEventListener('click', () => {
+    if (S.paused) {
+      clearInterval(S.paused.timer);
+      for (const a of S.paused.anims) a.play();
+      for (const v of S.paused.videos) v.play().catch(() => {});
+      S.paused = null;
+    } else {
+      S.paused = { anims: new Set(), videos: new Set(), timer: setInterval(freeze, 100) };
+      freeze();
+    }
+    pauseBtn.textContent = S.paused ? 'play motion' : 'pause motion';
+    pauseBtn.setAttribute('aria-pressed', String(Boolean(S.paused)));
+  });
   showDoneBtn.addEventListener('click', () => {
     S.showDone = !S.showDone;
     store.set('lab-show-done', S.showDone ? '1' : '');
@@ -937,9 +968,10 @@ import { bindLive, startLive } from './widget/live.ts';
     const letter = /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
     // The keys (Leo, 2026-11-15), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment, 2 go,
     // 3 cursor, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwred]$/.test(letter)) {
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwredp]$/.test(letter)) {
       const k = letter;
       e.preventDefault();
+      if (k === 'p') return pauseBtn.click();
       if (k === 'c') return chatBtn.click();
       if (k === 'w') return stepNew(e.shiftKey ? -1 : 1);
       if (k === 'd') return showDoneBtn.click();
@@ -963,6 +995,14 @@ import { bindLive, startLive } from './widget/live.ts';
   // Alt/Option-click pins on links and controls too. With a comment open, the first click outside only closes it.
   const INTERACTIVE =
     'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], [tabindex]:not([tabindex="-1"]), [onclick]';
+  // The page's own controls: links, buttons and fields, and anything the page gives a hand pointer (a clickable card, a
+  // demo you tap to play), or that's inside one. A click there is the page's, as its pointer says; the widget's pointer
+  // steps aside over them (lab-ctl). Clicking demos dropped stray pins (Leo, 16 Nov).
+  const control = (t) => {
+    for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
+      if (n.matches(INTERACTIVE) || getComputedStyle(n).cursor === 'pointer') return true;
+    return false;
+  };
   // data-uncommentable: no new pins or areas start inside this part of the page (same attribute as Claude artifacts).
   const OFF = '[data-uncommentable]';
   // Drag (mouse or pen) to mark an area instead of a point. Touch keeps scrolling.
@@ -987,7 +1027,7 @@ import { bindLive, startLive } from './widget/live.ts';
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
     if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
     if (e.composedPath().includes(host)) return;
-    if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+    if (!e.altKey && control(e.target)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
   }
@@ -998,7 +1038,7 @@ import { bindLive, startLive } from './widget/live.ts';
       // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
       if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host)) return;
-      if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+      if (!e.altKey && control(e.target)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
       S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
     },
@@ -1091,6 +1131,10 @@ import { bindLive, startLive } from './widget/live.ts';
     if (!S.afterDrag) onPageClick(e); // the click that ends an Option-drag belongs to the area
   }, true);
 
+  // Whether a click is on one of the page's controls is read as it starts, before the page's own handlers run: a demo
+  // that redraws itself on click left its target off the page, which then didn't look like a control (and got pinned).
+  S.ctlClick = false;
+  addEventListener('click', (e) => (S.ctlClick = control(e.target)), true);
   document.addEventListener('click', (e) => onPageClick(e));
 
   // Phones. A tap only reads (it closes what's open); holding a finger still for half a second pins, anywhere, links
@@ -1254,7 +1298,7 @@ import { bindLive, startLive } from './widget/live.ts';
     if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
     if (S.lastTouch && Date.now() - S.lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
-    else if (e.defaultPrevented || (e.target instanceof Element && e.target.closest(INTERACTIVE))) return;
+    else if (e.defaultPrevented || S.ctlClick) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     if (String(getSelection?.() || '').trim()) return;
     showAgain();
@@ -1357,6 +1401,11 @@ import { bindLive, startLive } from './widget/live.ts';
     document.documentElement.classList.add('lab-drawn');
     S.mouse = { x: e.clientX, y: e.clientY };
     const t = e.composedPath()[0];
+    // Over the page's own controls the widget's pin pointer steps aside (the page's hand shows): a click there is theirs.
+    if (t !== S.ctlTarget) {
+      S.ctlTarget = t;
+      document.documentElement.classList.toggle('lab-ctl', !host.contains(/** @type {Node} */ (t)) && t !== host && control(t));
+    }
     place(e.clientX, e.clientY, t instanceof Element ? t : null);
   }, { capture: true, passive: true });
   addEventListener('scroll', recheck, { capture: true, passive: true });
@@ -1376,9 +1425,9 @@ import { bindLive, startLive } from './widget/live.ts';
     const plain = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
     const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
     pinCursorStyle.textContent =
-      `@layer lab-pointer { html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *${plain} { cursor: crosshair; } ` +
+      `@layer lab-pointer { html.lab-pinning:not(.lab-shift, .lab-ctl) body, html.lab-pinning:not(.lab-shift, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
       // With the drawn pointer the system one hides over plain parts of the page (not in the top layer, which is above it).
-      `html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
+      `html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
       // The pointer is inherited, so places that aren't commented on name theirs: editable text a text cursor, a part
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
       `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
