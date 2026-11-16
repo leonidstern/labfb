@@ -38,7 +38,7 @@ Dependency and README-claim failures are left to you.
 
 | | before | now |
 |---|---|---|
-| `comments.js` gzipped | 67.7 KB | 49.4 KB (code comments stripped from the shipped file; minified since, see the CHANGELOG) |
+| `comments.js` gzipped | 67.7 KB | 49.4 KB (code comments stripped from the shipped file; minified with its stylesheet since, see the CHANGELOG) |
 | npm package | 139 kB | 121 kB, 11 files |
 | oxlint problems | 27 | 0 |
 | type errors | — | 180 (from here only down) |
