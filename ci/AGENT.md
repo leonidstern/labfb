@@ -6,7 +6,7 @@ You improve one metric per run. A deterministic judge (ci/metrics.mjs) decides, 
 - Nothing else may get worse: script size, package size, lint problems, tests.
 - labit has zero dependencies. Keep it that way: no packages. The page script's source is `src/comments.js` and its modules in
   `src/widget/` (TypeScript, and the stylesheet as `styles.css`). `npm run build` bundles them into
-  `public/_lab/comments.js` (comments stripped). Never edit the generated file by hand.
+  `public/_lab/comments.js`, minified. Never edit the generated file by hand; read and change `src/`.
 - Don't change behaviour. Pins, comments, the agent link and local mode must work exactly as before.
   `npm test` must pass. If a change could alter behaviour that tests don't cover, skip it.
 - Fix causes. Never add lint-disable comments, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `{any}` or `{*}` types,
