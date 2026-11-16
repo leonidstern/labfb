@@ -203,7 +203,20 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   name.addEventListener('blur', () => setTimeout(sync, 0));
   text.addEventListener('keydown', onKey);
   name.addEventListener('keydown', onKey);
-  sendBtn.addEventListener('click', go);
+  // A tap sends on the first try. The arrow keeps the cursor in the box by preventing the default on
+  // pointerdown, and a prevented pointerdown can swallow the click that follows on a phone — the tap then only
+  // moved focus, the box went back to its one-line self, and it took a second tap to send (Leo, 16 Nov). So a
+  // touch sends from touchend itself, and the click that may follow is ignored.
+  let sentByTouch = 0;
+  sendBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    sentByTouch = Date.now();
+    go();
+  }, { passive: false });
+  sendBtn.addEventListener('click', () => {
+    if (Date.now() - sentByTouch < 700) return; // the ghost click after a tap
+    go();
+  });
   // Keep focus in the field when the send button is pressed.
   sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
   requestAnimationFrame(sync);
