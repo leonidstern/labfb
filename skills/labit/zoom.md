@@ -15,7 +15,7 @@ Examples, not a menu: a number → in: measure and break it down; out: the whole
 
 Read the block and its page, the page's comments and answers (`.lab/comments.md`), the lab's other pages, the project.
 
-Never invent a number, quote, path or result: measure, run, read or quote it, say which, and mark guesses. One short check, not a suite.
+Never invent a number, quote, path or result: measure, run, read or quote it, say which, and mark guesses. Anything from beyond the page (a file, another page, how a tool or service behaves) names where it comes from, or says it is general knowledge not checked here. One short check, not a suite.
 
 ## The block
 
