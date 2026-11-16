@@ -14,13 +14,15 @@ export type ProxyOptions = {
   keyFor: (page: string) => string;
   isLoopback: (req: IncomingMessage) => boolean;
   nameFor: (req: IncomingMessage) => string;
+  /** Last pass over a page's HTML before it goes out (the lab's reload-holder). */
+  dress: (html: string) => string;
 };
 
 // PROXY: the dev server's URL. origin(): the lab's own address, known once it listens. widget(page, admin, me): the
 // script tag that goes into a page. keyFor and isLoopback: the lab's own, so pages get the same keys either way.
 // Returns page(req, res, url) for requests and upgrade(req, socket, head) for websockets; who may connect at all
 // is checked in local.mjs before either is called.
-export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, nameFor }: ProxyOptions) {
+export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, nameFor, dress }: ProxyOptions) {
   const pageKey = (pathname: string) => keyFor(pathname.replace(/^\/+|\/+$/g, '').replace(/\.html?$/i, '') || 'index');
   function proxyTo(req: IncomingMessage, res: ServerResponse, url: URL): void {
     const origin = originNow();
@@ -47,8 +49,15 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
       const strip = (t: string) => t.replace(/<script\b[^>]*\bsrc=["'][^"']*\/_lab\/comments\.js["'][^>]*>\s*<\/script>\s*/gi, '');
       const decoder = new TextDecoder();
       let held = '';
+      // The lab's reload-holder has to be the first script on the page, before the dev server's own client, so it
+      // goes into the first piece — the page is streamed, and by the last piece the head is long gone.
+      let first = true;
       r.on('data', (chunk: Buffer) => {
-        const t = held + decoder.decode(chunk, { stream: true });
+        let t = held + decoder.decode(chunk, { stream: true });
+        if (first) {
+          first = false;
+          t = dress(t);
+        }
         const lower = t.toLowerCase();
         const script = lower.lastIndexOf('<script');
         const tag = t.lastIndexOf('<');
@@ -57,7 +66,11 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
         res.write(strip(t.slice(0, cut)));
         held = t.slice(cut);
       });
-      r.on('end', () => res.end(strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req))));
+      r.on('end', () => {
+        const tail = strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req));
+        // A page that arrived in one piece never saw a data event with a head in it; dress it here instead.
+        res.end(first ? dress(tail) : tail);
+      });
       r.on('error', () => res.destroy());
     });
     up.on('error', (e: NodeJS.ErrnoException) => {

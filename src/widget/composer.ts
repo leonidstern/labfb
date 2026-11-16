@@ -16,6 +16,16 @@ export function bindComposer(deps: Deps) {
   d = deps;
 }
 
+import { holdReloads } from './hold.ts';
+
+// Every box on the page that holds words nobody has sent. While there is one, a reload waits (hold.ts).
+const writing = new Set<HTMLTextAreaElement>();
+const saysWriting = (field: HTMLTextAreaElement) => {
+  if (field.value.trim()) writing.add(field);
+  else writing.delete(field);
+  holdReloads(writing.size);
+};
+
 // The send arrow is drawn with CSS (a stem and a chevron), no picture.
 const ARROW = '<i class="arr" aria-hidden="true"></i>';
 
@@ -51,8 +61,15 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
       queueMicrotask(() => sync());
     }
   }
-  const keepDraft = () => draftKey && store.set(draftKey, text.value.trim() ? text.value : '');
-  const dropDraft = () => draftKey && store.set(draftKey, '');
+  const keepDraft = () => {
+    saysWriting(text);
+    if (draftKey) store.set(draftKey, text.value.trim() ? text.value : '');
+  };
+  const dropDraft = () => {
+    writing.delete(text);
+    holdReloads(writing.size);
+    if (draftKey) store.set(draftKey, '');
+  };
   who.append(as, name);
   const sendBtn = el('button', { class: 'send', type: 'button', 'aria-label': 'send' });
   // Pressing send keeps the cursor in the box: on phones a blur first drops the keyboard, the sheet moves, and the
@@ -156,6 +173,12 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   };
   text.addEventListener('input', sync);
   text.addEventListener('input', keepDraft);
+  // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept.
+  new MutationObserver(() => {
+    if (wrap.isConnected) return;
+    writing.delete(text);
+    holdReloads(writing.size);
+  }).observe(document.documentElement, { childList: true, subtree: true });
   name.addEventListener('input', sync);
   name.addEventListener('blur', () => setTimeout(sync, 0));
   text.addEventListener('keydown', onKey);
