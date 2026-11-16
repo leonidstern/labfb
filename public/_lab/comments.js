@@ -281,20 +281,22 @@
       .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
       .msg i { display: block; font-style: normal; font-size: 11.5px; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
-      .msg .stamp { color: inherit; float: right; margin: 6px -2px -3px 10px; font-size: 10px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
+      .msg .stamp { color: inherit; position: absolute; right: 10px; bottom: 6px; font-size: 10px; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
+      .msg .stamp-room { visibility: hidden; display: inline-block; margin-left: 10px; font-size: 10px; line-height: 1; height: 10px; white-space: nowrap; }
+      .msg .stamp-room * { font-size: inherit; }
       .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* ✓ drawn as tall as the time's digits */
       .msg .tick.got { font-weight: 600; }
       /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
       .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .tm { opacity: .55; }
       .msg .stamp .tm { font-size: inherit; line-height: inherit; color: inherit; } /* every element gets 14 px by default: the time keeps the stamp's 10 */
-      .msg .stamp .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
+      .msg :is(.stamp, .stamp-room) .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
                           -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
                           mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
       .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
       /* One slot for the mark, whatever it is (✓, ✓✓, the turning ring, the green ✓): 12 px wide after a 4 px gap, so the
          time doesn't shift when one turns into another (Leo, 15 Nov: it flicked as ✓ became the ring). */
-      .msg .stamp .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
-      .msg .stamp .ring { margin: .5px 1.5px 0 5.5px; vertical-align: top; } /* the same 10 px tall as a ✓, so the bubble keeps its height */
+      .msg :is(.stamp, .stamp-room) .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
+      .msg :is(.stamp, .stamp-room) .ring { margin: .5px 1.5px 0 5.5px; vertical-align: top; } /* the same 10 px tall as a ✓, so the bubble keeps its height */
       .msg .stamp { height: 10px; }
       .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
@@ -393,7 +395,7 @@
         :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
         *, *::before, *::after { corner-shape: squircle; }
         .pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
-        .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg .stamp .ring, .gp { corner-shape: round; } /* circles stay circles */
+        .listener::before, .list-btn[data-agent]::before, .chat-btn[data-agent]::before, .msg :is(.stamp, .stamp-room) .ring, .gp { corner-shape: round; } /* circles stay circles */
       }
       @keyframes lab-pin { from { transform: scale(1.1); } }
       @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
@@ -1903,6 +1905,18 @@
   // a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.
   // The time in a bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent, ✓✓ handed to
   // the agent (its thread went to the agent at or after you wrote it). Chat and threads alike.
+  // The time and its mark sit pinned in the bubble's bottom-right corner, as WhatsApp and Telegram do: an invisible
+  // copy at the end of the last line keeps room for it there, so it shares that line when it fits and gets a line of
+  // its own when it doesn't. Smaller than the words, it sits a touch below their line: a stamp on the bubble.
+  const stamped = (bubble, stamp) => {
+    const room = stamp.cloneNode(true);
+    room.className = 'stamp-room';
+    room.setAttribute('aria-hidden', 'true');
+    for (const n of room.querySelectorAll('[role]')) n.removeAttribute('role');
+    const last = [...bubble.children].reverse().find((n) => n.classList?.contains('p'));
+    (last || bubble).append(room);
+    bubble.append(stamp);
+  };
   const stampOf = (m, root, prefix = '') => {
     const at = new Date(m.createdAt);
     const time = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' });
@@ -1986,7 +2000,7 @@
         b.append(q);
       }
       b.append(...readable(m.text));
-      b.append(stampOf(m, root));
+      stamped(b, stampOf(m, root));
       return m.id === newFrom && m !== msgs[0] ? [el('div', { class: 'newline' }, 'new'), b] : [b];
     }).map(same));
     const strip = chatEl.querySelector('.replying');
@@ -2470,7 +2484,8 @@
     body.classList.add('msgs');
     const itemEl = (item) => {
       const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(agentOf(item) ? { 'data-agent': agentOf(item) } : {}) });
-      box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text), stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
+      box.append(nameLine(item.name, item !== c && /^done\b/i.test(item.text)), ...readable(item.text));
+      stamped(box, stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
       return box;
     };
     const shown = new Set();
