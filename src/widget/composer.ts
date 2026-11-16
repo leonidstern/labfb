@@ -22,6 +22,9 @@ import { holdReloads } from './hold.ts';
 
 // Every box on the page that holds words nobody has sent. While there is one, a reload waits (hold.ts).
 const writing = new Set<HTMLTextAreaElement>();
+// Drafts whose words are on their way to the lab. A box rebuilt while one is in flight (the widget redraws as the
+// comment lands) must not read them back in, and must not lose them either if the send fails.
+const sending = new Set<string>();
 /** True while any box on the page holds words nobody has sent. */
 export const anyWriting = () => writing.size > 0;
 const saysWriting = (field: HTMLTextAreaElement) => {
@@ -59,7 +62,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   const name = el('input', { type: 'text', name: 'search-lab-who', placeholder: 'your name', maxlength: '60', enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' }) as HTMLInputElement;
   name.value = store.get('lab-name');
   // What was typed here last time and never sent. A dev server rebuilding the page used to wipe it.
-  if (draftKey) {
+  if (draftKey && !sending.has(draftKey)) {
     const kept = store.get(draftKey);
     if (kept) {
       text.value = kept;
@@ -146,10 +149,10 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     void sendBtn.offsetWidth; // restart the arrow's flight on a quick second send
     sendBtn.classList.add('sent');
     busy = true;
-    // Let the kept draft go before the send, not after: posting redraws the box, and a draft still in the store
-    // would be read straight back into the new one — the words you just sent, sitting there again.
-    const sending = text.value;
-    dropDraft();
+    // The words are in flight: a box rebuilt while they are on their way leaves them alone, instead of reading
+    // them back in as if they had never been sent.
+    const words = text.value;
+    if (draftKey) sending.add(draftKey);
     error.textContent = '';
     error.classList.remove('wait');
     // Taking a while (the lab is restarting): say so; it goes as soon as the lab is back.
@@ -159,6 +162,9 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     }, 1500);
     try {
       const result = (await onSubmit(name.value.trim(), said)) as { keep?: boolean } | undefined;
+      // It went: the kept draft goes with it.
+      dropDraft();
+      if (draftKey) sending.delete(draftKey);
       clearTimeout(slow);
       error.textContent = '';
       error.classList.remove('wait');
@@ -171,7 +177,8 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
       error.classList.remove('wait');
       error.textContent = e.message;
       // It did not go: the words are yours again, kept as they were.
-      text.value = sending;
+      if (draftKey) sending.delete(draftKey);
+      text.value = words;
       keepDraft();
       sync();
     }
