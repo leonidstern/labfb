@@ -295,11 +295,14 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
   .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
   .bar > button.first { box-shadow: none; }
+  /* Hover, pressed and "its menu is open" are the first grey step after white (soft), not the second: on the white
+     bar the second read as a dirty block (Leo, 16 Nov). */
   /* Only with a mouse: on a phone the grey stayed on a tapped segment (iOS keeps :hover after a tap; Leo, 16 Nov). */
   @media (hover: hover) and (pointer: fine) {
-    .bar > button:not(:disabled):hover { background: var(--_hover); }
-    .bar > button:active { background: var(--_hover); }
+    .bar > button:not(:disabled):hover { background: var(--_soft); }
+    .bar > button:active { background: var(--_soft); }
   }
+  .bar > .more[aria-expanded=true] { background: var(--_soft); }
   .bar > button:active { transform: none; }
   .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
   .bar > button.quiet.first { box-shadow: none; }
@@ -317,17 +320,18 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
   /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
   .go-btn:not(.on):not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
-  /* 3, cursor: the switch is the same pin in grey, saying "off" (regular, a touch bigger than go's bold). */
-  .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
+  /* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
+     grey. It had a thicker, darker ring and regular letters, which read as another control (Leo, 16 Nov). */
+  .go-btn.cursor .gp { color: transparent; background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); position: relative; }
   .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
-                              font-size: 10px; font-weight: 400; letter-spacing: .012em; }
+                              font-size: 10px; font-weight: 600; letter-spacing: 0; }
   .more { font-size: 15px !important; letter-spacing: .05em; }
   .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
                border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
   .more-menu[hidden] { display: none; }
   .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
                       border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
-  .more-menu button:hover:not(:disabled) { background: var(--_hover); }
+  .more-menu button:hover:not(:disabled) { background: var(--_soft); }
   .more-menu button:disabled { color: var(--_muted); cursor: default; }
   .more-menu button[hidden] { display: none; }
   .more-menu kbd { margin: 0; }
