@@ -52,16 +52,6 @@ export function startLive() {
     };
     const who = document.createElement('a');
     who.className = 'listener';
-    who.addEventListener('click', async () => {
-      const text = who.dataset.copy;
-      if (!text) return;
-      try {
-        await navigator.clipboard.writeText(text);
-        const was = [...lbl.childNodes];
-        lbl.replaceChildren('copied');
-        setTimeout(() => lbl.textContent === 'copied' && lbl.replaceChildren(...was), 1200);
-      } catch {}
-    });
     // The labit mark, in place of the old dot: our pin as a head, two slabs as ears (the cut for small sizes: a wider
     // gap and a bigger dot, so neither closes up at 16 px). Its parts are separate so the styles can move them: the
     // dot blinks now and then while an agent listens, the ears twitch while one works. The words sit in .lbl, so
@@ -397,9 +387,8 @@ export function startLive() {
         who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
-        // No link, but a resume command (codex resume …): a tap copies it.
-        who.dataset.copy = !s?.url && s?.resume && mode !== 'away' ? s.resume : '';
-        who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labit wait' : s?.resume ? `${s.resume}${who.dataset.copy ? ' (tap to copy)' : ''}` : '';
+        // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
+        who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labit wait' : s?.resume || '';
         who.hidden = false;
       }
     }

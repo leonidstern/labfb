@@ -281,7 +281,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .listener.working .mark .e2 { animation-delay: .18s; }
 @keyframes lab-blink { 0%, 88%, 100% { transform: scaleY(1); } 92%, 96% { transform: scaleY(.08); } }
 @keyframes lab-twitch { 0%, 62%, 100% { transform: rotate(0); } 70% { transform: rotate(-9deg); } 80% { transform: rotate(5deg); } 90% { transform: rotate(-3deg); } }
-.listener { cursor: default; } /* a plain arrow, also where a tap copies the resume command */
+.listener { cursor: default; }
 /* Letter spacing follows the size, as Apple's SF text does: looser below 12 px, tighter above (11 +.006em,
    13 −.006, 15 −.016, 17 −.025). Uppercase labels and the ✓✓ overlap keep their own. */
 /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
