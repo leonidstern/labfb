@@ -1,10 +1,12 @@
 # labfb
 
-[![npm](https://img.shields.io/npm/v/@leonidstern/labfb)](https://www.npmjs.com/package/@leonidstern/labfb) [![test](https://github.com/LeonidStern/labfb/actions/workflows/test.yml/badge.svg)](https://github.com/LeonidStern/labfb/actions/workflows/test.yml) [![MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+[![npm](https://img.shields.io/npm/v/labit)](https://www.npmjs.com/package/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+
+On npm as `labit` ("lab it"). It used to be `@leonidstern/labfb`, which still works.
 
 Pin comments on pages, and your agent reads them as plain text. Use it on a live domain where anyone with the link can comment, or on your own computer, where your agent (Claude, Codex, Cursor…) answers on the pins while it works.
 
-**Small, no dependencies, runs in any folder.** labfb uses only Node 22+ itself: no packages to install, about 120 kB on npm, 15 files. Run `npx @leonidstern/labfb` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
+**Small, no dependencies, runs in any folder.** labfb uses only Node 22+ itself: no packages to install, about 120 kB on npm, 15 files. Run `npx labit` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
 
 ![Comments pinned on a demo page](docs/comments.png)
 
@@ -18,7 +20,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **Admin links per person:** let someone resolve and delete on their pages only. Nothing to set up per person.
 
 **Local lab**: pages on your computer, for you and Claude
-- **No deploy:** run `npx @leonidstern/labfb@latest` in your project. It finds your running Astro, Next or Vite dev server and puts comments on top, or serves plain HTML files.
+- **No deploy:** run `npx labit@latest` in your project. It finds your running Astro, Next or Vite dev server and puts comments on top, or serves plain HTML files.
 - **Your agent answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
 - **Shows who is listening:** the label says whether Claude is listening or working. Close the page and Claude waits quietly: your first comment when you're back wakes it, and it stops after an hour.
 - **Phone too:** `--wifi` lets a phone at home join. Comments stay in `.lab/`, one store per project.
@@ -30,7 +32,7 @@ Both: works on text, code, photos and video, drag your pins, hold Option to comm
 Paste this into your agent. It is the whole setup.
 
 ```text
-Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
+Set up labfb (https://github.com/leonidstern/labit) for me on Vercel.
 
 0. First check whether I already have a lab (a Vercel project with LAB_HOST set, or a site that loads /_lab/comments.js). If I do, stop and tell me: add sites to that one instead.
 1. Fork the repo and import it into Vercel: framework preset "Other", no build command.
@@ -64,12 +66,12 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 Paste this into Claude Code in your project. It is the whole setup.
 
 ```text
-Start labfb (https://github.com/leonidstern/labfb) on this project and listen to my comments.
+Start labfb (https://github.com/leonidstern/labit) on this project and listen to my comments.
 
-1. Run `npx @leonidstern/labfb@latest` here in the background. It finds this project's dev server, or serves plain HTML files.
+1. Run `npx labit@latest` here in the background. It finds this project's dev server, or serves plain HTML files.
    If it says the dev server isn't running, start it the way this project does, then run it again. Never stop other servers.
-2. Run `npx @leonidstern/labfb wait` in the background, with --name set to this project's name. It ends with my next comment.
-3. For each comment, change what it asks, then answer on the pin: `npx @leonidstern/labfb reply <id> "Done: …"`, with the id
+2. Run `npx labit wait` in the background, with --name set to this project's name. It ends with my next comment.
+3. For each comment, change what it asks, then answer on the pin: `npx labit reply <id> "Done: …"`, with the id
    that wait printed. Add --resolve when it's fully done; if you need something from me, ask in the reply instead.
 4. Run wait again right away. Stop when wait says the page was closed.
 ```
@@ -81,17 +83,17 @@ Using it often? Install the plugin once, then just say **"start labfb"** in any 
 /plugin install labfb@leonidstern
 ```
 
-Without Claude, run `npx @leonidstern/labfb@latest` in your project:
+Without Claude, run `npx labit@latest` in your project:
 
 - **Dev server (Astro, Next, Vite…):** start it as usual. labfb finds the one running from this project, even with other projects' servers running, and puts comments on top. `--proxy 4321` picks a port yourself.
-- **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb@latest dist`.
+- **Plain HTML files:** served as they are. Pages somewhere else: `npx labit@latest dist`.
 
 - **Comment:** press `m` (or hold Option) and click. Drag to mark an area.
-- **One lab per project:** `npx @leonidstern/labfb list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
-- **This project's pages:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx @leonidstern/labfb add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
+- **One lab per project:** `npx labit list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
+- **This project's pages:** `npx labit pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx labit add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
 - **Which model listens:** the session you start decides it. Start it with `claude --model sonnet`, or `/model` in a running session.
-- **MCP (optional):** `npx @leonidstern/labfb@latest mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code, once for all your projects: `claude mcp add -s user labfb -- npx @leonidstern/labfb@latest mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
-- **Options:** `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
+- **MCP (optional):** `npx labit@latest mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code, once for all your projects: `claude mcp add -s user labfb -- npx labit@latest mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
+- **Options:** `--wifi` lets a phone at home join. `npx labit preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
 ## Other agents
@@ -113,8 +115,8 @@ labfb works with any agent that can use a terminal or MCP. Comments are plain te
 
 | Agent | Known by | MCP | Back to the session |
 |---|---|---|---|
-| Claude Code | `CLAUDECODE` | `claude mcp add labfb -- npx @leonidstern/labfb@latest mcp` | link, or `claude --resume` |
-| Codex | `CODEX_THREAD_ID` | `codex mcp add labfb -- npx @leonidstern/labfb@latest mcp` | `codex resume <id>` (tap the label to copy) |
+| Claude Code | `CLAUDECODE` | `claude mcp add labfb -- npx labit@latest mcp` | link, or `claude --resume` |
+| Codex | `CODEX_THREAD_ID` | `codex mcp add labfb -- npx labit@latest mcp` | `codex resume <id>` (tap the label to copy) |
 | Cursor | `CURSOR_AGENT` | its MCP settings | |
 | Amp | `AMP_CURRENT_THREAD_ID` | its MCP settings | thread link |
 | opencode | `OPENCODE_CLIENT` | its MCP settings | |
@@ -125,15 +127,15 @@ labfb works with any agent that can use a terminal or MCP. Comments are plain te
 - **Codex's sandbox:** if `wait` or `reply` can't reach the lab, labfb says so. Use the MCP tools, or allow it: `-c sandbox_workspace_write.network_access=true`.
 
 ```sh
-npx @leonidstern/labfb@latest                 # start the lab in the project
-npx @leonidstern/labfb reply <id> "Done: …"   # the agent answers on a pin
+npx labit@latest                 # start the lab in the project
+npx labit reply <id> "Done: …"   # the agent answers on a pin
 ```
 
 The MCP server finds the project from the client's root folder or the shell's folder; if it can't, its tools take a `dir`.
 
 ## Updating
 
-- **The command:** start labfb with `npx @leonidstern/labfb@latest` and npx fetches the newest version (plain `npx @leonidstern/labfb` may reuse an older copy it keeps). When a newer one is out, labfb says so as it starts; it checks npm at most once a day. `LABFB_NO_UPDATE_CHECK=1` turns that off.
+- **The command:** start labfb with `npx labit@latest` and npx fetches the newest version (plain `npx labit` may reuse an older copy it keeps). When a newer one is out, labfb says so as it starts; it checks npm at most once a day. `LABFB_NO_UPDATE_CHECK=1` turns that off.
 - **The Claude Code plugin:** `claude plugin marketplace update leonidstern`, then `claude plugin update labfb@leonidstern`.
 - **The MCP server:** added with `@latest` (as above), it starts the newest version each time.
 - **Your cloud lab:** sync your fork of labfb with this repo on GitHub ("Sync fork") and redeploy; every site on the lab gets the new widget from the lab domain.

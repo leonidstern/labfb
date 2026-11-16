@@ -1250,7 +1250,7 @@ ${line}`;
   // src/comments.js
   /*!
    * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
-   * https://github.com/leonidstern/labfb · MIT
+   * https://github.com/leonidstern/labit · MIT
    * Comments are off by default; the bar button or c turns them on (remembered per browser). When on, click anywhere that isn't a link or control to pin one (alt/option-click pins on those too). c (or the bar button) hides
    * and shows them; esc or a click outside closes an open comment. Dragging (mouse/pen) marks an area instead of a point.
    * Include on a page served through your lab domain:
@@ -3225,7 +3225,7 @@ ${line}`;
           if (s?.url && mode !== "away") Object.assign(who, { href: s.url, target: "_blank" });
           else who.removeAttribute("href");
           who.dataset.copy = !s?.url && s?.resume && mode !== "away" ? s.resume : "";
-          who.title = mode === "away" ? "Ask your agent to run: npx @leonidstern/labfb wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
+          who.title = mode === "away" ? "Ask your agent to run: npx labit wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
           who.hidden = false;
         }
       };

@@ -156,7 +156,7 @@ test('the plugin files agree with the package (name, version) and declare the MC
   assert.equal(read('plugin.json').$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json');
   const mcp = read('mcp.json');
   assert.equal(mcp.$schema, 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json');
-  assert.deepEqual(mcp.mcpServers.labfb, { type: 'stdio', command: 'npx', args: ['-y', '@leonidstern/labfb@latest', 'mcp'] });
+  assert.deepEqual(mcp.mcpServers.labfb, { type: 'stdio', command: 'npx', args: ['-y', 'labit@latest', 'mcp'] });
   assert.equal(read('.agents/plugins/marketplace.json').plugins[0].source.path, './');
 });
 
