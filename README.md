@@ -4,7 +4,7 @@
 
 Pin comments on pages, and your agent reads them as plain text. Use it on a live domain where anyone with the link can comment, or on your own computer, where your agent (Claude, Codex, Cursor…) answers on the pins while it works.
 
-**Small, no dependencies, runs in any folder.** labfb uses only Node 20+ itself: no packages to install, about 120 kB on npm, 11 files. Run `npx @leonidstern/labfb` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
+**Small, no dependencies, runs in any folder.** labfb uses only Node 22+ itself: no packages to install, about 120 kB on npm, 11 files. Run `npx @leonidstern/labfb` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
 
 ![Comments pinned on a demo page](docs/comments.png)
 
@@ -148,7 +148,7 @@ In a pin, Claude models ("use fable", "@opus") need the `claude` command, GPT mo
 - **Page hints:** `data-uncommentable` keeps comments off a part of the page; `data-comment-target` pins any click inside to that element. Same names as Claude artifact comments.
 - **Theme:** set `--lab-accent`, `--lab-bg`, `--lab-fg`, `--lab-radius` or `--lab-font` on `[data-lab-comments]`.
 
-Development: `npm test` runs the local-mode checks (Node 20+, no packages). Changes are in [CHANGELOG.md](CHANGELOG.md).
+Development: `npm test` runs the local-mode checks (Node 22+, no packages). Changes are in [CHANGELOG.md](CHANGELOG.md).
 
 Tested with Claude: on a page with a photo, code and a video, Fable, Sonnet and Haiku found every spot from the link alone (file, pixel, line, second), see [bench](bench/). Admin links and deleting are tested across three labs in [bench/labs](bench/labs/). The script is 49 KB gzipped and loads after the page. Links are hidden, not locked, so don't put anything confidential there.
 
