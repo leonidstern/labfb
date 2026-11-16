@@ -160,6 +160,9 @@ function cleanAnchor(a) {
     time: sec(a.time),
     duration: sec(a.duration),
     context: clean(a.context, MAX.context) || undefined, // older widget versions
+    // Zoom (lib/zoom.ts): the nearest element with an id around the spot, and on a zoom its direction.
+    block: /^[A-Za-z][\w:.-]{0,119}$/.test(a.block || '') ? a.block : undefined,
+    zoom: a.zoom === 'in' || a.zoom === 'out' ? a.zoom : undefined,
   };
   if (a.quote && typeof a.quote === 'object') {
     const exact = clean(a.quote.exact, 300); // selected words can run long; a click quotes one word
@@ -287,6 +290,8 @@ function asText(path, comments, host) {
     if (a.chosen) lines.push(`chosen option: ${a.chosen}`);
     if (a.cssText) lines.push(`text added by CSS: ${a.cssText} (search the CSS for it)`);
     if (a.section) lines.push(`section: "${a.section}"`);
+    if (a.block) lines.push(`block: ${a.block}`);
+    if (a.zoom) lines.push(a.zoom === 'out' ? 'zoom: out, the bigger picture (not a change request: write one block that shows the bigger picture this block sits in; see the zoom skill)' : 'zoom: in, dive deeper (not a change request: write one block that goes deeper into this block; see the zoom skill)');
     if (a.zw) {
       lines.push(`type: area comment, ${a.docW}×${a.docH} px on screen`);
       lines.push(`area on element: ${pct(a.x)}–${pct(a.x + a.zw)} across, ${pct(a.y)}–${pct(a.y + a.zh)} down`);

@@ -33,6 +33,10 @@ Start it with `npx @leonidstern/labit@latest`, so the person gets the newest ver
 4. For each comment: edit the file (the page reloads by itself), then answer on the pin with `LAB reply <id> "Done: <what changed>"`. Use the comment id that `wait` printed, not the number: numbers shift after a delete. Add `--resolve` when the ask is fully done. If you need something from the person, ask in the reply instead and leave it open. Keep answers short, since they're read in a small window: one point per line or two, a blank line between points, `- ` lines for lists.
 5. Start `wait` again right away, so the page never says "no agent listening" while you are around. If `wait` says the page was closed (no page for an hour), stop listening: start again only when the person asks.
 
+## Zoom
+
+A comment with `zoom: in` or `zoom: out` asks for one block, a deeper look or the bigger picture, not a change. Read [zoom.md](zoom.md) first. When you make a lab page, give every block an `id`, so it can be zoomed.
+
 ## Instead of an Artifact ("use lab")
 
 When the person says "use lab", "in lab" or "show it in lab", show the page in labit, not as an Artifact. The page lives on this computer, and their comments come back to you as pins.

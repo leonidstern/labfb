@@ -146,7 +146,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   }
 
   // ---------- Claude's side: wait, reply, resolve ----------
-  if (['wait', 'reply', 'resolve', 'invite'].includes(pos[0])) {
+  if (['wait', 'reply', 'resolve', 'invite', 'zoom'].includes(pos[0])) {
     const [cmd, ref, ...words] = pos;
     let dir = path.resolve(opts.dir || '.');
     while (!fs.existsSync(path.join(dir, '.lab/server.json'))) {
@@ -227,6 +227,23 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       hit = hits[0];
     }
     if (!hit) die(`No open comment ${ref || ''}${want ? ` on ${want}` : ''}. See .lab/comments.md.`);
+    // A zoom: the block the agent wrote, a bigger picture or a deeper look, handed to the lab, which places it (lib/zoom.ts).
+    if (cmd === 'zoom') {
+      const [file] = words;
+      if (!file) die(`Give the file with the block: ${CMD} zoom <id> <file>`);
+      if (!fs.existsSync(file)) die(`No file ${file}.`);
+      const out = await call('/_lab/api/zoom', { page: hit.page, id: hit.id, html: fs.readFileSync(file, 'utf8') });
+      if (out.status >= 300) {
+        let why = out.text;
+        try {
+          why = JSON.parse(out.text).error || why;
+        } catch {}
+        die(`Not placed: ${why || out.status}. Fix it and run it again.`);
+      }
+      const r = JSON.parse(out.text);
+      console.log(`Placed #${r.id} in ${r.file}. Now answer on the pin in one line, naming #${r.id} (it links to it): ${CMD} reply ${hit.id} "… #${r.id}"`);
+      process.exit(0);
+    }
     if (cmd === 'reply') {
       if (!words.length) die(`Reply text is missing: ${CMD} reply <id> "what you did"`);
       const who = process.env.LAB_AGENT_NAME || session.agent;
