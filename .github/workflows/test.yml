@@ -17,6 +17,17 @@ jobs:
       - run: node --check local.mjs && node --check src/comments.js && node --check public/_lab/comments.js && node --check api/lab-comments.mjs
       - run: npm test
 
+  # Dead code: files nothing imports, and exports nothing outside their own file uses. Knip runs from npx,
+  # pinned, so labit keeps zero dependencies; knip.json lists the entry points.
+  dead-code:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run deadcode
+
   # The widget in real browsers: Safari's engine (WebKit) and Chrome's. Playwright is installed
   # only here (--no-save), so labit itself keeps zero dependencies.
   browser:
