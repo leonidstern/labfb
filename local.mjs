@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.mjs';
+import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -310,10 +310,10 @@ if (pos[0] === 'pages') {
 }
 
 // ---------- MCP (optional): the same comments, as tools for any agent with MCP ----------
-// `labit mcp` speaks MCP over stdin/stdout. It lives in lib/mcp.mjs, loaded only for this command: most runs are a
+// `labit mcp` speaks MCP over stdin/stdout. It lives in lib/mcp.ts, loaded only for this command: most runs are a
 // lab or an agent command, and they needn't read it.
 if (pos[0] === 'mcp') {
-  const { runMcp } = await import('./lib/mcp.mjs');
+  const { runMcp } = await import('./lib/mcp.ts');
   await runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agentKind, agentNow });
 }
 
@@ -1548,8 +1548,8 @@ const handler = async (req, res) => {
 };
 
 // ---------- in front of a dev server (--proxy) ----------
-// Passing pages and websockets through to the dev server lives in lib/proxy.mjs, loaded only when there is one.
-const proxy = PROXY && (await import('./lib/proxy.mjs')).proxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback });
+// Passing pages and websockets through to the dev server lives in lib/proxy.ts, loaded only when there is one.
+const proxy = PROXY && (await import('./lib/proxy.ts')).proxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback });
 
 const server = http.createServer(handler);
 server.on('upgrade', (req, socket, head) => {

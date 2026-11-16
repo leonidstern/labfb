@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { apiOn } from '../lib/dev.mjs';
+import { apiOn } from '../lib/dev.ts';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const OWNER = 'owner-secret-0123456789abcdef';
