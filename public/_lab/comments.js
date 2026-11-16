@@ -1507,6 +1507,18 @@
   let retried = false;
   const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
+    // A local lab puts the page's comments into the page itself: the first draw needs no request.
+    const first = !loaded && document.getElementById('lab-first');
+    if (first) {
+      try {
+        const data = JSON.parse(first.textContent);
+        first.remove();
+        comments = data.comments || [];
+        isAdmin = Boolean(data.admin);
+        loaded = true;
+        return shownAgain();
+      } catch {}
+    }
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(page)}`, { headers: headers(), cache: 'no-store' });
       if (res.status === 404 && !loaded && script?.dataset.enable !== 'always') {
@@ -3756,7 +3768,7 @@
     // An HTML page: fetch it and change only what differs, in place (scroll, open things and typed text stay). A
     // changed script or stylesheet list can't be patched safely: then it's a normal reload.
     const ownStyles = () => new Set([fonts, pinCursorStyle]);
-    const scriptsOf = (doc) => [...doc.querySelectorAll('script')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
+    const scriptsOf = (doc) => [...doc.querySelectorAll('script')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '') && x.id !== 'lab-first').map((x) => x.getAttribute('src') || x.textContent); // the lab's own: the widget and the comments put in the page
     const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
     const keepOut = (n) => n === host || (n.nodeType === 1 && n.localName === 'script');
     // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
