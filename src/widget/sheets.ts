@@ -18,28 +18,66 @@ export const scrollerIn = (e, node) =>
 
 export const SPRING = 'cubic-bezier(.32,.72,0,1)';
 
- // the page stays still behind it
-// Phones: a sheet slides down and away, the dim fading with it, then it closes.
-// After a swipe it goes on at the finger's speed (ms), so it doesn't stop and restart.
+const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events'];
+
+// Phones: the open sheet leaves, down past the screen's bottom, and the keyboard (if it's up) goes at the same moment,
+// as a native sheet's does. It used to slide behind the keyboard and vanish there, and the keyboard stayed alone for
+// 0.6 s; after sending, the sheet rode the keyboard halfway down and vanished mid-screen (iOS 27 simulator, 16 Nov).
+// Its box is held where it is (the keyboard going would otherwise resize and move it on the way), and the dimmed page
+// fades on the sheet's own curve, so it's as dim as the sheet is still there. ms: after a swipe, the finger's speed
+// carried on. Returns how long it takes; let go of it with letGo().
+export function leave(node: HTMLElement, ms = 0) {
+  const dur = ms || 320;
+  const ease = ms ? 'cubic-bezier(.2, .6, .4, 1)' : SPRING;
+  let moved = 0; // a finger may have it part way down already
+  try { moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0; } catch {}
+  const r = node.getBoundingClientRect();
+  const top = r.top - moved;
+  const fade = getComputedStyle(W.scrim).opacity;
+  for (const [k, v] of [['top', `${top}px`], ['bottom', 'auto'], ['height', `${r.height}px`], ['max-height', 'none'], ['animation', 'none'],
+    ['transition', 'none'], ['transform', `translateY(${moved}px)`], ['pointer-events', 'none']]) node.style.setProperty(k, v, 'important');
+  W.host.setAttribute('data-leaving', '');
+  W.scrim.style.transition = 'none';
+  W.scrim.style.opacity = fade;
+  (W.root.activeElement as HTMLElement | null)?.blur(); // the keyboard goes now, with the sheet
+  void node.offsetHeight;
+  node.style.setProperty('transition', `transform ${dur}ms ${ease}`, 'important');
+  node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, 'important');
+  W.scrim.style.transition = `opacity ${dur}ms ${ease}`;
+  W.scrim.style.opacity = '0';
+  return dur;
+}
+export function letGo(node: HTMLElement) {
+  for (const k of HELD) node.style.removeProperty(k);
+  W.host.removeAttribute('data-leaving');
+  W.scrim.style.opacity = W.scrim.style.transition = '';
+}
+
+// Phones: a sheet slides down and away (see leave), then it closes.
 export function slideAway(node, close, ms = 0) {
   if (!W.coarse || !node || W.still.matches) return close();
-  // With the keyboard up, the sheet fills what's above it; letting the keyboard go now would resize the sheet in
-  // the middle of its slide. So it slides down behind the keyboard, and the keyboard goes once it's gone.
-  if (!W.host.hasAttribute('data-kb')) (W.root.activeElement as HTMLElement | null)?.blur();
-  node.style.pointerEvents = 'none'; // not inert: that would take the cursor away, and the keyboard with it, at once
-  node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : 'transform .22s cubic-bezier(.4, 0, 1, 1)';
-  W.scrim.style.transition = `opacity ${ms || 220}ms`;
-  node.style.transform = 'translateY(100%)';
-  W.scrim.style.opacity = '0';
-  W.bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
+  const dur = leave(node, ms);
+  W.bar.style.transition = `transform ${dur}ms cubic-bezier(.2, .6, .4, 1), opacity ${dur}ms`;
   W.host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
   setTimeout(() => {
-    (W.root.activeElement as HTMLElement | null)?.blur();
     close();
-    node.style.pointerEvents = '';
-    node.style.transform = node.style.transition = W.scrim.style.opacity = W.scrim.style.transition = W.bar.style.transition = '';
+    letGo(node);
+    W.bar.style.transition = '';
     W.host.style.removeProperty('--lab-p');
-  }, ms || 220);
+  }, dur);
+}
+
+// Scrolls the page to top (smoothly, unless motion is reduced). A spot near the page's end can't scroll up into the
+// part a phone's sheet leaves free above it: the page gets room below its end while the sheet is open (--lab-room).
+export function scrollPageTo(top: number) {
+  if (W.coarse) {
+    const de = document.documentElement;
+    const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
+    const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
+    de.style.setProperty('--lab-room', `${room}px`);
+    de.classList.toggle('lab-room', room > 0);
+  }
+  scrollTo({ top: Math.max(0, top), behavior: W.still.matches ? 'auto' : 'smooth' });
 }
 
  // CloseWatcher (not in TypeScript's DOM types yet)
@@ -144,9 +182,12 @@ export function swipeDown(node, close, grows = false) {
     last = { y: t.clientY, at: e.timeStamp };
     node.style.transition = W.scrim.style.transition = 'none';
     node.style.transform = `translateY(${dy}px)`;
-    W.scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
+    // How far it is on its way out (to the screen's bottom): the page undims and the bar comes up by that much, so
+    // the dim is gone when the sheet is, not after the first 320 px (it was gone with two thirds of a thread still up).
+    const way = Math.min(1, Math.max(0, dy / Math.max(100, innerHeight - (node.getBoundingClientRect().top - dy))));
+    W.scrim.style.opacity = String(1 - way);
     W.bar.style.transition = 'none';
-    W.host.style.setProperty('--lab-p', String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
+    W.host.style.setProperty('--lab-p', String(way));
   };
   node.addEventListener('touchmove', onMove, { passive: false });
   W.scrim.addEventListener('touchmove', onMove, { passive: false });
@@ -257,6 +298,19 @@ export function startSheets() {
         fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ''), 360);
       }
       Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null }); // a hidden one has no place yet
+      // A new comment's pin stays in sight: when its sheet opens, and again once the keyboard is up, a pin the sheet
+      // would cover scrolls up into the middle of what's free above it, as goTo does for a thread (a pin low on the
+      // page went under the sheet: you couldn't see what you were commenting on, 16 Nov).
+      const float: HTMLElement | null = W.S.draft ? W.root.querySelector('.float:not(.out)') : null;
+      const pin: HTMLElement | null = float ? W.root.querySelector('.pin.draft') : null;
+      const now = kb > 60 ? 'kb' : 'rest';
+      if (float && pin && float.dataset.seen !== now) {
+        float.dataset.seen = now;
+        const sheetTop = r.bottom - kb - float.offsetHeight; // where it comes to rest, not where its slide is now
+        const p = pin.getBoundingClientRect();
+        const free = 56; // below the status bar
+        if (p.top < free || p.bottom > sheetTop - 16) scrollPageTo(scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
+      }
     };
     W.S.refit = fit;
     W.root.addEventListener('focusin', () => setTimeout(fit, 50));

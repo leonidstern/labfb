@@ -1,4 +1,5 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { scrollPageTo } from './sheets.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -22,16 +23,7 @@ export const goTo = (c, keys = false) => {
     const tall = bottom - pinTop + 28;
     top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
   }
-  // A pin near the page's end can't scroll up into the free part above a phone's sheet: the page gets room below its
-  // end while the sheet is open (it went behind the sheet before).
-  if (W.coarse) {
-    const de = document.documentElement;
-    const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
-    const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
-    de.style.setProperty('--lab-room', `${room}px`);
-    de.classList.toggle('lab-room', room > 0);
-  }
-  scrollTo({ top: Math.max(0, top), behavior: W.still.matches ? 'auto' : 'smooth' });
+  scrollPageTo(top); // with room below the page's end on phones, for a pin near it
 };
 
 export function drawList() {

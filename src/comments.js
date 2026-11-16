@@ -28,7 +28,7 @@ import {
 } from './widget/anchoring.ts';
 import { bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
-import { bindSheets, backCloses, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { bindSheets, backCloses, leave, letGo, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
@@ -579,6 +579,7 @@ import { bindLive, startLive } from './widget/live.ts';
   S.posted = null;
   const still = matchMedia('(prefers-reduced-motion: reduce)');
   const pinsById = new Map(); // the pins on the layer now, by thread id, for movePins()
+  S.faces = new Map(); // each pin's last drawn state, so a change can ease in
   // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
   S.dropDrag = null;
   function render() {
@@ -609,7 +610,8 @@ import { bindLive, startLive } from './widget/live.ts';
         prev.classList.add('out');
         prev.inert = true;
         layer.append(prev);
-        setTimeout(() => prev.remove(), coarse ? 230 : 150);
+        const dur = leave(prev); // down past the screen's bottom with the keyboard, the dim fading with it (sheets.ts)
+        setTimeout(() => (prev.remove(), letGo(prev)), dur);
       }
       markQuote(quoted);
       S.shown = now;
@@ -625,6 +627,10 @@ import { bindLive, startLive } from './widget/live.ts';
     );
     toggleBtn.classList.toggle('secondary', S.on);
     host.toggleAttribute('data-sheet', Boolean(S.on && (S.draft || S.openId || S.listOpen || S.chatOpen))); // phones: the sheet has the screen's bottom
+    if (coarse && appear && now) { // a sheet opening slides in once its first frame is drawn (see data-opening in styles.css)
+      host.setAttribute('data-opening', '');
+      requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
+    }
     document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
     backCloses();
     S.refit();
@@ -662,7 +668,15 @@ import { bindLive, startLive } from './widget/live.ts';
         },
         /^go$/i.test(c.text.trim()) ? 'go' : state === 'done' || c.resolved ? '✓' : initial(c.name),
       );
-      if (state === 'now') pin.append(el('i', { class: 'ring', 'aria-hidden': 'true' }));
+      // Its face changed since the last drawing (the agent took it, it's done, something new in it): it eases into the
+      // new one and the ring fades in or out, instead of a cut (see .swap in styles.css).
+      const face = `${state}${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}`;
+      const was = S.faces.get(c.id);
+      S.faces.set(c.id, face);
+      const changed = was !== undefined && was !== face && !still.matches;
+      if (changed) pin.classList.add('swap');
+      if (state === 'now') pin.append(el('i', { class: `ring${changed && !was.startsWith('now') ? ' come' : ''}`, 'aria-hidden': 'true' }));
+      else if (changed && was.startsWith('now')) pin.append(el('i', { class: 'ring gone', 'aria-hidden': 'true' }));
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
       if (movable) grab(pin, c);
