@@ -92,6 +92,8 @@ function collect() {
   m.pageScriptGzipBytes = gzipSync(readFileSync(PAGE_SCRIPT), { level: 9 }).length;
 
   // What npm users download.
+  // The package ships the built server (dist/, from build:cli): build it so the size is what npm users get.
+  if (read("package.json").scripts?.["build:cli"]) run("npm run --silent build:cli");
   const pack = run("npm pack --dry-run --json --ignore-scripts");
   let packInfo;
   try { packInfo = JSON.parse(pack.out)[0]; } catch { fail(`npm pack did not run:\n${pack.err}`); }

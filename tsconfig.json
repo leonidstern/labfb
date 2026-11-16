@@ -14,5 +14,5 @@
     "lib": ["es2023", "dom", "dom.iterable"],
     "types": ["node"]
   },
-  "include": ["src/**/*", "local.mjs", "lib/**/*.mjs", "api/**/*.mjs"]
+  "include": ["src/**/*", "local.mjs", "lib/**/*.mjs", "lib/**/*.ts", "api/**/*.mjs"]
 }
