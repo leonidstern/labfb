@@ -117,6 +117,22 @@ export function slideAway(node, close, ms = 0) {
   }, dur);
 }
 
+// A new comment's pin stays in sight: as its sheet opens, a pin the sheet would cover once the keyboard is up scrolls up
+// into the middle of what's free above it, as goTo does for a thread (a pin low on the page went under the sheet: you
+// couldn't see what you were commenting on, 16 Nov). Now, before the keyboard: scrolled with the keyboard up, Safari pans
+// its view instead and the sheet landed 126 px low, behind the keyboard's bar.
+export function revealDraft() {
+  const float: HTMLElement | null = W.root.querySelector('.float:not(.out)');
+  const pin: HTMLElement | null = W.root.querySelector('.pin.draft');
+  if (!W.coarse || !float || !pin || !W.vv) return;
+  const up = innerHeight - W.vv.height;
+  const keys = up > 60 ? up : W.S.kbSeen || Math.round(innerHeight * 0.42); // the keyboard it will have
+  const sheetTop = innerHeight - keys - float.offsetHeight - 8; // where it comes to rest, not where it is growing now
+  const p = pin.getBoundingClientRect();
+  const free = 56; // below the status bar
+  if (p.top < free || p.bottom > sheetTop - 16) scrollPageTo(scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
+}
+
 // Scrolls the page to top (smoothly, unless motion is reduced). A spot near the page's end can't scroll up into the
 // part a phone's sheet leaves free above it: the page gets room below its end while the sheet is open (--lab-room).
 export function scrollPageTo(top: number) {
@@ -349,19 +365,7 @@ export function startSheets() {
         fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ''), 360);
       }
       Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null }); // a hidden one has no place yet
-      // A new comment's pin stays in sight: when its sheet opens, and again once the keyboard is up, a pin the sheet
-      // would cover scrolls up into the middle of what's free above it, as goTo does for a thread (a pin low on the
-      // page went under the sheet: you couldn't see what you were commenting on, 16 Nov).
-      const float: HTMLElement | null = W.S.draft ? W.root.querySelector('.float:not(.out)') : null;
-      const pin: HTMLElement | null = float ? W.root.querySelector('.pin.draft') : null;
-      const now = kb > 60 ? 'kb' : 'rest';
-      if (float && pin && float.dataset.seen !== now) {
-        float.dataset.seen = now;
-        const sheetTop = r.bottom - kb - float.offsetHeight; // where it comes to rest, not where its slide is now
-        const p = pin.getBoundingClientRect();
-        const free = 56; // below the status bar
-        if (p.top < free || p.bottom > sheetTop - 16) scrollPageTo(scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
-      }
+      if (kb > 60) W.S.kbSeen = kb; // the keyboard's height, for revealDraft before the next one comes up
     };
     W.S.refit = fit;
     W.root.addEventListener('focusin', () => setTimeout(fit, 50));

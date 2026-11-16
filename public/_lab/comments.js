@@ -1318,7 +1318,7 @@ ${line}`;
     d = deps;
   }
   var ARROW = '<i class="arr" aria-hidden="true"></i>';
-  function composer({ placeholder, onSubmit, autofocus = false }) {
+  function composer({ placeholder, onSubmit, autofocus = false, empty = "", nameFirst = false }) {
     const { el: el2, store: store2, root, refreshPinCursor, syncReads } = d;
     const wrap = el2("div", { class: "composer" });
     const box = el2("div", { class: "box" });
@@ -1353,7 +1353,7 @@ ${line}`;
       }, { passive: false });
     }
     const sync = () => {
-      const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
+      const open = nameFirst || text.value.length > 0 || root.activeElement === name || !!error.textContent;
       const glide = open !== box.classList.contains("open") && !store2.get("lab-name") && box.isConnected && !matchMedia("(prefers-reduced-motion: reduce)").matches;
       const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
       const one = Boolean(store2.get("lab-name"));
@@ -1361,7 +1361,7 @@ ${line}`;
       box.classList.toggle("open", open);
       as.hidden = !name.value.trim();
       if (one && !CSS.supports?.("field-sizing", "content")) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
-      sendBtn.classList.toggle("ready", Boolean(text.value.trim() && name.value.trim()));
+      sendBtn.classList.toggle("ready", Boolean((text.value.trim() || empty) && name.value.trim()));
       text.style.height = "auto";
       text.style.height = `${text.scrollHeight}px`;
       if (glide) {
@@ -1375,7 +1375,8 @@ ${line}`;
     let busy = false;
     const go = async () => {
       if (busy) return;
-      if (!text.value.trim()) return text.focus();
+      const said = text.value.trim() || empty;
+      if (!said) return text.focus();
       if (!name.value.trim()) {
         box.classList.add("open");
         return name.focus();
@@ -1394,7 +1395,7 @@ ${line}`;
         error.classList.add("wait");
       }, 1500);
       try {
-        const result = await onSubmit(name.value.trim(), text.value.trim());
+        const result = await onSubmit(name.value.trim(), said);
         clearTimeout(slow);
         error.textContent = "";
         error.classList.remove("wait");
@@ -1424,8 +1425,10 @@ ${line}`;
     sendBtn.addEventListener("click", go);
     sendBtn.addEventListener("mousedown", (e) => e.preventDefault());
     requestAnimationFrame(sync);
-    const focus = () => text.focus({ preventScroll: true });
-    if (autofocus) queueMicrotask(() => text.isConnected ? focus() : setTimeout(focus, 0));
+    const first = nameFirst ? name : text;
+    if (nameFirst) name.setAttribute("data-first", "");
+    const focus = () => first.focus({ preventScroll: true });
+    if (autofocus) queueMicrotask(() => first.isConnected ? focus() : setTimeout(focus, 0));
     return wrap;
   }
 
@@ -1574,6 +1577,17 @@ ${line}`;
       W.bar.style.transition = "";
       W.host.style.removeProperty("--lab-p");
     }, dur);
+  }
+  function revealDraft() {
+    const float = W.root.querySelector(".float:not(.out)");
+    const pin = W.root.querySelector(".pin.draft");
+    if (!W.coarse || !float || !pin || !W.vv) return;
+    const up = innerHeight - W.vv.height;
+    const keys = up > 60 ? up : W.S.kbSeen || Math.round(innerHeight * 0.42);
+    const sheetTop = innerHeight - keys - float.offsetHeight - 8;
+    const p = pin.getBoundingClientRect();
+    const free = 56;
+    if (p.top < free || p.bottom > sheetTop - 16) scrollPageTo(scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
   }
   function scrollPageTo(top) {
     if (W.coarse) {
@@ -1766,16 +1780,7 @@ ${line}`;
           fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ""), 360);
         }
         Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null });
-        const float = W.S.draft ? W.root.querySelector(".float:not(.out)") : null;
-        const pin = float ? W.root.querySelector(".pin.draft") : null;
-        const now = kb > 60 ? "kb" : "rest";
-        if (float && pin && float.dataset.seen !== now) {
-          float.dataset.seen = now;
-          const sheetTop = r.bottom - kb - float.offsetHeight;
-          const p = pin.getBoundingClientRect();
-          const free = 56;
-          if (p.top < free || p.bottom > sheetTop - 16) scrollPageTo(scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
-        }
+        if (kb > 60) W.S.kbSeen = kb;
       };
       W.S.refit = fit;
       W.root.addEventListener("focusin", () => setTimeout(fit, 50));
@@ -3102,7 +3107,7 @@ ${line}`;
     function begin(anchor) {
       const name = store2.get("lab-name").trim();
       if (!S.goMode || !name) {
-        S.draft = { anchor };
+        S.draft = { anchor, go: S.goMode };
         return render();
       }
       if (drafting()) {
@@ -3332,6 +3337,7 @@ ${line}`;
           const key = sheet && (S.draft ? "draft" : S.openId || (S.listOpen ? "list" : S.chatOpen ? "chat" : ""));
           if (sheet && key !== S.sheetKey) fromTap(sheet);
           S.sheetKey = key;
+          if (appear && S.draft) requestAnimationFrame(revealDraft);
         }
         markQuote(quoted);
         S.shown = now;
@@ -3447,7 +3453,9 @@ ${line}`;
         float.append(
           el2("div", { class: "handle" }),
           composer({
-            placeholder: "add a comment",
+            placeholder: S.draft.go ? "go" : "add a comment",
+            empty: S.draft.go ? "go" : "",
+            nameFirst: Boolean(S.draft.go),
             autofocus: true,
             onSubmit: async (name, text) => {
               if (drafting()) {
@@ -3842,7 +3850,7 @@ ${line}`;
             showAgain();
             S.openId = null;
             begin(anchorAt(x, y));
-          }, 500)
+          }, 400)
         };
       },
       true
@@ -3851,13 +3859,13 @@ ${line}`;
     document.addEventListener("pointerup", (e) => {
       if (e.pointerType === "touch") S.lastTouch = Date.now();
       stopPress();
-      if (S.pinnedByHold) root.querySelector(".float textarea")?.focus({ preventScroll: true });
+      if (S.pinnedByHold) (root.querySelector(".float [data-first]") || root.querySelector(".float textarea"))?.focus({ preventScroll: true });
     }, true);
     document.addEventListener("touchend", (e) => {
       if (!S.pinnedByHold) return;
       S.pinnedByHold = false;
       e.preventDefault();
-      root.querySelector(".float textarea")?.focus({ preventScroll: true });
+      (root.querySelector(".float [data-first]") || root.querySelector(".float textarea"))?.focus({ preventScroll: true });
     }, { capture: true, passive: false });
     document.addEventListener("pointercancel", stopPress, true);
     addEventListener("scroll", stopPress, { passive: true, capture: true });
