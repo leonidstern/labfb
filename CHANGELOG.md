@@ -14,6 +14,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
   - A pin's state change (Claude on it, done, a reply) eases in, and the ring fades in and out; they used to be cuts.
   - Tapping "your name" no longer drops the sheet behind the keyboard, and Safari no longer offers "AutoFill Contact" there.
   - The bar's buttons no longer stay grey after a tap.
+  - Pins keep their look but take a 44 pt tap: a finger near one opens it (they were 22 pt to hit).
 
 - The widget is split into TypeScript modules in `src/widget/`: `composer` (the message box), `messages`, `list`, `chat`, `thread`, `sheets` (phone sheets, back gesture, keyboard fit) and `live` (live page updates), beside `anchoring` and `styles`. Its shared state is one object, so the parts can share it. Same behaviour; `src/comments.js` keeps setup, loading, drawing and the events (2,688 → 1,428 lines).
 

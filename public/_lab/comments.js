@@ -446,6 +446,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .list .it { padding: 11px 8px; }
   /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
   .pin { scale: .8; }
+  /* \u2026but a 44 pt place to tap (iOS 44 pt, Leo 16 Nov: hard to hit at 22): an invisible circle round the pin, so it
+     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a moved pin (.64) gets 70 px. */
+  .pin .hit { display: block; position: absolute; inset: -14px; border-radius: 50%; }
+  .pin.moved .hit { inset: -21px; }
   /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
   .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }
@@ -3298,6 +3302,7 @@ ${line}`;
         if (changed) pin.classList.add("swap");
         if (state === "now") pin.append(el2("i", { class: `ring${changed && !was.startsWith("now") ? " come" : ""}`, "aria-hidden": "true" }));
         else if (changed && was.startsWith("now")) pin.append(el2("i", { class: "ring gone", "aria-hidden": "true" }));
+        if (coarse) pin.append(el2("i", { class: "hit", "aria-hidden": "true" }));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
         if (movable) grab(pin, c);
