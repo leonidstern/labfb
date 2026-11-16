@@ -281,8 +281,8 @@
       .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
       .msg i { display: block; font-style: normal; font-size: 12px; letter-spacing: 0; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
-      .msg .stamp { color: inherit; position: absolute; right: 10px; bottom: 6px; font-size: 10px; letter-spacing: .012em; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
-      .msg .stamp-room { visibility: hidden; display: inline-block; margin-left: 10px; font-size: 10px; letter-spacing: .012em; line-height: 1; height: 10px; white-space: nowrap; }
+      .msg .stamp { text-indent: 0; color: inherit; position: absolute; right: 10px; bottom: 6px; font-size: 10px; letter-spacing: .012em; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
+      .msg .stamp-room { text-indent: 0; visibility: hidden; display: inline-block; margin-left: 10px; font-size: 10px; letter-spacing: .012em; line-height: 1; height: 10px; white-space: nowrap; }
       .msg .stamp-room * { font-size: inherit; }
       .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* ✓ drawn as tall as the time's digits */
       .msg .tick.got { font-weight: 600; }
