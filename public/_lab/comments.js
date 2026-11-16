@@ -158,7 +158,6 @@
               white-space: nowrap; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
       .meta b { font-weight: 500; font-size: 13px; letter-spacing: .005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .meta .dot { flex: none; align-self: center; margin: 0; }
-      .meta .num { color: var(--_muted); font-variant-numeric: tabular-nums; margin-left: auto; }
       .meta .ago { white-space: nowrap; }
       .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
       .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
