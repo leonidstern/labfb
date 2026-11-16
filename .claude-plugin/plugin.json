@@ -1,6 +1,6 @@
 {
   "name": "labit",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Read and answer labit pin comments: cloud lab links and local mode (wait, fix, reply on the pin).",
   "author": {
     "name": "leonidstern",
