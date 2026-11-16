@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // labfb local: pin comments on a folder of local pages and talk them through with Claude. No deploy, no account.
-// Same widget and API as the lab domain (public/_lab/comments.js, api/lab-comments.mjs). Node 20+, no packages.
+// Same widget and API as the lab domain (public/_lab/comments.js, api/lab-comments.mjs). Node 22+, no packages.
 import http from 'node:http';
 import net from 'node:net';
 import fs from 'node:fs';
