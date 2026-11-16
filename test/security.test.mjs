@@ -162,3 +162,77 @@ test("whoever started a thread may resolve and reopen it with its key, not delet
   const r = await (await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).json();
   assert.equal(r.comment.resolvedBy, 'author');
 });
+
+// ---------- a guest's one-time link (--wifi) ----------
+// A lab open to the wifi lets nobody in on the strength of the IP alone: a guest needs a link, which works once.
+
+const WDIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-wifi-')));
+fs.writeFileSync(path.join(WDIR, 'index.html'), '<h1>wifi page</h1>');
+const WPORT = 5100 + Math.floor(Math.random() * 90);
+const wifi = spawn(process.execPath, [LAB, '.', '--no-open', '--wifi', '--port', String(WPORT)], {
+  cwd: WDIR,
+  env: { ...process.env, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-')), LABFB_NO_UPDATE_CHECK: '1' },
+});
+after(() => {
+  wifi.kill();
+  fs.rmSync(WDIR, { recursive: true, force: true });
+});
+// The lab's own key, as `labfb invite` reads it: the agent on this computer is the only one who may mint a link.
+const wifiToken = async () => {
+  for (let i = 0; i < 50; i++) {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(WDIR, '.lab/server.json'), 'utf8')).token;
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  throw new Error('the wifi lab never started');
+};
+const lan = Object.values(os.networkInterfaces()).flat().find((a) => a && a.family === 'IPv4' && !a.internal)?.address;
+const wraw = (p, { host = '127.0.0.1', headers = {}, method = 'GET', body } = {}) =>
+  new Promise((done) => {
+    const req = http.request({ host, port: WPORT, path: p, method, headers: { host: `${host === '127.0.0.1' ? 'localhost' : host}:${WPORT}`, ...headers } }, (res) => {
+      let t = '';
+      res.on('data', (d) => (t += d));
+      res.on('end', () => done({ status: res.statusCode, text: t, location: res.headers.location, cookie: res.headers['set-cookie']?.[0] }));
+    });
+    req.on('error', () => done({ status: 0, text: '' }));
+    req.end(body);
+  });
+const invite = async () => {
+  const token = await wifiToken();
+  const r = await wraw('/_lab/invite', {
+    method: 'POST',
+    body: '{}',
+    headers: { 'content-type': 'application/json', 'x-lab-agent': '1', 'x-lab-admin': token },
+  });
+  assert.equal(r.status, 200, r.text);
+  return JSON.parse(r.text).links;
+};
+
+test('a link is minted only for the agent on this computer, and only on a --wifi lab', async () => {
+  for (let i = 0; i < 50 && (await wraw('/')).status !== 200; i++) await new Promise((r) => setTimeout(r, 100));
+  assert.equal((await wraw('/_lab/invite', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } })).status, 403);
+  assert.equal((await raw('/_lab/invite', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json', 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).token } })).status, 404, 'a lab without --wifi has nobody to invite');
+  const links = await invite();
+  assert.ok(links.length && links.every((l) => /^http:\/\/[^/]+:\d+\/_lab\/j\/[0-9a-f]{32}$/.test(l)), links.join(' '));
+});
+
+test('a one-time link works once, and an unknown one never', async () => {
+  const path_ = new URL((await invite())[0]).pathname;
+  const first = await wraw(path_);
+  assert.equal(first.status, 302);
+  assert.match(first.cookie || '', /^lab_guest=[0-9a-f]{16}\.[0-9a-f]{32}; Path=\/; Max-Age=86400; HttpOnly; SameSite=Lax$/);
+  assert.equal((await wraw(path_)).status, 403, 'the same link a second time');
+  assert.equal((await wraw('/_lab/j/' + 'f'.repeat(32))).status, 403, 'a guessed link');
+});
+
+test('a guest on the wifi sees the gate until they open a link', { skip: !lan && 'no network address to come in on' }, async () => {
+  assert.equal((await wraw('/', { host: lan })).status, 403, 'being on the wifi is not enough');
+  assert.equal((await wraw('/_lab/live', { host: lan })).status, 403, 'nor for the comments stream');
+  const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
+  assert.equal(r.status, 302);
+  const cookie = r.cookie.split(';')[0];
+  assert.equal((await wraw('/', { host: lan, headers: { cookie } })).status, 200, 'in with the cookie');
+  assert.equal((await wraw('/', { host: lan, headers: { cookie: cookie.slice(0, -1) + '0' } })).status, 403, 'a forged cookie');
+});
