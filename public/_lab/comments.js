@@ -1260,10 +1260,14 @@ ${line}`;
    * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
    */
   (() => {
-    const script = document.currentScript;
+    const script = (
+      /** @type {HTMLScriptElement | null} */
+      document.currentScript
+    );
     const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
     const enabled = location.hostname === labHost || script?.dataset.enable === "always";
-    if (!enabled || window.__labComments) return;
+    if (!enabled || /** @type {any} */
+    window.__labComments) return;
     window.__labComments = true;
     const API = script?.dataset.api || "/_lab/api/comments";
     const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, "") || "/";
@@ -1326,33 +1330,40 @@ ${line}`;
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">\u22EF</button>
     </div>
     <div class="more-menu" id="lab-more" hidden></div>`;
-    const layer2 = root.querySelector(".layer");
-    const hint = root.querySelector(".hint");
+    const $ = (sel, box = root) => (
+      /** @type {HTMLElement} */
+      box.querySelector(sel)
+    );
+    const layer2 = $(".layer");
+    const hint = $(".hint");
     if (matchMedia("(pointer: coarse)").matches) hint.textContent = "hold to comment";
-    const toggleBtn = root.querySelector(".toggle");
+    const toggleBtn = $(".toggle");
     const bar = (
       /** @type {HTMLElement} */
       root.querySelector(".bar")
     );
-    const moreBtn = root.querySelector(".more");
-    const moreMenu = root.querySelector(".more-menu");
-    const copyBtn = root.querySelector(".copy-all");
+    const moreBtn = $(".more");
+    const moreMenu = $(".more-menu");
+    const copyBtn = $(".copy-all");
     const listBtn = (
-      /** @type {HTMLElement} */
-      root.querySelector(".list-btn")
+      /** @type {HTMLButtonElement} */
+      $(".list-btn")
     );
-    const goBtn = root.querySelector(".go-btn");
-    const newPrev = root.querySelector(".new-prev");
-    const showDoneBtn = root.querySelector(".show-done");
-    const doneBtn = root.querySelector(".done-btn");
+    const goBtn = $(".go-btn");
+    const newPrev = $(".new-prev");
+    const showDoneBtn = $(".show-done");
+    const doneBtn = (
+      /** @type {HTMLButtonElement} */
+      $(".done-btn")
+    );
     const LIST_WINDOW = false;
     const tabTitle = { base: "" };
     let showDone = store2.get("lab-show-done") === "1";
-    const newNext = root.querySelector(".new-next");
-    const sendBtn = root.querySelector(".send-all");
-    const listEl = root.querySelector(".list");
-    const holdBtn = listEl.querySelector(".hold");
-    const chatEl = root.querySelector(".chatwin");
+    const newNext = $(".new-next");
+    const sendBtn = $(".send-all");
+    const listEl = $(".list");
+    const holdBtn = $(".hold", listEl);
+    const chatEl = $(".chatwin");
     const chatBtn = (
       /** @type {HTMLElement} */
       root.querySelector(".chat-btn")
@@ -1405,7 +1416,7 @@ ${line}`;
           fonts.remove();
           return;
         }
-        if (!res.ok) throw new Error(res.status);
+        if (!res.ok) throw new Error(String(res.status));
         const data = await res.json();
         comments = data.comments || [];
         isAdmin = Boolean(data.admin);
@@ -1417,7 +1428,7 @@ ${line}`;
     async function loadChanges(since) {
       try {
         const url = new URL("/_lab/api/changes", new URL(API, location.href));
-        url.search = new URLSearchParams({ page, since: String(since) });
+        url.search = String(new URLSearchParams({ page, since: String(since) }));
         const res = await fetch(url, { cache: "no-store" });
         const data = res.ok ? await res.json() : { full: true };
         if (data.full || !loaded) return load();
@@ -1518,15 +1529,16 @@ ${line}`;
       render();
       say(`took back ${/^go$/i.test(c.text.trim()) ? "a go" : "a pin"} \xB7 ${placed.length ? "again for the one before" : "nothing more to take back"}`);
     }
+    const said = { was: void 0, t: void 0 };
     function say(words) {
-      say.was ??= hint.textContent;
+      said.was ??= hint.textContent;
       hint.textContent = words;
       hint.hidden = false;
-      clearTimeout(say.t);
-      say.t = setTimeout(() => {
+      clearTimeout(said.t);
+      said.t = setTimeout(() => {
         hint.hidden = true;
-        hint.textContent = say.was;
-        say.was = void 0;
+        hint.textContent = said.was;
+        said.was = void 0;
       }, 1800);
     }
     const agentLink = () => new URL("/_lab/agent" + page, new URL(API, location.href)).href;
@@ -1621,7 +1633,11 @@ ${line}`;
       moreBtn.hidden = !on;
       if (!on && !moreMenu.hidden) setMenu(false);
       let first = true;
-      for (const b of bar.children) {
+      for (
+        const b of
+        /** @type {HTMLCollectionOf<HTMLElement>} */
+        bar.children
+      ) {
         b.classList.toggle("first", first && !b.hidden);
         if (!b.hidden) first = false;
       }
@@ -1673,10 +1689,14 @@ ${line}`;
       sendBtn.textContent = `send ${h} draft${h === 1 ? "" : "s"}`;
       listEl.hidden = !on || !listOpen;
       if (listEl.hidden) return;
-      for (const b of listEl.querySelectorAll("[data-f]")) b.classList.toggle("on", b.dataset.f === filter);
+      for (
+        const b of
+        /** @type {NodeListOf<HTMLElement>} */
+        listEl.querySelectorAll("[data-f]")
+      ) b.classList.toggle("on", b.dataset.f === filter);
       const fresh = all.filter((c) => !isPage(c) && unread(c).length).length;
       listEl.querySelector('[data-f="new"]').textContent = fresh ? `new \xB7 ${fresh}` : "new";
-      for (const f of ["work", "resolved", "mine"]) listEl.querySelector(`[data-f="${f}"]`).hidden = true;
+      for (const f of ["work", "resolved", "mine"]) $(`[data-f="${f}"]`, listEl).hidden = true;
       holdBtn.hidden = !DRAFT_MODE;
       const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
       showDoneBtn.hidden = !doneCount;
@@ -1692,7 +1712,7 @@ ${line}`;
       listEl.querySelector(".items").replaceChildren(...items.length ? items : [el2("div", { class: "none" }, "nothing here")]);
     }
     const ago = (iso) => {
-      const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 6e4));
+      const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 6e4));
       return m < 1 ? "just now" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
     };
     const workState = (c) => {
@@ -1783,10 +1803,12 @@ ${line}`;
       if (chatEl.hidden) chatEl.classList.remove("full");
       if (chatEl.hidden && chatEl.contains(root.activeElement)) root.activeElement.blur();
       if (chatEl.hidden) return;
-      const box = chatEl.querySelector(".msgs");
+      const box = $(".msgs", chatEl);
       const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-      const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
-      const kept = new Map([...box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+      const before = new Set(opening ? [] : [.../** @type {HTMLCollectionOf<HTMLElement>} */
+      box.children].map((n) => n.dataset.id));
+      const kept = new Map([.../** @type {HTMLCollectionOf<HTMLElement>} */
+      box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
       const same = (n) => {
         const old = kept.get(n.dataset?.id);
         return old && old.outerHTML.replace(" fresh", "") === n.outerHTML ? old : n;
@@ -1800,8 +1822,8 @@ ${line}`;
           q.append(el2("b", {}, String(root2.name || "").replace(/\s*·\s*session\s+\S+$/i, "")), document.createTextNode(root2.text.replace(/\s+/g, " ").slice(0, 90)));
           q.addEventListener("click", (e) => {
             e.stopPropagation();
-            const box2 = chatEl.querySelector(".msgs");
-            const to = box2.querySelector(`[data-id="${root2.id}"]`);
+            const box2 = $(".msgs", chatEl);
+            const to = $(`[data-id="${root2.id}"]`, box2);
             if (!to) return;
             box2.scrollTo({ top: to.offsetTop - box2.offsetTop - 12, behavior: still.matches ? "auto" : "smooth" });
             to.animate?.([{ boxShadow: "0 0 0 2px rgb(52,199,89)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
@@ -1812,7 +1834,7 @@ ${line}`;
         stamped(b, stampOf(m, root2));
         return m.id === newFrom && m !== msgs[0] ? [el2("div", { class: "newline" }, "new"), b] : [b];
       }).map(same));
-      const strip = chatEl.querySelector(".replying");
+      const strip = $(".replying", chatEl);
       const target = replyTo && byId.get(replyTo);
       strip.hidden = !target;
       if (target) {
@@ -1900,7 +1922,7 @@ ${line}`;
       return pageEnd.y;
     };
     const ARROW = '<i class="arr" aria-hidden="true"></i>';
-    function composer({ placeholder, onSubmit, autofocus }) {
+    function composer({ placeholder, onSubmit, autofocus = false }) {
       const wrap = el2("div", { class: "composer" });
       const box = el2("div", { class: "box" });
       const text = el2("textarea", { placeholder, maxlength: "2000", rows: "1", "aria-label": placeholder, enterkeyhint: "send", autocomplete: "off", autocorrect: "off", spellcheck: "false", writingsuggestions: "false" });
@@ -2350,7 +2372,7 @@ ${line}`;
             }
             shown2.add(comment.id);
             const items = card.querySelectorAll(".item");
-            const added = itemEl(comment, false);
+            const added = itemEl(comment);
             added.classList.add("fresh");
             items[items.length - 1].after(added);
             body.scrollTop = body.scrollHeight;
@@ -2432,7 +2454,8 @@ ${line}`;
       listOpen = false;
       if (chatOpen && !coarse) {
         openId = null;
-        if (draft && !root.querySelector(".float textarea")?.value.trim()) draft = null;
+        if (draft && !/** @type {HTMLTextAreaElement | null} */
+        root.querySelector(".float textarea")?.value.trim()) draft = null;
       }
       hint.hidden = true;
       render();
@@ -2455,7 +2478,11 @@ ${line}`;
       e.preventDefault();
       e.stopImmediatePropagation();
     }, true);
-    for (const b of listEl.querySelectorAll("[data-f]")) b.addEventListener("click", () => (filter = b.dataset.f, drawList()));
+    for (
+      const b of
+      /** @type {NodeListOf<HTMLElement>} */
+      listEl.querySelectorAll("[data-f]")
+    ) b.addEventListener("click", () => (filter = b.dataset.f, drawList()));
     holdBtn.addEventListener("click", () => (store2.set("lab-hold", drafting() ? "" : "1"), drawList()));
     sendBtn.addEventListener("click", async () => {
       const list = held();
@@ -2488,7 +2515,10 @@ ${line}`;
       }
       if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === "KeyD" && !(typing(e) && !e.composedPath().includes(host2))) {
         e.preventDefault();
-        const typed2 = root.querySelector(".card textarea, .float textarea");
+        const typed2 = (
+          /** @type {HTMLTextAreaElement | null} */
+          root.querySelector(".card textarea, .float textarea")
+        );
         if (typed2?.value.trim()) return typed2.closest(".card, .float")?.animate([{ transform: "none" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "none" }], { duration: 260 });
         return stepNew(e.shiftKey ? -1 : 1);
       }
@@ -2506,7 +2536,8 @@ ${line}`;
         if (k === "w") return stepNew(e.shiftKey ? -1 : 1);
         if (k === "d") return showDoneBtn.click();
         if (k === "r" && openId) root.querySelector(".card textarea")?.focus({ preventScroll: true });
-        else if (k === "e" && openId && isAdmin) [...root.querySelectorAll(".card .btn")].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
+        else if (k === "e" && openId && isAdmin) [.../** @type {NodeListOf<HTMLElement>} */
+        root.querySelectorAll(".card .btn")].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
         return;
       }
       if (e.key === "Escape" && (draft || openId)) {
@@ -2534,7 +2565,8 @@ ${line}`;
       liveZone.style.width = `${Math.abs(drag.x1 - drag.x0)}px`;
       liveZone.style.height = `${Math.abs(drag.y1 - drag.y0)}px`;
     };
-    const draftHasText = () => Boolean(draft) && [...root.querySelectorAll(".float textarea")].some((t) => t.value.trim());
+    const draftHasText = () => Boolean(draft) && [.../** @type {NodeListOf<HTMLTextAreaElement>} */
+    root.querySelectorAll(".float textarea")].some((t) => t.value.trim());
     function startDrag(e) {
       if (!on && !e.altKey || cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host2)) return;
@@ -2679,22 +2711,24 @@ ${line}`;
     const grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
     const scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
     const SPRING = "cubic-bezier(.32,.72,0,1)";
+    let backWatcher = null;
     function backCloses() {
       const open = matchMedia("(pointer: coarse)").matches && host2.hasAttribute("data-sheet");
-      if (!open && backCloses.w) {
-        const w = backCloses.w;
-        backCloses.w = null;
+      if (!open && backWatcher) {
+        const w = backWatcher;
+        backWatcher = null;
         w.destroy();
       }
-      if (open && !backCloses.w && "CloseWatcher" in window) {
+      if (open && !backWatcher && "CloseWatcher" in window) {
         try {
-          const w = new CloseWatcher();
+          const w = new /** @type {any} */
+          window.CloseWatcher();
           w.onclose = () => {
-            if (backCloses.w === w) backCloses.w = null;
+            if (backWatcher === w) backWatcher = null;
             closeOrNudge();
             backCloses();
           };
-          backCloses.w = w;
+          backWatcher = w;
         } catch {
         }
       }
@@ -2819,7 +2853,10 @@ ${line}`;
       const fit = () => {
         const zoomed = Math.abs(vv.scale - 1) > 0.01;
         const r = probe.getBoundingClientRect();
-        const field = root.activeElement || document.activeElement;
+        const field = (
+          /** @type {HTMLElement | null} */
+          root.activeElement || document.activeElement
+        );
         const typing2 = /^(textarea|input|select)$/.test(field?.localName || "") || Boolean(field?.isContentEditable);
         const top = zoomed || !typing2 ? 0 : vv.offsetTop;
         const seen2 = top + vv.height;
@@ -2930,7 +2967,7 @@ ${line}`;
         });
       }
     }
-    const msgsEl = chatEl.querySelector(".msgs");
+    const msgsEl = $(".msgs", chatEl);
     let stick = true;
     msgsEl.addEventListener("scroll", () => stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48, { passive: true });
     if ("ResizeObserver" in window) new ResizeObserver(() => stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
@@ -3004,7 +3041,10 @@ ${line}`;
       const endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
       const anchor = startEl && (startEl === endEl || startEl.contains(endEl)) ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2) : anchorAt(first.left + 2, first.top + first.height / 2);
       const at = range.commonAncestorContainer;
-      const block = (at.nodeType === 1 ? at : at.parentElement)?.closest("p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div") || document.body;
+      const block = (
+        /** @type {Element | null} */
+        (at.nodeType === 1 ? at : at.parentElement)?.closest("p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div") || document.body
+      );
       const side = (a, b) => {
         const r = document.createRange();
         r.setStart(...a);
@@ -3069,7 +3109,10 @@ ${line}`;
       });
     };
     addEventListener("resize", reflow);
-    addEventListener("scroll", (e) => e.target !== document && !host2.contains(e.target) && reflow(), { capture: true, passive: true });
+    addEventListener("scroll", (e) => e.target !== document && !host2.contains(
+      /** @type {Node} */
+      e.target
+    ) && reflow(), { capture: true, passive: true });
     const navigated = () => {
       if (gone) return;
       if (!host2.isConnected && document.body) document.body.append(host2);
@@ -3289,17 +3332,25 @@ ${line}`;
       let readsAt = null;
       let hotAt = null;
       const swapCss = (files) => {
-        const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
+        const links = [.../** @type {NodeListOf<HTMLLinkElement>} */
+        document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
         const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
         for (const link of named.length ? named : links) {
           const url = new URL(link.href, location.href);
           url.searchParams.set("lab-v", Date.now().toString(36));
-          const next = link.cloneNode();
+          const next = (
+            /** @type {HTMLLinkElement} */
+            link.cloneNode()
+          );
           next.href = url.href;
           next.dataset.labSwap = "";
           const path = url.pathname;
           next.addEventListener("load", () => {
-            for (const l of document.querySelectorAll('link[rel~="stylesheet"][href]')) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
+            for (
+              const l of
+              /** @type {NodeListOf<HTMLLinkElement>} */
+              document.querySelectorAll('link[rel~="stylesheet"][href]')
+            ) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
             delete next.dataset.labSwap;
           }, { once: true });
           next.addEventListener("error", () => next.remove(), { once: true });
@@ -3360,7 +3411,12 @@ ${line}`;
             const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all);
             const d = (k) => r.style.getPropertyValue(k) || void 0;
             try {
-              const face = new FontFace(d("font-family").replace(/^["']|["']$/g, ""), again, { weight: d("font-weight"), style: d("font-style"), stretch: d("font-stretch"), unicodeRange: d("unicode-range"), display: d("font-display") });
+              const face = new FontFace(
+                d("font-family").replace(/^["']|["']$/g, ""),
+                again,
+                /** @type {any} */
+                { weight: d("font-weight"), style: d("font-style"), stretch: d("font-stretch"), unicodeRange: d("unicode-range"), display: d("font-display") }
+              );
               face.load().then((f) => document.fonts.add(f)).catch(() => {
               });
             } catch {
