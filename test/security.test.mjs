@@ -102,7 +102,7 @@ fs.writeFileSync(path.join(DIR, 'index.html'), '<h1>page</h1>');
 fs.writeFileSync(path.join(DIR, '.env'), 'SECRET=1');
 fs.writeFileSync(path.join(OUTSIDE, 'private.txt'), 'outside the folder');
 fs.symlinkSync(path.join(OUTSIDE, 'private.txt'), path.join(DIR, 'link.txt'));
-const PORT = 5000 + Math.floor(Math.random() * 90);
+const PORT = 5200 + Math.floor(Math.random() * 90); // clear of 5060 and 5061, which fetch refuses ("bad port")
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], {
   cwd: DIR,
   env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' },
