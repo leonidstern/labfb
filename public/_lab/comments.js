@@ -35,6 +35,13 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 button.pin:hover, button.pin.open { transform: scale(1.08); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 4px 14px rgba(0,0,0,.2); }
 button.pin:active { transform: scale(.96); }
 .pin.in { animation: lab-pin .26s var(--_ease); }
+/* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
+   lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
+.pin.swap { animation: lab-swap .36s cubic-bezier(.3, .7, .4, 1.25); }
+@keyframes lab-swap { from { transform: scale(.72); opacity: .35; } }
+.pin .ring.come { animation: lab-fade .3s ease-out; }
+.pin .ring.gone { animation: lab-gone .3s ease-in forwards; }
+@keyframes lab-gone { to { opacity: 0; } }
 /* A new comment lands with one faint halo from its pin. */
 button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
                   animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
@@ -277,8 +284,12 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
   .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
   .bar > button.first { box-shadow: none; }
-  .bar > button:not(:disabled):hover { background: var(--_hover); }
-  .bar > button:active { transform: none; background: var(--_hover); }
+  /* Only with a mouse: on a phone the grey stayed on a tapped segment (iOS keeps :hover after a tap; Leo, 16 Nov). */
+  @media (hover: hover) and (pointer: fine) {
+    .bar > button:not(:disabled):hover { background: var(--_hover); }
+    .bar > button:active { background: var(--_hover); }
+  }
+  .bar > button:active { transform: none; }
   .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
   .bar > button.quiet.first { box-shadow: none; }
   .bar .list-btn, .bar .done-btn { min-width: 0; }
@@ -322,7 +333,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
 @keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
 @keyframes lab-sheet-in { from { transform: translateY(100%); } }
-@keyframes lab-sheet-out { to { transform: translateY(100%); } }
 @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
 /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
 /* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a
@@ -399,7 +409,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
      sheet never scrolls the page. */
   :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
   .card.in, .float.in, .list:not([hidden]) { animation: lab-sheet-in .28s cubic-bezier(.2, .8, .2, 1); }
-  .card.out, .float.out { animation: lab-sheet-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+  /* Held at their start until the sheet's first frame is drawn (data-opening, see render): laying out the first sheet
+     after the page loads took 130 ms and used up the slide, so it showed up already open (iOS 27 simulator, 16 Nov). */
+  :host([data-opening]) :is(.card.in, .float.in, .scrim) { animation-play-state: paused; }
+  /* Leaving (see leave() in sheets.ts): the dimmed page stays until the sheet is gone, fading on the sheet's curve. */
+  :host([data-leaving]) .scrim { display: block; }
   .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
           font-size: 15px; letter-spacing: -.016em; z-index: 3; }
   /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
@@ -432,6 +446,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .list .it { padding: 11px 8px; }
   /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Moved ones smaller still. */
   .pin { scale: .8; }
+  /* \u2026but a 44 pt place to tap (iOS 44 pt, Leo 16 Nov: hard to hit at 22): an invisible circle round the pin, so it
+     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a moved pin (.64) gets 70 px. */
+  .pin .hit { display: block; position: absolute; inset: -14px; border-radius: 50%; }
+  .pin.moved .hit { inset: -21px; }
   /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
   .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }
@@ -1278,7 +1296,7 @@ ${line}`;
     const text = el2("textarea", { placeholder, maxlength: "2000", rows: "1", "aria-label": placeholder, enterkeyhint: "send", autocomplete: "off", autocorrect: "off", spellcheck: "false", writingsuggestions: "false" });
     const who = el2("label", { class: "who" });
     const as = el2("span", {}, "as");
-    const name = el2("input", { type: "text", placeholder: "your name", maxlength: "60", enterkeyhint: "send", autocomplete: "off", autocorrect: "off", autocapitalize: "words", spellcheck: "false", writingsuggestions: "false", "data-1p-ignore": "", "data-lpignore": "true" });
+    const name = el2("input", { type: "text", name: "search-lab-who", placeholder: "your name", maxlength: "60", enterkeyhint: "send", autocomplete: "off", autocorrect: "off", autocapitalize: "words", spellcheck: "false", writingsuggestions: "false", "data-1p-ignore": "", "data-lpignore": "true" });
     name.value = store2.get("lab-name");
     who.append(as, name);
     const sendBtn = el2("button", { class: "send", type: "button", "aria-label": "send" });
@@ -1293,6 +1311,18 @@ ${line}`;
       text.focus({ preventScroll: true });
       text.setSelectionRange(text.value.length, text.value.length);
     });
+    let start = null;
+    for (const field of [text, name]) {
+      field.addEventListener("touchstart", (e) => start = { x: e.touches[0].clientX, y: e.touches[0].clientY }, { passive: true });
+      field.addEventListener("touchend", (e) => {
+        const t = e.changedTouches[0];
+        const moved = !start || Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10;
+        if (moved || root.activeElement === field) return;
+        e.preventDefault();
+        field.focus({ preventScroll: true });
+        field.setSelectionRange(field.value.length, field.value.length);
+      }, { passive: false });
+    }
     const sync = () => {
       const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
       const glide = open !== box.classList.contains("open") && !store2.get("lab-name") && box.isConnected && !matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1425,23 +1455,65 @@ ${line}`;
   var grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
   var scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
   var SPRING = "cubic-bezier(.32,.72,0,1)";
+  var HELD = ["top", "bottom", "height", "max-height", "transform", "transition", "animation", "pointer-events"];
+  function leave(node, ms = 0) {
+    const dur = ms || 280;
+    const ease = ms ? "linear" : "cubic-bezier(.4, 0, 1, 1)";
+    let moved = 0;
+    try {
+      moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0;
+    } catch {
+    }
+    const r = node.getBoundingClientRect();
+    const top = r.top - moved;
+    const fade = getComputedStyle(W.scrim).opacity;
+    for (const [k, v] of [
+      ["top", `${top}px`],
+      ["bottom", "auto"],
+      ["height", `${r.height}px`],
+      ["max-height", "none"],
+      ["animation", "none"],
+      ["transition", "none"],
+      ["transform", `translateY(${moved}px)`],
+      ["pointer-events", "none"]
+    ]) node.style.setProperty(k, v, "important");
+    W.host.setAttribute("data-leaving", "");
+    W.scrim.style.transition = "none";
+    W.scrim.style.opacity = fade;
+    W.root.activeElement?.blur();
+    void node.offsetHeight;
+    node.style.setProperty("transition", `transform ${dur}ms ${ease}`, "important");
+    node.style.setProperty("transform", `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, "important");
+    W.scrim.style.transition = `opacity ${dur}ms ${ease}`;
+    W.scrim.style.opacity = "0";
+    return dur;
+  }
+  function letGo(node) {
+    for (const k of HELD) node.style.removeProperty(k);
+    W.host.removeAttribute("data-leaving");
+    W.scrim.style.opacity = W.scrim.style.transition = "";
+  }
   function slideAway(node, close, ms = 0) {
     if (!W.coarse || !node || W.still.matches) return close();
-    if (!W.host.hasAttribute("data-kb")) W.root.activeElement?.blur();
-    node.style.pointerEvents = "none";
-    node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : "transform .22s cubic-bezier(.4, 0, 1, 1)";
-    W.scrim.style.transition = `opacity ${ms || 220}ms`;
-    node.style.transform = "translateY(100%)";
-    W.scrim.style.opacity = "0";
-    W.bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
+    const dur = leave(node, ms);
+    W.bar.style.transition = `transform ${dur}ms cubic-bezier(.2, .6, .4, 1), opacity ${dur}ms`;
     W.host.style.setProperty("--lab-p", "1");
     setTimeout(() => {
-      W.root.activeElement?.blur();
       close();
-      node.style.pointerEvents = "";
-      node.style.transform = node.style.transition = W.scrim.style.opacity = W.scrim.style.transition = W.bar.style.transition = "";
+      letGo(node);
+      W.bar.style.transition = "";
       W.host.style.removeProperty("--lab-p");
-    }, ms || 220);
+    }, dur);
+  }
+  function scrollPageTo(top) {
+    if (W.coarse) {
+      const de = document.documentElement;
+      const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
+      const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
+      de.style.setProperty("--lab-room", `${room}px`);
+      de.classList.toggle("lab-room", room > 0);
+    }
+    scrollTo({ top: Math.max(0, top), behavior: W.still.matches ? "auto" : "smooth" });
   }
   function backCloses() {
     const open = matchMedia("(pointer: coarse)").matches && W.host.hasAttribute("data-sheet");
@@ -1533,9 +1605,10 @@ ${line}`;
       last = { y: t.clientY, at: e.timeStamp };
       node.style.transition = W.scrim.style.transition = "none";
       node.style.transform = `translateY(${dy}px)`;
-      W.scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
+      const way = Math.min(1, Math.max(0, dy / Math.max(100, innerHeight - (node.getBoundingClientRect().top - dy))));
+      W.scrim.style.opacity = String(1 - way);
       W.bar.style.transition = "none";
-      W.host.style.setProperty("--lab-p", String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
+      W.host.style.setProperty("--lab-p", String(way));
     };
     node.addEventListener("touchmove", onMove, { passive: false });
     W.scrim.addEventListener("touchmove", onMove, { passive: false });
@@ -1560,7 +1633,7 @@ ${line}`;
       if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), node.classList.contains("card") && (W.S.cardFull = false), settle();
       const rest = dy + Math.max(0, v) * 499;
       W.S.dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} \u2192 ${v > -0.1 && rest > h / 2 ? "close" : "stay"}`);
-      if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+      if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (innerHeight - node.getBoundingClientRect().top) / Math.max(v, 1.2))));
       node.style.transition = `transform 380ms ${SPRING}`;
       W.scrim.style.transition = "opacity 300ms";
       node.style.transform = W.scrim.style.opacity = "";
@@ -1630,6 +1703,16 @@ ${line}`;
           fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ""), 360);
         }
         Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null });
+        const float = W.S.draft ? W.root.querySelector(".float:not(.out)") : null;
+        const pin = float ? W.root.querySelector(".pin.draft") : null;
+        const now = kb > 60 ? "kb" : "rest";
+        if (float && pin && float.dataset.seen !== now) {
+          float.dataset.seen = now;
+          const sheetTop = r.bottom - kb - float.offsetHeight;
+          const p = pin.getBoundingClientRect();
+          const free = 56;
+          if (p.top < free || p.bottom > sheetTop - 16) scrollPageTo(scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
+        }
       };
       W.S.refit = fit;
       W.root.addEventListener("focusin", () => setTimeout(fit, 50));
@@ -1710,14 +1793,7 @@ ${line}`;
       const tall = bottom - pinTop + 28;
       top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
     }
-    if (W2.coarse) {
-      const de = document.documentElement;
-      const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
-      const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
-      de.style.setProperty("--lab-room", `${room}px`);
-      de.classList.toggle("lab-room", room > 0);
-    }
-    scrollTo({ top: Math.max(0, top), behavior: W2.still.matches ? "auto" : "smooth" });
+    scrollPageTo(top);
   };
   function drawList() {
     const all = W2.threads();
@@ -3133,6 +3209,7 @@ ${line}`;
     S.posted = null;
     const still = matchMedia("(prefers-reduced-motion: reduce)");
     const pinsById = /* @__PURE__ */ new Map();
+    S.faces = /* @__PURE__ */ new Map();
     S.dropDrag = null;
     function render() {
       S.grabbing = false;
@@ -3163,7 +3240,8 @@ ${line}`;
           prev.classList.add("out");
           prev.inert = true;
           layer2.append(prev);
-          setTimeout(() => prev.remove(), coarse ? 230 : 150);
+          const dur = leave(prev);
+          setTimeout(() => (prev.remove(), letGo(prev)), dur);
         }
         markQuote(quoted);
         S.shown = now;
@@ -3178,6 +3256,10 @@ ${line}`;
       );
       toggleBtn.classList.toggle("secondary", S.on);
       host2.toggleAttribute("data-sheet", Boolean(S.on && (S.draft || S.openId || S.listOpen || S.chatOpen)));
+      if (coarse && appear && now) {
+        host2.setAttribute("data-opening", "");
+        requestAnimationFrame(() => requestAnimationFrame(() => host2.removeAttribute("data-opening")));
+      }
       document.documentElement.classList.toggle("lab-sheet", host2.hasAttribute("data-sheet"));
       backCloses();
       S.refit();
@@ -3213,7 +3295,14 @@ ${line}`;
           },
           /^go$/i.test(c.text.trim()) ? "go" : state === "done" || c.resolved ? "\u2713" : initial(c.name)
         );
-        if (state === "now") pin.append(el2("i", { class: "ring", "aria-hidden": "true" }));
+        const face = `${state}${c.resolved ? " resolved" : ""}${news.length ? " new" : ""}`;
+        const was = S.faces.get(c.id);
+        S.faces.set(c.id, face);
+        const changed = was !== void 0 && was !== face && !still.matches;
+        if (changed) pin.classList.add("swap");
+        if (state === "now") pin.append(el2("i", { class: `ring${changed && !was.startsWith("now") ? " come" : ""}`, "aria-hidden": "true" }));
+        else if (changed && was.startsWith("now")) pin.append(el2("i", { class: "ring gone", "aria-hidden": "true" }));
+        if (coarse) pin.append(el2("i", { class: "hit", "aria-hidden": "true" }));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
         if (movable) grab(pin, c);

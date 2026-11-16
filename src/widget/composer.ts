@@ -31,7 +31,9 @@ export function composer({ placeholder, onSubmit, autofocus = false }: {
   const text = el('textarea', { placeholder, maxlength: '2000', rows: '1', 'aria-label': placeholder, enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false', writingsuggestions: 'false' }) as HTMLTextAreaElement;
   const who = el('label', { class: 'who' });
   const as = el('span', {}, 'as');
-  const name = el('input', { type: 'text', placeholder: 'your name', maxlength: '60', enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' }) as HTMLInputElement;
+  // Safari offers "AutoFill Contact" on anything that looks like a name, autocomplete="off" or not; a field whose name
+  // says search it leaves alone.
+  const name = el('input', { type: 'text', name: 'search-lab-who', placeholder: 'your name', maxlength: '60', enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' }) as HTMLInputElement;
   name.value = store.get('lab-name');
   who.append(as, name);
   const sendBtn = el('button', { class: 'send', type: 'button', 'aria-label': 'send' });
@@ -49,6 +51,21 @@ export function composer({ placeholder, onSubmit, autofocus = false }: {
     text.focus({ preventScroll: true });
     text.setSelectionRange(text.value.length, text.value.length);
   });
+  // A tap into a field without the cursor: put it there ourselves, without scrolling. Left to Safari, it scrolls the
+  // page to show the field (170 px going from the text to the name, iOS 27 simulator), the sheet loses track of the
+  // keyboard and drops behind it. A drag that starts on a field still scrolls.
+  let start: { x: number; y: number } | null = null;
+  for (const field of [text, name]) {
+    field.addEventListener('touchstart', (e: TouchEvent) => (start = { x: e.touches[0].clientX, y: e.touches[0].clientY }), { passive: true });
+    field.addEventListener('touchend', (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      const moved = !start || Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10;
+      if (moved || root.activeElement === field) return;
+      e.preventDefault();
+      field.focus({ preventScroll: true });
+      field.setSelectionRange(field.value.length, field.value.length);
+    }, { passive: false });
+  }
 
   const sync = () => {
     const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
