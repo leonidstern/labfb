@@ -1,0 +1,117 @@
+// Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let W: any;
+export function bindChat(w: unknown) {
+  W = w;
+}
+
+// The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
+// a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.
+// The time in a bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent, ✓✓ handed to
+// the agent (its thread went to the agent at or after you wrote it). Chat and threads alike.
+// The time and its mark sit pinned in the bubble's bottom-right corner, as WhatsApp and Telegram do: an invisible
+// copy at the end of the last line keeps room for it there, so it shares that line when it fits and gets a line of
+// its own when it doesn't. Smaller than the words, it sits a touch below their line: a stamp on the bubble.
+export const stamped = (bubble, stamp) => {
+  const room = stamp.cloneNode(true);
+  room.className = 'stamp-room';
+  room.setAttribute('aria-hidden', 'true');
+  for (const n of room.querySelectorAll('[role]')) n.removeAttribute('role');
+  const last = [...bubble.children].reverse().find((n) => n.classList?.contains('p'));
+  (last || bubble).append(room);
+  bubble.append(stamp);
+};
+
+export function drawChat() {
+  const byId = new Map(W.S.comments.map((c) => [c.id, c]));
+  // Only the chat's own messages (about the page as a whole) and the replies to them: pins live on the page and in the list.
+  const msgs = W.S.comments
+    .filter((c) => W.isPage(c) || (c.parent && W.isPage(byId.get(c.parent) || {})))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .slice(-150);
+  if (W.S.on && W.S.chatOpen && W.chatEl.hidden) W.S.newFrom = msgs.find(W.isNew)?.id || null; // opening: a "new" line above the first unread
+  if (!W.S.chatOpen) W.S.newFrom = null;
+  if (W.S.on && W.S.chatOpen) W.markSeen(msgs.filter(W.isNew)); // open: what's there is read
+  const fresh = msgs.filter(W.isNew).length;
+  W.chatBtn.hidden = !W.S.on;
+  // "chat" with a count (kept in place, grey 0, when there's nothing new); phones the same, without the key letter.
+  {
+    W.chatBtn.replaceChildren(W.coarse ? 'chat' : W.keyWord('', 'c', 'hat'), W.el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
+    W.chatBtn.setAttribute('aria-label', `chat, ${fresh} new`);
+    W.chatBtn.setAttribute('aria-keyshortcuts', 'c');
+  }
+  W.chatBtn.classList.toggle('has-new', fresh > 0);
+  W.placeBar(); // the chat button may have just shown: the segment lines follow
+  const opening = W.chatEl.hidden;
+  W.chatEl.hidden = !W.S.on || !W.S.chatOpen;
+  if (W.chatEl.hidden) W.chatEl.classList.remove('full'); // opens at its lower height again
+  if (W.chatEl.hidden && W.chatEl.contains(W.root.activeElement)) (W.root.activeElement as HTMLElement).blur(); // a closed chat keeps no focus, so keys work again
+  if (W.chatEl.hidden) return;
+  const box = W.$('.msgs', W.chatEl);
+  // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
+  const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+  const before = new Set(opening ? [] : [...(box.children as HTMLCollectionOf<HTMLElement>)].map((n) => n.dataset.id));
+  // A message already on screen that hasn't changed keeps its own node: a redraw for one new message used to rebuild
+  // every bubble (a phone showed the chat blink as messages arrived).
+  const kept = new Map([...(box.children as HTMLCollectionOf<HTMLElement>)].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+  const same = (n) => {
+    const old = kept.get(n.dataset?.id);
+    return old && old.outerHTML.replace(' fresh', '') === n.outerHTML ? old : n;
+  };
+  W.patchKids(box, msgs.flatMap((m) => {
+    const root = m.parent ? byId.get(m.parent) : m;
+    const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${root && W.S.replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
+    // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
+    // "Done" answer closes the thread.
+    b.append(W.nameLine(m.name, false));
+    // A reply shows what it answers, as in Telegram: the name and the start of that message; a tap there jumps to it.
+    if (m.parent && root) {
+      const q = W.el('div', { class: 'quote' });
+      q.append(W.el('b', {}, String(root.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(root.text.replace(/\s+/g, ' ').slice(0, 90)));
+      q.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const box = W.$('.msgs', W.chatEl);
+        const to = W.$(`[data-id="${root.id}"]`, box);
+        if (!to) return;
+        box.scrollTo({ top: to.offsetTop - box.offsetTop - 12, behavior: W.still.matches ? 'auto' : 'smooth' });
+        to.animate?.([{ boxShadow: '0 0 0 2px rgb(52,199,89)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 900 });
+      });
+      b.append(q);
+    }
+    b.append(...W.readable(m.text));
+    stamped(b, W.stampOf(m, root));
+    return m.id === W.S.newFrom && m !== msgs[0] ? [W.el('div', { class: 'newline' }, 'new'), b] : [b];
+  }).map(same));
+  const strip = W.$('.replying', W.chatEl);
+  const target: any = W.S.replyTo && byId.get(W.S.replyTo);
+  strip.hidden = !target;
+  if (target) {
+    const x = W.el('button', { type: 'button', title: 'about the page instead' }, '✕');
+    x.addEventListener('click', () => ((W.S.replyTo = null), drawChat()));
+    strip.replaceChildren(document.createTextNode(`↩ ${target.name}: ${target.text.replace(/\s+/g, ' ').slice(0, 40)}`), x);
+  }
+  if (!box.firstChild) box.append(W.el('div', { class: 'none' }, 'say something about the page as a whole'));
+  const chat = W.chatEl.querySelector('.chat');
+  if (!chat.firstChild)
+    chat.append(
+      W.composer({
+        placeholder: 'message',
+        onSubmit: async (name, text) => {
+          const { comment } = await W.send(
+            W.S.replyTo ? { name, text, parent: W.S.replyTo } : { name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } },
+          );
+          const answered = W.S.replyTo && W.S.comments.find((x) => x.id === W.S.replyTo);
+          if (answered?.resolved) answered.resolved = false; // writing in a done thread reopens it
+          W.S.replyTo = null;
+          W.S.comments.push(comment);
+          W.markSeen([comment]);
+          box.scrollTop = box.scrollHeight;
+          W.render();
+          return { keep: true }; // the same box stays, with the cursor in it: the phone's keyboard stays up
+        },
+      }),
+    );
+  chat.querySelector('textarea').placeholder = target ? 'reply' : 'message';
+  if (atEnd) box.scrollTop = box.scrollHeight;
+}

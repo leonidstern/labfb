@@ -1376,7 +1376,7 @@ ${line}`;
     return w ? `"${w.length > 40 ? `${w.slice(0, 39)}\u2026` : w}"` : "";
   };
   var stampOf = (m, root, prefix = "") => {
-    const { el: el2, mine, repliesOf, workState } = d2;
+    const { el: el2, mine, repliesOf, workState: workState2 } = d2;
     const at = new Date(m.createdAt);
     const time = at.toDateString() === (/* @__PURE__ */ new Date()).toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString([], { day: "numeric", month: "short" });
     const stamp = el2("span", { class: "stamp" });
@@ -1385,7 +1385,7 @@ ${line}`;
       const thread = root ? [root, ...repliesOf(root.id)] : [m];
       const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
       const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
-      if (!answered && latest && root && workState(root)[0] === "now") {
+      if (!answered && latest && root && workState2(root)[0] === "now") {
         stamp.classList.add("busy");
         stamp.append(el2("span", { class: "ring", role: "img", "aria-label": "the agent is on it" }));
       } else if (answered) {
@@ -1673,6 +1673,450 @@ ${line}`;
     }
   }
 
+  // src/widget/list.ts
+  var W2;
+  function bindList(w) {
+    W2 = w;
+  }
+  var goTo = (c, keys = false) => {
+    W2.S.stepping = Boolean(W2.S.openId);
+    W2.S.keepKeys = W2.S.stepping && (keys || W2.root.activeElement?.localName === "textarea");
+    W2.S.openId = c.id;
+    W2.S.draft = null;
+    if (W2.coarse) W2.S.listOpen = false;
+    W2.render();
+    const pinTop = W2.position(c.anchor || {}).top;
+    let top = pinTop - Math.max(40, W2.coarse && W2.S.openCard?.isConnected ? (innerHeight - W2.S.openCard.offsetHeight) / 2 : innerHeight / 3);
+    if (!W2.coarse && W2.S.openCard?.isConnected) {
+      const bottom = W2.S.openCard.getBoundingClientRect().bottom + scrollY;
+      const tall = bottom - pinTop + 28;
+      top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
+    }
+    if (W2.coarse) {
+      const de = document.documentElement;
+      const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
+      const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
+      de.style.setProperty("--lab-room", `${room}px`);
+      de.classList.toggle("lab-room", room > 0);
+    }
+    scrollTo({ top: Math.max(0, top), behavior: W2.still.matches ? "auto" : "smooth" });
+  };
+  function drawList() {
+    const all = W2.threads();
+    W2.listBtn.hidden = !W2.S.on || !W2.coarse && !all.length && !W2.held().length;
+    W2.goBtn.hidden = !W2.S.on;
+    if (!W2.goBtn.firstElementChild) W2.goBtn.replaceChildren(W2.el("span", { class: "gp" }, "go"), W2.el("kbd", { "aria-hidden": "true" }, "1/2/3"));
+    W2.goFace();
+    W2.goBtn.classList.toggle("on", W2.S.goMode && !W2.S.cursorMode);
+    W2.goBtn.classList.toggle("cursor", W2.S.cursorMode);
+    W2.goBtn.setAttribute("aria-pressed", String(W2.S.goMode && !W2.S.cursorMode));
+    const freshAll = all.filter((c) => !W2.isPage(c)).reduce((n, c) => n + W2.unread(c).length, 0);
+    W2.listBtn.replaceChildren(document.createTextNode(freshAll ? `list \xB7 ${freshAll} new` : "list"), W2.el("kbd", { "aria-hidden": "true" }, "l"));
+    W2.newPrev.hidden = W2.newNext.hidden = !W2.S.on || !all.some((c) => !W2.isPage(c) && W2.unread(c).length);
+    if (!W2.LIST_WINDOW) {
+      W2.newPrev.hidden = W2.newNext.hidden = true;
+      W2.listBtn.hidden = !W2.S.on;
+      {
+        W2.listBtn.replaceChildren(W2.coarse ? "new" : W2.keyWord("ne", "w", ""), W2.el("b", { class: `cnt${freshAll ? "" : " zero"}` }, String(freshAll)));
+        W2.listBtn.setAttribute("aria-label", `next new comment, ${freshAll} new`);
+        W2.listBtn.setAttribute("aria-keyshortcuts", "w");
+      }
+      W2.listBtn.title = "next new comment: W, or Control-D while typing (Shift for the one before)";
+      W2.listBtn.disabled = !freshAll;
+      W2.listBtn.classList.toggle("quiet", !freshAll);
+      const doneCount2 = all.filter((c) => !W2.isPage(c) && (c.resolved || workState(c)[0] === "done") && !W2.unread(c).length).length;
+      W2.doneBtn.hidden = !W2.S.on;
+      W2.doneBtn.disabled = !doneCount2 && !W2.S.showDone;
+      W2.doneBtn.classList.toggle("quiet", W2.doneBtn.disabled);
+      W2.doneBtn.replaceChildren(W2.S.showDone ? `hide done \xB7 ${doneCount2}` : `show done \xB7 ${doneCount2}`, W2.el("kbd", { "aria-hidden": "true" }, "d"));
+      W2.doneBtn.setAttribute("aria-keyshortcuts", "d");
+    }
+    W2.placeBar();
+    const tabNew = all.reduce((n, c) => n + W2.unread(c).length, 0);
+    if (!W2.tabTitle.base || !document.title.startsWith("(")) W2.tabTitle.base = document.title.replace(/^\(\d+\) /, "");
+    const want = tabNew ? `(${tabNew}) ${W2.tabTitle.base}` : W2.tabTitle.base;
+    if (document.title !== want) document.title = want;
+    W2.listBtn.classList.toggle("has-new", freshAll > 0);
+    const h = W2.held().length;
+    W2.sendBtn.hidden = !h;
+    W2.sendBtn.textContent = `send ${h} draft${h === 1 ? "" : "s"}`;
+    W2.listEl.hidden = !W2.S.on || !W2.S.listOpen;
+    if (W2.listEl.hidden) return;
+    for (const b of W2.listEl.querySelectorAll("[data-f]")) b.classList.toggle("on", b.dataset.f === W2.S.filter);
+    const fresh = all.filter((c) => !W2.isPage(c) && W2.unread(c).length).length;
+    W2.listEl.querySelector('[data-f="new"]').textContent = fresh ? `new \xB7 ${fresh}` : "new";
+    for (const f of ["work", "resolved", "mine"]) W2.$(`[data-f="${f}"]`, W2.listEl).hidden = true;
+    W2.holdBtn.hidden = !W2.DRAFT_MODE;
+    const doneCount = all.filter((c) => !W2.isPage(c) && (c.resolved || workState(c)[0] === "done") && !W2.unread(c).length).length;
+    W2.showDoneBtn.hidden = !doneCount;
+    W2.showDoneBtn.textContent = W2.S.showDone ? `hide done \xB7 ${doneCount}` : `show done \xB7 ${doneCount}`;
+    W2.holdBtn.classList.toggle("on", W2.drafting());
+    if (W2.S.filter === "work") return W2.listEl.querySelector(".items").replaceChildren(...workItems());
+    const items = W2.listed().map((c) => {
+      const b = W2.el("button", { class: `it${W2.S.openId === c.id ? " cur" : ""}`, type: "button" });
+      b.append(document.createTextNode(`${c.resolved ? "\u2713" : W2.numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), ...W2.onWhat(c) ? [W2.el("span", {}, `on ${W2.onWhat(c)} `)] : [], W2.el("span", {}, `\xB7 ${c.name}${!c.resolved && W2.isDone(c) ? " \xB7 \u2705 done" : ""}`), ...W2.unread(c).length ? [" ", W2.el("span", { class: "tag" }, `${W2.unread(c).length} new`)] : []);
+      b.addEventListener("click", () => goTo(c));
+      return b;
+    });
+    W2.listEl.querySelector(".items").replaceChildren(...items.length ? items : [W2.el("div", { class: "none" }, "nothing here")]);
+  }
+  var workState = (c) => {
+    const thread = [c, ...W2.repliesOf(c.id)];
+    const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || "";
+    const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
+    const answered = answer && answer.createdAt > lastPerson;
+    if (c.resolved || answered && /^done\b/i.test(answer.text)) return ["done", answered ? answer.createdAt : c.createdAt];
+    if (answered && /^on it\b/i.test(answer.text)) return ["now", answer.createdAt];
+    if (!answered && c.handedAt && c.handedAt >= lastPerson) return ["now", c.handedAt];
+    return answered ? [null, ""] : ["next", lastPerson];
+  };
+  function workItems() {
+    const today = (/* @__PURE__ */ new Date()).toDateString();
+    const now = [];
+    const next = [];
+    const done = [];
+    for (const c of W2.S.comments.filter((x) => !x.parent)) {
+      const [state, at] = workState(c);
+      if (state === "now") now.push([c, at]);
+      else if (state === "next") next.push([c, at]);
+      else if (state === "done" && new Date(at).toDateString() === today) done.push([c, at]);
+    }
+    const row = ([c, at], when) => {
+      const b = W2.el("button", { class: `it${W2.S.openId === c.id ? " cur" : ""}`, type: "button" });
+      b.append(document.createTextNode(`${W2.isPage(c) ? "chat" : c.resolved ? "\u2713" : W2.numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), W2.el("span", {}, `\xB7 ${when(at)}`));
+      b.addEventListener("click", () => W2.isPage(c) ? (W2.S.chatOpen = true, W2.S.listOpen = false, W2.render()) : goTo(c));
+      return b;
+    };
+    const part = (title, list, when, newest = false) => list.length ? [W2.el("div", { class: "group" }, `${title} \xB7 ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
+    const out = [
+      ...part("Now", now, (at) => `on it ${W2.ago(at)}`.replace("on it just now", "just started")),
+      ...part("Next", next, (at) => `sent ${W2.ago(at)} ago`.replace("just now ago", "just now")),
+      ...part("Done today", done, (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), true)
+    ];
+    return out.length ? out : [W2.el("div", { class: "none" }, "nothing in progress on this page")];
+  }
+  var stepNew = (dir) => {
+    const fresh = W2.threads().filter((c) => !W2.isPage(c) && W2.unread(c).length);
+    if (!fresh.length) return;
+    const top = (c) => W2.position(c.anchor || {}).top;
+    fresh.sort((a, b) => top(a) - top(b));
+    const open = W2.S.openId && W2.threads().find((c) => c.id === W2.S.openId);
+    const here = open ? top(open) : null;
+    const after = here == null ? -1 : fresh.findIndex((c) => top(c) > here);
+    const at = fresh.findIndex((c) => c.id === W2.S.openId);
+    const next = at >= 0 ? (at + dir + fresh.length) % fresh.length : here == null ? dir > 0 ? 0 : fresh.length - 1 : dir > 0 ? after < 0 ? 0 : after : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
+    W2.S.chatOpen = false;
+    goTo(fresh[next], !W2.coarse);
+  };
+
+  // src/widget/chat.ts
+  var W3;
+  function bindChat(w) {
+    W3 = w;
+  }
+  var stamped = (bubble, stamp) => {
+    const room = stamp.cloneNode(true);
+    room.className = "stamp-room";
+    room.setAttribute("aria-hidden", "true");
+    for (const n of room.querySelectorAll("[role]")) n.removeAttribute("role");
+    const last = [...bubble.children].reverse().find((n) => n.classList?.contains("p"));
+    (last || bubble).append(room);
+    bubble.append(stamp);
+  };
+  function drawChat() {
+    const byId = new Map(W3.S.comments.map((c) => [c.id, c]));
+    const msgs = W3.S.comments.filter((c) => W3.isPage(c) || c.parent && W3.isPage(byId.get(c.parent) || {})).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(-150);
+    if (W3.S.on && W3.S.chatOpen && W3.chatEl.hidden) W3.S.newFrom = msgs.find(W3.isNew)?.id || null;
+    if (!W3.S.chatOpen) W3.S.newFrom = null;
+    if (W3.S.on && W3.S.chatOpen) W3.markSeen(msgs.filter(W3.isNew));
+    const fresh = msgs.filter(W3.isNew).length;
+    W3.chatBtn.hidden = !W3.S.on;
+    {
+      W3.chatBtn.replaceChildren(W3.coarse ? "chat" : W3.keyWord("", "c", "hat"), W3.el("b", { class: `cnt${fresh ? "" : " zero"}` }, String(fresh)));
+      W3.chatBtn.setAttribute("aria-label", `chat, ${fresh} new`);
+      W3.chatBtn.setAttribute("aria-keyshortcuts", "c");
+    }
+    W3.chatBtn.classList.toggle("has-new", fresh > 0);
+    W3.placeBar();
+    const opening = W3.chatEl.hidden;
+    W3.chatEl.hidden = !W3.S.on || !W3.S.chatOpen;
+    if (W3.chatEl.hidden) W3.chatEl.classList.remove("full");
+    if (W3.chatEl.hidden && W3.chatEl.contains(W3.root.activeElement)) W3.root.activeElement.blur();
+    if (W3.chatEl.hidden) return;
+    const box = W3.$(".msgs", W3.chatEl);
+    const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+    const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
+    const kept = new Map([...box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+    const same = (n) => {
+      const old = kept.get(n.dataset?.id);
+      return old && old.outerHTML.replace(" fresh", "") === n.outerHTML ? old : n;
+    };
+    W3.patchKids(box, msgs.flatMap((m) => {
+      const root = m.parent ? byId.get(m.parent) : m;
+      const b = W3.el("div", { class: `msg${W3.mine(m) && !m.session ? " mine" : ""}${root && W3.S.replyTo === root.id ? " to" : ""}${before.size && !before.has(m.id) ? " fresh" : ""}`, "data-id": m.id, ...W3.agentOf(m) ? { "data-agent": W3.agentOf(m) } : {} });
+      b.append(W3.nameLine(m.name, false));
+      if (m.parent && root) {
+        const q = W3.el("div", { class: "quote" });
+        q.append(W3.el("b", {}, String(root.name || "").replace(/\s*·\s*session\s+\S+$/i, "")), document.createTextNode(root.text.replace(/\s+/g, " ").slice(0, 90)));
+        q.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const box2 = W3.$(".msgs", W3.chatEl);
+          const to = W3.$(`[data-id="${root.id}"]`, box2);
+          if (!to) return;
+          box2.scrollTo({ top: to.offsetTop - box2.offsetTop - 12, behavior: W3.still.matches ? "auto" : "smooth" });
+          to.animate?.([{ boxShadow: "0 0 0 2px rgb(52,199,89)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
+        });
+        b.append(q);
+      }
+      b.append(...W3.readable(m.text));
+      stamped(b, W3.stampOf(m, root));
+      return m.id === W3.S.newFrom && m !== msgs[0] ? [W3.el("div", { class: "newline" }, "new"), b] : [b];
+    }).map(same));
+    const strip = W3.$(".replying", W3.chatEl);
+    const target = W3.S.replyTo && byId.get(W3.S.replyTo);
+    strip.hidden = !target;
+    if (target) {
+      const x = W3.el("button", { type: "button", title: "about the page instead" }, "\u2715");
+      x.addEventListener("click", () => (W3.S.replyTo = null, drawChat()));
+      strip.replaceChildren(document.createTextNode(`\u21A9 ${target.name}: ${target.text.replace(/\s+/g, " ").slice(0, 40)}`), x);
+    }
+    if (!box.firstChild) box.append(W3.el("div", { class: "none" }, "say something about the page as a whole"));
+    const chat = W3.chatEl.querySelector(".chat");
+    if (!chat.firstChild)
+      chat.append(
+        W3.composer({
+          placeholder: "message",
+          onSubmit: async (name, text) => {
+            const { comment } = await W3.send(
+              W3.S.replyTo ? { name, text, parent: W3.S.replyTo } : { name, text, anchor: { kind: "page", width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } }
+            );
+            const answered = W3.S.replyTo && W3.S.comments.find((x) => x.id === W3.S.replyTo);
+            if (answered?.resolved) answered.resolved = false;
+            W3.S.replyTo = null;
+            W3.S.comments.push(comment);
+            W3.markSeen([comment]);
+            box.scrollTop = box.scrollHeight;
+            W3.render();
+            return { keep: true };
+          }
+        })
+      );
+    chat.querySelector("textarea").placeholder = target ? "reply" : "message";
+    if (atEnd) box.scrollTop = box.scrollHeight;
+  }
+
+  // src/widget/thread.ts
+  var W4;
+  function bindThread(w) {
+    W4 = w;
+  }
+  function placeCard(card, left, top) {
+    W4.layer.append(card);
+    const width = card.offsetWidth;
+    const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
+    card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;
+    const h = card.offsetHeight;
+    const below = top + 10 + h > W4.contentEnd();
+    card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
+    card.style.transformOrigin = below ? "14px 100%" : "";
+  }
+  function placeBeside(node, left, top) {
+    W4.layer.append(node);
+    const width = node.offsetWidth;
+    const right = scrollX + document.documentElement.clientWidth - 12;
+    const h = node.offsetHeight;
+    const end = W4.contentEnd();
+    if (left + 36 + width <= right) {
+      node.style.left = `${left + 36}px`;
+      node.style.top = `${Math.min(top - 37, end - h - 8)}px`;
+    } else {
+      node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
+      node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
+    }
+  }
+  function grab(pin, c) {
+    pin.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const r = pin.getBoundingClientRect();
+      const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
+      const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+      let moving = false;
+      let last = e;
+      W4.S.grabbing = true;
+      pin.setPointerCapture(e.pointerId);
+      const place = () => {
+        pin.style.left = `${start.left + last.clientX - start.x + scrollX - start.sx}px`;
+        pin.style.top = `${start.top + last.clientY - start.y + scrollY - start.sy}px`;
+      };
+      const move = (ev) => {
+        last = ev;
+        if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
+        moving = true;
+        pin.classList.add("dragging");
+        place();
+      };
+      const scrolled = () => moving && place();
+      addEventListener("scroll", scrolled, true);
+      W4.S.dropDrag = () => {
+        removeEventListener("scroll", scrolled, true);
+        W4.S.dropDrag = null;
+      };
+      const up = async (ev) => {
+        pin.removeEventListener("pointermove", move);
+        pin.removeEventListener("pointerup", up);
+        pin.removeEventListener("pointercancel", up);
+        pin.removeEventListener("lostpointercapture", up);
+        W4.S.dropDrag?.();
+        if (!W4.S.grabbing) return;
+        W4.S.grabbing = false;
+        if (!moving) return;
+        pin.dataset.dragged = "1";
+        setTimeout(() => delete pin.dataset.dragged, 0);
+        const x = ev.clientX - tip.dx;
+        const y = ev.clientY - tip.dy;
+        const under = document.elementsFromPoint(x, y).find((n) => n !== W4.host);
+        if (ev.type === "pointercancel" || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(W4.OFF)) return W4.render();
+        const before = c.anchor;
+        c.anchor = W4.anchorAt(x, y);
+        W4.render();
+        try {
+          const { comment } = await W4.send({ action: "move", id: c.id, anchor: c.anchor, edit: W4.store.get(`lab-edit:${c.id}`) || void 0 });
+          Object.assign(c, comment);
+        } catch {
+          c.anchor = before;
+          W4.render();
+        }
+      };
+      pin.addEventListener("pointermove", move);
+      pin.addEventListener("pointerup", up);
+      pin.addEventListener("pointercancel", up);
+      pin.addEventListener("lostpointercapture", up);
+    });
+  }
+  function threadCard(c, fresh = /* @__PURE__ */ new Set(), focus = false) {
+    const card = W4.el("div", { class: "card" });
+    const body = W4.el("div", { class: "body" });
+    const foot = W4.el("div", { class: "foot" });
+    card.append(W4.el("div", { class: "handle" }), body, foot);
+    card.addEventListener("click", (e) => e.stopPropagation());
+    body.classList.add("msgs");
+    const itemEl = (item) => {
+      const box = W4.el("div", { class: `item msg${W4.mine(item) && !item.session ? " mine" : ""}`, "data-id": item.id, ...W4.agentOf(item) ? { "data-agent": W4.agentOf(item) } : {} });
+      box.append(W4.nameLine(item.name, false), ...W4.readable(item.text));
+      W4.stamped(box, W4.stampOf(item, c, item === c && !c.resolved ? `#${W4.numberOf(c)} \xB7 ` : ""));
+      return box;
+    };
+    const shown = /* @__PURE__ */ new Set();
+    const all = [c, ...W4.repliesOf(c.id)];
+    const firstNew = all.find((x) => fresh.has(x.id));
+    for (const item of all) {
+      if (item === firstNew && item !== c) body.append(W4.el("div", { class: "newline" }, "new"));
+      body.append(itemEl(item));
+      shown.add(item.id);
+    }
+    card.sync = () => {
+      for (const r of W4.repliesOf(c.id)) {
+        if (shown.has(r.id)) continue;
+        const items = card.querySelectorAll(".item");
+        const added = itemEl(r);
+        added.classList.add("fresh");
+        items[items.length - 1].after(added);
+        shown.add(r.id);
+        W4.markSeen([r]);
+      }
+    };
+    const ownKey = W4.store.get(`lab-edit:${c.id}`);
+    let actions = null;
+    if (W4.S.isAdmin || ownKey) {
+      actions = W4.el("div", { class: "row acts" });
+      const resolve = W4.el("button", { class: "btn", type: "button" }, c.resolved ? "reopen" : "resolve");
+      const failed = (btn) => btn.textContent = "failed, try again";
+      resolve.addEventListener("click", async () => {
+        try {
+          const closing = !c.resolved;
+          const { comment } = await W4.send({ action: c.resolved ? "reopen" : "resolve", id: c.id, ...ownKey ? { edit: ownKey } : {} });
+          Object.assign(c, comment);
+          if (closing && W4.S.openId === c.id) return W4.S.closeFast = true, W4.S.openId = null, W4.render();
+          W4.render();
+        } catch {
+          failed(resolve);
+        }
+      });
+      const del = W4.el("button", { class: "btn", type: "button" }, "delete");
+      const yes = W4.el("button", { class: "btn danger", type: "button" }, "delete");
+      const no = W4.el("button", { class: "btn", type: "button" }, "cancel");
+      const back = () => {
+        actions.replaceChildren(resolve, del);
+        del.focus();
+      };
+      del.addEventListener("click", () => {
+        actions.replaceChildren(W4.el("span", { class: "ask" }, W4.repliesOf(c.id).length ? "delete thread?" : "delete comment?"), yes, no);
+        no.focus();
+      });
+      no.addEventListener("click", back);
+      actions.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && yes.isConnected) {
+          e.stopPropagation();
+          back();
+        }
+      });
+      yes.addEventListener("click", async () => {
+        try {
+          await W4.send({ action: "delete", id: c.id });
+        } catch {
+          return failed(yes);
+        }
+        W4.S.comments = W4.S.comments.filter((x) => x.id !== c.id && x.parent !== c.id);
+        W4.S.openId = null;
+        W4.render();
+      });
+      actions.append(...W4.S.isAdmin ? [resolve, del] : [resolve]);
+      body.append(actions);
+    }
+    if (W4.coarse) {
+      const topOf = (x) => W4.position(x.anchor || {}).top;
+      const here = topOf(c);
+      const fresh2 = W4.threads().filter((x) => !W4.isPage(x) && x.id !== c.id && W4.unread(x).length).map((x) => [x, topOf(x)]);
+      fresh2.sort((p, q) => (p[1] > here ? 0 : 1) - (q[1] > here ? 0 : 1) || p[1] - q[1]);
+      const nav = W4.el("div", { class: "row nav" });
+      if (fresh2.length) {
+        const b = W4.el("button", { class: "btn", type: "button" }, `new \xB7 ${fresh2.length} \u203A`);
+        b.addEventListener("pointerdown", (e) => e.preventDefault());
+        b.addEventListener("click", () => W4.goTo(fresh2[0][0]));
+        nav.append(b);
+      }
+      if (actions) nav.append(actions);
+      if (nav.firstChild) card.insertBefore(nav, body);
+    }
+    foot.append(
+      W4.composer({
+        placeholder: "reply",
+        autofocus: focus,
+        onSubmit: async (name, text) => {
+          const { comment } = await W4.send({ name, text, parent: c.id });
+          W4.S.comments.push(comment);
+          W4.markSeen([comment]);
+          if (c.resolved) {
+            c.resolved = false;
+            W4.render();
+            const again = W4.S.openCard?.querySelector(".body");
+            if (again) again.scrollTop = again.scrollHeight;
+            W4.S.openCard?.querySelector("textarea")?.focus({ preventScroll: true });
+            return { keep: true };
+          }
+          shown.add(comment.id);
+          const items = card.querySelectorAll(".item");
+          const added = itemEl(comment);
+          added.classList.add("fresh");
+          items[items.length - 1].after(added);
+          body.scrollTop = body.scrollHeight;
+          return { keep: true };
+        }
+      })
+    );
+    return card;
+  }
+
   // src/comments.js
   /*!
    * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
@@ -1687,32 +2131,189 @@ ${line}`;
    */
   (() => {
     const S = { dbg: null };
-    const W2 = { get S() {
-      return S;
-    }, get bar() {
-      return bar;
-    }, get closeOrNudge() {
-      return closeOrNudge;
-    }, get coarse() {
-      return coarse;
-    }, get el() {
-      return el2;
-    }, get host() {
-      return host2;
-    }, get openSheet() {
-      return openSheet;
-    }, get root() {
-      return root;
-    }, get scrim() {
-      return scrim;
-    }, get send() {
-      return send;
-    }, get still() {
-      return still;
-    }, get vv() {
-      return vv;
-    } };
-    bindSheets(W2);
+    const W5 = {
+      get $() {
+        return $;
+      },
+      get DRAFT_MODE() {
+        return DRAFT_MODE;
+      },
+      get LIST_WINDOW() {
+        return LIST_WINDOW;
+      },
+      get OFF() {
+        return OFF;
+      },
+      get S() {
+        return S;
+      },
+      get agentOf() {
+        return agentOf;
+      },
+      get ago() {
+        return ago;
+      },
+      get anchorAt() {
+        return anchorAt;
+      },
+      get bar() {
+        return bar;
+      },
+      get chatBtn() {
+        return chatBtn;
+      },
+      get chatEl() {
+        return chatEl;
+      },
+      get closeOrNudge() {
+        return closeOrNudge;
+      },
+      get coarse() {
+        return coarse;
+      },
+      get composer() {
+        return composer;
+      },
+      get contentEnd() {
+        return contentEnd;
+      },
+      get doneBtn() {
+        return doneBtn;
+      },
+      get drafting() {
+        return drafting;
+      },
+      get el() {
+        return el2;
+      },
+      get goBtn() {
+        return goBtn;
+      },
+      get goFace() {
+        return goFace;
+      },
+      get goTo() {
+        return goTo;
+      },
+      get held() {
+        return held;
+      },
+      get holdBtn() {
+        return holdBtn;
+      },
+      get host() {
+        return host2;
+      },
+      get isDone() {
+        return isDone;
+      },
+      get isNew() {
+        return isNew;
+      },
+      get isPage() {
+        return isPage;
+      },
+      get keyWord() {
+        return keyWord;
+      },
+      get layer() {
+        return layer2;
+      },
+      get listBtn() {
+        return listBtn;
+      },
+      get listEl() {
+        return listEl;
+      },
+      get listed() {
+        return listed;
+      },
+      get markSeen() {
+        return markSeen;
+      },
+      get mine() {
+        return mine;
+      },
+      get nameLine() {
+        return nameLine;
+      },
+      get newNext() {
+        return newNext;
+      },
+      get newPrev() {
+        return newPrev;
+      },
+      get numberOf() {
+        return numberOf;
+      },
+      get onWhat() {
+        return onWhat;
+      },
+      get openSheet() {
+        return openSheet;
+      },
+      get patchKids() {
+        return patchKids;
+      },
+      get placeBar() {
+        return placeBar;
+      },
+      get position() {
+        return position;
+      },
+      get readable() {
+        return readable;
+      },
+      get render() {
+        return render;
+      },
+      get repliesOf() {
+        return repliesOf;
+      },
+      get root() {
+        return root;
+      },
+      get scrim() {
+        return scrim;
+      },
+      get send() {
+        return send;
+      },
+      get sendBtn() {
+        return sendBtn;
+      },
+      get showDoneBtn() {
+        return showDoneBtn;
+      },
+      get stampOf() {
+        return stampOf;
+      },
+      get stamped() {
+        return stamped;
+      },
+      get still() {
+        return still;
+      },
+      get store() {
+        return store2;
+      },
+      get tabTitle() {
+        return tabTitle;
+      },
+      get threads() {
+        return threads;
+      },
+      get unread() {
+        return unread;
+      },
+      get vv() {
+        return vv;
+      }
+    };
+    bindList(W5);
+    bindChat(W5);
+    bindThread(W5);
+    bindSheets(W5);
     const script = (
       /** @type {HTMLScriptElement | null} */
       document.currentScript
@@ -2033,29 +2634,6 @@ ${line}`;
     const isPage = (c) => c.anchor?.kind === "page";
     S.stepping = false;
     S.keepKeys = false;
-    const goTo = (c, keys = false) => {
-      S.stepping = Boolean(S.openId);
-      S.keepKeys = S.stepping && (keys || root.activeElement?.localName === "textarea");
-      S.openId = c.id;
-      S.draft = null;
-      if (coarse) S.listOpen = false;
-      render();
-      const pinTop = position(c.anchor || {}).top;
-      let top = pinTop - Math.max(40, coarse && S.openCard?.isConnected ? (innerHeight - S.openCard.offsetHeight) / 2 : innerHeight / 3);
-      if (!coarse && S.openCard?.isConnected) {
-        const bottom = S.openCard.getBoundingClientRect().bottom + scrollY;
-        const tall = bottom - pinTop + 28;
-        top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
-      }
-      if (coarse) {
-        const de = document.documentElement;
-        const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
-        const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
-        de.style.setProperty("--lab-room", `${room}px`);
-        de.classList.toggle("lab-room", room > 0);
-      }
-      scrollTo({ top: Math.max(0, top), behavior: still.matches ? "auto" : "smooth" });
-    };
     const isDone = (c) => c.resolved || workState(c)[0] === "done";
     const keyWord = (before, key, after) => {
       const w = el2("span", { class: "kw" });
@@ -2085,202 +2663,12 @@ ${line}`;
       goBtn.setAttribute("aria-label", `a click places: ${S.cursorMode ? "nothing (cursor)" : S.goMode ? "go" : "a comment"}`);
       goBtn.setAttribute("aria-keyshortcuts", "1 2 3");
     }
-    function drawList() {
-      const all = threads();
-      listBtn.hidden = !S.on || !coarse && !all.length && !held().length;
-      goBtn.hidden = !S.on;
-      if (!goBtn.firstElementChild) goBtn.replaceChildren(el2("span", { class: "gp" }, "go"), el2("kbd", { "aria-hidden": "true" }, "1/2/3"));
-      goFace();
-      goBtn.classList.toggle("on", S.goMode && !S.cursorMode);
-      goBtn.classList.toggle("cursor", S.cursorMode);
-      goBtn.setAttribute("aria-pressed", String(S.goMode && !S.cursorMode));
-      const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
-      listBtn.replaceChildren(document.createTextNode(freshAll ? `list \xB7 ${freshAll} new` : "list"), el2("kbd", { "aria-hidden": "true" }, "l"));
-      newPrev.hidden = newNext.hidden = !S.on || !all.some((c) => !isPage(c) && unread(c).length);
-      if (!LIST_WINDOW) {
-        newPrev.hidden = newNext.hidden = true;
-        listBtn.hidden = !S.on;
-        {
-          listBtn.replaceChildren(coarse ? "new" : keyWord("ne", "w", ""), el2("b", { class: `cnt${freshAll ? "" : " zero"}` }, String(freshAll)));
-          listBtn.setAttribute("aria-label", `next new comment, ${freshAll} new`);
-          listBtn.setAttribute("aria-keyshortcuts", "w");
-        }
-        listBtn.title = "next new comment: W, or Control-D while typing (Shift for the one before)";
-        listBtn.disabled = !freshAll;
-        listBtn.classList.toggle("quiet", !freshAll);
-        const doneCount2 = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
-        doneBtn.hidden = !S.on;
-        doneBtn.disabled = !doneCount2 && !S.showDone;
-        doneBtn.classList.toggle("quiet", doneBtn.disabled);
-        doneBtn.replaceChildren(S.showDone ? `hide done \xB7 ${doneCount2}` : `show done \xB7 ${doneCount2}`, el2("kbd", { "aria-hidden": "true" }, "d"));
-        doneBtn.setAttribute("aria-keyshortcuts", "d");
-      }
-      placeBar();
-      const tabNew = all.reduce((n, c) => n + unread(c).length, 0);
-      if (!tabTitle.base || !document.title.startsWith("(")) tabTitle.base = document.title.replace(/^\(\d+\) /, "");
-      const want = tabNew ? `(${tabNew}) ${tabTitle.base}` : tabTitle.base;
-      if (document.title !== want) document.title = want;
-      listBtn.classList.toggle("has-new", freshAll > 0);
-      const h = held().length;
-      sendBtn.hidden = !h;
-      sendBtn.textContent = `send ${h} draft${h === 1 ? "" : "s"}`;
-      listEl.hidden = !S.on || !S.listOpen;
-      if (listEl.hidden) return;
-      for (
-        const b of
-        /** @type {NodeListOf<HTMLElement>} */
-        listEl.querySelectorAll("[data-f]")
-      ) b.classList.toggle("on", b.dataset.f === S.filter);
-      const fresh = all.filter((c) => !isPage(c) && unread(c).length).length;
-      listEl.querySelector('[data-f="new"]').textContent = fresh ? `new \xB7 ${fresh}` : "new";
-      for (const f of ["work", "resolved", "mine"]) $(`[data-f="${f}"]`, listEl).hidden = true;
-      holdBtn.hidden = !DRAFT_MODE;
-      const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
-      showDoneBtn.hidden = !doneCount;
-      showDoneBtn.textContent = S.showDone ? `hide done \xB7 ${doneCount}` : `show done \xB7 ${doneCount}`;
-      holdBtn.classList.toggle("on", drafting());
-      if (S.filter === "work") return listEl.querySelector(".items").replaceChildren(...workItems());
-      const items = listed().map((c) => {
-        const b = el2("button", { class: `it${S.openId === c.id ? " cur" : ""}`, type: "button" });
-        b.append(document.createTextNode(`${c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), ...onWhat(c) ? [el2("span", {}, `on ${onWhat(c)} `)] : [], el2("span", {}, `\xB7 ${c.name}${!c.resolved && isDone(c) ? " \xB7 \u2705 done" : ""}`), ...unread(c).length ? [" ", el2("span", { class: "tag" }, `${unread(c).length} new`)] : []);
-        b.addEventListener("click", () => goTo(c));
-        return b;
-      });
-      listEl.querySelector(".items").replaceChildren(...items.length ? items : [el2("div", { class: "none" }, "nothing here")]);
-    }
     const ago = (iso) => {
       const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 6e4));
       return m < 1 ? "just now" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
     };
-    const workState = (c) => {
-      const thread = [c, ...repliesOf(c.id)];
-      const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || "";
-      const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
-      const answered = answer && answer.createdAt > lastPerson;
-      if (c.resolved || answered && /^done\b/i.test(answer.text)) return ["done", answered ? answer.createdAt : c.createdAt];
-      if (answered && /^on it\b/i.test(answer.text)) return ["now", answer.createdAt];
-      if (!answered && c.handedAt && c.handedAt >= lastPerson) return ["now", c.handedAt];
-      return answered ? [null, ""] : ["next", lastPerson];
-    };
-    function workItems() {
-      const today = (/* @__PURE__ */ new Date()).toDateString();
-      const now = [];
-      const next = [];
-      const done = [];
-      for (const c of S.comments.filter((x) => !x.parent)) {
-        const [state, at] = workState(c);
-        if (state === "now") now.push([c, at]);
-        else if (state === "next") next.push([c, at]);
-        else if (state === "done" && new Date(at).toDateString() === today) done.push([c, at]);
-      }
-      const row = ([c, at], when) => {
-        const b = el2("button", { class: `it${S.openId === c.id ? " cur" : ""}`, type: "button" });
-        b.append(document.createTextNode(`${isPage(c) ? "chat" : c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), el2("span", {}, `\xB7 ${when(at)}`));
-        b.addEventListener("click", () => isPage(c) ? (S.chatOpen = true, S.listOpen = false, render()) : goTo(c));
-        return b;
-      };
-      const part = (title, list, when, newest = false) => list.length ? [el2("div", { class: "group" }, `${title} \xB7 ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
-      const out = [
-        ...part("Now", now, (at) => `on it ${ago(at)}`.replace("on it just now", "just started")),
-        ...part("Next", next, (at) => `sent ${ago(at)} ago`.replace("just now ago", "just now")),
-        ...part("Done today", done, (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), true)
-      ];
-      return out.length ? out : [el2("div", { class: "none" }, "nothing in progress on this page")];
-    }
-    const stamped = (bubble, stamp) => {
-      const room = stamp.cloneNode(true);
-      room.className = "stamp-room";
-      room.setAttribute("aria-hidden", "true");
-      for (const n of room.querySelectorAll("[role]")) n.removeAttribute("role");
-      const last = [...bubble.children].reverse().find((n) => n.classList?.contains("p"));
-      (last || bubble).append(room);
-      bubble.append(stamp);
-    };
     S.replyTo = null;
     S.newFrom = null;
-    function drawChat() {
-      const byId = new Map(S.comments.map((c) => [c.id, c]));
-      const msgs = S.comments.filter((c) => isPage(c) || c.parent && isPage(byId.get(c.parent) || {})).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(-150);
-      if (S.on && S.chatOpen && chatEl.hidden) S.newFrom = msgs.find(isNew)?.id || null;
-      if (!S.chatOpen) S.newFrom = null;
-      if (S.on && S.chatOpen) markSeen(msgs.filter(isNew));
-      const fresh = msgs.filter(isNew).length;
-      chatBtn.hidden = !S.on;
-      {
-        chatBtn.replaceChildren(coarse ? "chat" : keyWord("", "c", "hat"), el2("b", { class: `cnt${fresh ? "" : " zero"}` }, String(fresh)));
-        chatBtn.setAttribute("aria-label", `chat, ${fresh} new`);
-        chatBtn.setAttribute("aria-keyshortcuts", "c");
-      }
-      chatBtn.classList.toggle("has-new", fresh > 0);
-      placeBar();
-      const opening = chatEl.hidden;
-      chatEl.hidden = !S.on || !S.chatOpen;
-      if (chatEl.hidden) chatEl.classList.remove("full");
-      if (chatEl.hidden && chatEl.contains(root.activeElement)) root.activeElement.blur();
-      if (chatEl.hidden) return;
-      const box = $(".msgs", chatEl);
-      const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-      const before = new Set(opening ? [] : [.../** @type {HTMLCollectionOf<HTMLElement>} */
-      box.children].map((n) => n.dataset.id));
-      const kept = new Map([.../** @type {HTMLCollectionOf<HTMLElement>} */
-      box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
-      const same = (n) => {
-        const old = kept.get(n.dataset?.id);
-        return old && old.outerHTML.replace(" fresh", "") === n.outerHTML ? old : n;
-      };
-      patchKids(box, msgs.flatMap((m) => {
-        const root2 = m.parent ? byId.get(m.parent) : m;
-        const b = el2("div", { class: `msg${mine(m) && !m.session ? " mine" : ""}${root2 && S.replyTo === root2.id ? " to" : ""}${before.size && !before.has(m.id) ? " fresh" : ""}`, "data-id": m.id, ...agentOf(m) ? { "data-agent": agentOf(m) } : {} });
-        b.append(nameLine(m.name, false));
-        if (m.parent && root2) {
-          const q = el2("div", { class: "quote" });
-          q.append(el2("b", {}, String(root2.name || "").replace(/\s*·\s*session\s+\S+$/i, "")), document.createTextNode(root2.text.replace(/\s+/g, " ").slice(0, 90)));
-          q.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const box2 = $(".msgs", chatEl);
-            const to = $(`[data-id="${root2.id}"]`, box2);
-            if (!to) return;
-            box2.scrollTo({ top: to.offsetTop - box2.offsetTop - 12, behavior: still.matches ? "auto" : "smooth" });
-            to.animate?.([{ boxShadow: "0 0 0 2px rgb(52,199,89)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
-          });
-          b.append(q);
-        }
-        b.append(...readable(m.text));
-        stamped(b, stampOf(m, root2));
-        return m.id === S.newFrom && m !== msgs[0] ? [el2("div", { class: "newline" }, "new"), b] : [b];
-      }).map(same));
-      const strip = $(".replying", chatEl);
-      const target = S.replyTo && byId.get(S.replyTo);
-      strip.hidden = !target;
-      if (target) {
-        const x = el2("button", { type: "button", title: "about the page instead" }, "\u2715");
-        x.addEventListener("click", () => (S.replyTo = null, drawChat()));
-        strip.replaceChildren(document.createTextNode(`\u21A9 ${target.name}: ${target.text.replace(/\s+/g, " ").slice(0, 40)}`), x);
-      }
-      if (!box.firstChild) box.append(el2("div", { class: "none" }, "say something about the page as a whole"));
-      const chat = chatEl.querySelector(".chat");
-      if (!chat.firstChild)
-        chat.append(
-          composer({
-            placeholder: "message",
-            onSubmit: async (name, text) => {
-              const { comment } = await send(
-                S.replyTo ? { name, text, parent: S.replyTo } : { name, text, anchor: { kind: "page", width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } }
-              );
-              const answered = S.replyTo && S.comments.find((x) => x.id === S.replyTo);
-              if (answered?.resolved) answered.resolved = false;
-              S.replyTo = null;
-              S.comments.push(comment);
-              markSeen([comment]);
-              box.scrollTop = box.scrollHeight;
-              render();
-              return { keep: true };
-            }
-          })
-        );
-      chat.querySelector("textarea").placeholder = target ? "reply" : "message";
-      if (atEnd) box.scrollTop = box.scrollHeight;
-    }
     const numberOf = (c) => S.comments.filter((x) => !x.parent && !x.resolved).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).indexOf(c) + 1;
     const seenKey = () => `lab-seen:${S.page}`;
     const readSeen = () => new Set(store2.get(seenKey()).split(",").filter(Boolean));
@@ -2322,34 +2710,10 @@ ${line}`;
     }
     const repliesOf = (id) => S.comments.filter((c) => c.parent === id);
     const initial = (name) => [...String(name || "").trim()][0]?.toUpperCase() || "";
-    function placeCard(card, left, top) {
-      layer2.append(card);
-      const width = card.offsetWidth;
-      const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
-      card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;
-      const h = card.offsetHeight;
-      const below = top + 10 + h > contentEnd();
-      card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
-      card.style.transformOrigin = below ? "14px 100%" : "";
-    }
     const contentEnd = () => {
       inPage(0);
       return pageEnd.y;
     };
-    function placeBeside(node, left, top) {
-      layer2.append(node);
-      const width = node.offsetWidth;
-      const right = scrollX + document.documentElement.clientWidth - 12;
-      const h = node.offsetHeight;
-      const end = contentEnd();
-      if (left + 36 + width <= right) {
-        node.style.left = `${left + 36}px`;
-        node.style.top = `${Math.min(top - 37, end - h - 8)}px`;
-      } else {
-        node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
-        node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
-      }
-    }
     S.shown = null;
     S.posted = null;
     const still = matchMedia("(prefers-reduced-motion: reduce)");
@@ -2515,190 +2879,8 @@ ${line}`;
       done();
     }
     S.grabbing = false;
-    function grab(pin, c) {
-      pin.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) return;
-        const r = pin.getBoundingClientRect();
-        const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
-        const start2 = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
-        let moving = false;
-        let last = e;
-        S.grabbing = true;
-        pin.setPointerCapture(e.pointerId);
-        const place2 = () => {
-          pin.style.left = `${start2.left + last.clientX - start2.x + scrollX - start2.sx}px`;
-          pin.style.top = `${start2.top + last.clientY - start2.y + scrollY - start2.sy}px`;
-        };
-        const move = (ev) => {
-          last = ev;
-          if (!moving && Math.hypot(ev.clientX - start2.x, ev.clientY - start2.y) < 5) return;
-          moving = true;
-          pin.classList.add("dragging");
-          place2();
-        };
-        const scrolled = () => moving && place2();
-        addEventListener("scroll", scrolled, true);
-        S.dropDrag = () => {
-          removeEventListener("scroll", scrolled, true);
-          S.dropDrag = null;
-        };
-        const up = async (ev) => {
-          pin.removeEventListener("pointermove", move);
-          pin.removeEventListener("pointerup", up);
-          pin.removeEventListener("pointercancel", up);
-          pin.removeEventListener("lostpointercapture", up);
-          S.dropDrag?.();
-          if (!S.grabbing) return;
-          S.grabbing = false;
-          if (!moving) return;
-          pin.dataset.dragged = "1";
-          setTimeout(() => delete pin.dataset.dragged, 0);
-          const x = ev.clientX - tip.dx;
-          const y = ev.clientY - tip.dy;
-          const under = document.elementsFromPoint(x, y).find((n) => n !== host2);
-          if (ev.type === "pointercancel" || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(OFF)) return render();
-          const before = c.anchor;
-          c.anchor = anchorAt(x, y);
-          render();
-          try {
-            const { comment } = await send({ action: "move", id: c.id, anchor: c.anchor, edit: store2.get(`lab-edit:${c.id}`) || void 0 });
-            Object.assign(c, comment);
-          } catch {
-            c.anchor = before;
-            render();
-          }
-        };
-        pin.addEventListener("pointermove", move);
-        pin.addEventListener("pointerup", up);
-        pin.addEventListener("pointercancel", up);
-        pin.addEventListener("lostpointercapture", up);
-      });
-    }
     S.openCard = null;
     const coarse = matchMedia("(pointer: coarse)").matches;
-    function threadCard(c, fresh = /* @__PURE__ */ new Set(), focus = false) {
-      const card = el2("div", { class: "card" });
-      const body = el2("div", { class: "body" });
-      const foot = el2("div", { class: "foot" });
-      card.append(el2("div", { class: "handle" }), body, foot);
-      card.addEventListener("click", (e) => e.stopPropagation());
-      body.classList.add("msgs");
-      const itemEl = (item) => {
-        const box = el2("div", { class: `item msg${mine(item) && !item.session ? " mine" : ""}`, "data-id": item.id, ...agentOf(item) ? { "data-agent": agentOf(item) } : {} });
-        box.append(nameLine(item.name, false), ...readable(item.text));
-        stamped(box, stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} \xB7 ` : ""));
-        return box;
-      };
-      const shown = /* @__PURE__ */ new Set();
-      const all = [c, ...repliesOf(c.id)];
-      const firstNew = all.find((x) => fresh.has(x.id));
-      for (const item of all) {
-        if (item === firstNew && item !== c) body.append(el2("div", { class: "newline" }, "new"));
-        body.append(itemEl(item));
-        shown.add(item.id);
-      }
-      card.sync = () => {
-        for (const r of repliesOf(c.id)) {
-          if (shown.has(r.id)) continue;
-          const items = card.querySelectorAll(".item");
-          const added = itemEl(r);
-          added.classList.add("fresh");
-          items[items.length - 1].after(added);
-          shown.add(r.id);
-          markSeen([r]);
-        }
-      };
-      const ownKey = store2.get(`lab-edit:${c.id}`);
-      let actions = null;
-      if (S.isAdmin || ownKey) {
-        actions = el2("div", { class: "row acts" });
-        const resolve = el2("button", { class: "btn", type: "button" }, c.resolved ? "reopen" : "resolve");
-        const failed = (btn) => btn.textContent = "failed, try again";
-        resolve.addEventListener("click", async () => {
-          try {
-            const closing = !c.resolved;
-            const { comment } = await send({ action: c.resolved ? "reopen" : "resolve", id: c.id, ...ownKey ? { edit: ownKey } : {} });
-            Object.assign(c, comment);
-            if (closing && S.openId === c.id) return S.closeFast = true, S.openId = null, render();
-            render();
-          } catch {
-            failed(resolve);
-          }
-        });
-        const del = el2("button", { class: "btn", type: "button" }, "delete");
-        const yes = el2("button", { class: "btn danger", type: "button" }, "delete");
-        const no = el2("button", { class: "btn", type: "button" }, "cancel");
-        const back = () => {
-          actions.replaceChildren(resolve, del);
-          del.focus();
-        };
-        del.addEventListener("click", () => {
-          actions.replaceChildren(el2("span", { class: "ask" }, repliesOf(c.id).length ? "delete thread?" : "delete comment?"), yes, no);
-          no.focus();
-        });
-        no.addEventListener("click", back);
-        actions.addEventListener("keydown", (e) => {
-          if (e.key === "Escape" && yes.isConnected) {
-            e.stopPropagation();
-            back();
-          }
-        });
-        yes.addEventListener("click", async () => {
-          try {
-            await send({ action: "delete", id: c.id });
-          } catch {
-            return failed(yes);
-          }
-          S.comments = S.comments.filter((x) => x.id !== c.id && x.parent !== c.id);
-          S.openId = null;
-          render();
-        });
-        actions.append(...S.isAdmin ? [resolve, del] : [resolve]);
-        body.append(actions);
-      }
-      if (coarse) {
-        const topOf = (x) => position(x.anchor || {}).top;
-        const here = topOf(c);
-        const fresh2 = threads().filter((x) => !isPage(x) && x.id !== c.id && unread(x).length).map((x) => [x, topOf(x)]);
-        fresh2.sort((p, q) => (p[1] > here ? 0 : 1) - (q[1] > here ? 0 : 1) || p[1] - q[1]);
-        const nav = el2("div", { class: "row nav" });
-        if (fresh2.length) {
-          const b = el2("button", { class: "btn", type: "button" }, `new \xB7 ${fresh2.length} \u203A`);
-          b.addEventListener("pointerdown", (e) => e.preventDefault());
-          b.addEventListener("click", () => goTo(fresh2[0][0]));
-          nav.append(b);
-        }
-        if (actions) nav.append(actions);
-        if (nav.firstChild) card.insertBefore(nav, body);
-      }
-      foot.append(
-        composer({
-          placeholder: "reply",
-          autofocus: focus,
-          onSubmit: async (name, text) => {
-            const { comment } = await send({ name, text, parent: c.id });
-            S.comments.push(comment);
-            markSeen([comment]);
-            if (c.resolved) {
-              c.resolved = false;
-              render();
-              const again = S.openCard?.querySelector(".body");
-              if (again) again.scrollTop = again.scrollHeight;
-              S.openCard?.querySelector("textarea")?.focus({ preventScroll: true });
-              return { keep: true };
-            }
-            shown.add(comment.id);
-            const items = card.querySelectorAll(".item");
-            const added = itemEl(comment);
-            added.classList.add("fresh");
-            items[items.length - 1].after(added);
-            body.scrollTop = body.scrollHeight;
-            return { keep: true };
-          }
-        })
-      );
-      return card;
-    }
     const showHint = () => {
       if (store2.get("lab-hint-seen") === "1") return;
       hint.hidden = false;
@@ -2737,19 +2919,6 @@ ${line}`;
       }
     }, true);
     goBtn.addEventListener("click", () => setGo(!S.goMode));
-    const stepNew = (dir) => {
-      const fresh = threads().filter((c) => !isPage(c) && unread(c).length);
-      if (!fresh.length) return;
-      const top = (c) => position(c.anchor || {}).top;
-      fresh.sort((a, b) => top(a) - top(b));
-      const open = S.openId && threads().find((c) => c.id === S.openId);
-      const here = open ? top(open) : null;
-      const after = here == null ? -1 : fresh.findIndex((c) => top(c) > here);
-      const at = fresh.findIndex((c) => c.id === S.openId);
-      const next = at >= 0 ? (at + dir + fresh.length) % fresh.length : here == null ? dir > 0 ? 0 : fresh.length - 1 : dir > 0 ? after < 0 ? 0 : after : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
-      S.chatOpen = false;
-      goTo(fresh[next], !coarse);
-    };
     newPrev.addEventListener("click", () => stepNew(-1));
     doneBtn.addEventListener("click", () => showDoneBtn.click());
     showDoneBtn.addEventListener("click", () => {

@@ -29,13 +29,79 @@ import {
 import { bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 import { bindSheets, backCloses, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
+import { bindChat, drawChat, stamped } from './widget/chat.ts';
+import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
   /** @type {any} */
   const S = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
-  const W = { get S() { return S; }, get bar() { return bar; }, get closeOrNudge() { return closeOrNudge; }, get coarse() { return coarse; }, get el() { return el; }, get host() { return host; }, get openSheet() { return openSheet; }, get root() { return root; }, get scrim() { return scrim; }, get send() { return send; }, get still() { return still; }, get vv() { return vv; } };
+  const W = {
+    get $() { return $; },
+    get DRAFT_MODE() { return DRAFT_MODE; },
+    get LIST_WINDOW() { return LIST_WINDOW; },
+    get OFF() { return OFF; },
+    get S() { return S; },
+    get agentOf() { return agentOf; },
+    get ago() { return ago; },
+    get anchorAt() { return anchorAt; },
+    get bar() { return bar; },
+    get chatBtn() { return chatBtn; },
+    get chatEl() { return chatEl; },
+    get closeOrNudge() { return closeOrNudge; },
+    get coarse() { return coarse; },
+    get composer() { return composer; },
+    get contentEnd() { return contentEnd; },
+    get doneBtn() { return doneBtn; },
+    get drafting() { return drafting; },
+    get el() { return el; },
+    get goBtn() { return goBtn; },
+    get goFace() { return goFace; },
+    get goTo() { return goTo; },
+    get held() { return held; },
+    get holdBtn() { return holdBtn; },
+    get host() { return host; },
+    get isDone() { return isDone; },
+    get isNew() { return isNew; },
+    get isPage() { return isPage; },
+    get keyWord() { return keyWord; },
+    get layer() { return layer; },
+    get listBtn() { return listBtn; },
+    get listEl() { return listEl; },
+    get listed() { return listed; },
+    get markSeen() { return markSeen; },
+    get mine() { return mine; },
+    get nameLine() { return nameLine; },
+    get newNext() { return newNext; },
+    get newPrev() { return newPrev; },
+    get numberOf() { return numberOf; },
+    get onWhat() { return onWhat; },
+    get openSheet() { return openSheet; },
+    get patchKids() { return patchKids; },
+    get placeBar() { return placeBar; },
+    get position() { return position; },
+    get readable() { return readable; },
+    get render() { return render; },
+    get repliesOf() { return repliesOf; },
+    get root() { return root; },
+    get scrim() { return scrim; },
+    get send() { return send; },
+    get sendBtn() { return sendBtn; },
+    get showDoneBtn() { return showDoneBtn; },
+    get stampOf() { return stampOf; },
+    get stamped() { return stamped; },
+    get still() { return still; },
+    get store() { return store; },
+    get tabTitle() { return tabTitle; },
+    get threads() { return threads; },
+    get unread() { return unread; },
+    get vv() { return vv; },
+  };
+  bindList(W);
+  bindChat(W);
+  bindThread(W);
   bindSheets(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
@@ -401,33 +467,6 @@ import { bindSheets, backCloses, slideAway, startSheets, swipeDown } from './wid
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;
   S.keepKeys = false;
-  const goTo = (c, keys = false) => {
-    S.stepping = Boolean(S.openId);
-    S.keepKeys = S.stepping && (keys || root.activeElement?.localName === 'textarea');
-    S.openId = c.id;
-    S.draft = null;
-    if (coarse) S.listOpen = false;
-    render();
-    // The pin comes into view: on phones in the middle of what the sheet leaves free above it; on a computer the pin
-    // and its open card together, in the middle of the window when they fit, else from the pin down.
-    const pinTop = position(c.anchor || {}).top;
-    let top = pinTop - Math.max(40, coarse && S.openCard?.isConnected ? (innerHeight - S.openCard.offsetHeight) / 2 : innerHeight / 3);
-    if (!coarse && S.openCard?.isConnected) {
-      const bottom = S.openCard.getBoundingClientRect().bottom + scrollY;
-      const tall = bottom - pinTop + 28;
-      top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
-    }
-    // A pin near the page's end can't scroll up into the free part above a phone's sheet: the page gets room below its
-    // end while the sheet is open (it went behind the sheet before).
-    if (coarse) {
-      const de = document.documentElement;
-      const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
-      const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
-      de.style.setProperty('--lab-room', `${room}px`);
-      de.classList.toggle('lab-room', room > 0);
-    }
-    scrollTo({ top: Math.max(0, top), behavior: still.matches ? 'auto' : 'smooth' });
-  };
   // Done: resolved, or answered "Done: …" by someone other than its author (the agent).
   // Done means the same everywhere (the list, the pins, show done): what workState says.
   const isDone = (c) => c.resolved || workState(c)[0] === 'done';
@@ -461,223 +500,14 @@ import { bindSheets, backCloses, slideAway, startSheets, swipeDown } from './wid
     goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (cursor)' : S.goMode ? 'go' : 'a comment'}`);
     goBtn.setAttribute('aria-keyshortcuts', '1 2 3');
   }
-  function drawList() {
-    const all = threads();
-    listBtn.hidden = !S.on || (!coarse && !all.length && !held().length); // on phones it carries the agent's light
-    goBtn.hidden = !S.on;
-    if (!goBtn.firstElementChild) goBtn.replaceChildren(el('span', { class: 'gp' }, 'go'), el('kbd', { 'aria-hidden': 'true' }, '1/2/3'));
-    goFace();
-    goBtn.classList.toggle('on', S.goMode && !S.cursorMode);
-    goBtn.classList.toggle('cursor', S.cursorMode);
-    goBtn.setAttribute('aria-pressed', String(S.goMode && !S.cursorMode));
-    const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0); // a new message in a done thread counts too
-    listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), el('kbd', { 'aria-hidden': 'true' }, 'l'));
-    // ‹ › around it step through the new ones, top to bottom of the page, without opening the list.
-    newPrev.hidden = newNext.hidden = !S.on || !all.some((c) => !isPage(c) && unread(c).length);
-    if (!LIST_WINDOW) {
-      // Without the list window the middle shows how many are new (a click goes to the next one). The pills keep their
-      // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
-      newPrev.hidden = newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
-      listBtn.hidden = !S.on;
-      {
-        listBtn.replaceChildren(coarse ? 'new' : keyWord('ne', 'w', ''), el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll))); // phones: no keys
-        listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);
-        listBtn.setAttribute('aria-keyshortcuts', 'w');
-      }
-      listBtn.title = 'next new comment: W, or Control-D while typing (Shift for the one before)';
-      listBtn.disabled = !freshAll;
-      listBtn.classList.toggle('quiet', !freshAll);
-      const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
-      doneBtn.hidden = !S.on;
-      doneBtn.disabled = !doneCount && !S.showDone;
-      doneBtn.classList.toggle('quiet', doneBtn.disabled);
-      doneBtn.replaceChildren(S.showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`, el('kbd', { 'aria-hidden': 'true' }, 'd'));
-      doneBtn.setAttribute('aria-keyshortcuts', 'd');
-    }
-    placeBar();
-    // The browser tab shows how many new messages there are, as "(3) Page title".
-    const tabNew = all.reduce((n, c) => n + unread(c).length, 0);
-    if (!tabTitle.base || !document.title.startsWith('(')) tabTitle.base = document.title.replace(/^\(\d+\) /, '');
-    const want = tabNew ? `(${tabNew}) ${tabTitle.base}` : tabTitle.base;
-    if (document.title !== want) document.title = want;
-    listBtn.classList.toggle('has-new', freshAll > 0);
-    const h = held().length;
-    sendBtn.hidden = !h;
-    sendBtn.textContent = `send ${h} draft${h === 1 ? '' : 's'}`;
-    listEl.hidden = !S.on || !S.listOpen;
-    if (listEl.hidden) return;
-    for (const b of /** @type {NodeListOf<HTMLElement>} */ (listEl.querySelectorAll('[data-f]'))) b.classList.toggle('on', b.dataset.f === S.filter);
-    const fresh = all.filter((c) => !isPage(c) && unread(c).length).length; // chat messages count in the chat
-    listEl.querySelector('[data-f="new"]').textContent = fresh ? `new · ${fresh}` : 'new';
-    // Just new and open for now; work, resolved, mine and draft mode stay in the code, hidden.
-    for (const f of ['work', 'resolved', 'mine']) $(`[data-f="${f}"]`, listEl).hidden = true;
-    holdBtn.hidden = !DRAFT_MODE;
-    const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
-    showDoneBtn.hidden = !doneCount;
-    showDoneBtn.textContent = S.showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`;
-    holdBtn.classList.toggle('on', drafting());
-    if (S.filter === 'work') return listEl.querySelector('.items').replaceChildren(...workItems());
-    const items = listed().map((c) => {
-      const b = el('button', { class: `it${S.openId === c.id ? ' cur' : ''}`, type: 'button' });
-      b.append(document.createTextNode(`${c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(onWhat(c) ? [el('span', {}, `on ${onWhat(c)} `)] : []), el('span', {}, `· ${c.name}${!c.resolved && isDone(c) ? ' · ✅ done' : ''}`), ...(unread(c).length ? [' ', el('span', { class: 'tag' }, `${unread(c).length} new`)] : []));
-      b.addEventListener('click', () => goTo(c));
-      return b;
-    });
-    listEl.querySelector('.items').replaceChildren(...(items.length ? items : [el('div', { class: 'none' }, 'nothing here')]));
-  }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
   const ago = (iso) => {
     const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
     return m < 1 ? 'just now' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
   };
-  // A thread's state for the agent: ['now' | 'next' | 'done' | null, since when].
-  const workState = (c) => {
-    const thread = [c, ...repliesOf(c.id)];
-    const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || '';
-    const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
-    const answered = answer && answer.createdAt > lastPerson;
-    if (c.resolved || (answered && /^done\b/i.test(answer.text))) return ['done', answered ? answer.createdAt : c.createdAt];
-    if (answered && /^on it\b/i.test(answer.text)) return ['now', answer.createdAt];
-    if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['now', c.handedAt];
-    return answered ? [null, ''] : ['next', lastPerson];
-  };
-  function workItems() {
-    const today = new Date().toDateString();
-    const now = [];
-    const next = [];
-    const done = [];
-    for (const c of S.comments.filter((x) => !x.parent)) {
-      const [state, at] = workState(c);
-      if (state === 'now') now.push([c, at]);
-      else if (state === 'next') next.push([c, at]);
-      else if (state === 'done' && new Date(at).toDateString() === today) done.push([c, at]);
-    }
-    const row = ([c, at], when) => {
-      const b = el('button', { class: `it${S.openId === c.id ? ' cur' : ''}`, type: 'button' });
-      b.append(document.createTextNode(`${isPage(c) ? 'chat' : c.resolved ? '✓' : numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), el('span', {}, `· ${when(at)}`));
-      b.addEventListener('click', () => (isPage(c) ? ((S.chatOpen = true), (S.listOpen = false), render()) : goTo(c)));
-      return b;
-    };
-    const part = (title, list, when, newest = false) =>
-      list.length ? [el('div', { class: 'group' }, `${title} · ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
-    const out = [
-      ...part('Now', now, (at) => `on it ${ago(at)}`.replace('on it just now', 'just started')),
-      ...part('Next', next, (at) => `sent ${ago(at)} ago`.replace('just now ago', 'just now')),
-      ...part('Done today', done, (at) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), true),
-    ];
-    return out.length ? out : [el('div', { class: 'none' }, 'nothing in progress on this page')];
-  }
-  // The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
-  // a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.
-  // The time in a bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent, ✓✓ handed to
-  // the agent (its thread went to the agent at or after you wrote it). Chat and threads alike.
-  // The time and its mark sit pinned in the bubble's bottom-right corner, as WhatsApp and Telegram do: an invisible
-  // copy at the end of the last line keeps room for it there, so it shares that line when it fits and gets a line of
-  // its own when it doesn't. Smaller than the words, it sits a touch below their line: a stamp on the bubble.
-  const stamped = (bubble, stamp) => {
-    const room = stamp.cloneNode(true);
-    room.className = 'stamp-room';
-    room.setAttribute('aria-hidden', 'true');
-    for (const n of room.querySelectorAll('[role]')) n.removeAttribute('role');
-    const last = [...bubble.children].reverse().find((n) => n.classList?.contains('p'));
-    (last || bubble).append(room);
-    bubble.append(stamp);
-  };
   S.replyTo = null;
   S.newFrom = null;
-  function drawChat() {
-    const byId = new Map(S.comments.map((c) => [c.id, c]));
-    // Only the chat's own messages (about the page as a whole) and the replies to them: pins live on the page and in the list.
-    const msgs = S.comments
-      .filter((c) => isPage(c) || (c.parent && isPage(byId.get(c.parent) || {})))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      .slice(-150);
-    if (S.on && S.chatOpen && chatEl.hidden) S.newFrom = msgs.find(isNew)?.id || null; // opening: a "new" line above the first unread
-    if (!S.chatOpen) S.newFrom = null;
-    if (S.on && S.chatOpen) markSeen(msgs.filter(isNew)); // open: what's there is read
-    const fresh = msgs.filter(isNew).length;
-    chatBtn.hidden = !S.on;
-    // "chat" with a count (kept in place, grey 0, when there's nothing new); phones the same, without the key letter.
-    {
-      chatBtn.replaceChildren(coarse ? 'chat' : keyWord('', 'c', 'hat'), el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
-      chatBtn.setAttribute('aria-label', `chat, ${fresh} new`);
-      chatBtn.setAttribute('aria-keyshortcuts', 'c');
-    }
-    chatBtn.classList.toggle('has-new', fresh > 0);
-    placeBar(); // the chat button may have just shown: the segment lines follow
-    const opening = chatEl.hidden;
-    chatEl.hidden = !S.on || !S.chatOpen;
-    if (chatEl.hidden) chatEl.classList.remove('full'); // opens at its lower height again
-    if (chatEl.hidden && chatEl.contains(root.activeElement)) /** @type {HTMLElement} */ (root.activeElement).blur(); // a closed chat keeps no focus, so keys work again
-    if (chatEl.hidden) return;
-    const box = $('.msgs', chatEl);
-    // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
-    const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-    const before = new Set(opening ? [] : [.../** @type {HTMLCollectionOf<HTMLElement>} */ (box.children)].map((n) => n.dataset.id));
-    // A message already on screen that hasn't changed keeps its own node: a redraw for one new message used to rebuild
-    // every bubble (a phone showed the chat blink as messages arrived).
-    const kept = new Map([.../** @type {HTMLCollectionOf<HTMLElement>} */ (box.children)].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
-    const same = (n) => {
-      const old = kept.get(n.dataset?.id);
-      return old && old.outerHTML.replace(' fresh', '') === n.outerHTML ? old : n;
-    };
-    patchKids(box, msgs.flatMap((m) => {
-      const root = m.parent ? byId.get(m.parent) : m;
-      const b = el('div', { class: `msg${mine(m) && !m.session ? ' mine' : ''}${root && S.replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(agentOf(m) ? { 'data-agent': agentOf(m) } : {}) });
-      // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
-      // "Done" answer closes the thread.
-      b.append(nameLine(m.name, false));
-      // A reply shows what it answers, as in Telegram: the name and the start of that message; a tap there jumps to it.
-      if (m.parent && root) {
-        const q = el('div', { class: 'quote' });
-        q.append(el('b', {}, String(root.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(root.text.replace(/\s+/g, ' ').slice(0, 90)));
-        q.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const box = $('.msgs', chatEl);
-          const to = $(`[data-id="${root.id}"]`, box);
-          if (!to) return;
-          box.scrollTo({ top: to.offsetTop - box.offsetTop - 12, behavior: still.matches ? 'auto' : 'smooth' });
-          to.animate?.([{ boxShadow: '0 0 0 2px rgb(52,199,89)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 900 });
-        });
-        b.append(q);
-      }
-      b.append(...readable(m.text));
-      stamped(b, stampOf(m, root));
-      return m.id === S.newFrom && m !== msgs[0] ? [el('div', { class: 'newline' }, 'new'), b] : [b];
-    }).map(same));
-    const strip = $('.replying', chatEl);
-    const target = S.replyTo && byId.get(S.replyTo);
-    strip.hidden = !target;
-    if (target) {
-      const x = el('button', { type: 'button', title: 'about the page instead' }, '✕');
-      x.addEventListener('click', () => ((S.replyTo = null), drawChat()));
-      strip.replaceChildren(document.createTextNode(`↩ ${target.name}: ${target.text.replace(/\s+/g, ' ').slice(0, 40)}`), x);
-    }
-    if (!box.firstChild) box.append(el('div', { class: 'none' }, 'say something about the page as a whole'));
-    const chat = chatEl.querySelector('.chat');
-    if (!chat.firstChild)
-      chat.append(
-        composer({
-          placeholder: 'message',
-          onSubmit: async (name, text) => {
-            const { comment } = await send(
-              S.replyTo ? { name, text, parent: S.replyTo } : { name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } },
-            );
-            const answered = S.replyTo && S.comments.find((x) => x.id === S.replyTo);
-            if (answered?.resolved) answered.resolved = false; // writing in a done thread reopens it
-            S.replyTo = null;
-            S.comments.push(comment);
-            markSeen([comment]);
-            box.scrollTop = box.scrollHeight;
-            render();
-            return { keep: true }; // the same box stays, with the cursor in it: the phone's keyboard stays up
-          },
-        }),
-      );
-    chat.querySelector('textarea').placeholder = target ? 'reply' : 'message';
-    if (atEnd) box.scrollTop = box.scrollHeight;
-  }
   // Open comments are numbered 1, 2, 3… in order, the same for everyone, admins and the agent text.
   const numberOf = (c) =>
     S.comments
@@ -727,39 +557,11 @@ import { bindSheets, backCloses, slideAway, startSheets, swipeDown } from './wid
   const repliesOf = (id) => S.comments.filter((c) => c.parent === id);
   // Pins show who left them: the first letter of the name.
   const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
-
-  function placeCard(card, left, top) {
-    layer.append(card);
-    const width = card.offsetWidth;
-    const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
-    card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;
-    // Near the page's end a thread opens above its pin, so it doesn't make the page longer and push things down.
-    const h = card.offsetHeight;
-    const below = top + 10 + h > contentEnd();
-    card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`; // above: clear of the pin (28 px tall)
-    card.style.transformOrigin = below ? '14px 100%' : '';
-  }
   // Where the page's own content ends (not the pins' layer): see inPage().
   const contentEnd = () => {
     inPage(0);
     return pageEnd.y;
   };
-
-  // Draft composer sits to the right of its pin, like the pin is the avatar; below it when there is no room.
-  function placeBeside(node, left, top) {
-    layer.append(node);
-    const width = node.offsetWidth;
-    const right = scrollX + document.documentElement.clientWidth - 12;
-    const h = node.offsetHeight;
-    const end = contentEnd();
-    if (left + 36 + width <= right) {
-      node.style.left = `${left + 36}px`;
-      node.style.top = `${Math.min(top - 37, end - h - 8)}px`; // never past the page's end
-    } else {
-      node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
-      node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
-    }
-  }
 
   // What the last render had open (a thread id or a draft), so cards, pins and areas only animate when they
   // appear, not on every re-render, and a card that closes to nothing can fade out.
@@ -946,208 +748,10 @@ import { bindSheets, backCloses, slideAway, startSheets, swipeDown } from './wid
   // Drag a pin to fix its spot: whoever started the thread (its key is kept in their browser) or an admin.
   // The pin's tip (bottom left) lands where it is dropped; the new spot is saved like a fresh pin.
   S.grabbing = false;
-  function grab(pin, c) {
-    pin.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      const r = pin.getBoundingClientRect();
-      const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
-      const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
-      let moving = false;
-      let last = e;
-      S.grabbing = true;
-      pin.setPointerCapture(e.pointerId);
-      // Page coordinates, so the pin stays under the pointer when the page scrolls mid-drag.
-      const place = () => {
-        pin.style.left = `${start.left + last.clientX - start.x + scrollX - start.sx}px`;
-        pin.style.top = `${start.top + last.clientY - start.y + scrollY - start.sy}px`;
-      };
-      const move = (ev) => {
-        last = ev;
-        if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
-        moving = true;
-        pin.classList.add('dragging');
-        place();
-      };
-      const scrolled = () => moving && place();
-      addEventListener('scroll', scrolled, true);
-      S.dropDrag = () => {
-        removeEventListener('scroll', scrolled, true);
-        S.dropDrag = null;
-      };
-      const up = async (ev) => {
-        pin.removeEventListener('pointermove', move);
-        pin.removeEventListener('pointerup', up);
-        pin.removeEventListener('pointercancel', up);
-        pin.removeEventListener('lostpointercapture', up);
-        S.dropDrag?.();
-        if (!S.grabbing) return; // already ended (the layer was redrawn mid-drag)
-        S.grabbing = false;
-        if (!moving) return;
-        pin.dataset.dragged = '1'; // the click that follows is the drop, not an open
-        setTimeout(() => delete pin.dataset.dragged, 0);
-        const x = ev.clientX - tip.dx;
-        const y = ev.clientY - tip.dy;
-        const under = document.elementsFromPoint(x, y).find((n) => n !== host);
-        if (ev.type === 'pointercancel' || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(OFF)) return render();
-        const before = c.anchor;
-        c.anchor = anchorAt(x, y);
-        render();
-        try {
-          const { comment } = await send({ action: 'move', id: c.id, anchor: c.anchor, edit: store.get(`lab-edit:${c.id}`) || undefined });
-          Object.assign(c, comment);
-        } catch {
-          c.anchor = before; // not saved: back where it was
-          render();
-        }
-      };
-      pin.addEventListener('pointermove', move);
-      pin.addEventListener('pointerup', up);
-      pin.addEventListener('pointercancel', up);
-      pin.addEventListener('lostpointercapture', up);
-    });
-  }
 
   // The open thread's card. New replies (Claude's too) are added to it in place, so the reply box keeps focus.
   S.openCard = null;
   const coarse = matchMedia('(pointer: coarse)').matches;
-  function threadCard(c, fresh = new Set(), focus = false) {
-    const card = el('div', { class: 'card' });
-    // The thread scrolls in .body; the step buttons and the reply box stay put in .foot (phones: the sheet's bottom).
-    const body = el('div', { class: 'body' });
-    const foot = el('div', { class: 'foot' });
-    card.append(el('div', { class: 'handle' }), body, foot);
-    card.addEventListener('click', (e) => e.stopPropagation());
-    // Messages as in the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, and
-    // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.
-    body.classList.add('msgs');
-    const itemEl = (item) => {
-      const box = el('div', { class: `item msg${mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(agentOf(item) ? { 'data-agent': agentOf(item) } : {}) });
-      box.append(nameLine(item.name, false), ...readable(item.text));
-      stamped(box, stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} · ` : ''));
-      return box;
-    };
-    const shown = new Set();
-    const all = [c, ...repliesOf(c.id)];
-    const firstNew = all.find((x) => fresh.has(x.id));
-    for (const item of all) {
-      if (item === firstNew && item !== c) body.append(el('div', { class: 'newline' }, 'new'));
-      body.append(itemEl(item));
-      shown.add(item.id);
-    }
-    card.sync = () => {
-      for (const r of repliesOf(c.id)) {
-        if (shown.has(r.id)) continue;
-        const items = card.querySelectorAll('.item');
-        const added = itemEl(r);
-        added.classList.add('fresh');
-        items[items.length - 1].after(added);
-        shown.add(r.id);
-        markSeen([r]);
-      }
-    };
-    // Resolve: admins, and whoever started the thread (its key is kept in their browser). Delete: admins.
-    const ownKey = store.get(`lab-edit:${c.id}`);
-    let actions = null;
-    if (S.isAdmin || ownKey) {
-      actions = el('div', { class: 'row acts' });
-      const resolve = el('button', { class: 'btn', type: 'button' }, c.resolved ? 'reopen' : 'resolve');
-      const failed = (btn) => (btn.textContent = 'failed, try again');
-      resolve.addEventListener('click', async () => {
-        try {
-          const closing = !c.resolved; // resolved: the thread is done, so its card closes (reopen keeps it open)
-          const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id, ...(ownKey ? { edit: ownKey } : {}) });
-          Object.assign(c, comment);
-          // Resolving closes the comment at once, a quick fade where it is, not the slow slide down (Leo, 15 Nov).
-          if (closing && S.openId === c.id) return (S.closeFast = true), (S.openId = null), render();
-          render();
-        } catch {
-          failed(resolve);
-        }
-      });
-      const del = el('button', { class: 'btn', type: 'button' }, 'delete');
-      // Asked in the card itself, not the browser's dialog: the row swaps to the question, same height, nothing moves.
-      const yes = el('button', { class: 'btn danger', type: 'button' }, 'delete');
-      const no = el('button', { class: 'btn', type: 'button' }, 'cancel');
-      const back = () => {
-        actions.replaceChildren(resolve, del);
-        del.focus();
-      };
-      del.addEventListener('click', () => {
-        actions.replaceChildren(el('span', { class: 'ask' }, repliesOf(c.id).length ? 'delete thread?' : 'delete comment?'), yes, no);
-        no.focus();
-      });
-      no.addEventListener('click', back);
-      actions.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && yes.isConnected) {
-          e.stopPropagation();
-          back();
-        }
-      });
-      yes.addEventListener('click', async () => {
-        try {
-          await send({ action: 'delete', id: c.id }); // the API deletes the replies with it
-        } catch {
-          return failed(yes);
-        }
-        S.comments = S.comments.filter((x) => x.id !== c.id && x.parent !== c.id);
-        S.openId = null;
-        render();
-      });
-      actions.append(...(S.isAdmin ? [resolve, del] : [resolve]));
-      body.append(actions);
-    }
-    // Phones: step through the threads from the sheet (J and K on a keyboard).
-    if (coarse) {
-      // As on a computer: no prev / next, just new · N (the bar's ne(w), which the sheet covers) to the next pin with
-      // something new, top to bottom of the page, further down first.
-      const topOf = (x) => position(x.anchor || {}).top;
-      const here = topOf(c);
-      const fresh = threads().filter((x) => !isPage(x) && x.id !== c.id && unread(x).length).map((x) => [x, topOf(x)]);
-      fresh.sort((p, q) => (p[1] > here ? 0 : 1) - (q[1] > here ? 0 : 1) || p[1] - q[1]);
-      const nav = el('div', { class: 'row nav' });
-      if (fresh.length) {
-        const b = el('button', { class: 'btn', type: 'button' }, `new · ${fresh.length} ›`);
-        b.addEventListener('pointerdown', (e) => e.preventDefault()); // an open keyboard stays open (see goTo)
-        b.addEventListener('click', () => goTo(fresh[0][0]));
-        nav.append(b);
-      }
-      // One row on phones: new on the left, reopen / delete on the right, at the top under the handle like a header, so
-      // the reply box below stands alone as the chat's does (and the messages fade under it the same way).
-      if (actions) nav.append(actions);
-      if (nav.firstChild) card.insertBefore(nav, body);
-    }
-    foot.append(
-      composer({
-        placeholder: 'reply',
-        autofocus: focus,
-        onSubmit: async (name, text) => {
-          const { comment } = await send({ name, text, parent: c.id });
-          S.comments.push(comment);
-          markSeen([comment]);
-          // Writing in a done thread reopens it (the lab does the same): it shows as open at once, pin and buttons.
-          if (c.resolved) {
-            c.resolved = false;
-            render();
-            // The card is drawn again: keep it where you were, at the newest message, with the cursor in the box.
-            const again = S.openCard?.querySelector('.body');
-            if (again) again.scrollTop = again.scrollHeight;
-            S.openCard?.querySelector('textarea')?.focus({ preventScroll: true });
-            return { keep: true };
-          }
-          // Add the reply where it belongs instead of redrawing the card, so nothing on screen blinks
-          // and the reply box keeps its focus for the next one.
-          shown.add(comment.id);
-          const items = card.querySelectorAll('.item');
-          const added = itemEl(comment);
-          added.classList.add('fresh');
-          items[items.length - 1].after(added);
-          body.scrollTop = body.scrollHeight; // the reply just sent is in view above the box
-          return { keep: true };
-        },
-      }),
-    );
-    return card;
-  }
 
   // ---------- events ----------
   const showHint = () => {
@@ -1190,23 +794,6 @@ import { bindSheets, backCloses, slideAway, startSheets, swipeDown } from './wid
     }
   }, true);
   goBtn.addEventListener('click', () => setGo(!S.goMode));
-  const stepNew = (dir) => {
-    const fresh = threads().filter((c) => !isPage(c) && unread(c).length);
-    if (!fresh.length) return;
-    const top = (c) => position(c.anchor || {}).top;
-    fresh.sort((a, b) => top(a) - top(b));
-    // The open one was read when it opened, so it's no longer in the list: step on from where it is on the page.
-    const open = S.openId && threads().find((c) => c.id === S.openId);
-    const here = open ? top(open) : null;
-    const after = here == null ? -1 : fresh.findIndex((c) => top(c) > here);
-    const at = fresh.findIndex((c) => c.id === S.openId);
-    const next = at >= 0 ? (at + dir + fresh.length) % fresh.length
-      : here == null ? (dir > 0 ? 0 : fresh.length - 1)
-      : dir > 0 ? (after < 0 ? 0 : after)
-      : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
-    S.chatOpen = false; // N new from the chat: the chat closes and the new comment opens
-    goTo(fresh[next], !coarse); // the reply box takes the cursor (not on phones: no keyboard popping up)
-  };
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
   showDoneBtn.addEventListener('click', () => {
