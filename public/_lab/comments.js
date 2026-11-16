@@ -91,8 +91,8 @@
       .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
       .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
              background: var(--_bg); border: 0; box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
-             display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12.5px; font-weight: 500;
-             font-variant-numeric: tabular-nums; letter-spacing: -.003em; transform-origin: 0 100%;
+             display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12px; font-weight: 500;
+             font-variant-numeric: tabular-nums; letter-spacing: 0; transform-origin: 0 100%;
              transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
       /* A 1 px edge in the text colour (dark on light pins, light in dark mode) so a pin shows on white and black alike;
          the one you point at or have open gets a green edge. */
@@ -164,7 +164,7 @@
       .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
       .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
       /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
-      .card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 11.5px; letter-spacing: .003em; }
+      .card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 12px; letter-spacing: 0; }
       button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
                    letter-spacing: 0; border-radius: var(--_r-s); transition: color .12s; }
       button.btn:hover { color: var(--_fg); }
@@ -232,7 +232,7 @@
       .list .it { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line per pin; the rest is in its thread */
       .list .it span, .list .none { color: var(--_muted); }
       .list .it .tag { display: inline-block; padding: 0 7px; border-radius: var(--_r-s); background: var(--_accent); color: var(--_accent-fg);
-                       font-size: 11.5px; letter-spacing: .003em; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
+                       font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
       .list .none { padding: 8px; }
       /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
       * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
@@ -265,7 +265,7 @@
       @keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
       .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
       .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
-      .msg b { display: block; font-size: 11.5px; letter-spacing: .003em; font-weight: 600; opacity: .7; margin-bottom: 1px; }
+      .msg b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; opacity: .7; margin-bottom: 1px; }
       /* Each agent's messages in its own brand colour: the name in it, the bubble a soft wash of it (Leo, 15 Nov). */
       .msg[data-agent=claude] { --_brand: #d97757; } .msg[data-agent=codex] { --_brand: #10a37f; } .msg[data-agent=cursor] { --_brand: #8a8a8e; }
       .msg[data-agent=gemini] { --_brand: #4285f4; } .msg[data-agent=copilot] { --_brand: #8957e5; } .msg[data-agent=amp] { --_brand: #f34e3f; }
@@ -274,12 +274,12 @@
       .msg[data-agent] > b { color: var(--_brand); opacity: 1; }
       .msg.mine b { display: none; }
       .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; letter-spacing: .006em; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; letter-spacing: 0; } /* a small green tick, as the ticks on messages */
-      .msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12.5px; letter-spacing: -.003em; line-height: 1.35;
+      .msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12px; letter-spacing: 0; line-height: 1.35;
                     color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-      .msg .quote b { display: block; font-size: 11.5px; letter-spacing: .003em; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+      .msg .quote b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
       .msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; } /* no lone last word */ .msg .p.gap { margin-top: 6px; }
       .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
-      .msg i { display: block; font-style: normal; font-size: 11.5px; letter-spacing: .003em; opacity: .7; margin-bottom: 1px; }
+      .msg i { display: block; font-style: normal; font-size: 12px; letter-spacing: 0; opacity: .7; margin-bottom: 1px; }
       .msg b, .msg i { color: inherit; }
       .msg .stamp { color: inherit; position: absolute; right: 10px; bottom: 6px; font-size: 10px; letter-spacing: .012em; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
       .msg .stamp-room { visibility: hidden; display: inline-block; margin-left: 10px; font-size: 10px; letter-spacing: .012em; line-height: 1; height: 10px; white-space: nowrap; }
@@ -298,7 +298,7 @@
       .msg :is(.stamp, .stamp-room) .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
       .msg :is(.stamp, .stamp-room) .ring { margin: .5px 1.5px 0 5.5px; vertical-align: top; } /* the same 10 px tall as a ✓, so the bubble keeps its height */
       .msg .stamp { height: 10px; }
-      .replying { display: flex; gap: 6px; align-items: center; font-size: 12.5px; letter-spacing: -.003em; color: var(--_muted); padding: 2px 6px; }
+      .replying { display: flex; gap: 6px; align-items: center; font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 2px 6px; }
       .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
       .bar button * { color: inherit; font-weight: inherit; }
       .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
@@ -309,7 +309,7 @@
       .bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
       .bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
       .bar button.go-btn.on kbd { color: #fff !important; }
-      .newline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; letter-spacing: .003em; font-weight: 500; color: var(--_muted); }
+      .newline { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0; font-weight: 500; color: var(--_muted); }
       .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
       /* The left side: who's listening, then copy link; the right side is the bar. */
       .left { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
@@ -332,7 +332,7 @@
       /* Letter spacing follows the size, as Apple's SF text does: looser below 12 px, tighter above (11 +.006em,
          13 −.006, 15 −.016, 17 −.025). Uppercase labels and the ✓✓ overlap keep their own. */
       /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
-      kbd { font-size: 10.5px; letter-spacing: .009em; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
+      kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
             color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
       .bar:hover kbd { opacity: .75; }
       .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
@@ -355,7 +355,7 @@
         .bar .cnt.zero { color: var(--_muted); }
         .bar button.go-btn.on { background: none; color: var(--_fg); }
         .bar button.go-btn.on kbd { color: var(--_muted) !important; }
-        .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 9.5px; letter-spacing: .019em; font-weight: 600;
+        .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
               color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
         .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
         /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
@@ -363,7 +363,7 @@
         /* 3, cursor: the switch is the same pin in grey, saying "off" (regular, a touch bigger than go's bold). */
         .go-btn.cursor .gp { box-shadow: inset 0 0 0 1.25px var(--_muted); color: transparent; position: relative; }
         .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
-                                    font-size: 9.5px; font-weight: 400; letter-spacing: .019em; }
+                                    font-size: 10px; font-weight: 400; letter-spacing: .012em; }
         .more { font-size: 15px !important; letter-spacing: .05em; }
         .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
                      border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
@@ -499,8 +499,8 @@
         .pin { scale: .8; }
         /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
         .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
-        .msg .quote { font-size: 13.5px; letter-spacing: -.008em; }
-        .msg b, .msg .quote b { font-size: 12.5px; letter-spacing: -.003em; }
+        .msg .quote { font-size: 14px; letter-spacing: -.011em; }
+        .msg b, .msg .quote b { font-size: 12px; letter-spacing: 0; }
         .pin.moved { scale: .64; }
         /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
         .bar > button { padding: 12px 14px; min-height: 44px; }
