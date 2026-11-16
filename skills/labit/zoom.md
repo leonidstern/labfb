@@ -1,6 +1,6 @@
 # Zoom
 
-A zoom is a comment. The person presses 3 once to zoom in, again to zoom out, then clicks, draws an area or selects words: the zoom is placed at once, like a go, and its pin shows a magnifier. It reaches you like any comment, with two more lines:
+A zoom is a comment. The person presses 3 once to zoom in, again to zoom out, then clicks, draws an area or selects words: the zoom is placed at once, like a go, and its pin shows arrows in or out. It reaches you like any comment, with two more lines:
 
 - `block: <id>`: the nearest element with an id around the spot.
 - `zoom: out, the bigger picture` or `zoom: in, dive deeper`.

@@ -4,7 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Zoom comments (3 once: zoom in, 3 again: zoom out; the go switch shows a magnifier and "in" or "out"; local labs with plain HTML pages). The pointer moves from 3 to 4. A zoom is a comment placed at once, like a go: a click, a drawn area or selected words, and its pin shows a zoom-in or zoom-out magnifier. Command-Z takes it back. It asks the agent for a deeper look into what it's on, or the bigger picture around it. 1, 2, 4 or Escape leave zoom.
+- Zoom comments (3 once: zoom in, 3 again: zoom out; the go switch shows arrows in or out and the word; local labs with plain HTML pages). The pointer moves from 3 to 4. A zoom is a comment placed at once, like a go: a click, a drawn area or selected words, and its pin shows arrows in or out. Command-Z takes it back. It asks the agent for a deeper look into what it's on, or the bigger picture around it. 1, 2, 4 or Escape leave zoom.
   - The agent writes one block and hands it over with `labit zoom <id> <file> "what it is"`; the lab places it (a bigger picture above the part of the page the comment's block is in, a deeper look right after it), names it and marks it, so nothing else on the page is touched. When it lands, the page scrolls to it. Zooming in on a deeper look goes deeper again.
   - What bigger and deeper mean depends on the block: `skills/labit/zoom.md` says how to get the context and deliver the block, and `skills/labit/zoom/` has one skill per kind (performance, design, code, research, product, testing).
   - The trail is a text file beside the page, `<page>.trail.jsonl`, one step per line. The lab writes it: a pin in a block and the agent's answer become two steps, and so does a zoom.

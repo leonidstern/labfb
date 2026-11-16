@@ -13,12 +13,14 @@ export function bindZoom(w: unknown) {
   W = w;
 }
 
-// The zoom in / zoom out icon: a magnifier with + or −, in the pin, the pointer and the go button.
+// The zoom in / zoom out icon: two arrows on one diagonal, pointing in to the middle or out to the corners (Leo's
+// pick, A2 on the lab's icon page), in the pin, the pointer and the go button.
 export function zoomIcon(dir: Dir) {
   const i = document.createElement('span');
   i.className = 'zi';
   i.setAttribute('aria-hidden', 'true');
-  i.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="6.8" cy="6.8" r="4.6"/><path d="M10.3 10.3 14 14M4.6 6.8h4.4${dir === 'in' ? 'M6.8 4.6v4.4' : ''}"/></svg>`;
+  const d = dir === 'in' ? 'M14 2 9.5 6.5M9.5 3.2v3.3h3.3M2 14l4.5-4.5M6.5 12.8V9.5H3.2' : 'M9.5 6.5 14 2M10.7 2H14v3.3M6.5 9.5 2 14M2 10.7V14h3.3';
+  i.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
   return i;
 }
 

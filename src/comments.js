@@ -235,7 +235,7 @@ import { zoomWords } from '../lib/zoom.ts';
   const el = (tag, attrs = {}, text) => {
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    if (text instanceof Node) node.append(text); // an icon (a zoom pin's magnifier)
+    if (text instanceof Node) node.append(text); // an icon (a zoom pin's arrows)
     else if (text != null) node.textContent = text;
     return node;
   };
@@ -527,7 +527,7 @@ import { zoomWords } from '../lib/zoom.ts';
   // − out), 4 nothing (the pointer).
   function goFace() {
     const gp = goBtn.querySelector('.gp');
-    // On phones the switch is a small round pin: zoom shows as its magnifier alone.
+    // On phones the switch is a small round pin: zoom shows as its arrows alone.
     if (gp) gp.replaceChildren(...(S.zoomMode ? [zoomIcon(S.zoomMode), ...(matchMedia('(pointer: coarse)').matches ? [] : [S.zoomMode])] : [!S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go']));
     // Read out as what a click places, not the letter on it.
     goBtn.setAttribute('aria-label', `a click places: ${S.zoomMode ? `a zoom ${S.zoomMode}` : S.cursorMode ? 'nothing (pointer)' : S.goMode ? 'go' : 'a comment'}`);
