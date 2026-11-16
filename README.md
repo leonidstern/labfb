@@ -38,6 +38,7 @@ Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
 
 - `--wifi` lets your phone comment too. Each device opens a one-time link from `npx @leonidstern/labit invite`, so being on the same wifi isn't enough. The pages still travel in the clear over the wifi.
 - Comments stay in `.lab/` in your project. Add it to `.gitignore`.
+- `3` is zoom, on plain HTML pages: a comment that asks your agent for a deeper look into what it's on (3 once) or the bigger picture around it (3 again). `1` comment, `2` go, `4` pointer.
 - No dependencies, Node 22+. `--help` lists everything else.
 
 Shared labs on a domain (comments from people you send a link to) come later.

@@ -17,6 +17,9 @@ export type Quote = {
 /** Everything a pin remembers about its spot. Saved with the comment and read by agents. */
 export type Anchor = {
   selector: string;
+  /** The nearest element with an id around the spot (zoom: lib/zoom.ts), and on a zoom its direction ("in" or "out"). */
+  block?: string;
+  zoom?: string;
   /** Where in the element, as shares of its width and height. */
   x: number;
   y: number;
@@ -608,6 +611,13 @@ export function anchorAt(clientX, clientY) {
     }
   }
   Object.assign(anchor, schemeAt(target));
+  // The nearest element with an id around the spot: the block a zoom is on (lib/zoom.ts).
+  for (let b: Element | null = target; b && b !== document.body && b !== document.documentElement; b = b.parentElement) {
+    if (b.id) {
+      anchor.block = b.id;
+      break;
+    }
+  }
   return anchor;
 }
 
@@ -840,14 +850,28 @@ export const nameLine = (name, done) => {
 // Draft mode is parked for now (Leo, 2026-11-15): its button is hidden and new pins post at once.
 export const DRAFT_MODE = false;
 export const drafting = () => DRAFT_MODE && store.get('lab-hold') === '1';
-// Messages show web addresses as links that open in a new tab.
+// Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that
+// id, as a link that goes to it there (an agent names the block it placed, a zoom's deeper look: "#speed-deeper").
+// The widget listens for lab-goto and scrolls (src/comments.js).
+const onPage = (id) => {
+  const e = document.getElementById(id);
+  return Boolean(e) && !e.closest('[data-lab-comments]');
+};
 export const linked = (text) => {
   const out = [];
   let at = 0;
-  for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]/g)) {
+  for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]|(?<![\w&/#])#([A-Za-z][\w:.-]*[\w])/g)) {
+    if (m[1] && !onPage(m[1])) continue;
     if (m.index > at) out.push(document.createTextNode(text.slice(at, m.index)));
-    const a = el('a', { href: m[0], target: '_blank', rel: 'noopener noreferrer', class: 'link' }, m[0]);
-    a.addEventListener('click', (e) => e.stopPropagation());
+    const a = m[1]
+      ? el('a', { href: `#${m[1]}`, class: 'link' }, m[0])
+      : el('a', { href: m[0], target: '_blank', rel: 'noopener noreferrer', class: 'link' }, m[0]);
+    a.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!m[1]) return;
+      e.preventDefault();
+      dispatchEvent(new CustomEvent('lab-goto', { detail: m[1] }));
+    });
     out.push(a);
     at = m.index + m[0].length;
   }
