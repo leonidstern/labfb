@@ -1,12 +1,12 @@
-# labfb
+# labit
 
 [![npm](https://img.shields.io/npm/v/labit)](https://www.npmjs.com/package/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
-On npm as `labit` ("lab it"). It used to be `@leonidstern/labfb`, which still works.
+On npm as `labit` ("lab it"). It used to be `labit`, which still works.
 
 Pin comments on pages, and your agent reads them as plain text. Use it on a live domain where anyone with the link can comment, or on your own computer, where your agent (Claude, Codex, Cursor…) answers on the pins while it works.
 
-**Small, no dependencies, runs in any folder.** labfb uses only Node 22+ itself: no packages to install, about 120 kB on npm, 15 files. Run `npx labit` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
+**Small, no dependencies, runs in any folder.** labit uses only Node 22+ itself: no packages to install, about 120 kB on npm, 15 files. Run `npx labit` in any project or folder: nothing goes into your project's dependencies or code, and it works with any stack, from plain HTML to Astro, Next or Vite.
 
 ![Comments pinned on a demo page](docs/comments.png)
 
@@ -25,14 +25,14 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **Shows who is listening:** the label says whether Claude is listening or working. Close the page and Claude waits quietly: your first comment when you're back wakes it, and it stops after an hour.
 - **Phone too:** `--wifi` lets a phone at home join. Comments stay in `.lab/`, one store per project.
 
-Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 49 KB gzipped (the script on the page), and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
+Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 49 KB gzipped (the script on the page), and a [Claude skill](skills/labit/SKILL.md) that knows both flows.
 
 ## Cloud lab
 
 Paste this into your agent. It is the whole setup.
 
 ```text
-Set up labfb (https://github.com/leonidstern/labit) for me on Vercel.
+Set up labit (https://github.com/leonidstern/labit) for me on Vercel.
 
 0. First check whether I already have a lab (a Vercel project with LAB_HOST set, or a site that loads /_lab/comments.js). If I do, stop and tell me: add sites to that one instead.
 1. Fork the repo and import it into Vercel: framework preset "Other", no build command.
@@ -41,7 +41,7 @@ Set up labfb (https://github.com/leonidstern/labit) for me on Vercel.
 4. Add <lab domain> to the Vercel project and tell me the DNS record to create.
 5. For each site that should get comments (slug = a short name, e.g. anna):
    - serve it under the base path /<slug> (Astro `base`, Next `basePath`, Vite `base`) from its own Vercel project; every page answers 200, no redirects
-   - add two rewrites to labfb's vercel.json:
+   - add two rewrites to labit's vercel.json:
      { "source": "/<slug>", "destination": "https://<their-project>.vercel.app/<slug>" },
      { "source": "/<slug>/:path*", "destination": "https://<their-project>.vercel.app/<slug>/:path*" }
    - add this to the site's shared layout, before </body>:
@@ -66,7 +66,7 @@ Set up labfb (https://github.com/leonidstern/labit) for me on Vercel.
 Paste this into Claude Code in your project. It is the whole setup.
 
 ```text
-Start labfb (https://github.com/leonidstern/labit) on this project and listen to my comments.
+Start labit (https://github.com/leonidstern/labit) on this project and listen to my comments.
 
 1. Run `npx labit@latest` here in the background. It finds this project's dev server, or serves plain HTML files.
    If it says the dev server isn't running, start it the way this project does, then run it again. Never stop other servers.
@@ -76,47 +76,47 @@ Start labfb (https://github.com/leonidstern/labit) on this project and listen to
 4. Run wait again right away. Stop when wait says the page was closed.
 ```
 
-Using it often? Install the plugin once, then just say **"start labfb"** in any project. With the plugin, **"use lab"** also makes Claude show new pages in labfb instead of an Artifact:
+Using it often? Install the plugin once, then just say **"start labit"** in any project. With the plugin, **"use lab"** also makes Claude show new pages in labit instead of an Artifact:
 
 ```text
-/plugin marketplace add leonidstern/labfb
-/plugin install labfb@leonidstern
+/plugin marketplace add leonidstern/labit
+/plugin install labit@leonidstern
 ```
 
 Without Claude, run `npx labit@latest` in your project:
 
-- **Dev server (Astro, Next, Vite…):** start it as usual. labfb finds the one running from this project, even with other projects' servers running, and puts comments on top. `--proxy 4321` picks a port yourself.
+- **Dev server (Astro, Next, Vite…):** start it as usual. labit finds the one running from this project, even with other projects' servers running, and puts comments on top. `--proxy 4321` picks a port yourself.
 - **Plain HTML files:** served as they are. Pages somewhere else: `npx labit@latest dist`.
 
 - **Comment:** press `m` (or hold Option) and click. Drag to mark an area.
 - **One lab per project:** `npx labit list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
 - **This project's pages:** `npx labit pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx labit add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
 - **Which model listens:** the session you start decides it. Start it with `claude --model sonnet`, or `/model` in a running session.
-- **MCP (optional):** `npx labit@latest mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code, once for all your projects: `claude mcp add -s user labfb -- npx labit@latest mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
+- **MCP (optional):** `npx labit@latest mcp` is an MCP server with three tools, `comments`, `reply` and `wait`, for the lab in the folder the agent runs in (`comments` also reads a cloud lab page by its address). In Claude Code, once for all your projects: `claude mcp add -s user labit -- npx labit@latest mcp`. The `wait` command stays the quickest way to hear a pin as it's posted.
 - **Options:** `--wifi` lets a phone at home join. `npx labit preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
 ## Other agents
 
-labfb works with any agent that can use a terminal or MCP. Comments are plain text, the local loop is a few shell commands, and the skill is in the shared Agent Skills format.
+labit works with any agent that can use a terminal or MCP. Comments are plain text, the local loop is a few shell commands, and the skill is in the shared Agent Skills format.
 
 - **The plugin (skill + MCP server):**
-  - Codex: `codex plugin marketplace add leonidstern/labfb`, then `codex plugin add labfb@leonidstern`.
-  - Cursor: add the repo as a plugin (Dashboard → Plugins & MCPs → Import from Repo), or copy it to `~/.cursor/plugins/local/labfb`.
-  - Copilot CLI: `copilot plugin marketplace add leonidstern/labfb` (it reads the Claude plugin files).
+  - Codex: `codex plugin marketplace add leonidstern/labit`, then `codex plugin add labit@leonidstern`.
+  - Cursor: add the repo as a plugin (Dashboard → Plugins & MCPs → Import from Repo), or copy it to `~/.cursor/plugins/local/labit`.
+  - Copilot CLI: `copilot plugin marketplace add leonidstern/labit` (it reads the Claude plugin files).
   - Others with Agent Plugins: `plugin.json` and `mcp.json` at the repo root.
-- **Just the skill:** `npx skills add leonidstern/labfb` puts it where your agent reads skills (`.agents/skills/` for most). Then "start labfb" works as in Claude. To point every session at it, add to your `AGENTS.md`:
+- **Just the skill:** `npx skills add leonidstern/labit` puts it where your agent reads skills (`.agents/skills/` for most). Then "start labit" works as in Claude. To point every session at it, add to your `AGENTS.md`:
   ```md
-  Pin comments on pages: labfb. Say "start labfb" to listen; see .agents/skills/labfb/SKILL.md.
+  Pin comments on pages: labit. Say "start labit" to listen; see .agents/skills/labit/SKILL.md.
   ```
 - **Cloud lab:** give the agent the `/_lab/agent/<page path>` link. It's plain text with every open comment.
-- **Local lab:** paste the prompt from [Local lab](#local-lab), or use the skill. labfb tells the agent apart by itself: the page says "talking to Codex", and replies are signed "Codex".
+- **Local lab:** paste the prompt from [Local lab](#local-lab), or use the skill. labit tells the agent apart by itself: the page says "talking to Codex", and replies are signed "Codex".
 - **Agents that aren't woken when a background command ends** (Codex, Antigravity): run `wait --timeout 50` in the foreground, in a loop. The MCP `wait` returns after 50 seconds by default for the same reason (Codex and Cursor stop tool calls at 60).
 
 | Agent | Known by | MCP | Back to the session |
 |---|---|---|---|
-| Claude Code | `CLAUDECODE` | `claude mcp add labfb -- npx labit@latest mcp` | link, or `claude --resume` |
-| Codex | `CODEX_THREAD_ID` | `codex mcp add labfb -- npx labit@latest mcp` | `codex resume <id>` (tap the label to copy) |
+| Claude Code | `CLAUDECODE` | `claude mcp add labit -- npx labit@latest mcp` | link, or `claude --resume` |
+| Codex | `CODEX_THREAD_ID` | `codex mcp add labit -- npx labit@latest mcp` | `codex resume <id>` (tap the label to copy) |
 | Cursor | `CURSOR_AGENT` | its MCP settings | |
 | Amp | `AMP_CURRENT_THREAD_ID` | its MCP settings | thread link |
 | opencode | `OPENCODE_CLIENT` | its MCP settings | |
@@ -124,7 +124,7 @@ labfb works with any agent that can use a terminal or MCP. Comments are plain te
 | Copilot CLI | set `LAB_AGENT=copilot` | its MCP settings | |
 
 - **Choose:** `LAB_AGENT=<name>` overrides who is listening (any name), and `LAB_AGENT_NAME` signs replies.
-- **Codex's sandbox:** if `wait` or `reply` can't reach the lab, labfb says so. Use the MCP tools, or allow it: `-c sandbox_workspace_write.network_access=true`.
+- **Codex's sandbox:** if `wait` or `reply` can't reach the lab, labit says so. Use the MCP tools, or allow it: `-c sandbox_workspace_write.network_access=true`.
 
 ```sh
 npx labit@latest                 # start the lab in the project
@@ -135,10 +135,10 @@ The MCP server finds the project from the client's root folder or the shell's fo
 
 ## Updating
 
-- **The command:** start labfb with `npx labit@latest` and npx fetches the newest version (plain `npx labit` may reuse an older copy it keeps). When a newer one is out, labfb says so as it starts; it checks npm at most once a day. `LABFB_NO_UPDATE_CHECK=1` turns that off.
-- **The Claude Code plugin:** `claude plugin marketplace update leonidstern`, then `claude plugin update labfb@leonidstern`.
+- **The command:** start labit with `npx labit@latest` and npx fetches the newest version (plain `npx labit` may reuse an older copy it keeps). When a newer one is out, labit says so as it starts; it checks npm at most once a day. `LABIT_NO_UPDATE_CHECK=1` turns that off.
+- **The Claude Code plugin:** `claude plugin marketplace update leonidstern`, then `claude plugin update labit@leonidstern`.
 - **The MCP server:** added with `@latest` (as above), it starts the newest version each time.
-- **Your cloud lab:** sync your fork of labfb with this repo on GitHub ("Sync fork") and redeploy; every site on the lab gets the new widget from the lab domain.
+- **Your cloud lab:** sync your fork of labit with this repo on GitHub ("Sync fork") and redeploy; every site on the lab gets the new widget from the lab domain.
 
 ## Both
 

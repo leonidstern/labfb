@@ -1,5 +1,5 @@
 {
-  // TypeScript checks labfb's plain JavaScript: no .ts files, no build, nothing emitted.
+  // TypeScript checks labit's plain JavaScript: no .ts files, no build, nothing emitted.
   // Types come from JSDoc comments, e.g. /** @type {HTMLTextAreaElement} */ (el).
   // The gate counts the errors and lets the count only go down (npm run typecheck lists them).
   "compilerOptions": {

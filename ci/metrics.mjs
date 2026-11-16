@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The judge for labfb: deterministic metrics, measured the same way in CI and locally.
+// The judge for labit: deterministic metrics, measured the same way in CI and locally.
 //
 //   collect <out.json>                                 measure the current tree
 //   compare <current.json> <reference.json> [--must-improve <metric>]
@@ -38,7 +38,7 @@ const METRICS = {
   },
   runtimeDependencies: {
     kind: "ratchet", dir: "down", ideal: 0, agent: false,
-    hint: "labfb promises zero dependencies. Remove the new one, or decide to drop the promise.",
+    hint: "labit promises zero dependencies. Remove the new one, or decide to drop the promise.",
   },
   typeErrors: {
     kind: "ratchet", dir: "down", ideal: 0,
@@ -130,9 +130,9 @@ function collect() {
   return m;
 }
 
-// Pinned TypeScript, installed once into a temp folder (labfb itself has no dependencies).
+// Pinned TypeScript, installed once into a temp folder (labit itself has no dependencies).
 function typeCheck() {
-  const dir = join(tmpdir(), `labfb-ci-${TYPES.join("_").replace(/[^\w.-]/g, "-")}`);
+  const dir = join(tmpdir(), `labit-ci-${TYPES.join("_").replace(/[^\w.-]/g, "-")}`);
   const tsc = join(dir, "node_modules", "typescript", "bin", "tsc");
   if (!existsSync(tsc)) {
     const i = run(`npm install --prefix "${dir}" --no-save --no-audit --no-fund --silent ${TYPES.join(" ")}`);

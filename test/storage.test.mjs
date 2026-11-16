@@ -18,7 +18,7 @@ after(() => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let nextPort = 5000 + Math.floor(Math.random() * 400);
 const folder = () => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-storage-'));
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-storage-'));
   dirs.push(d);
   fs.writeFileSync(path.join(d, 'index.html'), '<!doctype html><h1>Hi</h1>');
   return d;
