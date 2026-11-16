@@ -59,10 +59,7 @@ For the agent, from the project (any folder under it):
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread; --wait listens again right after.
   labit resolve <id> [--page /path]
   labit zoom <id> <file> "what it is"
-      A zoom (a pin that says zoom: out or zoom: in): hand the block you wrote to the lab. <file> holds one element:
-      the bigger picture, or the deeper look. The lab puts it on the page (a bigger picture above the part the block is
-      in, a deeper look right after it), names it and adds the request and your step to the page's trail
-      (<page>.trail.jsonl). If it refuses, it says what to fix.
+      Answer a zoom: <file> holds one element. The lab places it and records it in <page>.trail.jsonl.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
 page), archive/ (done threads with nothing new in 30 days), server.json (port, key, session; owner-only), seen.
@@ -1154,13 +1151,7 @@ const handler = async (req, res) => {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ ids }));
     }
-    // Zoom (lib/zoom.ts). A page's trail, for the zoom card's "how we got here"; and an agent handing over the block it
-    // wrote for a zoom, which the lab puts on the page and into the trail, so nothing else on the page is touched.
-    if (pathname === '/_lab/api/trail' && req.method === 'GET') {
-      const page = url.searchParams.get('page') || '';
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      return res.end(JSON.stringify({ steps: parseTrail(readTrail(page)), kept: Boolean(trailFile(page)) }));
-    }
+    // Zoom (lib/zoom.ts): an agent hands over the block it wrote; the lab puts it on the page and into the trail.
     if (pathname === '/_lab/api/zoom' && req.method === 'POST') {
       if (!isAgent(req)) return res.writeHead(403).end();
       const b = JSON.parse((await new Response(req).text()) || '{}');

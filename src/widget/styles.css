@@ -397,10 +397,12 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
   /* Reaching 60 px above the sheet's edge over the dimmed page (Leo, 15 Nov: "the whole top and a bit above", then
      "do more"); the bar and the layout stay as they were. The chat's and the list's header reach up the same way. */
-  /* The grab handle: a 36×4 pill with round ends (a bar and two round caps), on every sheet. */
-  .handle { display: block; flex: none; height: 86px; margin-top: -68px; touch-action: none; position: relative;
-          background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 68px / 32px 4px no-repeat, radial-gradient(circle, color-mix(in srgb, var(--_fg) 18%, transparent) 1.5px, transparent 2px) calc(50% - 16px) 68px / 4px 4px no-repeat, radial-gradient(circle, color-mix(in srgb, var(--_fg) 18%, transparent) 1.5px, transparent 2px) calc(50% + 16px) 68px / 4px 4px no-repeat; }
+  /* The grab handle: a 36×4 pill with round ends, drawn once (::after) on every sheet. */
+  .handle { display: block; flex: none; height: 86px; margin-top: -68px; touch-action: none; position: relative; }
   .list .tabs { position: relative; }
+  .handle::after, .list .tabs::after { content: ''; position: absolute; left: 50%; top: 68px; width: 36px; height: 4px; margin-left: -18px;
+    border-radius: 2px; background: color-mix(in srgb, var(--_fg) 18%, transparent); pointer-events: none; }
+  .list .tabs::after { top: 8px; }
   .list .tabs::before { content: ''; position: absolute; left: 0; right: 0; top: -60px; height: 60px; }
   .list .tabs { touch-action: pan-x; }
   .chatwin .tabs { touch-action: none; }
@@ -433,7 +435,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card { transition: height .38s cubic-bezier(.32, .72, 0, 1); } /* a comment pulls up to full height as the chat does */
   /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
   .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
-                background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 32px 4px no-repeat, radial-gradient(circle, color-mix(in srgb, var(--_fg) 18%, transparent) 1.5px, transparent 2px) calc(50% - 16px) 8px / 4px 4px no-repeat, radial-gradient(circle, color-mix(in srgb, var(--_fg) 18%, transparent) 1.5px, transparent 2px) calc(50% + 16px) 8px / 4px 4px no-repeat, var(--_bg); }
+                background: var(--_bg); }
   .list .items { padding: 0 12px calc(10px + var(--_safe)); }
   .chatwin .msgs { padding: 4px 12px 8px; }
   .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
@@ -502,7 +504,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card, .float, .list { left: var(--_gap) !important; right: var(--_gap); bottom: var(--_gap) !important; border-radius: var(--_card-r) !important;
     background: var(--_bg);
     box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px rgba(0, 0, 0, .18); transform-origin: var(--lab-from, 50% 100%); }
-  .list .tabs { background: linear-gradient(color-mix(in srgb, var(--_fg) 18%, transparent) 0 0) center 8px / 32px 4px no-repeat, radial-gradient(circle, color-mix(in srgb, var(--_fg) 18%, transparent) 1.5px, transparent 2px) calc(50% - 16px) 8px / 4px 4px no-repeat, radial-gradient(circle, color-mix(in srgb, var(--_fg) 18%, transparent) 1.5px, transparent 2px) calc(50% + 16px) 8px / 4px 4px no-repeat; border-radius: var(--_card-r) var(--_card-r) 0 0; }
+  .list .tabs { border-radius: var(--_card-r) var(--_card-r) 0 0; }
   .card::after, .float::after, .list::after { content: none; }
   :host([data-kb]) :is(.card, .list:not([hidden])) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
   :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
