@@ -12,6 +12,7 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
 import { REGISTRY, runningLabs } from './lib/labs.ts';
+import { ZoomError, dirOf, place, zoomName } from './lib/zoom.ts';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,8 @@ For the agent, from the project (any folder under it):
   labit reply <id> "what you did" [--resolve] [--wait] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread; --wait listens again right after.
   labit resolve <id> [--page /path]
+  labit zoom <id> <file>
+      Answer a zoom: <file> holds one element, the deeper look or the bigger picture. The lab places it on the page.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
 page), archive/ (done threads with nothing new in 30 days), server.json (port, key, session; owner-only), seen.
@@ -78,7 +81,7 @@ if (unknownFlags.length) die(`Unknown option ${unknownFlags[0]}. See: ${CMD} --h
 const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 
 // The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, invite): lib/commands.ts.
-if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite'].includes(pos[0])) {
+if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite', 'zoom'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -108,7 +111,7 @@ const alreadyRunning = (() => {
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
-if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve'].includes(pos[0])) {
+if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'zoom'].includes(pos[0])) {
   const home = runningLabs().find((lab) => ROOT.startsWith(lab.root + path.sep));
   if (home) {
     const url = `http://localhost:${home.port}/${path.relative(home.root, ROOT).split(path.sep).map(encodeURIComponent).join('/')}/`;
@@ -326,6 +329,8 @@ const fileFor = (page) => {
   if (!fileMemo.has(page)) fileMemo.set(page, findFile(page));
   return fileMemo.get(page);
 };
+// The zoom skill an agent reads before answering a zoom (skills/ ships in the package, beside dist/).
+const ZOOM_SKILL = path.join(REPO, 'skills/labit/zoom.md');
 const findFile = (page) => {
   if (!fileIndex) {
     fileIndex = new Map();
@@ -857,6 +862,7 @@ async function unseen(scope = pages()) {
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n` + (blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '') +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
+    (/\nzoom: (in|out)\b/.test(blocks.join('\n')) ? `\nA pin that says "zoom": read ${ZOOM_SKILL} first. Write one block to a file, then ${CMD} zoom <id> <file>, then reply.` : '') +
     `\n${WRITE_SHORT}`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
@@ -1131,6 +1137,32 @@ const handler = async (req, res) => {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ ids }));
     }
+    // Zoom (lib/zoom.ts): an agent hands over the block it wrote; the lab puts it on the page. The pin keeps its id.
+    if (pathname === '/_lab/api/zoom' && req.method === 'POST') {
+      if (!isAgent(req)) return res.writeHead(403).end();
+      const b = JSON.parse((await new Response(req).text()) || '{}');
+      const fail = (status, error) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ error }));
+      const page = String(b.page || '');
+      const c = commentsOf(page).find((x) => x.id === b.id && !x.parent);
+      const dir = dirOf(c?.anchor?.zoom);
+      if (!c || !dir) return fail(404, 'that pin is not a zoom');
+      if (c.zoomed) return fail(409, `the ${zoomName(dir)} for this pin is already on the page: #${c.zoomed}`);
+      if (!c.anchor.block) return fail(409, `the spot is in no element with an id: put the ${zoomName(dir)} on the page yourself, next to the spot`);
+      const rel = !PROXY && fileFor(page);
+      if (!rel || !/\.html?$/i.test(rel)) return fail(409, `this page is not a plain HTML file the lab can write: put the ${zoomName(dir)} on the page yourself`);
+      try {
+        const out = place({ html: fs.readFileSync(path.join(ROOT, rel), 'utf8'), block: c.anchor.block, dir, made: String(b.html || '') });
+        // Written in place, not through a .tmp beside it: the watcher takes a .tmp for "something else changed" and
+        // reloads the page, where a saved page alone is patched in place.
+        fs.writeFileSync(path.join(ROOT, rel), out.html);
+        setComment(page, c.id, { zoomed: out.id });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ id: out.id, dir, file: rel }));
+      } catch (e) {
+        if (e instanceof ZoomError) return fail(422, e.message);
+        throw e;
+      }
+    }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);
       // The widget's list (GET ?page=/x and nothing else) is sent as kept while that page hasn't changed. Kept apart for
@@ -1169,6 +1201,14 @@ const handler = async (req, res) => {
             const listy = (t) => String(t).split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length >= 2;
             const oneThing = asks.length === 1 && !listy(asks[0].text);
             if (oneThing && !root.resolved && root.anchor?.kind !== 'page') h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
+          }
+          // A zoom closes itself once its block is on the page and the agent has answered (Leo, 16 Nov): the block is the
+          // answer. Only while the person hasn't written more in the thread; writing again reopens it, as above.
+          if (agent && stored.parent && h.has(stored.parent)) {
+            const root = JSON.parse(h.get(stored.parent));
+            const more = [...h.values()].map((v) => JSON.parse(v)).some((x) => x.parent === root.id && x.id !== stored.id && !x.session);
+            const placed = root.anchor?.zoom && root.zoomed && !root.resolved && !more;
+            if (placed) h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
         }
