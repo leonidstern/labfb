@@ -16,7 +16,7 @@ after(() => {
   for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let nextPort = 5000 + Math.floor(Math.random() * 400);
+let nextPort = 7000 + Math.floor(Math.random() * 400); // clear of 5060 and 5061, which fetch refuses ("bad port")
 const folder = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-storage-'));
   dirs.push(d);

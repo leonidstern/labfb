@@ -102,7 +102,7 @@ fs.writeFileSync(path.join(DIR, 'index.html'), '<h1>page</h1>');
 fs.writeFileSync(path.join(DIR, '.env'), 'SECRET=1');
 fs.writeFileSync(path.join(OUTSIDE, 'private.txt'), 'outside the folder');
 fs.symlinkSync(path.join(OUTSIDE, 'private.txt'), path.join(DIR, 'link.txt'));
-const PORT = 5000 + Math.floor(Math.random() * 90);
+const PORT = 5200 + Math.floor(Math.random() * 90); // clear of 5060 and 5061, which fetch refuses ("bad port")
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], {
   cwd: DIR,
   env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' },
@@ -234,5 +234,6 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal(r.status, 302);
   const cookie = r.cookie.split(';')[0];
   assert.equal((await wraw('/', { host: lan, headers: { cookie } })).status, 200, 'in with the cookie');
-  assert.equal((await wraw('/', { host: lan, headers: { cookie: cookie.slice(0, -1) + '0' } })).status, 403, 'a forged cookie');
+  const forged = cookie.slice(0, -1) + (cookie.endsWith('0') ? '1' : '0'); // always one character off the real one
+  assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
 });

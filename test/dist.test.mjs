@@ -19,7 +19,7 @@ test('the built copy in dist/ runs and serves a page with the widget', async () 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-dist-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1>hi</h1>');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
-  const port = 6400 + Math.floor(Math.random() * 500);
+  const port = 8000 + Math.floor(Math.random() * 500); // clear of 6566 and 6665-6669, which fetch refuses ("bad port")
   const kid = spawn(process.execPath, [bin, dir, '--no-open', '--port', String(port)], { env: { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1' } });
   kids.push(kid);
   const url = `http://localhost:${port}`;
