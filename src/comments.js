@@ -28,7 +28,7 @@ import {
 } from './widget/anchoring.ts';
 import { bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
-import { bindSheets, backCloses, leave, letGo, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
@@ -610,8 +610,19 @@ import { bindLive, startLive } from './widget/live.ts';
         prev.classList.add('out');
         prev.inert = true;
         layer.append(prev);
-        const dur = leave(prev); // down past the screen's bottom with the keyboard, the dim fading with it (sheets.ts)
+        // It shrinks back with the keyboard going (sheets.ts): after a send, into the new pin.
+        const newPin = S.posted && pinsById.get(S.posted);
+        const sent = newPin?.getBoundingClientRect();
+        if (newPin) newPin.style.animationDelay = '250ms'; // it pops in as the card arrives (lab B2)
+        const dur = leave(prev, 0, sent && { x: sent.left + sent.width / 2, y: sent.top + sent.height / 2 });
         setTimeout(() => (prev.remove(), letGo(prev)), dur);
+      }
+      // Phones: a sheet that opens grows out of what was tapped (sheets.ts).
+      if (coarse) {
+        const sheet = /** @type {HTMLElement | null} */ (root.querySelector('.card:not(.out), .float:not(.out)')) || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
+        const key = sheet && (S.draft ? 'draft' : S.openId || (S.listOpen ? 'list' : S.chatOpen ? 'chat' : ''));
+        if (sheet && key !== S.sheetKey) fromTap(sheet);
+        S.sheetKey = key;
       }
       markQuote(quoted);
       S.shown = now;
@@ -660,7 +671,7 @@ import { bindLive, startLive } from './widget/live.ts';
       const pin = el(
         'button',
         {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
+          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? (coarse ? ' arrive' : ' in') : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
           type: 'button',
           title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
           // Its state in words too (the ring, the tick and the new dot are only seen).
@@ -759,6 +770,7 @@ import { bindLive, startLive } from './widget/live.ts';
             S.draft = null;
             S.openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
             S.posted = comment.id;
+            holdKeyboard(); // the keyboard waits until the card has flown into its pin (sheets.ts)
             render();
           },
         }),
@@ -1400,6 +1412,8 @@ import { bindLive, startLive } from './widget/live.ts';
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
+  // The agent's ring draws its arc in (lab C2): an arc length that can animate has to be registered on the page itself.
+  fonts.textContent += '@property --lab-arc { syntax: "<percentage>"; inherits: false; initial-value: 66%; }';
   // The room a phone's sheet made below the page's end (see goTo) stays after the sheet closes, so the page doesn't jump
   // up at the end of the slide; it shrinks away as you scroll back up.
   fonts.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
