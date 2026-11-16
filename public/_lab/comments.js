@@ -1376,7 +1376,7 @@ ${line}`;
     return w ? `"${w.length > 40 ? `${w.slice(0, 39)}\u2026` : w}"` : "";
   };
   var stampOf = (m, root, prefix = "") => {
-    const { el: el2, mine, repliesOf, workState } = d2;
+    const { el: el2, mine, repliesOf, workState: workState2 } = d2;
     const at = new Date(m.createdAt);
     const time = at.toDateString() === (/* @__PURE__ */ new Date()).toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString([], { day: "numeric", month: "short" });
     const stamp = el2("span", { class: "stamp" });
@@ -1385,7 +1385,7 @@ ${line}`;
       const thread = root ? [root, ...repliesOf(root.id)] : [m];
       const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
       const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
-      if (!answered && latest && root && workState(root)[0] === "now") {
+      if (!answered && latest && root && workState2(root)[0] === "now") {
         stamp.classList.add("busy");
         stamp.append(el2("span", { class: "ring", role: "img", "aria-label": "the agent is on it" }));
       } else if (answered) {
@@ -1398,6 +1398,1096 @@ ${line}`;
     }
     return stamp;
   };
+
+  // src/widget/sheets.ts
+  var W;
+  function bindSheets(w) {
+    W = w;
+  }
+  var grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
+  var scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
+  var SPRING = "cubic-bezier(.32,.72,0,1)";
+  function slideAway(node, close, ms = 0) {
+    if (!W.coarse || !node || W.still.matches) return close();
+    if (!W.host.hasAttribute("data-kb")) W.root.activeElement?.blur();
+    node.style.pointerEvents = "none";
+    node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : "transform .22s cubic-bezier(.4, 0, 1, 1)";
+    W.scrim.style.transition = `opacity ${ms || 220}ms`;
+    node.style.transform = "translateY(100%)";
+    W.scrim.style.opacity = "0";
+    W.bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
+    W.host.style.setProperty("--lab-p", "1");
+    setTimeout(() => {
+      W.root.activeElement?.blur();
+      close();
+      node.style.pointerEvents = "";
+      node.style.transform = node.style.transition = W.scrim.style.opacity = W.scrim.style.transition = W.bar.style.transition = "";
+      W.host.style.removeProperty("--lab-p");
+    }, ms || 220);
+  }
+  function backCloses() {
+    const open = matchMedia("(pointer: coarse)").matches && W.host.hasAttribute("data-sheet");
+    if (!open && W.S.backWatcher) {
+      const w = W.S.backWatcher;
+      W.S.backWatcher = null;
+      w.destroy();
+    }
+    if (open && !W.S.backWatcher && "CloseWatcher" in window) {
+      try {
+        const w = new window.CloseWatcher();
+        w.onclose = () => {
+          if (W.S.backWatcher === w) W.S.backWatcher = null;
+          W.closeOrNudge();
+          backCloses();
+        };
+        W.S.backWatcher = w;
+      } catch {
+      }
+    }
+  }
+  function swipeDown(node, close, grows = false) {
+    if (!W.coarse) return;
+    let raw = 0;
+    let scrolledAt = -1e9;
+    let releasedAt = -1e9;
+    node.addEventListener("scroll", () => scrolledAt = performance.now(), { capture: true, passive: true });
+    node.addEventListener("click", (e) => {
+      if (performance.now() - releasedAt < 200) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+    node.addEventListener("focusin", (e) => {
+      if (performance.now() - releasedAt < 200 && e.target.localName === "textarea") e.target.blur();
+    });
+    let x0 = 0;
+    let y0 = 0;
+    let dy = 0;
+    let v = 0;
+    let last = null;
+    let mode = null;
+    let box = null;
+    let fromScrim = false;
+    const onStart = (e) => {
+      fromScrim = e.currentTarget === W.scrim;
+      if (fromScrim && W.openSheet() !== node) return void (mode = "off");
+      const t = e.touches[0];
+      x0 = t.clientX;
+      y0 = t.clientY;
+      dy = v = raw = 0;
+      last = { y: y0, at: e.timeStamp };
+      box = fromScrim ? null : scrollerIn(e, node);
+      mode = e.touches.length > 1 || box?.localName === "textarea" ? "off" : null;
+    };
+    node.addEventListener("touchstart", onStart, { passive: true });
+    W.scrim.addEventListener("touchstart", onStart, { passive: true });
+    const onMove = (e) => {
+      if (fromScrim !== (e.currentTarget === W.scrim)) return;
+      const t = e.touches[0];
+      if (mode === "off" && box && box.localName !== "textarea" && e.touches.length === 1 && e.cancelable && box.scrollTop <= 0 && t.clientY > last.y + 1) {
+        mode = "drag";
+        y0 = t.clientY;
+        v = 0;
+        last = { y: t.clientY, at: e.timeStamp };
+      }
+      if (mode === "off") return void (last = { y: t.clientY, at: e.timeStamp });
+      if (mode === "hold") return e.preventDefault();
+      if (!mode) {
+        const down = t.clientY - y0;
+        const across = t.clientX - x0;
+        if (!down && !across) return;
+        const sideways = Math.abs(across) > Math.abs(down);
+        const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.25;
+        if (fromScrim) mode = sideways ? "hold" : "drag";
+        else if (grabArea(e.target)) mode = sideways && e.target.closest(".tabs") ? "off" : "drag";
+        else if (nearTop && box?.localName !== "textarea") mode = "drag";
+        else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? "drag" : "off";
+        else mode = sideways ? "hold" : "drag";
+        W.S.dbg?.(`touch ${String(e.target.className || e.target.localName).slice(0, 20)} at ${Math.round(y0 - node.getBoundingClientRect().top)}/${node.offsetHeight} down${Math.round(down)} \u2192 ${mode}${e.cancelable ? "" : " (not cancelable)"}${box ? ` box${Math.round(box.scrollTop)}` : ""}`);
+        if (mode === "off") return;
+        if (mode === "hold") return e.preventDefault();
+      }
+      e.preventDefault();
+      raw = t.clientY - y0;
+      const size = node.offsetHeight || 400;
+      dy = raw >= 0 ? raw : -(1 - 1 / (-raw * 0.55 / size + 1)) * size;
+      if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
+      last = { y: t.clientY, at: e.timeStamp };
+      node.style.transition = W.scrim.style.transition = "none";
+      node.style.transform = `translateY(${dy}px)`;
+      W.scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
+      W.bar.style.transition = "none";
+      W.host.style.setProperty("--lab-p", String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
+    };
+    node.addEventListener("touchmove", onMove, { passive: false });
+    W.scrim.addEventListener("touchmove", onMove, { passive: false });
+    const end = (e) => {
+      if (fromScrim !== (e.currentTarget === W.scrim)) return;
+      const was = mode;
+      mode = null;
+      if (was === "drag") W.S.sheetDraggedAt = performance.now();
+      if (was !== "drag") return;
+      releasedAt = performance.now();
+      if (e.timeStamp - last.at > 80) v = 0;
+      const h = node.offsetHeight || innerHeight;
+      const settle = () => {
+        node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
+        W.scrim.style.transition = "opacity 300ms";
+        node.style.transform = W.scrim.style.opacity = "";
+        W.bar.style.transition = "";
+        W.host.style.removeProperty("--lab-p");
+        setTimeout(() => node.style.transition = W.scrim.style.transition = "", 400);
+      };
+      if (grows && !node.classList.contains("full") && (raw < -40 || v < -0.4)) return node.classList.add("full"), node.classList.contains("card") && (W.S.cardFull = true), settle();
+      if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), node.classList.contains("card") && (W.S.cardFull = false), settle();
+      const rest = dy + Math.max(0, v) * 499;
+      W.S.dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} \u2192 ${v > -0.1 && rest > h / 2 ? "close" : "stay"}`);
+      if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+      node.style.transition = `transform 380ms ${SPRING}`;
+      W.scrim.style.transition = "opacity 300ms";
+      node.style.transform = W.scrim.style.opacity = "";
+      W.bar.style.transition = "";
+      W.host.style.removeProperty("--lab-p");
+      setTimeout(() => node.style.transition = W.scrim.style.transition = "", 400);
+    };
+    node.addEventListener("touchend", end);
+    W.scrim.addEventListener("touchend", end);
+    W.scrim.addEventListener("touchcancel", end);
+    node.addEventListener("touchcancel", end);
+  }
+  function startSheets() {
+    if (W.coarse && W.vv) {
+      const probe = W.el("i", { style: "position:fixed;top:0;bottom:0;left:0;width:0;visibility:hidden;pointer-events:none" });
+      const strip = W.el("i", { style: "position:absolute;left:0;width:100vw;display:none;background:var(--_bg);z-index:3;pointer-events:none" });
+      W.root.append(probe, strip);
+      let fitted = "";
+      const fit = () => {
+        const zoomed = Math.abs(W.vv.scale - 1) > 0.01;
+        const r = probe.getBoundingClientRect();
+        const field = W.root.activeElement || document.activeElement;
+        const typing = /^(textarea|input|select)$/.test(field?.localName || "") || Boolean(field?.isContentEditable);
+        const top = zoomed || !typing ? 0 : W.vv.offsetTop;
+        const seen = top + W.vv.height;
+        const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen));
+        const gap = zoomed ? 0 : Math.max(0, Math.round(seen - r.bottom));
+        const vh = zoomed ? 0 : Math.round(W.vv.height);
+        const sheet = W.host.hasAttribute("data-sheet");
+        const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
+        if (key === fitted) {
+          const open2 = sheet ? W.openSheet() : null;
+          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.getBoundingClientRect().top });
+          return;
+        }
+        fitted = key;
+        W.host.style.setProperty("--lab-kb", `${kb}px`);
+        W.host.style.setProperty("--lab-top", `${Math.round(top)}px`);
+        if (vh) W.host.style.setProperty("--lab-vh", `${vh}px`);
+        else W.host.style.removeProperty("--lab-vh");
+        W.host.toggleAttribute("data-kb", kb > 60);
+        strip.style.display = sheet && gap ? "block" : "none";
+        strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
+        strip.style.height = `${gap}px`;
+        const open = sheet ? W.openSheet() : null;
+        const slid = (n) => {
+          try {
+            return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0;
+          } catch {
+            return 0;
+          }
+        };
+        const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
+        const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !W.still.matches;
+        if (sliding) {
+          open.style.transition = "none";
+          void open.offsetHeight;
+        }
+        const at = open ? open.getBoundingClientRect().top - slid(open) : null;
+        if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = "";
+        if (sliding && Math.abs(fit.top - at) > 8) {
+          open.style.transform = `translateY(${fit.top - at}px)`;
+          void open.offsetHeight;
+          open.style.transition = `transform 340ms ${SPRING}`;
+          open.style.transform = "";
+          clearTimeout(fit.done);
+          fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ""), 360);
+        }
+        Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null });
+      };
+      W.S.refit = fit;
+      W.root.addEventListener("focusin", () => setTimeout(fit, 50));
+      W.root.addEventListener("focusout", () => setTimeout(fit, 50));
+      W.vv.addEventListener("resize", fit);
+      W.vv.addEventListener("scroll", fit);
+      fit();
+      if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
+        let lines = [];
+        let t0 = performance.now();
+        let sendTimer = 0;
+        const row = (what) => {
+          const open = W.openSheet();
+          const r = open?.getBoundingClientRect();
+          lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(W.vv.height)} top${Math.round(W.vv.offsetTop)} in${innerHeight} kb${W.host.hasAttribute("data-kb") ? 1 : 0}` + (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? " anim" : ""}` : "") + // What is moving anywhere (the page, the pins, the dimming): for a flicker that isn't the keyboard.
+          ` [${[...document.getAnimations(), ...W.root.getAnimations()].map((a) => a.animationName || a.transitionProperty || "js").slice(0, 6).join(",")}] scrim${getComputedStyle(W.scrim).opacity.slice(0, 4)} scroll${Math.round(scrollY)}`);
+        };
+        const watch = (what) => {
+          row(what);
+          const end = performance.now() + 1500;
+          let prev = "";
+          const f = () => {
+            const before = lines.length;
+            row("f");
+            const last = lines[lines.length - 1].replace(/^\d+ f /, "");
+            if (last === prev) lines.length = before;
+            prev = last;
+            if (performance.now() < end) requestAnimationFrame(f);
+          };
+          requestAnimationFrame(f);
+        };
+        W.root.addEventListener("focusin", () => (t0 = performance.now(), watch("focus")));
+        const sendSoon = () => {
+          clearTimeout(sendTimer);
+          sendTimer = setTimeout(async () => {
+            const text = lines.join("\n");
+            lines = [];
+            for (let i = 0; i < text.length; i += 1900) {
+              await W.send({ name: "kb-log", text: text.slice(i, i + 1900), anchor: { kind: "page", selector: "body", x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {
+              });
+            }
+          }, 2e3);
+        };
+        W.root.addEventListener("focusout", () => {
+          lines.push("--- let go");
+          t0 = performance.now();
+          watch("blur");
+          sendSoon();
+        });
+        W.S.dbg = (line) => {
+          lines.push(`${Math.round(performance.now() - t0)} ${line}`);
+          sendSoon();
+        };
+        W.vv.addEventListener("resize", () => {
+          watch("resize");
+          if (lines.length > 1) sendSoon();
+        });
+      }
+    }
+  }
+
+  // src/widget/list.ts
+  var W2;
+  function bindList(w) {
+    W2 = w;
+  }
+  var goTo = (c, keys = false) => {
+    W2.S.stepping = Boolean(W2.S.openId);
+    W2.S.keepKeys = W2.S.stepping && (keys || W2.root.activeElement?.localName === "textarea");
+    W2.S.openId = c.id;
+    W2.S.draft = null;
+    if (W2.coarse) W2.S.listOpen = false;
+    W2.render();
+    const pinTop = W2.position(c.anchor || {}).top;
+    let top = pinTop - Math.max(40, W2.coarse && W2.S.openCard?.isConnected ? (innerHeight - W2.S.openCard.offsetHeight) / 2 : innerHeight / 3);
+    if (!W2.coarse && W2.S.openCard?.isConnected) {
+      const bottom = W2.S.openCard.getBoundingClientRect().bottom + scrollY;
+      const tall = bottom - pinTop + 28;
+      top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
+    }
+    if (W2.coarse) {
+      const de = document.documentElement;
+      const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
+      const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
+      de.style.setProperty("--lab-room", `${room}px`);
+      de.classList.toggle("lab-room", room > 0);
+    }
+    scrollTo({ top: Math.max(0, top), behavior: W2.still.matches ? "auto" : "smooth" });
+  };
+  function drawList() {
+    const all = W2.threads();
+    W2.listBtn.hidden = !W2.S.on || !W2.coarse && !all.length && !W2.held().length;
+    W2.goBtn.hidden = !W2.S.on;
+    if (!W2.goBtn.firstElementChild) W2.goBtn.replaceChildren(W2.el("span", { class: "gp" }, "go"), W2.el("kbd", { "aria-hidden": "true" }, "1/2/3"));
+    W2.goFace();
+    W2.goBtn.classList.toggle("on", W2.S.goMode && !W2.S.cursorMode);
+    W2.goBtn.classList.toggle("cursor", W2.S.cursorMode);
+    W2.goBtn.setAttribute("aria-pressed", String(W2.S.goMode && !W2.S.cursorMode));
+    const freshAll = all.filter((c) => !W2.isPage(c)).reduce((n, c) => n + W2.unread(c).length, 0);
+    W2.listBtn.replaceChildren(document.createTextNode(freshAll ? `list \xB7 ${freshAll} new` : "list"), W2.el("kbd", { "aria-hidden": "true" }, "l"));
+    W2.newPrev.hidden = W2.newNext.hidden = !W2.S.on || !all.some((c) => !W2.isPage(c) && W2.unread(c).length);
+    if (!W2.LIST_WINDOW) {
+      W2.newPrev.hidden = W2.newNext.hidden = true;
+      W2.listBtn.hidden = !W2.S.on;
+      {
+        W2.listBtn.replaceChildren(W2.coarse ? "new" : W2.keyWord("ne", "w", ""), W2.el("b", { class: `cnt${freshAll ? "" : " zero"}` }, String(freshAll)));
+        W2.listBtn.setAttribute("aria-label", `next new comment, ${freshAll} new`);
+        W2.listBtn.setAttribute("aria-keyshortcuts", "w");
+      }
+      W2.listBtn.title = "next new comment: W, or Control-D while typing (Shift for the one before)";
+      W2.listBtn.disabled = !freshAll;
+      W2.listBtn.classList.toggle("quiet", !freshAll);
+      const doneCount2 = all.filter((c) => !W2.isPage(c) && (c.resolved || workState(c)[0] === "done") && !W2.unread(c).length).length;
+      W2.doneBtn.hidden = !W2.S.on;
+      W2.doneBtn.disabled = !doneCount2 && !W2.S.showDone;
+      W2.doneBtn.classList.toggle("quiet", W2.doneBtn.disabled);
+      W2.doneBtn.replaceChildren(W2.S.showDone ? `hide done \xB7 ${doneCount2}` : `show done \xB7 ${doneCount2}`, W2.el("kbd", { "aria-hidden": "true" }, "d"));
+      W2.doneBtn.setAttribute("aria-keyshortcuts", "d");
+    }
+    W2.placeBar();
+    const tabNew = all.reduce((n, c) => n + W2.unread(c).length, 0);
+    if (!W2.tabTitle.base || !document.title.startsWith("(")) W2.tabTitle.base = document.title.replace(/^\(\d+\) /, "");
+    const want = tabNew ? `(${tabNew}) ${W2.tabTitle.base}` : W2.tabTitle.base;
+    if (document.title !== want) document.title = want;
+    W2.listBtn.classList.toggle("has-new", freshAll > 0);
+    const h = W2.held().length;
+    W2.sendBtn.hidden = !h;
+    W2.sendBtn.textContent = `send ${h} draft${h === 1 ? "" : "s"}`;
+    W2.listEl.hidden = !W2.S.on || !W2.S.listOpen;
+    if (W2.listEl.hidden) return;
+    for (const b of W2.listEl.querySelectorAll("[data-f]")) b.classList.toggle("on", b.dataset.f === W2.S.filter);
+    const fresh = all.filter((c) => !W2.isPage(c) && W2.unread(c).length).length;
+    W2.listEl.querySelector('[data-f="new"]').textContent = fresh ? `new \xB7 ${fresh}` : "new";
+    for (const f of ["work", "resolved", "mine"]) W2.$(`[data-f="${f}"]`, W2.listEl).hidden = true;
+    W2.holdBtn.hidden = !W2.DRAFT_MODE;
+    const doneCount = all.filter((c) => !W2.isPage(c) && (c.resolved || workState(c)[0] === "done") && !W2.unread(c).length).length;
+    W2.showDoneBtn.hidden = !doneCount;
+    W2.showDoneBtn.textContent = W2.S.showDone ? `hide done \xB7 ${doneCount}` : `show done \xB7 ${doneCount}`;
+    W2.holdBtn.classList.toggle("on", W2.drafting());
+    if (W2.S.filter === "work") return W2.listEl.querySelector(".items").replaceChildren(...workItems());
+    const items = W2.listed().map((c) => {
+      const b = W2.el("button", { class: `it${W2.S.openId === c.id ? " cur" : ""}`, type: "button" });
+      b.append(document.createTextNode(`${c.resolved ? "\u2713" : W2.numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), ...W2.onWhat(c) ? [W2.el("span", {}, `on ${W2.onWhat(c)} `)] : [], W2.el("span", {}, `\xB7 ${c.name}${!c.resolved && W2.isDone(c) ? " \xB7 \u2705 done" : ""}`), ...W2.unread(c).length ? [" ", W2.el("span", { class: "tag" }, `${W2.unread(c).length} new`)] : []);
+      b.addEventListener("click", () => goTo(c));
+      return b;
+    });
+    W2.listEl.querySelector(".items").replaceChildren(...items.length ? items : [W2.el("div", { class: "none" }, "nothing here")]);
+  }
+  var workState = (c) => {
+    const thread = [c, ...W2.repliesOf(c.id)];
+    const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || "";
+    const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
+    const answered = answer && answer.createdAt > lastPerson;
+    if (c.resolved || answered && /^done\b/i.test(answer.text)) return ["done", answered ? answer.createdAt : c.createdAt];
+    if (answered && /^on it\b/i.test(answer.text)) return ["now", answer.createdAt];
+    if (!answered && c.handedAt && c.handedAt >= lastPerson) return ["now", c.handedAt];
+    return answered ? [null, ""] : ["next", lastPerson];
+  };
+  function workItems() {
+    const today = (/* @__PURE__ */ new Date()).toDateString();
+    const now = [];
+    const next = [];
+    const done = [];
+    for (const c of W2.S.comments.filter((x) => !x.parent)) {
+      const [state, at] = workState(c);
+      if (state === "now") now.push([c, at]);
+      else if (state === "next") next.push([c, at]);
+      else if (state === "done" && new Date(at).toDateString() === today) done.push([c, at]);
+    }
+    const row = ([c, at], when) => {
+      const b = W2.el("button", { class: `it${W2.S.openId === c.id ? " cur" : ""}`, type: "button" });
+      b.append(document.createTextNode(`${W2.isPage(c) ? "chat" : c.resolved ? "\u2713" : W2.numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), W2.el("span", {}, `\xB7 ${when(at)}`));
+      b.addEventListener("click", () => W2.isPage(c) ? (W2.S.chatOpen = true, W2.S.listOpen = false, W2.render()) : goTo(c));
+      return b;
+    };
+    const part = (title, list, when, newest = false) => list.length ? [W2.el("div", { class: "group" }, `${title} \xB7 ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
+    const out = [
+      ...part("Now", now, (at) => `on it ${W2.ago(at)}`.replace("on it just now", "just started")),
+      ...part("Next", next, (at) => `sent ${W2.ago(at)} ago`.replace("just now ago", "just now")),
+      ...part("Done today", done, (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), true)
+    ];
+    return out.length ? out : [W2.el("div", { class: "none" }, "nothing in progress on this page")];
+  }
+  var stepNew = (dir) => {
+    const fresh = W2.threads().filter((c) => !W2.isPage(c) && W2.unread(c).length);
+    if (!fresh.length) return;
+    const top = (c) => W2.position(c.anchor || {}).top;
+    fresh.sort((a, b) => top(a) - top(b));
+    const open = W2.S.openId && W2.threads().find((c) => c.id === W2.S.openId);
+    const here = open ? top(open) : null;
+    const after = here == null ? -1 : fresh.findIndex((c) => top(c) > here);
+    const at = fresh.findIndex((c) => c.id === W2.S.openId);
+    const next = at >= 0 ? (at + dir + fresh.length) % fresh.length : here == null ? dir > 0 ? 0 : fresh.length - 1 : dir > 0 ? after < 0 ? 0 : after : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
+    W2.S.chatOpen = false;
+    goTo(fresh[next], !W2.coarse);
+  };
+
+  // src/widget/chat.ts
+  var W3;
+  function bindChat(w) {
+    W3 = w;
+  }
+  var stamped = (bubble, stamp) => {
+    const room = stamp.cloneNode(true);
+    room.className = "stamp-room";
+    room.setAttribute("aria-hidden", "true");
+    for (const n of room.querySelectorAll("[role]")) n.removeAttribute("role");
+    const last = [...bubble.children].reverse().find((n) => n.classList?.contains("p"));
+    (last || bubble).append(room);
+    bubble.append(stamp);
+  };
+  function drawChat() {
+    const byId = new Map(W3.S.comments.map((c) => [c.id, c]));
+    const msgs = W3.S.comments.filter((c) => W3.isPage(c) || c.parent && W3.isPage(byId.get(c.parent) || {})).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(-150);
+    if (W3.S.on && W3.S.chatOpen && W3.chatEl.hidden) W3.S.newFrom = msgs.find(W3.isNew)?.id || null;
+    if (!W3.S.chatOpen) W3.S.newFrom = null;
+    if (W3.S.on && W3.S.chatOpen) W3.markSeen(msgs.filter(W3.isNew));
+    const fresh = msgs.filter(W3.isNew).length;
+    W3.chatBtn.hidden = !W3.S.on;
+    {
+      W3.chatBtn.replaceChildren(W3.coarse ? "chat" : W3.keyWord("", "c", "hat"), W3.el("b", { class: `cnt${fresh ? "" : " zero"}` }, String(fresh)));
+      W3.chatBtn.setAttribute("aria-label", `chat, ${fresh} new`);
+      W3.chatBtn.setAttribute("aria-keyshortcuts", "c");
+    }
+    W3.chatBtn.classList.toggle("has-new", fresh > 0);
+    W3.placeBar();
+    const opening = W3.chatEl.hidden;
+    W3.chatEl.hidden = !W3.S.on || !W3.S.chatOpen;
+    if (W3.chatEl.hidden) W3.chatEl.classList.remove("full");
+    if (W3.chatEl.hidden && W3.chatEl.contains(W3.root.activeElement)) W3.root.activeElement.blur();
+    if (W3.chatEl.hidden) return;
+    const box = W3.$(".msgs", W3.chatEl);
+    const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+    const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
+    const kept = new Map([...box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+    const same = (n) => {
+      const old = kept.get(n.dataset?.id);
+      return old && old.outerHTML.replace(" fresh", "") === n.outerHTML ? old : n;
+    };
+    W3.patchKids(box, msgs.flatMap((m) => {
+      const root = m.parent ? byId.get(m.parent) : m;
+      const b = W3.el("div", { class: `msg${W3.mine(m) && !m.session ? " mine" : ""}${root && W3.S.replyTo === root.id ? " to" : ""}${before.size && !before.has(m.id) ? " fresh" : ""}`, "data-id": m.id, ...W3.agentOf(m) ? { "data-agent": W3.agentOf(m) } : {} });
+      b.append(W3.nameLine(m.name, false));
+      if (m.parent && root) {
+        const q = W3.el("div", { class: "quote" });
+        q.append(W3.el("b", {}, String(root.name || "").replace(/\s*·\s*session\s+\S+$/i, "")), document.createTextNode(root.text.replace(/\s+/g, " ").slice(0, 90)));
+        q.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const box2 = W3.$(".msgs", W3.chatEl);
+          const to = W3.$(`[data-id="${root.id}"]`, box2);
+          if (!to) return;
+          box2.scrollTo({ top: to.offsetTop - box2.offsetTop - 12, behavior: W3.still.matches ? "auto" : "smooth" });
+          to.animate?.([{ boxShadow: "0 0 0 2px rgb(52,199,89)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
+        });
+        b.append(q);
+      }
+      b.append(...W3.readable(m.text));
+      stamped(b, W3.stampOf(m, root));
+      return m.id === W3.S.newFrom && m !== msgs[0] ? [W3.el("div", { class: "newline" }, "new"), b] : [b];
+    }).map(same));
+    const strip = W3.$(".replying", W3.chatEl);
+    const target = W3.S.replyTo && byId.get(W3.S.replyTo);
+    strip.hidden = !target;
+    if (target) {
+      const x = W3.el("button", { type: "button", title: "about the page instead" }, "\u2715");
+      x.addEventListener("click", () => (W3.S.replyTo = null, drawChat()));
+      strip.replaceChildren(document.createTextNode(`\u21A9 ${target.name}: ${target.text.replace(/\s+/g, " ").slice(0, 40)}`), x);
+    }
+    if (!box.firstChild) box.append(W3.el("div", { class: "none" }, "say something about the page as a whole"));
+    const chat = W3.chatEl.querySelector(".chat");
+    if (!chat.firstChild)
+      chat.append(
+        W3.composer({
+          placeholder: "message",
+          onSubmit: async (name, text) => {
+            const { comment } = await W3.send(
+              W3.S.replyTo ? { name, text, parent: W3.S.replyTo } : { name, text, anchor: { kind: "page", width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } }
+            );
+            const answered = W3.S.replyTo && W3.S.comments.find((x) => x.id === W3.S.replyTo);
+            if (answered?.resolved) answered.resolved = false;
+            W3.S.replyTo = null;
+            W3.S.comments.push(comment);
+            W3.markSeen([comment]);
+            box.scrollTop = box.scrollHeight;
+            W3.render();
+            return { keep: true };
+          }
+        })
+      );
+    chat.querySelector("textarea").placeholder = target ? "reply" : "message";
+    if (atEnd) box.scrollTop = box.scrollHeight;
+  }
+
+  // src/widget/thread.ts
+  var W4;
+  function bindThread(w) {
+    W4 = w;
+  }
+  function placeCard(card, left, top) {
+    W4.layer.append(card);
+    const width = card.offsetWidth;
+    const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
+    card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;
+    const h = card.offsetHeight;
+    const below = top + 10 + h > W4.contentEnd();
+    card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
+    card.style.transformOrigin = below ? "14px 100%" : "";
+  }
+  function placeBeside(node, left, top) {
+    W4.layer.append(node);
+    const width = node.offsetWidth;
+    const right = scrollX + document.documentElement.clientWidth - 12;
+    const h = node.offsetHeight;
+    const end = W4.contentEnd();
+    if (left + 36 + width <= right) {
+      node.style.left = `${left + 36}px`;
+      node.style.top = `${Math.min(top - 37, end - h - 8)}px`;
+    } else {
+      node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
+      node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
+    }
+  }
+  function grab(pin, c) {
+    pin.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const r = pin.getBoundingClientRect();
+      const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
+      const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+      let moving = false;
+      let last = e;
+      W4.S.grabbing = true;
+      pin.setPointerCapture(e.pointerId);
+      const place = () => {
+        pin.style.left = `${start.left + last.clientX - start.x + scrollX - start.sx}px`;
+        pin.style.top = `${start.top + last.clientY - start.y + scrollY - start.sy}px`;
+      };
+      const move = (ev) => {
+        last = ev;
+        if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
+        moving = true;
+        pin.classList.add("dragging");
+        place();
+      };
+      const scrolled = () => moving && place();
+      addEventListener("scroll", scrolled, true);
+      W4.S.dropDrag = () => {
+        removeEventListener("scroll", scrolled, true);
+        W4.S.dropDrag = null;
+      };
+      const up = async (ev) => {
+        pin.removeEventListener("pointermove", move);
+        pin.removeEventListener("pointerup", up);
+        pin.removeEventListener("pointercancel", up);
+        pin.removeEventListener("lostpointercapture", up);
+        W4.S.dropDrag?.();
+        if (!W4.S.grabbing) return;
+        W4.S.grabbing = false;
+        if (!moving) return;
+        pin.dataset.dragged = "1";
+        setTimeout(() => delete pin.dataset.dragged, 0);
+        const x = ev.clientX - tip.dx;
+        const y = ev.clientY - tip.dy;
+        const under = document.elementsFromPoint(x, y).find((n) => n !== W4.host);
+        if (ev.type === "pointercancel" || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(W4.OFF)) return W4.render();
+        const before = c.anchor;
+        c.anchor = W4.anchorAt(x, y);
+        W4.render();
+        try {
+          const { comment } = await W4.send({ action: "move", id: c.id, anchor: c.anchor, edit: W4.store.get(`lab-edit:${c.id}`) || void 0 });
+          Object.assign(c, comment);
+        } catch {
+          c.anchor = before;
+          W4.render();
+        }
+      };
+      pin.addEventListener("pointermove", move);
+      pin.addEventListener("pointerup", up);
+      pin.addEventListener("pointercancel", up);
+      pin.addEventListener("lostpointercapture", up);
+    });
+  }
+  function threadCard(c, fresh = /* @__PURE__ */ new Set(), focus = false) {
+    const card = W4.el("div", { class: "card" });
+    const body = W4.el("div", { class: "body" });
+    const foot = W4.el("div", { class: "foot" });
+    card.append(W4.el("div", { class: "handle" }), body, foot);
+    card.addEventListener("click", (e) => e.stopPropagation());
+    body.classList.add("msgs");
+    const itemEl = (item) => {
+      const box = W4.el("div", { class: `item msg${W4.mine(item) && !item.session ? " mine" : ""}`, "data-id": item.id, ...W4.agentOf(item) ? { "data-agent": W4.agentOf(item) } : {} });
+      box.append(W4.nameLine(item.name, false), ...W4.readable(item.text));
+      W4.stamped(box, W4.stampOf(item, c, item === c && !c.resolved ? `#${W4.numberOf(c)} \xB7 ` : ""));
+      return box;
+    };
+    const shown = /* @__PURE__ */ new Set();
+    const all = [c, ...W4.repliesOf(c.id)];
+    const firstNew = all.find((x) => fresh.has(x.id));
+    for (const item of all) {
+      if (item === firstNew && item !== c) body.append(W4.el("div", { class: "newline" }, "new"));
+      body.append(itemEl(item));
+      shown.add(item.id);
+    }
+    card.sync = () => {
+      for (const r of W4.repliesOf(c.id)) {
+        if (shown.has(r.id)) continue;
+        const items = card.querySelectorAll(".item");
+        const added = itemEl(r);
+        added.classList.add("fresh");
+        items[items.length - 1].after(added);
+        shown.add(r.id);
+        W4.markSeen([r]);
+      }
+    };
+    const ownKey = W4.store.get(`lab-edit:${c.id}`);
+    let actions = null;
+    if (W4.S.isAdmin || ownKey) {
+      actions = W4.el("div", { class: "row acts" });
+      const resolve = W4.el("button", { class: "btn", type: "button" }, c.resolved ? "reopen" : "resolve");
+      const failed = (btn) => btn.textContent = "failed, try again";
+      resolve.addEventListener("click", async () => {
+        try {
+          const closing = !c.resolved;
+          const { comment } = await W4.send({ action: c.resolved ? "reopen" : "resolve", id: c.id, ...ownKey ? { edit: ownKey } : {} });
+          Object.assign(c, comment);
+          if (closing && W4.S.openId === c.id) return W4.S.closeFast = true, W4.S.openId = null, W4.render();
+          W4.render();
+        } catch {
+          failed(resolve);
+        }
+      });
+      const del = W4.el("button", { class: "btn", type: "button" }, "delete");
+      const yes = W4.el("button", { class: "btn danger", type: "button" }, "delete");
+      const no = W4.el("button", { class: "btn", type: "button" }, "cancel");
+      const back = () => {
+        actions.replaceChildren(resolve, del);
+        del.focus();
+      };
+      del.addEventListener("click", () => {
+        actions.replaceChildren(W4.el("span", { class: "ask" }, W4.repliesOf(c.id).length ? "delete thread?" : "delete comment?"), yes, no);
+        no.focus();
+      });
+      no.addEventListener("click", back);
+      actions.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && yes.isConnected) {
+          e.stopPropagation();
+          back();
+        }
+      });
+      yes.addEventListener("click", async () => {
+        try {
+          await W4.send({ action: "delete", id: c.id });
+        } catch {
+          return failed(yes);
+        }
+        W4.S.comments = W4.S.comments.filter((x) => x.id !== c.id && x.parent !== c.id);
+        W4.S.openId = null;
+        W4.render();
+      });
+      actions.append(...W4.S.isAdmin ? [resolve, del] : [resolve]);
+      body.append(actions);
+    }
+    if (W4.coarse) {
+      const topOf = (x) => W4.position(x.anchor || {}).top;
+      const here = topOf(c);
+      const fresh2 = W4.threads().filter((x) => !W4.isPage(x) && x.id !== c.id && W4.unread(x).length).map((x) => [x, topOf(x)]);
+      fresh2.sort((p, q) => (p[1] > here ? 0 : 1) - (q[1] > here ? 0 : 1) || p[1] - q[1]);
+      const nav = W4.el("div", { class: "row nav" });
+      if (fresh2.length) {
+        const b = W4.el("button", { class: "btn", type: "button" }, `new \xB7 ${fresh2.length} \u203A`);
+        b.addEventListener("pointerdown", (e) => e.preventDefault());
+        b.addEventListener("click", () => W4.goTo(fresh2[0][0]));
+        nav.append(b);
+      }
+      if (actions) nav.append(actions);
+      if (nav.firstChild) card.insertBefore(nav, body);
+    }
+    foot.append(
+      W4.composer({
+        placeholder: "reply",
+        autofocus: focus,
+        onSubmit: async (name, text) => {
+          const { comment } = await W4.send({ name, text, parent: c.id });
+          W4.S.comments.push(comment);
+          W4.markSeen([comment]);
+          if (c.resolved) {
+            c.resolved = false;
+            W4.render();
+            const again = W4.S.openCard?.querySelector(".body");
+            if (again) again.scrollTop = again.scrollHeight;
+            W4.S.openCard?.querySelector("textarea")?.focus({ preventScroll: true });
+            return { keep: true };
+          }
+          shown.add(comment.id);
+          const items = card.querySelectorAll(".item");
+          const added = itemEl(comment);
+          added.classList.add("fresh");
+          items[items.length - 1].after(added);
+          body.scrollTop = body.scrollHeight;
+          return { keep: true };
+        }
+      })
+    );
+    return card;
+  }
+
+  // src/widget/live.ts
+  var W5;
+  function bindLive(w) {
+    W5 = w;
+  }
+  function startLive() {
+    if (W5.script?.dataset.live) {
+      let onState = function(v) {
+        {
+          if (v.widget && W5.script.dataset.widget && v.widget !== W5.script.dataset.widget) return reload();
+          if (v.lab && W5.script.dataset.lab && v.lab !== W5.script.dataset.lab) {
+            W5.script.dataset.lab = v.lab;
+            W5.script.dataset.version = String(v.files);
+            hotAt = v.hot;
+            commentsRev = v.comments;
+            morphPage();
+            W5.load();
+          }
+          if (String(v.files) !== W5.script.dataset.version) return reload();
+          if (hotAt !== null && v.hot !== hotAt) {
+            if (v.hot - hotAt > 1) hotUpdate([{ kind: "html" }, { kind: "css", path: "" }]);
+            else hotUpdate(v.hotFiles || []);
+          }
+          hotAt = v.hot;
+          if (commentsRev !== null && v.comments !== commentsRev) W5.loadChanges(commentsRev);
+          commentsRev = v.comments;
+          if (v.reads !== readsAt) {
+            readsAt = v.reads;
+            W5.syncReads();
+          }
+          const s = v.session;
+          const mode = s ? v.mode || "listening" : "away";
+          const span = (t) => Object.assign(document.createElement("span"), { textContent: t });
+          const agent = s?.agent || "Claude";
+          const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
+          if (mode === "listening") who.replaceChildren(span("talking to"), agent, ...tag);
+          else if (mode === "working") who.replaceChildren(agent, span("is working"), ...tag);
+          else who.replaceChildren(span("no agent listening"));
+          who.classList.toggle("idle", mode === "away");
+          who.classList.toggle("working", mode === "working");
+          W5.listBtn.dataset.agent = mode;
+          W5.chatBtn.dataset.agent = mode;
+          if (W5.coarse) W5.chatBtn.title = who.textContent;
+          who.setAttribute("aria-label", who.textContent);
+          if (s?.url && mode !== "away") Object.assign(who, { href: s.url, target: "_blank" });
+          else who.removeAttribute("href");
+          who.dataset.copy = !s?.url && s?.resume && mode !== "away" ? s.resume : "";
+          who.title = mode === "away" ? "Ask your agent to run: npx @leonidstern/labit wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
+          who.hidden = false;
+        }
+      };
+      const key = "lab-scroll:" + location.pathname;
+      try {
+        const kept = JSON.parse(sessionStorage.getItem(key) || "null");
+        if (kept !== null) {
+          sessionStorage.removeItem(key);
+          if (kept.open) W5.S.openId = kept.open;
+          if (kept.list) {
+            W5.S.listOpen = true;
+            W5.S.filter = ["new", "open", "resolved", "mine"].includes(kept.filter) ? kept.filter : W5.S.filter;
+          }
+          if (kept.chat) W5.S.chatOpen = true;
+          addEventListener("load", () => scrollTo(0, +(kept.y ?? kept)));
+        }
+      } catch {
+      }
+      let touchedAt = 0;
+      for (const t of ["pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(t, () => touchedAt = performance.now(), { capture: true, passive: true });
+      const busy = () => W5.S.draft || W5.S.grabbing || W5.S.openId || W5.S.chatOpen || W5.S.listOpen || W5.coarse && /^(textarea|input)$/.test(W5.root.activeElement?.localName || "") || [...W5.root.querySelectorAll("textarea")].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
+      let reloadWhenShown = false;
+      let reloadTimer = 0;
+      const reload = () => {
+        if (document.hidden) return void (reloadWhenShown = true);
+        if (busy()) {
+          if (!reloadTimer) reloadTimer = setTimeout(() => (reloadTimer = 0, reload()), 500);
+          return;
+        }
+        try {
+          sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W5.S.openId, list: W5.S.listOpen, filter: W5.S.filter, chat: W5.S.chatOpen }));
+        } catch {
+        }
+        location.reload();
+      };
+      const who = document.createElement("a");
+      who.className = "listener";
+      who.addEventListener("click", async () => {
+        const text = who.dataset.copy;
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          const was = [...who.childNodes];
+          who.replaceChildren("copied");
+          setTimeout(() => who.textContent === "copied" && who.replaceChildren(...was), 1200);
+        } catch {
+        }
+      });
+      who.hidden = true;
+      W5.root.querySelector(".left").prepend(who);
+      let stream = null;
+      let beat = 0;
+      const showAway = (word) => {
+        who.replaceChildren(Object.assign(document.createElement("span"), { textContent: word }));
+        who.setAttribute("aria-label", word);
+        who.classList.add("idle");
+        who.classList.remove("working");
+        who.hidden = false;
+      };
+      let commentsRev = null;
+      let readsAt = null;
+      let hotAt = null;
+      const swapCss = (files) => {
+        const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
+        const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
+        for (const link of named.length ? named : links) {
+          const url = new URL(link.href, location.href);
+          url.searchParams.set("lab-v", Date.now().toString(36));
+          const next = link.cloneNode();
+          next.href = url.href;
+          next.dataset.labSwap = "";
+          const path = url.pathname;
+          next.addEventListener("load", () => {
+            for (const l of document.querySelectorAll('link[rel~="stylesheet"][href]')) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
+            delete next.dataset.labSwap;
+          }, { once: true });
+          next.addEventListener("error", () => next.remove(), { once: true });
+          link.after(next);
+        }
+      };
+      const fresh = (u) => {
+        const url = new URL(u, location.href);
+        url.searchParams.set("lab-v", Date.now().toString(36));
+        return url.href;
+      };
+      const samePath = (u, paths) => {
+        try {
+          const url = new URL(u, location.href);
+          return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
+        } catch {
+          return false;
+        }
+      };
+      const swapImages = (paths) => {
+        let hit = 0;
+        for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
+          if (W5.host.contains(n)) continue;
+          for (const attr of ["src", "href", "poster", "xlink:href"]) {
+            const v = n.getAttribute(attr);
+            if (!v || !samePath(v.split("#")[0], paths)) continue;
+            const next = fresh(v.split("#")[0]);
+            const im = new Image();
+            im.src = next;
+            (im.decode ? im.decode() : Promise.resolve()).catch(() => {
+            }).finally(() => n.setAttribute(attr, next + (v.includes("#") ? v.slice(v.indexOf("#")) : "")));
+            hit++;
+          }
+          const set = n.getAttribute("srcset");
+          if (set && set.split(",").some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
+            n.setAttribute("srcset", set.split(",").map((c) => {
+              const [u, ...rest] = c.trim().split(/\s+/);
+              return [samePath(u, paths) ? fresh(u) : u, ...rest].join(" ");
+            }).join(", "));
+            hit++;
+          }
+        }
+        if (!hit) swapCss([]);
+      };
+      const reloadFonts = (paths) => {
+        for (const sheet of document.styleSheets) {
+          let rules;
+          try {
+            rules = sheet.cssRules;
+          } catch {
+            continue;
+          }
+          for (const r of rules || []) {
+            if (!(r instanceof CSSFontFaceRule)) continue;
+            const src = r.style.getPropertyValue("src");
+            const base = sheet.href || location.href;
+            if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
+            const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all);
+            const d3 = (k) => r.style.getPropertyValue(k) || void 0;
+            try {
+              const face = new FontFace(d3("font-family").replace(/^["']|["']$/g, ""), again, { weight: d3("font-weight"), style: d3("font-style"), stretch: d3("font-stretch"), unicodeRange: d3("unicode-range"), display: d3("font-display") });
+              face.load().then((f) => document.fonts.add(f)).catch(() => {
+              });
+            } catch {
+            }
+          }
+        }
+      };
+      const ownStyles = () => /* @__PURE__ */ new Set([W5.fonts, W5.pinCursorStyle]);
+      const scriptsOf = (doc) => [...doc.querySelectorAll("script")].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute("src") || "")).map((x) => x.getAttribute("src") || x.textContent);
+      const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => {
+        try {
+          return new URL(l.getAttribute("href"), location.href).pathname;
+        } catch {
+          return "";
+        }
+      });
+      const keepOut = (n) => n === W5.host || n.nodeType === 1 && n.localName === "script";
+      const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || "") === (n.id || ""));
+      const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute("class") === n.getAttribute("class") : o.nodeType !== 3 || o.data === n.data);
+      const morphKids = (a, b) => {
+        const olds = [...a.childNodes].filter((n) => !keepOut(n));
+        const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === "script"));
+        let j = 0;
+        let prev = null;
+        const put = (n) => {
+          const c = document.importNode(n, true);
+          a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
+          return c;
+        };
+        news.forEach((n, i) => {
+          const o = olds[j];
+          if (!o) return void (prev = put(n));
+          if (alike(o, n)) return void (prev = morphNode(o, n), j++);
+          if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
+          const k = olds.slice(j + 1, j + 8).findIndex((m) => alike(m, n));
+          if (k >= 0) {
+            for (const gone of olds.slice(j, j + 1 + k)) gone.remove();
+            j += k + 1;
+            return void (prev = morphNode(olds[j], n), j++);
+          }
+          prev = morphNode(o, n);
+          j++;
+        });
+        for (const o of olds.slice(j)) o.remove();
+      };
+      const morphNode = (o, n) => {
+        if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || o.nodeType === 1 && (o.id || "") !== (n.id || "")) {
+          const c = document.importNode(n, true);
+          o.replaceWith(c);
+          return c;
+        }
+        if (o.nodeType === 3 || o.nodeType === 8) {
+          if (o.data !== n.data) o.data = n.data;
+          return o;
+        }
+        if (o.nodeType !== 1) return o;
+        for (const { name } of Array.from(o.attributes)) if (!n.hasAttribute(name) && !(name === "open" && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
+        for (const { name, value } of Array.from(n.attributes)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+        if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
+        morphKids(o, n);
+        return o;
+      };
+      const ownScripts = () => scriptsOf(document).length > 0;
+      let morphRun = 0;
+      const morphPage = async () => {
+        if (ownScripts()) return reload();
+        const run = ++morphRun;
+        try {
+          const res = await fetch(location.href, { cache: "no-store", headers: { accept: "text/html" } });
+          if (!res.ok) return reload();
+          const html = await res.text();
+          if (run !== morphRun) return;
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          if (scriptsOf(doc).join("\n") !== scriptsOf(document).join("\n") || sheetsOf(doc).join("\n") !== sheetsOf(document).join("\n")) return reload();
+          let mark = null;
+          for (const y of [Math.min(innerHeight / 3, 240), innerHeight / 2, 80]) {
+            const e = document.elementFromPoint(innerWidth / 2, y);
+            if (e && e !== document.body && e !== document.documentElement && !W5.host.contains(e) && e !== W5.host) {
+              mark = e;
+              break;
+            }
+          }
+          const markTop = mark?.getBoundingClientRect().top;
+          const apply = () => {
+            if (doc.title !== W5.tabTitle.base) {
+              W5.tabTitle.base = doc.title;
+              document.title = doc.title;
+              W5.drawList();
+            }
+            const mine = ownStyles();
+            const olds = [...document.head.querySelectorAll("style")].filter((x) => !mine.has(x));
+            const news = [...doc.head.querySelectorAll("style")];
+            news.forEach((n, i) => olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true)));
+            for (const o of olds.slice(news.length)) o.remove();
+            morphKids(document.body, doc.body);
+            if (mark?.isConnected) {
+              const moved = mark.getBoundingClientRect().top - markTop;
+              if (Math.abs(moved) > 1) scrollBy(0, moved);
+            }
+            W5.reflow();
+          };
+          const safe = () => {
+            try {
+              apply();
+            } catch {
+              reload();
+            }
+          };
+          if (document.startViewTransition && !W5.still.matches) document.startViewTransition(safe);
+          else safe();
+        } catch {
+          reload();
+        }
+      };
+      const hotUpdate = (files) => {
+        const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
+        const here = decodeURIComponent(location.pathname).replace(/\/$/, "/index").replace(/\.html?$/i, "");
+        if (of("html").some((p) => !p || p.replace(/\.html?$/i, "") === here)) morphPage();
+        if (of("css").length) swapCss(of("css"));
+        if (of("img").length) swapImages(of("img"));
+        if (of("font").length) reloadFonts(of("font"));
+      };
+      const tab = Math.random().toString(36).slice(2, 12);
+      let pollTimer = 0;
+      let dropTimer = 0;
+      const poll = async () => {
+        try {
+          onState(await (await fetch(`${W5.script.dataset.live.replace(/live$/, "state")}?tab=${tab}`, { cache: "no-store" })).json());
+        } catch {
+        }
+      };
+      const toBackground = () => {
+        clearTimeout(dropTimer);
+        dropTimer = setTimeout(() => {
+          stream?.close();
+          stream = null;
+          clearInterval(pollTimer);
+          pollTimer = setInterval(poll, 2e4);
+        }, 3e4);
+      };
+      const toFront = () => {
+        clearTimeout(dropTimer);
+        clearInterval(pollTimer);
+        pollTimer = 0;
+        connect();
+      };
+      const connect = () => {
+        if (stream) return;
+        stream = new EventSource(`${W5.script.dataset.live}?tab=${tab}`);
+        beat = Date.now();
+        stream.addEventListener("beat", () => beat = Date.now());
+        stream.onerror = () => showAway("reconnecting");
+        stream.onmessage = (e) => {
+          beat = Date.now();
+          onState(JSON.parse(e.data));
+        };
+      };
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) return toBackground();
+        if (reloadWhenShown) return reload();
+        toFront();
+      });
+      addEventListener("pagehide", () => {
+        stream?.close();
+        stream = null;
+        fetch(W5.script.dataset.live.replace(/live$/, "bye"), { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ tab }) }).catch(() => {
+        });
+      });
+      addEventListener("pageshow", (e) => e.persisted && connect());
+      let tick = Date.now();
+      const freshStream = () => {
+        stream?.close();
+        stream = null;
+        showAway("reconnecting");
+        connect();
+      };
+      setInterval(() => {
+        const now = Date.now();
+        const slept = now - tick > 2e4;
+        tick = now;
+        if (document.hidden) return;
+        if (slept || stream && now - beat > 4e4) freshStream();
+      }, 5e3);
+      addEventListener("online", () => !document.hidden && freshStream());
+      connect();
+      if (document.hidden) toBackground();
+    }
+  }
 
   // src/comments.js
   /*!
@@ -1412,6 +2502,215 @@ ${line}`;
    * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
    */
   (() => {
+    const S = { dbg: null };
+    const W6 = {
+      get $() {
+        return $;
+      },
+      get DRAFT_MODE() {
+        return DRAFT_MODE;
+      },
+      get LIST_WINDOW() {
+        return LIST_WINDOW;
+      },
+      get OFF() {
+        return OFF;
+      },
+      get S() {
+        return S;
+      },
+      get agentOf() {
+        return agentOf;
+      },
+      get ago() {
+        return ago;
+      },
+      get anchorAt() {
+        return anchorAt;
+      },
+      get bar() {
+        return bar;
+      },
+      get chatBtn() {
+        return chatBtn;
+      },
+      get chatEl() {
+        return chatEl;
+      },
+      get closeOrNudge() {
+        return closeOrNudge;
+      },
+      get coarse() {
+        return coarse;
+      },
+      get composer() {
+        return composer;
+      },
+      get contentEnd() {
+        return contentEnd;
+      },
+      get doneBtn() {
+        return doneBtn;
+      },
+      get drafting() {
+        return drafting;
+      },
+      get drawList() {
+        return drawList;
+      },
+      get el() {
+        return el2;
+      },
+      get fonts() {
+        return fonts;
+      },
+      get goBtn() {
+        return goBtn;
+      },
+      get goFace() {
+        return goFace;
+      },
+      get goTo() {
+        return goTo;
+      },
+      get held() {
+        return held;
+      },
+      get holdBtn() {
+        return holdBtn;
+      },
+      get host() {
+        return host2;
+      },
+      get isDone() {
+        return isDone;
+      },
+      get isNew() {
+        return isNew;
+      },
+      get isPage() {
+        return isPage;
+      },
+      get keyWord() {
+        return keyWord;
+      },
+      get layer() {
+        return layer2;
+      },
+      get listBtn() {
+        return listBtn;
+      },
+      get listEl() {
+        return listEl;
+      },
+      get listed() {
+        return listed;
+      },
+      get load() {
+        return load;
+      },
+      get loadChanges() {
+        return loadChanges;
+      },
+      get markSeen() {
+        return markSeen;
+      },
+      get mine() {
+        return mine;
+      },
+      get nameLine() {
+        return nameLine;
+      },
+      get newNext() {
+        return newNext;
+      },
+      get newPrev() {
+        return newPrev;
+      },
+      get numberOf() {
+        return numberOf;
+      },
+      get onWhat() {
+        return onWhat;
+      },
+      get openSheet() {
+        return openSheet;
+      },
+      get patchKids() {
+        return patchKids;
+      },
+      get pinCursorStyle() {
+        return pinCursorStyle;
+      },
+      get placeBar() {
+        return placeBar;
+      },
+      get position() {
+        return position;
+      },
+      get readable() {
+        return readable;
+      },
+      get reflow() {
+        return reflow;
+      },
+      get render() {
+        return render;
+      },
+      get repliesOf() {
+        return repliesOf;
+      },
+      get root() {
+        return root;
+      },
+      get scrim() {
+        return scrim;
+      },
+      get script() {
+        return script;
+      },
+      get send() {
+        return send;
+      },
+      get sendBtn() {
+        return sendBtn;
+      },
+      get showDoneBtn() {
+        return showDoneBtn;
+      },
+      get stampOf() {
+        return stampOf;
+      },
+      get stamped() {
+        return stamped;
+      },
+      get still() {
+        return still;
+      },
+      get store() {
+        return store2;
+      },
+      get syncReads() {
+        return syncReads;
+      },
+      get tabTitle() {
+        return tabTitle;
+      },
+      get threads() {
+        return threads;
+      },
+      get unread() {
+        return unread;
+      },
+      get vv() {
+        return vv;
+      }
+    };
+    bindLive(W6);
+    bindList(W6);
+    bindChat(W6);
+    bindThread(W6);
+    bindSheets(W6);
     const script = (
       /** @type {HTMLScriptElement | null} */
       document.currentScript
@@ -1423,7 +2722,7 @@ ${line}`;
     window.__labComments = true;
     const API = script?.dataset.api || "/_lab/api/comments";
     const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, "") || "/";
-    let page = pageNow();
+    S.page = pageNow();
     const store2 = {
       get: (k) => {
         try {
@@ -1449,14 +2748,14 @@ ${line}`;
       if (/lab-admin=/.test(url.hash)) url.hash = "";
       history.replaceState(null, "", url);
     }
-    const adminToken = script?.dataset.admin || store2.get(`lab-admin:${page.split("/")[1] || ""}`) || store2.get("lab-admin:*") || store2.get("lab-admin");
-    let comments = [];
-    let isAdmin = false;
-    let on = store2.get("lab-on") ? store2.get("lab-on") === "1" : script?.dataset.on === "1";
-    let openId = null;
-    let closeFast = false;
-    let cardFull = false;
-    let draft = null;
+    const adminToken = script?.dataset.admin || store2.get(`lab-admin:${S.page.split("/")[1] || ""}`) || store2.get("lab-admin:*") || store2.get("lab-admin");
+    S.comments = [];
+    S.isAdmin = false;
+    S.on = store2.get("lab-on") ? store2.get("lab-on") === "1" : script?.dataset.on === "1";
+    S.openId = null;
+    S.closeFast = false;
+    S.cardFull = false;
+    S.draft = null;
     const host2 = document.createElement("div");
     host2.setAttribute("data-lab-comments", "");
     host2.style.cssText = "position:absolute;top:0;left:0;width:0;height:0;z-index:2147483000;";
@@ -1510,7 +2809,7 @@ ${line}`;
     );
     const LIST_WINDOW = false;
     const tabTitle = { base: "" };
-    let showDone = store2.get("lab-show-done") === "1";
+    S.showDone = store2.get("lab-show-done") === "1";
     const newNext = $(".new-next");
     const sendBtn = $(".send-all");
     const listEl = $(".list");
@@ -1520,11 +2819,11 @@ ${line}`;
       /** @type {HTMLElement} */
       root.querySelector(".chat-btn")
     );
-    let listOpen = false;
-    let filter = "open";
-    let refit = () => {
+    S.listOpen = false;
+    S.filter = "open";
+    S.refit = () => {
     };
-    let chatOpen = false;
+    S.chatOpen = false;
     const el2 = (tag, attrs = {}, text) => {
       const node = document.createElement(tag);
       for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
@@ -1550,21 +2849,21 @@ ${line}`;
       return AGENT_KINDS.includes(k) ? k === "antigravity" ? "gemini" : k : "";
     };
     const headers = () => ({ "content-type": "application/json", ...adminToken ? { "x-lab-admin": adminToken } : {} });
-    let gone = false;
-    let loaded = false;
-    let retried = false;
+    S.gone = false;
+    S.loaded = false;
+    S.retried = false;
     const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll("textarea")].some((t) => t.value.trim());
     async function load() {
       try {
-        const res = await fetch(`${API}?page=${encodeURIComponent(page)}`, { headers: headers(), cache: "no-store" });
-        if (res.status === 404 && !loaded && script?.dataset.enable !== "always") {
-          if (!retried) {
-            retried = true;
+        const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}`, { headers: headers(), cache: "no-store" });
+        if (res.status === 404 && !S.loaded && script?.dataset.enable !== "always") {
+          if (!S.retried) {
+            S.retried = true;
             setTimeout(load, 1500);
             return;
           }
-          gone = true;
-          on = false;
+          S.gone = true;
+          S.on = false;
           document.documentElement.classList.remove("lab-pinning");
           host2.remove();
           fonts.remove();
@@ -1572,9 +2871,9 @@ ${line}`;
         }
         if (!res.ok) throw new Error(String(res.status));
         const data = await res.json();
-        comments = data.comments || [];
-        isAdmin = Boolean(data.admin);
-        loaded = true;
+        S.comments = data.comments || [];
+        S.isAdmin = Boolean(data.admin);
+        S.loaded = true;
       } catch {
       }
       shownAgain();
@@ -1582,56 +2881,56 @@ ${line}`;
     async function loadChanges(since) {
       try {
         const url = new URL("/_lab/api/changes", new URL(API, location.href));
-        url.search = String(new URLSearchParams({ page, since: String(since) }));
+        url.search = String(new URLSearchParams({ page: S.page, since: String(since) }));
         const res = await fetch(url, { cache: "no-store" });
         const data = res.ok ? await res.json() : { full: true };
-        if (data.full || !loaded) return load();
-        const gone2 = new Set(data.del);
+        if (data.full || !S.loaded) return load();
+        const gone = new Set(data.del);
         const fresh = new Map(data.set.map((c) => [c.id, c]));
-        comments = comments.filter((c) => !gone2.has(c.id)).map((c) => fresh.get(c.id) || c);
-        const had = new Set(comments.map((c) => c.id));
-        for (const c of data.set) if (!had.has(c.id)) comments.push(c);
-        comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        S.comments = S.comments.filter((c) => !gone.has(c.id)).map((c) => fresh.get(c.id) || c);
+        const had = new Set(S.comments.map((c) => c.id));
+        for (const c of data.set) if (!had.has(c.id)) S.comments.push(c);
+        S.comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       } catch {
         return load();
       }
       shownAgain();
     }
     function shownAgain() {
-      if (!typed() && !grabbing) render();
+      if (!typed() && !S.grabbing) render();
       else {
-        if (openCard?.isConnected) openCard.sync();
-        if (chatOpen) drawChat();
+        if (S.openCard?.isConnected) S.openCard.sync();
+        if (S.chatOpen) drawChat();
         drawList();
       }
     }
-    let goMode = store2.get("lab-go") === "1";
-    let cursorMode = store2.get("lab-cursor") === "1";
+    S.goMode = store2.get("lab-go") === "1";
+    S.cursorMode = store2.get("lab-cursor") === "1";
     const setCursor = (v) => {
-      cursorMode = v;
+      S.cursorMode = v;
       store2.set("lab-cursor", v ? "1" : "");
       goBtn.classList.toggle("cursor", v);
-      goBtn.classList.toggle("on", goMode && !v);
+      goBtn.classList.toggle("on", S.goMode && !v);
       goFace();
-      document.documentElement.classList.toggle("lab-pinning", on && !v);
-      document.documentElement.classList.toggle("lab-go", on && goMode && !v);
+      document.documentElement.classList.toggle("lab-pinning", S.on && !v);
+      document.documentElement.classList.toggle("lab-go", S.on && S.goMode && !v);
       recheck();
     };
     const setGo = (v) => {
-      if (cursorMode) setCursor(false);
-      goMode = v;
+      if (S.cursorMode) setCursor(false);
+      S.goMode = v;
       queueMicrotask(goFace);
       store2.set("lab-go", v ? "1" : "");
       goBtn.classList.toggle("on", v);
-      goBtn.setAttribute("aria-pressed", String(v && !cursorMode));
-      document.documentElement.classList.toggle("lab-go", on && v);
+      goBtn.setAttribute("aria-pressed", String(v && !S.cursorMode));
+      document.documentElement.classList.toggle("lab-go", S.on && v);
       ptr.classList.toggle("go", v);
       recheck();
     };
     function begin(anchor) {
       const name = store2.get("lab-name").trim();
-      if (!goMode || !name) {
-        draft = { anchor };
+      if (!S.goMode || !name) {
+        S.draft = { anchor };
         return render();
       }
       if (drafting()) {
@@ -1640,18 +2939,18 @@ ${line}`;
       }
       send({ name, text: "go", anchor }).then(({ comment, edit }) => {
         if (edit) store2.set(`lab-edit:${comment.id}`, edit);
-        comments.push(comment);
+        S.comments.push(comment);
         markSeen([comment]);
-        posted = comment.id;
+        S.posted = comment.id;
         render();
-      }).catch(() => (draft = { anchor }, render()));
+      }).catch(() => (S.draft = { anchor }, render()));
     }
     async function send(payload) {
       let res = null;
       if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
       for (let tries = 0; !res; tries++) {
         try {
-          res = await fetch(API, { method: "POST", headers: headers(), body: JSON.stringify({ page, ...payload }) });
+          res = await fetch(API, { method: "POST", headers: headers(), body: JSON.stringify({ page: S.page, ...payload }) });
         } catch {
           if (tries >= 150) throw new Error("couldn't reach the lab; your text is still here");
           await new Promise((r) => setTimeout(r, 2e3));
@@ -1665,13 +2964,13 @@ ${line}`;
     const placed = [];
     async function undoLast() {
       const id = placed.pop();
-      const c = id && comments.find((x) => x.id === id);
+      const c = id && S.comments.find((x) => x.id === id);
       if (!c) return;
       const ownKey = store2.get(`lab-edit:${id}`);
       try {
-        if (isAdmin) {
+        if (S.isAdmin) {
           await send({ action: "delete", id });
-          comments = comments.filter((x) => x.id !== id && x.parent !== id);
+          S.comments = S.comments.filter((x) => x.id !== id && x.parent !== id);
         } else if (ownKey) {
           const { comment } = await send({ action: "resolve", id, edit: ownKey });
           Object.assign(c, comment);
@@ -1679,7 +2978,7 @@ ${line}`;
       } catch {
         return void placed.push(id);
       }
-      if (openId === id) openId = null;
+      if (S.openId === id) S.openId = null;
       render();
       say(`took back ${/^go$/i.test(c.text.trim()) ? "a go" : "a pin"} \xB7 ${placed.length ? "again for the one before" : "nothing more to take back"}`);
     }
@@ -1695,7 +2994,7 @@ ${line}`;
         said.was = void 0;
       }, 1800);
     }
-    const agentLink = () => new URL("/_lab/agent" + page, new URL(API, location.href)).href;
+    const agentLink = () => new URL("/_lab/agent" + S.page, new URL(API, location.href)).href;
     async function copy(textPromise, button) {
       const textValue = await textPromise;
       try {
@@ -1719,8 +3018,8 @@ ${line}`;
         button.style.width = button.style.justifyContent = "";
       }, 1400);
     }
-    const threads = () => comments.filter((c) => !c.parent);
-    const heldKey = () => `lab-held:${page}`;
+    const threads = () => S.comments.filter((c) => !c.parent);
+    const heldKey = () => `lab-held:${S.page}`;
     const held = () => {
       try {
         return JSON.parse(store2.get(heldKey()) || "[]");
@@ -1728,33 +3027,10 @@ ${line}`;
         return [];
       }
     };
-    const listed = () => threads().filter((c) => c.anchor?.kind !== "page").filter((c) => filter === "new" ? unread(c).length : filter === "open" ? !c.resolved : filter === "resolved" ? c.resolved : mine(c)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const listed = () => threads().filter((c) => c.anchor?.kind !== "page").filter((c) => S.filter === "new" ? unread(c).length : S.filter === "open" ? !c.resolved : S.filter === "resolved" ? c.resolved : mine(c)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const isPage = (c) => c.anchor?.kind === "page";
-    let stepping = false;
-    let keepKeys = false;
-    const goTo = (c, keys = false) => {
-      stepping = Boolean(openId);
-      keepKeys = stepping && (keys || root.activeElement?.localName === "textarea");
-      openId = c.id;
-      draft = null;
-      if (coarse) listOpen = false;
-      render();
-      const pinTop = position(c.anchor || {}).top;
-      let top = pinTop - Math.max(40, coarse && openCard?.isConnected ? (innerHeight - openCard.offsetHeight) / 2 : innerHeight / 3);
-      if (!coarse && openCard?.isConnected) {
-        const bottom = openCard.getBoundingClientRect().bottom + scrollY;
-        const tall = bottom - pinTop + 28;
-        top = tall <= innerHeight - 80 ? pinTop - 28 - (innerHeight - tall) / 2 : pinTop - 40;
-      }
-      if (coarse) {
-        const de = document.documentElement;
-        const had = parseFloat(de.style.getPropertyValue("--lab-room")) || 0;
-        const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
-        de.style.setProperty("--lab-room", `${room}px`);
-        de.classList.toggle("lab-room", room > 0);
-      }
-      scrollTo({ top: Math.max(0, top), behavior: still.matches ? "auto" : "smooth" });
-    };
+    S.stepping = false;
+    S.keepKeys = false;
     const isDone = (c) => c.resolved || workState(c)[0] === "done";
     const keyWord = (before, key, after) => {
       const w = el2("span", { class: "kw" });
@@ -1762,12 +3038,12 @@ ${line}`;
       return w;
     };
     function placeBar() {
-      const inMenu = on ? [doneBtn, copyBtn, toggleBtn] : [];
+      const inMenu = S.on ? [doneBtn, copyBtn, toggleBtn] : [];
       for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
-      if (!on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
-      if (!on) root.querySelector(".left").append(copyBtn);
-      moreBtn.hidden = !on;
-      if (!on && !moreMenu.hidden) setMenu(false);
+      if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
+      if (!S.on) root.querySelector(".left").append(copyBtn);
+      moreBtn.hidden = !S.on;
+      if (!S.on && !moreMenu.hidden) setMenu(false);
       let first = true;
       for (
         const b of
@@ -1780,305 +3056,91 @@ ${line}`;
     }
     function goFace() {
       const gp = goBtn.querySelector(".gp");
-      if (gp) gp.textContent = !goMode && !cursorMode ? initial(store2.get("lab-name")) || "+" : "go";
-      goBtn.setAttribute("aria-label", `a click places: ${cursorMode ? "nothing (cursor)" : goMode ? "go" : "a comment"}`);
+      if (gp) gp.textContent = !S.goMode && !S.cursorMode ? initial(store2.get("lab-name")) || "+" : "go";
+      goBtn.setAttribute("aria-label", `a click places: ${S.cursorMode ? "nothing (cursor)" : S.goMode ? "go" : "a comment"}`);
       goBtn.setAttribute("aria-keyshortcuts", "1 2 3");
-    }
-    function drawList() {
-      const all = threads();
-      listBtn.hidden = !on || !coarse && !all.length && !held().length;
-      goBtn.hidden = !on;
-      if (!goBtn.firstElementChild) goBtn.replaceChildren(el2("span", { class: "gp" }, "go"), el2("kbd", { "aria-hidden": "true" }, "1/2/3"));
-      goFace();
-      goBtn.classList.toggle("on", goMode && !cursorMode);
-      goBtn.classList.toggle("cursor", cursorMode);
-      goBtn.setAttribute("aria-pressed", String(goMode && !cursorMode));
-      const freshAll = all.filter((c) => !isPage(c)).reduce((n, c) => n + unread(c).length, 0);
-      listBtn.replaceChildren(document.createTextNode(freshAll ? `list \xB7 ${freshAll} new` : "list"), el2("kbd", { "aria-hidden": "true" }, "l"));
-      newPrev.hidden = newNext.hidden = !on || !all.some((c) => !isPage(c) && unread(c).length);
-      if (!LIST_WINDOW) {
-        newPrev.hidden = newNext.hidden = true;
-        listBtn.hidden = !on;
-        {
-          listBtn.replaceChildren(coarse ? "new" : keyWord("ne", "w", ""), el2("b", { class: `cnt${freshAll ? "" : " zero"}` }, String(freshAll)));
-          listBtn.setAttribute("aria-label", `next new comment, ${freshAll} new`);
-          listBtn.setAttribute("aria-keyshortcuts", "w");
-        }
-        listBtn.title = "next new comment: W, or Control-D while typing (Shift for the one before)";
-        listBtn.disabled = !freshAll;
-        listBtn.classList.toggle("quiet", !freshAll);
-        const doneCount2 = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
-        doneBtn.hidden = !on;
-        doneBtn.disabled = !doneCount2 && !showDone;
-        doneBtn.classList.toggle("quiet", doneBtn.disabled);
-        doneBtn.replaceChildren(showDone ? `hide done \xB7 ${doneCount2}` : `show done \xB7 ${doneCount2}`, el2("kbd", { "aria-hidden": "true" }, "d"));
-        doneBtn.setAttribute("aria-keyshortcuts", "d");
-      }
-      placeBar();
-      const tabNew = all.reduce((n, c) => n + unread(c).length, 0);
-      if (!tabTitle.base || !document.title.startsWith("(")) tabTitle.base = document.title.replace(/^\(\d+\) /, "");
-      const want = tabNew ? `(${tabNew}) ${tabTitle.base}` : tabTitle.base;
-      if (document.title !== want) document.title = want;
-      listBtn.classList.toggle("has-new", freshAll > 0);
-      const h = held().length;
-      sendBtn.hidden = !h;
-      sendBtn.textContent = `send ${h} draft${h === 1 ? "" : "s"}`;
-      listEl.hidden = !on || !listOpen;
-      if (listEl.hidden) return;
-      for (
-        const b of
-        /** @type {NodeListOf<HTMLElement>} */
-        listEl.querySelectorAll("[data-f]")
-      ) b.classList.toggle("on", b.dataset.f === filter);
-      const fresh = all.filter((c) => !isPage(c) && unread(c).length).length;
-      listEl.querySelector('[data-f="new"]').textContent = fresh ? `new \xB7 ${fresh}` : "new";
-      for (const f of ["work", "resolved", "mine"]) $(`[data-f="${f}"]`, listEl).hidden = true;
-      holdBtn.hidden = !DRAFT_MODE;
-      const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === "done") && !unread(c).length).length;
-      showDoneBtn.hidden = !doneCount;
-      showDoneBtn.textContent = showDone ? `hide done \xB7 ${doneCount}` : `show done \xB7 ${doneCount}`;
-      holdBtn.classList.toggle("on", drafting());
-      if (filter === "work") return listEl.querySelector(".items").replaceChildren(...workItems());
-      const items = listed().map((c) => {
-        const b = el2("button", { class: `it${openId === c.id ? " cur" : ""}`, type: "button" });
-        b.append(document.createTextNode(`${c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), ...onWhat(c) ? [el2("span", {}, `on ${onWhat(c)} `)] : [], el2("span", {}, `\xB7 ${c.name}${!c.resolved && isDone(c) ? " \xB7 \u2705 done" : ""}`), ...unread(c).length ? [" ", el2("span", { class: "tag" }, `${unread(c).length} new`)] : []);
-        b.addEventListener("click", () => goTo(c));
-        return b;
-      });
-      listEl.querySelector(".items").replaceChildren(...items.length ? items : [el2("div", { class: "none" }, "nothing here")]);
     }
     const ago = (iso) => {
       const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 6e4));
       return m < 1 ? "just now" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
     };
-    const workState = (c) => {
-      const thread = [c, ...repliesOf(c.id)];
-      const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || "";
-      const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
-      const answered = answer && answer.createdAt > lastPerson;
-      if (c.resolved || answered && /^done\b/i.test(answer.text)) return ["done", answered ? answer.createdAt : c.createdAt];
-      if (answered && /^on it\b/i.test(answer.text)) return ["now", answer.createdAt];
-      if (!answered && c.handedAt && c.handedAt >= lastPerson) return ["now", c.handedAt];
-      return answered ? [null, ""] : ["next", lastPerson];
-    };
-    function workItems() {
-      const today = (/* @__PURE__ */ new Date()).toDateString();
-      const now = [];
-      const next = [];
-      const done = [];
-      for (const c of comments.filter((x) => !x.parent)) {
-        const [state, at] = workState(c);
-        if (state === "now") now.push([c, at]);
-        else if (state === "next") next.push([c, at]);
-        else if (state === "done" && new Date(at).toDateString() === today) done.push([c, at]);
-      }
-      const row = ([c, at], when) => {
-        const b = el2("button", { class: `it${openId === c.id ? " cur" : ""}`, type: "button" });
-        b.append(document.createTextNode(`${isPage(c) ? "chat" : c.resolved ? "\u2713" : numberOf(c)}  ${c.text.replace(/\s+/g, " ").slice(0, 70)} `), el2("span", {}, `\xB7 ${when(at)}`));
-        b.addEventListener("click", () => isPage(c) ? (chatOpen = true, listOpen = false, render()) : goTo(c));
-        return b;
-      };
-      const part = (title, list, when, newest = false) => list.length ? [el2("div", { class: "group" }, `${title} \xB7 ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
-      const out = [
-        ...part("Now", now, (at) => `on it ${ago(at)}`.replace("on it just now", "just started")),
-        ...part("Next", next, (at) => `sent ${ago(at)} ago`.replace("just now ago", "just now")),
-        ...part("Done today", done, (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), true)
-      ];
-      return out.length ? out : [el2("div", { class: "none" }, "nothing in progress on this page")];
-    }
-    const stamped = (bubble, stamp) => {
-      const room = stamp.cloneNode(true);
-      room.className = "stamp-room";
-      room.setAttribute("aria-hidden", "true");
-      for (const n of room.querySelectorAll("[role]")) n.removeAttribute("role");
-      const last = [...bubble.children].reverse().find((n) => n.classList?.contains("p"));
-      (last || bubble).append(room);
-      bubble.append(stamp);
-    };
-    let replyTo = null;
-    let newFrom = null;
-    function drawChat() {
-      const byId = new Map(comments.map((c) => [c.id, c]));
-      const msgs = comments.filter((c) => isPage(c) || c.parent && isPage(byId.get(c.parent) || {})).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(-150);
-      if (on && chatOpen && chatEl.hidden) newFrom = msgs.find(isNew)?.id || null;
-      if (!chatOpen) newFrom = null;
-      if (on && chatOpen) markSeen(msgs.filter(isNew));
-      const fresh = msgs.filter(isNew).length;
-      chatBtn.hidden = !on;
-      {
-        chatBtn.replaceChildren(coarse ? "chat" : keyWord("", "c", "hat"), el2("b", { class: `cnt${fresh ? "" : " zero"}` }, String(fresh)));
-        chatBtn.setAttribute("aria-label", `chat, ${fresh} new`);
-        chatBtn.setAttribute("aria-keyshortcuts", "c");
-      }
-      chatBtn.classList.toggle("has-new", fresh > 0);
-      placeBar();
-      const opening = chatEl.hidden;
-      chatEl.hidden = !on || !chatOpen;
-      if (chatEl.hidden) chatEl.classList.remove("full");
-      if (chatEl.hidden && chatEl.contains(root.activeElement)) root.activeElement.blur();
-      if (chatEl.hidden) return;
-      const box = $(".msgs", chatEl);
-      const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-      const before = new Set(opening ? [] : [.../** @type {HTMLCollectionOf<HTMLElement>} */
-      box.children].map((n) => n.dataset.id));
-      const kept = new Map([.../** @type {HTMLCollectionOf<HTMLElement>} */
-      box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
-      const same = (n) => {
-        const old = kept.get(n.dataset?.id);
-        return old && old.outerHTML.replace(" fresh", "") === n.outerHTML ? old : n;
-      };
-      patchKids(box, msgs.flatMap((m) => {
-        const root2 = m.parent ? byId.get(m.parent) : m;
-        const b = el2("div", { class: `msg${mine(m) && !m.session ? " mine" : ""}${root2 && replyTo === root2.id ? " to" : ""}${before.size && !before.has(m.id) ? " fresh" : ""}`, "data-id": m.id, ...agentOf(m) ? { "data-agent": agentOf(m) } : {} });
-        b.append(nameLine(m.name, false));
-        if (m.parent && root2) {
-          const q = el2("div", { class: "quote" });
-          q.append(el2("b", {}, String(root2.name || "").replace(/\s*·\s*session\s+\S+$/i, "")), document.createTextNode(root2.text.replace(/\s+/g, " ").slice(0, 90)));
-          q.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const box2 = $(".msgs", chatEl);
-            const to = $(`[data-id="${root2.id}"]`, box2);
-            if (!to) return;
-            box2.scrollTo({ top: to.offsetTop - box2.offsetTop - 12, behavior: still.matches ? "auto" : "smooth" });
-            to.animate?.([{ boxShadow: "0 0 0 2px rgb(52,199,89)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
-          });
-          b.append(q);
-        }
-        b.append(...readable(m.text));
-        stamped(b, stampOf(m, root2));
-        return m.id === newFrom && m !== msgs[0] ? [el2("div", { class: "newline" }, "new"), b] : [b];
-      }).map(same));
-      const strip = $(".replying", chatEl);
-      const target = replyTo && byId.get(replyTo);
-      strip.hidden = !target;
-      if (target) {
-        const x = el2("button", { type: "button", title: "about the page instead" }, "\u2715");
-        x.addEventListener("click", () => (replyTo = null, drawChat()));
-        strip.replaceChildren(document.createTextNode(`\u21A9 ${target.name}: ${target.text.replace(/\s+/g, " ").slice(0, 40)}`), x);
-      }
-      if (!box.firstChild) box.append(el2("div", { class: "none" }, "say something about the page as a whole"));
-      const chat = chatEl.querySelector(".chat");
-      if (!chat.firstChild)
-        chat.append(
-          composer({
-            placeholder: "message",
-            onSubmit: async (name, text) => {
-              const { comment } = await send(
-                replyTo ? { name, text, parent: replyTo } : { name, text, anchor: { kind: "page", width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } }
-              );
-              const answered = replyTo && comments.find((x) => x.id === replyTo);
-              if (answered?.resolved) answered.resolved = false;
-              replyTo = null;
-              comments.push(comment);
-              markSeen([comment]);
-              box.scrollTop = box.scrollHeight;
-              render();
-              return { keep: true };
-            }
-          })
-        );
-      chat.querySelector("textarea").placeholder = target ? "reply" : "message";
-      if (atEnd) box.scrollTop = box.scrollHeight;
-    }
-    const numberOf = (c) => comments.filter((x) => !x.parent && !x.resolved).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).indexOf(c) + 1;
-    const seenKey = () => `lab-seen:${page}`;
+    S.replyTo = null;
+    S.newFrom = null;
+    const numberOf = (c) => S.comments.filter((x) => !x.parent && !x.resolved).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).indexOf(c) + 1;
+    const seenKey = () => `lab-seen:${S.page}`;
     const readSeen = () => new Set(store2.get(seenKey()).split(",").filter(Boolean));
-    let seen = readSeen();
+    S.seen = readSeen();
     const plain = (n) => String(n || "").replace(/\s+/g, " ").trim().toLowerCase();
     const mine = (c) => plain(c.name) && plain(c.name) === plain(store2.get("lab-name")) || Boolean(store2.get(`lab-edit:${c.id}`));
-    const isNew = (c) => !seen.has(c.id) && !mine(c);
+    const isNew = (c) => !S.seen.has(c.id) && !mine(c);
     const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
     const markSeen = (items) => {
-      const fresh = items.filter((item) => !seen.has(item.id)).map((item) => item.id);
-      for (const item of items) seen.add(item.id);
-      store2.set(seenKey(), [...seen].join(","));
+      const fresh = items.filter((item) => !S.seen.has(item.id)).map((item) => item.id);
+      for (const item of items) S.seen.add(item.id);
+      store2.set(seenKey(), [...S.seen].join(","));
       if (fresh.length) shareReads(fresh);
     };
     const READS = script?.dataset.live ? script.dataset.live.replace(/live$/, "api/reads") : "";
     const shareReads = (ids) => {
       const who = store2.get("lab-name").trim();
       if (!READS || !who || !ids.length) return;
-      fetch(READS, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: who, page, ids }) }).catch(() => {
+      fetch(READS, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: who, page: S.page, ids }) }).catch(() => {
       });
     };
     async function syncReads() {
       const who = store2.get("lab-name").trim();
       if (!READS || !who) return;
-      const at = page;
+      const at = S.page;
       try {
         const { ids } = await (await fetch(`${READS}?name=${encodeURIComponent(who)}&page=${encodeURIComponent(at)}`, { cache: "no-store" })).json();
-        if (at !== page) return;
+        if (at !== S.page) return;
         const theirs = new Set(ids);
-        const mineOnly = [...seen].filter((id) => !theirs.has(id));
-        const added = ids.filter((id) => !seen.has(id));
+        const mineOnly = [...S.seen].filter((id) => !theirs.has(id));
+        const added = ids.filter((id) => !S.seen.has(id));
         if (mineOnly.length) shareReads(mineOnly);
         if (!added.length) return;
-        for (const id of added) seen.add(id);
-        store2.set(seenKey(), [...seen].join(","));
+        for (const id of added) S.seen.add(id);
+        store2.set(seenKey(), [...S.seen].join(","));
         shownAgain();
       } catch {
       }
     }
-    const repliesOf = (id) => comments.filter((c) => c.parent === id);
+    const repliesOf = (id) => S.comments.filter((c) => c.parent === id);
     const initial = (name) => [...String(name || "").trim()][0]?.toUpperCase() || "";
-    function placeCard(card, left, top) {
-      layer2.append(card);
-      const width = card.offsetWidth;
-      const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
-      card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;
-      const h = card.offsetHeight;
-      const below = top + 10 + h > contentEnd();
-      card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
-      card.style.transformOrigin = below ? "14px 100%" : "";
-    }
     const contentEnd = () => {
       inPage(0);
       return pageEnd.y;
     };
-    function placeBeside(node, left, top) {
-      layer2.append(node);
-      const width = node.offsetWidth;
-      const right = scrollX + document.documentElement.clientWidth - 12;
-      const h = node.offsetHeight;
-      const end = contentEnd();
-      if (left + 36 + width <= right) {
-        node.style.left = `${left + 36}px`;
-        node.style.top = `${Math.min(top - 37, end - h - 8)}px`;
-      } else {
-        node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
-        node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
-      }
-    }
-    let shown = null;
-    let posted = null;
+    S.shown = null;
+    S.posted = null;
     const still = matchMedia("(prefers-reduced-motion: reduce)");
     const pinsById = /* @__PURE__ */ new Map();
-    let dropDrag = null;
+    S.dropDrag = null;
     function render() {
-      grabbing = false;
-      dropDrag?.();
+      S.grabbing = false;
+      S.dropDrag?.();
       const prev = (
         /** @type {HTMLElement | null} */
         layer2.querySelector(".card:not(.out), .float:not(.out)")
       );
-      const prevHeight = stepping && coarse && prev ? prev.offsetHeight : 0;
+      const prevHeight = S.stepping && coarse && prev ? prev.offsetHeight : 0;
       const prevScroll = prev ? prev.querySelector(".body")?.scrollTop ?? null : null;
-      const places = new Map(on ? threads().filter((c) => c.anchor?.kind !== "page").map((c) => [c.id, position(c.anchor || {})]) : []);
+      const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== "page").map((c) => [c.id, position(c.anchor || {})]) : []);
       layer2.replaceChildren();
       pinsById.clear();
-      const now = on ? draft || openId : null;
-      const appear = now !== shown;
+      const now = S.on ? S.draft || S.openId : null;
+      const appear = now !== S.shown;
       const anim = appear ? " in" : "";
       let quoted = null;
       const done = () => {
-        if (closeFast && !now && prev) {
-          closeFast = false;
+        if (S.closeFast && !now && prev) {
+          S.closeFast = false;
           prev.inert = true;
           layer2.append(prev);
-          const gone2 = () => prev.remove();
-          if (still.matches || !prev.animate) gone2();
-          else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "ease-out", fill: "forwards" }).finished.then(gone2, gone2);
-        } else if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) {
+          const gone = () => prev.remove();
+          if (still.matches || !prev.animate) gone();
+          else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "ease-out", fill: "forwards" }).finished.then(gone, gone);
+        } else if (coarse && !now && S.shown && prev && !still.matches && !prev.style.transform) {
           prev.classList.remove("in");
           prev.classList.add("out");
           prev.inert = true;
@@ -2086,27 +3148,27 @@ ${line}`;
           setTimeout(() => prev.remove(), coarse ? 230 : 150);
         }
         markQuote(quoted);
-        shown = now;
-        posted = null;
+        S.shown = now;
+        S.posted = null;
       };
       const list = threads();
       const open = list.filter((c) => !c.resolved && c.anchor?.kind !== "page").length;
       const fresh = list.filter((c) => !c.resolved && c.anchor?.kind !== "page").reduce((n, c) => n + unread(c).length, 0);
       toggleBtn.replaceChildren(
-        document.createTextNode((on ? "hide comments" : open ? `comments \xB7 ${open}` : "comments") + (!on && fresh ? ` \xB7 ${fresh} new` : "")),
+        document.createTextNode((S.on ? "hide comments" : open ? `comments \xB7 ${open}` : "comments") + (!S.on && fresh ? ` \xB7 ${fresh} new` : "")),
         el2("kbd", { "aria-hidden": "true" }, "m")
       );
-      toggleBtn.classList.toggle("secondary", on);
-      host2.toggleAttribute("data-sheet", Boolean(on && (draft || openId || listOpen || chatOpen)));
+      toggleBtn.classList.toggle("secondary", S.on);
+      host2.toggleAttribute("data-sheet", Boolean(S.on && (S.draft || S.openId || S.listOpen || S.chatOpen)));
       document.documentElement.classList.toggle("lab-sheet", host2.hasAttribute("data-sheet"));
       backCloses();
-      refit();
-      document.documentElement.classList.toggle("lab-pinning", on && !cursorMode);
-      document.documentElement.classList.toggle("lab-go", on && goMode && !cursorMode);
-      copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
+      S.refit();
+      document.documentElement.classList.toggle("lab-pinning", S.on && !S.cursorMode);
+      document.documentElement.classList.toggle("lab-go", S.on && S.goMode && !S.cursorMode);
+      copyBtn.hidden = !S.on || !S.isAdmin || list.every((c) => c.resolved);
       drawList();
       drawChat();
-      if (!on) return done();
+      if (!S.on) return done();
       for (const h of held()) {
         const { left, top } = position(h.anchor);
         const p = el2("div", { class: "pin held", title: `${h.name}: ${h.text} \xB7 draft, not sent yet` }, initial(h.name));
@@ -2116,16 +3178,16 @@ ${line}`;
       }
       list.forEach((c) => {
         if (isPage(c)) return;
-        if (!showDone && openId !== c.id && (c.resolved || workState(c)[0] === "done") && !unread(c).length) return;
+        if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === "done") && !unread(c).length) return;
         const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
-        if (openId === c.id) drawZone(zone, `saved${anim}`);
+        if (S.openId === c.id) drawZone(zone, `saved${anim}`);
         const news = unread(c);
-        const movable = !zone && (isAdmin || store2.get(`lab-edit:${c.id}`));
+        const movable = !zone && (S.isAdmin || store2.get(`lab-edit:${c.id}`));
         const [state] = workState(c);
         const pin = el2(
           "button",
           {
-            class: `pin${/^go$/i.test(c.text.trim()) ? " go" : ""}${c.resolved ? " resolved" : ""}${state === "done" ? " done" : ""}${state === "now" ? " working" : ""}${news.length ? " new" : ""}${moved ? " moved" : ""}${posted === c.id ? " in" : ""}${movable ? " grab" : ""}${openId === c.id ? " open" : ""}`,
+            class: `pin${/^go$/i.test(c.text.trim()) ? " go" : ""}${c.resolved ? " resolved" : ""}${state === "done" ? " done" : ""}${state === "now" ? " working" : ""}${news.length ? " new" : ""}${moved ? " moved" : ""}${S.posted === c.id ? " in" : ""}${movable ? " grab" : ""}${S.openId === c.id ? " open" : ""}`,
             type: "button",
             title: `${c.resolved ? "" : `${numberOf(c)} \xB7 `}${c.name}${moved ? " \xB7 the spot it was pinned to has changed" : ""}${movable ? " \xB7 drag to move" : ""}`,
             // Its state in words too (the ring, the tick and the new dot are only seen).
@@ -2137,10 +3199,10 @@ ${line}`;
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
         if (movable) grab(pin, c);
-        if (!coarse && zone && openId !== c.id) {
-          let shown2 = null;
-          pin.addEventListener("pointerenter", () => shown2 = drawZone(zone, "saved"));
-          pin.addEventListener("pointerleave", () => (shown2?.remove(), shown2 = null));
+        if (!coarse && zone && S.openId !== c.id) {
+          let shown = null;
+          pin.addEventListener("pointerenter", () => shown = drawZone(zone, "saved"));
+          pin.addEventListener("pointerleave", () => (shown?.remove(), shown = null));
         } else if (!coarse && c.anchor?.quote && !zone) {
           pin.addEventListener("pointerenter", () => markQuote(c.anchor));
           pin.addEventListener("pointerleave", () => markQuote(quoted));
@@ -2148,19 +3210,19 @@ ${line}`;
         pin.addEventListener("click", (e) => {
           e.stopPropagation();
           if (pin.dataset.dragged) return;
-          if (coarse && openId !== c.id) return goTo(c);
-          openId = openId === c.id ? null : c.id;
-          draft = null;
+          if (coarse && S.openId !== c.id) return goTo(c);
+          S.openId = S.openId === c.id ? null : c.id;
+          S.draft = null;
           render();
         });
         layer2.append(pin);
         pinsById.set(c.id, pin);
-        if (openId === c.id) {
-          const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? keepKeys : !stepping || keepKeys));
-          openCard = card;
-          if (appear && !stepping) card.classList.add("in");
+        if (S.openId === c.id) {
+          const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
+          S.openCard = card;
+          if (appear && !S.stepping) card.classList.add("in");
           if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
-          stepping = keepKeys = false;
+          S.stepping = S.keepKeys = false;
           placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
           if (!appear && prevScroll != null) card.querySelector(".body").scrollTop = prevScroll;
           else if (appear) {
@@ -2168,15 +3230,15 @@ ${line}`;
             const first = coarse ? null : body.querySelector(".fresh, .newline");
             body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
           }
-          if (coarse && cardFull) card.classList.add("full");
-          swipeDown(card, () => (openId = null, cardFull = false, render()), true);
+          if (coarse && S.cardFull) card.classList.add("full");
+          swipeDown(card, () => (S.openId = null, S.cardFull = false, render()), true);
           markSeen(news);
           if (news.length) drawList();
           quoted = zone ? null : c.anchor;
         }
       });
-      if (draft) {
-        const { anchor } = draft;
+      if (S.draft) {
+        const { anchor } = S.draft;
         const { left, top, zone } = position(anchor);
         drawZone(zone, "draft");
         quoted = zone ? null : anchor;
@@ -2193,211 +3255,29 @@ ${line}`;
             onSubmit: async (name, text) => {
               if (drafting()) {
                 store2.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
-                draft = null;
+                S.draft = null;
                 return render();
               }
               const { comment, edit } = await send({ name, text, anchor });
               if (edit) store2.set(`lab-edit:${comment.id}`, edit);
-              comments.push(comment);
+              S.comments.push(comment);
               markSeen([comment]);
-              draft = null;
-              openId = null;
-              posted = comment.id;
+              S.draft = null;
+              S.openId = null;
+              S.posted = comment.id;
               render();
             }
           })
         );
-        swipeDown(float, () => (draft = null, render()));
+        swipeDown(float, () => (S.draft = null, render()));
         if (zone) placeCard(float, left + 14, zone.top + zone.height);
         else placeBeside(float, left, top);
       }
       done();
     }
-    let grabbing = false;
-    function grab(pin, c) {
-      pin.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) return;
-        const r = pin.getBoundingClientRect();
-        const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
-        const start2 = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
-        let moving = false;
-        let last = e;
-        grabbing = true;
-        pin.setPointerCapture(e.pointerId);
-        const place2 = () => {
-          pin.style.left = `${start2.left + last.clientX - start2.x + scrollX - start2.sx}px`;
-          pin.style.top = `${start2.top + last.clientY - start2.y + scrollY - start2.sy}px`;
-        };
-        const move = (ev) => {
-          last = ev;
-          if (!moving && Math.hypot(ev.clientX - start2.x, ev.clientY - start2.y) < 5) return;
-          moving = true;
-          pin.classList.add("dragging");
-          place2();
-        };
-        const scrolled = () => moving && place2();
-        addEventListener("scroll", scrolled, true);
-        dropDrag = () => {
-          removeEventListener("scroll", scrolled, true);
-          dropDrag = null;
-        };
-        const up = async (ev) => {
-          pin.removeEventListener("pointermove", move);
-          pin.removeEventListener("pointerup", up);
-          pin.removeEventListener("pointercancel", up);
-          pin.removeEventListener("lostpointercapture", up);
-          dropDrag?.();
-          if (!grabbing) return;
-          grabbing = false;
-          if (!moving) return;
-          pin.dataset.dragged = "1";
-          setTimeout(() => delete pin.dataset.dragged, 0);
-          const x = ev.clientX - tip.dx;
-          const y = ev.clientY - tip.dy;
-          const under = document.elementsFromPoint(x, y).find((n) => n !== host2);
-          if (ev.type === "pointercancel" || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(OFF)) return render();
-          const before = c.anchor;
-          c.anchor = anchorAt(x, y);
-          render();
-          try {
-            const { comment } = await send({ action: "move", id: c.id, anchor: c.anchor, edit: store2.get(`lab-edit:${c.id}`) || void 0 });
-            Object.assign(c, comment);
-          } catch {
-            c.anchor = before;
-            render();
-          }
-        };
-        pin.addEventListener("pointermove", move);
-        pin.addEventListener("pointerup", up);
-        pin.addEventListener("pointercancel", up);
-        pin.addEventListener("lostpointercapture", up);
-      });
-    }
-    let openCard = null;
+    S.grabbing = false;
+    S.openCard = null;
     const coarse = matchMedia("(pointer: coarse)").matches;
-    function threadCard(c, fresh = /* @__PURE__ */ new Set(), focus = false) {
-      const card = el2("div", { class: "card" });
-      const body = el2("div", { class: "body" });
-      const foot = el2("div", { class: "foot" });
-      card.append(el2("div", { class: "handle" }), body, foot);
-      card.addEventListener("click", (e) => e.stopPropagation());
-      body.classList.add("msgs");
-      const itemEl = (item) => {
-        const box = el2("div", { class: `item msg${mine(item) && !item.session ? " mine" : ""}`, "data-id": item.id, ...agentOf(item) ? { "data-agent": agentOf(item) } : {} });
-        box.append(nameLine(item.name, false), ...readable(item.text));
-        stamped(box, stampOf(item, c, item === c && !c.resolved ? `#${numberOf(c)} \xB7 ` : ""));
-        return box;
-      };
-      const shown2 = /* @__PURE__ */ new Set();
-      const all = [c, ...repliesOf(c.id)];
-      const firstNew = all.find((x) => fresh.has(x.id));
-      for (const item of all) {
-        if (item === firstNew && item !== c) body.append(el2("div", { class: "newline" }, "new"));
-        body.append(itemEl(item));
-        shown2.add(item.id);
-      }
-      card.sync = () => {
-        for (const r of repliesOf(c.id)) {
-          if (shown2.has(r.id)) continue;
-          const items = card.querySelectorAll(".item");
-          const added = itemEl(r);
-          added.classList.add("fresh");
-          items[items.length - 1].after(added);
-          shown2.add(r.id);
-          markSeen([r]);
-        }
-      };
-      const ownKey = store2.get(`lab-edit:${c.id}`);
-      let actions = null;
-      if (isAdmin || ownKey) {
-        actions = el2("div", { class: "row acts" });
-        const resolve = el2("button", { class: "btn", type: "button" }, c.resolved ? "reopen" : "resolve");
-        const failed = (btn) => btn.textContent = "failed, try again";
-        resolve.addEventListener("click", async () => {
-          try {
-            const closing = !c.resolved;
-            const { comment } = await send({ action: c.resolved ? "reopen" : "resolve", id: c.id, ...ownKey ? { edit: ownKey } : {} });
-            Object.assign(c, comment);
-            if (closing && openId === c.id) return closeFast = true, openId = null, render();
-            render();
-          } catch {
-            failed(resolve);
-          }
-        });
-        const del = el2("button", { class: "btn", type: "button" }, "delete");
-        const yes = el2("button", { class: "btn danger", type: "button" }, "delete");
-        const no = el2("button", { class: "btn", type: "button" }, "cancel");
-        const back = () => {
-          actions.replaceChildren(resolve, del);
-          del.focus();
-        };
-        del.addEventListener("click", () => {
-          actions.replaceChildren(el2("span", { class: "ask" }, repliesOf(c.id).length ? "delete thread?" : "delete comment?"), yes, no);
-          no.focus();
-        });
-        no.addEventListener("click", back);
-        actions.addEventListener("keydown", (e) => {
-          if (e.key === "Escape" && yes.isConnected) {
-            e.stopPropagation();
-            back();
-          }
-        });
-        yes.addEventListener("click", async () => {
-          try {
-            await send({ action: "delete", id: c.id });
-          } catch {
-            return failed(yes);
-          }
-          comments = comments.filter((x) => x.id !== c.id && x.parent !== c.id);
-          openId = null;
-          render();
-        });
-        actions.append(...isAdmin ? [resolve, del] : [resolve]);
-        body.append(actions);
-      }
-      if (coarse) {
-        const topOf = (x) => position(x.anchor || {}).top;
-        const here = topOf(c);
-        const fresh2 = threads().filter((x) => !isPage(x) && x.id !== c.id && unread(x).length).map((x) => [x, topOf(x)]);
-        fresh2.sort((p, q) => (p[1] > here ? 0 : 1) - (q[1] > here ? 0 : 1) || p[1] - q[1]);
-        const nav = el2("div", { class: "row nav" });
-        if (fresh2.length) {
-          const b = el2("button", { class: "btn", type: "button" }, `new \xB7 ${fresh2.length} \u203A`);
-          b.addEventListener("pointerdown", (e) => e.preventDefault());
-          b.addEventListener("click", () => goTo(fresh2[0][0]));
-          nav.append(b);
-        }
-        if (actions) nav.append(actions);
-        if (nav.firstChild) card.insertBefore(nav, body);
-      }
-      foot.append(
-        composer({
-          placeholder: "reply",
-          autofocus: focus,
-          onSubmit: async (name, text) => {
-            const { comment } = await send({ name, text, parent: c.id });
-            comments.push(comment);
-            markSeen([comment]);
-            if (c.resolved) {
-              c.resolved = false;
-              render();
-              const again = openCard?.querySelector(".body");
-              if (again) again.scrollTop = again.scrollHeight;
-              openCard?.querySelector("textarea")?.focus({ preventScroll: true });
-              return { keep: true };
-            }
-            shown2.add(comment.id);
-            const items = card.querySelectorAll(".item");
-            const added = itemEl(comment);
-            added.classList.add("fresh");
-            items[items.length - 1].after(added);
-            body.scrollTop = body.scrollHeight;
-            return { keep: true };
-          }
-        })
-      );
-      return card;
-    }
     const showHint = () => {
       if (store2.get("lab-hint-seen") === "1") return;
       hint.hidden = false;
@@ -2405,16 +3285,16 @@ ${line}`;
       setTimeout(() => hint.hidden = true, 5e3);
     };
     const setOn = (value) => {
-      on = value;
-      if (!on) ptr.classList.remove("show");
+      S.on = value;
+      if (!S.on) ptr.classList.remove("show");
       else recheck();
-      store2.set("lab-on", on ? "1" : "0");
-      if (on) showHint();
-      draft = null;
-      openId = null;
+      store2.set("lab-on", S.on ? "1" : "0");
+      if (S.on) showHint();
+      S.draft = null;
+      S.openId = null;
       render();
     };
-    toggleBtn.addEventListener("click", () => setOn(!on));
+    toggleBtn.addEventListener("click", () => setOn(!S.on));
     function setMenu(open, refocus = false) {
       moreMenu.hidden = !open;
       moreBtn.setAttribute("aria-expanded", String(open));
@@ -2435,62 +3315,49 @@ ${line}`;
         e.stopPropagation();
       }
     }, true);
-    goBtn.addEventListener("click", () => setGo(!goMode));
-    const stepNew = (dir) => {
-      const fresh = threads().filter((c) => !isPage(c) && unread(c).length);
-      if (!fresh.length) return;
-      const top = (c) => position(c.anchor || {}).top;
-      fresh.sort((a, b) => top(a) - top(b));
-      const open = openId && threads().find((c) => c.id === openId);
-      const here = open ? top(open) : null;
-      const after = here == null ? -1 : fresh.findIndex((c) => top(c) > here);
-      const at = fresh.findIndex((c) => c.id === openId);
-      const next = at >= 0 ? (at + dir + fresh.length) % fresh.length : here == null ? dir > 0 ? 0 : fresh.length - 1 : dir > 0 ? after < 0 ? 0 : after : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
-      chatOpen = false;
-      goTo(fresh[next], !coarse);
-    };
+    goBtn.addEventListener("click", () => setGo(!S.goMode));
     newPrev.addEventListener("click", () => stepNew(-1));
     doneBtn.addEventListener("click", () => showDoneBtn.click());
     showDoneBtn.addEventListener("click", () => {
-      showDone = !showDone;
-      store2.set("lab-show-done", showDone ? "1" : "");
+      S.showDone = !S.showDone;
+      store2.set("lab-show-done", S.showDone ? "1" : "");
       render();
     });
     newNext.addEventListener("click", () => stepNew(1));
     const showAgain = () => {
-      if (on) return;
-      on = true;
+      if (S.on) return;
+      S.on = true;
       store2.set("lab-on", "1");
     };
     copyBtn.addEventListener("click", () => copy(agentLink(), copyBtn));
-    listBtn.addEventListener("click", () => LIST_WINDOW ? (listOpen = !listOpen, listOpen && (filter = "new"), chatOpen = false, hint.hidden = true, render()) : stepNew(1));
-    listEl.querySelector(".x").addEventListener("click", () => slideAway(listEl, () => (listOpen = false, render())));
+    listBtn.addEventListener("click", () => LIST_WINDOW ? (S.listOpen = !S.listOpen, S.listOpen && (S.filter = "new"), S.chatOpen = false, hint.hidden = true, render()) : stepNew(1));
+    listEl.querySelector(".x").addEventListener("click", () => slideAway(listEl, () => (S.listOpen = false, render())));
     chatBtn.addEventListener("click", () => {
-      chatOpen = !chatOpen;
-      listOpen = false;
-      if (chatOpen && !coarse) {
-        openId = null;
-        if (draft && !/** @type {HTMLTextAreaElement | null} */
-        root.querySelector(".float textarea")?.value.trim()) draft = null;
+      S.chatOpen = !S.chatOpen;
+      S.listOpen = false;
+      if (S.chatOpen && !coarse) {
+        S.openId = null;
+        if (S.draft && !/** @type {HTMLTextAreaElement | null} */
+        root.querySelector(".float textarea")?.value.trim()) S.draft = null;
       }
       hint.hidden = true;
       render();
-      if (chatOpen && !coarse) chatEl.querySelector(".chat textarea")?.focus({ preventScroll: true });
+      if (S.chatOpen && !coarse) chatEl.querySelector(".chat textarea")?.focus({ preventScroll: true });
     });
-    let closingClick = false;
+    S.closingClick = false;
     document.addEventListener("pointerdown", (e) => {
-      closingClick = false;
-      if (coarse || !chatOpen || e.button !== 0) return;
+      S.closingClick = false;
+      if (coarse || !S.chatOpen || e.button !== 0) return;
       const path = e.composedPath();
       if (path.includes(chatEl) || path.includes(chatBtn)) return;
-      chatOpen = false;
+      S.chatOpen = false;
       if (path.includes(host2)) return void addEventListener("click", () => render(), { once: true });
-      closingClick = true;
+      S.closingClick = true;
       render();
     }, true);
     addEventListener("click", (e) => {
-      if (!closingClick) return;
-      closingClick = false;
+      if (!S.closingClick) return;
+      S.closingClick = false;
       e.preventDefault();
       e.stopImmediatePropagation();
     }, true);
@@ -2498,7 +3365,7 @@ ${line}`;
       const b of
       /** @type {NodeListOf<HTMLElement>} */
       listEl.querySelectorAll("[data-f]")
-    ) b.addEventListener("click", () => (filter = b.dataset.f, drawList()));
+    ) b.addEventListener("click", () => (S.filter = b.dataset.f, drawList()));
     holdBtn.addEventListener("click", () => (store2.set("lab-hold", drafting() ? "" : "1"), drawList()));
     sendBtn.addEventListener("click", async () => {
       const list = held();
@@ -2506,7 +3373,7 @@ ${line}`;
         try {
           const { comment, edit } = await send(list[i]);
           if (edit) store2.set(`lab-edit:${comment.id}`, edit);
-          comments.push(comment);
+          S.comments.push(comment);
           markSeen([comment]);
           store2.set(heldKey(), JSON.stringify(list.slice(i + 1)));
         } catch {
@@ -2518,18 +3385,18 @@ ${line}`;
     });
     const typing = (e) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
     document.addEventListener("keydown", (e) => {
-      if (gone) return;
+      if (S.gone) return;
       const inOtherWidget = document.activeElement?.localName.includes("-") && document.activeElement !== host2;
       if ((e.key === "m" || e.key === "M" || e.code === "KeyM") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
         e.preventDefault();
-        setOn(!on);
+        setOn(!S.on);
         return;
       }
-      if (on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || "") || !/^[a-z]$/i.test(e.key || "") && e.code === "KeyZ") && !typing(e) && !inOtherWidget && placed.length) {
+      if (S.on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || "") || !/^[a-z]$/i.test(e.key || "") && e.code === "KeyZ") && !typing(e) && !inOtherWidget && placed.length) {
         e.preventDefault();
         return void undoLast();
       }
-      if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === "KeyD" && !(typing(e) && !e.composedPath().includes(host2))) {
+      if (S.on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === "KeyD" && !(typing(e) && !e.composedPath().includes(host2))) {
         e.preventDefault();
         const typed2 = (
           /** @type {HTMLTextAreaElement | null} */
@@ -2538,101 +3405,101 @@ ${line}`;
         if (typed2?.value.trim()) return typed2.closest(".card, .float")?.animate([{ transform: "none" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "none" }], { duration: 260 });
         return stepNew(e.shiftKey ? -1 : 1);
       }
-      if (on && /^(Digit|Numpad)[123]$/.test(e.code || "") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      if (S.on && /^(Digit|Numpad)[123]$/.test(e.code || "") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
         e.preventDefault();
         if (e.code.endsWith("3")) setCursor(true);
         else setGo(e.code.endsWith("2"));
         return;
       }
       const letter = /^[a-z]$/i.test(e.key || "") ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : "";
-      if (on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwred]$/.test(letter)) {
+      if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwred]$/.test(letter)) {
         const k = letter;
         e.preventDefault();
         if (k === "c") return chatBtn.click();
         if (k === "w") return stepNew(e.shiftKey ? -1 : 1);
         if (k === "d") return showDoneBtn.click();
-        if (k === "r" && openId) root.querySelector(".card textarea")?.focus({ preventScroll: true });
-        else if (k === "e" && openId && isAdmin) [.../** @type {NodeListOf<HTMLElement>} */
+        if (k === "r" && S.openId) root.querySelector(".card textarea")?.focus({ preventScroll: true });
+        else if (k === "e" && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */
         root.querySelectorAll(".card .btn")].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
         return;
       }
-      if (e.key === "Escape" && (draft || openId)) {
-        draft = null;
-        openId = null;
+      if (e.key === "Escape" && (S.draft || S.openId)) {
+        S.draft = null;
+        S.openId = null;
         render();
-      } else if (e.key === "Escape" && (chatOpen || listOpen)) {
-        if (chatOpen) chatOpen = false;
-        else listOpen = false;
+      } else if (e.key === "Escape" && (S.chatOpen || S.listOpen)) {
+        if (S.chatOpen) S.chatOpen = false;
+        else S.listOpen = false;
         render();
       }
     });
     const INTERACTIVE = 'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], [tabindex]:not([tabindex="-1"]), [onclick]';
     const OFF = "[data-uncommentable]";
-    let drag = null;
-    let afterDrag = false;
-    let liveZone = null;
-    let zoneFrame = 0;
+    S.drag = null;
+    S.afterDrag = false;
+    S.liveZone = null;
+    S.zoneFrame = 0;
     const paintZone = () => {
-      zoneFrame = 0;
-      if (!drag?.active || !liveZone) return;
-      const x = Math.min(drag.x0, drag.x1) + scrollX;
-      const y = Math.min(drag.y0, drag.y1) + scrollY;
-      liveZone.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-      liveZone.style.width = `${Math.abs(drag.x1 - drag.x0)}px`;
-      liveZone.style.height = `${Math.abs(drag.y1 - drag.y0)}px`;
+      S.zoneFrame = 0;
+      if (!S.drag?.active || !S.liveZone) return;
+      const x = Math.min(S.drag.x0, S.drag.x1) + scrollX;
+      const y = Math.min(S.drag.y0, S.drag.y1) + scrollY;
+      S.liveZone.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      S.liveZone.style.width = `${Math.abs(S.drag.x1 - S.drag.x0)}px`;
+      S.liveZone.style.height = `${Math.abs(S.drag.y1 - S.drag.y0)}px`;
     };
-    const draftHasText = () => Boolean(draft) && [.../** @type {NodeListOf<HTMLTextAreaElement>} */
+    const draftHasText = () => Boolean(S.draft) && [.../** @type {NodeListOf<HTMLTextAreaElement>} */
     root.querySelectorAll(".float textarea")].some((t) => t.value.trim());
     function startDrag(e) {
-      if (!on && !e.altKey || cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (!S.on && !e.altKey || S.cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host2)) return;
       if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
-      drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
+      S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
     }
     document.addEventListener(
       "pointerdown",
       (e) => {
         if (e.altKey) return;
-        if (!on && !e.altKey || cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
+        if (!S.on && !e.altKey || S.cursorMode && !e.altKey || draftHasText() || e.button !== 0 || e.pointerType === "touch" || e.metaKey || e.ctrlKey || e.shiftKey) return;
         if (e.composedPath().includes(host2)) return;
         if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
         if (e.target instanceof Element && e.target.closest(OFF)) return;
-        drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
+        S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
       },
       true
     );
     document.addEventListener(
       "pointermove",
       (e) => {
-        if (!drag) return;
-        drag.x1 = e.clientX;
-        drag.y1 = e.clientY;
-        if (!drag.active && Math.hypot(drag.x1 - drag.x0, drag.y1 - drag.y0) > 8) {
-          drag.active = true;
+        if (!S.drag) return;
+        S.drag.x1 = e.clientX;
+        S.drag.y1 = e.clientY;
+        if (!S.drag.active && Math.hypot(S.drag.x1 - S.drag.x0, S.drag.y1 - S.drag.y0) > 8) {
+          S.drag.active = true;
           getSelection?.()?.removeAllRanges();
           document.documentElement.classList.add("lab-dragging");
-          liveZone = zoneEl("draft live");
-          layer2.append(liveZone);
+          S.liveZone = zoneEl("draft live");
+          layer2.append(S.liveZone);
         }
-        if (!drag.active) return;
+        if (!S.drag.active) return;
         e.preventDefault();
-        zoneFrame ||= requestAnimationFrame(paintZone);
+        S.zoneFrame ||= requestAnimationFrame(paintZone);
       },
       true
     );
     const endDrag = (e) => {
-      if (!drag) return;
-      const d3 = drag;
-      drag = null;
+      if (!S.drag) return;
+      const d3 = S.drag;
+      S.drag = null;
       document.documentElement.classList.remove("lab-dragging");
-      cancelAnimationFrame(zoneFrame);
-      zoneFrame = 0;
-      liveZone?.remove();
-      liveZone = null;
+      cancelAnimationFrame(S.zoneFrame);
+      S.zoneFrame = 0;
+      S.liveZone?.remove();
+      S.liveZone = null;
       if (!d3.active || e.type === "pointercancel") return;
-      afterDrag = true;
-      setTimeout(() => afterDrag = false, 0);
+      S.afterDrag = true;
+      setTimeout(() => S.afterDrag = false, 0);
       getSelection?.()?.removeAllRanges();
       for (const [a, b] of [["x0", "x1"], ["y0", "y1"]]) {
         if (Math.abs(d3[b] - d3[a]) >= 12) continue;
@@ -2641,7 +3508,7 @@ ${line}`;
         d3[b] = mid + 6;
       }
       showAgain();
-      openId = null;
+      S.openId = null;
       begin(zoneAnchor(d3));
     };
     document.addEventListener("pointerup", endDrag, true);
@@ -2649,15 +3516,15 @@ ${line}`;
     document.addEventListener(
       "dragstart",
       (e) => {
-        const media = on && e.target instanceof Element && e.target.closest("img, video") && !e.composedPath().includes(host2);
-        if (drag || media) e.preventDefault();
+        const media = S.on && e.target instanceof Element && e.target.closest("img, video") && !e.composedPath().includes(host2);
+        if (S.drag || media) e.preventDefault();
       },
       true
     );
     document.addEventListener(
       "click",
       (e) => {
-        if (!afterDrag) return;
+        if (!S.afterDrag) return;
         e.preventDefault();
         e.stopPropagation();
       },
@@ -2677,11 +3544,11 @@ ${line}`;
       if (!optionPress(e)) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (!afterDrag) onPageClick(e);
+      if (!S.afterDrag) onPageClick(e);
     }, true);
     document.addEventListener("click", (e) => onPageClick(e));
-    let lastTouch = 0;
-    let pinnedByHold = false;
+    S.lastTouch = 0;
+    S.pinnedByHold = false;
     const selChip = (
       /** @type {HTMLElement} */
       root.querySelector(".sel-chip")
@@ -2690,12 +3557,12 @@ ${line}`;
       /** @type {HTMLElement} */
       root.querySelector(".scrim")
     );
-    const openSheet = () => root.querySelector(".card:not(.out), .float:not(.out)") || (listOpen ? listEl : chatOpen ? chatEl : null);
+    const openSheet = () => root.querySelector(".card:not(.out), .float:not(.out)") || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
     const closeAll = () => {
-      draft = null;
-      openId = null;
-      listOpen = false;
-      chatOpen = false;
+      S.draft = null;
+      S.openId = null;
+      S.listOpen = false;
+      S.chatOpen = false;
       render();
     };
     const closeOrNudge = () => {
@@ -2703,347 +3570,73 @@ ${line}`;
       if (![...root.querySelectorAll("textarea")].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
       node?.animate?.([{ transform: "none" }, { transform: "translateY(12px)" }, { transform: "none" }], { duration: 260, easing: "ease-out" });
     };
-    let sheetDraggedAt = -1e9;
-    scrim.addEventListener("click", () => performance.now() - sheetDraggedAt > 300 && closeOrNudge());
+    S.sheetDraggedAt = -1e9;
+    scrim.addEventListener("click", () => performance.now() - S.sheetDraggedAt > 300 && closeOrNudge());
     scrim.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
-    function slideAway(node, close, ms = 0) {
-      if (!coarse || !node || still.matches) return close();
-      if (!host2.hasAttribute("data-kb")) root.activeElement?.blur();
-      node.style.pointerEvents = "none";
-      node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : "transform .22s cubic-bezier(.4, 0, 1, 1)";
-      scrim.style.transition = `opacity ${ms || 220}ms`;
-      node.style.transform = "translateY(100%)";
-      scrim.style.opacity = "0";
-      bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
-      host2.style.setProperty("--lab-p", "1");
-      setTimeout(() => {
-        root.activeElement?.blur();
-        close();
-        node.style.pointerEvents = "";
-        node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = bar.style.transition = "";
-        host2.style.removeProperty("--lab-p");
-      }, ms || 220);
-    }
-    const grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
-    const scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
-    const SPRING = "cubic-bezier(.32,.72,0,1)";
-    let backWatcher = null;
-    function backCloses() {
-      const open = matchMedia("(pointer: coarse)").matches && host2.hasAttribute("data-sheet");
-      if (!open && backWatcher) {
-        const w = backWatcher;
-        backWatcher = null;
-        w.destroy();
-      }
-      if (open && !backWatcher && "CloseWatcher" in window) {
-        try {
-          const w = new /** @type {any} */
-          window.CloseWatcher();
-          w.onclose = () => {
-            if (backWatcher === w) backWatcher = null;
-            closeOrNudge();
-            backCloses();
-          };
-          backWatcher = w;
-        } catch {
-        }
-      }
-    }
-    let dbg = null;
-    function swipeDown(node, close, grows = false) {
-      if (!coarse) return;
-      let raw = 0;
-      let scrolledAt = -1e9;
-      let releasedAt = -1e9;
-      node.addEventListener("scroll", () => scrolledAt = performance.now(), { capture: true, passive: true });
-      node.addEventListener("click", (e) => {
-        if (performance.now() - releasedAt < 200) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }, true);
-      node.addEventListener("focusin", (e) => {
-        if (performance.now() - releasedAt < 200 && e.target.localName === "textarea") e.target.blur();
-      });
-      let x0 = 0;
-      let y0 = 0;
-      let dy = 0;
-      let v = 0;
-      let last = null;
-      let mode = null;
-      let box = null;
-      let fromScrim = false;
-      const onStart = (e) => {
-        fromScrim = e.currentTarget === scrim;
-        if (fromScrim && openSheet() !== node) return void (mode = "off");
-        const t = e.touches[0];
-        x0 = t.clientX;
-        y0 = t.clientY;
-        dy = v = raw = 0;
-        last = { y: y0, at: e.timeStamp };
-        box = fromScrim ? null : scrollerIn(e, node);
-        mode = e.touches.length > 1 || box?.localName === "textarea" ? "off" : null;
-      };
-      node.addEventListener("touchstart", onStart, { passive: true });
-      scrim.addEventListener("touchstart", onStart, { passive: true });
-      const onMove = (e) => {
-        if (fromScrim !== (e.currentTarget === scrim)) return;
-        const t = e.touches[0];
-        if (mode === "off" && box && box.localName !== "textarea" && e.touches.length === 1 && e.cancelable && box.scrollTop <= 0 && t.clientY > last.y + 1) {
-          mode = "drag";
-          y0 = t.clientY;
-          v = 0;
-          last = { y: t.clientY, at: e.timeStamp };
-        }
-        if (mode === "off") return void (last = { y: t.clientY, at: e.timeStamp });
-        if (mode === "hold") return e.preventDefault();
-        if (!mode) {
-          const down = t.clientY - y0;
-          const across = t.clientX - x0;
-          if (!down && !across) return;
-          const sideways = Math.abs(across) > Math.abs(down);
-          const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.25;
-          if (fromScrim) mode = sideways ? "hold" : "drag";
-          else if (grabArea(e.target)) mode = sideways && e.target.closest(".tabs") ? "off" : "drag";
-          else if (nearTop && box?.localName !== "textarea") mode = "drag";
-          else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? "drag" : "off";
-          else mode = sideways ? "hold" : "drag";
-          dbg?.(`touch ${String(e.target.className || e.target.localName).slice(0, 20)} at ${Math.round(y0 - node.getBoundingClientRect().top)}/${node.offsetHeight} down${Math.round(down)} \u2192 ${mode}${e.cancelable ? "" : " (not cancelable)"}${box ? ` box${Math.round(box.scrollTop)}` : ""}`);
-          if (mode === "off") return;
-          if (mode === "hold") return e.preventDefault();
-        }
-        e.preventDefault();
-        raw = t.clientY - y0;
-        const size = node.offsetHeight || 400;
-        dy = raw >= 0 ? raw : -(1 - 1 / (-raw * 0.55 / size + 1)) * size;
-        if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
-        last = { y: t.clientY, at: e.timeStamp };
-        node.style.transition = scrim.style.transition = "none";
-        node.style.transform = `translateY(${dy}px)`;
-        scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
-        bar.style.transition = "none";
-        host2.style.setProperty("--lab-p", String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
-      };
-      node.addEventListener("touchmove", onMove, { passive: false });
-      scrim.addEventListener("touchmove", onMove, { passive: false });
-      const end = (e) => {
-        if (fromScrim !== (e.currentTarget === scrim)) return;
-        const was = mode;
-        mode = null;
-        if (was === "drag") sheetDraggedAt = performance.now();
-        if (was !== "drag") return;
-        releasedAt = performance.now();
-        if (e.timeStamp - last.at > 80) v = 0;
-        const h = node.offsetHeight || innerHeight;
-        const settle = () => {
-          node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
-          scrim.style.transition = "opacity 300ms";
-          node.style.transform = scrim.style.opacity = "";
-          bar.style.transition = "";
-          host2.style.removeProperty("--lab-p");
-          setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
-        };
-        if (grows && !node.classList.contains("full") && (raw < -40 || v < -0.4)) return node.classList.add("full"), node.classList.contains("card") && (cardFull = true), settle();
-        if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), node.classList.contains("card") && (cardFull = false), settle();
-        const rest = dy + Math.max(0, v) * 499;
-        dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} \u2192 ${v > -0.1 && rest > h / 2 ? "close" : "stay"}`);
-        if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
-        node.style.transition = `transform 380ms ${SPRING}`;
-        scrim.style.transition = "opacity 300ms";
-        node.style.transform = scrim.style.opacity = "";
-        bar.style.transition = "";
-        host2.style.removeProperty("--lab-p");
-        setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
-      };
-      node.addEventListener("touchend", end);
-      scrim.addEventListener("touchend", end);
-      scrim.addEventListener("touchcancel", end);
-      node.addEventListener("touchcancel", end);
-    }
+    S.backWatcher = null;
     const vv = window.visualViewport;
-    if (coarse && vv) {
-      const probe = el2("i", { style: "position:fixed;top:0;bottom:0;left:0;width:0;visibility:hidden;pointer-events:none" });
-      const strip = el2("i", { style: "position:absolute;left:0;width:100vw;display:none;background:var(--_bg);z-index:3;pointer-events:none" });
-      root.append(probe, strip);
-      let fitted = "";
-      const fit = () => {
-        const zoomed = Math.abs(vv.scale - 1) > 0.01;
-        const r = probe.getBoundingClientRect();
-        const field = (
-          /** @type {HTMLElement | null} */
-          root.activeElement || document.activeElement
-        );
-        const typing2 = /^(textarea|input|select)$/.test(field?.localName || "") || Boolean(field?.isContentEditable);
-        const top = zoomed || !typing2 ? 0 : vv.offsetTop;
-        const seen2 = top + vv.height;
-        const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen2));
-        const gap = zoomed ? 0 : Math.max(0, Math.round(seen2 - r.bottom));
-        const vh = zoomed ? 0 : Math.round(vv.height);
-        const sheet = host2.hasAttribute("data-sheet");
-        const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
-        if (key === fitted) {
-          const open2 = sheet ? openSheet() : null;
-          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.getBoundingClientRect().top });
-          return;
-        }
-        fitted = key;
-        host2.style.setProperty("--lab-kb", `${kb}px`);
-        host2.style.setProperty("--lab-top", `${Math.round(top)}px`);
-        if (vh) host2.style.setProperty("--lab-vh", `${vh}px`);
-        else host2.style.removeProperty("--lab-vh");
-        host2.toggleAttribute("data-kb", kb > 60);
-        strip.style.display = sheet && gap ? "block" : "none";
-        strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
-        strip.style.height = `${gap}px`;
-        const open = sheet ? openSheet() : null;
-        const slid = (n) => {
-          try {
-            return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0;
-          } catch {
-            return 0;
-          }
-        };
-        const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
-        const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !still.matches;
-        if (sliding) {
-          open.style.transition = "none";
-          void open.offsetHeight;
-        }
-        const at = open ? open.getBoundingClientRect().top - slid(open) : null;
-        if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = "";
-        if (sliding && Math.abs(fit.top - at) > 8) {
-          open.style.transform = `translateY(${fit.top - at}px)`;
-          void open.offsetHeight;
-          open.style.transition = `transform 340ms ${SPRING}`;
-          open.style.transform = "";
-          clearTimeout(fit.done);
-          fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ""), 360);
-        }
-        Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null });
-      };
-      refit = fit;
-      root.addEventListener("focusin", () => setTimeout(fit, 50));
-      root.addEventListener("focusout", () => setTimeout(fit, 50));
-      vv.addEventListener("resize", fit);
-      vv.addEventListener("scroll", fit);
-      fit();
-      if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
-        let lines = [];
-        let t0 = performance.now();
-        let sendTimer = 0;
-        const row = (what) => {
-          const open = openSheet();
-          const r = open?.getBoundingClientRect();
-          lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(vv.height)} top${Math.round(vv.offsetTop)} in${innerHeight} kb${host2.hasAttribute("data-kb") ? 1 : 0}` + (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? " anim" : ""}` : "") + // What is moving anywhere (the page, the pins, the dimming): for a flicker that isn't the keyboard.
-          ` [${[...document.getAnimations(), ...root.getAnimations()].map((a) => (
-            /** @type {any} */
-            a.animationName || /** @type {any} */
-            a.transitionProperty || "js"
-          )).slice(0, 6).join(",")}] scrim${getComputedStyle(scrim).opacity.slice(0, 4)} scroll${Math.round(scrollY)}`);
-        };
-        const watch = (what) => {
-          row(what);
-          const end = performance.now() + 1500;
-          let prev = "";
-          const f = () => {
-            const before = lines.length;
-            row("f");
-            const last = lines[lines.length - 1].replace(/^\d+ f /, "");
-            if (last === prev) lines.length = before;
-            prev = last;
-            if (performance.now() < end) requestAnimationFrame(f);
-          };
-          requestAnimationFrame(f);
-        };
-        root.addEventListener("focusin", () => (t0 = performance.now(), watch("focus")));
-        const sendSoon = () => {
-          clearTimeout(sendTimer);
-          sendTimer = setTimeout(async () => {
-            const text = lines.join("\n");
-            lines = [];
-            for (let i = 0; i < text.length; i += 1900) {
-              await send({ name: "kb-log", text: text.slice(i, i + 1900), anchor: { kind: "page", selector: "body", x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {
-              });
-            }
-          }, 2e3);
-        };
-        root.addEventListener("focusout", () => {
-          lines.push("--- let go");
-          t0 = performance.now();
-          watch("blur");
-          sendSoon();
-        });
-        dbg = (line) => {
-          lines.push(`${Math.round(performance.now() - t0)} ${line}`);
-          sendSoon();
-        };
-        vv.addEventListener("resize", () => {
-          watch("resize");
-          if (lines.length > 1) sendSoon();
-        });
-      }
-    }
+    startSheets();
     const msgsEl = $(".msgs", chatEl);
-    let stick = true;
-    msgsEl.addEventListener("scroll", () => stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48, { passive: true });
-    if ("ResizeObserver" in window) new ResizeObserver(() => stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
-    swipeDown(listEl, () => (listOpen = false, render()));
-    swipeDown(chatEl, () => (chatOpen = false, render()), true);
-    let press = null;
-    const stopPress = () => press && (clearTimeout(press.timer), press = null);
+    S.stick = true;
+    msgsEl.addEventListener("scroll", () => S.stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48, { passive: true });
+    if ("ResizeObserver" in window) new ResizeObserver(() => S.stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
+    swipeDown(listEl, () => (S.listOpen = false, render()));
+    swipeDown(chatEl, () => (S.chatOpen = false, render()), true);
+    S.press = null;
+    const stopPress = () => S.press && (clearTimeout(S.press.timer), S.press = null);
     document.addEventListener(
       "pointerdown",
       (e) => {
         stopPress();
-        pinnedByHold = false;
-        if (e.pointerType === "touch") lastTouch = Date.now();
-        if (e.pointerType !== "touch" || draft || !(e.target instanceof Element) || e.composedPath().includes(host2) || e.target.closest(OFF)) return;
+        S.pinnedByHold = false;
+        if (e.pointerType === "touch") S.lastTouch = Date.now();
+        if (e.pointerType !== "touch" || S.draft || !(e.target instanceof Element) || e.composedPath().includes(host2) || e.target.closest(OFF)) return;
         const { clientX: x, clientY: y } = e;
-        press = {
+        S.press = {
           x,
           y,
           timer: setTimeout(() => {
-            press = null;
-            pinnedByHold = true;
+            S.press = null;
+            S.pinnedByHold = true;
             navigator.vibrate?.(8);
             getSelection?.()?.removeAllRanges();
-            afterDrag = true;
-            setTimeout(() => afterDrag = false, 800);
+            S.afterDrag = true;
+            setTimeout(() => S.afterDrag = false, 800);
             showAgain();
-            openId = null;
+            S.openId = null;
             begin(anchorAt(x, y));
           }, 500)
         };
       },
       true
     );
-    document.addEventListener("pointermove", (e) => press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10 && stopPress(), true);
+    document.addEventListener("pointermove", (e) => S.press && Math.hypot(e.clientX - S.press.x, e.clientY - S.press.y) > 10 && stopPress(), true);
     document.addEventListener("pointerup", (e) => {
-      if (e.pointerType === "touch") lastTouch = Date.now();
+      if (e.pointerType === "touch") S.lastTouch = Date.now();
       stopPress();
-      if (pinnedByHold) root.querySelector(".float textarea")?.focus({ preventScroll: true });
+      if (S.pinnedByHold) root.querySelector(".float textarea")?.focus({ preventScroll: true });
     }, true);
     document.addEventListener("touchend", (e) => {
-      if (!pinnedByHold) return;
-      pinnedByHold = false;
+      if (!S.pinnedByHold) return;
+      S.pinnedByHold = false;
       e.preventDefault();
       root.querySelector(".float textarea")?.focus({ preventScroll: true });
     }, { capture: true, passive: false });
     document.addEventListener("pointercancel", stopPress, true);
     addEventListener("scroll", stopPress, { passive: true, capture: true });
-    document.addEventListener("contextmenu", (e) => (press || afterDrag) && e.preventDefault(), true);
-    let selRect = null;
+    document.addEventListener("contextmenu", (e) => (S.press || S.afterDrag) && e.preventDefault(), true);
+    S.selRect = null;
     document.addEventListener("selectionchange", () => {
       const sel = getSelection?.();
       const range = sel?.rangeCount && sel.getRangeAt(0);
       const text = String(sel || "").trim();
       const inside = range && host2.contains(range.commonAncestorContainer);
-      selRect = coarse && on && !draft && text && range && !inside ? range.getClientRects()[0] || range.getBoundingClientRect() : null;
-      selChip.hidden = !selRect;
-      if (!selRect) return;
-      const below = selRect.bottom + 52 < innerHeight;
-      selChip.style.left = `${Math.min(Math.max(selRect.left + selRect.width / 2, 60), innerWidth - 60)}px`;
-      selChip.style.top = `${below ? selRect.bottom + 10 : Math.max(selRect.top - 46, 8)}px`;
+      S.selRect = coarse && S.on && !S.draft && text && range && !inside ? range.getClientRects()[0] || range.getBoundingClientRect() : null;
+      selChip.hidden = !S.selRect;
+      if (!S.selRect) return;
+      const below = S.selRect.bottom + 52 < innerHeight;
+      selChip.style.left = `${Math.min(Math.max(S.selRect.left + S.selRect.width / 2, 60), innerWidth - 60)}px`;
+      selChip.style.top = `${below ? S.selRect.bottom + 10 : Math.max(S.selRect.top - 46, 8)}px`;
     });
     const commentOnSelection = () => {
       const sel = getSelection?.();
@@ -3076,28 +3669,28 @@ ${line}`;
       sel.removeAllRanges();
       selChip.hidden = true;
       showAgain();
-      openId = null;
+      S.openId = null;
       begin(anchor);
       return true;
     };
     selChip.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (selRect) commentOnSelection();
+      if (S.selRect) commentOnSelection();
     });
     document.addEventListener("mouseup", (e) => {
-      if (on && !cursorMode && !draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host2)) setTimeout(commentOnSelection, 0);
+      if (S.on && !S.cursorMode && !S.draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host2)) setTimeout(commentOnSelection, 0);
     }, true);
     function onPageClick(e) {
       if (e.composedPath().includes(host2)) return;
-      if (draft || openId) {
+      if (S.draft || S.openId) {
         if ([...root.querySelectorAll("textarea")].some((t) => t.value.trim())) return;
-        draft = null;
-        openId = null;
+        S.draft = null;
+        S.openId = null;
         render();
         return;
       }
-      if (!on && !e.altKey || cursorMode && !e.altKey || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      if (lastTouch && Date.now() - lastTouch < 800) return;
+      if (!S.on && !e.altKey || S.cursorMode && !e.altKey || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (S.lastTouch && Date.now() - S.lastTouch < 800) return;
       if (e.altKey) e.preventDefault();
       else if (e.defaultPrevented || e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -3107,7 +3700,7 @@ ${line}`;
     }
     const movePins = () => {
       const list = threads().filter((c) => c.anchor?.kind !== "page");
-      if (!on || openId || list.length !== pinsById.size) return render();
+      if (!S.on || S.openId || list.length !== pinsById.size) return render();
       const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
       if (places.some(([pin]) => !pin)) return render();
       for (const [pin, { left, top, moved }] of places) {
@@ -3116,11 +3709,11 @@ ${line}`;
         pin.classList.toggle("moved", Boolean(moved));
       }
     };
-    let frame = 0;
+    S.frame = 0;
     const reflow = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (draft || root.activeElement || grabbing) return;
+      cancelAnimationFrame(S.frame);
+      S.frame = requestAnimationFrame(() => {
+        if (S.draft || root.activeElement || S.grabbing) return;
         movePins();
       });
     };
@@ -3130,17 +3723,17 @@ ${line}`;
       e.target
     ) && reflow(), { capture: true, passive: true });
     const navigated = () => {
-      if (gone) return;
+      if (S.gone) return;
       if (!host2.isConnected && document.body) document.body.append(host2);
       if (!fonts.isConnected) document.head.append(fonts);
       if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
-      if (pageNow() === page) return;
-      page = pageNow();
-      seen = readSeen();
+      if (pageNow() === S.page) return;
+      S.page = pageNow();
+      S.seen = readSeen();
       syncReads();
-      comments = [];
-      draft = null;
-      openId = null;
+      S.comments = [];
+      S.draft = null;
+      S.openId = null;
       render();
       load();
     };
@@ -3155,7 +3748,7 @@ ${line}`;
     addEventListener("popstate", navigated);
     document.addEventListener("astro:after-swap", navigated);
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && !draft && !root.activeElement) load();
+      if (document.visibilityState === "visible" && !S.draft && !root.activeElement) load();
     });
     if ("ResizeObserver" in window) new ResizeObserver(reflow).observe(document.body);
     const fonts = document.createElement("style");
@@ -3167,48 +3760,48 @@ ${line}`;
     const ptr = el2("div", { class: "ptr", "aria-hidden": "true" });
     ptr.append(el2("span", { class: "ini" }, "+"), el2("span", { class: "tick" }, "go"));
     root.append(ptr);
-    let mouse = null;
+    S.mouse = null;
     const place = (x, y, target) => {
       const show = Boolean(target) && target !== host2 && !host2.contains(target) && getComputedStyle(target).cursor === "none";
       ptr.classList.toggle("show", show);
-      ptr.classList.toggle("go", goMode);
+      ptr.classList.toggle("go", S.goMode);
       ptr.style.transform = `translate(${x - 1}px, ${y - 27}px)`;
     };
-    const recheck = () => mouse && requestAnimationFrame(() => mouse && place(mouse.x, mouse.y, document.elementFromPoint(mouse.x, mouse.y)));
+    const recheck = () => S.mouse && requestAnimationFrame(() => S.mouse && place(S.mouse.x, S.mouse.y, document.elementFromPoint(S.mouse.x, S.mouse.y)));
     addEventListener("pointermove", (e) => {
       if (e.pointerType !== "mouse") return;
       document.documentElement.classList.add("lab-drawn");
-      mouse = { x: e.clientX, y: e.clientY };
+      S.mouse = { x: e.clientX, y: e.clientY };
       const t = e.composedPath()[0];
       place(e.clientX, e.clientY, t instanceof Element ? t : null);
     }, { capture: true, passive: true });
     addEventListener("scroll", recheck, { capture: true, passive: true });
     addEventListener("keydown", (e) => (e.key === "Shift" || e.key === "Alt") && recheck(), true);
     addEventListener("keyup", (e) => (e.key === "Shift" || e.key === "Alt") && recheck(), true);
-    document.documentElement.addEventListener("mouseleave", () => (mouse = null, ptr.classList.remove("show")));
-    addEventListener("blur", () => (mouse = null, ptr.classList.remove("show")));
-    let cursorKey = "";
+    document.documentElement.addEventListener("mouseleave", () => (S.mouse = null, ptr.classList.remove("show")));
+    addEventListener("blur", () => (S.mouse = null, ptr.classList.remove("show")));
+    S.cursorKey = "";
     function refreshPinCursor() {
       const ch = (initial(store2.get("lab-name")) || "+").replace(/[<>&'"]/g, "");
-      if (ch === cursorKey) return;
-      cursorKey = ch;
+      if (ch === S.cursorKey) return;
+      S.cursorKey = ch;
       ptr.querySelector(".ini").textContent = ch;
       const plain2 = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
       const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
       pinCursorStyle.textContent = `@layer lab-pointer { html.lab-pinning:not(.lab-shift) body, html.lab-pinning:not(.lab-shift) body *${plain2} { cursor: crosshair; } html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift):not(.lab-dragging) body *${plain2}:not(${top}) { cursor: none; } html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
     }
     fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
-    let shiftOff = 0;
+    S.shiftOff = 0;
     const shiftKey = (e) => {
-      clearTimeout(shiftOff);
+      clearTimeout(S.shiftOff);
       if (e.shiftKey) document.documentElement.classList.add("lab-shift");
-      else shiftOff = setTimeout(() => (document.documentElement.classList.remove("lab-shift"), recheck()), 400);
+      else S.shiftOff = setTimeout(() => (document.documentElement.classList.remove("lab-shift"), recheck()), 400);
     };
     addEventListener("keydown", shiftKey, true);
     addEventListener("keyup", shiftKey, true);
     addEventListener("pointerdown", (e) => {
       if (e.shiftKey) return shiftKey(e);
-      clearTimeout(shiftOff);
+      clearTimeout(S.shiftOff);
       document.documentElement.classList.remove("lab-shift");
     }, true);
     addEventListener("blur", () => document.documentElement.classList.remove("lab-shift"));
@@ -3235,7 +3828,7 @@ ${line}`;
     const start = () => {
       document.head.append(fonts, pinCursorStyle);
       refreshPinCursor();
-      if (on) showHint();
+      if (S.on) showHint();
       document.body.append(host2);
       const paint = "background-color: rgba(52, 199, 89, .3); color: inherit;";
       fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
@@ -3243,382 +3836,6 @@ ${line}`;
     };
     if (document.body) start();
     else document.addEventListener("DOMContentLoaded", start);
-    if (script?.dataset.live) {
-      let onState = function(v) {
-        {
-          if (v.widget && script.dataset.widget && v.widget !== script.dataset.widget) return reload();
-          if (v.lab && script.dataset.lab && v.lab !== script.dataset.lab) {
-            script.dataset.lab = v.lab;
-            script.dataset.version = String(v.files);
-            hotAt = v.hot;
-            commentsRev = v.comments;
-            morphPage();
-            load();
-          }
-          if (String(v.files) !== script.dataset.version) return reload();
-          if (hotAt !== null && v.hot !== hotAt) {
-            if (v.hot - hotAt > 1) hotUpdate([{ kind: "html" }, { kind: "css", path: "" }]);
-            else hotUpdate(v.hotFiles || []);
-          }
-          hotAt = v.hot;
-          if (commentsRev !== null && v.comments !== commentsRev) loadChanges(commentsRev);
-          commentsRev = v.comments;
-          if (v.reads !== readsAt) {
-            readsAt = v.reads;
-            syncReads();
-          }
-          const s = v.session;
-          const mode = s ? v.mode || "listening" : "away";
-          const span = (t) => Object.assign(document.createElement("span"), { textContent: t });
-          const agent = s?.agent || "Claude";
-          const tag = s && s.name !== agent ? [span(`(${s.name})`)] : [];
-          if (mode === "listening") who.replaceChildren(span("talking to"), agent, ...tag);
-          else if (mode === "working") who.replaceChildren(agent, span("is working"), ...tag);
-          else who.replaceChildren(span("no agent listening"));
-          who.classList.toggle("idle", mode === "away");
-          who.classList.toggle("working", mode === "working");
-          listBtn.dataset.agent = mode;
-          chatBtn.dataset.agent = mode;
-          if (coarse) chatBtn.title = who.textContent;
-          who.setAttribute("aria-label", who.textContent);
-          if (s?.url && mode !== "away") Object.assign(who, { href: s.url, target: "_blank" });
-          else who.removeAttribute("href");
-          who.dataset.copy = !s?.url && s?.resume && mode !== "away" ? s.resume : "";
-          who.title = mode === "away" ? "Ask your agent to run: npx @leonidstern/labit wait" : s?.resume ? `${s.resume}${who.dataset.copy ? " (tap to copy)" : ""}` : "";
-          who.hidden = false;
-        }
-      };
-      const key = "lab-scroll:" + location.pathname;
-      try {
-        const kept = JSON.parse(sessionStorage.getItem(key) || "null");
-        if (kept !== null) {
-          sessionStorage.removeItem(key);
-          if (kept.open) openId = kept.open;
-          if (kept.list) {
-            listOpen = true;
-            filter = ["new", "open", "resolved", "mine"].includes(kept.filter) ? kept.filter : filter;
-          }
-          if (kept.chat) chatOpen = true;
-          addEventListener("load", () => scrollTo(0, +(kept.y ?? kept)));
-        }
-      } catch {
-      }
-      let touchedAt = 0;
-      for (const t of ["pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(t, () => touchedAt = performance.now(), { capture: true, passive: true });
-      const busy = () => draft || grabbing || openId || chatOpen || listOpen || coarse && /^(textarea|input)$/.test(root.activeElement?.localName || "") || [...root.querySelectorAll("textarea")].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
-      let reloadWhenShown = false;
-      let reloadTimer = 0;
-      const reload = () => {
-        if (document.hidden) return void (reloadWhenShown = true);
-        if (busy()) {
-          if (!reloadTimer) reloadTimer = setTimeout(() => (reloadTimer = 0, reload()), 500);
-          return;
-        }
-        try {
-          sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: openId, list: listOpen, filter, chat: chatOpen }));
-        } catch {
-        }
-        location.reload();
-      };
-      const who = document.createElement("a");
-      who.className = "listener";
-      who.addEventListener("click", async () => {
-        const text = who.dataset.copy;
-        if (!text) return;
-        try {
-          await navigator.clipboard.writeText(text);
-          const was = [...who.childNodes];
-          who.replaceChildren("copied");
-          setTimeout(() => who.textContent === "copied" && who.replaceChildren(...was), 1200);
-        } catch {
-        }
-      });
-      who.hidden = true;
-      root.querySelector(".left").prepend(who);
-      let stream = null;
-      let beat = 0;
-      const showAway = (word) => {
-        who.replaceChildren(Object.assign(document.createElement("span"), { textContent: word }));
-        who.setAttribute("aria-label", word);
-        who.classList.add("idle");
-        who.classList.remove("working");
-        who.hidden = false;
-      };
-      let commentsRev = null;
-      let readsAt = null;
-      let hotAt = null;
-      const swapCss = (files) => {
-        const links = [.../** @type {NodeListOf<HTMLLinkElement>} */
-        document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
-        const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
-        for (const link of named.length ? named : links) {
-          const url = new URL(link.href, location.href);
-          url.searchParams.set("lab-v", Date.now().toString(36));
-          const next = (
-            /** @type {HTMLLinkElement} */
-            link.cloneNode()
-          );
-          next.href = url.href;
-          next.dataset.labSwap = "";
-          const path = url.pathname;
-          next.addEventListener("load", () => {
-            for (
-              const l of
-              /** @type {NodeListOf<HTMLLinkElement>} */
-              document.querySelectorAll('link[rel~="stylesheet"][href]')
-            ) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
-            delete next.dataset.labSwap;
-          }, { once: true });
-          next.addEventListener("error", () => next.remove(), { once: true });
-          link.after(next);
-        }
-      };
-      const fresh = (u) => {
-        const url = new URL(u, location.href);
-        url.searchParams.set("lab-v", Date.now().toString(36));
-        return url.href;
-      };
-      const samePath = (u, paths) => {
-        try {
-          const url = new URL(u, location.href);
-          return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
-        } catch {
-          return false;
-        }
-      };
-      const swapImages = (paths) => {
-        let hit = 0;
-        for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
-          if (host2.contains(n)) continue;
-          for (const attr of ["src", "href", "poster", "xlink:href"]) {
-            const v = n.getAttribute(attr);
-            if (!v || !samePath(v.split("#")[0], paths)) continue;
-            const next = fresh(v.split("#")[0]);
-            const im = new Image();
-            im.src = next;
-            (im.decode ? im.decode() : Promise.resolve()).catch(() => {
-            }).finally(() => n.setAttribute(attr, next + (v.includes("#") ? v.slice(v.indexOf("#")) : "")));
-            hit++;
-          }
-          const set = n.getAttribute("srcset");
-          if (set && set.split(",").some((c) => samePath(c.trim().split(/\s+/)[0], paths))) {
-            n.setAttribute("srcset", set.split(",").map((c) => {
-              const [u, ...rest] = c.trim().split(/\s+/);
-              return [samePath(u, paths) ? fresh(u) : u, ...rest].join(" ");
-            }).join(", "));
-            hit++;
-          }
-        }
-        if (!hit) swapCss([]);
-      };
-      const reloadFonts = (paths) => {
-        for (const sheet of document.styleSheets) {
-          let rules;
-          try {
-            rules = sheet.cssRules;
-          } catch {
-            continue;
-          }
-          for (const r of rules || []) {
-            if (!(r instanceof CSSFontFaceRule)) continue;
-            const src = r.style.getPropertyValue("src");
-            const base = sheet.href || location.href;
-            if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
-            const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all);
-            const d3 = (k) => r.style.getPropertyValue(k) || void 0;
-            try {
-              const face = new FontFace(
-                d3("font-family").replace(/^["']|["']$/g, ""),
-                again,
-                /** @type {any} */
-                { weight: d3("font-weight"), style: d3("font-style"), stretch: d3("font-stretch"), unicodeRange: d3("unicode-range"), display: d3("font-display") }
-              );
-              face.load().then((f) => document.fonts.add(f)).catch(() => {
-              });
-            } catch {
-            }
-          }
-        }
-      };
-      const ownStyles = () => /* @__PURE__ */ new Set([fonts, pinCursorStyle]);
-      const scriptsOf = (doc) => [...doc.querySelectorAll("script")].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute("src") || "")).map((x) => x.getAttribute("src") || x.textContent);
-      const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => {
-        try {
-          return new URL(l.getAttribute("href"), location.href).pathname;
-        } catch {
-          return "";
-        }
-      });
-      const keepOut = (n) => n === host2 || n.nodeType === 1 && n.localName === "script";
-      const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || "") === (n.id || ""));
-      const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute("class") === n.getAttribute("class") : o.nodeType !== 3 || o.data === n.data);
-      const morphKids = (a, b) => {
-        const olds = [...a.childNodes].filter((n) => !keepOut(n));
-        const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === "script"));
-        let j = 0;
-        let prev = null;
-        const put = (n) => {
-          const c = document.importNode(n, true);
-          a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
-          return c;
-        };
-        news.forEach((n, i) => {
-          const o = olds[j];
-          if (!o) return void (prev = put(n));
-          if (alike(o, n)) return void (prev = morphNode(o, n), j++);
-          if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
-          const k = olds.slice(j + 1, j + 8).findIndex((m) => alike(m, n));
-          if (k >= 0) {
-            for (const gone2 of olds.slice(j, j + 1 + k)) gone2.remove();
-            j += k + 1;
-            return void (prev = morphNode(olds[j], n), j++);
-          }
-          prev = morphNode(o, n);
-          j++;
-        });
-        for (const o of olds.slice(j)) o.remove();
-      };
-      const morphNode = (o, n) => {
-        if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || o.nodeType === 1 && (o.id || "") !== (n.id || "")) {
-          const c = document.importNode(n, true);
-          o.replaceWith(c);
-          return c;
-        }
-        if (o.nodeType === 3 || o.nodeType === 8) {
-          if (o.data !== n.data) o.data = n.data;
-          return o;
-        }
-        if (o.nodeType !== 1) return o;
-        for (const { name } of Array.from(o.attributes)) if (!n.hasAttribute(name) && !(name === "open" && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
-        for (const { name, value } of Array.from(n.attributes)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
-        if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
-        morphKids(o, n);
-        return o;
-      };
-      const ownScripts = () => scriptsOf(document).length > 0;
-      let morphRun = 0;
-      const morphPage = async () => {
-        if (ownScripts()) return reload();
-        const run = ++morphRun;
-        try {
-          const res = await fetch(location.href, { cache: "no-store", headers: { accept: "text/html" } });
-          if (!res.ok) return reload();
-          const html = await res.text();
-          if (run !== morphRun) return;
-          const doc = new DOMParser().parseFromString(html, "text/html");
-          if (scriptsOf(doc).join("\n") !== scriptsOf(document).join("\n") || sheetsOf(doc).join("\n") !== sheetsOf(document).join("\n")) return reload();
-          let mark = null;
-          for (const y of [Math.min(innerHeight / 3, 240), innerHeight / 2, 80]) {
-            const e = document.elementFromPoint(innerWidth / 2, y);
-            if (e && e !== document.body && e !== document.documentElement && !host2.contains(e) && e !== host2) {
-              mark = e;
-              break;
-            }
-          }
-          const markTop = mark?.getBoundingClientRect().top;
-          const apply = () => {
-            if (doc.title !== tabTitle.base) {
-              tabTitle.base = doc.title;
-              document.title = doc.title;
-              drawList();
-            }
-            const mine2 = ownStyles();
-            const olds = [...document.head.querySelectorAll("style")].filter((x) => !mine2.has(x));
-            const news = [...doc.head.querySelectorAll("style")];
-            news.forEach((n, i) => olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true)));
-            for (const o of olds.slice(news.length)) o.remove();
-            morphKids(document.body, doc.body);
-            if (mark?.isConnected) {
-              const moved = mark.getBoundingClientRect().top - markTop;
-              if (Math.abs(moved) > 1) scrollBy(0, moved);
-            }
-            reflow();
-          };
-          const safe = () => {
-            try {
-              apply();
-            } catch {
-              reload();
-            }
-          };
-          if (document.startViewTransition && !still.matches) document.startViewTransition(safe);
-          else safe();
-        } catch {
-          reload();
-        }
-      };
-      const hotUpdate = (files) => {
-        const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
-        const here = decodeURIComponent(location.pathname).replace(/\/$/, "/index").replace(/\.html?$/i, "");
-        if (of("html").some((p) => !p || p.replace(/\.html?$/i, "") === here)) morphPage();
-        if (of("css").length) swapCss(of("css"));
-        if (of("img").length) swapImages(of("img"));
-        if (of("font").length) reloadFonts(of("font"));
-      };
-      const tab = Math.random().toString(36).slice(2, 12);
-      let pollTimer = 0;
-      let dropTimer = 0;
-      const poll = async () => {
-        try {
-          onState(await (await fetch(`${script.dataset.live.replace(/live$/, "state")}?tab=${tab}`, { cache: "no-store" })).json());
-        } catch {
-        }
-      };
-      const toBackground = () => {
-        clearTimeout(dropTimer);
-        dropTimer = setTimeout(() => {
-          stream?.close();
-          stream = null;
-          clearInterval(pollTimer);
-          pollTimer = setInterval(poll, 2e4);
-        }, 3e4);
-      };
-      const toFront = () => {
-        clearTimeout(dropTimer);
-        clearInterval(pollTimer);
-        pollTimer = 0;
-        connect();
-      };
-      const connect = () => {
-        if (stream) return;
-        stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
-        beat = Date.now();
-        stream.addEventListener("beat", () => beat = Date.now());
-        stream.onerror = () => showAway("reconnecting");
-        stream.onmessage = (e) => {
-          beat = Date.now();
-          onState(JSON.parse(e.data));
-        };
-      };
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) return toBackground();
-        if (reloadWhenShown) return reload();
-        toFront();
-      });
-      addEventListener("pagehide", () => {
-        stream?.close();
-        stream = null;
-        fetch(script.dataset.live.replace(/live$/, "bye"), { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ tab }) }).catch(() => {
-        });
-      });
-      addEventListener("pageshow", (e) => e.persisted && connect());
-      let tick = Date.now();
-      const freshStream = () => {
-        stream?.close();
-        stream = null;
-        showAway("reconnecting");
-        connect();
-      };
-      setInterval(() => {
-        const now = Date.now();
-        const slept = now - tick > 2e4;
-        tick = now;
-        if (document.hidden) return;
-        if (slept || stream && now - beat > 4e4) freshStream();
-      }, 5e3);
-      addEventListener("online", () => !document.hidden && freshStream());
-      connect();
-      if (document.hidden) toBackground();
-    }
+    startLive();
   })();
 })();
