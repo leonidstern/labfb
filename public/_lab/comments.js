@@ -487,7 +487,7 @@
         .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
                                 mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
         .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
-        .chatwin .chat .box, .card .box, .float .box, .float .box:focus-within {
+        .chatwin .chat .box, .chatwin .chat .box:focus-within, .card .box, .card .box.open, .card .box:focus-within, .float .box, .float .box:focus-within { /* typing too: its edge stayed only while idle */
           background: color-mix(in srgb, var(--_bg) 72%, transparent);
           -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
           box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
