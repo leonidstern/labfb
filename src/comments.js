@@ -146,6 +146,20 @@ import { zoomWords } from '../lib/zoom.ts';
     },
   };
 
+  // Your name lives in localStorage, which is per origin — and every lab has its own port, so a name given to one
+  // lab was a stranger to the next. The lab hands it over instead: this computer's remembered name, or, for a guest,
+  // the name their one-time link carried. The browser still wins if it already knows one.
+  const ME = script?.dataset.me || '';
+  if (ME && !store.get('lab-name')) store.set('lab-name', ME);
+  // Where to tell the lab a new name, so the next lab on this computer starts out knowing it.
+  const MEAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'me') : '';
+  let meSent = ME;
+  const rememberMe = (name) => {
+    if (!MEAPI || !name || name === meSent) return;
+    meSent = name;
+    fetch(MEAPI, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {});
+  };
+
   // Admin keys are kept per lab (name.scope.sig), so one browser can hold links for /anna and /mira at once.
   // The owner token has no scope and works everywhere.
   const scopeOf = (key) => (key.split('.').length === 3 ? key.split('.')[1] : '');
@@ -244,7 +258,7 @@ import { zoomWords } from '../lib/zoom.ts';
   bindAnchoring({ host, layer, el, store });
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads() });
+  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), workState: (c) => workState(c) });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put

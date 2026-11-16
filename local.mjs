@@ -45,8 +45,9 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       Codex: codex mcp add labit -- npx @leonidstern/labit@latest mcp
   labit preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
-  labit invite
+  labit invite [name]
       A one-time link for a phone on the same wifi (--wifi labs only): one use, ten minutes. Hand it over as a link.
+      The link carries a name — the one you give, or yours — so the phone that opens it starts out named.
 
 For the agent, from the project (any folder under it):
   labit wait [--timeout 1500] [--pages /a,/b] [--name <project>] [--model <your model>]
@@ -583,6 +584,40 @@ const newPass = () => {
   passes.set(code, Date.now() + PASS_LIFE);
   return code;
 };
+// Who you are, kept for this computer (not for this lab): the browser's own memory is per origin and every lab has
+// its own port, so a name given to one lab meant nothing to the next. ~/.config/labit/me.json holds just the name.
+const ME_DIR = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'labit');
+const ME_FILE = path.join(ME_DIR, 'me.json');
+const NAME_OK = (n) => typeof n === 'string' && n.trim().length > 0 && n.trim().length <= 60;
+const readMe = () => {
+  try {
+    const n = JSON.parse(fs.readFileSync(ME_FILE, 'utf8')).name;
+    return NAME_OK(n) ? n.trim() : '';
+  } catch {
+    return '';
+  }
+};
+const writeMe = (name) => {
+  if (!NAME_OK(name)) return '';
+  try {
+    fs.mkdirSync(ME_DIR, { recursive: true });
+    fs.writeFileSync(ME_FILE, JSON.stringify({ name: name.trim() }, null, 2) + '\n');
+  } catch {}
+  return name.trim();
+};
+let myName = readMe();
+// A guest's name rides in their one-time link and then in a cookie of their own, since their browser is not this one.
+const guestName = (req) => {
+  const raw = /(?:^|;\s*)lab_me=([^;]+)(?:\s*;|$)/.exec(req.headers.cookie || '');
+  try {
+    const n = decodeURIComponent(raw?.[1] || '');
+    return NAME_OK(n) ? n.trim() : '';
+  } catch {
+    return '';
+  }
+};
+const nameFor = (req) => (isLoopback(req) ? myName : guestName(req));
+
 const sign = (id) => createHmac('sha256', TOKEN).update(`lab-guest:${id}`).digest('hex').slice(0, 32);
 const guestOk = (req) => {
   const raw = /(?:^|;\s*)lab_guest=([0-9a-f]{16})\.([0-9a-f]{32})(?:\s*;|$)/.exec(req.headers.cookie || '');
@@ -604,15 +639,16 @@ const gate = (res, why = 'This lab opens with a one-time link.') =>
       `<title>labit</title><link rel="icon" href="${GATE_ICON}"><body style="font:16px/1.5 system-ui;margin:0;display:grid;place-items:center;height:100vh;color:#111">` +
       `<div style="max-width:22rem;padding:1.5rem;text-align:center">${markSvg(32, 'display:block;margin:0 auto .75rem')}<p style="font-weight:600;margin:0 0 .5rem">${why}</p>` +
       `<p style="margin:0;color:#666">Ask for a fresh link and open it on this device.</p></div>`);
-const redeem = (req, res, code) => {
+const redeem = (req, res, code, me = '') => {
   const until = passes.get(code);
   passes.delete(code);
   if (!until || until < Date.now()) return gate(res, 'That link is used up or too old.');
   console.log(`[lab] a guest opened a one-time link (${String(req.socket.remoteAddress).replace(/^::ffff:/, '')})`);
   const id = randomBytes(8).toString('hex');
-  return res
-    .writeHead(302, { location: '/', 'set-cookie': `lab_guest=${id}.${sign(id)}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax` })
-    .end();
+  const cookies = [`lab_guest=${id}.${sign(id)}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax`];
+  // The name the link carried, for that device alone: read by the server, handed to the widget, never a way in.
+  if (NAME_OK(me)) cookies.push(`lab_me=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
+  return res.writeHead(302, { location: '/', 'set-cookie': cookies }).end();
 };
 const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
 const sessionFrom = (req) => {
@@ -915,8 +951,9 @@ function announce(page, c) {
 }
 
 // ---------- pages ----------
-const widget = (page, admin) =>
+const widget = (page, admin, me = '') =>
   `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
+  `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
@@ -1022,7 +1059,7 @@ const handler = async (req, res) => {
       return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
     const pathname = decodeURIComponent(url.pathname);
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
-    if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8));
+    if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '');
     if (!mayIn(req)) return gate(res);
     if (PROXY && !pathname.startsWith('/_lab/')) return proxy.page(req, res, url);
     // .lab (comments, admin key), .git, .env and other dot files are never served.
@@ -1064,8 +1101,24 @@ const handler = async (req, res) => {
       if (!WIFI) return res.writeHead(404).end('this lab is open to this computer only');
       const code = newPass();
       const hosts = [`${hostName}.local`, ...wifiAddrs()];
+      // `labit invite <name>`, or your own name by default: the guest's browser knows nobody, so the link says who
+      // is coming and their phone starts out named.
+      const asked = JSON.parse((await new Response(req).text()) || '{}').name;
+      const who = NAME_OK(asked) ? asked.trim() : myName;
+      const tail = who ? `?me=${encodeURIComponent(who)}` : '';
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      return res.end(JSON.stringify({ links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}`) }));
+      return res.end(JSON.stringify({ name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) }));
+    }
+    // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
+    // a guest names themself in their own browser, and never renames this computer.
+    if (pathname === '/_lab/me') {
+      if (!isLoopback(req)) return res.writeHead(403).end('forbidden');
+      const { name } = JSON.parse((await new Response(req).text()) || '{}');
+      if (!NAME_OK(name)) return res.writeHead(400).end('name: 1 to 60 characters');
+      const was = myName;
+      myName = writeMe(name);
+      if (myName && myName !== was) console.log(`[lab] you are ${myName} here and in your next lab (${ME_FILE})`);
+      return res.writeHead(204).end();
     }
     if (pathname === '/_lab/bye') {
       const { tab } = JSON.parse((await new Response(req).text()) || '{}');
@@ -1286,7 +1339,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req))));
+        inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
     }
     sendFile(req, res, file);
   } catch (e) {
@@ -1298,7 +1351,7 @@ const handler = async (req, res) => {
 
 // ---------- in front of a dev server (--proxy) ----------
 // Passing pages and websockets through to the dev server lives in lib/proxy.ts, loaded only when there is one.
-const proxy = PROXY && (await import('./lib/proxy.ts')).proxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback });
+const proxy = PROXY && (await import('./lib/proxy.ts')).proxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback, nameFor });
 
 const server = http.createServer(handler);
 server.on('upgrade', (req, socket, head) => {
