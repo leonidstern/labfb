@@ -54,6 +54,7 @@
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   let on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
   let openId = null;
+  let closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
   let cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
   let draft = null; // { anchor, docX, docY }
 
@@ -2256,7 +2257,14 @@
     const anim = appear ? ' in' : '';
     let quoted = null;
     const done = () => {
-      if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) { // phones slide the sheet away; computers close at once, like the chat // not when it already slid away (phones)
+      if (closeFast && !now && prev) {
+        closeFast = false;
+        prev.inert = true;
+        layer.append(prev);
+        const gone = () => prev.remove();
+        if (still.matches || !prev.animate) gone();
+        else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'ease-out', fill: 'forwards' }).finished.then(gone, gone);
+      } else if (coarse && !now && shown && prev && !still.matches && !prev.style.transform) { // phones slide the sheet away; computers close at once, like the chat // not when it already slid away (phones)
         prev.classList.remove('in');
         prev.classList.add('out');
         prev.inert = true;
@@ -2521,7 +2529,8 @@
           const closing = !c.resolved; // resolved: the thread is done, so its card closes (reopen keeps it open)
           const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id, ...(ownKey ? { edit: ownKey } : {}) });
           Object.assign(c, comment);
-          if (closing && openId === c.id) return slideAway(openCard, () => ((openId = null), render()));
+          // Resolving closes the comment at once, a quick fade where it is, not the slow slide down (Leo, 15 Nov).
+          if (closing && openId === c.id) return (closeFast = true), (openId = null), render();
           render();
         } catch {
           failed(resolve);
