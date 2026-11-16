@@ -166,18 +166,18 @@ test("whoever started a thread may resolve and reopen it with its key, not delet
 // ---------- a guest's one-time link (--wifi) ----------
 // A lab open to the wifi lets nobody in on the strength of the IP alone: a guest needs a link, which works once.
 
-const WDIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-wifi-')));
+const WDIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-wifi-')));
 fs.writeFileSync(path.join(WDIR, 'index.html'), '<h1>wifi page</h1>');
 const WPORT = 5100 + Math.floor(Math.random() * 90);
 const wifi = spawn(process.execPath, [LAB, '.', '--no-open', '--wifi', '--port', String(WPORT)], {
   cwd: WDIR,
-  env: { ...process.env, LABFB_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-')), LABFB_NO_UPDATE_CHECK: '1' },
+  env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' },
 });
 after(() => {
   wifi.kill();
   fs.rmSync(WDIR, { recursive: true, force: true });
 });
-// The lab's own key, as `labfb invite` reads it: the agent on this computer is the only one who may mint a link.
+// The lab's own key, as `labit invite` reads it: the agent on this computer is the only one who may mint a link.
 const wifiToken = async () => {
   for (let i = 0; i < 50; i++) {
     try {

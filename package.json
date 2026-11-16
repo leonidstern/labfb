@@ -4,8 +4,7 @@
   "description": "Pin comments on pages, read by your agent as plain text. Local mode: comment on pages on your computer and Claude answers on the pins.",
   "type": "module",
   "bin": {
-    "labit": "dist/local.mjs",
-    "labfb": "dist/local.mjs"
+    "labit": "dist/local.mjs"
   },
   "files": [
     "dist/",
