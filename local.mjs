@@ -375,7 +375,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
       .filter(([page]) => !want || page === want)
       .map(([page, list]) => {
         const open = Object.values(list).filter((c) => !c.parent && !c.resolved).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-        return open[ref - 1] && { page, id: open[ref - 1].id };
+        return open[Number(ref) - 1] && { page, id: open[Number(ref) - 1].id };
       })
       .filter(Boolean);
     if (hits.length > 1) die(`Comment ${ref} is on several pages (${hits.map((h) => h.page).join(', ')}). Add --page <path>.`);
@@ -439,7 +439,7 @@ const findDevServer = async () => {
   return { ...find(ROOT, Number(opts.port) || 4400), tilde, othersNote };
 };
 
-if (opts.proxy === true && !alreadyRunning) {
+if (/** @type {unknown} */ (opts.proxy) === true && !alreadyRunning) {
   const { port, others, tilde, othersNote } = await findDevServer();
   if (!port) die(`[lab] no dev server running in ${tilde(ROOT)}. Start it (npm run dev), or give its port: ${CMD} --proxy <port>${othersNote(others)}`);
   console.log(`[lab] dev server for this project on :${port}`);
@@ -935,6 +935,7 @@ const reads = (() => {
     return Object.create(null);
   }
 })();
+/** @type {any} */
 let readsBroadcast = 0;
 let readsRev = 0;
 const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
@@ -1492,7 +1493,7 @@ server.on('upgrade', (req, socket, head) => {
 server.on('error', (e) => {
   // A port given by the preview pane (PORT) is the one it opens: don't move off it.
   const fixed = !opts.port && process.env.PORT;
-  if (e.code !== 'EADDRINUSE' || fixed || PORT >= Number(opts.port || 4400) + 20) die(`[lab] could not start: ${e.message}`);
+  if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EADDRINUSE' || fixed || PORT >= Number(opts.port || 4400) + 20) die(`[lab] could not start: ${e.message}`);
   server.listen(++PORT, WIFI ? undefined : '127.0.0.1');
 });
 // A newer labfb on npm: said once when the lab starts. Checked at most once a day (kept in ~/.labfb/latest.json)

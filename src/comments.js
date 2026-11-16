@@ -28,11 +28,11 @@ import {
 } from './widget/anchoring.ts';
 
 (() => {
-  const script = document.currentScript;
+  const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
   const enabled = location.hostname === labHost || script?.dataset.enable === 'always';
-  if (!enabled || window.__labComments) return;
-  window.__labComments = true;
+  if (!enabled || /** @type {any} */ (window).__labComments) return;
+  /** @type {any} */ (window).__labComments = true;
 
   const API = script?.dataset.api || '/_lab/api/comments';
   const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
@@ -102,31 +102,34 @@ import {
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
     <div class="more-menu" id="lab-more" hidden></div>`;
-  const layer = root.querySelector('.layer');
-  const hint = root.querySelector('.hint');
+  // The widget's own parts, which are always there: typed as HTML elements.
+  /** @param {string} sel @param {ParentNode} [box] */
+  const $ = (sel, box = root) => /** @type {HTMLElement} */ (box.querySelector(sel));
+  const layer = $('.layer');
+  const hint = $('.hint');
   if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'hold to comment';
-  const toggleBtn = root.querySelector('.toggle');
+  const toggleBtn = $('.toggle');
   const bar = /** @type {HTMLElement} */ (root.querySelector('.bar'));
-  const moreBtn = root.querySelector('.more');
-  const moreMenu = root.querySelector('.more-menu');
-  const copyBtn = root.querySelector('.copy-all');
+  const moreBtn = $('.more');
+  const moreMenu = $('.more-menu');
+  const copyBtn = $('.copy-all');
   // The comments list (new / open / resolved / mine; J/K step, R reply, E resolve, L shows it), and drafts: with
   // "drafts" on, new pins wait in this browser until "send 3 drafts", so nothing starts on pin 1 of 10.
-  const listBtn = /** @type {HTMLElement} */ (root.querySelector('.list-btn'));
-  const goBtn = root.querySelector('.go-btn');
-  const newPrev = root.querySelector('.new-prev');
-  const showDoneBtn = root.querySelector('.show-done');
-  const doneBtn = root.querySelector('.done-btn');
+  const listBtn = /** @type {HTMLButtonElement} */ ($('.list-btn'));
+  const goBtn = $('.go-btn');
+  const newPrev = $('.new-prev');
+  const showDoneBtn = $('.show-done');
+  const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
   // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
   // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
   const LIST_WINDOW = false;
   const tabTitle = { base: '' };
   let showDone = store.get('lab-show-done') === '1';
-  const newNext = root.querySelector('.new-next');
-  const sendBtn = root.querySelector('.send-all');
-  const listEl = root.querySelector('.list');
-  const holdBtn = listEl.querySelector('.hold');
-  const chatEl = root.querySelector('.chatwin');
+  const newNext = $('.new-next');
+  const sendBtn = $('.send-all');
+  const listEl = $('.list');
+  const holdBtn = $('.hold', listEl);
+  const chatEl = $('.chatwin');
   const chatBtn = /** @type {HTMLElement} */ (root.querySelector('.chat-btn'));
   let listOpen = false;
   let filter = 'open';
@@ -188,7 +191,7 @@ import {
         fonts.remove();
         return;
       }
-      if (!res.ok) throw new Error(res.status);
+      if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       comments = data.comments || [];
       isAdmin = Boolean(data.admin);
@@ -203,7 +206,7 @@ import {
   async function loadChanges(since) {
     try {
       const url = new URL('/_lab/api/changes', new URL(API, location.href));
-      url.search = new URLSearchParams({ page, since: String(since) });
+      url.search = String(new URLSearchParams({ page, since: String(since) }));
       const res = await fetch(url, { cache: 'no-store' });
       const data = res.ok ? await res.json() : { full: true };
       if (data.full || !loaded) return load();
@@ -321,15 +324,16 @@ import {
     say(`took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
   }
   // A short note in the hint strip (an undo, a copied link), then the strip goes back to its own words.
+  const said = { was: undefined, t: undefined };
   function say(words) {
-    say.was ??= hint.textContent;
+    said.was ??= hint.textContent;
     hint.textContent = words;
     hint.hidden = false;
-    clearTimeout(say.t);
-    say.t = setTimeout(() => {
+    clearTimeout(said.t);
+    said.t = setTimeout(() => {
       hint.hidden = true;
-      hint.textContent = say.was;
-      say.was = undefined;
+      hint.textContent = said.was;
+      said.was = undefined;
     }, 1800);
   }
 
@@ -450,7 +454,7 @@ import {
     if (!on && !moreMenu.hidden) setMenu(false);
     // The first segment shown has no line before it.
     let first = true;
-    for (const b of bar.children) {
+    for (const b of /** @type {HTMLCollectionOf<HTMLElement>} */ (bar.children)) {
       b.classList.toggle('first', first && !b.hidden);
       if (!b.hidden) first = false;
     }
@@ -508,11 +512,11 @@ import {
     sendBtn.textContent = `send ${h} draft${h === 1 ? '' : 's'}`;
     listEl.hidden = !on || !listOpen;
     if (listEl.hidden) return;
-    for (const b of listEl.querySelectorAll('[data-f]')) b.classList.toggle('on', b.dataset.f === filter);
+    for (const b of /** @type {NodeListOf<HTMLElement>} */ (listEl.querySelectorAll('[data-f]'))) b.classList.toggle('on', b.dataset.f === filter);
     const fresh = all.filter((c) => !isPage(c) && unread(c).length).length; // chat messages count in the chat
     listEl.querySelector('[data-f="new"]').textContent = fresh ? `new · ${fresh}` : 'new';
     // Just new and open for now; work, resolved, mine and draft mode stay in the code, hidden.
-    for (const f of ['work', 'resolved', 'mine']) listEl.querySelector(`[data-f="${f}"]`).hidden = true;
+    for (const f of ['work', 'resolved', 'mine']) $(`[data-f="${f}"]`, listEl).hidden = true;
     holdBtn.hidden = !DRAFT_MODE;
     const doneCount = all.filter((c) => !isPage(c) && (c.resolved || workState(c)[0] === 'done') && !unread(c).length).length;
     showDoneBtn.hidden = !doneCount;
@@ -530,7 +534,7 @@ import {
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
   const ago = (iso) => {
-    const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+    const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
     return m < 1 ? 'just now' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
   };
   // A thread's state for the agent: ['now' | 'next' | 'done' | null, since when].
@@ -634,15 +638,15 @@ import {
     const opening = chatEl.hidden;
     chatEl.hidden = !on || !chatOpen;
     if (chatEl.hidden) chatEl.classList.remove('full'); // opens at its lower height again
-    if (chatEl.hidden && chatEl.contains(root.activeElement)) root.activeElement.blur(); // a closed chat keeps no focus, so keys work again
+    if (chatEl.hidden && chatEl.contains(root.activeElement)) /** @type {HTMLElement} */ (root.activeElement).blur(); // a closed chat keeps no focus, so keys work again
     if (chatEl.hidden) return;
-    const box = chatEl.querySelector('.msgs');
+    const box = $('.msgs', chatEl);
     // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
     const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-    const before = new Set(opening ? [] : [...box.children].map((n) => n.dataset.id));
+    const before = new Set(opening ? [] : [.../** @type {HTMLCollectionOf<HTMLElement>} */ (box.children)].map((n) => n.dataset.id));
     // A message already on screen that hasn't changed keeps its own node: a redraw for one new message used to rebuild
     // every bubble (a phone showed the chat blink as messages arrived).
-    const kept = new Map([...box.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+    const kept = new Map([.../** @type {HTMLCollectionOf<HTMLElement>} */ (box.children)].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
     const same = (n) => {
       const old = kept.get(n.dataset?.id);
       return old && old.outerHTML.replace(' fresh', '') === n.outerHTML ? old : n;
@@ -659,8 +663,8 @@ import {
         q.append(el('b', {}, String(root.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(root.text.replace(/\s+/g, ' ').slice(0, 90)));
         q.addEventListener('click', (e) => {
           e.stopPropagation();
-          const box = chatEl.querySelector('.msgs');
-          const to = box.querySelector(`[data-id="${root.id}"]`);
+          const box = $('.msgs', chatEl);
+          const to = $(`[data-id="${root.id}"]`, box);
           if (!to) return;
           box.scrollTo({ top: to.offsetTop - box.offsetTop - 12, behavior: still.matches ? 'auto' : 'smooth' });
           to.animate?.([{ boxShadow: '0 0 0 2px rgb(52,199,89)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 900 });
@@ -671,7 +675,7 @@ import {
       stamped(b, stampOf(m, root));
       return m.id === newFrom && m !== msgs[0] ? [el('div', { class: 'newline' }, 'new'), b] : [b];
     }).map(same));
-    const strip = chatEl.querySelector('.replying');
+    const strip = $('.replying', chatEl);
     const target = replyTo && byId.get(replyTo);
     strip.hidden = !target;
     if (target) {
@@ -774,7 +778,7 @@ import {
   const ARROW = '<i class="arr" aria-hidden="true"></i>';
 
   // One field that grows: a pill while empty, a box with a divider and the name row once you type.
-  function composer({ placeholder, onSubmit, autofocus }) {
+  function composer({ placeholder, onSubmit, autofocus = false }) {
     const wrap = el('div', { class: 'composer' });
     const box = el('div', { class: 'box' });
     // No autofill or suggestion bar on phones: a comment isn't a form to fill.
@@ -1275,7 +1279,7 @@ import {
           // and the reply box keeps its focus for the next one.
           shown.add(comment.id);
           const items = card.querySelectorAll('.item');
-          const added = itemEl(comment, false);
+          const added = itemEl(comment);
           added.classList.add('fresh');
           items[items.length - 1].after(added);
           body.scrollTop = body.scrollHeight; // the reply just sent is in view above the box
@@ -1368,12 +1372,12 @@ import {
     // On a computer, opening the chat closes an open thread, and a new comment with nothing typed in it.
     if (chatOpen && !coarse) {
       openId = null;
-      if (draft && !root.querySelector('.float textarea')?.value.trim()) draft = null;
+      if (draft && !/** @type {HTMLTextAreaElement | null} */ (root.querySelector('.float textarea'))?.value.trim()) draft = null;
     }
     hint.hidden = true;
     render();
     // Computers: the cursor goes in the message box (phones wait for a tap, so the keyboard doesn't cover the chat).
-    if (chatOpen && !coarse) chatEl.querySelector('.chat textarea')?.focus({ preventScroll: true });
+    if (chatOpen && !coarse) /** @type {HTMLElement | null} */ (chatEl.querySelector('.chat textarea'))?.focus({ preventScroll: true });
   });
   // No close cross on the chat: a click outside it, Escape or C closes it (phones: the handle or the dimmed page).
   // On a computer a click outside the chat closes it (phones have the dimmed page for that); what you typed stays.
@@ -1397,7 +1401,7 @@ import {
     e.preventDefault();
     e.stopImmediatePropagation();
   }, true);
-  for (const b of listEl.querySelectorAll('[data-f]')) b.addEventListener('click', () => ((filter = b.dataset.f), drawList()));
+  for (const b of /** @type {NodeListOf<HTMLElement>} */ (listEl.querySelectorAll('[data-f]'))) b.addEventListener('click', () => ((filter = b.dataset.f), drawList()));
   holdBtn.addEventListener('click', () => (store.set('lab-hold', drafting() ? '' : '1'), drawList()));
   sendBtn.addEventListener('click', async () => {
     const list = held();
@@ -1433,7 +1437,7 @@ import {
     if (on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD' && !(typing(e) && !e.composedPath().includes(host))) {
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
-      const typed = root.querySelector('.card textarea, .float textarea');
+      const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
       if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 260 });
       return stepNew(e.shiftKey ? -1 : 1);
     }
@@ -1456,8 +1460,8 @@ import {
       if (k === 'c') return chatBtn.click();
       if (k === 'w') return stepNew(e.shiftKey ? -1 : 1);
       if (k === 'd') return showDoneBtn.click();
-      if (k === 'r' && openId) root.querySelector('.card textarea')?.focus({ preventScroll: true });
-      else if (k === 'e' && openId && isAdmin) [...root.querySelectorAll('.card .btn')].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
+      if (k === 'r' && openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
+      else if (k === 'e' && openId && isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
     }
     // Escape closes the top one: a thread or new comment first, then the chat, then the list (typed chat text stays).
@@ -1495,7 +1499,7 @@ import {
   };
   // An open new-comment box with nothing typed in it doesn't block drawing an area (a stray click had opened one, and
   // every drag after it silently did nothing until it was closed); one with words in it does, so they aren't lost.
-  const draftHasText = () => Boolean(draft) && [...root.querySelectorAll('.float textarea')].some((t) => t.value.trim());
+  const draftHasText = () => Boolean(draft) && [.../** @type {NodeListOf<HTMLTextAreaElement>} */ (root.querySelectorAll('.float textarea'))].some((t) => t.value.trim());
   function startDrag(e) {
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
     if ((!on && !e.altKey) || (cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
@@ -1640,7 +1644,7 @@ import {
     if (!coarse || !node || still.matches) return close();
     // With the keyboard up, the sheet fills what's above it; letting the keyboard go now would resize the sheet in
     // the middle of its slide. So it slides down behind the keyboard, and the keyboard goes once it's gone.
-    if (!host.hasAttribute('data-kb')) root.activeElement?.blur();
+    if (!host.hasAttribute('data-kb')) /** @type {HTMLElement | null} */ (root.activeElement)?.blur();
     node.style.pointerEvents = 'none'; // not inert: that would take the cursor away, and the keyboard with it, at once
     node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : 'transform .22s cubic-bezier(.4, 0, 1, 1)';
     scrim.style.transition = `opacity ${ms || 220}ms`;
@@ -1649,7 +1653,7 @@ import {
     bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
     host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
     setTimeout(() => {
-      root.activeElement?.blur();
+      /** @type {HTMLElement | null} */ (root.activeElement)?.blur();
       close();
       node.style.pointerEvents = '';
       node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = bar.style.transition = '';
@@ -1667,22 +1671,23 @@ import {
   const SPRING = 'cubic-bezier(.32,.72,0,1)'; // iOS's sheet curve
   // Android's back gesture closes an open sheet first, like a native one, instead of leaving the page (CloseWatcher,
   // Chrome 120+; elsewhere back works as before). With something typed it nudges, as a tap on the dimmed page does.
+  let backWatcher = null; // CloseWatcher (not in TypeScript's DOM types yet)
   function backCloses() {
     const open = matchMedia('(pointer: coarse)').matches && host.hasAttribute('data-sheet');
-    if (!open && backCloses.w) {
-      const w = backCloses.w;
-      backCloses.w = null;
+    if (!open && backWatcher) {
+      const w = backWatcher;
+      backWatcher = null;
       w.destroy();
     }
-    if (open && !backCloses.w && 'CloseWatcher' in window) {
+    if (open && !backWatcher && 'CloseWatcher' in window) {
       try {
-        const w = new CloseWatcher();
+        const w = new (/** @type {any} */ (window).CloseWatcher)();
         w.onclose = () => {
-          if (backCloses.w === w) backCloses.w = null;
+          if (backWatcher === w) backWatcher = null;
           closeOrNudge();
           backCloses(); // still open (it nudged): back closes it next time
         };
-        backCloses.w = w;
+        backWatcher = w;
       } catch {}
     }
   }
@@ -1828,7 +1833,7 @@ import {
       const r = probe.getBoundingClientRect();
       // iOS 26.0 can leave offsetTop at 24 px after the keyboard has gone. With nothing to type in focused there is no
       // keyboard and nothing panned (unzoomed), so an offset then is stale and counts as 0.
-      const field = root.activeElement || document.activeElement;
+      const field = /** @type {HTMLElement | null} */ (root.activeElement || document.activeElement);
       const typing = /^(textarea|input|select)$/.test(field?.localName || '') || Boolean(field?.isContentEditable);
       const top = zoomed || !typing ? 0 : vv.offsetTop;
       const seen = top + vv.height; // the bottom of what the screen shows
@@ -1898,6 +1903,7 @@ import {
     if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
       let lines = [];
       let t0 = performance.now();
+      /** @type {any} */
       let sendTimer = 0;
       const row = (what) => {
         const open = openSheet();
@@ -1953,7 +1959,7 @@ import {
   }
   // The chat stays at its newest message while it gets shorter (the keyboard coming up, the reply strip), unless
   // you scrolled back to read.
-  const msgsEl = chatEl.querySelector('.msgs');
+  const msgsEl = $('.msgs', chatEl);
   let stick = true;
   msgsEl.addEventListener('scroll', () => (stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48), { passive: true });
   if ('ResizeObserver' in window) new ResizeObserver(() => stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
@@ -1991,7 +1997,7 @@ import {
   document.addEventListener('pointerup', (e) => {
     if (e.pointerType === 'touch') lastTouch = Date.now();
     stopPress();
-    if (pinnedByHold) root.querySelector('.float textarea')?.focus({ preventScroll: true });
+    if (pinnedByHold) /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, true);
   // The lift after a hold: no click follows it (it would land on the dimmed page and take the cursor away), and the
   // touch's own end puts the cursor in the box, so the phone opens its keyboard.
@@ -1999,7 +2005,7 @@ import {
     if (!pinnedByHold) return;
     pinnedByHold = false;
     e.preventDefault();
-    root.querySelector('.float textarea')?.focus({ preventScroll: true });
+    /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, { capture: true, passive: false });
   document.addEventListener('pointercancel', stopPress, true);
   addEventListener('scroll', stopPress, { passive: true, capture: true });
@@ -2035,7 +2041,8 @@ import {
       ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2)
       : anchorAt(first.left + 2, first.top + first.height / 2);
     const at = range.commonAncestorContainer;
-    const block = (at.nodeType === 1 ? at : at.parentElement)?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div') || document.body;
+    const block = /** @type {Element | null} */ (at.nodeType === 1 ? at : at.parentElement)?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div') || document.body;
+    /** @param {[Node, number]} a @param {[Node, number]} b */
     const side = (a, b) => {
       const r = document.createRange();
       r.setStart(...a);
@@ -2105,7 +2112,7 @@ import {
     });
   };
   addEventListener('resize', reflow);
-  addEventListener('scroll', (e) => e.target !== document && !host.contains(e.target) && reflow(), { capture: true, passive: true });
+  addEventListener('scroll', (e) => e.target !== document && !host.contains(/** @type {Node} */ (e.target)) && reflow(), { capture: true, passive: true });
 
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
@@ -2213,6 +2220,7 @@ import {
   fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   // Letting go of Shift keeps text selectable a moment longer, so a selection made with it isn't dropped before its
   // comment opens.
+  /** @type {any} */
   let shiftOff = 0;
   const shiftKey = (e) => {
     clearTimeout(shiftOff);
@@ -2302,6 +2310,7 @@ import {
       draft || grabbing || openId || chatOpen || listOpen || (coarse && /^(textarea|input)$/.test(root.activeElement?.localName || '')) ||
       [...root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
+    /** @type {any} */
     let reloadTimer = 0;
     const reload = () => {
       // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
@@ -2346,17 +2355,17 @@ import {
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
     const swapCss = (files) => {
       // A clone still loading from an earlier save is skipped (its original is swapped instead) and dropped once a newer one is in.
-      const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])')].filter((l) => new URL(l.href, location.href).origin === location.origin);
+      const links = [.../** @type {NodeListOf<HTMLLinkElement>} */ (document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])'))].filter((l) => new URL(l.href, location.href).origin === location.origin);
       const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
       for (const link of named.length ? named : links) {
         const url = new URL(link.href, location.href);
         url.searchParams.set('lab-v', Date.now().toString(36));
-        const next = link.cloneNode();
+        const next = /** @type {HTMLLinkElement} */ (link.cloneNode());
         next.href = url.href;
         next.dataset.labSwap = '';
         const path = url.pathname;
         next.addEventListener('load', () => {
-          for (const l of document.querySelectorAll('link[rel~="stylesheet"][href]')) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
+          for (const l of /** @type {NodeListOf<HTMLLinkElement>} */ (document.querySelectorAll('link[rel~="stylesheet"][href]'))) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
           delete next.dataset.labSwap;
         }, { once: true });
         next.addEventListener('error', () => next.remove(), { once: true });
@@ -2420,7 +2429,7 @@ import {
           const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => (samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all));
           const d = (k) => r.style.getPropertyValue(k) || undefined;
           try {
-            const face = new FontFace(d('font-family').replace(/^["']|["']$/g, ''), again, { weight: d('font-weight'), style: d('font-style'), stretch: d('font-stretch'), unicodeRange: d('unicode-range'), display: d('font-display') });
+            const face = new FontFace(d('font-family').replace(/^["']|["']$/g, ''), again, /** @type {any} */ ({ weight: d('font-weight'), style: d('font-style'), stretch: d('font-stretch'), unicodeRange: d('unicode-range'), display: d('font-display') }));
             face.load().then((f) => document.fonts.add(f)).catch(() => {});
           } catch {}
         }
@@ -2558,6 +2567,7 @@ import {
     // connection: browsers allow only 6 to one lab at a time, and held ones by background tabs made the rest hang.
     /** @type {any} */
     let pollTimer = 0;
+    /** @type {any} */
     let dropTimer = 0;
     const poll = async () => {
       try {
