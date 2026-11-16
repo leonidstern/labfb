@@ -28,7 +28,7 @@ import {
 } from './widget/anchoring.ts';
 import { bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
-import { bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
@@ -353,8 +353,9 @@ import { bindLive, startLive } from './widget/live.ts';
   };
   function begin(anchor) {
     const name = store.get('lab-name').trim();
+    // Go with no name yet (a guest's first): the card asks only the name; the go is implied (Leo, 16 Nov).
     if (!S.goMode || !name) {
-      S.draft = { anchor };
+      S.draft = { anchor, go: S.goMode };
       return render();
     }
     if (drafting()) {
@@ -625,6 +626,7 @@ import { bindLive, startLive } from './widget/live.ts';
         const key = sheet && (S.draft ? 'draft' : S.openId || (S.listOpen ? 'list' : S.chatOpen ? 'chat' : ''));
         if (sheet && key !== S.sheetKey) fromTap(sheet);
         S.sheetKey = key;
+        if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
       markQuote(quoted);
       S.shown = now;
@@ -757,7 +759,9 @@ import { bindLive, startLive } from './widget/live.ts';
       float.append(
         el('div', { class: 'handle' }),
         composer({
-          placeholder: 'add a comment',
+          placeholder: S.draft.go ? 'go' : 'add a comment',
+          empty: S.draft.go ? 'go' : '',
+          nameFirst: Boolean(S.draft.go),
           autofocus: true,
           onSubmit: async (name, text) => {
             if (drafting()) {
@@ -1204,7 +1208,9 @@ import { bindLive, startLive } from './widget/live.ts';
           showAgain();
           S.openId = null;
           begin(anchorAt(x, y));
-        }, 500),
+          // 400 ms: before iOS's own long press (~500 ms), which selects text and cancels the touch. At 500 ms the two
+          // raced, and the hold sometimes gave a text selection instead of a pin (iOS 27 simulator, 16 Nov).
+        }, 400),
       };
     },
     true,
@@ -1213,7 +1219,7 @@ import { bindLive, startLive } from './widget/live.ts';
   document.addEventListener('pointerup', (e) => {
     if (e.pointerType === 'touch') S.lastTouch = Date.now();
     stopPress();
-    if (S.pinnedByHold) /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'))?.focus({ preventScroll: true });
+    if (S.pinnedByHold) /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, true);
   // The lift after a hold: no click follows it (it would land on the dimmed page and take the cursor away), and the
   // touch's own end puts the cursor in the box, so the phone opens its keyboard.
@@ -1221,7 +1227,7 @@ import { bindLive, startLive } from './widget/live.ts';
     if (!S.pinnedByHold) return;
     S.pinnedByHold = false;
     e.preventDefault();
-    /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'))?.focus({ preventScroll: true });
+    /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, { capture: true, passive: false });
   document.addEventListener('pointercancel', stopPress, true);
   addEventListener('scroll', stopPress, { passive: true, capture: true });
