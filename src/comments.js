@@ -32,7 +32,7 @@ import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
   /** @type {any} */
-  const S = {};
+  const S = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
   const enabled = location.hostname === labHost || script?.dataset.enable === 'always';
@@ -1546,7 +1546,6 @@ import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
       } catch {}
     }
   }
-  S.dbg = null; // ?kbdebug: a line into the phone's log (sheet drags)
   function swipeDown(node, close, grows = false) {
     if (!coarse) return;
     // A sheet that grows (the chat) has two heights, as iOS and Android sheets do: pull it up (or flick) to fill the
@@ -1801,7 +1800,7 @@ import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
         watch('blur');
         sendSoon();
       });
-      S['dbg'] = (line) => { // (not S.dbg = …: TypeScript would read a second declaration of it)
+      S.dbg = (line) => {
         lines.push(`${Math.round(performance.now() - t0)} ${line}`);
         sendSoon();
       };

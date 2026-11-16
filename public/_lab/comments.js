@@ -1412,7 +1412,7 @@ ${line}`;
    * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
    */
   (() => {
-    const S = {};
+    const S = { dbg: null };
     const script = (
       /** @type {HTMLScriptElement | null} */
       document.currentScript
@@ -2750,7 +2750,6 @@ ${line}`;
         }
       }
     }
-    S.dbg = null;
     function swipeDown(node, close, grows = false) {
       if (!coarse) return;
       let raw = 0;
@@ -2974,7 +2973,7 @@ ${line}`;
           watch("blur");
           sendSoon();
         });
-        S["dbg"] = (line) => {
+        S.dbg = (line) => {
           lines.push(`${Math.round(performance.now() - t0)} ${line}`);
           sendSoon();
         };
