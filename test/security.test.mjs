@@ -234,5 +234,6 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal(r.status, 302);
   const cookie = r.cookie.split(';')[0];
   assert.equal((await wraw('/', { host: lan, headers: { cookie } })).status, 200, 'in with the cookie');
-  assert.equal((await wraw('/', { host: lan, headers: { cookie: cookie.slice(0, -1) + '0' } })).status, 403, 'a forged cookie');
+  const forged = cookie.slice(0, -1) + (cookie.endsWith('0') ? '1' : '0'); // always one character off the real one
+  assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
 });
