@@ -26,7 +26,7 @@ import {
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
-import { bindComposer, composer } from './widget/composer.ts';
+import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 import { bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
@@ -269,7 +269,7 @@ import { zoomWords } from '../lib/zoom.ts';
   bindAnchoring({ host, layer, el, store });
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe });
+  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), workState: (c) => workState(c) });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
@@ -373,6 +373,14 @@ import { zoomWords } from '../lib/zoom.ts';
   // Option-click still pins. 1 comment, 2 go and 3 zoom leave it.
   S.cursorMode = store.get('lab-cursor') === '1';
   // Switching only changes the button and the pointer: nothing on the page is redrawn, so nothing flickers.
+  // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
+  // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
+  const setPinning = () => {
+    const placing = S.on && !S.cursorMode && !anyWriting();
+    document.documentElement.classList.toggle('lab-pinning', placing);
+    document.documentElement.classList.toggle('lab-go', placing && S.goMode && !S.zoomMode);
+    recheck();
+  };
   const setCursor = (v) => {
     if (v && S.zoomMode) setZoom('');
     S.cursorMode = v;
@@ -380,9 +388,7 @@ import { zoomWords } from '../lib/zoom.ts';
     goBtn.classList.toggle('cursor', v);
     goBtn.classList.toggle('on', S.goMode && !v); // cursor replaces go's green at once
     goFace();
-    document.documentElement.classList.toggle('lab-pinning', S.on && !v);
-    document.documentElement.classList.toggle('lab-go', S.on && S.goMode && !v);
-    recheck();
+    setPinning();
   };
   const setGo = (v) => {
     if (S.cursorMode) setCursor(false);
@@ -703,8 +709,7 @@ import { zoomWords } from '../lib/zoom.ts';
     document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
     backCloses();
     S.refit();
-    document.documentElement.classList.toggle('lab-pinning', S.on && !S.cursorMode);
-    document.documentElement.classList.toggle('lab-go', S.on && S.goMode && !S.cursorMode && !S.zoomMode);
+    setPinning();
     copyBtn.hidden = !S.on || !S.isAdmin || list.every((c) => c.resolved);
     drawList();
     drawChat();

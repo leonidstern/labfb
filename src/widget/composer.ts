@@ -8,6 +8,8 @@ type Deps = {
   refreshPinCursor: () => void;
   syncReads: () => void;
   rememberMe: (name: string) => void;
+  /** Called as boxes fill and empty, so the page's own pointer can come back while you write. */
+  whileWriting?: () => void;
 };
 
 // Set once by the widget at startup (bindComposer), so importing this module touches nothing.
@@ -20,10 +22,13 @@ import { holdReloads } from './hold.ts';
 
 // Every box on the page that holds words nobody has sent. While there is one, a reload waits (hold.ts).
 const writing = new Set<HTMLTextAreaElement>();
+/** True while any box on the page holds words nobody has sent. */
+export const anyWriting = () => writing.size > 0;
 const saysWriting = (field: HTMLTextAreaElement) => {
   if (field.value.trim()) writing.add(field);
   else writing.delete(field);
   holdReloads(writing.size);
+  d?.whileWriting?.(); // the page's own pointer comes back while you are writing (comments.js)
 };
 
 // The send arrow is drawn with CSS (a stem and a chevron), no picture.
@@ -62,12 +67,12 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     }
   }
   const keepDraft = () => {
-    saysWriting(text);
     if (draftKey) store.set(draftKey, text.value.trim() ? text.value : '');
   };
   const dropDraft = () => {
     writing.delete(text);
     holdReloads(writing.size);
+    d?.whileWriting?.();
     if (draftKey) store.set(draftKey, '');
   };
   who.append(as, name);
@@ -113,6 +118,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     as.hidden = !name.value.trim();
     if (one && !CSS.supports?.('field-sizing', 'content')) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
     sendBtn.classList.toggle('ready', Boolean((text.value.trim() || empty) && name.value.trim()));
+    saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
     text.style.height = 'auto';
     text.style.height = `${text.scrollHeight}px`;
     if (glide) {
@@ -178,6 +184,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     if (wrap.isConnected) return;
     writing.delete(text);
     holdReloads(writing.size);
+    d?.whileWriting?.();
   }).observe(document.documentElement, { childList: true, subtree: true });
   name.addEventListener('input', sync);
   name.addEventListener('blur', () => setTimeout(sync, 0));
