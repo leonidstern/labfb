@@ -12,11 +12,11 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 
 const REPO = path.dirname(fileURLToPath(import.meta.url));
 const ME = path.join(REPO, 'local.mjs');
-// How to call this again: `npx labit` once installed from npm, else the script's own path.
-const CMD = REPO.split(path.sep).includes('node_modules') ? 'npx labit' : `node ${ME}`;
+// How to call this again: `npx @leonidstern/labit` once installed from npm, else the script's own path.
+const CMD = REPO.split(path.sep).includes('node_modules') ? 'npx @leonidstern/labit' : `node ${ME}`;
 const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
 const HELP = `labit ${VERSION}: comment on local pages, your agent (Claude, Codex, Cursor…) answers on the pins.
-Run it as npx labit …, or node local.mjs … from a clone.
+Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 
   labit [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
       Run it in your project. If the project has a dev server (Astro, Next, Vite…) running, comments go on top
@@ -34,8 +34,8 @@ Run it as npx labit …, or node local.mjs … from a clone.
       Save a cloud lab page (https://<lab domain>/<page>) for this folder, in .lab/links.json.
   labit mcp
       Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply and wait, for this folder's lab.
-      Claude Code: claude mcp add labit -- npx labit@latest mcp
-      Codex: codex mcp add labit -- npx labit@latest mcp
+      Claude Code: claude mcp add labit -- npx @leonidstern/labit@latest mcp
+      Codex: codex mcp add labit -- npx @leonidstern/labit@latest mcp
   labit preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
@@ -167,7 +167,7 @@ if (pos[0] === 'preview') {
     const args = ['.', '--no-open', ...(typeof opts.proxy === 'string' ? ['--proxy', opts.proxy] : opts.proxy ? ['--proxy'] : [])];
     // Under npx this script sits in npx's cache, which moves with every version: name the package, not the path.
     return CMD.startsWith('npx')
-      ? { name: 'lab', runtimeExecutable: 'npx', runtimeArgs: ['--yes', 'labit', ...args], port: 4400, autoPort: true }
+      ? { name: 'lab', runtimeExecutable: 'npx', runtimeArgs: ['--yes', '@leonidstern/labit', ...args], port: 4400, autoPort: true }
       : { name: 'lab', program: ME, args, port: 4400, autoPort: true };
   }
   config.configurations = [...(config.configurations || []).filter((c) => c.name !== 'lab'), entry()];
@@ -340,7 +340,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
         die(
           process.env.CODEX_SANDBOX_NETWORK_DISABLED
             ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Use labit's MCP server instead: ` +
-                `codex mcp add labit -- npx labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
+                `codex mcp add labit -- npx @leonidstern/labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
             : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
         ),
       );
@@ -1509,7 +1509,7 @@ async function newerVersion() {
   } catch {}
   if (!latest) {
     try {
-      const res = await fetch('https://registry.npmjs.org/labit/latest', { signal: AbortSignal.timeout(1500) });
+      const res = await fetch('https://registry.npmjs.org/@leonidstern%2Flabit/latest', { signal: AbortSignal.timeout(1500) });
       latest = (await res.json()).version;
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify({ version: latest, at: Date.now() }));
@@ -1523,7 +1523,7 @@ async function newerVersion() {
   return null;
 }
 server.on('listening', async () => {
-  newerVersion().then((v) => v && console.log(`[lab] labit ${v} is out (you have ${VERSION}): npx labit@latest`));
+  newerVersion().then((v) => v && console.log(`[lab] labit ${v} is out (you have ${VERSION}): npx @leonidstern/labit@latest`));
   origin = `http://localhost:${PORT}`;
   saveServer();
   register();

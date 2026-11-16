@@ -2649,7 +2649,7 @@ import {
         else who.removeAttribute('href');
         // No link, but a resume command (codex resume …): a tap copies it.
         who.dataset.copy = !s?.url && s?.resume && mode !== 'away' ? s.resume : '';
-        who.title = mode === 'away' ? 'Ask your agent to run: npx labit wait' : s?.resume ? `${s.resume}${who.dataset.copy ? ' (tap to copy)' : ''}` : '';
+        who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labit wait' : s?.resume ? `${s.resume}${who.dataset.copy ? ' (tap to copy)' : ''}` : '';
         who.hidden = false;
       }
     }
