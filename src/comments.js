@@ -192,7 +192,7 @@ import { zoomWords } from '../lib/zoom.ts';
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (p)">pause motion</button>
-      <button class="secondary go-btn" type="button" hidden title="1 comment · 2 go: every click approves what it's on · 3 zoom in, 3 again zoom out: ask the agent for a deeper look or the bigger picture · 4 pointer: clicks are the page's own">go</button>
+      <button class="secondary go-btn" type="button" hidden title="tap: comment → go → zoom in → zoom out · keys: 1 comment · 2 go: every click approves what it's on · 3 zoom in, 3 again zoom out: ask the agent for a deeper look or the bigger picture · 4 pointer: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
@@ -859,7 +859,14 @@ import { zoomWords } from '../lib/zoom.ts';
       e.stopPropagation();
     }
   }, true);
-  goBtn.addEventListener('click', () => setGo(!S.goMode));
+  // A tap steps through what a click places: comment → go → zoom in → zoom out → comment. Phones have no number keys,
+  // so this is how they reach zoom; 4 (pointer) stays a key.
+  goBtn.addEventListener('click', () => {
+    if (S.zoomMode === 'in') return setZoom('out');
+    if (S.zoomMode === 'out') return setZoom(''), setGo(false);
+    if (S.goMode && !S.cursorMode) return setZoom('in');
+    setGo(true);
+  });
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
   // Pause motion (p): everything that moves on the page stops where it is, to pin a moment of an animation (Leo,
