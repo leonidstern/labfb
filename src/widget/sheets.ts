@@ -312,7 +312,12 @@ export function startSheets() {
       const field = (W.root.activeElement || document.activeElement as HTMLElement | null);
       const typing = /^(textarea|input|select)$/.test(field?.localName || '') || Boolean(field?.isContentEditable);
       const top = zoomed || !typing ? 0 : W.vv.offsetTop;
-      const seen = top + W.vv.height; // the bottom of what the screen shows
+      // The bottom of what the screen shows, where the probe's box is measured. WebKit (Safari, Chrome on iPhone)
+      // measures boxes from the screen's top, so a page panned up for the keyboard puts the probe's top at -offsetTop;
+      // Blink measures from the page's top (probe at 0). Adding the offset alone counted a pan twice on iPhones: the
+      // keyboard came out 0 and a new comment sat behind the keyboard's bar (Leo, 16 Nov, "sometimes": only when Safari
+      // pans instead of scrolling).
+      const seen = (top ? top + r.top : 0) + W.vv.height;
       const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen));
       const gap = zoomed ? 0 : Math.max(0, Math.round(seen - r.bottom));
       const vh = zoomed ? 0 : Math.round(W.vv.height);
