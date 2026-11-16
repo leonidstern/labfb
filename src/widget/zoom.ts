@@ -34,7 +34,7 @@ const made = (block: string, dir: Dir) => {
 
 // The block that came back: its heading in view with room above, and outlined for a moment. On the element itself
 // (the widget's layer is redrawn as comments arrive, which would drop an outline drawn there).
-function goTo(e: Element) {
+export function goTo(e: Element) {
   const r = e.getBoundingClientRect();
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   scrollTo({ top: Math.max(0, r.top + scrollY - 24), behavior: still ? 'auto' : 'smooth' });

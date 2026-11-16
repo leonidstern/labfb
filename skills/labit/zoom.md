@@ -48,7 +48,7 @@ Hand it over, then answer:
 
 1. Write the element to a file.
 2. `LAB zoom <pin id> <file> "one line saying what it is"`. The lab checks it, places it, names it (`<block>-bigger`, `<block>-deeper`) and adds the request and your line to the trail. If it refuses, it says what to fix.
-3. `LAB reply <pin id> "…"`: what it shows, one point per line.
+3. `LAB reply <pin id> "…"`: what it shows, one point per line, and the placed block as `#<its id>` (`#speed-deeper`). In the thread and the chat that becomes a link that scrolls to it.
 
 A block can be zoomed again, on another spot or with other words: each zoom gets its own block. Read the ones already there first and don't repeat them.
 

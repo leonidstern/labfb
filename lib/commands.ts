@@ -241,7 +241,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
         die(`Not placed: ${why || out.status}. Fix it and run it again.`);
       }
       const r = JSON.parse(out.text);
-      console.log(`Placed #${r.id} in ${r.file}, ${r.dir === 'out' ? 'above' : 'after'} the part the block is in (trail steps ${r.steps.join(', ')}). Now answer on the pin: ${CMD} reply ${hit.id} "…"`);
+      console.log(`Placed #${r.id} in ${r.file}, ${r.dir === 'out' ? 'above' : 'after'} the part the block is in (trail steps ${r.steps.join(', ')}). Now answer on the pin, naming #${r.id} so the reply links to it: ${CMD} reply ${hit.id} "… #${r.id} …"`);
       process.exit(0);
     }
     if (cmd === 'reply') {

@@ -33,7 +33,7 @@ import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
-import { bindZoom, draw as drawZoom, setZoom, startZoom, zoomAsked, zoomIcon, zoomKey } from './widget/zoom.ts';
+import { bindZoom, draw as drawZoom, goTo as goToBlock, setZoom, startZoom, zoomAsked, zoomIcon, zoomKey } from './widget/zoom.ts';
 import { zoomWords } from '../lib/zoom.ts';
 
 (() => {
@@ -912,6 +912,18 @@ import { zoomWords } from '../lib/zoom.ts';
   };
   copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
   // The list opens on "new" each time.
+  // A #block link in a message: go to that block on the page. A phone's sheet covers the page, so it closes first.
+  addEventListener('lab-goto', (e) => {
+    const target = document.getElementById(/** @type {CustomEvent} */ (e).detail);
+    if (!target) return;
+    if (coarse) {
+      S.openId = null;
+      S.chatOpen = false;
+      S.listOpen = false;
+      render();
+    }
+    setTimeout(() => goToBlock(target), coarse ? 60 : 0); // after the sheet has started closing
+  });
   listBtn.addEventListener('click', () => (LIST_WINDOW ? ((S.listOpen = !S.listOpen), S.listOpen && (S.filter = 'new'), (S.chatOpen = false), (hint.hidden = true), render()) : stepNew(1)));
   listEl.querySelector('.x').addEventListener('click', () => slideAway(listEl, () => ((S.listOpen = false), render())));
   chatBtn.addEventListener('click', () => {
