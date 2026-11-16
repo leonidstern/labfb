@@ -37,7 +37,11 @@ export function drawChat() {
   W.chatBtn.hidden = !W.S.on;
   // "chat" with a count (kept in place, grey 0, when there's nothing new); phones the same, without the key letter.
   {
-    W.chatBtn.replaceChildren(W.coarse ? 'chat' : W.keyWord('', 'c', 'hat'), W.el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
+    // Phones: the agent's mark sits first on this button (live.ts puts it there). It stays where it is across renders,
+    // so its blink or twitch isn't restarted every time the count is redrawn.
+    const mark = W.chatBtn.querySelector('.mark');
+    while (W.chatBtn.lastChild && W.chatBtn.lastChild !== mark) W.chatBtn.lastChild.remove();
+    W.chatBtn.append(W.coarse ? 'chat' : W.keyWord('', 'c', 'hat'), W.el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
     W.chatBtn.setAttribute('aria-label', `chat, ${fresh} new`);
     W.chatBtn.setAttribute('aria-keyshortcuts', 'c');
   }

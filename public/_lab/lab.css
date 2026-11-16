@@ -74,6 +74,9 @@ body.lab {
 .lab h2 { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--lab-muted); margin: 0 0 8px; }
 .lab p { margin: 0; }
 .lab a { color: inherit; text-underline-offset: 2px; }
+/* The lab's own screens open with the mark and the name. */
+.lab-brand { justify-self: start; display: inline-flex; align-items: center; gap: 7px; font-size: 17px; font-weight: 600; letter-spacing: -.03em; color: inherit; text-decoration: none; }
+.lab-brand svg { margin-top: -2px; }
 .lab-muted, .lab .lede { color: var(--lab-muted); }
 .lab .lede { margin-top: 6px; }
 .lab-small { font-size: 13px; }
