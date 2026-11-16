@@ -3,7 +3,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { apiOn, callApi, sendFile } from '../lib/dev.mjs';
+import { apiOn, callApi, sendFile } from '../lib/dev.ts';
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 process.env.LAB_HOST ??= 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN ??= 'admintoken';
