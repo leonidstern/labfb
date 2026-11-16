@@ -879,7 +879,7 @@ async function unseen(scope = pages()) {
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n` + (blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '') +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
-    (/\nzoom: (in|out)\b/.test(blocks.join('\n')) ? `\nA pin that says "zoom": read ${ZOOM_SKILL} first, and the skill there that fits the page. Write one block to a file, then ${CMD} zoom <id> <file> "what it is", then reply.` : '') +
+    (/\nzoom: (in|out)\b/.test(blocks.join('\n')) ? `\nA pin that says "zoom": read ${ZOOM_SKILL} first. Write one block to a file, then ${CMD} zoom <id> <file> "what it is", then reply.` : '') +
     `\n${WRITE_SHORT}`;
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));

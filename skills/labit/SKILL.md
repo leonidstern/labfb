@@ -35,7 +35,7 @@ Start it with `npx @leonidstern/labit@latest`, so the person gets the newest ver
 
 ## Zoom
 
-A comment that says `zoom: out` or `zoom: in` is not a change request: the person zoomed (3 once in, again out) on a spot, words or an area, and asks for the bigger picture it sits in, or a deeper look into it. Read [zoom.md](zoom.md) before answering one, and the skill in `zoom/` that fits the block (performance, design, code, research, product, testing). In short: get the context (the block, the page's trail `<page>.trail.jsonl`, the lab's other pages, the project), write one block to a file, hand it to the lab with `LAB zoom <id> <file> "what it is"`, then reply. When you make a lab page, give every block an `id`, so it can be zoomed and the lab can keep what was asked and done there.
+A comment with `zoom: in` or `zoom: out` asks for one block, a deeper look or the bigger picture, not a change. Read [zoom.md](zoom.md) first. When you make a lab page, give every block an `id`, so it can be zoomed.
 
 ## Instead of an Artifact ("use lab")
 
