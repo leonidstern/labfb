@@ -23,12 +23,16 @@ await page.addInitScript(() => localStorage.setItem('lab-name', 'Leo'));
 await page.goto(BASE + PAGE + '/'); // trailing slash so media/ resolves; comments key on /bench
 const lab = (sel) => page.locator(`[data-lab-comments] ${sel}`);
 await lab('.toggle').click();
+// Posting closes the box and leaves the pin (the comment doesn't open). Wait until the lab has it.
+let posted = 0;
 const say = async (text) => {
   await lab('.float textarea').fill(text);
   await lab('.float textarea').press('Enter');
-  await lab('.card').waitFor();
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(100);
+  await lab('.float').waitFor({ state: 'detached' });
+  posted++;
+  for (let i = 0; i < 50 && !(await (await fetch(`${BASE}/_lab/agent${PAGE}`)).text()).includes(`open: ${posted}\n`); i++) {
+    await page.waitForTimeout(100);
+  }
 };
 const clickAt = async (x, y) => { await page.mouse.click(x, y); await lab('.float textarea').waitFor(); };
 

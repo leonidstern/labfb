@@ -29,3 +29,5 @@ jobs:
       - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
       - run: npx playwright install --with-deps chromium webkit
       - run: node test/browser/behaviours.mjs
+      # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
+      - run: node bench/run.mjs
