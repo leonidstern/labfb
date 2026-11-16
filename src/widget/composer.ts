@@ -8,6 +8,8 @@ type Deps = {
   refreshPinCursor: () => void;
   syncReads: () => void;
   rememberMe: (name: string) => void;
+  /** Called as boxes fill and empty, so the page's own pointer can come back while you write. */
+  whileWriting?: () => void;
 };
 
 // Set once by the widget at startup (bindComposer), so importing this module touches nothing.
@@ -16,18 +18,37 @@ export function bindComposer(deps: Deps) {
   d = deps;
 }
 
+import { holdReloads } from './hold.ts';
+
+// Every box on the page that holds words nobody has sent. While there is one, a reload waits (hold.ts).
+const writing = new Set<HTMLTextAreaElement>();
+// Drafts whose words are on their way to the lab. A box rebuilt while one is in flight (the widget redraws as the
+// comment lands) must not read them back in, and must not lose them either if the send fails.
+const sending = new Set<string>();
+/** True while any box on the page holds words nobody has sent. */
+export const anyWriting = () => writing.size > 0;
+const saysWriting = (field: HTMLTextAreaElement) => {
+  if (field.value.trim()) writing.add(field);
+  else writing.delete(field);
+  holdReloads(writing.size);
+  d?.whileWriting?.(); // the page's own pointer comes back while you are writing (comments.js)
+};
+
 // The send arrow is drawn with CSS (a stem and a chevron), no picture.
 const ARROW = '<i class="arr" aria-hidden="true"></i>';
 
 // One field that grows: a pill while empty, a box with a divider and the name row once you type.
 // empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a go pin from someone with no name
 // yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
-export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false }: {
+export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false, draftKey = '' }: {
   placeholder: string;
   onSubmit: (name: string, text: string) => Promise<unknown>;
   autofocus?: boolean;
   empty?: string;
   nameFirst?: boolean;
+  /** Where to keep what is typed but not sent, so a page that reloads under you (a dev server rebuilding,
+   *  a crash, a tab closed by mistake) does not take the words with it. Empty: not kept. */
+  draftKey?: string;
 }): HTMLElement {
   const { el, store, root, refreshPinCursor, syncReads, rememberMe } = d;
   const wrap = el('div', { class: 'composer' });
@@ -40,6 +61,23 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   // says search it leaves alone.
   const name = el('input', { type: 'text', name: 'search-lab-who', placeholder: 'your name', maxlength: '60', enterkeyhint: 'send', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'words', spellcheck: 'false', writingsuggestions: 'false', 'data-1p-ignore': '', 'data-lpignore': 'true' }) as HTMLInputElement;
   name.value = store.get('lab-name');
+  // What was typed here last time and never sent. A dev server rebuilding the page used to wipe it.
+  if (draftKey && !sending.has(draftKey)) {
+    const kept = store.get(draftKey);
+    if (kept) {
+      text.value = kept;
+      queueMicrotask(() => sync());
+    }
+  }
+  const keepDraft = () => {
+    if (draftKey) store.set(draftKey, text.value.trim() ? text.value : '');
+  };
+  const dropDraft = () => {
+    writing.delete(text);
+    holdReloads(writing.size);
+    d?.whileWriting?.();
+    if (draftKey) store.set(draftKey, '');
+  };
   who.append(as, name);
   const sendBtn = el('button', { class: 'send', type: 'button', 'aria-label': 'send' });
   // Pressing send keeps the cursor in the box: on phones a blur first drops the keyboard, the sheet moves, and the
@@ -83,6 +121,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     as.hidden = !name.value.trim();
     if (one && !CSS.supports?.('field-sizing', 'content')) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
     sendBtn.classList.toggle('ready', Boolean((text.value.trim() || empty) && name.value.trim()));
+    saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
     text.style.height = 'auto';
     text.style.height = `${text.scrollHeight}px`;
     if (glide) {
@@ -110,6 +149,10 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     void sendBtn.offsetWidth; // restart the arrow's flight on a quick second send
     sendBtn.classList.add('sent');
     busy = true;
+    // The words are in flight: a box rebuilt while they are on their way leaves them alone, instead of reading
+    // them back in as if they had never been sent.
+    const words = text.value;
+    if (draftKey) sending.add(draftKey);
     error.textContent = '';
     error.classList.remove('wait');
     // Taking a while (the lab is restarting): say so; it goes as soon as the lab is back.
@@ -119,6 +162,9 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     }, 1500);
     try {
       const result = (await onSubmit(name.value.trim(), said)) as { keep?: boolean } | undefined;
+      // It went: the kept draft goes with it.
+      dropDraft();
+      if (draftKey) sending.delete(draftKey);
       clearTimeout(slow);
       error.textContent = '';
       error.classList.remove('wait');
@@ -130,6 +176,10 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
       clearTimeout(slow);
       error.classList.remove('wait');
       error.textContent = e.message;
+      // It did not go: the words are yours again, kept as they were.
+      if (draftKey) sending.delete(draftKey);
+      text.value = words;
+      keepDraft();
       sync();
     }
     busy = false;
@@ -141,11 +191,32 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     }
   };
   text.addEventListener('input', sync);
+  text.addEventListener('input', keepDraft);
+  // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept.
+  new MutationObserver(() => {
+    if (wrap.isConnected) return;
+    writing.delete(text);
+    holdReloads(writing.size);
+    d?.whileWriting?.();
+  }).observe(document.documentElement, { childList: true, subtree: true });
   name.addEventListener('input', sync);
   name.addEventListener('blur', () => setTimeout(sync, 0));
   text.addEventListener('keydown', onKey);
   name.addEventListener('keydown', onKey);
-  sendBtn.addEventListener('click', go);
+  // A tap sends on the first try. The arrow keeps the cursor in the box by preventing the default on
+  // pointerdown, and a prevented pointerdown can swallow the click that follows on a phone — the tap then only
+  // moved focus, the box went back to its one-line self, and it took a second tap to send (Leo, 16 Nov). So a
+  // touch sends from touchend itself, and the click that may follow is ignored.
+  let sentByTouch = 0;
+  sendBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    sentByTouch = Date.now();
+    go();
+  }, { passive: false });
+  sendBtn.addEventListener('click', () => {
+    if (Date.now() - sentByTouch < 700) return; // the ghost click after a tap
+    go();
+  });
   // Keep focus in the field when the send button is pressed.
   sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
   requestAnimationFrame(sync);

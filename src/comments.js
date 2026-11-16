@@ -26,7 +26,7 @@ import {
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
-import { bindComposer, composer } from './widget/composer.ts';
+import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 import { bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
@@ -183,6 +183,17 @@ import { zoomWords } from '../lib/zoom.ts';
   S.closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
   S.cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
   S.draft = null; // { anchor, docX, docY }
+  // An unsent comment is kept whole — the words (composer.ts) and the spot they were pinned to — so a page that
+  // reloads under you, a dev server rebuilding it most of all, gives both back instead of eating them.
+  const spotKey = () => `lab-spot:${S.page}`;
+  const keepSpot = (anchor) => store.set(spotKey(), anchor ? JSON.stringify(anchor) : '');
+  const keptSpot = () => {
+    try {
+      return JSON.parse(store.get(spotKey()) || 'null');
+    } catch {
+      return null;
+    }
+  };
 
   // ---------- DOM ----------
   const host = document.createElement('div');
@@ -206,6 +217,7 @@ import { zoomWords } from '../lib/zoom.ts';
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (p)">pause motion</button>
+      <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
       <button class="secondary go-btn" type="button" hidden title="tap: comment → go → zoom in → zoom out · keys: 1 comment · 2 go: every click approves what it's on · 3 zoom in, 3 again zoom out: ask the agent for a deeper look or the bigger picture · 4 pointer: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
@@ -230,6 +242,7 @@ import { zoomWords } from '../lib/zoom.ts';
   const showDoneBtn = $('.show-done');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
   const pauseBtn = $('.pause-btn');
+  const overBtn = $('.over-btn');
   // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
   // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
   const LIST_WINDOW = false;
@@ -258,7 +271,7 @@ import { zoomWords } from '../lib/zoom.ts';
   bindAnchoring({ host, layer, el, store });
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe });
+  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), workState: (c) => workState(c) });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
@@ -310,6 +323,14 @@ import { zoomWords } from '../lib/zoom.ts';
       const data = await res.json();
       S.comments = data.comments || [];
       S.isAdmin = Boolean(data.admin);
+      // A thread you were part-way through writing in opens again: the page may have reloaded under you
+      // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.
+      if (!S.loaded && !S.openId) {
+        const half = S.comments.find((c) => !c.parent && store.get(`lab-typing:${S.page}:${c.id}`));
+        if (half) S.openId = half.id;
+        // A comment that was being written but never sent: its words and its spot both come back.
+        else if (!S.draft && store.get(`lab-typing:${S.page}:new`) && keptSpot()) S.draft = { anchor: keptSpot() };
+      }
       S.loaded = true;
     } catch {
       // Keep what is already on screen when a refresh fails.
@@ -353,7 +374,31 @@ import { zoomWords } from '../lib/zoom.ts';
   // Pointer (4): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
   // Option-click still pins. 1 comment, 2 go and 3 zoom leave it.
   S.cursorMode = store.get('lab-cursor') === '1';
+  // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
+  // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
+  S.overControls = store.get('lab-over') === '1';
+  const sayOver = () => {
+    overBtn.textContent = S.overControls ? 'controls keep clicks' : 'pin over controls';
+    overBtn.setAttribute('aria-pressed', String(S.overControls));
+  };
+  const setOver = (v) => {
+    S.overControls = v;
+    store.set('lab-over', v ? '1' : '');
+    sayOver();
+    S.ctlTarget = null; // what the mouse is over is worked out again: the answer has just changed
+    S.recheckCtl?.(); // without waiting for the mouse to move
+    setPinning();
+  };
+  sayOver();
   // Switching only changes the button and the pointer: nothing on the page is redrawn, so nothing flickers.
+  // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
+  // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
+  const setPinning = () => {
+    const placing = S.on && !S.cursorMode && !anyWriting();
+    document.documentElement.classList.toggle('lab-pinning', placing);
+    document.documentElement.classList.toggle('lab-go', placing && S.goMode && !S.zoomMode);
+    recheck();
+  };
   const setCursor = (v) => {
     if (v && S.zoomMode) setZoom('');
     S.cursorMode = v;
@@ -361,9 +406,7 @@ import { zoomWords } from '../lib/zoom.ts';
     goBtn.classList.toggle('cursor', v);
     goBtn.classList.toggle('on', S.goMode && !v); // cursor replaces go's green at once
     goFace();
-    document.documentElement.classList.toggle('lab-pinning', S.on && !v);
-    document.documentElement.classList.toggle('lab-go', S.on && S.goMode && !v);
-    recheck();
+    setPinning();
   };
   const setGo = (v) => {
     if (S.cursorMode) setCursor(false);
@@ -386,6 +429,7 @@ import { zoomWords } from '../lib/zoom.ts';
     // Go or zoom with no name yet (a guest's first): the card asks only the name; the go or zoom is implied (Leo, 16 Nov).
     if ((!S.goMode && !zoom) || !name) {
       S.draft = { anchor, go: S.goMode && !zoom };
+      keepSpot(anchor);
       return render();
     }
     const text = zoom ? zoomWords(zoom) : 'go';
@@ -402,7 +446,7 @@ import { zoomWords } from '../lib/zoom.ts';
         if (zoom && anchor.block) zoomAsked(anchor.block, zoom); // the page goes to what comes back
         render();
       })
-      .catch(() => ((S.draft = { anchor }), render())); // couldn't post: the usual box, so nothing is lost
+      .catch(() => ((S.draft = { anchor }), keepSpot(anchor), render())); // couldn't post: the usual box, so nothing is lost
   }
   // Sent once the lab answers: while it can't be reached (restarting, the laptop just woke), the message waits and is
   // tried again every 2 s for up to 5 minutes, instead of failing. Only a lab that answers with an error fails it.
@@ -524,7 +568,7 @@ import { zoomWords } from '../lib/zoom.ts';
     return w;
   };
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, pauseBtn, copyBtn, toggleBtn] : [];
+    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn] : [];
     for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
@@ -683,8 +727,7 @@ import { zoomWords } from '../lib/zoom.ts';
     document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
     backCloses();
     S.refit();
-    document.documentElement.classList.toggle('lab-pinning', S.on && !S.cursorMode);
-    document.documentElement.classList.toggle('lab-go', S.on && S.goMode && !S.cursorMode && !S.zoomMode);
+    setPinning();
     copyBtn.hidden = !S.on || !S.isAdmin || list.every((c) => c.resolved);
     drawList();
     drawChat();
@@ -799,10 +842,12 @@ import { zoomWords } from '../lib/zoom.ts';
           empty: zoom ? zoomWords(zoom) : S.draft.go ? 'go' : '',
           nameFirst: Boolean(S.draft.go || zoom),
           autofocus: true,
+          draftKey: `lab-typing:${S.page}:new`,
           onSubmit: async (name, text) => {
             if (drafting()) {
               store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
               S.draft = null;
+            keepSpot(null);
               return render();
             }
             const { comment, edit } = await send({ name, text, anchor });
@@ -811,6 +856,7 @@ import { zoomWords } from '../lib/zoom.ts';
             S.comments.push(comment);
             markSeen([comment]);
             S.draft = null;
+            keepSpot(null);
             S.openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
             S.posted = comment.id;
             holdKeyboard(); // the keyboard waits until the card has flown into its pin (sheets.ts)
@@ -818,7 +864,7 @@ import { zoomWords } from '../lib/zoom.ts';
           },
         }),
       );
-      swipeDown(float, () => ((S.draft = null), render()));
+      swipeDown(float, () => ((S.draft = null), keepSpot(null), render()));
       if (zone) placeCard(float, left + 14, zone.top + zone.height);
       else placeBeside(float, left, top);
     }
@@ -899,6 +945,7 @@ import { zoomWords } from '../lib/zoom.ts';
       S.paused.videos.add(v);
     }
   };
+  overBtn.addEventListener('click', () => setOver(!S.overControls));
   pauseBtn.addEventListener('click', () => {
     if (S.paused) {
       clearInterval(S.paused.timer);
@@ -1063,7 +1110,16 @@ import { zoomWords } from '../lib/zoom.ts';
   // The page's own controls: links, buttons and fields, and anything the page gives a hand pointer (a clickable card, a
   // demo you tap to play), or that's inside one. A click there is the page's, as its pointer says; the widget's pointer
   // steps aside over them (lab-ctl). Clicking demos dropped stray pins (Leo, 16 Nov).
+  // Whether the thing under the mouse keeps its own click, said in the class the pointer rules read.
+  const sayCtl = (t) =>
+    document.documentElement.classList.toggle(
+      'lab-ctl',
+      !S.overControls && !host.contains(/** @type {Node} */ (t)) && t !== host && control(t),
+    );
+  // Said again without waiting for the mouse to move (the switch in the ⋯ menu changes the answer under it).
+  S.recheckCtl = () => S.mouse && sayCtl(document.elementFromPoint(S.mouse.x, S.mouse.y));
   const control = (t) => {
+    if (S.overControls) return false; // with the switch on, nothing on the page keeps its click
     for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
       if (n.matches(INTERACTIVE) || getComputedStyle(n).cursor === 'pointer') return true;
     return false;
@@ -1478,7 +1534,7 @@ import { zoomWords } from '../lib/zoom.ts';
     // Over the page's own controls the widget's pin pointer steps aside (the page's hand shows): a click there is theirs.
     if (t !== S.ctlTarget) {
       S.ctlTarget = t;
-      document.documentElement.classList.toggle('lab-ctl', !host.contains(/** @type {Node} */ (t)) && t !== host && control(t));
+      sayCtl(t);
     }
     place(e.clientX, e.clientY, t instanceof Element ? t : null);
   }, { capture: true, passive: true });
