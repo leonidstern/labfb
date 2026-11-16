@@ -528,7 +528,7 @@ import { zoomWords } from '../lib/zoom.ts';
   function goFace() {
     const gp = goBtn.querySelector('.gp');
     // On phones the switch is a small round pin: zoom shows as its arrows alone.
-    if (gp) gp.replaceChildren(...(S.zoomMode ? [zoomIcon(S.zoomMode), ...(matchMedia('(pointer: coarse)').matches ? [] : [S.zoomMode])] : [!S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go']));
+    if (gp) gp.replaceChildren(...(S.zoomMode ? [zoomIcon(S.zoomMode), ...(matchMedia('(pointer: coarse)').matches ? [] : [el('span', { class: 'zw' }, S.zoomMode)])] : [!S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go']));
     // Read out as what a click places, not the letter on it.
     goBtn.setAttribute('aria-label', `a click places: ${S.zoomMode ? `a zoom ${S.zoomMode}` : S.cursorMode ? 'nothing (pointer)' : S.goMode ? 'go' : 'a comment'}`);
     goBtn.setAttribute('aria-keyshortcuts', '1 2 3 4');

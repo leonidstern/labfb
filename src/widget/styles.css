@@ -514,4 +514,5 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Zoom (src/widget/zoom.ts): the arrows in or out in a zoom pin, the drawn pointer and the go button. */
 .zi { display: inline-flex; align-items: center; justify-content: center; }
 .zi svg { width: 13px; height: 13px; display: block; }
-.go-btn .gp .zi { margin-right: 4px; vertical-align: -2px; }
+.go-btn .gp .zi { vertical-align: -2px; }
+.go-btn .gp .zw { margin-left: 4px; } /* the gap comes with the word: on phones the arrows are alone, and centred */
