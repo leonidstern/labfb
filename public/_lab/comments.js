@@ -1399,6 +1399,280 @@ ${line}`;
     return stamp;
   };
 
+  // src/widget/sheets.ts
+  var W;
+  function bindSheets(w) {
+    W = w;
+  }
+  var grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
+  var scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
+  var SPRING = "cubic-bezier(.32,.72,0,1)";
+  function slideAway(node, close, ms = 0) {
+    if (!W.coarse || !node || W.still.matches) return close();
+    if (!W.host.hasAttribute("data-kb")) W.root.activeElement?.blur();
+    node.style.pointerEvents = "none";
+    node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : "transform .22s cubic-bezier(.4, 0, 1, 1)";
+    W.scrim.style.transition = `opacity ${ms || 220}ms`;
+    node.style.transform = "translateY(100%)";
+    W.scrim.style.opacity = "0";
+    W.bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
+    W.host.style.setProperty("--lab-p", "1");
+    setTimeout(() => {
+      W.root.activeElement?.blur();
+      close();
+      node.style.pointerEvents = "";
+      node.style.transform = node.style.transition = W.scrim.style.opacity = W.scrim.style.transition = W.bar.style.transition = "";
+      W.host.style.removeProperty("--lab-p");
+    }, ms || 220);
+  }
+  function backCloses() {
+    const open = matchMedia("(pointer: coarse)").matches && W.host.hasAttribute("data-sheet");
+    if (!open && W.S.backWatcher) {
+      const w = W.S.backWatcher;
+      W.S.backWatcher = null;
+      w.destroy();
+    }
+    if (open && !W.S.backWatcher && "CloseWatcher" in window) {
+      try {
+        const w = new window.CloseWatcher();
+        w.onclose = () => {
+          if (W.S.backWatcher === w) W.S.backWatcher = null;
+          W.closeOrNudge();
+          backCloses();
+        };
+        W.S.backWatcher = w;
+      } catch {
+      }
+    }
+  }
+  function swipeDown(node, close, grows = false) {
+    if (!W.coarse) return;
+    let raw = 0;
+    let scrolledAt = -1e9;
+    let releasedAt = -1e9;
+    node.addEventListener("scroll", () => scrolledAt = performance.now(), { capture: true, passive: true });
+    node.addEventListener("click", (e) => {
+      if (performance.now() - releasedAt < 200) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+    node.addEventListener("focusin", (e) => {
+      if (performance.now() - releasedAt < 200 && e.target.localName === "textarea") e.target.blur();
+    });
+    let x0 = 0;
+    let y0 = 0;
+    let dy = 0;
+    let v = 0;
+    let last = null;
+    let mode = null;
+    let box = null;
+    let fromScrim = false;
+    const onStart = (e) => {
+      fromScrim = e.currentTarget === W.scrim;
+      if (fromScrim && W.openSheet() !== node) return void (mode = "off");
+      const t = e.touches[0];
+      x0 = t.clientX;
+      y0 = t.clientY;
+      dy = v = raw = 0;
+      last = { y: y0, at: e.timeStamp };
+      box = fromScrim ? null : scrollerIn(e, node);
+      mode = e.touches.length > 1 || box?.localName === "textarea" ? "off" : null;
+    };
+    node.addEventListener("touchstart", onStart, { passive: true });
+    W.scrim.addEventListener("touchstart", onStart, { passive: true });
+    const onMove = (e) => {
+      if (fromScrim !== (e.currentTarget === W.scrim)) return;
+      const t = e.touches[0];
+      if (mode === "off" && box && box.localName !== "textarea" && e.touches.length === 1 && e.cancelable && box.scrollTop <= 0 && t.clientY > last.y + 1) {
+        mode = "drag";
+        y0 = t.clientY;
+        v = 0;
+        last = { y: t.clientY, at: e.timeStamp };
+      }
+      if (mode === "off") return void (last = { y: t.clientY, at: e.timeStamp });
+      if (mode === "hold") return e.preventDefault();
+      if (!mode) {
+        const down = t.clientY - y0;
+        const across = t.clientX - x0;
+        if (!down && !across) return;
+        const sideways = Math.abs(across) > Math.abs(down);
+        const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.25;
+        if (fromScrim) mode = sideways ? "hold" : "drag";
+        else if (grabArea(e.target)) mode = sideways && e.target.closest(".tabs") ? "off" : "drag";
+        else if (nearTop && box?.localName !== "textarea") mode = "drag";
+        else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? "drag" : "off";
+        else mode = sideways ? "hold" : "drag";
+        W.S.dbg?.(`touch ${String(e.target.className || e.target.localName).slice(0, 20)} at ${Math.round(y0 - node.getBoundingClientRect().top)}/${node.offsetHeight} down${Math.round(down)} \u2192 ${mode}${e.cancelable ? "" : " (not cancelable)"}${box ? ` box${Math.round(box.scrollTop)}` : ""}`);
+        if (mode === "off") return;
+        if (mode === "hold") return e.preventDefault();
+      }
+      e.preventDefault();
+      raw = t.clientY - y0;
+      const size = node.offsetHeight || 400;
+      dy = raw >= 0 ? raw : -(1 - 1 / (-raw * 0.55 / size + 1)) * size;
+      if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
+      last = { y: t.clientY, at: e.timeStamp };
+      node.style.transition = W.scrim.style.transition = "none";
+      node.style.transform = `translateY(${dy}px)`;
+      W.scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
+      W.bar.style.transition = "none";
+      W.host.style.setProperty("--lab-p", String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
+    };
+    node.addEventListener("touchmove", onMove, { passive: false });
+    W.scrim.addEventListener("touchmove", onMove, { passive: false });
+    const end = (e) => {
+      if (fromScrim !== (e.currentTarget === W.scrim)) return;
+      const was = mode;
+      mode = null;
+      if (was === "drag") W.S.sheetDraggedAt = performance.now();
+      if (was !== "drag") return;
+      releasedAt = performance.now();
+      if (e.timeStamp - last.at > 80) v = 0;
+      const h = node.offsetHeight || innerHeight;
+      const settle = () => {
+        node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
+        W.scrim.style.transition = "opacity 300ms";
+        node.style.transform = W.scrim.style.opacity = "";
+        W.bar.style.transition = "";
+        W.host.style.removeProperty("--lab-p");
+        setTimeout(() => node.style.transition = W.scrim.style.transition = "", 400);
+      };
+      if (grows && !node.classList.contains("full") && (raw < -40 || v < -0.4)) return node.classList.add("full"), node.classList.contains("card") && (W.S.cardFull = true), settle();
+      if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), node.classList.contains("card") && (W.S.cardFull = false), settle();
+      const rest = dy + Math.max(0, v) * 499;
+      W.S.dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} \u2192 ${v > -0.1 && rest > h / 2 ? "close" : "stay"}`);
+      if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
+      node.style.transition = `transform 380ms ${SPRING}`;
+      W.scrim.style.transition = "opacity 300ms";
+      node.style.transform = W.scrim.style.opacity = "";
+      W.bar.style.transition = "";
+      W.host.style.removeProperty("--lab-p");
+      setTimeout(() => node.style.transition = W.scrim.style.transition = "", 400);
+    };
+    node.addEventListener("touchend", end);
+    W.scrim.addEventListener("touchend", end);
+    W.scrim.addEventListener("touchcancel", end);
+    node.addEventListener("touchcancel", end);
+  }
+  function startSheets() {
+    if (W.coarse && W.vv) {
+      const probe = W.el("i", { style: "position:fixed;top:0;bottom:0;left:0;width:0;visibility:hidden;pointer-events:none" });
+      const strip = W.el("i", { style: "position:absolute;left:0;width:100vw;display:none;background:var(--_bg);z-index:3;pointer-events:none" });
+      W.root.append(probe, strip);
+      let fitted = "";
+      const fit = () => {
+        const zoomed = Math.abs(W.vv.scale - 1) > 0.01;
+        const r = probe.getBoundingClientRect();
+        const field = W.root.activeElement || document.activeElement;
+        const typing = /^(textarea|input|select)$/.test(field?.localName || "") || Boolean(field?.isContentEditable);
+        const top = zoomed || !typing ? 0 : W.vv.offsetTop;
+        const seen = top + W.vv.height;
+        const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen));
+        const gap = zoomed ? 0 : Math.max(0, Math.round(seen - r.bottom));
+        const vh = zoomed ? 0 : Math.round(W.vv.height);
+        const sheet = W.host.hasAttribute("data-sheet");
+        const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
+        if (key === fitted) {
+          const open2 = sheet ? W.openSheet() : null;
+          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.getBoundingClientRect().top });
+          return;
+        }
+        fitted = key;
+        W.host.style.setProperty("--lab-kb", `${kb}px`);
+        W.host.style.setProperty("--lab-top", `${Math.round(top)}px`);
+        if (vh) W.host.style.setProperty("--lab-vh", `${vh}px`);
+        else W.host.style.removeProperty("--lab-vh");
+        W.host.toggleAttribute("data-kb", kb > 60);
+        strip.style.display = sheet && gap ? "block" : "none";
+        strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
+        strip.style.height = `${gap}px`;
+        const open = sheet ? W.openSheet() : null;
+        const slid = (n) => {
+          try {
+            return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0;
+          } catch {
+            return 0;
+          }
+        };
+        const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
+        const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !W.still.matches;
+        if (sliding) {
+          open.style.transition = "none";
+          void open.offsetHeight;
+        }
+        const at = open ? open.getBoundingClientRect().top - slid(open) : null;
+        if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = "";
+        if (sliding && Math.abs(fit.top - at) > 8) {
+          open.style.transform = `translateY(${fit.top - at}px)`;
+          void open.offsetHeight;
+          open.style.transition = `transform 340ms ${SPRING}`;
+          open.style.transform = "";
+          clearTimeout(fit.done);
+          fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ""), 360);
+        }
+        Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null });
+      };
+      W.S.refit = fit;
+      W.root.addEventListener("focusin", () => setTimeout(fit, 50));
+      W.root.addEventListener("focusout", () => setTimeout(fit, 50));
+      W.vv.addEventListener("resize", fit);
+      W.vv.addEventListener("scroll", fit);
+      fit();
+      if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
+        let lines = [];
+        let t0 = performance.now();
+        let sendTimer = 0;
+        const row = (what) => {
+          const open = W.openSheet();
+          const r = open?.getBoundingClientRect();
+          lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(W.vv.height)} top${Math.round(W.vv.offsetTop)} in${innerHeight} kb${W.host.hasAttribute("data-kb") ? 1 : 0}` + (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? " anim" : ""}` : "") + // What is moving anywhere (the page, the pins, the dimming): for a flicker that isn't the keyboard.
+          ` [${[...document.getAnimations(), ...W.root.getAnimations()].map((a) => a.animationName || a.transitionProperty || "js").slice(0, 6).join(",")}] scrim${getComputedStyle(W.scrim).opacity.slice(0, 4)} scroll${Math.round(scrollY)}`);
+        };
+        const watch = (what) => {
+          row(what);
+          const end = performance.now() + 1500;
+          let prev = "";
+          const f = () => {
+            const before = lines.length;
+            row("f");
+            const last = lines[lines.length - 1].replace(/^\d+ f /, "");
+            if (last === prev) lines.length = before;
+            prev = last;
+            if (performance.now() < end) requestAnimationFrame(f);
+          };
+          requestAnimationFrame(f);
+        };
+        W.root.addEventListener("focusin", () => (t0 = performance.now(), watch("focus")));
+        const sendSoon = () => {
+          clearTimeout(sendTimer);
+          sendTimer = setTimeout(async () => {
+            const text = lines.join("\n");
+            lines = [];
+            for (let i = 0; i < text.length; i += 1900) {
+              await W.send({ name: "kb-log", text: text.slice(i, i + 1900), anchor: { kind: "page", selector: "body", x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {
+              });
+            }
+          }, 2e3);
+        };
+        W.root.addEventListener("focusout", () => {
+          lines.push("--- let go");
+          t0 = performance.now();
+          watch("blur");
+          sendSoon();
+        });
+        W.S.dbg = (line) => {
+          lines.push(`${Math.round(performance.now() - t0)} ${line}`);
+          sendSoon();
+        };
+        W.vv.addEventListener("resize", () => {
+          watch("resize");
+          if (lines.length > 1) sendSoon();
+        });
+      }
+    }
+  }
+
   // src/comments.js
   /*!
    * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
@@ -1413,6 +1687,32 @@ ${line}`;
    */
   (() => {
     const S = { dbg: null };
+    const W2 = { get S() {
+      return S;
+    }, get bar() {
+      return bar;
+    }, get closeOrNudge() {
+      return closeOrNudge;
+    }, get coarse() {
+      return coarse;
+    }, get el() {
+      return el2;
+    }, get host() {
+      return host2;
+    }, get openSheet() {
+      return openSheet;
+    }, get root() {
+      return root;
+    }, get scrim() {
+      return scrim;
+    }, get send() {
+      return send;
+    }, get still() {
+      return still;
+    }, get vv() {
+      return vv;
+    } };
+    bindSheets(W2);
     const script = (
       /** @type {HTMLScriptElement | null} */
       document.currentScript
@@ -2707,282 +3007,9 @@ ${line}`;
     S.sheetDraggedAt = -1e9;
     scrim.addEventListener("click", () => performance.now() - S.sheetDraggedAt > 300 && closeOrNudge());
     scrim.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
-    function slideAway(node, close, ms = 0) {
-      if (!coarse || !node || still.matches) return close();
-      if (!host2.hasAttribute("data-kb")) root.activeElement?.blur();
-      node.style.pointerEvents = "none";
-      node.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, .6, .4, 1)` : "transform .22s cubic-bezier(.4, 0, 1, 1)";
-      scrim.style.transition = `opacity ${ms || 220}ms`;
-      node.style.transform = "translateY(100%)";
-      scrim.style.opacity = "0";
-      bar.style.transition = `transform ${ms || 220}ms cubic-bezier(.2, .6, .4, 1), opacity ${ms || 220}ms`;
-      host2.style.setProperty("--lab-p", "1");
-      setTimeout(() => {
-        root.activeElement?.blur();
-        close();
-        node.style.pointerEvents = "";
-        node.style.transform = node.style.transition = scrim.style.opacity = scrim.style.transition = bar.style.transition = "";
-        host2.style.removeProperty("--lab-p");
-      }, ms || 220);
-    }
-    const grabArea = (t) => Boolean(t.closest?.(".handle, .tabs"));
-    const scrollerIn = (e, node) => e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === "textarea" || /auto|scroll/.test(getComputedStyle(n).overflowY)));
-    const SPRING = "cubic-bezier(.32,.72,0,1)";
     S.backWatcher = null;
-    function backCloses() {
-      const open = matchMedia("(pointer: coarse)").matches && host2.hasAttribute("data-sheet");
-      if (!open && S.backWatcher) {
-        const w = S.backWatcher;
-        S.backWatcher = null;
-        w.destroy();
-      }
-      if (open && !S.backWatcher && "CloseWatcher" in window) {
-        try {
-          const w = new /** @type {any} */
-          window.CloseWatcher();
-          w.onclose = () => {
-            if (S.backWatcher === w) S.backWatcher = null;
-            closeOrNudge();
-            backCloses();
-          };
-          S.backWatcher = w;
-        } catch {
-        }
-      }
-    }
-    function swipeDown(node, close, grows = false) {
-      if (!coarse) return;
-      let raw = 0;
-      let scrolledAt = -1e9;
-      let releasedAt = -1e9;
-      node.addEventListener("scroll", () => scrolledAt = performance.now(), { capture: true, passive: true });
-      node.addEventListener("click", (e) => {
-        if (performance.now() - releasedAt < 200) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }, true);
-      node.addEventListener("focusin", (e) => {
-        if (performance.now() - releasedAt < 200 && e.target.localName === "textarea") e.target.blur();
-      });
-      let x0 = 0;
-      let y0 = 0;
-      let dy = 0;
-      let v = 0;
-      let last = null;
-      let mode = null;
-      let box = null;
-      let fromScrim = false;
-      const onStart = (e) => {
-        fromScrim = e.currentTarget === scrim;
-        if (fromScrim && openSheet() !== node) return void (mode = "off");
-        const t = e.touches[0];
-        x0 = t.clientX;
-        y0 = t.clientY;
-        dy = v = raw = 0;
-        last = { y: y0, at: e.timeStamp };
-        box = fromScrim ? null : scrollerIn(e, node);
-        mode = e.touches.length > 1 || box?.localName === "textarea" ? "off" : null;
-      };
-      node.addEventListener("touchstart", onStart, { passive: true });
-      scrim.addEventListener("touchstart", onStart, { passive: true });
-      const onMove = (e) => {
-        if (fromScrim !== (e.currentTarget === scrim)) return;
-        const t = e.touches[0];
-        if (mode === "off" && box && box.localName !== "textarea" && e.touches.length === 1 && e.cancelable && box.scrollTop <= 0 && t.clientY > last.y + 1) {
-          mode = "drag";
-          y0 = t.clientY;
-          v = 0;
-          last = { y: t.clientY, at: e.timeStamp };
-        }
-        if (mode === "off") return void (last = { y: t.clientY, at: e.timeStamp });
-        if (mode === "hold") return e.preventDefault();
-        if (!mode) {
-          const down = t.clientY - y0;
-          const across = t.clientX - x0;
-          if (!down && !across) return;
-          const sideways = Math.abs(across) > Math.abs(down);
-          const nearTop = !sideways && down > 0 && y0 - node.getBoundingClientRect().top < node.offsetHeight * 0.25;
-          if (fromScrim) mode = sideways ? "hold" : "drag";
-          else if (grabArea(e.target)) mode = sideways && e.target.closest(".tabs") ? "off" : "drag";
-          else if (nearTop && box?.localName !== "textarea") mode = "drag";
-          else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? "drag" : "off";
-          else mode = sideways ? "hold" : "drag";
-          S.dbg?.(`touch ${String(e.target.className || e.target.localName).slice(0, 20)} at ${Math.round(y0 - node.getBoundingClientRect().top)}/${node.offsetHeight} down${Math.round(down)} \u2192 ${mode}${e.cancelable ? "" : " (not cancelable)"}${box ? ` box${Math.round(box.scrollTop)}` : ""}`);
-          if (mode === "off") return;
-          if (mode === "hold") return e.preventDefault();
-        }
-        e.preventDefault();
-        raw = t.clientY - y0;
-        const size = node.offsetHeight || 400;
-        dy = raw >= 0 ? raw : -(1 - 1 / (-raw * 0.55 / size + 1)) * size;
-        if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
-        last = { y: t.clientY, at: e.timeStamp };
-        node.style.transition = scrim.style.transition = "none";
-        node.style.transform = `translateY(${dy}px)`;
-        scrim.style.opacity = String(Math.min(1, Math.max(0, 1 - dy / 320)));
-        bar.style.transition = "none";
-        host2.style.setProperty("--lab-p", String(Math.min(1, Math.max(0, dy / (node.offsetHeight || 400)))));
-      };
-      node.addEventListener("touchmove", onMove, { passive: false });
-      scrim.addEventListener("touchmove", onMove, { passive: false });
-      const end = (e) => {
-        if (fromScrim !== (e.currentTarget === scrim)) return;
-        const was = mode;
-        mode = null;
-        if (was === "drag") S.sheetDraggedAt = performance.now();
-        if (was !== "drag") return;
-        releasedAt = performance.now();
-        if (e.timeStamp - last.at > 80) v = 0;
-        const h = node.offsetHeight || innerHeight;
-        const settle = () => {
-          node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
-          scrim.style.transition = "opacity 300ms";
-          node.style.transform = scrim.style.opacity = "";
-          bar.style.transition = "";
-          host2.style.removeProperty("--lab-p");
-          setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
-        };
-        if (grows && !node.classList.contains("full") && (raw < -40 || v < -0.4)) return node.classList.add("full"), node.classList.contains("card") && (S.cardFull = true), settle();
-        if (grows && node.classList.contains("full") && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove("full"), node.classList.contains("card") && (S.cardFull = false), settle();
-        const rest = dy + Math.max(0, v) * 499;
-        S.dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} \u2192 ${v > -0.1 && rest > h / 2 ? "close" : "stay"}`);
-        if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (h - dy) / Math.max(v, 1.2))));
-        node.style.transition = `transform 380ms ${SPRING}`;
-        scrim.style.transition = "opacity 300ms";
-        node.style.transform = scrim.style.opacity = "";
-        bar.style.transition = "";
-        host2.style.removeProperty("--lab-p");
-        setTimeout(() => node.style.transition = scrim.style.transition = "", 400);
-      };
-      node.addEventListener("touchend", end);
-      scrim.addEventListener("touchend", end);
-      scrim.addEventListener("touchcancel", end);
-      node.addEventListener("touchcancel", end);
-    }
     const vv = window.visualViewport;
-    if (coarse && vv) {
-      const probe = el2("i", { style: "position:fixed;top:0;bottom:0;left:0;width:0;visibility:hidden;pointer-events:none" });
-      const strip = el2("i", { style: "position:absolute;left:0;width:100vw;display:none;background:var(--_bg);z-index:3;pointer-events:none" });
-      root.append(probe, strip);
-      let fitted = "";
-      const fit = () => {
-        const zoomed = Math.abs(vv.scale - 1) > 0.01;
-        const r = probe.getBoundingClientRect();
-        const field = (
-          /** @type {HTMLElement | null} */
-          root.activeElement || document.activeElement
-        );
-        const typing2 = /^(textarea|input|select)$/.test(field?.localName || "") || Boolean(field?.isContentEditable);
-        const top = zoomed || !typing2 ? 0 : vv.offsetTop;
-        const seen = top + vv.height;
-        const kb = zoomed ? 0 : Math.max(0, Math.round(r.bottom - seen));
-        const gap = zoomed ? 0 : Math.max(0, Math.round(seen - r.bottom));
-        const vh = zoomed ? 0 : Math.round(vv.height);
-        const sheet = host2.hasAttribute("data-sheet");
-        const key = `${kb} ${vh} ${gap} ${sheet} ${scrollY} ${Math.round(top)}`;
-        if (key === fitted) {
-          const open2 = sheet ? openSheet() : null;
-          if (open2?.offsetHeight && !open2.style.transform) Object.assign(fit, { sheet: open2, top: open2.getBoundingClientRect().top });
-          return;
-        }
-        fitted = key;
-        host2.style.setProperty("--lab-kb", `${kb}px`);
-        host2.style.setProperty("--lab-top", `${Math.round(top)}px`);
-        if (vh) host2.style.setProperty("--lab-vh", `${vh}px`);
-        else host2.style.removeProperty("--lab-vh");
-        host2.toggleAttribute("data-kb", kb > 60);
-        strip.style.display = sheet && gap ? "block" : "none";
-        strip.style.top = `${Math.round(scrollY + r.bottom)}px`;
-        strip.style.height = `${gap}px`;
-        const open = sheet ? openSheet() : null;
-        const slid = (n) => {
-          try {
-            return new DOMMatrixReadOnly(getComputedStyle(n).transform).m42 || 0;
-          } catch {
-            return 0;
-          }
-        };
-        const keyboardMoved = Math.abs((fit.vh || vh) - vh) > 60 || fit.kbUp !== kb > 60;
-        const sliding = open && open === fit.sheet && keyboardMoved && !open.style.transform && !still.matches;
-        if (sliding) {
-          open.style.transition = "none";
-          void open.offsetHeight;
-        }
-        const at = open ? open.getBoundingClientRect().top - slid(open) : null;
-        if (sliding && Math.abs(fit.top - at) <= 8) open.style.transition = "";
-        if (sliding && Math.abs(fit.top - at) > 8) {
-          open.style.transform = `translateY(${fit.top - at}px)`;
-          void open.offsetHeight;
-          open.style.transition = `transform 340ms ${SPRING}`;
-          open.style.transform = "";
-          clearTimeout(fit.done);
-          fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ""), 360);
-        }
-        Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null });
-      };
-      S.refit = fit;
-      root.addEventListener("focusin", () => setTimeout(fit, 50));
-      root.addEventListener("focusout", () => setTimeout(fit, 50));
-      vv.addEventListener("resize", fit);
-      vv.addEventListener("scroll", fit);
-      fit();
-      if (globalThis.__LAB_DEBUG__ !== false && /[?&]kbdebug\b/.test(location.search)) {
-        let lines = [];
-        let t0 = performance.now();
-        let sendTimer = 0;
-        const row = (what) => {
-          const open = openSheet();
-          const r = open?.getBoundingClientRect();
-          lines.push(`${Math.round(performance.now() - t0)} ${what} h${Math.round(vv.height)} top${Math.round(vv.offsetTop)} in${innerHeight} kb${host2.hasAttribute("data-kb") ? 1 : 0}` + (r ? ` sheet${Math.round(r.top)}/${Math.round(r.height)}${open.getAnimations().length ? " anim" : ""}` : "") + // What is moving anywhere (the page, the pins, the dimming): for a flicker that isn't the keyboard.
-          ` [${[...document.getAnimations(), ...root.getAnimations()].map((a) => (
-            /** @type {any} */
-            a.animationName || /** @type {any} */
-            a.transitionProperty || "js"
-          )).slice(0, 6).join(",")}] scrim${getComputedStyle(scrim).opacity.slice(0, 4)} scroll${Math.round(scrollY)}`);
-        };
-        const watch = (what) => {
-          row(what);
-          const end = performance.now() + 1500;
-          let prev = "";
-          const f = () => {
-            const before = lines.length;
-            row("f");
-            const last = lines[lines.length - 1].replace(/^\d+ f /, "");
-            if (last === prev) lines.length = before;
-            prev = last;
-            if (performance.now() < end) requestAnimationFrame(f);
-          };
-          requestAnimationFrame(f);
-        };
-        root.addEventListener("focusin", () => (t0 = performance.now(), watch("focus")));
-        const sendSoon = () => {
-          clearTimeout(sendTimer);
-          sendTimer = setTimeout(async () => {
-            const text = lines.join("\n");
-            lines = [];
-            for (let i = 0; i < text.length; i += 1900) {
-              await send({ name: "kb-log", text: text.slice(i, i + 1900), anchor: { kind: "page", selector: "body", x: 0, y: 0, docX: 0, docY: 0, width: innerWidth } }).catch(() => {
-              });
-            }
-          }, 2e3);
-        };
-        root.addEventListener("focusout", () => {
-          lines.push("--- let go");
-          t0 = performance.now();
-          watch("blur");
-          sendSoon();
-        });
-        S.dbg = (line) => {
-          lines.push(`${Math.round(performance.now() - t0)} ${line}`);
-          sendSoon();
-        };
-        vv.addEventListener("resize", () => {
-          watch("resize");
-          if (lines.length > 1) sendSoon();
-        });
-      }
-    }
+    startSheets();
     const msgsEl = $(".msgs", chatEl);
     S.stick = true;
     msgsEl.addEventListener("scroll", () => S.stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48, { passive: true });
