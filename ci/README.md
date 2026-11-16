@@ -1,0 +1,45 @@
+# ci/: a deterministic gate, plus an agent that works to it
+
+Agents propose. A deterministic judge decides. You merge. CI has no secrets.
+
+## The gate (`.github/workflows/gates.yml`)
+
+Every PR, forks included, is measured against its own base commit. Takes seconds; tests stay in `test.yml`.
+
+| Metric | Rule | Why |
+|---|---|---|
+| `pageScriptGzipBytes` | may grow 2 KB per PR, never past 80 KB | every commented page loads `comments.js` |
+| `npmPackBytes` | may grow 4 KB per PR, never past 160 KB | what `npx` users download |
+| `oxlintProblems` | never more | pinned `oxlint@1.93.0` over lib, api, local.mjs, comments.js |
+| `runtimeDependencies` | never more (it's 0) | the README promises none |
+| `readmeClaimsWrong` | never more | the README's size and file-count claims vs what was measured |
+
+- Over a per-PR budget on purpose? Add the `size-approved` label. Hard caps still apply;
+  raising one means editing `ci/metrics.mjs`.
+- Both sides are measured with the **base** branch's `ci/`, so a PR can't change how it's judged.
+- Both sides use the **PR's** `.oxlintrc.json`, so adding a rule doesn't fail the PR that adds it.
+
+## The agent (run from your machine, from an up-to-date main)
+
+```bash
+ci/agent-improve.sh --pr 31   # fix what makes PR #31 fail the gate, push to it
+ci/agent-improve.sh           # improve one metric, open a PR
+ci/meta-improve.sh            # weekly: repeated review feedback → lint rules, as a PR
+```
+
+Needs `gh` and `claude` logged in; no API keys. Every run prints a folder with its prompts, patches
+and logs. The agent must pass the gate *and* `npm test` *and* move its target. It can't edit
+`ci/`, tests, `bench/`, `package.json` or the README, and can't add lint suppressions.
+Dependency and README-claim failures are left to you.
+
+## Today's numbers (2026-11-16)
+
+| | measured | README says |
+|---|---|---|
+| `comments.js` gzipped | 67.9 KB (229 KB raw) | 27 KB and 19 KB |
+| npm package | 139 kB, 11 files | about 125 kB, 14 files |
+| oxlint problems | 27 | — |
+| runtime dependencies | 0 | none |
+
+The gate doesn't fail on drift that's already there; it stops it getting worse. Closing the gap is
+your call: minify on publish, shrink the script, or update the README.

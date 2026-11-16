@@ -1,0 +1,183 @@
+#!/usr/bin/env node
+// The judge for labfb: deterministic metrics, measured the same way in CI and locally.
+//
+//   collect <out.json>                                 measure the current tree
+//   compare <current.json> <reference.json> [--must-improve <metric>]
+//                                                      exit 1 if the gate fails
+//   pick <current.json> [<reference.json>]             choose a target metric for the agent
+//
+// Fails closed: if a tool can't run, that's an error, never "0 problems".
+
+import { execSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
+
+const OXLINT = "oxlint@1.93.0"; // pinned, so the count only changes when the code or the rules do
+const LINTED = "lib api local.mjs public/_lab/comments.js";
+const PAGE_SCRIPT = "public/_lab/comments.js";
+
+// ratchet: may never get worse. budget: may grow by perPr per PR, never past max.
+// ALLOW_GROWTH=1 (the size-approved label) lifts perPr; raising max means editing this file.
+// agent: false = the agent may not fix it (it would have to edit a protected file); a human decides.
+const METRICS = {
+  pageScriptGzipBytes: {
+    kind: "budget", dir: "down", perPr: 2048, max: 80_000,
+    hint: "Shrink public/_lab/comments.js without changing behaviour: remove dead code and duplication. No build step, no dependencies.",
+  },
+  npmPackBytes: {
+    kind: "budget", dir: "down", perPr: 4096, max: 160_000,
+    hint: "Shrink the published package (npm pack): remove dead code from the shipped files.",
+  },
+  oxlintProblems: {
+    kind: "ratchet", dir: "down", ideal: 0,
+    hint: `Fix oxlint problems (npx --yes ${OXLINT} ${LINTED}), starting with the file that has the most.`,
+  },
+  runtimeDependencies: {
+    kind: "ratchet", dir: "down", ideal: 0, agent: false,
+    hint: "labfb promises zero dependencies. Remove the new one, or decide to drop the promise.",
+  },
+  readmeClaimsWrong: {
+    kind: "ratchet", dir: "down", ideal: 0, agent: false,
+    hint: "README size claims no longer match. Shrink back, or update the README.",
+  },
+};
+
+const read = (f) => JSON.parse(readFileSync(f, "utf8"));
+const write = (f, o) => writeFileSync(f, JSON.stringify(o, null, 2) + "\n");
+const fail = (msg) => { console.error(msg); process.exit(2); };
+
+function run(cmd) {
+  try {
+    return { out: execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }), err: "", status: 0 };
+  } catch (e) {
+    return { out: e.stdout ?? "", err: e.stderr ?? "", status: e.status ?? 1 };
+  }
+}
+
+// Size and count claims in the README, checked against what was measured.
+// Sizes may be off by 10% (rounding, "about"); file counts must be exact.
+function checkReadme(m) {
+  const text = readFileSync("README.md", "utf8");
+  const claims = [];
+  for (const [, n] of text.matchAll(/(\d+(?:\.\d+)?)\s*KB gzipped/gi)) {
+    claims.push({ claim: `${n} KB gzipped`, claimed: +n, measured: m.pageScriptGzipBytes / 1000, unit: "KB", tolerance: 0.1 });
+  }
+  for (const [, n] of text.matchAll(/about (\d+(?:\.\d+)?)\s*kB on npm/gi)) {
+    claims.push({ claim: `about ${n} kB on npm`, claimed: +n, measured: m.npmPackBytes / 1000, unit: "kB", tolerance: 0.1 });
+  }
+  for (const [, n] of text.matchAll(/kB on npm, (\d+) files/gi)) {
+    claims.push({ claim: `${n} files`, claimed: +n, measured: m.npmPackFiles, unit: "files", tolerance: 0 });
+  }
+  return claims
+    .filter((c) => Math.abs(c.claimed - c.measured) > c.measured * c.tolerance)
+    .map((c) => `"${c.claim}" in README.md, measured ${Math.round(c.measured * 10) / 10} ${c.unit}`);
+}
+
+function collect() {
+  const m = {};
+
+  // The script every commented page loads, gzipped.
+  m.pageScriptGzipBytes = gzipSync(readFileSync(PAGE_SCRIPT), { level: 9 }).length;
+
+  // What npm users download.
+  const pack = run("npm pack --dry-run --json --ignore-scripts");
+  let packInfo;
+  try { packInfo = JSON.parse(pack.out)[0]; } catch { fail(`npm pack did not run:\n${pack.err}`); }
+  m.npmPackBytes = packInfo.size;
+  m.npmPackFiles = packInfo.entryCount; // informational, used by the README check
+
+  // Runtime dependencies (devDependencies don't reach users).
+  const pkg = read("package.json");
+  m.runtimeDependencies = ["dependencies", "optionalDependencies", "peerDependencies"]
+    .reduce((n, k) => n + Object.keys(pkg[k] ?? {}).length, 0);
+
+  // oxlint, one line per diagnostic in unix format.
+  const ox = run(`npx --yes ${OXLINT} ${LINTED} --format unix`);
+  const oxCount = ox.out.split("\n").filter((l) => /^.+:\d+:\d+: /.test(l)).length;
+  if (ox.status !== 0 && oxCount === 0) fail(`oxlint did not run cleanly:\n${ox.out}${ox.err}`);
+  m.oxlintProblems = oxCount;
+
+  m.readmeClaims = checkReadme(m);
+  m.readmeClaimsWrong = m.readmeClaims.length;
+  return m;
+}
+
+const isBetter = (name, cur, ref) => (METRICS[name].dir === "down" ? cur < ref : cur > ref);
+
+// null if the metric passes the gate, or the reason it fails.
+function gateProblem(name, cur, ref) {
+  const def = METRICS[name];
+  if (cur === undefined) return "missing";
+  if (def.kind === "ratchet") return isBetter(name, ref, cur) ? `worse than ${ref}` : null;
+  if (cur > def.max) return `over the hard cap of ${def.max}`;
+  if (process.env.ALLOW_GROWTH !== "1" && cur > ref + def.perPr) return `grew ${cur - ref}, budget is +${def.perPr} per PR`;
+  return null;
+}
+
+function compare(curFile, refFile, mustImprove) {
+  const cur = read(curFile);
+  const ref = read(refFile);
+  let ok = true;
+
+  console.log("| metric | reference | current | verdict |\n|---|---|---|---|");
+  for (const name of Object.keys(METRICS)) {
+    if (!(name in ref)) continue;
+    const c = cur[name];
+    const problem = gateProblem(name, c, ref[name]);
+    let verdict;
+    if (problem) { verdict = `**FAIL**: ${problem}`; ok = false; }
+    else if (isBetter(name, c, ref[name])) verdict = "better";
+    else if (c === ref[name]) verdict = "same";
+    else if (c - ref[name] > METRICS[name].perPr) verdict = `approved growth (+${c - ref[name]})`;
+    else verdict = `within budget (+${c - ref[name]})`;
+    console.log(`| ${name} | ${ref[name]} | ${c ?? "missing"} | ${verdict} |`);
+  }
+
+  if (cur.readmeClaims?.length) {
+    console.log("\nREADME claims that don't match:");
+    for (const line of cur.readmeClaims) console.log(`- ${line}`);
+  }
+  if (mustImprove) {
+    if (!(mustImprove in METRICS)) fail(`unknown metric: ${mustImprove}`);
+    const c = cur[mustImprove];
+    const r = ref[mustImprove];
+    if (c === undefined || r === undefined || !isBetter(mustImprove, c, r)) {
+      console.log(`\nTarget \`${mustImprove}\` did not improve (${r} → ${c ?? "missing"}).`);
+      ok = false;
+    }
+  }
+  if (process.env.ALLOW_GROWTH === "1") console.log("\nPer-PR growth budgets lifted by the size-approved label. Hard caps still apply.");
+  process.exit(ok ? 0 : 1);
+}
+
+// With a reference: target the first metric that fails the gate (that's what blocks the PR).
+// Otherwise rotate through agent-fixable metrics that still have room, one per UTC day.
+function pick(curFile, refFile) {
+  const cur = read(curFile);
+  if (refFile) {
+    const ref = read(refFile);
+    const failing = Object.keys(METRICS).find((n) => n in ref && gateProblem(n, cur[n], ref[n]));
+    if (failing && METRICS[failing].agent === false) {
+      fail(`This PR fails the gate on ${failing}, which needs a human: ${METRICS[failing].hint}`);
+    }
+    if (failing) {
+      console.log(`${failing}\tThis PR fails the gate on ${failing} (${cur[failing]} vs base ${ref[failing]}). Bring it back within the gate. ${METRICS[failing].hint}`);
+      return;
+    }
+  }
+  const open = Object.keys(METRICS)
+    .filter((n) => METRICS[n].agent !== false && n in cur && cur[n] !== METRICS[n].ideal);
+  if (open.length === 0) fail("nothing left for the agent to improve");
+  const name = open[Math.floor(Date.now() / 86_400_000) % open.length];
+  console.log(`${name}\t${METRICS[name].hint}`);
+}
+
+const [cmd, ...args] = process.argv.slice(2);
+const flag = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+
+switch (cmd) {
+  case "collect": write(args[0] ?? fail("usage: collect <out.json>"), collect()); break;
+  case "compare": compare(args[0], args[1], flag("--must-improve")); break;
+  case "pick": pick(args[0], args[1]); break;
+  default: fail("commands: collect | compare | pick");
+}
