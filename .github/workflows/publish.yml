@@ -5,6 +5,9 @@
 # - `next`, main as it is now: every push, as the next patch with a build number (0.6.2 on main → 0.6.3-main.41),
 #   so `npx @leonidstern/labit@next` runs everything merged, released or not. A prerelease never becomes
 #   `latest` and a plain `npx @leonidstern/labit` never picks it.
+# - `edge`, main plus every open PR: main with each open, non-draft PR of this repo merged on top, oldest first,
+#   rebuilt whenever main or a PR changes (0.6.3-edge.42). A PR whose sources conflict with main or the ones
+#   before it is left out and named in the run's summary. Only published when the tests pass on the combination.
 #
 # No token: npm trusted publishing (OIDC). One-time setup on npmjs.com, package settings → Trusted publisher →
 # GitHub Actions, repository leonidstern/labit, workflow publish.yml. Each version also gets a provenance statement.
@@ -13,18 +16,20 @@ name: publish
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
 permissions:
   contents: write # the vX.Y.Z tag
   id-token: write # trusted publishing
 
-concurrency:
-  group: publish
-  cancel-in-progress: false
-
 jobs:
   publish:
+    if: github.event_name != 'pull_request'
+    concurrency:
+      group: publish
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,3 +79,55 @@ jobs:
         run: |
           npm version "${{ steps.v.outputs.next }}" --no-git-tag-version
           npx --yes npm@11.6.2 publish --access public --provenance --tag next
+
+  edge:
+    needs: publish
+    # After the release and next (when they run), never instead of them; PRs from forks never publish.
+    if: always() && needs.publish.result != 'failure' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    concurrency:
+      group: edge
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Merge every open PR onto main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "labit edge"
+          git config user.email "edge@users.noreply.github.com"
+          # Every PR adds to the changelog and the browser tests at the same spot, and rebuilds the widget bundle:
+          # keep both sides of the first two, and build the bundle once from the merged sources below.
+          printf 'CHANGELOG.md merge=union\ntest/browser/*.mjs merge=union\npublic/_lab/comments.js merge=ours\n' > .git/info/attributes
+          git config merge.ours.driver true
+          echo "## edge: main + open PRs" >> "$GITHUB_STEP_SUMMARY"
+          gh pr list --state open --base main --limit 100 --json number,title,isDraft,isCrossRepository \
+            --jq 'sort_by(.number) | .[] | select(.isDraft | not) | select(.isCrossRepository | not) | "\(.number)\t\(.title)"' |
+          while IFS=$'\t' read -r n title; do
+            git fetch -q origin "pull/$n/head"
+            if git merge -q --no-edit FETCH_HEAD -m "edge: #$n" >/dev/null 2>&1; then
+              echo "- in: #$n $title" >> "$GITHUB_STEP_SUMMARY"
+            else
+              git merge --abort
+              echo "- **left out, conflicts:** #$n $title" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+      - run: npm run build
+      - run: npm test
+
+      - name: Publish (edge)
+        run: |
+          version=$(node -p "require('./package.json').version")
+          edge=$(node -p "const [a,b,c]=process.argv[1].split('-')[0].split('.').map(Number); [a,b,c+1].join('.')" "$version")-edge.$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT
+          npm version "$edge" --no-git-tag-version --allow-same-version
+          npx --yes npm@11.6.2 publish --access public --provenance --tag edge
+          echo "Published $edge: npx @leonidstern/labit@edge" >> "$GITHUB_STEP_SUMMARY"
