@@ -61,6 +61,24 @@ test('wait hears a new comment, reply answers it, the text file has both', async
   assert.ok(all.some((c) => c.parent === comment.id && /title is red/.test(c.text)), 'reply stored under the comment');
 });
 
+test('pin leaves the agent\'s own pin on a spot, with its session; a bad one is refused', async () => {
+  await up();
+  const made = await run(['pin', 'h1', '1. a bigger title?', '--page', '/index.html']);
+  assert.equal(made.code, 0, made.out);
+  const id = /Pinned (\w+) on \/index/.exec(made.out)?.[1];
+  assert.ok(id, made.out);
+  const all = await (await fetch(B + '/_lab/api/comments?page=/index')).json();
+  const c = (all.comments || all).find((x) => x.id === id);
+  assert.ok(c && !c.parent && c.session, 'a pin of its own, from the agent');
+  assert.deepEqual([c.anchor.kind, c.anchor.selector, c.anchor.x, c.anchor.y], ['element', 'h1', 0.5, 0.5]);
+  // The only page is the default; --at places it on the element.
+  const at = await run(['pin', '#t', 'question?', '--at', '0.1,0.9']);
+  assert.equal(at.code, 0, at.out);
+  assert.notEqual((await run(['pin', '', 'x'])).code, 0);
+  assert.match((await run(['pin', 'h1', 'x', '--page', '/nope'])).out, /No page \/nope/);
+  assert.match((await run(['pin', 'h1', 'x', '--at', '2,1'])).out, /--at takes x,y/);
+});
+
 test('unknown options are refused', async () => {
   const { code, out } = await run(['--nope']);
   assert.notEqual(code, 0);

@@ -12,7 +12,7 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
-import { REGISTRY, runningLabs } from './lib/labs.ts';
+import { REGISTRY, keyFor, runningLabs } from './lib/labs.ts';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -43,7 +43,7 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
   labit add <url> [--name "title"]   ·   labit remove <url>
       Save a cloud lab page (https://<lab domain>/<page>) for this folder, in .lab/links.json.
   labit mcp
-      Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply and wait, for this folder's lab.
+      Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply, pin and wait, for this folder's lab.
       Claude Code: claude mcp add labit -- npx @leonidstern/labit@latest mcp
       Codex: codex mcp add labit -- npx @leonidstern/labit@latest mcp
   labit preview [folder]
@@ -65,6 +65,9 @@ For the agent, from the project (any folder under it):
   labit reply <id> "what you did" [--resolve] [--wait] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread; --wait listens again right after.
   labit resolve <id> [--page /path]
+  labit pin <selector> "text" [--page /path] [--at x,y]
+      Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
+      of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
 page), archive/ (done threads with nothing new in 30 days), server.json (port, key, session; owner-only), seen.
@@ -88,7 +91,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite', 'mcp', 'settings'];
+const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -128,8 +131,8 @@ if (pos[0] === 'settings') {
   process.exit(SETTINGS.problems.length ? 1 : 0);
 }
 
-// The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, invite): lib/commands.ts.
-if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite'].includes(pos[0])) {
+// The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
+if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -159,7 +162,7 @@ const alreadyRunning = (() => {
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
-if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve'].includes(pos[0])) {
+if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'pin'].includes(pos[0])) {
   const home = runningLabs().find((lab) => ROOT.startsWith(lab.root + path.sep));
   if (home) {
     const url = `http://localhost:${home.port}/${path.relative(home.root, ROOT).split(path.sep).map(encodeURIComponent).join('/')}/`;
@@ -358,12 +361,6 @@ function archiveOld(now = Date.now()) {
 }
 for (const p of archiveOld()) savePage(p);
 
-// Pages are keyed by their file: Pricing.html is /pricing, a/index.html is /a/index. Anything the lab's page
-// format doesn't allow (dots, spaces, other scripts) is spelled as _ and its hex bytes, so keys stay unique.
-const keyFor = (rel) =>
-  '/' + rel.replace(/\.html?$/i, '').split(path.sep).map((seg) =>
-    [...Buffer.from(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join(''),
-  ).join('/');
 let fileIndex = null;
 // Each page's file is remembered (a miss too): a dev server's page is guessed by trying up to ~100 paths, too many
 // to repeat for every page on every comment. With plain files the watcher clears it; behind a dev server it lasts 30 s.
