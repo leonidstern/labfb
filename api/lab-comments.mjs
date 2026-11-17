@@ -303,7 +303,10 @@ function asText(path, comments, host) {
     if (a.width) lines.push(`viewport: ${a.width}${a.height ? `×${a.height}` : 'px wide'}${a.dpr ? ` @${a.dpr}x` : ''}`);
     if (a.build) lines.push(`build: ${a.build}`);
     if (a.kind !== 'page') lines.push(`selector (at comment time): ${a.selector || 'body'}`);
-    for (const r of comments.filter((r) => r.parent === c.id)) lines.push(`reply: ${r.name}${r.from && r.from !== c.from ? ` (${r.from})` : ''} · ${stamp(r.createdAt)} · id ${r.id}: ${body(r.text)}`);
+    for (const r of comments.filter((r) => r.parent === c.id)) {
+      const rule = r.rule ? ` (kept as rule: ${r.rule})` : r.suggest ? ` (offered as rule: ${r.suggest}${r.suggestDone === 'no' ? ', they said no' : ''})` : '';
+      lines.push(`reply: ${r.name}${r.from && r.from !== c.from ? ` (${r.from})` : ''} · ${stamp(r.createdAt)} · id ${r.id}: ${body(r.text)}${rule}`);
+    }
   });
   return lines.join('\n') + '\n';
 }
@@ -431,6 +434,8 @@ export async function POST(request) {
     anchor: parent ? null : cleanAnchor(anchor),
     // The message in the thread this one answers, when it isn't the first (shown as a quote).
     ...(parent && body.to ? { to: clean(body.to, 40) } : {}),
+    // A rule the agent offers on its own, from a reply about how it answered (labit reply --suggest-rule): kept with a tap.
+    ...(parent && body.suggest && !limited ? { suggest: cleanText(body.suggest, 200) } : {}),
   };
   // The comment, and the reopened thread when someone (not an admin) answers a resolved one: one round trip.
   if (thread?.resolved && limited) await run('HSET', key, comment.id, JSON.stringify(comment), parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined }));

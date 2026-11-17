@@ -39,6 +39,7 @@ Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
 ## Good to know
 
 - `--wifi` lets your phone comment too. Each device opens a one-time link from `npx @leonidstern/labit invite`, so being on the same wifi isn't enough. The pages still travel in the clear over the wifi.
+- Agents learn how you like answers: reply as usual, and when you say an answer was too long or unclear, your message shows **rule?**. Tap it and the rule goes to `~/.config/labit/replies.md`, handed to every agent with your pins.
 - You name yourself once. The name is kept for this computer in `~/.config/labit/settings.json`, so every later lab starts out knowing you — browsers keep it per port, labs don't. `labit invite [name]` carries a name to a phone the same way.
 - Settings (port, your dev server, keys, how long the lab waits…): `labit.json` in the project and `~/.config/labit/settings.json` for you. `labit settings` shows them all; [docs/settings.md](docs/settings.md) explains each.
 - Comments stay in `.lab/` in your project. Add it to `.gitignore`.
