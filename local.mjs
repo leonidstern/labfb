@@ -37,6 +37,9 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
   labit pages [--all]
       Write .lab/lab-pages.md here: this folder's labs and saved cloud pages as links, with open comment counts.
       --all lists every lab on this computer.
+  labit settings
+      Each setting, its value and where it came from: a flag or variable, labit.json in the project, your own
+      ~/.config/labit/settings.json, or the default. See docs/settings.md.
   labit add <url> [--name "title"]   ·   labit remove <url>
       Save a cloud lab page (https://<lab domain>/<page>) for this folder, in .lab/links.json.
   labit mcp
@@ -81,6 +84,46 @@ if (unknownFlags.length) die(`Unknown option ${unknownFlags[0]}. See: ${CMD} --h
 
 // The project this is run for (a session's folder): pages lists its labs and its saved cloud pages, not every lab.
 const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
+
+// ---------- settings (lib/settings.ts) ----------
+// labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
+// setting them here, so everything below (and the commands, and the MCP server) reads them as before.
+const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite', 'zoom', 'mcp', 'settings'];
+const { loadSettings, changedShortcuts, savePersonal } = await import('./lib/settings.ts');
+const SETTINGS = loadSettings(HERE, {
+  port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
+  proxy: opts.proxy !== undefined ? String(opts.proxy) : undefined,
+  folder: pos[0] && !COMMANDS.includes(pos[0]) ? pos[0] : undefined,
+  open: opts['no-open'] ? false : undefined,
+  wifi: opts.wifi ? true : undefined,
+  model: typeof opts.model === 'string' ? opts.model : undefined,
+});
+const SET = SETTINGS.values;
+const fromFile = (key) => !/^(flag|env |default)/.test(SETTINGS.from[key]);
+if (fromFile('port')) opts.port = String(SET.port);
+if (fromFile('proxy')) opts.proxy = SET.proxy;
+if (fromFile('folder') && !pos.length) pos.push(SET.folder);
+if (fromFile('open') && !SET.open) opts['no-open'] = true;
+if (fromFile('wifi') && SET.wifi) opts.wifi = true;
+if (fromFile('batchSeconds')) process.env.LAB_SETTLE_MS = String(SET.batchSeconds * 1000);
+if (fromFile('stopListeningAfterMinutes')) process.env.LAB_CLOSE_GRACE = String(SET.stopListeningAfterMinutes * 60);
+if (fromFile('remindAfterMinutes')) process.env.LAB_REMIND_MS = String(SET.remindAfterMinutes * 60000);
+if (fromFile('updateCheck') && !SET.updateCheck) process.env.LABIT_NO_UPDATE_CHECK = '1';
+if (fromFile('model') && SET.model) process.env.LAB_MODEL = SET.model;
+for (const p of SETTINGS.problems) console.error(`[labit] ${p}`);
+// `labit settings`: each setting, its value and where it came from.
+if (pos[0] === 'settings') {
+  const changed = changedShortcuts(SET.shortcuts);
+  const show = (k, v) =>
+    k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults') : k === 'zoom' ? v.skill || 'the built-in skill' : String(v === '' ? '(none)' : v);
+  const home = (f) => f.replace(os.homedir(), '~');
+  const src = (f) => f.split(' + ').map((x) => (x === SETTINGS.files.project ? 'labit.json' : x === SETTINGS.files.personal ? 'your settings' : x)).join(' + ');
+  console.log(`Project: ${SETTINGS.files.project ? home(SETTINGS.files.project) : `no labit.json in ${home(HERE)} or above`}\nYours:   ${home(SETTINGS.files.personal)}${fs.existsSync(SETTINGS.files.personal) ? '' : ' (not made yet)'}\n`);
+  const w = Math.max(...Object.keys(SET).map((k) => k.length));
+  for (const [k, v] of Object.entries(SET)) console.log(`${k.padEnd(w)}  ${show(k, v).padEnd(20)}  ${src(SETTINGS.from[k])}`);
+  console.log(`\nA flag or variable wins over labit.json, which wins over your file. See docs/settings.md.`);
+  process.exit(SETTINGS.problems.length ? 1 : 0);
+}
 
 // The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, invite): lib/commands.ts.
 if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite', 'zoom'].includes(pos[0])) {
@@ -273,7 +316,7 @@ const pages = () => [...db.keys()].filter((k) => k.startsWith('lab:comments:') &
 // .lab/archive/<page>.json (added to what's there), and are no longer loaded or sent to the pages, so a busy lab's
 // pages don't keep carrying every thread ever closed. Open threads, and done ones with a recent message, stay.
 // Checked as the lab starts and once a day.
-const ARCHIVE_DAYS = 30; // a done thread's last message must be this many days old before it is archived
+const ARCHIVE_DAYS = SET.archiveAfterDays; // a done thread's last message must be this many days old before it is archived (setting archiveAfterDays, 30)
 function archiveOld(now = Date.now()) {
   const changed = [];
   let moved = 0;
@@ -332,7 +375,7 @@ const fileFor = (page) => {
   return fileMemo.get(page);
 };
 // The zoom skill an agent reads before answering a zoom (skills/ ships in the package, beside dist/).
-const ZOOM_SKILL = path.join(REPO, 'skills/labit/zoom.md');
+const ZOOM_SKILL = SET.zoom.skill || path.join(REPO, 'skills/labit/zoom.md'); // labit.json zoom.skill: the project's own
 const findFile = (page) => {
   if (!fileIndex) {
     fileIndex = new Map();
@@ -585,11 +628,13 @@ const newPass = () => {
   return code;
 };
 // Who you are, kept for this computer (not for this lab): the browser's own memory is per origin and every lab has
-// its own port, so a name given to one lab meant nothing to the next. ~/.config/labit/me.json holds just the name.
+// its own port, so a name given to one lab meant nothing to the next. It is the setting `name` in your own settings
+// (~/.config/labit/settings.json); ~/.config/labit/me.json, where it was before 17 Nov, is still read.
 const ME_DIR = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'labit');
 const ME_FILE = path.join(ME_DIR, 'me.json');
 const NAME_OK = (n) => typeof n === 'string' && n.trim().length > 0 && n.trim().length <= 60;
 const readMe = () => {
+  if (NAME_OK(SET.name)) return SET.name.trim();
   try {
     const n = JSON.parse(fs.readFileSync(ME_FILE, 'utf8')).name;
     return NAME_OK(n) ? n.trim() : '';
@@ -600,8 +645,7 @@ const readMe = () => {
 const writeMe = (name) => {
   if (!NAME_OK(name)) return '';
   try {
-    fs.mkdirSync(ME_DIR, { recursive: true });
-    fs.writeFileSync(ME_FILE, JSON.stringify({ name: name.trim() }, null, 2) + '\n');
+    savePersonal('name', name.trim());
   } catch {}
   return name.trim();
 };
@@ -955,9 +999,12 @@ function announce(page, c) {
 }
 
 // ---------- pages ----------
+// Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
+const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
 const widget = (page, admin, me = '') =>
   `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
+  `${KEYS_ATTR}` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
@@ -1069,7 +1116,7 @@ const listing = (res, dir, urlPath) => {
       `<header><h1>${esc(path.basename(dir))}</h1><p class="lede">${pages.length} page${pages.length === 1 ? '' : 's'}${open ? ` · ${open} open comment${open === 1 ? '' : 's'}` : ''} · newest first</p></header>` +
         (many ? `<input class="lab-filter" type="search" placeholder="Filter pages" aria-label="Filter pages" autocomplete="off">` : '') +
         `<ul class="lab-box lab-rows lab-pages">${li || '<li class="lab-muted" style="padding:8px 10px">No HTML pages here. Running a dev server? Start it, then run labit again.</li>'}</ul>` +
-        `<p class="lab-muted lab-hint">On a page, press <kbd>m</kbd> to show comments, or hold <kbd>⌥</kbd> and click.</p>` +
+        `<p class="lab-muted lab-hint">On a page, press <kbd>${SET.shortcuts.toggle}</kbd> to show comments, or hold <kbd>⌥</kbd> and click.</p>` +
         (many
           ? `<script>const f=document.querySelector('.lab-filter'),r=[...document.querySelectorAll('.lab-pages li')];f.addEventListener('input',()=>{const q=f.value.trim().toLowerCase();for(const l of r)l.hidden=!!q&&!l.textContent.toLowerCase().includes(q)});addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement!==f){e.preventDefault();f.focus()}})</script>`
           : ''),
@@ -1143,7 +1190,7 @@ const handler = async (req, res) => {
       if (!NAME_OK(name)) return res.writeHead(400).end('name: 1 to 60 characters');
       const was = myName;
       myName = writeMe(name);
-      if (myName && myName !== was) console.log(`[lab] you are ${myName} here and in your next lab (${ME_FILE})`);
+      if (myName && myName !== was) console.log(`[lab] you are ${myName} here and in your next lab (name in ${SETTINGS.files.personal.replace(os.homedir(), '~')})`);
       return res.writeHead(204).end();
     }
     if (pathname === '/_lab/bye') {

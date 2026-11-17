@@ -74,6 +74,8 @@ import { zoomWords } from '../lib/zoom.ts';
     get isNew() { return isNew; },
     get isPage() { return isPage; },
     get keyWord() { return keyWord; },
+    get KEYS() { return KEYS; },
+    get keyLabel() { return keyLabel; },
     get layer() { return layer; },
     get listBtn() { return listBtn; },
     get listEl() { return listEl; },
@@ -123,6 +125,25 @@ import { zoomWords } from '../lib/zoom.ts';
   bindThread(W);
   bindSheets(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
+  // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
+  // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
+  const KEYS = { toggle: 'm', comment: '1', go: '2', zoom: '3', pointer: '4', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
+  try {
+    Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
+  } catch {}
+  // The key pressed, as the settings name it: a digit by its place (Shift or AZERTY don't matter), a letter as typed
+  // when it's Latin (QWERTZ and AZERTY move letters), else by its place (Cyrillic and other layouts).
+  const keyOf = (e) => {
+    const d = /^(Digit|Numpad)(\d)$/.exec(e.code || '');
+    if (d) return d[2];
+    return /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
+  };
+  const actionOf = (e) => Object.keys(KEYS).find((a) => KEYS[a] === keyOf(e)) || '';
+  // A word with its key marked: in it, (c)hat, or after it when it doesn't hold the key, chat (x).
+  const keyLabel = (word, key) => {
+    const i = word.indexOf(key);
+    return i >= 0 ? keyWord(word.slice(0, i), key, word.slice(i + 1)) : keyWord(`${word} `, key, '');
+  };
   const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
   const enabled = location.hostname === labHost || script?.dataset.enable === 'always';
   if (!enabled || /** @type {any} */ (window).__labComments) return;
@@ -205,7 +226,7 @@ import { zoomWords } from '../lib/zoom.ts';
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · c chat · w new · 1 comment · 2 go · 3 in, 3 again out · 4 pointer · p pause · m hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.zoom} in, ${KEYS.zoom} again out · ${KEYS.pointer} pointer · ${KEYS.pause} pause · ${KEYS.toggle} hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -216,7 +237,7 @@ import { zoomWords } from '../lib/zoom.ts';
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
-      <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (p)">pause motion</button>
+      <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (${KEYS.pause})">pause motion</button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
       <button class="secondary go-btn" type="button" hidden title="tap: comment → go → zoom in → zoom out · keys: 1 comment · 2 go: every click approves what it's on · 3 zoom in, 3 again zoom out: ask the agent for a deeper look or the bigger picture · 4 pointer: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
@@ -589,7 +610,7 @@ import { zoomWords } from '../lib/zoom.ts';
     if (gp) gp.replaceChildren(...(S.zoomMode ? [zoomIcon(S.zoomMode), ...(matchMedia('(pointer: coarse)').matches ? [] : [el('span', { class: 'zw' }, S.zoomMode)])] : [!S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go']));
     // Read out as what a click places, not the letter on it.
     goBtn.setAttribute('aria-label', `a click places: ${S.zoomMode ? `a zoom ${S.zoomMode}` : S.cursorMode ? 'nothing (pointer)' : S.goMode ? 'go' : 'a comment'}`);
-    goBtn.setAttribute('aria-keyshortcuts', '1 2 3 4');
+    goBtn.setAttribute('aria-keyshortcuts', [KEYS.comment, KEYS.go, KEYS.zoom, KEYS.pointer].join(' '));
   }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
@@ -716,7 +737,7 @@ import { zoomWords } from '../lib/zoom.ts';
     // New replies are counted on "list" while comments show, on the toggle while they are hidden.
     toggleBtn.replaceChildren(
       document.createTextNode((S.on ? 'hide comments' : open ? `comments · ${open}` : 'comments') + (!S.on && fresh ? ` · ${fresh} new` : '')),
-      el('kbd', { 'aria-hidden': 'true' }, 'm'),
+      el('kbd', { 'aria-hidden': 'true' }, KEYS.toggle),
     );
     toggleBtn.classList.toggle('secondary', S.on);
     host.toggleAttribute('data-sheet', Boolean(S.on && (S.draft || S.openId || S.listOpen || S.chatOpen))); // phones: the sheet has the screen's bottom
@@ -1045,7 +1066,7 @@ import { zoomWords } from '../lib/zoom.ts';
   document.addEventListener('keydown', (e) => {
     if (S.gone) return;
     const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
-    if ((e.key === 'm' || e.key === 'M' || e.code === 'KeyM') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
       return;
@@ -1062,14 +1083,14 @@ import { zoomWords } from '../lib/zoom.ts';
       if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 260 });
       return stepNew(e.shiftKey ? -1 : 1);
     }
-    // 1 comment, 2 go, 3 zoom in (3 again: zoom out), 4 pointer: like picking a tool.
-    if (S.on && /^(Digit|Numpad)[1234]$/.test(e.code || '') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    // 1 comment, 2 go, 3 zoom in (3 again: zoom out), 4 pointer: like picking a tool (the keys are settings).
+    const act = actionOf(e);
+    if (S.on && ['comment', 'go', 'zoom', 'pointer'].includes(act) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
-      const n = e.code.slice(-1);
-      if (n === '3') return setZoom(S.zoomMode === 'in' ? 'out' : 'in');
+      if (act === 'zoom') return setZoom(S.zoomMode === 'in' ? 'out' : 'in');
       if (S.zoomMode) setZoom('');
-      if (n === '4') setCursor(true);
-      else setGo(n === '2');
+      if (act === 'pointer') setCursor(true);
+      else setGo(act === 'go');
       return;
     }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
@@ -1080,15 +1101,15 @@ import { zoomWords } from '../lib/zoom.ts';
     // 2 go, 3 zoom (src/widget/zoom.ts), 4 pointer, P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
     // In zoom, Escape (nothing open) leaves it.
     if (S.on && S.zoomMode && !S.draft && !S.openId && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && zoomKey(e, letter)) return e.preventDefault();
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && /^[cwredp]$/.test(letter)) {
-      const k = letter;
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
+      const k = act;
       e.preventDefault();
-      if (k === 'p') return pauseBtn.click();
-      if (k === 'c') return chatBtn.click();
-      if (k === 'w') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'd') return showDoneBtn.click();
-      if (k === 'r' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
-      else if (k === 'e' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
+      if (k === 'pause') return pauseBtn.click();
+      if (k === 'chat') return chatBtn.click();
+      if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
+      if (k === 'done') return showDoneBtn.click();
+      if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
+      else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
     }
     // Escape closes the top one: a thread or new comment first, then the chat, then the list (typed chat text stays).

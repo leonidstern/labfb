@@ -42,5 +42,7 @@ jobs:
       - run: node test/browser/behaviours.mjs
       # The live connection: one stream per tab, let go in the background, back in front, replaced when quiet, bye on leaving.
       - run: node test/browser/connection.mjs
+      # Shortcuts from labit.json: the new keys work, the old ones don't, the bar shows them.
+      - run: node test/browser/shortcuts.mjs
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
       - run: node bench/run.mjs

@@ -30,7 +30,7 @@ export function drawList() {
   const all = W.threads();
   W.listBtn.hidden = !W.S.on || (!W.coarse && !all.length && !W.held().length); // on phones it carries the agent's light
   W.goBtn.hidden = !W.S.on;
-  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, 'go'), W.el('kbd', { 'aria-hidden': 'true' }, '1/2/3/4'));
+  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, 'go'), W.el('kbd', { 'aria-hidden': 'true' }, [W.KEYS.comment, W.KEYS.go, W.KEYS.zoom, W.KEYS.pointer].join('/')));
   W.goFace();
   W.goBtn.classList.toggle('on', (W.S.goMode || Boolean(W.S.zoomMode)) && !W.S.cursorMode);
   W.goBtn.classList.toggle('cursor', W.S.cursorMode);
@@ -45,9 +45,9 @@ export function drawList() {
     W.newPrev.hidden = W.newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
     W.listBtn.hidden = !W.S.on;
     {
-      W.listBtn.replaceChildren(W.coarse ? 'new' : W.keyWord('ne', 'w', ''), W.el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll))); // phones: no keys
+      W.listBtn.replaceChildren(W.coarse ? 'new' : W.keyLabel('new', W.KEYS.next), W.el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll))); // phones: no keys
       W.listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);
-      W.listBtn.setAttribute('aria-keyshortcuts', 'w');
+      W.listBtn.setAttribute('aria-keyshortcuts', W.KEYS.next);
     }
     W.listBtn.title = 'next new comment: W, or Control-D while typing (Shift for the one before)';
     W.listBtn.disabled = !freshAll;
@@ -56,8 +56,8 @@ export function drawList() {
     W.doneBtn.hidden = !W.S.on;
     W.doneBtn.disabled = !doneCount && !W.S.showDone;
     W.doneBtn.classList.toggle('quiet', W.doneBtn.disabled);
-    W.doneBtn.replaceChildren(W.S.showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`, W.el('kbd', { 'aria-hidden': 'true' }, 'd'));
-    W.doneBtn.setAttribute('aria-keyshortcuts', 'd');
+    W.doneBtn.replaceChildren(W.S.showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`, W.el('kbd', { 'aria-hidden': 'true' }, W.KEYS.done));
+    W.doneBtn.setAttribute('aria-keyshortcuts', W.KEYS.done);
   }
   W.placeBar();
   // The browser tab shows how many new messages there are, as "(3) Page title".
