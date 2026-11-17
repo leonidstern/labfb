@@ -91,6 +91,24 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     {
+      name: 'pin',
+      title: 'Leave your own pin',
+      description: `Leave your own pin on a spot of a page in the local lab: for suggestions and questions about the page, one pin per point, numbered, instead of a list in a reply. Returns the pin's id. ${WRITE_SHORT}`,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          selector: { type: 'string', description: 'CSS selector of the element, e.g. "#pricing h2"' },
+          text: { type: 'string', description: 'The suggestion or question, e.g. "1. The price is easy to miss: make it bigger?"' },
+          page: { type: 'string', description: 'The page: its path (/pricing), file (pricing.html) or address. Default: the lab\'s only page' },
+          at: { type: 'string', description: 'Where on the element, x,y as shares of it (default "0.5,0.5", its middle)' },
+          dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' },
+        },
+        required: ['selector', 'text'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    {
       name: 'wait',
       title: 'Wait for the next pin',
       description: 'Wait for the next pin in the local lab and return it (up to `seconds`, default 50, under most clients\' 60-second tool limit; call it again to keep listening). The page shows that an agent is listening.',
@@ -143,6 +161,13 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       if (a.resolve !== undefined && typeof a.resolve !== 'boolean') return text('`resolve` must be true or false.', true);
       if (a.dir !== undefined && typeof a.dir !== 'string') return text('`dir` must be a folder path.', true);
       const r = await run(['reply', a.id, a.text, ...(a.resolve ? ['--resolve'] : [])], 30000, project(a));
+      return text(r.text, !r.ok);
+    }
+    if (name === 'pin') {
+      for (const k of ['selector', 'text'])
+        if (typeof a[k] !== 'string' || !a[k].trim()) return text(`\`${k}\` is required: ${k === 'selector' ? 'the CSS selector of the element' : 'your suggestion or question'}.`, true);
+      for (const k of ['page', 'at', 'dir']) if (a[k] !== undefined && typeof a[k] !== 'string') return text(`\`${k}\` must be a string.`, true);
+      const r = await run(['pin', ...(a.page ? ['--page', a.page] : []), ...(a.at ? ['--at', a.at] : []), '--', a.selector, a.text], 30000, project(a));
       return text(r.text, !r.ok);
     }
     // wait: progress notes every 20 s when the client gave a progressToken, so a long wait doesn't time out. Checked

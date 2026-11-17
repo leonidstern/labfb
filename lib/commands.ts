@@ -1,10 +1,10 @@
 // The commands that answer and exit: preview, add / remove, list, pages (the labs on this computer) and the agent's
-// wait, reply, resolve, invite. Loaded by local.mjs only for these, so starting a lab never reads it.
+// wait, reply, resolve, pin, invite. Loaded by local.mjs only for these, so starting a lab never reads it.
 import fs from 'node:fs';
 import path from 'node:path';
 import { FOREGROUND_CAP, listenPages, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
-import { runningLabs, type Lab } from './labs.ts';
+import { keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labCall, WAIT_SAID } from './labcall.ts';
 
 type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
@@ -145,8 +145,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     process.exit(0);
   }
 
-  // ---------- Claude's side: wait, reply, resolve ----------
-  if (['wait', 'reply', 'resolve', 'invite'].includes(pos[0])) {
+  // ---------- Claude's side: wait, reply, resolve, pin ----------
+  if (['wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
     const [cmd, ref, ...words] = pos;
     const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
     const { dir, server } = lab;
@@ -187,6 +187,64 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
             'say anything to you until it ends.',
         );
       process.exit(out.status < 300 || out.status === 409 || out.status === 410 ? 0 : 1);
+    }
+
+    // The agent's own pin on a spot: a suggestion or a question about the page, where a person would have pinned it.
+    // The widget finds the element by its selector and draws the pin with labit's mark (it has a session: the agent's).
+    if (cmd === 'pin') {
+      const selector = (ref || '').trim();
+      if (!selector) die(`Say where: ${CMD} pin <selector> "text" [--page /path] [--at x,y], e.g. ${CMD} pin "#pricing h2" "1. …"`);
+      if (!words.length) die(`Pin text is missing: ${CMD} pin ${selector} "what you'd change, or your question"`);
+      let x = 0.5;
+      let y = 0.5;
+      if (opts.at !== undefined) {
+        const m = /^\s*(\d*\.?\d+)\s*,\s*(\d*\.?\d+)\s*$/.exec(String(opts.at));
+        if (!m || Number(m[1]) > 1 || Number(m[2]) > 1) die('--at takes x,y as shares of the element, each 0 to 1: --at 0.5,0.5 is its middle.');
+        [x, y] = [Number(m[1]), Number(m[2])];
+      }
+      const page = await pinPage(opts.page);
+      const who = process.env.LAB_AGENT_NAME || session.agent;
+      const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
+      const out = await call('/_lab/api/comments', { page, name, text: words.join(' '), anchor: { kind: 'element', selector, x, y } });
+      if (out.status >= 300) die(`Could not pin: ${out.text}`);
+      const { comment } = JSON.parse(out.text);
+      console.log(`Pinned ${comment.id} on ${page} at ${selector}.`);
+      process.exit(0);
+    }
+    // Which page a pin goes on: --page as the lab's page key (/pricing), its file (pricing.html) or its address
+    // (/pricing.html, http://localhost:4400/pricing.html); with no --page, the lab's only page.
+    async function pinPage(asked: unknown): Promise<string> {
+      const got = await call('/_lab/pages', {});
+      const pages: { path: string; file: string; url: string }[] = got.status < 300 ? JSON.parse(got.text).pages || [] : [];
+      const proxied = got.status < 300 && Boolean(JSON.parse(got.text).proxy);
+      const list = () => pages.map((p) => p.path).join(', ') || 'none yet';
+      if (asked === undefined || asked === true) {
+        if (pages.length === 1 && !proxied) return pages[0].path;
+        die(`Which page? Add --page /path. This lab's pages: ${list()}.`);
+      }
+      let want = String(asked).trim();
+      try {
+        if (/^https?:\/\//.test(want)) want = new URL(want).pathname;
+      } catch {}
+      try {
+        want = decodeURIComponent(want);
+      } catch {}
+      const bare = want.replace(/^\/+|\/+$/g, '');
+      const pathOf = (u: string) => {
+        try {
+          return decodeURIComponent(new URL(u).pathname).replace(/^\/+|\/+$/g, '');
+        } catch {
+          return null;
+        }
+      };
+      // A folder's address is its index page; anything else is keyed the way the lab keys it (lib/labs.ts). Behind a
+      // dev server any address is a page (the lab lists only those with pins): its key is the answer.
+      const key = keyFor((bare.replace(/\.html?$/i, '') || 'index').split('/').join(path.sep));
+      if (proxied) return key;
+      const asIndex = keyFor(`${bare}/index`.split('/').join(path.sep));
+      const hit = pages.find((p) => [want, '/' + bare, key, asIndex].includes(p.path) || (p.file && p.file === bare) || pathOf(p.url) === bare);
+      if (hit) return hit.path;
+      die(`No page ${want} in this lab. Its pages: ${list()}.`);
     }
 
     // A comment by its id (of the thread or of a reply in it) or by the number on its card.
