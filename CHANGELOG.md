@@ -4,15 +4,11 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Pins find their spot again more reliably after the page changes: a twin search starts inside the pin's own section, a pin on words sits on those words, pins on text in the page body follow their quote, made-up ids and classes (React `:r3:`, Radix, CSS-module and Svelte hashes) no longer count as names, and a pin whose card is gone among look-alikes shows as moved instead of landing on the wrong one.
-- Replies say what they are: `labit reply <id> "…" --done | --on-it | --question` (and `intent` on the MCP reply tool). The thread closes from `--done`, not from the words; a reply starting "Done" still works for older agents.
-- Resolving records when (`resolvedAt`) and by whom: the agent's `labit resolve` now records `agent`, not `owner`. Done threads are archived a month after they were resolved, not after their last message. Replies no longer carry `resolved:false`.
-- Comments carry a schema version (`v: 1`); older page files and hosted records are upgraded when they load.
-- The agent has its own key, kept only in `.lab/server.json`: a script on a lab page holds the browser key and can no longer wait, zoom or answer as the agent. An older labit CLI can't act as the agent on this lab.
-- The 500-per-page cap no longer blocks the owner or the agent, and done threads no longer count toward it.
-- One lab per folder, for sure: `.lab/lock` is taken before the store loads, a lab counts as running only if it answers on its port, and closing the terminal (SIGHUP) cleans up.
-- A session that takes over a page gets whole threads for pins another session was handed, not one-line "new replies".
-- `reads.json`, `claims.json` and `links.json` are written whole; a damaged one is set aside (`*.broken-<time>`) instead of read as empty and written over.
+- Pins find their spot better after edits: searched in their own section first, text pins sit on their words, made-up ids/classes are ignored, a lost card among look-alikes shows as moved.
+- `labit reply --done | --on-it | --question` sets the reply's intent; the thread closes from `--done` ("Done…" text still works).
+- `resolvedAt`; the agent's resolve records `agent`; archive a month after resolving. Comments carry `v: 1`, older ones upgrade on load.
+- The agent has its own key in `.lab/server.json`; page scripts can't act as the agent. Older CLIs can't either.
+- The 500 cap skips owner, agent and done threads. One lab per folder (`.lab/lock`). A new session gets whole threads. Side files are written whole.
 
 - Releases publish themselves: a version bump merged to main goes to npm as `latest` (tagged `vX.Y.Z`), and every merge to main goes out as `next` (0.6.3-main.41…). `npx @leonidstern/labit@latest` is the newest release; `@next` is main as it is now, for whoever wants each merge in their labs. From GitHub Actions with npm trusted publishing, no token.
 
