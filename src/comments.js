@@ -174,6 +174,10 @@ import { zoomWords } from '../lib/zoom.ts';
   if (ME && !store.get('lab-name')) store.set('lab-name', ME);
   // Where to tell the lab a new name, so the next lab on this computer starts out knowing it.
   const MEAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'me') : '';
+  // What this lab is trying (lib/flags.ts): flag -> on. The ⋯ menu lists them; only this computer may switch one.
+  const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
+  const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
+  const flag = (name) => FLAGS[name]?.on === true;
   let meSent = ME;
   const rememberMe = (name) => {
     if (!MEAPI || !name || name === meSent) return;
@@ -588,8 +592,34 @@ import { zoomWords } from '../lib/zoom.ts';
     w.append(before, el('span', { class: 'mn', 'aria-hidden': 'true' }, `(${key})`), after);
     return w;
   };
+  // What this lab is trying, at the foot of the ⋯ menu: one switch a flag, under a heading of their own. Only this
+  // computer sees them — a guest reads the page, they don't decide what labit is trying — and switching one writes it
+  // into the project's labit.json, so the agent sees the same thing.
+  let tryingMade = null;
+  const tryingBits = () => {
+    if (tryingMade) return tryingMade; // the bar is placed again and again; these are made once
+    const names = Object.keys(FLAGS);
+    if (!names.length || !adminToken || !FLAGSAPI) return (tryingMade = []);
+    const head = el('div', { class: 'trying-head' }, 'trying');
+    const rows = names.map((name) => {
+      // el() takes one child, so the box and the words are appended.
+      const b = el('button', { class: 'trying', type: 'button', role: 'switch', 'aria-checked': String(flag(name)) });
+      b.append(el('span', { class: 'box', 'aria-hidden': 'true' }, flag(name) ? '☑' : '☐'), FLAGS[name].name);
+      b.addEventListener('click', async () => {
+        const on = !flag(name);
+        FLAGS[name].on = on; // the page is about to come back with the new tag; this keeps the tick honest meanwhile
+        b.setAttribute('aria-checked', String(on));
+        b.querySelector('.box').textContent = on ? '☑' : '☐';
+        try {
+          await fetch(FLAGSAPI, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: name, on }) });
+        } catch {}
+      });
+      return b;
+    });
+    return (tryingMade = [head, ...rows]);
+  };
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn] : [];
+    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits()] : [];
     for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
@@ -669,6 +699,23 @@ import { zoomWords } from '../lib/zoom.ts';
   const repliesOf = (id) => S.comments.filter((c) => c.parent === id);
   // Pins show who left them: the first letter of the name.
   const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
+  // A pin the agent left wears labit's own mark — the same one the bar shows while an agent listens — instead of a
+  // letter, so you can tell at a glance across a page who asked (flag: agentPins).
+  const agentMark = () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 64 64');
+    svg.setAttribute('class', 'agentmark');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML =
+      '<g transform="translate(-1 -.5)" fill="currentColor">' +
+      '<path d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
+      '<path d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
+      '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
+      '<circle cx="31" cy="45" r="6.2" fill="var(--_bg)"/></g>';
+    return svg;
+  };
+  // An agent's own comment carries the session it was written in; a person's carries where they wrote it from.
+  const byAgent = (c) => Boolean(c.session) || c.from === 'agent';
   // Where the page's own content ends (not the pins' layer): see inPage().
   const contentEnd = () => {
     inPage(0);
@@ -780,7 +827,7 @@ import { zoomWords } from '../lib/zoom.ts';
           // Its state in words too (the ring, the tick and the new dot are only seen).
           'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : c.anchor?.zoom ? `zoom ${c.anchor.zoom}` : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}${moved ? ', moved' : ''}`,
         },
-        /^go$/i.test(c.text.trim()) ? 'go' : state === 'done' || c.resolved ? '✓' : c.anchor?.zoom ? zoomIcon(String(c.anchor.zoom).startsWith('in') ? 'in' : 'out') : initial(c.name),
+        /^go$/i.test(c.text.trim()) ? 'go' : state === 'done' || c.resolved ? '✓' : c.anchor?.zoom ? zoomIcon(String(c.anchor.zoom).startsWith('in') ? 'in' : 'out') : flag('agentPins') && byAgent(c) ? agentMark() : initial(c.name),
       );
       // Its face changed since the last drawing (the agent took it, it's done, something new in it): it eases into the
       // new one and the ring fades in or out, instead of a cut (see .swap in styles.css).

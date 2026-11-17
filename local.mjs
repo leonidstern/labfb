@@ -91,7 +91,8 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
 const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite', 'zoom', 'mcp', 'settings'];
-const { loadSettings, changedShortcuts, savePersonal } = await import('./lib/settings.ts');
+const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
+const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
   proxy: opts.proxy !== undefined ? String(opts.proxy) : undefined,
@@ -117,7 +118,10 @@ for (const p of SETTINGS.problems) console.error(`[labit] ${p}`);
 if (pos[0] === 'settings') {
   const changed = changedShortcuts(SET.shortcuts);
   const show = (k, v) =>
-    k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults') : k === 'zoom' ? v.skill || 'the built-in skill' : String(v === '' ? '(none)' : v);
+    k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
+      : k === 'zoom' ? v.skill || 'the built-in skill'
+      : k === 'flags' ? (flagsOn(v).join(', ') || 'none on')
+      : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
   const src = (f) => f.split(' + ').map((x) => (x === SETTINGS.files.project ? 'labit.json' : x === SETTINGS.files.personal ? 'your settings' : x)).join(' + ');
   console.log(`Project: ${SETTINGS.files.project ? home(SETTINGS.files.project) : `no labit.json in ${home(HERE)} or above`}\nYours:   ${home(SETTINGS.files.personal)}${fs.existsSync(SETTINGS.files.personal) ? '' : ' (not made yet)'}\n`);
@@ -1003,10 +1007,17 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
+// What is being tried in this lab: every flag and its state, so the ⋯ menu can show them all and switch them.
+// The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
+// in one of them would end the attribute halfway. & and < go too, so the tag can't be talked out of being a tag.
+const flagsAttr = () => {
+  const json = JSON.stringify(Object.fromEntries(Object.entries(FLAGS).map(([k, f]) => [k, { name: f.name, on: SET.flags[k] === true }])));
+  return ` data-flags='${json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
+};
 const widget = (page, admin, me = '') =>
   `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}` +
+  `${KEYS_ATTR}${flagsAttr()}` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
@@ -1183,6 +1194,21 @@ const handler = async (req, res) => {
       const tail = who ? `?me=${encodeURIComponent(who)}` : '';
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) }));
+    }
+    // What is being tried in this lab: the ⋯ menu's switches. From this computer only -- a guest reads the page,
+    // they don't decide what labit is trying. The answer is written into the project's labit.json, so the agent sees
+    // the same thing, and every open page is told to come back for the new state.
+    if (pathname === '/_lab/flags') {
+      if (!isLoopback(req)) return res.writeHead(403).end('forbidden');
+      const { flag, on } = JSON.parse((await new Response(req).text()) || '{}');
+      if (!(flag in FLAGS)) return res.writeHead(400).end('no such flag');
+      const file = saveFlag(HERE, flag, Boolean(on));
+      SET.flags = { ...SET.flags, [flag]: Boolean(on) };
+      console.log(`[lab] trying ${flag}: ${on ? 'on' : 'off'} (${file})`);
+      version = { ...version, files: version.files + 1 }; // the pages come back with the new state in their tag
+      pagesChanged();
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify({ flags: SET.flags, file }));
     }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.
