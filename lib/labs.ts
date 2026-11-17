@@ -12,7 +12,7 @@ export const keyFor = (rel: string) =>
     [...Buffer.from(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join(''),
   ).join('/');
 
-export type Lab = { port: number; pid: number; root: string; name: string; proxy?: string | null };
+export type Lab = { port: number; pid: number; root: string; name: string; proxy?: string | null; version?: string; startedAt?: string };
 export const runningLabs = (): Lab[] =>
   (fs.existsSync(REGISTRY) ? fs.readdirSync(REGISTRY) : [])
     .filter((n) => n.endsWith('.json'))

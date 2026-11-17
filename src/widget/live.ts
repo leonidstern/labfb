@@ -37,18 +37,36 @@ export function startLive() {
       W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || W.S.listOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
-        let reloadTimer: any = 0;
-    const reload = () => {
-      // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
-      if (document.hidden) return void (reloadWhenShown = true);
-      if (busy()) {
-        if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
-        return;
-      }
+    let reloadTimer: any = 0;
+    // A held reload is invisible otherwise: the page sits old while you read, then jumps the moment you close the
+    // thread. This says one is ready, and takes it now when tapped.
+    const soon = document.createElement('button');
+    soon.className = 'soon';
+    soon.type = 'button';
+    soon.hidden = true;
+    soon.textContent = 'update waiting';
+    soon.title = 'Take the update now';
+    soon.addEventListener('click', () => {
+      clearTimeout(reloadTimer);
+      reloadTimer = 0;
+      now();
+    });
+    const now = () => {
       try {
         sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, list: W.S.listOpen, filter: W.S.filter, chat: W.S.chatOpen }));
       } catch {}
       location.reload();
+    };
+    const reload = () => {
+      // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
+      if (document.hidden) return void (reloadWhenShown = true);
+      if (busy()) {
+        soon.hidden = false;
+        if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
+        return;
+      }
+      soon.hidden = true;
+      now();
     };
     const who = document.createElement('a');
     who.className = 'listener';
@@ -66,6 +84,20 @@ export function startLive() {
     const lbl = who.querySelector('.lbl');
     who.hidden = true;
     W.root.querySelector('.left').prepend(who);
+    W.root.querySelector('.left').append(soon);
+    // Files a save can mean for this page: the page itself, anything it loads, and data it may fetch as it runs.
+    // Everything else -- a README, another page's script, the project's own server code -- leaves it alone.
+    const FETCHED = /\.(json|wasm|csv|tsv|xml|txt|map|woff2?)$/i;
+    const tidy = (u) => decodeURIComponent(u).replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '');
+    const usedHere = (p) => {
+      if (tidy(location.pathname) === tidy(p) || FETCHED.test(p)) return true;
+      for (const n of document.querySelectorAll('script[src], link[href], iframe[src], object[data], embed[src]')) {
+        if (W.host.contains(n)) continue;
+        const v = n.getAttribute('src') || n.getAttribute('href') || n.getAttribute('data');
+        if (v && samePath(v.split('#')[0], [p])) return true;
+      }
+      return false;
+    };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
     if (!document.querySelector('link[rel~="icon"]')) {
@@ -367,7 +399,11 @@ export function startLive() {
           morphPage();
           W.load();
         }
-        if (String(v.files) !== W.script.dataset.version) return reload();
+        if (String(v.files) !== W.script.dataset.version) {
+          // The lab says which files changed (no list: a burst too big to judge, so reload as before).
+          if (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere)) W.script.dataset.version = String(v.files);
+          else return reload();
+        }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
         if (hotAt !== null && v.hot !== hotAt) {
