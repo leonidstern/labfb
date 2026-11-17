@@ -4,11 +4,13 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Pins find their spot better after edits: searched in their own section first, text pins sit on their words, made-up ids/classes are ignored, a lost card among look-alikes shows as moved.
+- Pins find their spot better after edits: own section first; text pins sit on their words, found anywhere on the page if their element is gone; a pin between two blocks stays between them; made-up ids/classes ignored; a lost card among look-alikes shows as moved; a pin found elsewhere saves its new path.
 - `labit reply --done | --on-it | --question` sets the reply's intent; the thread closes from `--done` ("Done…" text still works).
-- `resolvedAt`; the agent's resolve records `agent`; archive a month after resolving. Comments carry `v: 1`, older ones upgrade on load.
+- `resolvedAt`; the agent's resolve records `agent`; archive a month after resolving. Comments carry `v: 2`, older ones upgrade on load: one `suggest: { text, state }`, no `anchor` on replies, wait marks in `.lab/handed.json` (~100 bytes less a comment).
 - The agent has its own key in `.lab/server.json`; page scripts can't act as the agent. Older CLIs can't either.
 - The 500 cap skips owner, agent and done threads. One lab per folder (`.lab/lock`). A new session gets whole threads. Side files are written whole.
+- A page file renamed or moved (`mv`) keeps its comments. `wait` says how to answer once per session, then in one line.
+- Shared API: a write can't undo a change made meanwhile; it marks the agent's answers itself; npm ships it in `dist/`, not `api/`.
 
 - Releases publish themselves: a version bump merged to main goes to npm as `latest` (tagged `vX.Y.Z`), and every merge to main goes out as `next` (0.6.3-main.41…). `npx @leonidstern/labit@latest` is the newest release; `@next` is main as it is now, for whoever wants each merge in their labs. From GitHub Actions with npm trusted publishing, no token.
 

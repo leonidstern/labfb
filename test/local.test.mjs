@@ -159,6 +159,8 @@ test('a reply goes as one line only to the session that has its thread; another 
   await post({ page: '/index', name: 'Leo', text: 'a bit more', parent: comment.id });
   const b = (await waiting).out;
   assert.match(b, /^## /m, 'the whole thread for a session that never had it');
+  assert.match(b, /^Answer each: .* reply <id> .* add --wait to the last one/m, 'how to answer, in full the first time a session hears');
+  assert.match(b, /^Write answers short/m);
   assert.match(b, /tighten the spacing under the title/);
   assert.match(b, /a bit more/);
   const again = run(['wait', '--timeout', '10'], as('sess-b'));
@@ -167,6 +169,9 @@ test('a reply goes as one line only to the session that has its thread; another 
   const b2 = (await again).out;
   assert.match(b2, new RegExp(`thread id ${comment.id} ".*": Leo · .* · id \\w+: and less on mobile`), 'now it has the thread: one line');
   assert.doesNotMatch(b2, /^## /m);
+  assert.doesNotMatch(b2, /^# New comments/m, 'no heading for comments when there are only replies');
+  assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --on-it \| --question\] \[--wait\]$/m, 'then one short line');
+  assert.doesNotMatch(b2, /Write answers short|run in /);
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/handed.json'), 'utf8'))[comment.id][1], 'sess-b', 'which session has the thread: kept beside the comments');
   const seen = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === comment.id);

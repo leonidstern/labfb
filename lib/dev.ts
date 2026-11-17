@@ -21,7 +21,6 @@ export async function apiOn(db: Db): Promise<any> {
     HDEL: (k, ...fs) => fs.filter((f) => db.get(k)?.delete(f)).length,
     HVALS: (k) => [...(db.get(k)?.values() ?? [])],
     HLEN: (k) => db.get(k)?.size ?? 0,
-    HEXISTS: (k, f) => (db.get(k)?.has(f) ? 1 : 0),
     INCR: (k) => { const v = (db.get(k) || 0) + 1; db.set(k, v); return v; },
     EXPIRE: () => 1,
     // The one script the API sends (its SWAP): set the field only if it still holds what was read.

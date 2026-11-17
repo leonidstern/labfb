@@ -893,7 +893,7 @@ function wordsOnPage(anchor, fresh = false) {
     }
   };
   const sure = pre || post || want.length > 15 ? all(pre + want + post) : [];
-  let best = sure.length === 1 ? spot(sure[0] + pre.length, want.length) : null;
+  let best: { left: number; top: number; moved?: boolean } | null | undefined = sure.length === 1 ? spot(sure[0] + pre.length, want.length) : null;
   const company = pre.length > 5 && post.length > 5 ? all(pre).map((i) => [i + pre.length, text.indexOf(post, i + pre.length) - i - pre.length]).filter(([, n]) => n > 0 && n < want.length * 2 + 20) : [];
   let near = 2 * innerHeight;
   for (const [i, n] of best ? [] : [...all(want).map((i) => [i, want.length]), ...company]) {

@@ -8,7 +8,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { INTENTS, upgrade, VERSION } from './_schema.mjs';
 
 const LAB_HOST = process.env.LAB_HOST || '';
-const MAX = { name: 60, text: 2000, path: 300, selector: 600, context: 400, perPage: 500 };
+const MAX = { name: 60, text: 2000, path: 300, selector: 600, perPage: 500 };
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -174,7 +174,6 @@ function cleanAnchor(a) {
     eh: int(a.eh), // the element's height then (a big container can tell it grew)
     time: sec(a.time),
     duration: sec(a.duration),
-    context: clean(a.context, MAX.context) || undefined, // older widget versions
     // Zoom (lib/zoom.ts): the nearest element with an id around the spot, and on a zoom its direction.
     block: /^[A-Za-z][\w:.-]{0,119}$/.test(a.block || '') ? a.block : undefined,
     zoom: a.zoom === 'in' || a.zoom === 'out' ? a.zoom : undefined,
@@ -305,14 +304,15 @@ function asText(path, comments, host) {
     if (a.chosen) lines.push(`chosen option: ${a.chosen}`);
     if (a.cssText) lines.push(`text added by CSS: ${a.cssText} (search the CSS for it)`);
     if (a.section) lines.push(`section: "${a.section}"`);
-    if (a.block) lines.push(`block: ${a.block}`);
+    // The block is said when "inside" above doesn't already say it, and on a zoom (which is about the block).
+    if (a.block && (a.zoom || a.inside !== `#${a.block}`)) lines.push(`block: ${a.block}`);
     if (a.zoom) lines.push(a.zoom === 'out' ? 'zoom: out, the bigger picture (not a change request: write one block that shows the bigger picture this block sits in; see the zoom skill)' : 'zoom: in, dive deeper (not a change request: write one block that goes deeper into this block; see the zoom skill)');
     if (a.zw) {
       lines.push(`type: area comment, ${a.docW}×${a.docH} px on screen`);
       lines.push(`area on element: ${pct(a.x)}–${pct(a.x + a.zw)} across, ${pct(a.y)}–${pct(a.y + a.zh)} down`);
       if (a.zoneText) lines.push(`text in area: "${a.zoneText}"`);
       if (a.zoneItems?.length) lines.push('in the area:', ...a.zoneItems.map((v) => `  - ${body(v)}`));
-    } else if (a.kind !== 'page') lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`);
+    } else if (a.kind !== 'page' && !(a.kind === 'text' && a.quote)) lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`); // not on words: they say where
     if (a.gapAbove || a.gapBelow) lines.push(`between: ${a.gapAbove || 'the top'} (above) and ${a.gapBelow || 'the end'} (below)`, `page y: ${a.docY} px`);
     if (a.scheme) lines.push(`colours: ${a.scheme}${a.background ? ` (background ${a.background})` : ''}`);
     if (a.width) lines.push(`viewport: ${a.width}${a.height ? `×${a.height}` : 'px wide'}${a.dpr ? ` @${a.dpr}x` : ''}`);
@@ -459,9 +459,8 @@ export async function POST(request) {
     name,
     text,
     createdAt: new Date().toISOString(),
-    // Only a thread is open or resolved; a reply has no such state.
-    ...(parent ? {} : { resolved: false }),
-    anchor: parent ? null : cleanAnchor(anchor),
+    // Only a thread is open or resolved, and only a thread has a spot; a reply has neither.
+    ...(parent ? {} : { resolved: false, anchor: cleanAnchor(anchor) }),
     // The message in the thread this one answers, when it isn't the first (shown as a quote).
     ...(parent && body.to ? { to: clean(body.to, 40) } : {}),
     // The agent's own words carry session (a local lab fills in which session); a person's never do.

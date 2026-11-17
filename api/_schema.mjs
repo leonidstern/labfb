@@ -11,6 +11,7 @@
 //     while it is only offered), where it was four (suggest, suggestDone, rule, ruleUndone). The marks of what a wait
 //     was handed (deliveredAt, deliveredTo, remindedAt) left the comment: a local lab keeps them in .lab/handed.json.
 //     A pin on a word from before quotes ("…before [word] after…" in anchor.text) has the word as anchor.quote.
+//     A reply has no anchor (it was null). An agent's session on a comment is id, name, agent, kind and model.
 export const VERSION = 2;
 export const INTENTS = ['done', 'working', 'question'];
 
@@ -19,11 +20,15 @@ export const INTENTS = ['done', 'working', 'question'];
 export const intentFromText = (text) => (/^done\b/i.test(String(text ?? '').trim()) ? 'done' : /^on it\b/i.test(String(text ?? '').trim()) ? 'working' : undefined);
 
 // handed: where a local lab collects the old hand-off marks, { id: [deliveredAt, deliveredTo, remindedAt] }.
+// What a comment keeps of the session that wrote it: who, not how to reach it (the link and resume command change, and
+// nothing reads them from a comment).
+export const slim = (s) => Object.fromEntries(Object.entries(s).filter(([k, v]) => v && k !== 'url' && k !== 'resume'));
 export function upgrade(record, handed) {
   if (!record || typeof record !== 'object' || (Number(record.v) || 0) >= VERSION) return record;
   const c = { ...record, v: VERSION };
   if (c.parent) {
     if (c.resolved === false) delete c.resolved;
+    if (c.anchor === null) delete c.anchor;
     // An agent's answer (it carries session) from before intent, or from before the lab filled it in from the words.
     if (c.session && !c.intent) {
       const intent = intentFromText(c.text);
@@ -34,6 +39,7 @@ export function upgrade(record, handed) {
   if (typeof text === 'string') c.suggest = { text, ...(c.rule ? { state: c.ruleUndone ? 'undone' : 'kept' } : c.suggestDone === 'no' ? { state: 'no' } : {}) };
   if (handed && c.deliveredAt) handed[c.id] = [c.deliveredAt, c.deliveredTo ?? null, ...(c.remindedAt ? [c.remindedAt] : [])];
   for (const k of ['suggestDone', 'rule', 'ruleUndone', 'deliveredAt', 'deliveredTo', 'remindedAt']) delete c[k];
+  if (c.session) c.session = slim(c.session);
   const a = c.anchor;
   const word = a && !a.quote && /^(?:element|text|)$/.test(a.kind || '') && /^(…?)(.*?)\[([^\]]+)\](.*?)(…?)$/s.exec(a.text || '');
   if (word && (word[1] || word[5])) c.anchor = { ...a, kind: 'text', quote: { exact: word[3], prefix: word[2].slice(-40), suffix: word[4].slice(0, 40) } };
