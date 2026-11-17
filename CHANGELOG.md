@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- A done pin is a solid green ✓, full size, even when the page changed under it: faded and small is how a pin that lost its spot looks, and done pins looked lost.
+
 ## 0.6.2 · 2026-11-17
 
 - Things being tried arrive as flags: off unless somebody turns one on, tried in a real lab, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). `flags` in `labit.json` or your own settings, switches under a **trying** heading in the ⋯ menu (this computer only), `labit settings` lists them, and a switch writes the project's `labit.json` so the agent sees the same thing. First two: `liveUrl` (a lab in front of a live page) and `agentPins` (a pin the agent left wears labit's own mark, the one the bar shows while an agent listens).
