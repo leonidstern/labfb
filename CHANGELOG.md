@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+## 0.6.2 · 2026-11-17
+
 - Things being tried arrive as flags: off unless somebody turns one on, tried in a real lab, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). `flags` in `labit.json` or your own settings, switches under a **trying** heading in the ⋯ menu (this computer only), `labit settings` lists them, and a switch writes the project's `labit.json` so the agent sees the same thing. First two: `liveUrl` (a lab in front of a live page) and `agentPins` (a pin the agent left wears labit's own mark, the one the bar shows while an agent listens).
 - A wait can no longer hold someone's turn open: `labit wait` (and `reply --wait`) sits for the full timeout only when the agent says it put the command in the background, with `--bg`. Without that it ends after a minute and says why. A wait left in an agent's foreground kept the person from saying anything to their agent until it ended, and the message they sent to reach them killed it; from inside the process a foreground run looks exactly like a background one, so `--bg` is the agent's word for it. At a terminal (a tty) nothing changes.
 - The bar's counts (chat, new) are green when something is new, grey at 0.
