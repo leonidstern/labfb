@@ -238,7 +238,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (!words.length) die(`Reply text is missing: ${CMD} reply <id> "what you did"`);
       const who = process.env.LAB_AGENT_NAME || session.agent;
       const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
-      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' ') });
+      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}) });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
     }
     if (cmd === 'resolve' || opts.resolve) {

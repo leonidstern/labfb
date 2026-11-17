@@ -15,7 +15,7 @@ export function bindChat(w: unknown) {
 // its own when it doesn't. Smaller than the words, it sits a touch below their line: a stamp on the bubble.
 export const stamped = (bubble, stamp) => {
   const room = stamp.cloneNode(true);
-  room.className = 'stamp-room';
+  room.classList.replace('stamp', 'stamp-room'); // its other classes stay, so it keeps the stamp's width
   room.setAttribute('aria-hidden', 'true');
   for (const n of room.querySelectorAll('[role]')) n.removeAttribute('role');
   const last = [...bubble.children].reverse().find((n) => n.classList?.contains('p'));
