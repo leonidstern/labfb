@@ -10,17 +10,17 @@ import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-me-')); // nobody's real ~/.config
-const ME = path.join(HOME, 'labit', 'me.json');
+const ME = path.join(HOME, 'labit', 'settings.json'); // the setting `name` in your own settings (me.json before 17 Nov)
 const labs = [];
 const dirs = [HOME];
 
-const startLab = async (port) => {
+const startLab = async (port, home = HOME) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-lab-'));
   dirs.push(dir);
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1>Hello</h1>');
   const server = spawn(process.execPath, [LAB, '.', '--no-open', '--new', '--port', String(port)], {
     cwd: dir,
-    env: { ...process.env, XDG_CONFIG_HOME: HOME },
+    env: { ...process.env, XDG_CONFIG_HOME: home },
   });
   labs.push(server);
   for (let i = 0; i < 60; i++) {
@@ -70,4 +70,13 @@ test('an empty or oversized name is refused, and the kept one stands', async () 
     assert.equal(res.status, 400, String(name));
   }
   assert.equal(JSON.parse(fs.readFileSync(ME, 'utf8')).name, 'leo');
+});
+
+test('a name kept in the old me.json is still known', async () => {
+  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-me-old-'));
+  dirs.push(old);
+  fs.mkdirSync(path.join(old, 'labit'));
+  fs.writeFileSync(path.join(old, 'labit', 'me.json'), JSON.stringify({ name: 'ada' }));
+  const { html } = await startLab(4713, old);
+  assert.match(html, /data-me="ada"/);
 });

@@ -41,9 +41,9 @@ export function drawChat() {
     // so its blink or twitch isn't restarted every time the count is redrawn.
     const mark = W.chatBtn.querySelector('.mark');
     while (W.chatBtn.lastChild && W.chatBtn.lastChild !== mark) W.chatBtn.lastChild.remove();
-    W.chatBtn.append(W.coarse ? 'chat' : W.keyWord('', 'c', 'hat'), W.el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
+    W.chatBtn.append(W.coarse ? 'chat' : W.keyLabel('chat', W.KEYS.chat), W.el('b', { class: `cnt${fresh ? '' : ' zero'}` }, String(fresh)));
     W.chatBtn.setAttribute('aria-label', `chat, ${fresh} new`);
-    W.chatBtn.setAttribute('aria-keyshortcuts', 'c');
+    W.chatBtn.setAttribute('aria-keyshortcuts', W.KEYS.chat);
   }
   W.chatBtn.classList.toggle('has-new', fresh > 0);
   W.placeBar(); // the chat button may have just shown: the segment lines follow
