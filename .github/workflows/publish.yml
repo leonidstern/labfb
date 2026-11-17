@@ -1,0 +1,58 @@
+# Publishes labit to npm by itself: whenever main's package.json has a version npm doesn't have yet, so
+# `npx @leonidstern/labit@latest` (what the skill and the MCP setup run) is never behind a release on main.
+# Merges that don't bump the version publish nothing.
+#
+# No token: npm trusted publishing (OIDC). One-time setup on npmjs.com, package settings → Trusted publisher →
+# GitHub Actions, repository leonidstern/labit, workflow publish.yml. Each version also gets a provenance statement.
+name: publish
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json, .github/workflows/publish.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write # the vX.Y.Z tag
+  id-token: write # trusted publishing
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Is this version on npm yet?
+        id: check
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm: nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "publish=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.publish == '1'
+        run: npm test
+
+      # Trusted publishing needs npm 11.5.1 or newer.
+      - if: steps.check.outputs.publish == '1'
+        run: npx --yes npm@11.6.2 publish --access public --provenance
+
+      - if: steps.check.outputs.publish == '1'
+        env:
+          V: v${{ steps.check.outputs.version }}
+        run: |
+          git tag "$V" && git push origin "$V" || echo "tag $V already exists"
+          echo "Published @leonidstern/labit ${V#v}: npx @leonidstern/labit@latest" >> "$GITHUB_STEP_SUMMARY"
