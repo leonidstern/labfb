@@ -2,7 +2,7 @@
 // wait, reply, resolve, invite. Loaded by local.mjs only for these, so starting a lab never reads it.
 import fs from 'node:fs';
 import path from 'node:path';
-import { listenPages, type Opts } from './args.ts';
+import { FOREGROUND_CAP, listenPages, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
 import { runningLabs, type Lab } from './labs.ts';
 import { findLab, labCall, WAIT_SAID } from './labcall.ts';
@@ -175,8 +175,17 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
 
     if (cmd === 'wait') {
-      const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages(opts, true) });
+      // A wait sits open for as long as it is allowed to; in an agent's foreground that is the person's whole turn,
+      // so without --bg it is held to a minute. See waitSeconds in args.ts for why it can't just be detected.
+      const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
+      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true) });
       console.log(WAIT_SAID[out.status] ?? out.text);
+      if (capped && out.status === 204)
+        console.log(
+          `\nThat wait was held to ${FOREGROUND_CAP} seconds. Run it in the background (your app's own way of doing that) and ` +
+            'add --bg for the full wait: in the foreground this command holds your turn open, and the person cannot ' +
+            'say anything to you until it ends.',
+        );
       process.exit(out.status < 300 || out.status === 409 || out.status === 410 ? 0 : 1);
     }
 
@@ -238,8 +247,11 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     console.log(`${cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
     // --wait: answer and listen again in one command (one round trip less per pin).
     if (opts.wait) {
-      const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages(opts) });
+      const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
+      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts) });
       console.log(WAIT_SAID[out.status] ?? out.text);
+      if (capped && out.status === 204)
+        console.log(`\nThat wait was held to ${FOREGROUND_CAP} seconds: run the command in the background and add --bg for the full wait.`);
     }
     process.exit(0);
   }

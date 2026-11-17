@@ -53,11 +53,13 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       The link carries a name — the one you give, or yours — so the phone that opens it starts out named.
 
 For the agent, from the project (any folder under it):
-  labit wait [--timeout 1500] [--pages /a,/b] [--name <project>] [--model <your model>]
+  labit wait [--bg] [--timeout 1500] [--pages /a,/b] [--name <project>] [--model <your model>]
       --model: the page says "talking to Claude · Sonnet 5.5" (default: LAB_MODEL or ANTHROPIC_MODEL, if set).
       --pages: only these pages' pins, so two sessions can share one lab (one per page). A wait without it gets every
       page nobody else is listening on.
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
+      --bg says you did: only then does it sit for the full timeout. Without it a wait ends after a minute, because a
+      wait left in the foreground holds the person's turn open and they can't say anything to you until it ends.
       An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
   labit reply <id> "what you did" [--resolve] [--wait] [--page /path]
