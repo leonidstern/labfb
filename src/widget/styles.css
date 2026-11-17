@@ -347,6 +347,9 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .more-menu button.trying .box { width: 1em; color: var(--_muted); }
   .more-menu button.trying[aria-checked='true'] .box { color: var(--_fg); }
   .more-menu kbd { margin: 0; }
+  /* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
+  .more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
+    color: var(--_muted); user-select: text; overflow-wrap: anywhere; }
 }
 kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
 .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);

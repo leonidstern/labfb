@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The ⋯ menu ends with which labit the lab runs (`labit 0.6.2`), and for a local edge build what it merged on top of main (`LABIT_EDGE`, e.g. `edge: main + #89 #91`), so labs on different builds can be told apart at a glance.
 - `labit pin <selector> "text" [--page /path] [--at x,y]`: the agent leaves its own pin on a spot of the page, for suggestions and questions, one pin per point, numbered, instead of a list in a reply. It prints the pin's id; `--page` takes the page's path, file or address (default: the lab's only page), `--at` where on the element (default its middle). Also an MCP tool, `pin`.
 - Zoom is out for now: no zoom pins, no `labit zoom`, no `zoom` setting, no zoom skill. The keys are 1 comment, 2 go, 3 pointer again (pointer was 4). Zoom pins saved earlier show as ordinary comments, and a `zoom` left in a `labit.json` or a `shortcuts.zoom` key is named when the lab starts and ignored. `#id` links in messages stay.
 - Pins find their spot better after edits: own section first; text pins sit on their words (found anywhere on the page if the element is gone); gap pins stay between their blocks; made-up ids/classes ignored; a lost look-alike shows as moved; a pin found elsewhere saves its new path.
