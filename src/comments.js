@@ -35,6 +35,7 @@ import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
+import { holdWhileOpen } from './widget/hold.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -801,6 +802,7 @@ import { bindLive, startLive } from './widget/live.ts';
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
     }
     document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
+    holdWhileOpen(host.hasAttribute('data-sheet')); // a dev server's reload waits until the chat, thread or list is closed
     backCloses();
     S.refit();
     setPinning();
