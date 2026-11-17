@@ -52,10 +52,20 @@ async function change(run, key, id, to) {
     const was = await run('HGET', key, id);
     if (!was) return null;
     const next = to(upgrade(JSON.parse(was)));
-    if (!next || (await run('EVAL', SWAP, 1, key, id, was, JSON.stringify(next)))) return next;
+    if (!next) return next;
+    if (await run('EVAL', SWAP, 1, key, id, was, JSON.stringify(next))) {
+      await bump(run, key);
+      return next;
+    }
   }
   throw new Error('busy');
 }
+
+// Each page has a revision, counted up by every change to its comments (lab:rev:<page>). An open page asks for it
+// every few seconds (GET ?page=…&rev, one small read) and loads the comments again only when it moved: so on the web,
+// where there is no live stream, a reply or a resolve from someone else shows within seconds, not on the next visit.
+const revKey = (key) => key.replace(/^lab:comments:/, 'lab:rev:');
+const bump = (run, key) => run('INCR', revKey(key));
 
 // Only pages proxied under <lab host>/<slug>/... can carry comments.
 function pagePath(raw) {
@@ -202,7 +212,9 @@ export async function GET(request) {
   const path = pagePath(new URL(request.url).searchParams.get('page'));
   if (!path) return json({ error: 'bad page' }, 400);
 
-  const values = (await run('HVALS', `lab:comments:${path}`)) || [];
+  const key = `lab:comments:${path}`;
+  if (new URL(request.url).searchParams.has('rev')) return json({ rev: Number(await run('GET', revKey(key))) || 0 });
+  const [values, rev] = (await run.all(['HVALS', key], ['GET', revKey(key)])).map((v, i) => (i ? Number(v) || 0 : v || []));
   const comments = values
     .map((v) => {
       try {
@@ -214,7 +226,7 @@ export async function GET(request) {
     .filter(Boolean)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (new URL(request.url).searchParams.get('format') === 'text') return text(asText(path, comments, hostOf(request)));
-  return json({ comments, admin: isAdmin(request, path) });
+  return json({ comments, admin: isAdmin(request, path), rev });
 }
 
 const text = (body) =>
@@ -363,6 +375,7 @@ export async function POST(request) {
       const all = ((await run('HVALS', key)) || []).map((v) => upgrade(JSON.parse(v)));
       if (!all.some((c) => c.id === id)) return json({ error: 'not found' }, 404);
       await run('HDEL', key, id, ...all.filter((c) => c.parent === id).map((c) => c.id));
+      await bump(run, key);
       return json({ ok: true });
     }
     // Who resolved it: the agent (an admin request the lab marks as the agent's, as labit resolve and --resolve are), an
@@ -470,6 +483,7 @@ export async function POST(request) {
     ...(parent && INTENTS.includes(body.intent) && agent ? { intent: body.intent } : {}),
   };
   await run('HSET', key, comment.id, JSON.stringify(comment));
+  await bump(run, key);
   if (thread?.resolved && (limited || says === '0')) await change(run, key, parent, (t) => ({ ...t, resolved: false, resolvedBy: undefined, resolvedAt: undefined }));
   if (nonceKey) await run('SET', nonceKey, comment.id, 'EX', 900);
   const edit = parent ? null : editKey(path, comment.id);

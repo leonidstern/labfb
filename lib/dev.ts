@@ -25,7 +25,7 @@ export async function apiOn(db: Db): Promise<any> {
     EXPIRE: () => 1,
     // The one script the API sends (its SWAP): set the field only if it still holds what was read.
     EVAL: (_script, _keys, k, f, was, next) => (db.get(k)?.get(f) === was ? (db.get(k).set(f, next), 1) : 0),
-    GET: (k) => (typeof db.get(k) === 'string' ? db.get(k) : null),
+    GET: (k) => (['string', 'number'].includes(typeof db.get(k)) ? String(db.get(k)) : null),
     SET: (k, v, ex, sec) => {
       db.set(k, String(v));
       if (/^ex$/i.test(ex || '')) setTimeout(() => db.delete(k), Number(sec) * 1000).unref();
