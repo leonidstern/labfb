@@ -70,7 +70,7 @@ For the agent, from the project (any folder under it):
       Answer a zoom: <file> holds one element, the deeper look or the bigger picture. The lab places it on the page.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
-page), archive/ (done threads with nothing new in 30 days), server.json (port, key, session; owner-only), seen.
+page), archive/ (done threads with nothing new in 30 days), server.json (port, keys, session; owner-only), seen.
 Delete .lab to start over.`;
 
 // ---------- arguments ----------
@@ -244,6 +244,10 @@ const TOKEN = (() => {
   fs.writeFileSync(KEY, k, { mode: 0o600 });
   return k;
 })();
+// The agent's key: new for each run, kept only in .lab/server.json (owner-only), never in a page. The browser on this
+// computer holds TOKEN (data-admin, for resolving, moving and deleting); a script on a page can read that, so it is not
+// enough to listen as the agent, take its pins or speak as it (wait, invite, zoom, a reply marked as the agent's).
+const AGENT_KEY = randomBytes(16).toString('hex');
 process.env.LAB_HOST = 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
@@ -706,7 +710,11 @@ const redeem = (req, res, code, me = '', to = '') => {
   if (NAME_OK(me)) cookies.push(`lab_me=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
   return res.writeHead(302, { location: landing(to), 'set-cookie': cookies }).end();
 };
-const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
+const isAgent = (req) => {
+  const sent = Buffer.from(String(req.headers['x-lab-admin'] || ''));
+  const key = Buffer.from(AGENT_KEY);
+  return req.headers['x-lab-agent'] === '1' && sent.length === key.length && timingSafeEqual(sent, key);
+};
 const sessionFrom = (req) => {
   try {
     const s = JSON.parse(decodeURIComponent(req.headers['x-lab-session'] || ''));
@@ -745,7 +753,7 @@ const register = () => {
     writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: path.basename(ROOT), proxy: PROXY?.origin || null, startedAt: new Date().toISOString() }, null, 2));
   } catch {}
 };
-const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
+const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
 const clients = new Set();
 // A beat every 15 s on every live connection: a page that hears nothing for longer knows its connection stalled (the
 // laptop slept, the wifi changed) and connects again at once instead of waiting for the browser to notice.
@@ -1406,7 +1414,8 @@ const handler = async (req, res) => {
       const kept = listing && cachedList(listPage, kind);
       if (kept) return res.writeHead(kept.status, kept.headers).end(kept.out);
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
-      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost' });
+      // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does).
+      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost', ...(agent ? { 'x-lab-admin': TOKEN } : {}) });
       const text = await out.text();
       if (req.method === 'POST' && out.ok) {
         const { comment } = JSON.parse(text);

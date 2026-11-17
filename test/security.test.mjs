@@ -150,6 +150,31 @@ test("the agent's endpoints need the lab's key", async () => {
   assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: { 'content-type': 'application/json', origin: `http://localhost:${PORT}` } })).status, 403);
 });
 
+test("the key a page carries (data-admin) is not the agent's: it can't listen, invite, zoom or speak as the agent", async () => {
+  const page = await raw('/', { headers: { accept: 'text/html' } });
+  const browserKey = page.text.match(/data-admin="([0-9a-f]+)"/)?.[1];
+  assert.ok(browserKey, 'this computer gets the browser key');
+  const { agent, token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  assert.equal(token, browserKey);
+  assert.match(agent, /^[0-9a-f]{32}$/);
+  assert.notEqual(agent, browserKey);
+  assert.equal((fs.statSync(path.join(DIR, '.lab/server.json')).mode & 0o777).toString(8), '600');
+  const as = (key) => ({ 'content-type': 'application/json', origin: `http://localhost:${PORT}`, 'x-lab-agent': '1', 'x-lab-admin': key });
+  assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: as(browserKey) })).status, 403, 'wait');
+  assert.equal((await raw('/_lab/invite', { method: 'POST', body: '{}', headers: as(browserKey) })).status, 403, 'invite');
+  assert.equal((await raw('/_lab/api/zoom', { method: 'POST', body: '{}', headers: as(browserKey) })).status, 403, 'zoom');
+  const post = async (key, body) => JSON.parse((await raw('/_lab/api/comments', { method: 'POST', body: JSON.stringify(body), headers: as(key) })).text);
+  const { comment } = await post(browserKey, { page: '/index', name: 'Page script', text: 'hi', anchor: { selector: 'h1' } });
+  const stored = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/comments/index.json'), 'utf8')).comments[comment.id];
+  assert.equal(stored.session, undefined, 'not marked as the agent');
+  assert.equal(stored.from, 'this computer');
+  // The agent's key is the owner's in the API: it resolves, as the browser does.
+  const reply = await post(agent, { page: '/index', name: 'Claude', text: 'on it', parent: comment.id });
+  assert.ok(reply.comment, JSON.stringify(reply));
+  assert.equal((await post(agent, { page: '/index', action: 'resolve', id: comment.id })).comment?.resolved, true);
+  assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: as(agent) })).status, 204, 'the agent listens');
+});
+
 test("whoever started a thread may resolve and reopen it with its key, not delete it or touch another", async () => {
   const mine = await pin('/anna/site/own');
   const other = await pin('/anna/site/own');
@@ -177,11 +202,11 @@ after(() => {
   wifi.kill();
   fs.rmSync(WDIR, { recursive: true, force: true });
 });
-// The lab's own key, as `labit invite` reads it: the agent on this computer is the only one who may mint a link.
+// The agent's key, as `labit invite` reads it: the agent on this computer is the only one who may mint a link.
 const wifiToken = async () => {
   for (let i = 0; i < 50; i++) {
     try {
-      return JSON.parse(fs.readFileSync(path.join(WDIR, '.lab/server.json'), 'utf8')).token;
+      return JSON.parse(fs.readFileSync(path.join(WDIR, '.lab/server.json'), 'utf8')).agent;
     } catch {
       await new Promise((r) => setTimeout(r, 100));
     }
@@ -213,7 +238,7 @@ const invite = async () => {
 test('a link is minted only for the agent on this computer, and only on a --wifi lab', async () => {
   for (let i = 0; i < 50 && (await wraw('/')).status !== 200; i++) await new Promise((r) => setTimeout(r, 100));
   assert.equal((await wraw('/_lab/invite', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } })).status, 403);
-  assert.equal((await raw('/_lab/invite', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json', 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).token } })).status, 404, 'a lab without --wifi has nobody to invite');
+  assert.equal((await raw('/_lab/invite', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json', 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent } })).status, 404, 'a lab without --wifi has nobody to invite');
   const links = await invite();
   assert.ok(links.length && links.every((l) => /^http:\/\/[^/]+:\d+\/_lab\/j\/[0-9a-f]{32}$/.test(l)), links.join(' '));
 });
