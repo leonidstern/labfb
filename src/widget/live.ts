@@ -274,7 +274,6 @@ export function startLive() {
             if (Math.abs(moved) > 1) scrollBy(0, moved);
           }
           W.reflow();
-          W.drawZoom(); // a zoom asked for here may just have been placed: the page goes to it
         };
         // An error inside the cross-fade would go unseen: any failure falls back to a reload.
         const safe = () => {

@@ -30,11 +30,11 @@ export function drawList() {
   const all = W.threads();
   W.listBtn.hidden = !W.S.on || (!W.coarse && !all.length && !W.held().length); // on phones it carries the agent's light
   W.goBtn.hidden = !W.S.on;
-  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, 'go'), W.el('kbd', { 'aria-hidden': 'true' }, [W.KEYS.comment, W.KEYS.go, W.KEYS.zoom, W.KEYS.pointer].join('/')));
+  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, 'go'), W.el('kbd', { 'aria-hidden': 'true' }, [W.KEYS.comment, W.KEYS.go, W.KEYS.pointer].join('/')));
   W.goFace();
-  W.goBtn.classList.toggle('on', (W.S.goMode || Boolean(W.S.zoomMode)) && !W.S.cursorMode);
+  W.goBtn.classList.toggle('on', W.S.goMode && !W.S.cursorMode);
   W.goBtn.classList.toggle('cursor', W.S.cursorMode);
-  W.goBtn.setAttribute('aria-pressed', String((W.S.goMode || Boolean(W.S.zoomMode)) && !W.S.cursorMode));
+  W.goBtn.setAttribute('aria-pressed', String(W.S.goMode && !W.S.cursorMode));
   const freshAll = all.filter((c) => !W.isPage(c)).reduce((n, c) => n + W.unread(c).length, 0); // a new message in a done thread counts too
   W.listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), W.el('kbd', { 'aria-hidden': 'true' }, 'l'));
   // ‹ › around it step through the new ones, top to bottom of the page, without opening the list.
