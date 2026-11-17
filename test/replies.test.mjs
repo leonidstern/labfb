@@ -59,8 +59,8 @@ test('the agent can offer a rule on its own; keep saves it, no does not; a perso
   assert.match(rules, /^- Say where to see what you built, with a link\.$/m);
   assert.doesNotMatch(rules, /Never mind/);
   const after = await thread();
-  assert.equal(after.find((c) => c.id === keep.id).rule, 'Say where to see what you built, with a link.', 'kept: it shows as a rule, with undo');
-  assert.equal(after.find((c) => c.id === no.id).suggestDone, 'no');
+  assert.deepEqual(after.find((c) => c.id === keep.id).suggest, { text: 'Say where to see what you built, with a link.', state: 'kept' }, 'kept: it shows as a rule, with undo');
+  assert.equal(after.find((c) => c.id === no.id).suggest.state, 'no');
 
   // Every handover ends with the rules; undo takes one back out.
   await post({ name: 'leo', text: 'and the colour?', anchor: { kind: 'element', selector: '#x', x: 0.2, y: 0.2 } });

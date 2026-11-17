@@ -8,7 +8,6 @@
   },
   "files": [
     "dist/",
-    "api/",
     "public/_lab/comments.js",
     "public/_lab/lab.css",
     "public/_lab/favicon.svg",

@@ -62,7 +62,7 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       });
     });
   // The command line's own hint ("Answer each: … reply …") becomes the tools to use here.
-  const forTools = (t: string) => t.replace(/^Answer each: .*$/m, 'Answer each with the `reply` tool (id, text, resolve: true when done), then call `wait` again.');
+  const forTools = (t: string) => t.replace(/^Answer each: .*$/m, 'Answer each with the `reply` tool (id, text, intent: done when it is done, question when you need the person), then call `wait` again.');
   const text = (t: string, isError = false): ToolResult => ({ content: [{ type: 'text', text: forTools(t).trim() || '(nothing)' }], ...(isError ? { isError } : {}) });
   const tools = [
     {
@@ -76,12 +76,13 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     {
       name: 'reply',
       title: 'Answer on a pin',
-      description: `Answer on a pin in the local lab, by the id \`comments\` shows. resolve: true closes the thread. ${WRITE_SHORT}`,
+      description: `Answer on a pin in the local lab, by the id \`comments\` shows. intent says what the answer is: done (the thread closes), working (you're on it) or question (you need the person). resolve: true closes the thread. ${WRITE_SHORT}`,
       inputSchema: {
         type: 'object',
         properties: {
           id: { type: 'string', description: 'The comment id' },
-          text: { type: 'string', description: 'What you did, e.g. "Done: the title is red"' },
+          text: { type: 'string', description: 'What you did, e.g. "The title is red"' },
+          intent: { type: 'string', enum: ['done', 'working', 'question'], description: 'done: the ask is done; working: you are on it; question: you need the person' },
           resolve: { type: 'boolean', description: 'Close the thread' },
           dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' },
         },
@@ -159,8 +160,10 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       if (typeof a.id !== 'string' || !a.id.trim()) return text('`id` is required: the comment id that `comments` shows.', true);
       if (typeof a.text !== 'string' || !a.text.trim()) return text('`text` is required: what you did.', true);
       if (a.resolve !== undefined && typeof a.resolve !== 'boolean') return text('`resolve` must be true or false.', true);
+      const flag = { done: '--done', working: '--on-it', question: '--question' }[a.intent];
+      if (a.intent !== undefined && !flag) return text('`intent` must be done, working or question.', true);
       if (a.dir !== undefined && typeof a.dir !== 'string') return text('`dir` must be a folder path.', true);
-      const r = await run(['reply', a.id, a.text, ...(a.resolve ? ['--resolve'] : [])], 30000, project(a));
+      const r = await run(['reply', a.id, a.text, ...(flag ? [flag] : []), ...(a.resolve ? ['--resolve'] : [])], 30000, project(a));
       return text(r.text, !r.ok);
     }
     if (name === 'pin') {
