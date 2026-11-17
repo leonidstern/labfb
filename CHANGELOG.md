@@ -4,8 +4,9 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- A go pin is a pin like any other: once it is done or resolved it wears the tick, where before it said "go" for ever and a finished one looked unfinished. Checked in both engines by the browser job.
+## 0.6.2 · 2026-11-17
 
+- A go pin is a pin like any other: once it is done or resolved it wears the tick, where before it said "go" for ever and a finished one looked unfinished. Checked in both engines by the browser job.
 - A done pin is a solid green ✓, full size, even when the page changed under it: faded and small is how a pin that lost its spot looks, and done pins looked lost.
 - Rules from how you reply: when a reply is about how the agent answered (too long, unclear, didn't show where), the agent offers a rule with its answer (`labit reply <id> "…" --suggest-rule "…"`) and your message shows **rule?** where its time was. One tap keeps it, ignoring it is a no, and undo on the answer takes it back. Rules live in `~/.config/labit/replies.md` (yours, every project, every agent; the same rule again counts again) and the 15 kept most go to each session once, and again when they change.
 - Threads: an answer to a later message in the thread quotes it, as the chat does; a plain "go" the agent resolves without a word shows one green ✓ on your message; an open thread stays at its newest message while it gets shorter (the keyboard) or an answer comes in, as the chat does, and goes to it when you tap the reply box.
@@ -13,9 +14,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Phones: the quoted words of a comment are lit, not half the page. Safari painted that green over whole blocks of text that can't be selected, and with comments on the page was unselectable all the time; now only while a finger is down (the hold still never turns into a text selection).
 - Phones: after a new comment is sent or dropped, the page glides back to where you were before the hold moved it up to keep the pin above the keyboard (once the card has landed in its pin; not if you scrolled yourself meanwhile).
 - `test/phone/sim.mjs`: phone checks in the iOS simulator's Safari and the Chrome stand-in, real touches step by step against a recorder on the page (focus, keyboard, scroll, selection, pins and boxes, every frame). Not in CI.
-
-## 0.6.2 · 2026-11-17
-
 - Things being tried arrive as flags: off unless somebody turns one on, tried in a real lab, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). `flags` in `labit.json` or your own settings, switches under a **trying** heading in the ⋯ menu (this computer only), `labit settings` lists them, and a switch writes the project's `labit.json` so the agent sees the same thing. First two: `liveUrl` (a lab in front of a live page) and `agentPins` (a pin the agent left wears labit's own mark, the one the bar shows while an agent listens).
 - A wait can no longer hold someone's turn open: `labit wait` (and `reply --wait`) sits for the full timeout only when the agent says it put the command in the background, with `--bg`. Without that it ends after a minute and says why. A wait left in an agent's foreground kept the person from saying anything to their agent until it ended, and the message they sent to reach them killed it; from inside the process a foreground run looks exactly like a background one, so `--bg` is the agent's word for it. At a terminal (a tty) nothing changes.
 - The bar's counts (chat, new) are green when something is new, grey at 0.
