@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Phones: a sent comment's card slides down whole, like any sheet, and its new pin pops in with one green ring. It used to shrink and fly into the pin, which squeezed the card, and the pin was already there while it flew (its pop-in had been dropped by a later change).
+
 - Option-click on a pin resolves its thread without opening it (again opens it again), for whoever may resolve it.
 
 - `labit skill` prints the agent's instructions (the skill the plugin installs), and a lab's first lines point agents without the plugin to it. So an agent that is only told to run `npx @leonidstern/labit@latest` reads the skill and answers pins.

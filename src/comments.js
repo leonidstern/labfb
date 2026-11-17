@@ -765,11 +765,10 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
         prev.classList.add('out');
         prev.inert = true;
         layer.append(prev);
-        // It shrinks back with the keyboard going (sheets.ts): after a send, into the new pin.
+        // It shrinks back with the keyboard going (sheets.ts); after a send it slides down and the new pin pops in.
         const newPin = S.posted && pinsById.get(S.posted);
-        const sent = newPin?.getBoundingClientRect();
-        if (newPin) newPin.style.animationDelay = '250ms'; // it pops in as the card arrives (lab B2)
-        const dur = leave(prev, 0, sent && { x: sent.left + sent.width / 2, y: sent.top + sent.height / 2 });
+        if (newPin) newPin.style.animationDelay = '130ms'; // as the card goes (lab option 5)
+        const dur = leave(prev, 0, Boolean(newPin));
         setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
       }
       // Phones: a new comment's sheet has gone (dropped, swiped away; a sent one waits for its card above): the page goes
@@ -831,7 +830,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       const pin = el(
         'button',
         {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
+          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? (coarse ? ' arrive' : ' in') : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
           type: 'button',
           title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`,
           // Its state in words too (the ring, the tick and the new dot are only seen).
@@ -941,7 +940,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
             keepSpot(null);
             S.openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
             S.posted = comment.id;
-            holdKeyboard(); // the keyboard waits until the card has flown into its pin (sheets.ts)
+            holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
             render();
           },
         }),
