@@ -48,7 +48,7 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       Codex: codex mcp add labit -- npx @leonidstern/labit@latest mcp
   labit preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
-  labit invite [name]
+  labit invite [name] [--page /path]
       A one-time link for a phone on the same wifi (--wifi labs only): one use, ten minutes. Hand it over as a link.
       The link carries a name — the one you give, or yours — so the phone that opens it starts out named.
 
@@ -673,10 +673,10 @@ const guestOk = (req) => {
   const raw = /(?:^|;\s*)lab_guest=([0-9a-f]{16})\.([0-9a-f]{32})(?:\s*;|$)/.exec(req.headers.cookie || '');
   if (!raw) return false;
   const want = Buffer.from(sign(raw[1])), got = Buffer.from(raw[2]);
-  return want.length === got.length && timingSafeEqual(want, got);
+  return want.length === got.length && timingSafeEqual(want, got) && raw[1];
 };
 // Loopback is this computer: the browser here never needs a link. Without --wifi nobody else gets this far anyway.
-const mayIn = (req) => isLoopback(req) || !WIFI || guestOk(req);
+const mayIn = (req) => isLoopback(req) || !WIFI || !!guestOk(req);
 // The labit mark (the cut for small sizes), drawn in the text colour: on the lab's own screens. The widget has the
 // same shapes split into parts (src/widget/live.ts); the tab icon is public/_lab/favicon.svg.
 const markSvg = (size, style = '') =>
@@ -689,16 +689,21 @@ const gate = (res, why = 'This lab opens with a one-time link.') =>
       `<title>labit</title><link rel="icon" href="${GATE_ICON}"><body style="font:16px/1.5 system-ui;margin:0;display:grid;place-items:center;height:100vh;color:#111">` +
       `<div style="max-width:22rem;padding:1.5rem;text-align:center">${markSvg(32, 'display:block;margin:0 auto .75rem')}<p style="font-weight:600;margin:0 0 .5rem">${why}</p>` +
       `<p style="margin:0;color:#666">Ask for a fresh link and open it on this device.</p></div>`);
-const redeem = (req, res, code, me = '') => {
+// Where a link lands: a page of this lab (a path), never another site.
+const landing = (to) => (typeof to === 'string' && to.length < 300 && /^\/(?![/\\])\S*$/.test(to) ? to : '/');
+const GUEST_LIFE = 86400;
+const guestCookie = (id) => `lab_guest=${id}.${sign(id)}; Path=/; Max-Age=${GUEST_LIFE}; HttpOnly; SameSite=Lax`;
+const redeem = (req, res, code, me = '', to = '') => {
   const until = passes.get(code);
   passes.delete(code);
-  if (!until || until < Date.now()) return gate(res, 'That link is used up or too old.');
+  // A link that's used up or too old, opened where the lab already lets you in (the phone that used it, this
+  // computer): it still takes you to its page.
+  if (!until || until < Date.now()) return mayIn(req) ? res.writeHead(302, { location: landing(to) }).end() : gate(res, 'That link is used up or too old.');
   console.log(`[lab] a guest opened a one-time link (${String(req.socket.remoteAddress).replace(/^::ffff:/, '')})`);
-  const id = randomBytes(8).toString('hex');
-  const cookies = [`lab_guest=${id}.${sign(id)}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax`];
+  const cookies = [guestCookie(randomBytes(8).toString('hex'))];
   // The name the link carried, for that device alone: read by the server, handed to the widget, never a way in.
   if (NAME_OK(me)) cookies.push(`lab_me=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
-  return res.writeHead(302, { location: '/', 'set-cookie': cookies }).end();
+  return res.writeHead(302, { location: landing(to), 'set-cookie': cookies }).end();
 };
 const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
 const sessionFrom = (req) => {
@@ -1145,8 +1150,11 @@ const handler = async (req, res) => {
       return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
     const pathname = decodeURIComponent(url.pathname);
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
-    if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '');
+    if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '', url.searchParams.get('to') || '');
     if (!mayIn(req)) return gate(res);
+    // A guest who keeps using the lab stays in: each page they open starts their day again.
+    const guest = WIFI && !isLoopback(req) && req.method === 'GET' && !pathname.startsWith('/_lab/') && guestOk(req);
+    if (guest) res.setHeader('set-cookie', guestCookie(guest));
     if (PROXY && !pathname.startsWith('/_lab/')) return proxy.page(req, res, url);
     // .lab (comments, admin key), .git, .env and other dot files are never served.
     if (pathname.split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
@@ -1189,9 +1197,14 @@ const handler = async (req, res) => {
       const hosts = [`${hostName}.local`, ...wifiAddrs()];
       // `labit invite <name>`, or your own name by default: the guest's browser knows nobody, so the link says who
       // is coming and their phone starts out named.
-      const asked = JSON.parse((await new Response(req).text()) || '{}').name;
+      const body = JSON.parse((await new Response(req).text()) || '{}');
+      const asked = body.name;
       const who = NAME_OK(asked) ? asked.trim() : myName;
-      const tail = who ? `?me=${encodeURIComponent(who)}` : '';
+      // `labit invite --page /x`: the link opens that page.
+      const q = new URLSearchParams();
+      if (who) q.set('me', who);
+      if (body.page) q.set('to', landing('/' + String(body.page).replace(/^\/+/, '')));
+      const tail = q.size ? `?${q}` : '';
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) }));
     }
