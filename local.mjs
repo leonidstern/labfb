@@ -1021,10 +1021,13 @@ const flagsAttr = () => {
   const json = JSON.stringify(Object.fromEntries(Object.entries(FLAGS).map(([k, f]) => [k, { name: f.name, on: SET.flags[k] === true }])));
   return ` data-flags='${json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
 };
+// Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
+// of main (LABIT_EDGE, set by a script that builds one, e.g. "main + #89 #91").
+const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? ` · edge: ${process.env.LABIT_EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
 const widget = (page, admin, me = '') =>
   `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${flagsAttr()}` +
+  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR}` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
