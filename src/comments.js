@@ -603,8 +603,11 @@ import { bindLive, startLive } from './widget/live.ts';
     });
     return (tryingMade = [head, ...rows]);
   };
+  // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
+  // builds can be told apart at a glance.
+  const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits()] : [];
+    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
     for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
