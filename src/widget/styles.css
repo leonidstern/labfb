@@ -531,3 +531,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .zi svg { width: 13px; height: 13px; display: block; }
 .go-btn .gp:has(.zw) { display: inline-flex; align-items: center; gap: 4px; width: auto; padding: 0 8px 0 6px; border-radius: 11px; } /* arrows and the word: a pill, not the round pin */
 .go-btn .gp .zw { line-height: 1; }
+
+/* Feedback on an agent's answer (src/widget/thread.ts): the button under the answer, the bar over the reply box while
+   writing it, and the rule the agent made of it, on the answer that saved it. */
+.msg .rule { display: block; margin-top: 6px; font-size: 12px; opacity: .8; letter-spacing: 0; line-height: 1.35; }
+.msg .rule b { display: inline; margin: 0 6px 0 0; font-size: 11px; font-weight: 600; opacity: .7; text-transform: uppercase; letter-spacing: .04em; }
+.msg .rule button.btn { margin-left: 8px; font-size: 11px; padding: 0; color: inherit; opacity: .6; text-decoration: underline; text-underline-offset: 2px; }
+.msg button.offer { display: inline; padding: 0; font: inherit; letter-spacing: inherit; line-height: inherit; color: inherit; opacity: 1; pointer-events: auto; }
+.msg :is(.stamp, .stamp-room).offering > :not(.offer) { display: none; } .msg .stamp.offering { opacity: 1; }
+.msg button.offer .tm { opacity: .55; } .msg button.offer .tick { color: rgb(36, 160, 70); }
+.msg button.offer .tick svg { width: 9px; height: 9px; vertical-align: top; margin-top: .5px; }
+.msg button :is(svg, svg *) { color: inherit; } /* the widget gives every element its text colour, the icon parts too */
