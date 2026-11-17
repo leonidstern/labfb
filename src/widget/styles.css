@@ -335,6 +335,14 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .more-menu button:hover:not(:disabled) { background: var(--_soft); }
   .more-menu button:disabled { color: var(--_muted); cursor: default; }
   .more-menu button[hidden] { display: none; }
+  /* What the lab is trying: a heading, then a switch each, at the foot of the menu. */
+  /* A pin left by the agent: labit's mark in place of a letter (flag: agentPins). */
+  .pin .agentmark { width: 60%; height: 60%; display: block; }
+  .more-menu .trying-head { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair);
+    font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--_muted); }
+  .more-menu button.trying { justify-content: flex-start; gap: 8px; white-space: normal; }
+  .more-menu button.trying .box { width: 1em; color: var(--_muted); }
+  .more-menu button.trying[aria-checked='true'] .box { color: var(--_fg); }
   .more-menu kbd { margin: 0; }
 }
 kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
