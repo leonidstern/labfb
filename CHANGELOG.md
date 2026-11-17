@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Releases publish themselves: a version bump merged to main goes to npm as `latest` (tagged `vX.Y.Z`), and every merge to main goes out as `next` (0.6.3-main.41…). `npx @leonidstern/labit@latest` is the newest release; `@next` is main as it is now, for whoever wants each merge in their labs. From GitHub Actions with npm trusted publishing, no token.
+
 ## 0.6.2 · 2026-11-17
 
 - A go pin is a pin like any other: once it is done or resolved it wears the tick, where before it said "go" for ever and a finished one looked unfinished. Checked in both engines by the browser job.
