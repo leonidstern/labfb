@@ -78,9 +78,32 @@ Your `~/.config/labit/settings.json`:
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
 | `shortcuts` | below | | Keys for the page. | both |
 | `zoom` | the built-in skill | | `{ "skill": "<file>" }`: the instructions your agent reads before answering a zoom pin. The path is from `labit.json`'s folder. | project |
+| `flags` | everything off | | What this lab is trying: `{ "<flag>": true }`. See **Trying things** below. | either |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
 project you clone can't rename you or open your lab to the network); "both" from either, the project's first.
+
+## Trying things
+
+A new instrument arrives as a flag: off unless you turn it on, tried in a real lab, then kept — the flag goes away and
+it is simply labit — or dropped, and the code goes with it. Nothing is in labit because it was built.
+
+```json
+{ "flags": { "liveUrl": true } }
+```
+
+You don't have to edit a file: open the ⋯ menu in the lab's bar and there is a **trying** heading at the foot of it
+with a switch for each. A switch writes the project's `labit.json`, so your agent is looking at the same thing you
+are. Only this computer sees those switches — a guest on your wifi reads the page, they don't decide what labit is
+trying. `labit settings` lists which are on and where that came from.
+
+| Flag | What it is |
+| --- | --- |
+| `liveUrl` | a lab in front of a page that is already live, so you pin on what shipped |
+| `agentPins` | a pin the agent left wears labit's own mark, the one the bar shows while an agent listens |
+
+A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
+otherwise ignored, so an old file never stops a lab from running.
 
 ## Shortcuts
 

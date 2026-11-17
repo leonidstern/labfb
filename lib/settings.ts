@@ -5,12 +5,13 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { FLAGS, flagDefaults } from './flags.ts';
 
 const SHORTCUTS = { toggle: 'm', comment: '1', go: '2', zoom: '3', pointer: '4', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
 // wifi; your own file can't say which folder or dev server a project uses).
-const SPEC: Record<string, { type: Kind | 'shortcuts' | 'zoom'; def: unknown; only?: 'project' | 'personal'; min?: number }> = {
+const SPEC: Record<string, { type: Kind | 'shortcuts' | 'zoom' | 'flags'; def: unknown; only?: 'project' | 'personal'; min?: number }> = {
   port: { type: 'number', def: 4400, min: 1 },
   proxy: { type: 'string', def: '', only: 'project' },
   folder: { type: 'string', def: '.', only: 'project' },
@@ -25,6 +26,8 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'zoom'; def: unknown; on
   model: { type: 'string', def: '', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
   zoom: { type: 'zoom', def: { skill: '' }, only: 'project' },
+  // What is being tried here (lib/flags.ts). Off unless a file or the ⋯ menu turns one on.
+  flags: { type: 'flags', def: flagDefaults() },
 };
 // The environment variables that set a setting (as before), and how their values read.
 const ENV: Record<string, [string, (v: string) => unknown]> = {
@@ -78,6 +81,17 @@ const check = (key: string, v: unknown, file: string, problems: string[]): unkno
     }
     return out;
   }
+  if (s.type === 'flags') {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object of flag → true or false');
+    const out: Record<string, boolean> = {};
+    for (const [flag, on] of Object.entries(v)) {
+      // A flag that was kept or dropped leaves its name behind in somebody's file: say so, don't fail.
+      if (!(flag in FLAGS)) bad(`.${flag} is not something being tried now (${Object.keys(FLAGS).join(', ') || 'nothing at the moment'})`);
+      else if (typeof on !== 'boolean') bad(`.${flag} must be true or false`);
+      else out[flag] = on;
+    }
+    return out;
+  }
   if (s.type === 'zoom') {
     if (!v || typeof v !== 'object' || typeof (v as any).skill !== 'string') return bad('must be { "skill": "<path to a .md file>" }');
     const skill = path.resolve(path.dirname(file), (v as any).skill);
@@ -123,8 +137,8 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       }
       const v = check(key, data[key], file, problems);
       if (v === undefined) continue;
-      // Shortcuts add up, action by action: the project's over yours over the defaults.
-      if (s.type === 'shortcuts') {
+      // Shortcuts and flags add up, one at a time: the project's over yours over the defaults.
+      if (s.type === 'shortcuts' || s.type === 'flags') {
         values[key] = { ...(v as object), ...values[key] };
         from[key] = from[key] ? `${from[key]} + ${file}` : file;
         continue;
@@ -133,6 +147,7 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       from[key] = file;
       break;
     }
+    if (s.type === 'flags' && values[key]) values[key] = { ...flagDefaults(), ...values[key] };
     if (s.type === 'shortcuts' && values[key]) {
       values[key] = { ...SHORTCUTS, ...values[key] };
       const taken = Object.entries(values[key] as Record<string, string>).filter(([, k], i, all) => all.findIndex(([, k2]) => k2 === k) !== i);
@@ -150,6 +165,23 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
 export const changedShortcuts = (keys: Record<string, string>) => Object.fromEntries(Object.entries(keys).filter(([a, k]) => SHORTCUTS[a as keyof typeof SHORTCUTS] !== k));
 
 /** Sets one setting in your own file, keeping the rest. */
+/** Turn a flag on or off in the project's labit.json, making the file if there is none. Returns the file. */
+export function saveFlag(here: string, flag: string, on: boolean): string {
+  const file = projectFile(here) || path.join(path.resolve(here), 'labit.json');
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {}
+  const flags = (data.flags && typeof data.flags === 'object' && !Array.isArray(data.flags) ? data.flags : {}) as Record<string, unknown>;
+  // A flag back at its default leaves no trace in the file: off is the absence of a flag, not a line saying so.
+  if (on) flags[flag] = true;
+  else delete flags[flag];
+  if (Object.keys(flags).length) data.flags = flags;
+  else delete data.flags;
+  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+  return file;
+}
+
 export function savePersonal(key: string, value: unknown) {
   const file = personalFile();
   let data: Record<string, unknown> = {};
