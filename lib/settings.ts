@@ -7,11 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', go: '2', zoom: '3', pointer: '4', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
+const SHORTCUTS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
 // wifi; your own file can't say which folder or dev server a project uses).
-const SPEC: Record<string, { type: Kind | 'shortcuts' | 'zoom' | 'flags'; def: unknown; only?: 'project' | 'personal'; min?: number }> = {
+const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags'; def: unknown; only?: 'project' | 'personal'; min?: number }> = {
   port: { type: 'number', def: 4400, min: 1 },
   proxy: { type: 'string', def: '', only: 'project' },
   folder: { type: 'string', def: '.', only: 'project' },
@@ -25,7 +25,6 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'zoom' | 'flags'; def: u
   name: { type: 'string', def: '', only: 'personal' },
   model: { type: 'string', def: '', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
-  zoom: { type: 'zoom', def: { skill: '' }, only: 'project' },
   // What is being tried here (lib/flags.ts). Off unless a file or the ⋯ menu turns one on.
   flags: { type: 'flags', def: flagDefaults() },
 };
@@ -91,12 +90,6 @@ const check = (key: string, v: unknown, file: string, problems: string[]): unkno
       else out[flag] = on;
     }
     return out;
-  }
-  if (s.type === 'zoom') {
-    if (!v || typeof v !== 'object' || typeof (v as any).skill !== 'string') return bad('must be { "skill": "<path to a .md file>" }');
-    const skill = path.resolve(path.dirname(file), (v as any).skill);
-    if (!fs.existsSync(skill)) return bad(`.skill: no file ${skill}`);
-    return { skill };
   }
   if (typeof v !== s.type) return bad(`must be a ${s.type}`);
   if (s.type === 'number' && (!Number.isFinite(v) || (v as number) < (s.min ?? -Infinity))) return bad(`must be a number of at least ${s.min}`);

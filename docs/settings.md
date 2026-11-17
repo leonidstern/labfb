@@ -44,8 +44,7 @@ counts. `labit settings` exits with an error while there's such a problem.
   "port": 4500,
   "proxy": "3000",
   "batchSeconds": 1,
-  "shortcuts": { "chat": "x" },
-  "zoom": { "skill": "docs/labit-zoom.md" }
+  "shortcuts": { "chat": "x" }
 }
 ```
 
@@ -77,7 +76,6 @@ Your `~/.config/labit/settings.json`:
 | `name` | none | | Your name on pins. The page asks once and keeps it here. | yours |
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
 | `shortcuts` | below | | Keys for the page. | both |
-| `zoom` | the built-in skill | | `{ "skill": "<file>" }`: the instructions your agent reads before answering a zoom pin. The path is from `labit.json`'s folder. | project |
 | `flags` | everything off | | What this lab is trying: `{ "<flag>": true }`. See **Trying things** below. | either |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
@@ -115,8 +113,7 @@ win over yours, key by key.
 | `toggle` | `m` | Show or hide comments |
 | `comment` | `1` | A click places a comment |
 | `go` | `2` | A click places a go pin (do it, no questions) |
-| `zoom` | `3` | A click places a zoom pin (press again: zoom out) |
-| `pointer` | `4` | A click is just a click |
+| `pointer` | `3` | A click is just a click |
 | `chat` | `c` | Open the chat |
 | `next` | `w` | The next new comment (with Shift: the one before) |
 | `pause` | `p` | Pause the page (animations and videos stop) |
@@ -126,16 +123,6 @@ win over yours, key by key.
 
 Letters follow the key's place on non-Latin layouts (the C key is C in Russian too), and digits work with Shift or
 on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat` is `x`.
-
-## Zoom skill
-
-A zoom pin asks your agent for one block, a deeper look or the bigger picture, instead of a change. Before answering
-one, the agent reads the zoom skill. Point `zoom.skill` at your own file to change how your project's zooms are
-written (the tone, how long, what a block may hold). Start from labit's own,
-[skills/labit/zoom.md](../skills/labit/zoom.md).
-
-Pins with skills of your own (a "copy" pin that only rewrites words, an "explain" pin that only answers) will work the
-same way: a key in the page, a skill file for the agent. They're planned, not in this version.
 
 ## Not settings
 

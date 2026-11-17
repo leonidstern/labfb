@@ -529,12 +529,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card.in, .float.in, .list:not([hidden]) { animation: lab-card-in .3s cubic-bezier(.2, .9, .25, 1); }
 }
 @keyframes lab-card-in { from { transform: scale(.3); opacity: 0; } 40% { opacity: 1; } }
-/* Zoom (src/widget/zoom.ts): the arrows in or out in a zoom pin, the drawn pointer and the go button. */
-.zi { display: inline-flex; align-items: center; justify-content: center; }
-.zi svg { width: 13px; height: 13px; display: block; }
-.go-btn .gp:has(.zw) { display: inline-flex; align-items: center; gap: 4px; width: auto; padding: 0 8px 0 6px; border-radius: 11px; } /* arrows and the word: a pill, not the round pin */
-.go-btn .gp .zw { line-height: 1; }
-
 /* Feedback on an agent's answer (src/widget/thread.ts): the button under the answer, the bar over the reply box while
    writing it, and the rule the agent made of it, on the answer that saved it. */
 .msg .rule { display: block; margin-top: 6px; font-size: 12px; opacity: .8; letter-spacing: 0; line-height: 1.35; }
