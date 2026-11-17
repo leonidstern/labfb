@@ -151,15 +151,35 @@ if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in yo
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
 
 // ---------- finding the dev server ----------
-// A server already running for this folder answers below, whatever kind it is.
-const alreadyRunning = (() => {
+// A lab counts as running for this folder only if it answers on its port as this folder's lab: a pid alone can be a
+// lab that hangs, or another program that got the number after a crash.
+const answersHere = (port) =>
+  new Promise((done) => {
+    if (!Number.isInteger(port) || port <= 0) return done(false);
+    const req = http.get({ host: '127.0.0.1', port, path: '/_lab/pages', headers: { host: `localhost:${port}` }, timeout: 1500 }, (res) => {
+      let t = '';
+      res.on('data', (c) => (t += c));
+      res.on('end', () => {
+        try {
+          done(JSON.parse(t).root === ROOT);
+        } catch {
+          done(false);
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => done(false));
+  });
+const runningServer = async () => {
   try {
-    process.kill(JSON.parse(fs.readFileSync(path.join(ROOT, '.lab/server.json'), 'utf8')).pid, 0);
-    return true;
+    const running = JSON.parse(fs.readFileSync(path.join(ROOT, '.lab/server.json'), 'utf8'));
+    return (await answersHere(running.port)) ? running : null;
   } catch {
-    return false;
+    return null;
   }
-})();
+};
+// A server already running for this folder answers below, whatever kind it is.
+const alreadyRunning = Boolean(await runningServer());
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
@@ -223,15 +243,74 @@ const SEEN = path.join(LAB, 'seen');
 fs.mkdirSync(LAB, { recursive: true });
 
 // One server per folder: two would overwrite each other's comments.
-try {
-  const running = JSON.parse(fs.readFileSync(SERVER, 'utf8'));
-  process.kill(running.pid, 0);
+const alreadyHere = (running) => {
   // Started by the preview pane on another port: say why it can't open, so the pane doesn't wait on nothing.
   if (process.env.PORT && !opts.port && Number(process.env.PORT) !== running.port)
     die(`[lab] already running for this folder at http://localhost:${running.port}. Stop that one (Ctrl+C) to open it here.`);
   console.log(`[lab] already running for this folder: http://localhost:${running.port}`);
   process.exit(0);
-} catch {}
+};
+{
+  const running = await runningServer();
+  if (running) alreadyHere(running);
+}
+// .lab/lock is taken before the store is read and held until this lab exits, so two started at once can't both load
+// the comments and then overwrite each other's (server.json comes only once the lab listens). A lock whose holder
+// is gone, or is running but stopped answering long after it started, is taken over.
+const LOCK = path.join(LAB, 'lock');
+const takeLock = () => {
+  try {
+    fs.writeSync(fs.openSync(LOCK, 'wx', 0o600), JSON.stringify({ pid: process.pid, at: Date.now() }));
+    return true;
+  } catch (e) {
+    if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EEXIST') throw e;
+    return false;
+  }
+};
+const readLock = () => {
+  try {
+    return JSON.parse(fs.readFileSync(LOCK, 'utf8'));
+  } catch {
+    return null;
+  }
+};
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return /** @type {NodeJS.ErrnoException} */ (e).code === 'EPERM'; // someone else's process, alive
+  }
+};
+for (let tries = 0; !takeLock(); tries++) {
+  const held = readLock();
+  // The holder answers (on the port it wrote in the lock once it listened): this folder's lab is running.
+  if (held?.port && (await answersHere(held.port))) alreadyHere(held);
+  const running = await runningServer();
+  if (running) alreadyHere(running);
+  // Gone, or alive a minute without answering (a lab that hangs, or another program that got its pid): taken over.
+  // Only the lock as it was read is removed, so two labs taking over the same stale lock can't remove each other's.
+  // A lock with nothing readable in it yet is a lab that has only just made it; left like that for seconds, a dead one.
+  const age = (() => {
+    try {
+      return Date.now() - fs.statSync(LOCK).mtimeMs;
+    } catch {
+      return Infinity;
+    }
+  })();
+  const stale = !held ? age > 5000 : !Number.isInteger(held.pid) || !alive(held.pid) || (Date.now() - (Number(held.at) || 0) > 60000 && tries >= 2);
+  if (stale && JSON.stringify(readLock()) === JSON.stringify(held)) {
+    fs.rmSync(LOCK, { force: true });
+    if (takeLock()) break;
+  }
+  if (tries >= 40) die(`[lab] another lab is starting for this folder (pid ${held?.pid}) and hasn't answered. If it hangs, stop it, or delete ${LOCK}.`);
+  await new Promise((r) => setTimeout(r, 250)); // another lab is starting here: it will answer in a moment
+}
+process.on('exit', () => {
+  try {
+    if (JSON.parse(fs.readFileSync(LOCK, 'utf8')).pid === process.pid) fs.rmSync(LOCK);
+  } catch {}
+});
 
 // Kept across restarts (owner-only file), so the pin keys guests' browsers hold keep working.
 const KEY = path.join(LAB, 'key');
@@ -1552,6 +1631,7 @@ server.on('listening', async () => {
   newerVersion().then((v) => v && console.log(`[lab] labit ${v} is out (you have ${VERSION}): npx @leonidstern/labit@latest`));
   origin = `http://localhost:${PORT}`;
   saveServer();
+  writeAtomic(LOCK, JSON.stringify({ pid: process.pid, at: Date.now(), port: PORT }), 0o600); // a lab starting next asks this port
   register();
   await persist();
   console.log(`[lab] ${origin}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
@@ -1575,4 +1655,5 @@ const bye = () => {
 };
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
+process.on('SIGHUP', bye); // the terminal it ran in closed
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');

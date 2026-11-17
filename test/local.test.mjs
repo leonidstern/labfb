@@ -148,3 +148,52 @@ test('a reply in a thread the agent has gets only the new words; reply --wait an
   assert.match(out, new RegExp(`thread id ${comment.id} "make the heading bigger": Leo · .* · id \\w+: and make it blue`));
   assert.doesNotMatch(out, /^## /m, 'not the whole thread again');
 });
+
+test('one lab per folder: two started at once make one; a dead lock or a silent server.json does not block; SIGHUP cleans up', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-lock-')));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
+  const base = 4950 + Math.floor(Math.random() * 40) * 3;
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
+  const start = (port) => {
+    const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port)], { cwd: dir, env });
+    p.out = '';
+    p.stdout.on('data', (d) => (p.out += d));
+    p.stderr.on('data', (d) => (p.out += d));
+    p.done = new Promise((r) => p.on('exit', (code, signal) => r({ code, signal })));
+    return p;
+  };
+  const listening = async (p) => {
+    for (let i = 0; i < 100 && !/\[lab\] http:\/\/localhost/.test(p.out) && p.exitCode === null; i++) await new Promise((r) => setTimeout(r, 100));
+    return /\[lab\] http:\/\/localhost/.test(p.out);
+  };
+  const lock = path.join(dir, '.lab/lock');
+  const procs = [];
+  try {
+    const [a, b] = [start(base), start(base + 1)];
+    procs.push(a, b);
+    const ups = await Promise.all([listening(a), listening(b)]);
+    assert.equal(ups.filter(Boolean).length, 1, `${a.out}\n---\n${b.out}`);
+    const [winner, loser] = ups[0] ? [a, b] : [b, a];
+    assert.equal((await loser.done).code, 0);
+    assert.match(loser.out, /already running for this folder/);
+    assert.equal(JSON.parse(fs.readFileSync(lock, 'utf8')).pid, winner.pid);
+    winner.kill('SIGHUP');
+    await winner.done;
+    assert.ok(!fs.existsSync(lock), 'the lock goes with the lab');
+    assert.ok(!fs.existsSync(path.join(dir, '.lab/server.json')), 'and server.json');
+    // A crashed lab: its lock names a dead pid, and server.json names a live pid (this one) on a port nobody answers.
+    fs.writeFileSync(lock, JSON.stringify({ pid: 999999, at: Date.now() }));
+    fs.writeFileSync(path.join(dir, '.lab/server.json'), JSON.stringify({ port: base + 2, pid: process.pid, token: 'x' }));
+    const c = start(base);
+    procs.push(c);
+    assert.ok(await listening(c), c.out);
+    c.kill('SIGTERM');
+    await c.done;
+    assert.ok(!fs.existsSync(lock));
+  } finally {
+    for (const p of procs) if (p.exitCode === null && p.signalCode === null) p.kill();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
