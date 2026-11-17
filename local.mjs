@@ -845,15 +845,26 @@ setInterval(() => {
 const READS = path.join(LAB, 'reads.json');
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
-const reads = (() => {
+// Side files (read marks, claims) are written whole through a .tmp, and one that can't be read is put aside like a
+// page's file, not taken for empty and then written over.
+const readSide = (file, what) => {
+  let text;
   try {
-    const raw = JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
-    const out = Object.create(null);
-    for (const [name, pagesOf] of Object.entries(raw)) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
-    return out;
+    text = fs.readFileSync(file, 'utf8');
   } catch {
-    return Object.create(null);
+    return null; // not made yet
   }
+  try {
+    const data = JSON.parse(text);
+    if (data && typeof data === 'object' && !Array.isArray(data)) return data;
+  } catch {}
+  putAside(file, what);
+  return null;
+};
+const reads = (() => {
+  const out = Object.create(null);
+  for (const [name, pagesOf] of Object.entries(readSide(READS, 'reads.json') || {})) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
+  return out;
 })();
 /** @type {any} */
 let readsBroadcast = 0;
@@ -862,7 +873,13 @@ const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase
 let readsTimer;
 const saveReads = () => {
   clearTimeout(readsTimer);
-  readsTimer = setTimeout(() => fs.promises.writeFile(READS, JSON.stringify(reads)).catch((e) => console.error('[lab] could not save read marks:', e.message)), 300);
+  readsTimer = setTimeout(() => {
+    try {
+      writeAtomic(READS, JSON.stringify(reads));
+    } catch (e) {
+      console.error('[lab] could not save read marks:', e.message);
+    }
+  }, 300);
 };
 const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
@@ -927,20 +944,14 @@ let waiters = [];
 const CLAIM_MS = 1800000;
 const CLAIMS_FILE = path.join(LAB, 'claims.json');
 const claims = new Map(
-  (() => {
-    try {
-      return Object.entries(JSON.parse(fs.readFileSync(CLAIMS_FILE, 'utf8'))).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS);
-    } catch {
-      return [];
-    }
-  })(),
+  Object.entries(readSide(CLAIMS_FILE, 'claims.json') || {}).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS),
 ); // page -> last time a wait for it was open
 const claim = (pages) => {
   if (!pages?.length) return;
   const now = Date.now();
   for (const p of pages) claims.set(p, now);
   try {
-    fs.writeFileSync(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
+    writeAtomic(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
   } catch {}
 };
 const claimed = () => {

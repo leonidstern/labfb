@@ -45,12 +45,23 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
   // Cloud lab pages saved with `labit add`, kept with the project in .lab/links.json.
   const LINKS = path.join(HERE, '.lab', 'links.json');
+  // A damaged file is put aside (links.json.broken-<time>), as the lab does with its comment files, not read as empty
+  // and then written over by the next add.
   const savedLinks = () => {
+    let text;
     try {
-      return JSON.parse(fs.readFileSync(LINKS, 'utf8'));
+      text = fs.readFileSync(LINKS, 'utf8');
     } catch {
       return [];
     }
+    try {
+      const list = JSON.parse(text);
+      if (Array.isArray(list)) return list;
+    } catch {}
+    const aside = `${LINKS}.broken-${Date.now()}`;
+    fs.renameSync(LINKS, aside);
+    console.error(`[lab] .lab/links.json was damaged; moved it to ${path.basename(aside)}`);
+    return [];
   };
   // A cloud page's open comments, from its plain-text agent view (`open: N`).
   const cloudOpen = async (url) => {
@@ -83,7 +94,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       list.push({ url: key, title });
     }
     fs.mkdirSync(path.dirname(LINKS), { recursive: true });
-    fs.writeFileSync(LINKS, JSON.stringify(list, null, 2) + '\n');
+    fs.writeFileSync(LINKS + '.tmp', JSON.stringify(list, null, 2) + '\n'); // whole or not at all
+    fs.renameSync(LINKS + '.tmp', LINKS);
     console.log(pos[0] === 'add' ? `Saved ${key}${title ? ` (${title})` : ''}. It shows in \`${CMD} pages\` and \`${CMD} list\`.` : `Removed ${key}.`);
     process.exit(0);
   }
