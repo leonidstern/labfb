@@ -354,12 +354,30 @@ function between(target, cy) {
     else if (kr.top >= cy && !below) below = k;
     else if (kr.top < cy && kr.bottom > cy) return null; // inside a block, not between two
   }
-  const say = (k) => {
-    if (!k) return undefined;
-    const h = k.matches('h1, h2, h3, h4, h5, h6') ? k : k.querySelector('h1, h2, h3, h4, h5, h6');
-    return short(`${openingTag(k)} "${short((h || k).textContent, 60)}"`, 160);
-  };
+  const say = (k) => (k ? short(`${openingTag(k)} "${blockWords(k)}"`, 160) : undefined);
   return above || below ? { above: say(above), below: say(below) } : null;
+}
+// What a block is called there: its heading, else its first words.
+const blockWords = (k) => short((k.matches('h1, h2, h3, h4, h5, h6') ? k : k.querySelector('h1, h2, h3, h4, h5, h6') || k).textContent, 60);
+// A pin in the space between two blocks (gapAbove / gapBelow name them; none: the box's own top or end) stays between
+// them: where it was put while that is still between them, else the nearest point that is. Among look-alikes the pair
+// nearest to where it was put; next to the one that is left when the other is gone; null when both are.
+function gapTop(anchor, node, rect) {
+  const kids = [...node.children].filter((k) => k !== host && k.getBoundingClientRect().height > 0);
+  const is = (k, said) => (said ? k && sameKind(k, said) && blockWords(k).startsWith((said.split('> "')[1] || '').replace(/"$/, '')) : !k);
+  const put = rect.top + anchor.y * rect.height;
+  let best = null;
+  let near = Infinity;
+  for (let i = 0; i <= kids.length; i++) {
+    const [above, below] = [is(kids[i - 1], anchor.gapAbove), is(kids[i], anchor.gapBelow)];
+    if (!above && !below) continue;
+    const lo = above ? (kids[i - 1]?.getBoundingClientRect().bottom ?? rect.top) : kids[i].getBoundingClientRect().top - 16;
+    const hi = below ? (kids[i]?.getBoundingClientRect().top ?? rect.bottom) : lo + 16;
+    const top = Math.min(Math.max(put, lo), Math.max(lo, hi));
+    const far = Math.abs(top - put) + (above && below ? 0 : 1e6); // both neighbours beat one
+    if (far < near) [best, near] = [top, far];
+  }
+  return best;
 }
 
 // Light or dark where the pin is: the first background colour behind it that isn't transparent.
@@ -740,47 +758,6 @@ function findTarget(anchor) {
   return twins.length > 1 ? null : atPath;
 }
 
-// Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
-// A pin on a big container (the page's body or main) is placed by a share of its size, which drifts when content is
-// added above. If it was on words (its quote, or in older pins "…before [word] after…" in its text), find them again
-// and sit on them; if they're gone, say so (the pin shows faded as moved) instead of pointing at whatever is there now.
-const OLD_WORD = /\[[^\]]+\]/;
-let wordCache: { at: number; text: string; map: [Text, number][] } | null = null;
-function wordSpot(anchor, node): { left?: number; top?: number; gone?: boolean } | null {
-  if (anchor.quote?.exact) {
-    const range = quoteRange(anchor, node, true);
-    return range ? onWords(range, anchor, node.getBoundingClientRect()) || { gone: true } : { gone: true };
-  }
-  const m = /^(?:…)?(.*?)\[([^\]]+)\](.*?)(?:…)?$/s.exec(anchor.text || '');
-  if (!m) return null;
-  const before = m[1].replace(/\s+/g, ' ').slice(-24);
-  const word = m[2];
-  // The page's text, read once per moment and shared by all such pins.
-  if (!wordCache || performance.now() - wordCache.at > 400) {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (t) => (host.contains(t.parentNode) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
-    let text = '';
-    const at: [Text, number][] = [];
-    for (let t = walker.nextNode() as Text | null; t; t = walker.nextNode() as Text | null) {
-      const v = t.data.replace(/\s+/g, ' ');
-      for (let i = 0; i < v.length; i++) at.push([t, i]);
-      text += v;
-    }
-    wordCache = { at: performance.now(), text, map: at };
-  }
-  const { text, map: at } = wordCache;
-  let i = text.indexOf(before + word);
-  if (i < 0) return { gone: true };
-  i += before.length;
-  const range = document.createRange();
-  try {
-    range.setStart(...at[i]);
-    range.setEnd(at[i + word.length - 1][0], at[i + word.length - 1][1] + 1);
-  } catch {
-    return { gone: true };
-  }
-  const r = range.getBoundingClientRect();
-  return r.width || r.height ? { left: r.left + scrollX + Math.min(6, r.width / 2), top: r.top + scrollY + r.height / 2 } : { gone: true };
-}
 // A pin kept at its old spot never sits below the page's end (the page got shorter, say after a cleanup): it moves up
 // to just above the end, so it doesn't make the page longer. The end is the page's own content, not the pins' layer.
 export let pageEnd = { at: -Infinity, y: 0 }; // never fresh at first: a pin drawn in the page's first 300 ms sat at the top
@@ -838,16 +815,25 @@ function onWords(range, anchor, rect) {
   for (const r of rects) if (far(r) < far(at)) at = r;
   return { left: pull(gx, at.left, at.right) + scrollX, top: pull(gy, at.top, at.bottom) + scrollY };
 }
+// Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
 function spotOf(anchor): Spot {
   const node = findTarget(anchor);
-  const hasWords = anchor.quote?.exact || OLD_WORD.test(anchor.text || '');
+  const hasWords = anchor.quote?.exact;
   // Words straight in the page (findTarget never returns the page itself): looked for in the whole page.
   const box = node || (hasWords && /^<(body|html)[\s>]/.test(anchor.element || '') ? document.body : null);
   const big = box && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(box.localName);
+  // A pin on a big container (the page's body or main) is placed by a share of its size, which drifts when content is
+  // added above. If it was on words, find them again and sit on them; if they're gone, say so (the pin shows faded as
+  // moved) instead of pointing at whatever is there now.
   if (big && hasWords) {
-    const spot = wordSpot(anchor, box);
-    if (spot && !spot.gone) return { left: spot.left, top: spot.top, zone: null };
-    if (spot?.gone) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY), zone: null, moved: true };
+    const range = quoteRange(anchor, box, true);
+    const spot = range && onWords(range, anchor, box.getBoundingClientRect());
+    return spot ? { ...spot, zone: null } : { left: anchor.docX * docWidth(), top: inPage(anchor.docY), zone: null, moved: true };
+  }
+  if (node && !anchor.zw && (anchor.gapAbove || anchor.gapBelow)) {
+    const rect = node.getBoundingClientRect();
+    const top = gapTop(anchor, node, rect);
+    if (top !== null) return { left: rect.left + scrollX + anchor.x * rect.width, top: top + scrollY, zone: null };
   }
   // On a big container with no word to find: if the container's height changed since, the share of it no longer points
   // at the same thing, so the pin keeps its old place and shows faded as moved rather than pointing at something else.
@@ -871,12 +857,63 @@ function spotOf(anchor): Spot {
       return zone ? { ...pinOf(zone, anchor), zone } : { left, top, zone };
     }
   }
+  // Its element is gone: its words may still be on the page.
+  const words = !box && hasWords && !anchor.docW && wordsOnPage(anchor);
+  if (words) return { ...words, zone: null };
   const left = anchor.docX * docWidth();
   const top = inPage(anchor.docY, anchor.docH || 0);
   const zone = anchor.docW ? { left, top, width: anchor.docW, height: anchor.docH } : null;
   if (zone) return { ...pinOf(zone, anchor), zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
   // Anchored to the page itself (a margin, or an area wider than any element): nothing has moved.
   return { left, top, zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
+}
+
+// A pin whose element is gone, by its words. Sure when they stand once on the page between the same words as before
+// (or are long, and stand once). Else the nearest look-alike within two screens of where the pin was (the same words in
+// other company, or other words in the same company) is a guess: the pin waits beside it, shown as moved.
+function wordsOnPage(anchor, fresh = false) {
+  const squash = (t) => (t || '').replace(/\s+/g, '');
+  const [pre, want, post] = [squash(anchor.quote.prefix).slice(-12), squash(anchor.quote.exact), squash(anchor.quote.suffix).slice(0, 12)];
+  const { text, at } = lettersOf(document.body, fresh);
+  const all = (s, out = []) => {
+    for (let i = text.indexOf(s); s && i !== -1 && out.length < 50; i = text.indexOf(s, i + 1)) out.push(i);
+    return out;
+  };
+  let stale = false; // the page's text changed since it was read (less than a moment ago): read it again
+  const spot = (i, n) => {
+    try {
+      const range = document.createRange();
+      range.setStart(...at[i]);
+      range.setEnd(at[i + n - 1][0], at[i + n - 1][1] + 1);
+      const r = range.getClientRects()[0];
+      stale ||= !at[i][0].isConnected;
+      return r && { left: r.left + scrollX + Math.min(6, r.width / 2), top: r.top + scrollY + r.height / 2 };
+    } catch {
+      stale = true;
+    }
+  };
+  const sure = pre || post || want.length > 15 ? all(pre + want + post) : [];
+  let best = sure.length === 1 ? spot(sure[0] + pre.length, want.length) : null;
+  const company = pre.length > 5 && post.length > 5 ? all(pre).map((i) => [i + pre.length, text.indexOf(post, i + pre.length) - i - pre.length]).filter(([, n]) => n > 0 && n < want.length * 2 + 20) : [];
+  let near = 2 * innerHeight;
+  for (const [i, n] of best ? [] : [...all(want).map((i) => [i, want.length]), ...company]) {
+    const s = spot(i, n);
+    if (s && Math.abs(s.top - anchor.docY) < near) [best, near] = [{ ...s, moved: true }, Math.abs(s.top - anchor.docY)];
+  }
+  return stale && !fresh ? wordsOnPage(anchor, true) : best;
+}
+
+// A pin found again on another element than its saved path leads to (the page changed around it): where it is now,
+// for the widget to save, so the next look and the agent's text start from there. Null when it is where its path says.
+export function foundAt(anchor) {
+  const node = findTarget(anchor);
+  let at = null;
+  try {
+    at = document.querySelector(anchor.selector);
+  } catch {}
+  if (!node || node === at) return null;
+  const rect = node.getBoundingClientRect();
+  return { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height) };
 }
 
 // An element's letters without spaces, each with its text piece and place in it; read once per moment and shared by

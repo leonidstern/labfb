@@ -122,8 +122,8 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const offerOn = (mine) => {
     const all = [c, ...W.repliesOf(c.id)];
     const ans = all.slice(all.indexOf(mine) + 1).find((x) => x.session);
-    if (!ans?.suggest || ans.suggestDone || ans.rule) return null;
-    const b = W.el('button', { class: 'btn offer', type: 'button', title: ans.suggest });
+    if (!ans?.suggest || ans.suggest.state) return null;
+    const b = W.el('button', { class: 'btn offer', type: 'button', title: ans.suggest.text });
     // The words where the time is, the star where the tick is, each in their size and colour (Leo, 17 Nov).
     b.append(W.el('span', { class: 'tm' }, 'rule?'));
     const star = W.el('span', { class: 'tick' });
@@ -132,8 +132,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     b.addEventListener('click', async () => {
       const r = await fetch('/_lab/rule', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: W.S.page, id: ans.id, action: 'keep' }) }).catch(() => null);
       if (!r?.ok) return void (b.lastChild!.textContent = 'failed, try again');
-      ans.suggestDone = 'kept';
-      ans.rule = ans.suggest;
+      ans.suggest.state = 'kept';
       for (const n of card.querySelectorAll(`.msg[data-id="${mine.id}"] .offering`)) n.classList.remove('offering');
       card.querySelectorAll(`.msg[data-id="${mine.id}"] .offer`).forEach((n) => n.remove()); // and its invisible copy
       card.querySelector(`.msg[data-id="${ans.id}"]`)?.append(ruleLine(ans)); // the rule shows on the agent's answer
@@ -142,15 +141,15 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   };
   const ruleLine = (item) => {
     const line = W.el('span', { class: 'rule' });
-    if (item.ruleUndone) return line.append(W.el('b', {}, 'rule removed')), line;
+    if (item.suggest.state === 'undone') return line.append(W.el('b', {}, 'rule removed')), line;
     const undo = W.el('button', { class: 'btn', type: 'button' }, 'undo');
     undo.addEventListener('click', async () => {
       const r = await fetch('/_lab/rule', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: W.S.page, id: item.id }) }).catch(() => null);
       if (!r?.ok) return void (undo.textContent = 'failed, try again');
-      item.ruleUndone = true;
+      item.suggest.state = 'undone';
       line.replaceWith(ruleLine(item));
     });
-    line.append(W.el('b', {}, 'rule'), document.createTextNode(item.rule), undo);
+    line.append(W.el('b', {}, 'rule'), document.createTextNode(item.suggest.text), undo);
     return line;
   };
   const itemEl = (item) => {
@@ -165,7 +164,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       box.append(q);
     }
     box.append(...W.readable(item.text));
-    if (item.session && item.rule) box.append(ruleLine(item));
+    if (item.session && /kept|undone/.test(item.suggest?.state)) box.append(ruleLine(item));
     const stamp = W.stampOf(item, c, item === c && !c.resolved ? `#${W.numberOf(c)} · ` : '');
     // The offer sits in your message's corner in place of the time and tick, so the bubble keeps its size (Leo, 17 Nov:
     // 57 + 60, then "it makes bigger row"). Kept or gone, the time comes back.

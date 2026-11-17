@@ -97,9 +97,9 @@ export const workState = (c) => {
   const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || '';
   const answer = thread.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
   const answered = answer && answer.createdAt > lastPerson;
-  // What the answer is: its intent (labit reply --done / --on-it / --question), or for an answer that doesn't say (an
-  // older agent or skill), its first words.
-  const said = answered && (answer.intent || (/^done\b/i.test(answer.text) ? 'done' : /^on it\b/i.test(answer.text) ? 'working' : ''));
+  // What the answer is: its intent (labit reply --done / --on-it / --question; the lab reads it from the first words
+  // of an answer that doesn't say).
+  const said = answered && answer.intent;
   if (c.resolved || said === 'done') return ['done', answered ? answer.createdAt : c.createdAt];
   if (said === 'working') return ['now', answer.createdAt];
   if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['now', c.handedAt];

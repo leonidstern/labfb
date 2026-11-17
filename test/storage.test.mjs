@@ -164,28 +164,42 @@ test('done threads with nothing new in 30 days are archived on start; open and r
   await lab.stop();
 });
 
-test('a page file from before v1 loads unchanged in meaning: replies lose resolved:false, agent replies get their intent, the file is written as v1', async () => {
+test('an older page file loads unchanged in meaning: replies lose resolved:false, agent replies get their intent, the rule fields are one, hand-off marks move beside the comments, the file is written in the new shape without being touched', async () => {
   const dir = folder();
   fs.mkdirSync(path.join(dir, '.lab/comments'), { recursive: true });
   const now = new Date().toISOString();
   const comments = {
-    t1: { id: 't1', parent: null, name: 'Leo', text: 'red', createdAt: now, resolved: true, resolvedBy: 'agent', anchor },
-    r1: { id: 'r1', parent: 't1', name: 'Claude', text: 'Done: red', createdAt: now, resolved: false, anchor: null, session: { agent: 'claude' } },
-    r2: { id: 'r2', parent: 't1', name: 'Claude', text: 'On it', createdAt: now, resolved: false, anchor: null, session: { agent: 'claude' } },
-    r3: { id: 'r3', parent: 't1', name: 'Leo', text: 'Done: thanks', createdAt: now, resolved: false, anchor: null, from: 'this computer' },
+    t1: { id: 't1', parent: null, name: 'Leo', text: 'red', createdAt: now, resolved: true, resolvedBy: 'agent', anchor, deliveredAt: now, deliveredTo: 'sess-a', handedAt: now, remindedAt: now },
+    r1: { id: 'r1', parent: 't1', name: 'Claude', text: 'Done: red', createdAt: now, resolved: false, anchor: null, session: { agent: 'claude' }, suggest: 'Say where', suggestDone: 'kept', rule: 'Say where' },
+    r2: { id: 'r2', parent: 't1', name: 'Claude', text: 'On it', createdAt: now, resolved: false, anchor: null, session: { agent: 'claude' }, suggest: 'Shorter', suggestDone: 'no' },
+    r3: { id: 'r3', parent: 't1', name: 'Leo', text: 'Done: thanks', createdAt: now, resolved: false, anchor: null, from: 'this computer', deliveredAt: now },
+    r4: { v: 1, id: 'r4', parent: 't1', name: 'Claude', text: 'Done', createdAt: now, anchor: null, session: { agent: 'claude' }, rule: 'Link it', ruleUndone: true },
+    r5: { v: 1, id: 'r5', parent: 't1', name: 'Claude', text: 'Which one?', createdAt: now, anchor: null, session: { agent: 'claude' }, suggest: 'Ask less' },
+    w1: { id: 'w1', parent: null, name: 'Leo', text: 'this word', createdAt: now, resolved: false, anchor: { ...anchor, selector: 'body', element: '<body>', text: '…some words [here] after it…' } },
   };
   fs.writeFileSync(path.join(dir, '.lab/comments/x.json'), JSON.stringify({ page: '/x', comments }));
   const lab = await start(dir);
   const got = Object.fromEntries((await lab.list('/x')).map((c) => [c.id, c]));
   assert.equal(got.t1.resolved, true, 'a thread keeps its state');
   assert.equal(got.t1.resolvedBy, 'agent');
-  assert.equal(got.t1.v, 1);
+  assert.equal(got.t1.v, 2);
   assert.equal('resolved' in got.r1, false, 'a reply has no resolved state');
   assert.equal(got.r1.intent, 'done', "the agent's Done, read from its words");
   assert.equal(got.r2.intent, 'working');
   assert.equal(got.r3.intent, undefined, "a person's words never become an intent");
-  await lab.post({ page: '/x', name: 'Leo', text: 'one more', anchor });
-  await until(() => readJson(path.join(dir, '.lab/comments/x.json')).v === 1, 'the file written as v1');
+  assert.equal(got.r4.intent, 'done', 'an answer saved in v1 without one gets it too');
+  assert.deepEqual([got.r1.suggest, got.r2.suggest, got.r4.suggest, got.r5.suggest], [{ text: 'Say where', state: 'kept' }, { text: 'Shorter', state: 'no' }, { text: 'Link it', state: 'undone' }, { text: 'Ask less' }], 'a rule offered, kept, refused or taken back is one field');
+  for (const k of ['suggestDone', 'rule', 'ruleUndone', 'deliveredAt', 'deliveredTo', 'remindedAt']) assert.equal(Object.values(got).some((c) => k in c), false, `${k} is gone from the comments`);
+  assert.equal(got.t1.handedAt, now, 'a thread still says when the agent got it');
+  assert.deepEqual(got.w1.anchor.quote, { exact: 'here', prefix: 'some words ', suffix: ' after it' }, 'a word pin from before quotes has its word as a quote');
+  await until(() => readJson(path.join(dir, '.lab/comments/x.json')).v === 2, 'the file written in the new shape once the lab is up');
+  await until(() => fs.existsSync(path.join(dir, '.lab/handed.json')), 'the marks saved beside the comments');
+  assert.deepEqual(readJson(path.join(dir, '.lab/handed.json')), { t1: [now, 'sess-a', now], r3: [now, null] });
+  // The marks still mean what they meant: nothing here is new to a wait.
+  const server = readJson(path.join(dir, '.lab/server.json'));
+  const wait = await fetch(lab.B + '/_lab/wait', { method: 'POST', headers: { 'content-type': 'application/json', origin: lab.B, 'x-lab-admin': server.agent, 'x-lab-agent': '1' }, body: JSON.stringify({ timeout: 1 }) });
+  assert.match(await wait.text(), /this word/, 'the pin never handed over comes');
+  assert.doesNotMatch(await (await fetch(lab.B + '/_lab/wait', { method: 'POST', headers: { 'content-type': 'application/json', origin: lab.B, 'x-lab-admin': server.agent, 'x-lab-agent': '1' }, body: JSON.stringify({ timeout: 1 }) })).text(), /Done: thanks|this word/, 'what was handed over before the move does not come again');
   await lab.stop();
 });
 

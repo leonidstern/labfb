@@ -16,6 +16,7 @@ import {
   anchorAt,
   drafting,
   drawZone,
+  foundAt,
   inPage,
   markQuote,
   nameLine,
@@ -357,11 +358,25 @@ import { zoomWords } from '../lib/zoom.ts';
         else if (!S.draft && store.get(`lab-typing:${S.page}:new`) && keptSpot()) S.draft = { anchor: keptSpot() };
       }
       S.loaded = true;
+      setTimeout(found, 3000);
     } catch {
       // Keep what is already on screen when a refresh fails.
     }
     shownAgain();
   }
+  // A pin found again somewhere else than its saved path (the page changed around it) says where it is now, so the
+  // next look and the agent's text start from there. Once per pin and page load, once the page has settled, and only
+  // from a browser that may move the pin.
+  const looked = new Set();
+  const found = () => {
+    for (const c of document.readyState === 'complete' ? threads() : []) {
+      const edit = store.get(`lab-edit:${c.id}`) || undefined;
+      if (c.resolved || looked.has(c.id) || !(S.isAdmin || edit) || !c.anchor?.selector) continue;
+      looked.add(c.id);
+      const anchor = foundAt(c.anchor);
+      if (anchor) send({ action: 'move', id: c.id, found: true, anchor, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
+    }
+  };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
   // Anything odd (a gap, an error, an old lab) falls back to the whole list.
   async function loadChanges(since) {
@@ -715,7 +730,7 @@ import { zoomWords } from '../lib/zoom.ts';
     return svg;
   };
   // An agent's own comment carries the session it was written in; a person's carries where they wrote it from.
-  const byAgent = (c) => Boolean(c.session) || c.from === 'agent';
+  const byAgent = (c) => Boolean(c.session);
   // Where the page's own content ends (not the pins' layer): see inPage().
   const contentEnd = () => {
     inPage(0);

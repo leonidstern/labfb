@@ -359,6 +359,12 @@ const putAside = (file, what) => {
   console.log(`[lab] ${what} was damaged; moved it to ${path.relative(LAB, aside)}`);
 };
 let saved = {};
+// What each wait was handed, kept beside the comments (.lab/handed.json) and not in them: { comment id: [the stamp it
+// had when handed over, the session it went to, when it was last brought up again] }. In the comments (before 17 Nov)
+// every wait rewrote its pages' files, sent each mark to every open page, and each comment carried ~100 bytes of them.
+// Only handedAt stays on a thread: from it the page shows that the agent has the thread.
+const handoff = Object.create(null);
+const outdated = []; // pages whose file is in an older shape: written again in today's once the lab is up
 // A lab from before 16 Nov has the single file: its pages are moved into the folder once, and the old file is kept
 // beside it as comments.json.bak.
 const migrate = !fs.existsSync(STORE) && fs.existsSync(OLD_DATA);
@@ -375,16 +381,17 @@ if (migrate) {
     if (!name.endsWith('.json')) continue; // half-written .tmp files and damaged ones put aside
     const file = path.join(STORE, name);
     try {
-      const { page, comments } = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const { v, page, comments } = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (typeof page !== 'string' || !page.startsWith('/') || !comments || typeof comments !== 'object') throw new Error('not a page');
       saved[page] = comments;
+      if (v !== SCHEMA) outdated.push(page);
     } catch {
       putAside(file, `comments/${name}`);
     }
   }
 }
 // Each comment comes up to the current shape as it loads (api/_schema.mjs), whatever version its file was written in.
-const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(upgrade(c))]))]));
+const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(upgrade(c, handoff))]))]));
 saved = null;
 if (migrate) {
   // Written into a folder of its own and then renamed, so a lab stopped halfway starts over from the old file.
@@ -401,7 +408,7 @@ fs.mkdirSync(STORE, { recursive: true });
 // only lets in this computer and the home network, where one phone reviewing a page can pass that in an evening
 // (15 Nov): 600 here, unless LAB_COMMENTS_PER_HOUR says otherwise.
 process.env.LAB_COMMENTS_PER_HOUR ||= '600';
-const api = await apiOn(db, REPO);
+const api = await apiOn(db);
 const commentsOf = (page) => [...(db.get(`lab:comments:${page}`)?.values() ?? [])].map((v) => JSON.parse(v)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 const pages = () => [...db.keys()].filter((k) => k.startsWith('lab:comments:') && db.get(k).size).map((k) => k.slice('lab:comments:'.length));
 
@@ -600,6 +607,7 @@ const shot = new Map(); // page -> Map(id -> JSON string), as last sent
 const changeLog = []; // { rev, page, set: [JSON strings], del: [ids] }, the latest 300
 const takeShot = (p) => new Map(db.get(`lab:comments:${p}`) || []);
 for (const p of pages()) shot.set(p, takeShot(p));
+for (const p of outdated) unsaved.add(p);
 function logChanges(page, rev) {
   for (const p of page ? [page] : [...new Set([...pages(), ...shot.keys()])]) {
     const was = shot.get(p) || new Map();
@@ -620,7 +628,6 @@ const forGuests = (c) => {
   if (!c || typeof c !== 'object') return c;
   const rest = { ...c };
   if (rest.session) rest.session = { name: rest.session.name, agent: rest.session.agent, kind: rest.session.kind };
-  delete rest.deliveredTo; // which session has the thread: an id, this computer's business
   return rest;
 };
 function commentChangesSince(page, since) {
@@ -875,17 +882,31 @@ const reads = (() => {
 let readsBroadcast = 0;
 let readsRev = 0;
 const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
-let readsTimer;
-const saveReads = () => {
-  clearTimeout(readsTimer);
-  readsTimer = setTimeout(() => {
-    try {
-      writeAtomic(READS, JSON.stringify(reads));
-    } catch (e) {
-      console.error('[lab] could not save read marks:', e.message);
-    }
-  }, 300);
+// A side file is saved whole, a moment after its last change.
+const saver = (file, data, what) => {
+  let timer;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      try {
+        writeAtomic(file, JSON.stringify(data()));
+      } catch (e) {
+        console.error(`[lab] could not save ${what}:`, e.message);
+      }
+    }, 300);
+  };
 };
+const saveReads = saver(READS, () => reads, 'read marks');
+// The hand-off marks (see handoff, above): the file's own win over what old comment files still said, and the marks of
+// comments that are gone (deleted, archived) go as it is saved.
+const HANDED = path.join(LAB, 'handed.json');
+const saveHanded = saver(HANDED, () => {
+  const live = new Set(pages().flatMap((p) => [...db.get(`lab:comments:${p}`).keys()]));
+  for (const id of Object.keys(handoff)) if (!live.has(id)) delete handoff[id];
+  return handoff;
+}, 'hand-off marks');
+if (Object.keys(handoff).length) saveHanded();
+for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
 const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
@@ -1013,9 +1034,9 @@ async function threadsText(page, threads) {
   return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids } : null;
 }
 // A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale). Each comment
-// handed to a wait is marked with the stamp it had (deliveredAt), so a comment counts as new until it itself has been
-// handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for comments
-// from before these marks.
+// handed to a wait is marked with the stamp it had (handoff[id][0]), so a comment counts as new until it itself has
+// been handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for
+// comments from before these marks.
 const stamp = (c) => [c.createdAt, c.movedAt].filter(Boolean).sort().pop(); // new when written or moved
 const rulesOnce = () => {
   const rules = rulesText();
@@ -1026,27 +1047,26 @@ const rulesOnce = () => {
 };
 
 // Who a wait is: the session's id, or its name for an agent with no id. Each comment handed over is marked with it
-// (deliveredTo), so a reply goes as one line only to the session that already has its thread.
+// (handoff[id][1]), so a reply goes as one line only to the session that already has its thread.
 const whoOf = (s) => s?.id || s?.name || '';
 async function unseen(scope = pages(), who = '') {
-  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
   const now = Date.now();
   const lastBy = (c, mine) => [c, ...commentsOf(c._page).filter((r) => r.parent === c.id)].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
   const missed = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
-    .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(c.remindedAt && now - Date.parse(c.remindedAt) < 600000))
+    .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(now - Date.parse(handoff[c.id]?.[2]) < 600000))
     .filter(({ page, c }) => !fresh.some((f) => f.page === page && (f.c.id === c.id || f.c.parent === c.id)));
   if (!fresh.length && !missed.length) return null;
   const blocks = [];
   const sent = new Set(); // page + thread id actually written into the text
   // A reply in a thread this session already has: only the new words and one line on what the thread is about, not
   // the whole thread again (the full one is at /_lab/agent/<page>). A thread handed to another session goes whole.
-  // (A thread marked before deliveredTo was kept counts as known to any session, as it did.)
+  // (A thread marked before the session was kept counts as known to any session, as it did.)
   const known = (f) => {
-    if (!f.c.parent) return false;
-    const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
-    return Boolean(root?.deliveredAt) && (root.deliveredTo === undefined || root.deliveredTo === who) && !fresh.some((g) => g.c.id === root.id);
+    const mark = handoff[f.c.parent];
+    return Boolean(mark?.[0]) && (mark[1] == null || mark[1] === who) && !fresh.some((g) => g.c.id === f.c.parent);
   };
   const replies = fresh.filter(known);
   const whole = fresh.filter((f) => !known(f));
@@ -1069,7 +1089,8 @@ async function unseen(scope = pages(), who = '') {
   if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
   if (missed.length) {
     blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
-    for (const { page, c } of missed) setComment(page, c.id, { remindedAt: new Date(now).toISOString() });
+    for (const { c } of missed) (handoff[c.id] ||= ['', null])[2] = new Date(now).toISOString();
+    saveHanded();
   }
   const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
   if (!given.length && !missed.length) return null;
@@ -1088,10 +1109,14 @@ async function unseen(scope = pages(), who = '') {
 // Hand the new comments to a wait; each is marked as handed over only once it is written to it.
 function deliver(res, got, who = '') {
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
-  for (const [page, id, at] of got.marks) setComment(page, id, { deliveredAt: at, deliveredTo: who });
+  for (const [, id, at] of got.marks) handoff[id] = [at, who];
   const at = new Date().toISOString();
-  for (const [page, id] of got.handed) setComment(page, id, { handedAt: at, deliveredTo: who }); // the thread: this session has it now
-  for (const page of new Set([...got.marks, ...got.handed].map(([page]) => page))) persist(page).catch(() => {});
+  for (const [page, id] of got.handed) {
+    (handoff[id] ||= ['', who])[1] = who; // the thread: this session has it now
+    setComment(page, id, { handedAt: at });
+  }
+  saveHanded();
+  for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
   setMode('working');
 }
 // A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made one after another go
@@ -1314,18 +1339,16 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/rule' && req.method === 'POST') {
       const b = JSON.parse((await new Response(req).text()) || '{}');
       const page = String(b.page || '');
-      // keep / no: a rule the agent offered (--suggest-rule). Otherwise: undo a rule it saved.
-      if (b.action === 'keep' || b.action === 'no') {
-        const c = commentsOf(page).find((x) => x.id === b.id && x.suggest && x.session);
-        if (!c) return res.writeHead(404).end('no offer');
-        if (!c.suggestDone && b.action === 'keep') addRule(c.suggest);
-        if (!c.suggestDone) setComment(page, c.id, b.action === 'keep' ? { suggestDone: 'kept', rule: c.suggest } : { suggestDone: 'no' });
-        return res.writeHead(204).end();
+      // keep / no: a rule the agent offered (--suggest-rule). Otherwise: undo a kept one.
+      const c = commentsOf(page).find((x) => x.id === b.id && x.suggest && x.session);
+      const to = b.action === 'keep' ? 'kept' : b.action === 'no' ? 'no' : 'undone';
+      if (!c || (to === 'undone' && !c.suggest.state)) return res.writeHead(404).end('no rule');
+      if (c.suggest.state === (to === 'undone' ? 'kept' : undefined)) {
+        if (to !== 'no') (to === 'kept' ? addRule : dropRule)(c.suggest.text);
+        setComment(page, c.id, { suggest: { ...c.suggest, state: to } });
+        persist(page).catch(() => {});
+        broadcast();
       }
-      const c = commentsOf(page).find((x) => x.id === b.id && x.rule && x.session);
-      if (!c) return res.writeHead(404).end('no rule');
-      if (!c.ruleUndone) dropRule(c.rule);
-      setComment(page, c.id, { ruleUndone: true });
       return res.writeHead(204).end();
     }
     if (pathname === '/_lab/invite') {
@@ -1514,8 +1537,9 @@ const handler = async (req, res) => {
       const kept = listing && cachedList(listPage, kind);
       if (kept) return res.writeHead(kept.status, kept.headers).end(kept.out);
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
-      // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does).
-      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost', ...(agent ? { 'x-lab-admin': TOKEN } : {}) });
+      // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does), and the
+      // API hears from the lab alone who speaks, the agent or a person: a page can't say it is the agent.
+      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost', 'x-lab-agent': agent ? '1' : '0', ...(agent ? { 'x-lab-admin': TOKEN } : {}) });
       const text = await out.text();
       if (req.method === 'POST' && out.ok) {
         const { comment } = JSON.parse(text);
@@ -1523,21 +1547,16 @@ const handler = async (req, res) => {
           // Mark who wrote it, so Claude can tell this computer from a guest, and its own replies from people's.
           const [key, h] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
           const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: sessionFrom(req) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
-          if (!agent) delete stored.suggest; // only the agent's answer offers a rule
-          if (!agent) delete stored.intent; // and only the agent's answer says it is done, on it, or a question
+          // An answer that doesn't say what it is (an older agent or skill) is read from its first words, once, here.
+          const said = stored.intent;
+          if (agent && stored.parent) stored.intent ||= intentFromText(stored.text);
           h.set(comment.id, JSON.stringify(stored));
-          // A person answering a resolved thread ("still wrong") reopens it, here too, where the browser is admin.
-          if (!agent && stored.parent && h.has(stored.parent)) {
-            const root = JSON.parse(h.get(stored.parent));
-            if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined, resolvedAt: undefined }));
-          }
           // The agent answering done (labit reply --done) closes the thread itself (Leo, 15 Nov: 37 threads sat open with
           // nothing left to do). An answer that doesn't say (an older agent or skill) counts as done when its words start
           // "Done", and then only when it answered one clear thing: one message from people since the agent last spoke,
-          // and not a list ("1) … 2) …", "- … - …"). A person writing again reopens it, as above. Other answers (on it, a
-          // question, options) leave it open. Page chats stay open either way.
-          const said = stored.intent || intentFromText(stored.text);
-          if (agent && stored.parent && h.has(stored.parent) && said === 'done') {
+          // and not a list ("1) … 2) …", "- … - …"). A person writing again reopens it (the API does). Other answers (on
+          // it, a question, options) leave it open. Page chats stay open either way.
+          if (agent && stored.parent && h.has(stored.parent) && stored.intent === 'done') {
             const root = JSON.parse(h.get(stored.parent));
             const thread = [root, ...[...h.values()].map((v) => JSON.parse(v)).filter((x) => x.parent === root.id && x.id !== stored.id)]
               .sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
@@ -1545,11 +1564,11 @@ const handler = async (req, res) => {
             const asks = thread.slice(lastAgent + 1).filter((x) => !x.session);
             const listy = (t) => String(t).split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length >= 2;
             const oneThing = asks.length === 1 && !listy(asks[0].text);
-            if ((stored.intent === 'done' || oneThing) && !root.resolved && root.anchor?.kind !== 'page')
+            if ((said || oneThing) && !root.resolved && root.anchor?.kind !== 'page')
               h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent', resolvedAt: stored.createdAt }));
           }
           // A zoom closes itself once its block is on the page and the agent has answered (Leo, 16 Nov): the block is the
-          // answer. Only while the person hasn't written more in the thread; writing again reopens it, as above.
+          // answer. Only while the person hasn't written more in the thread; writing again reopens it.
           if (agent && stored.parent && h.has(stored.parent)) {
             const root = JSON.parse(h.get(stored.parent));
             const more = [...h.values()].map((v) => JSON.parse(v)).some((x) => x.parent === root.id && x.id !== stored.id && !x.session);

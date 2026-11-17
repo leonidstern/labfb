@@ -15,7 +15,8 @@ const OWNER = 'owner-secret-0123456789abcdef';
 process.env.LAB_HOST = 'lab.test';
 process.env.LAB_COMMENTS_ADMIN_TOKEN = OWNER;
 process.env.LAB_COMMENTS_PER_HOUR = '3';
-const api = await apiOn(new Map(), REPO);
+const db = new Map();
+const api = await apiOn(db);
 
 const call = (body, headers = {}, method = 'POST') =>
   api[method](new Request('https://lab.test/_lab/api/comments' + (method === 'GET' ? `?${new URLSearchParams(body)}` : ''), {
@@ -82,6 +83,54 @@ test('answering a resolved thread reopens it', async () => {
   await call({ page, name: 'Ann', text: 'still broken', parent: comment.id }, { ip: '10.1.1.1' });
   const thread = (await (await call({ page }, {}, 'GET')).json()).comments.find((c) => c.id === comment.id);
   assert.equal(thread.resolved, false);
+});
+
+test("the agent's answer is told from a person's: an admin request marked as the agent's", async () => {
+  const page = '/anna/site/agent';
+  const { comment } = await pin(page, 'fix this', '10.1.2.1');
+  const reply = async (body, headers) => (await (await call({ page, parent: comment.id, ...body }, headers)).json()).comment;
+  const agent = await reply({ name: 'Claude', text: 'Fixed.', intent: 'done', suggest: 'Say where' }, { 'x-lab-admin': OWNER, 'x-lab-agent': '1' });
+  assert.deepEqual([agent.session, agent.intent, agent.suggest], [{ name: 'Claude' }, 'done', { text: 'Say where' }]);
+  const owner = await reply({ name: 'Owner', text: 'ok', intent: 'done', suggest: 'x' }, { 'x-lab-admin': OWNER });
+  assert.deepEqual([owner.session, owner.intent, owner.suggest], [undefined, undefined, undefined], 'an admin who is not the agent');
+  const guest = await reply({ name: 'Ann', text: 'ok', intent: 'done', suggest: 'x' }, { ip: '10.1.2.2', 'x-lab-agent': '1' });
+  assert.deepEqual([guest.session, guest.intent, guest.suggest], [undefined, undefined, undefined], 'the mark alone, without a key');
+  // Reopening: a person does, the agent does not; an admin only when the lab says it is a person (a local lab does).
+  const state = async () => (await (await call({ page }, {}, 'GET')).json()).comments.find((c) => c.id === comment.id).resolved;
+  await call({ page, action: 'resolve', id: comment.id }, { 'x-lab-admin': OWNER });
+  await reply({ name: 'Claude', text: 'More.' }, { 'x-lab-admin': OWNER, 'x-lab-agent': '1' });
+  assert.equal(await state(), true, "the agent's answer leaves it resolved");
+  await reply({ name: 'Leo', text: 'still off' }, { 'x-lab-admin': OWNER, 'x-lab-agent': '0' });
+  assert.equal(await state(), false, 'a person with the admin key reopens it');
+});
+
+test('a write does not undo a change that landed after its read: a reply reopening a thread keeps a move made meanwhile', async () => {
+  const page = '/anna/site/race';
+  const { comment } = await pin(page, 'fix this', '10.1.3.1');
+  await call({ page, action: 'resolve', id: comment.id }, { 'x-lab-admin': OWNER });
+  // Between the reopen's read and its write, the pin is moved (as another request would).
+  const h = db.get(`lab:comments:${page}`);
+  const get = h.get.bind(h);
+  let reads = 0;
+  h.get = (id) => {
+    const v = get(id);
+    if (id === comment.id && ++reads === 2) h.set(id, JSON.stringify({ ...JSON.parse(v), anchor: { selector: 'h2' }, movedAt: 'meanwhile' }));
+    return v;
+  };
+  assert.equal((await call({ page, name: 'Ann', text: 'still broken', parent: comment.id }, { ip: '10.1.3.1' })).status, 201);
+  delete h.get;
+  const thread = JSON.parse(h.get(comment.id));
+  assert.ok(reads >= 4, 'it read again');
+  assert.deepEqual([thread.resolved, thread.anchor.selector, thread.movedAt], [false, 'h2', 'meanwhile'], 'reopened, and the move is still there');
+});
+
+test('a pin found again on a changed page saves where it is now, and does not count as moved', async () => {
+  const page = '/anna/site/found';
+  const a = (await (await call({ page, name: 'Ann', text: 'this card', anchor: { selector: 'div:nth-of-type(2)', x: 0.3, y: 0.4, docX: 0.2, docY: 100, eh: 40, element: '<div class="card">', text: 'Beta' } }, { ip: '10.1.4.1' })).json());
+  assert.equal((await call({ page, action: 'move', id: a.comment.id, found: true, anchor: { selector: 'div:nth-of-type(3)', docX: 0.2, docY: 180, eh: 44 } })).status, 403, 'with its key, like any move');
+  const { comment } = await (await call({ page, action: 'move', id: a.comment.id, found: true, anchor: { selector: 'div:nth-of-type(3)', docX: 0.2, docY: 180, eh: 44, text: 'other' }, edit: a.edit })).json();
+  assert.deepEqual(comment.anchor, { ...a.comment.anchor, selector: 'div:nth-of-type(3)', docY: 180, eh: 44 }, 'only the path and the place on the page');
+  assert.equal(comment.movedAt, undefined);
 });
 
 test('a page full of open threads refuses people, not admins; done threads leave room', async () => {

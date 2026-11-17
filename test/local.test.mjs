@@ -167,10 +167,10 @@ test('a reply goes as one line only to the session that has its thread; another 
   const b2 = (await again).out;
   assert.match(b2, new RegExp(`thread id ${comment.id} ".*": Leo · .* · id \\w+: and less on mobile`), 'now it has the thread: one line');
   assert.doesNotMatch(b2, /^## /m);
-  const stored = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/comments/index.json'), 'utf8')).comments[comment.id];
-  assert.equal(stored.deliveredTo, 'sess-b');
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/handed.json'), 'utf8'))[comment.id][1], 'sess-b', 'which session has the thread: kept beside the comments');
   const seen = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === comment.id);
-  assert.equal(seen.deliveredTo, 'sess-b', 'this computer sees it (a guest would not)');
+  assert.equal(seen.deliveredTo, undefined, 'and not sent to pages');
 });
 
 test('one lab per folder: two started at once make one; a dead lock or a silent server.json does not block; SIGHUP cleans up', async () => {

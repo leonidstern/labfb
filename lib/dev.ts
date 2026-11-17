@@ -2,7 +2,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { pathToFileURL } from 'node:url';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 
 /** The local store: Upstash's keys, each a hash (Map) or a counter / string. */
@@ -11,7 +10,8 @@ type Handler = (req: Request) => Promise<Response>;
 
 // api/lab-comments.mjs talks to Upstash over REST. This answers the same commands from `db`, a Map of hashes,
 // and returns the API module. Call it before anything else uses fetch for that URL.
-export async function apiOn(db: Db, repo: string): Promise<any> {
+// The module is named here as it is, so the built server (dist/) carries it and the package needn't ship api/ as well.
+export async function apiOn(db: Db): Promise<any> {
   process.env.KV_REST_API_URL = 'http://lab.store';
   process.env.KV_REST_API_TOKEN = 'local';
   const hash = (k: string): Map<string, string> => db.get(k) ?? (db.set(k, new Map()), db.get(k));
@@ -24,6 +24,8 @@ export async function apiOn(db: Db, repo: string): Promise<any> {
     HEXISTS: (k, f) => (db.get(k)?.has(f) ? 1 : 0),
     INCR: (k) => { const v = (db.get(k) || 0) + 1; db.set(k, v); return v; },
     EXPIRE: () => 1,
+    // The one script the API sends (its SWAP): set the field only if it still holds what was read.
+    EVAL: (_script, _keys, k, f, was, next) => (db.get(k)?.get(f) === was ? (db.get(k).set(f, next), 1) : 0),
     GET: (k) => (typeof db.get(k) === 'string' ? db.get(k) : null),
     SET: (k, v, ex, sec) => {
       db.set(k, String(v));
@@ -42,7 +44,7 @@ export async function apiOn(db: Db, repo: string): Promise<any> {
     const out = one(JSON.parse(String(init?.body)));
     return Response.json(out, { status: out.error ? 400 : 200 });
   };
-  return import(pathToFileURL(path.join(repo, 'api/lab-comments.mjs')).href);
+  return import('../api/lab-comments.mjs');
 }
 
 // Runs a Node request through a Web-style handler (the API's GET / POST).

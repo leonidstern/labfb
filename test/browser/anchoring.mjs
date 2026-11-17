@@ -158,6 +158,81 @@ try {
       check(eng, 'a pin is found again when the made-up names change', !r.at.moved && r.at.top >= r.top && r.at.top <= r.bottom, JSON.stringify(r.at));
       check(eng, 'an older pin with made-up names is found again too', !r.old.moved && r.old.top >= r.top && r.old.top <= r.bottom, JSON.stringify(r.old));
       await p.close();
+
+      // 8. A pin in the space between two blocks stays between them when the page grows above (it showed as moved).
+      p = await open(ctx, `<main><div id="top"></div><section class="a"><h2>Alpha</h2><p>one</p></section>
+        <section class="b" style="margin-top:80px"><h2>Beta</h2><p>two</p></section></main>`);
+      r = await p.evaluate(() => {
+        const [a, b] = [document.querySelector('.a'), document.querySelector('.b')];
+        const gap = () => ({ top: a.getBoundingClientRect().bottom + scrollY, bottom: b.getBoundingClientRect().top + scrollY });
+        const m = document.querySelector('main').getBoundingClientRect();
+        const y = a.getBoundingClientRect().bottom + 30;
+        const anchor = A.anchorAt(m.left + 200, y);
+        const same = A.position(anchor);
+        document.getElementById('top').style.height = '500px';
+        const grown = { at: A.position(anchor), gap: gap() };
+        a.remove();
+        return { said: [anchor.gapAbove, anchor.gapBelow], same, put: y + scrollY, grown, alone: A.position(anchor), below: b.getBoundingClientRect().top + scrollY };
+      });
+      check(eng, 'a gap pin names the blocks above and below it', /Alpha/.test(r.said[0]) && /Beta/.test(r.said[1]), JSON.stringify(r.said));
+      check(eng, 'a gap pin on an unchanged page is where it was put', !r.same.moved && Math.abs(r.same.top - r.put) < 1, JSON.stringify(r.same));
+      check(eng, 'a gap pin stays between its two blocks when the page grows above', !r.grown.at.moved && r.grown.at.top >= r.grown.gap.top && r.grown.at.top <= r.grown.gap.bottom, JSON.stringify(r.grown));
+      check(eng, 'a gap pin whose upper block is gone sits just above the lower one', !r.alone.moved && r.alone.top <= r.below && r.alone.top >= r.below - 16, JSON.stringify([r.alone, r.below]));
+      await p.close();
+
+      // A gap between look-alikes (cards with no words of their own) is the one it was put in.
+      p = await open(ctx, '<main><div id="top"></div>' + '<div class="card" style="height:40px;margin-bottom:60px;background:#ccc"></div>'.repeat(4) + '</main>');
+      r = await p.evaluate(() => {
+        const cards = document.querySelectorAll('.card');
+        const m = document.querySelector('main').getBoundingClientRect();
+        const y = cards[1].getBoundingClientRect().bottom + 20;
+        const anchor = A.anchorAt(m.left + 200, y);
+        const same = A.position(anchor);
+        document.getElementById('top').style.height = '90px';
+        return { same, put: y + scrollY, grown: A.position(anchor), top: cards[1].getBoundingClientRect().bottom + scrollY, bottom: cards[2].getBoundingClientRect().top + scrollY };
+      });
+      check(eng, 'a gap pin between look-alikes is where it was put', !r.same.moved && Math.abs(r.same.top - r.put) < 1, JSON.stringify(r));
+      check(eng, 'a gap pin between look-alikes stays in a gap when the page grows above', !r.grown.moved && [0, 100, 200, 300].some((d) => r.grown.top >= r.top + d - 200 && r.grown.top <= r.bottom + d - 200), JSON.stringify(r));
+      await p.close();
+
+      // 9. The pinned element is gone (another tag now): its words are looked for in the whole page.
+      p = await open(ctx, '<div id="pad"></div><p class="lede">Intro words, then the special phrase sits here, and more after.</p><p>Elsewhere a phrase too.</p>');
+      r = await p.evaluate(() => {
+        const w = wordAt('special');
+        const a = A.anchorAt(w.x, w.y);
+        const swap = (html) => (document.querySelector('.lede, .intro').outerHTML = html);
+        document.getElementById('pad').style.height = '200px';
+        swap('<div class="intro">Intro words, then the special phrase sits here, and more after.</div>');
+        const sure = { at: A.position(a), word: wordAt('special') };
+        swap('<div class="intro">Intro words, then the precious phrase sits here, and more after.</div>');
+        const guess = { at: A.position(a), word: wordAt('precious') };
+        swap('<div class="intro">Nothing of it is left.</div>');
+        return { quote: a.quote, sure, guess, gone: A.position(a) };
+      });
+      check(eng, 'element gone, words still there in the same company: the pin sits on them', !r.sure.at.moved && r.sure.at.top >= r.sure.word.top && r.sure.at.top <= r.sure.word.bottom && r.sure.at.left >= r.sure.word.left && r.sure.at.left <= r.sure.word.right, JSON.stringify(r.sure));
+      check(eng, 'element gone, words edited but their company is there: the pin waits beside them, as moved', r.guess.at.moved === true && r.guess.at.top >= r.guess.word.top && r.guess.at.top <= r.guess.word.bottom, JSON.stringify(r.guess));
+      check(eng, 'element and words gone: moved, at its old height', r.gone.moved === true, JSON.stringify(r.gone));
+      await p.close();
+
+      // 10. A pin found again on another element says where it is now (to save); one at its own path says nothing.
+      p = await open(ctx, '<div id="list"><div class="card">Alpha card</div><div class="card">Beta card</div><div class="card">Gamma card</div></div>');
+      r = await p.evaluate(() => {
+        const b = document.querySelectorAll('.card')[1].getBoundingClientRect();
+        const a = A.anchorAt(b.left + 2, b.top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        const still = A.foundAt(a);
+        document.getElementById('list').innerHTML = '<div class="card">Gamma card</div><div class="card">Alpha card</div><div class="card">Beta card</div>';
+        const now = A.foundAt(a);
+        const healed = now && A.foundAt({ ...a, ...now });
+        document.getElementById('list').innerHTML = '<div class="card">Gamma card</div><div class="card">Alpha card</div><div class="card">Delta card</div>';
+        return { was: a.selector, still, now, healed, lost: A.foundAt(a), third: document.querySelectorAll('.card')[2].getBoundingClientRect().top + scrollY };
+      });
+      check(eng, 'a pin at its own path has nothing to save', r.still === null, JSON.stringify(r.still));
+      check(eng, 'a pin found again on another element says its new path and place', r.now && r.now.selector !== r.was && /nth-of-type\(3\)/.test(r.now.selector) && Math.abs(r.now.docY - r.third) < 6 && r.now.eh > 0, JSON.stringify(r.now));
+      check(eng, 'once saved, it has nothing more to say', r.healed === null, JSON.stringify(r.healed));
+      check(eng, 'a pin that is lost saves nothing', r.lost === null, JSON.stringify(r.lost));
+      await p.close();
       await ctx.close();
     } finally {
       await browser.close();

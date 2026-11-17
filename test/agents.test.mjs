@@ -225,7 +225,10 @@ test('each comment is marked when handed over: one left out of a batch still com
   const a = await pin(B, 'make it red');
   await cli(dir, ['wait', '--timeout', '5'], {});
   const get = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
-  assert.ok((await get()).find((c) => c.id === a).deliveredAt, 'marked with the stamp it was handed over at');
+  const first = (await get()).find((c) => c.id === a);
+  assert.ok(!('deliveredAt' in first) && !('deliveredTo' in first), 'the mark is not in the comment (so a wait does not change what pages load)');
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, '.lab/handed.json'), 'utf8'))[a][0], first.createdAt, 'marked beside the comments, with the stamp it was handed over at');
   const b = await pin(B, 'and bigger');
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, new RegExp(`id ${b}`), 'the new one comes');
@@ -337,7 +340,7 @@ test('reply --done / --on-it / --question store the intent; --done closes whatev
   assert.ok(closed.resolvedAt, 'and when');
   const answer = (await all()).find((c) => c.parent === list);
   assert.equal(answer.intent, 'done');
-  assert.equal(answer.v, 1);
+  assert.equal(answer.v, 2);
   assert.equal('resolved' in answer, false, 'a reply carries no resolved state');
   const q = await pin(B, 'nicer title');
   await cli(dir, ['reply', q, '--question', 'Done how, the h1 or the tab title?'], {});

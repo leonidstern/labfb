@@ -7,23 +7,35 @@
 //   1 (17 Nov): agent replies say what they are with intent ('done' | 'working' | 'question'), read before from the
 //     text ("Done: …", "On it"); a thread says when it was resolved (resolvedAt); replies no longer carry resolved:false
 //     (only a thread can be resolved).
-export const VERSION = 1;
+//   2 (17 Nov): a rule the agent offers is one field, suggest: { text, state } (state 'kept' | 'no' | 'undone', none
+//     while it is only offered), where it was four (suggest, suggestDone, rule, ruleUndone). The marks of what a wait
+//     was handed (deliveredAt, deliveredTo, remindedAt) left the comment: a local lab keeps them in .lab/handed.json.
+//     A pin on a word from before quotes ("…before [word] after…" in anchor.text) has the word as anchor.quote.
+export const VERSION = 2;
 export const INTENTS = ['done', 'working', 'question'];
 
 // An agent reply's intent from its words, for records (and agents) that don't say it: the rule the lab and the widget
 // went by before intent existed.
 export const intentFromText = (text) => (/^done\b/i.test(String(text ?? '').trim()) ? 'done' : /^on it\b/i.test(String(text ?? '').trim()) ? 'working' : undefined);
 
-export function upgrade(record) {
+// handed: where a local lab collects the old hand-off marks, { id: [deliveredAt, deliveredTo, remindedAt] }.
+export function upgrade(record, handed) {
   if (!record || typeof record !== 'object' || (Number(record.v) || 0) >= VERSION) return record;
   const c = { ...record, v: VERSION };
   if (c.parent) {
     if (c.resolved === false) delete c.resolved;
-    // Only the local lab marks the agent's own replies (session); the hosted store can't tell them from people's.
+    // An agent's answer (it carries session) from before intent, or from before the lab filled it in from the words.
     if (c.session && !c.intent) {
       const intent = intentFromText(c.text);
       if (intent) c.intent = intent;
     }
   }
+  const text = c.rule || c.suggest;
+  if (typeof text === 'string') c.suggest = { text, ...(c.rule ? { state: c.ruleUndone ? 'undone' : 'kept' } : c.suggestDone === 'no' ? { state: 'no' } : {}) };
+  if (handed && c.deliveredAt) handed[c.id] = [c.deliveredAt, c.deliveredTo ?? null, ...(c.remindedAt ? [c.remindedAt] : [])];
+  for (const k of ['suggestDone', 'rule', 'ruleUndone', 'deliveredAt', 'deliveredTo', 'remindedAt']) delete c[k];
+  const a = c.anchor;
+  const word = a && !a.quote && /^(?:element|text|)$/.test(a.kind || '') && /^(…?)(.*?)\[([^\]]+)\](.*?)(…?)$/s.exec(a.text || '');
+  if (word && (word[1] || word[5])) c.anchor = { ...a, kind: 'text', quote: { exact: word[3], prefix: word[2].slice(-40), suffix: word[4].slice(0, 40) } };
   return c;
 }
