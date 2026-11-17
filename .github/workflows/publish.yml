@@ -1,6 +1,7 @@
 # Publishes labit to npm by itself, on every push to main:
 # - `latest`, the release people get: whenever package.json has a version npm doesn't have yet (a release
-#   bump). Merges without a bump leave it alone. Also tagged vX.Y.Z.
+#   bump). Merges without a bump leave it alone. Also tagged vX.Y.Z, with a GitHub release whose notes are
+#   that version's CHANGELOG section (made on any run where it's missing, so a manual run can add one late).
 # - `next`, main as it is now: every push, as the next patch with a build number (0.6.2 on main → 0.6.3-main.41),
 #   so `npx @leonidstern/labit@next` runs everything merged, released or not. A prerelease never becomes
 #   `latest` and a plain `npx @leonidstern/labit` never picks it.
@@ -56,6 +57,17 @@ jobs:
         env:
           V: v${{ steps.v.outputs.version }}
         run: git tag "$V" && git push origin "$V" || echo "tag $V already exists"
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null || { echo "no tag v$VERSION yet"; exit 0; }
+          gh release view "v$VERSION" >/dev/null 2>&1 && { echo "release v$VERSION exists"; exit 0; }
+          awk -v h="## $VERSION " 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          printf '\nnpx @leonidstern/labit@%s\n' "$VERSION" >> "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --verify-tag --latest --title "labit $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
 
       # After the release, so `next` is never older than `latest`. The version change stays in this checkout only.
       - name: Main (next)
