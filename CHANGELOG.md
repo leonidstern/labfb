@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Threads: an answer to a later message in the thread quotes it, as the chat does; a plain "go" the agent resolves without a word shows one green ✓ on your message; an open thread stays at its newest message while it gets shorter (the keyboard) or an answer comes in, as the chat does, and goes to it when you tap the reply box.
 - Phone links: `labit invite --page /path` opens that page. A used or old link opened again on a device the lab already lets in takes you to its page instead of the gate, and a guest who keeps using the lab stays in (each page they open renews the day). Only a path of this lab is a landing; anything else lands on `/`.
 - Phones: the quoted words of a comment are lit, not half the page. Safari painted that green over whole blocks of text that can't be selected, and with comments on the page was unselectable all the time; now only while a finger is down (the hold still never turns into a text selection).
 - Phones: after a new comment is sent or dropped, the page glides back to where you were before the hold moved it up to keep the pin above the keyboard (once the card has landed in its pin; not if you scrolled yourself meanwhile).

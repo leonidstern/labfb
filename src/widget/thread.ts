@@ -105,9 +105,29 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   // Messages as in the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, and
   // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.
   body.classList.add('msgs');
+  // At its newest it stays at its newest while it gets shorter (the keyboard coming up as you answer), as the chat does;
+  // scrolled back to read, it stays put (Leo, 17 Nov: "when I'm answering, the messages scrolled up").
+  let stick = true;
+  body.addEventListener('scroll', () => (stick = body.scrollHeight - body.scrollTop - body.clientHeight < 48), { passive: true });
+  if ('ResizeObserver' in window) new ResizeObserver(() => stick && (body.scrollTop = body.scrollHeight)).observe(body);
+  // Going to answer: the last message comes into view, so you write under what you're answering (Leo, 17 Nov).
+  foot.addEventListener('focusin', (e) => {
+    if ((e.target as Element).localName !== 'textarea') return;
+    stick = true;
+    body.scrollTop = body.scrollHeight;
+  });
   const itemEl = (item) => {
     const box = W.el('div', { class: `item msg${W.mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(W.agentOf(item) ? { 'data-agent': W.agentOf(item) } : {}) });
-    box.append(W.nameLine(item.name, false), ...W.readable(item.text));
+    box.append(W.nameLine(item.name, false));
+    // An answer to a later message in the thread quotes it, as the chat does (Leo, 17 Nov: "show what you replied on").
+    const to = item.to && W.repliesOf(c.id).find((x) => x.id === item.to);
+    if (to) {
+      const q = W.el('span', { class: 'quote' });
+      q.append(W.el('b', {}, String(to.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(to.text.replace(/\s+/g, ' ').slice(0, 90)));
+      q.addEventListener('click', () => card.querySelector(`.msg[data-id="${to.id}"]`)?.scrollIntoView({ block: 'center', behavior: W.still.matches ? 'auto' : 'smooth' }));
+      box.append(q);
+    }
+    box.append(...W.readable(item.text));
     W.stamped(box, W.stampOf(item, c, item === c && !c.resolved ? `#${W.numberOf(c)} · ` : ''));
     return box;
   };
@@ -120,6 +140,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     shown.add(item.id);
   }
   card.sync = () => {
+    const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 48;
     for (const r of W.repliesOf(c.id)) {
       if (shown.has(r.id)) continue;
       const items = card.querySelectorAll('.item');
@@ -129,6 +150,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       shown.add(r.id);
       W.markSeen([r]);
     }
+    if (atEnd) body.scrollTop = body.scrollHeight; // at the newest: the new one comes into view
   };
   // Resolve: admins, and whoever started the thread (its key is kept in their browser). Delete: admins.
   const ownKey = W.store.get(`lab-edit:${c.id}`);
