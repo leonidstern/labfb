@@ -130,7 +130,18 @@ export function revealDraft() {
   const sheetTop = innerHeight - keys - float.offsetHeight - 8; // where it comes to rest, not where it is growing now
   const p = pin.getBoundingClientRect();
   const free = 56; // below the status bar
-  if (p.top < free || p.bottom > sheetTop - 16) scrollPageTo(scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
+  if (!(p.top < free || p.bottom > sheetTop - 16)) return;
+  const to = Math.max(0, scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
+  W.S.revealed = { from: scrollY, to }; // where you were: the page goes back there once the comment is sent or dropped (backFromReveal)
+  scrollPageTo(to);
+}
+
+// After a new comment's sheet has gone, the page scrolls back to where it was before revealDraft moved it, unless you
+// scrolled it yourself since (you went somewhere: stay there).
+export function backFromReveal() {
+  const r = W.S.revealed;
+  W.S.revealed = null;
+  if (r && W.coarse && Math.abs(scrollY - r.to) < 40) scrollPageTo(r.from);
 }
 
 // Scrolls the page to top (smoothly, unless motion is reduced). A spot near the page's end can't scroll up into the
