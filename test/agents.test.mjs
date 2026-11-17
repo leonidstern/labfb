@@ -190,6 +190,7 @@ test('MCP started in a plugin folder finds the project: by the client root, the 
   // 1. The client gives its root.
   const a = start({ PWD: pluginDir });
   await a.ask('initialize', { protocolVersion: '2025-06-18', capabilities: { roots: {} }, clientInfo: { name: 'codex-mcp-client', version: '1' } });
+  a.mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n'); // roots are asked for after this
   const q = await a.roots;
   a.mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: q.id, result: { roots: [{ uri: `file://${dir}`, name: 'proj' }] } }) + '\n');
   await new Promise((r) => setTimeout(r, 200));
