@@ -80,10 +80,24 @@ export function bindAnchoring(deps: Deps) {
   ({ host, layer, el, store } = deps);
 }
 
+// Ids and classes a framework or build makes up (React's :r3: and «r3», Radix's radix-:r5:, svelte-1abc2de, CSS-module
+// _card_1x2y3, css-1abc2de): they change between builds and renders, so they say nothing about which element it is.
+// A Tailwind variant (hover:bg-x) has a colon too: it's a state, not identity either.
+const GENERATED = /[:«»]|^_r_\w+_$|[-_](?=[a-z0-9]*\d[a-z])[a-z0-9]{5,}$/i;
+const generated = (v) => GENERATED.test(v || '');
+// Names a page gives an element for tests or for comments: the most lasting way to find it again.
+const NAMED = ['data-testid', 'data-lab', 'data-comment-target'];
+
 function selectorFor(node) {
   const parts = [];
   while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
-    if (node.id && document.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1) {
+    const name = NAMED.find((a) => node.getAttribute(a));
+    const named = name && `[${name}="${CSS.escape(node.getAttribute(name))}"]`;
+    if (named && document.querySelectorAll(named).length === 1) {
+      parts.unshift(named);
+      break;
+    }
+    if (node.id && !generated(node.id) && document.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1) {
       parts.unshift(`#${CSS.escape(node.id)}`);
       break;
     }
@@ -93,7 +107,7 @@ function selectorFor(node) {
     parts.unshift(`${tag}:nth-of-type(${index})`);
     node = node.parentElement;
   }
-  return parts.length ? (parts[0].startsWith('#') ? '' : 'body > ') + parts.join(' > ') : 'body';
+  return parts.length ? (/^[#[]/.test(parts[0]) ? '' : 'body > ') + parts.join(' > ') : 'body';
 }
 
 const docWidth = () => Math.max(document.documentElement.scrollWidth, 1);
@@ -469,7 +483,9 @@ function quoteAt(cx, cy, shadowRoots = []) {
 function openingTag(node) {
   const attrs = [...node.attributes]
     .filter((a) => /^(id|class|alt|role|aria-label|href|data-[\w-]+)$/.test(a.name))
-    .map((a) => `${a.name}="${short(a.value, 60)}"`);
+    .map((a) => [a.name, a.name === 'class' ? a.value.split(/\s+/).filter((c) => c && !generated(c)).join(' ') : a.name === 'id' && generated(a.value) ? '' : a.value])
+    .filter(([n, v]) => v || !/^(id|class)$/.test(n))
+    .map(([n, v]) => `${n}="${short(v, 60)}"`);
   return `<${node.localName}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`.slice(0, 200);
 }
 // Is this element the kind a pin was put on? Same tag and id, and at least one of its classes still there: pages
@@ -478,9 +494,11 @@ function sameKind(node, tag) {
   if (!tag) return true;
   const want = /^<([\w-]+)/.exec(tag)?.[1];
   if (node.localName !== want) return false;
+  // Made-up ids and classes don't count (a pin saved before they were left out of the tag still has them).
+  const ownId = (v) => (generated(v) ? '' : v || '');
   const id = / id="([^"]*)"/.exec(tag)?.[1];
-  if ((id || '') !== short(node.id || '', 60)) return false;
-  const classes = (/ class="([^"]*)"/.exec(tag)?.[1] || '').split(/\s+/).filter((c) => c && c !== '…' && !c.endsWith('…'));
+  if (ownId(id) !== ownId(short(node.id || '', 60))) return false;
+  const classes = (/ class="([^"]*)"/.exec(tag)?.[1] || '').split(/\s+/).filter((c) => c && c !== '…' && !c.endsWith('…') && !generated(c));
   return !classes.length || classes.some((c) => node.classList.contains(c));
 }
 
@@ -674,34 +692,65 @@ function findTarget(anchor) {
   const tag = /^<([\w-]+)/.exec(anchor.element || '')?.[1];
   if (!tag || tag === 'body' || tag === 'html') return atPath;
   const flat = (t) => short(t, 400);
-  let found = null;
-  let best = -1;
-  let near = Infinity;
-  const twins = [...document.querySelectorAll(tag)].slice(0, 400).filter((n) => !host.contains(n) && sameKind(n, anchor.element));
-  for (const n of twins) {
-    const t = flat(n.textContent);
-    let score = 0;
-    if (anchor.quote?.exact && matches(n)) score += 4;
-    if (said && t === said) score += 4;
-    if (areaWords && squash(n.textContent).includes(areaWords)) score += 4;
-    else if (said && t.startsWith(said.slice(0, 40))) score += 2;
-    // The same section only breaks a tie between elements that say the right thing; on its own it would pick a
-    // neighbour (an option removed from a list put its pins on the next one).
-    if (!score && twins.length > 1) continue;
-    if (score && anchor.section && sectionOf(n) === anchor.section) score += 2;
-    const d = Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
-    if (score > best || (score === best && d < near)) [found, best, near] = [n, score, d];
+  const twin = (n) => !host.contains(n) && sameKind(n, anchor.element);
+  const pick = (twins) => {
+    let found = null;
+    let best = -1;
+    let near = Infinity;
+    for (const n of twins) {
+      const t = flat(n.textContent);
+      let score = 0;
+      if (anchor.quote?.exact && matches(n)) score += 4;
+      if (said && t === said) score += 4;
+      if (areaWords && squash(n.textContent).includes(areaWords)) score += 4;
+      else if (said && t.startsWith(said.slice(0, 40))) score += 2;
+      // The same section only breaks a tie between elements that say the right thing; on its own it would pick a
+      // neighbour (an option removed from a list put its pins on the next one).
+      if (!score && twins.length > 1) continue;
+      if (score && anchor.section && sectionOf(n) === anchor.section) score += 2;
+      const d = Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
+      if (score > best || (score === best && d < near)) [found, best, near] = [n, score, d];
+    }
+    return { found, best };
+  };
+  // First inside the box it was in (the nearest element with an id or data-lab around it), so a card's twin in
+  // another section doesn't win; the whole page only when nothing in there says the right thing.
+  const scopes = [];
+  for (const s of [anchor.inside, anchor.block && `#${anchor.block}`]) {
+    const at = !s ? null : s.startsWith('#') ? document.getElementById(s.slice(1)) : (() => {
+      try {
+        return document.querySelector(s);
+      } catch {
+        return null;
+      }
+    })();
+    if (at && at !== document.body && !host.contains(at) && !scopes.includes(at)) scopes.push(at);
   }
-  // Nothing better found (the words were edited, say): the element at the old path, if it's still the same kind.
-  return best > 0 || !atPath ? found : atPath;
+  scopes.sort((a, b) => (a.contains(b) ? 1 : b.contains(a) ? -1 : 0)); // the smaller box first
+  for (const scope of scopes) {
+    const { found, best } = pick([scope, ...scope.querySelectorAll(tag)].slice(0, 400).filter((n) => n.localName === tag && twin(n)));
+    if (best > 0) return found;
+  }
+  const twins = [...document.querySelectorAll(tag)].slice(0, 400).filter(twin);
+  const { found, best } = pick(twins);
+  if (best > 0 || !atPath) return found;
+  // Nothing says the same. A lone element of its kind is still it (the words were edited, say). Among several
+  // (cards reordered, one removed) the one at the old path is just whichever came to sit there: the pin shows as
+  // moved instead of landing on the wrong card.
+  return twins.length > 1 ? null : atPath;
 }
 
 // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
 // A pin on a big container (the page's body or main) is placed by a share of its size, which drifts when content is
-// added above. If it was on a word ("…before [word] after…"), find that word again and sit on it; if the word is gone,
-// say so (the pin shows faded as moved) instead of pointing at whatever is there now.
+// added above. If it was on words (its quote, or in older pins "…before [word] after…" in its text), find them again
+// and sit on them; if they're gone, say so (the pin shows faded as moved) instead of pointing at whatever is there now.
+const OLD_WORD = /\[[^\]]+\]/;
 let wordCache: { at: number; text: string; map: [Text, number][] } | null = null;
-function wordSpot(anchor) {
+function wordSpot(anchor, node): { left?: number; top?: number; gone?: boolean } | null {
+  if (anchor.quote?.exact) {
+    const range = quoteRange(anchor, node, true);
+    return range ? onWords(range, anchor, node.getBoundingClientRect()) || { gone: true } : { gone: true };
+  }
   const m = /^(?:…)?(.*?)\[([^\]]+)\](.*?)(?:…)?$/s.exec(anchor.text || '');
   if (!m) return null;
   const before = m[1].replace(/\s+/g, ' ').slice(-24);
@@ -775,20 +824,43 @@ export function position(anchor) {
   const at = spotOf(anchor);
   return at.moved ? { ...at, left: edgeFor(anchor) } : at;
 }
+// Where a pin on quoted words sits: on the piece of them (one per line) nearest to where it was in its element, at
+// that spot when it's still on the words, else at the nearest point of them. So an unchanged page keeps the pin
+// exactly where it was put, and words that moved inside the element take the pin with them.
+function onWords(range, anchor, rect) {
+  const rects = [...range.getClientRects()].filter((r) => r.width || r.height);
+  if (!rects.length) return null;
+  const gx = rect.left + (anchor.x || 0) * rect.width;
+  const gy = rect.top + (anchor.y || 0) * rect.height;
+  const pull = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  const far = (r) => Math.hypot(gx - pull(gx, r.left, r.right), gy - pull(gy, r.top, r.bottom));
+  let at = rects[rects.length - 1]; // the last piece (where a selection ended) wins a tie
+  for (const r of rects) if (far(r) < far(at)) at = r;
+  return { left: pull(gx, at.left, at.right) + scrollX, top: pull(gy, at.top, at.bottom) + scrollY };
+}
 function spotOf(anchor): Spot {
   const node = findTarget(anchor);
-  if (node && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && /\[[^\]]+\]/.test(anchor.text || '')) {
-    const spot = wordSpot(anchor);
+  const hasWords = anchor.quote?.exact || OLD_WORD.test(anchor.text || '');
+  // Words straight in the page (findTarget never returns the page itself): looked for in the whole page.
+  const box = node || (hasWords && /^<(body|html)[\s>]/.test(anchor.element || '') ? document.body : null);
+  const big = box && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(box.localName);
+  if (big && hasWords) {
+    const spot = wordSpot(anchor, box);
     if (spot && !spot.gone) return { left: spot.left, top: spot.top, zone: null };
     if (spot?.gone) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY), zone: null, moved: true };
   }
   // On a big container with no word to find: if the container's height changed since, the share of it no longer points
   // at the same thing, so the pin keeps its old place and shows faded as moved rather than pointing at something else.
-  if (node && anchor.eh && !anchor.zw && !anchor.docW && /^(html|body|main)$/.test(node.localName) && !/\[[^\]]+\]/.test(anchor.text || '')) {
+  if (big && anchor.eh && !hasWords) {
     if (Math.abs(node.getBoundingClientRect().height - anchor.eh) > 40) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY), zone: null, moved: true };
   }
   if (node) {
     const rect = node.getBoundingClientRect();
+    // A pin on words sits on those words, wherever they went inside the element; its share of the element only
+    // when they can't be found.
+    const range = anchor.kind === 'text' && !anchor.zw && anchor.quote?.exact ? quoteRange(anchor, node) : null;
+    const words = range && onWords(range, anchor, rect);
+    if (words) return { ...words, zone: null };
     if (rect.width || rect.height) {
       const left = rect.left + scrollX + anchor.x * rect.width;
       // An area on a box much taller than itself (a section, the page) keeps its px offset and size: as a share of the
@@ -807,38 +879,59 @@ function spotOf(anchor): Spot {
   return { left, top, zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
 }
 
-// The quoted words of a text comment, found again in the page, for the highlight (CSS Custom Highlight API:
+// An element's letters without spaces, each with its text piece and place in it; read once per moment and shared by
+// the pins in it (pins on the page itself each read the whole page).
+const letters = new WeakMap<Node, { when: number; text: string; at: [Text, number][] }>();
+function lettersOf(node, fresh = false) {
+  const had = letters.get(node);
+  if (had && !fresh && performance.now() - had.when < 400) return had;
+  let text = '';
+  const at: [Text, number][] = [];
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, { acceptNode: (t) => (host.contains(t.parentNode) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+  for (let t = walker.nextNode() as Text | null; t; t = walker.nextNode() as Text | null)
+    for (let i = 0; i < t.data.length; i++) {
+      if (/\s/.test(t.data[i])) continue;
+      text += t.data[i];
+      at.push([t, i]);
+    }
+  const got = { when: performance.now(), text, at };
+  letters.set(node, got);
+  return got;
+}
+// The quoted words of a text comment, found again in the page, for the pin and the highlight (CSS Custom Highlight API:
 // nothing in the page's DOM is touched).
 // The words are matched with spaces left out, across text pieces, so a quote that runs over several items (Shift +
 // select) is found too; the search widens from the pinned element to the few boxes around it.
-function quoteRange(anchor) {
+// strict: only where the words before them match too (a pin on the page itself: the same word elsewhere is not it).
+function quoteRange(anchor, node = null, strict = false, fresh = false) {
   const q = anchor?.quote;
-  let node = q?.exact ? findTarget(anchor) : null;
-  if (!node) return null;
+  const from = q?.exact ? node || findTarget(anchor) : null;
+  if (!from) return null;
   const want = q.exact.replace(/\s+/g, '');
+  if (!want) return null;
   const tail = (q.prefix || '').replace(/\s+/g, '').slice(-12);
-  for (let up = 0; node && up < 4; node = node.parentElement, up++) {
-    let text = '';
-    const at: [Text, number][] = []; // for each letter of text: its text piece and place in it
-    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-    for (let t = walker.nextNode() as Text | null; t; t = walker.nextNode() as Text | null)
-      for (let i = 0; i < t.data.length; i++) {
-        if (/\s/.test(t.data[i])) continue;
-        text += t.data[i];
-        at.push([t, i]);
-      }
+  let stale = false;
+  for (let n = from, up = 0; n && up < 4; n = n.parentElement, up++) {
+    const { text, at } = lettersOf(n, fresh);
     let first = null;
     for (let i = text.indexOf(want); i !== -1; i = text.indexOf(want, i + 1)) {
       const range = document.createRange();
-      range.setStart(...at[i]);
-      const [end, k] = at[i + want.length - 1];
-      range.setEnd(end, k + 1);
+      try {
+        range.setStart(...at[i]);
+        const [end, k] = at[i + want.length - 1];
+        range.setEnd(end, k + 1);
+      } catch {}
+      // The page's text changed since it was read (less than a moment ago): read it again.
+      if (range.toString().replace(/\s+/g, '') !== want) {
+        stale = true;
+        continue;
+      }
       if (!tail || text.slice(0, i).endsWith(tail)) return range;
       first ||= range;
     }
-    if (first) return first;
+    if (first && !strict) return first;
   }
-  return null;
+  return stale && !fresh ? quoteRange(anchor, from, strict, true) : null;
 }
 // A message's name with its small marks: ↩ replied, ✅ done.
 // A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
