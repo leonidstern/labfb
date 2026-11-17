@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npx @leonidstern/labit *)",
+      "Bash(npx @leonidstern/labit@latest *)",
+      "Bash(npx -y @leonidstern/labit *)",
+      "Bash(npx -y @leonidstern/labit@latest *)",
+      "mcp__labit__*",
+      "mcp__plugin_labit_labit__*"
+    ],
+    "ask": [
+      "Bash(* --wifi *)",
+      "Bash(* --wifi)",
+      "Bash(npx @leonidstern/labit invite *)",
+      "Bash(npx @leonidstern/labit@latest invite *)"
+    ]
+  }
+}
