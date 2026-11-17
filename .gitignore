@@ -1,3 +1,5 @@
 .lab/
 node_modules/
 dist/
+lab-motion/
+public/_lab/comments.min.js

@@ -164,7 +164,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // A link for a phone on the same wifi: one use, ten minutes. Claude hands it over in chat; the lab must be --wifi.
     // `invite <name>` says who is coming, so their phone starts out named; with none, your own name goes along.
     if (cmd === 'invite') {
-      const out = await call('/_lab/invite', { name: [ref, ...words].filter(Boolean).join(' ') });
+      const out = await call('/_lab/invite', { name: [ref, ...words].filter(Boolean).join(' '), page: opts.page || '' });
       if (out.status === 404) die('This lab is open to this computer only. Start it with --wifi to let a phone in.');
       if (out.status >= 300) die(`Could not make a link: ${out.text}`);
       const { links, name } = JSON.parse(out.text);
