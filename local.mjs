@@ -1116,7 +1116,7 @@ const handler = async (req, res) => {
         clients.delete(client);
         tab.streams--;
         tab.seen = Date.now();
-        if (tab.anonymous) tabs.delete(id); // a stream without a tab id is the whole page
+        if (tab.anonymous || tab.gone) tabs.delete(id); // a stream without a tab id is the whole page
         pagesChanged();
       });
       return;
@@ -1148,7 +1148,12 @@ const handler = async (req, res) => {
     }
     if (pathname === '/_lab/bye') {
       const { tab } = JSON.parse((await new Response(req).text()) || '{}');
-      if (!tabs.get(tab)?.streams) tabs.delete(tab);
+      // A bye lets the tab go even if its stream hasn't closed yet: the page closes the stream and says bye at once,
+      // and the bye can come first (CI, 17 Nov: the tab then stayed, as a silent one, until the 90 s timeout). A page
+      // back from the back-forward cache opens a new stream and counts again.
+      const gone = tabs.get(tab);
+      if (gone) gone.gone = true;
+      tabs.delete(tab);
       pagesChanged();
       return res.writeHead(204).end();
     }

@@ -257,3 +257,18 @@ test('a tab that goes silent (no bye, no check-in: it crashed, or a phone froze 
   const ms = Date.now() - t0;
   assert.ok(ms > 2500 && ms < 9000, `ended ${ms} ms after the tab went silent (timeout 3 s + grace 1 s)`);
 });
+
+test('a bye that arrives before its stream has closed still lets the tab go', async () => {
+  await drain();
+  const p = await live('race-1');
+  const w = wait();
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  assert.equal((await bye('race-1')).status, 204); // the bye first, while the stream is still open ...
+  await sleep(100);
+  const t0 = Date.now();
+  p.hide(); // ... then the stream closes
+  const { out } = await w.done;
+  assert.match(out, /page was closed/);
+  const ms = Date.now() - t0;
+  assert.ok(ms < 2500, `ended ${ms} ms after: within the 1 s grace, not after the 3 s silent-tab timeout`);
+});
