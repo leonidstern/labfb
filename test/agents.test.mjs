@@ -323,3 +323,48 @@ test('a "Done" answer leaves the thread open when several things are going on (t
   await cli(dir, ['reply', list, 'Done: the title is red'], {});
   assert.equal(Boolean((await get(list)).resolved), false, 'a list of asks');
 });
+
+test('reply --done / --on-it / --question store the intent; --done closes whatever the words; the state follows it', async () => {
+  const dir = site('intent');
+  const { B } = await lab(dir);
+  const all = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+  const get = async (id) => (await all()).find((c) => c.id === id);
+  const list = await pin(B, '1) red title\n2) smaller logo');
+  await cli(dir, ['reply', list, '--done', 'Both changed.'], {});
+  const closed = await get(list);
+  assert.equal(closed.resolved, true, 'the agent said done: closed, list or not');
+  assert.equal(closed.resolvedBy, 'agent');
+  assert.ok(closed.resolvedAt, 'and when');
+  const answer = (await all()).find((c) => c.parent === list);
+  assert.equal(answer.intent, 'done');
+  assert.equal(answer.v, 1);
+  assert.equal('resolved' in answer, false, 'a reply carries no resolved state');
+  const q = await pin(B, 'nicer title');
+  await cli(dir, ['reply', q, '--question', 'Done how, the h1 or the tab title?'], {});
+  assert.equal(Boolean((await get(q)).resolved), false, 'a question stays open, whatever its first word');
+  assert.equal((await all()).find((c) => c.parent === q).intent, 'question');
+  const w = await pin(B, 'slower');
+  await cli(dir, ['reply', w, '--on-it', 'Looking'], {});
+  assert.equal((await all()).find((c) => c.parent === w).intent, 'working');
+  const both = await cli(dir, ['reply', w, '--done', '--question', 'x'], {});
+  assert.match(both, /one of --done, --on-it, --question/);
+  // A person can't set an intent.
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'hm', parent: w, intent: 'done' }) });
+  assert.equal((await all()).find((c) => c.parent === w && c.text === 'hm').intent, undefined);
+});
+
+test('labit resolve records the agent and when; reopening clears both', async () => {
+  const dir = site('resolveby');
+  const { B } = await lab(dir);
+  const get = async (id) => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === id);
+  const a = await pin(B, 'make it red');
+  await cli(dir, ['resolve', a], {});
+  const done = await get(a);
+  assert.equal(done.resolvedBy, 'agent');
+  assert.ok(Date.parse(done.resolvedAt) > 0);
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'still orange', parent: a }) });
+  const open = await get(a);
+  assert.equal(Boolean(open.resolved), false);
+  assert.equal(open.resolvedBy, undefined);
+  assert.equal(open.resolvedAt, undefined);
+});
