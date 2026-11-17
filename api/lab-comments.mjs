@@ -429,6 +429,8 @@ export async function POST(request) {
     createdAt: new Date().toISOString(),
     resolved: false,
     anchor: parent ? null : cleanAnchor(anchor),
+    // The message in the thread this one answers, when it isn't the first (shown as a quote).
+    ...(parent && body.to ? { to: clean(body.to, 40) } : {}),
   };
   // The comment, and the reopened thread when someone (not an admin) answers a resolved one: one round trip.
   if (thread?.resolved && limited) await run('HSET', key, comment.id, JSON.stringify(comment), parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined }));
