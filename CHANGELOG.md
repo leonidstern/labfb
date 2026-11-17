@@ -4,6 +4,10 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Phones: the quoted words of a comment are lit, not half the page. Safari painted that green over whole blocks of text that can't be selected, and with comments on the page was unselectable all the time; now only while a finger is down (the hold still never turns into a text selection).
+- Phones: after a new comment is sent or dropped, the page glides back to where you were before the hold moved it up to keep the pin above the keyboard (once the card has landed in its pin; not if you scrolled yourself meanwhile).
+- `test/phone/sim.mjs`: phone checks in the iOS simulator's Safari and the Chrome stand-in, real touches step by step against a recorder on the page (focus, keyboard, scroll, selection, pins and boxes, every frame). Not in CI.
+
 ## 0.6.2 · 2026-11-17
 
 - Things being tried arrive as flags: off unless somebody turns one on, tried in a real lab, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). `flags` in `labit.json` or your own settings, switches under a **trying** heading in the ⋯ menu (this computer only), `labit settings` lists them, and a switch writes the project's `labit.json` so the agent sees the same thing. First two: `liveUrl` (a lab in front of a live page) and `agentPins` (a pin the agent left wears labit's own mark, the one the bar shows while an agent listens).
