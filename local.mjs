@@ -20,7 +20,7 @@ const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.basename(SELF_DIR) === 'dist' ? path.dirname(SELF_DIR) : SELF_DIR;
 const ME = fileURLToPath(import.meta.url);
 // How to call this again: `npx @leonidstern/labit` once installed from npm, else the script's own path.
-const CMD = REPO.split(path.sep).includes('node_modules') ? 'npx @leonidstern/labit' : `node ${ME}`;
+const CMD = REPO.split(path.sep).includes('node_modules') ? 'npx @leonidstern/labit@latest' : `node ${ME}`;
 const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
 const HELP = `labit ${VERSION}: comment on local pages, your agent (Claude, Codex, Cursor…) answers on the pins.
 Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
@@ -2109,6 +2109,9 @@ server.on('listening', async () => {
   const first = !PROXY && !fs.existsSync(path.join(ROOT, 'index.html')) ? pagesUnder(ROOT)[0] : null;
   const start = first ? urlOf(first) : '/';
   if (first) console.log(`[lab] opening ${first} (no index.html at the top; ${origin}/ lists every page)`);
+  // Started a folder too high, or in the wrong one: the page says so, but nobody has opened it yet.
+  else if (!PROXY && !pagesUnder(ROOT).length)
+    console.log(`[lab] no HTML pages in ${ROOT} — nothing to comment on yet. Name the folder that has them (${CMD} dist), or start your dev server and run this again.`);
   if (!opts['no-open']) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [origin + start], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
 });
 const bye = () => {

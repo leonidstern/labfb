@@ -28,9 +28,9 @@ It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, an
 **Any other agent:** tell it to run these in your project.
 
 ```sh
-npx @leonidstern/labit wait                    # ends with your next comment
-npx @leonidstern/labit reply <id> --done "…"   # answers on the pin and closes it
-npx @leonidstern/labit pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered
+npx @leonidstern/labit@latest wait                    # ends with your next comment
+npx @leonidstern/labit@latest reply <id> --done "…"   # answers on the pin and closes it
+npx @leonidstern/labit@latest pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered
 ```
 
 Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
@@ -40,7 +40,7 @@ Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
 
 ## Good to know
 
-- `--wifi` lets your phone comment too. Each device opens a one-time link from `npx @leonidstern/labit invite`, so being on the same wifi isn't enough. The pages still travel in the clear over the wifi.
+- `--wifi` lets your phone comment too. Each device opens a one-time link from `npx @leonidstern/labit@latest invite`, so being on the same wifi isn't enough. The pages still travel in the clear over the wifi.
 - Agents learn how you like answers: reply as usual, and when you say an answer was too long or unclear, your message shows **rule?**. Tap it and the rule goes to `~/.config/labit/replies.md`, handed to every agent with your pins.
 - You name yourself once. The name is kept for this computer in `~/.config/labit/settings.json`, so every later lab starts out knowing you — browsers keep it per port, labs don't. `labit invite [name]` carries a name to a phone the same way. `--page /path` makes the link open that page. Opening a used or old link again on a phone that's already in just takes you there, and a phone that keeps using the lab stays in.
 - Settings (port, your dev server, keys, how long the lab waits…): `labit.json` in the project and `~/.config/labit/settings.json` for you. `labit settings` shows them all; [docs/settings.md](docs/settings.md) explains each.
