@@ -5,6 +5,7 @@
 // LAB_HOST (e.g. lab.example.com), LAB_COMMENTS_ADMIN_TOKEN for resolving and deleting (see adminFor()).
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { INTENTS, upgrade, VERSION } from './_schema.mjs';
 
 const LAB_HOST = process.env.LAB_HOST || '';
 const MAX = { name: 60, text: 2000, path: 300, selector: 600, context: 400, perPage: 500 };
@@ -193,7 +194,7 @@ export async function GET(request) {
   const comments = values
     .map((v) => {
       try {
-        return JSON.parse(v);
+        return upgrade(JSON.parse(v));
       } catch {
         return null;
       }
@@ -346,14 +347,18 @@ export async function POST(request) {
     const own = body.action !== 'delete' && edit && typeof body.edit === 'string' && sameKey(body.edit, edit);
     if (!admin && !own) return json({ error: 'forbidden' }, 403);
     if (body.action === 'delete') {
-      const all = ((await run('HVALS', key)) || []).map((v) => JSON.parse(v));
+      const all = ((await run('HVALS', key)) || []).map((v) => upgrade(JSON.parse(v)));
       if (!all.some((c) => c.id === id)) return json({ error: 'not found' }, 404);
       await run('HDEL', key, id, ...all.filter((c) => c.parent === id).map((c) => c.id));
       return json({ ok: true });
     }
     const current = await run('HGET', key, id);
     if (!current) return json({ error: 'not found' }, 404);
-    const comment = { ...JSON.parse(current), resolved: body.action === 'resolve', resolvedBy: body.action === 'resolve' ? admin?.name || 'author' : undefined };
+    // Who resolved it: the agent (an admin request the lab marks as the agent's, as labit resolve and --resolve are), an
+    // admin by name, or whoever started the thread. Reopening clears who and when.
+    const by = admin && request.headers.get('x-lab-agent') === '1' ? 'agent' : admin?.name || 'author';
+    const resolve = body.action === 'resolve';
+    const comment = { ...upgrade(JSON.parse(current)), resolved: resolve, resolvedBy: resolve ? by : undefined, resolvedAt: resolve ? new Date().toISOString() : undefined };
     await run('HSET', key, id, JSON.stringify(comment));
     return json({ comment });
   }
@@ -365,7 +370,7 @@ export async function POST(request) {
     if (!isAdmin(request, path) && !(edit && typeof body.edit === 'string' && sameKey(body.edit, edit))) return json({ error: 'forbidden' }, 403);
     const current = await run('HGET', key, id);
     if (!current) return json({ error: 'not found' }, 404);
-    const thread = JSON.parse(current);
+    const thread = upgrade(JSON.parse(current));
     if (thread.parent || !body.anchor || typeof body.anchor !== 'object') return json({ error: 'bad move' }, 400);
     const anchor = cleanAnchor(body.anchor);
     if (thread.anchor?.zoom && !anchor.zoom) anchor.zoom = thread.anchor.zoom; // a moved zoom stays a zoom, whatever the widget sent
@@ -386,7 +391,7 @@ export async function POST(request) {
     const was = await run('GET', nonceKey);
     const earlier = was && (await run('HGET', key, was));
     if (earlier) {
-      const c = JSON.parse(earlier);
+      const c = upgrade(JSON.parse(earlier));
       const edit = c.parent ? null : editKey(path, c.id);
       return json(edit ? { comment: c, edit } : { comment: c }, 200);
     }
@@ -414,31 +419,36 @@ export async function POST(request) {
   let thread = null;
   if (parent) {
     if (!found) return json({ error: 'thread not found' }, 404);
-    thread = JSON.parse(found);
+    thread = upgrade(JSON.parse(found));
     if (thread.parent) {
       parent = thread.parent;
       const root = await run('HGET', key, parent);
       if (!root) return json({ error: 'thread not found' }, 404);
-      thread = JSON.parse(root);
+      thread = upgrade(JSON.parse(root));
     }
   }
 
   const anchor = body.anchor || {};
   const comment = {
+    v: VERSION,
     id: crypto.randomUUID().replace(/-/g, '').slice(0, 12),
     parent,
     name,
     text,
     createdAt: new Date().toISOString(),
-    resolved: false,
+    // Only a thread is open or resolved; a reply has no such state.
+    ...(parent ? {} : { resolved: false }),
     anchor: parent ? null : cleanAnchor(anchor),
     // The message in the thread this one answers, when it isn't the first (shown as a quote).
     ...(parent && body.to ? { to: clean(body.to, 40) } : {}),
     // A rule the agent offers on its own, from a reply about how it answered (labit reply --suggest-rule): kept with a tap.
     ...(parent && body.suggest && !limited ? { suggest: cleanText(body.suggest, 200) } : {}),
+    // What the agent's answer is (labit reply --done / --on-it / --question): the thread's state is read from it, not
+    // from the words. Admins only, as the agent always is.
+    ...(parent && INTENTS.includes(body.intent) && !limited ? { intent: body.intent } : {}),
   };
   // The comment, and the reopened thread when someone (not an admin) answers a resolved one: one round trip.
-  if (thread?.resolved && limited) await run('HSET', key, comment.id, JSON.stringify(comment), parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined }));
+  if (thread?.resolved && limited) await run('HSET', key, comment.id, JSON.stringify(comment), parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined, resolvedAt: undefined }));
   else await run('HSET', key, comment.id, JSON.stringify(comment));
   if (nonceKey) await run('SET', nonceKey, comment.id, 'EX', 900);
   const edit = parent ? null : editKey(path, comment.id);

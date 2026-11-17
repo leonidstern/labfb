@@ -2,7 +2,7 @@
 // wait, reply, resolve, invite. Loaded by local.mjs only for these, so starting a lab never reads it.
 import fs from 'node:fs';
 import path from 'node:path';
-import { FOREGROUND_CAP, listenPages, waitSeconds, type Opts } from './args.ts';
+import { FOREGROUND_CAP, listenPages, replyIntent, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
 import { runningLabs, type Lab } from './labs.ts';
 import { findLab, labCall, WAIT_SAID } from './labcall.ts';
@@ -236,9 +236,11 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
     if (cmd === 'reply') {
       if (!words.length) die(`Reply text is missing: ${CMD} reply <id> "what you did"`);
+      const intent = replyIntent(opts);
+      if (intent instanceof Error) die(intent.message);
       const who = process.env.LAB_AGENT_NAME || session.agent;
       const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
-      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}) });
+      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}) });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
     }
     if (cmd === 'resolve' || opts.resolve) {

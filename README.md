@@ -29,7 +29,7 @@ It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, an
 
 ```sh
 npx @leonidstern/labit wait                    # ends with your next comment
-npx @leonidstern/labit reply <id> "Done: …"    # answers on the pin
+npx @leonidstern/labit reply <id> --done "…"   # answers on the pin and closes it
 ```
 
 Or as an MCP server: `npx @leonidstern/labit@latest mcp`.

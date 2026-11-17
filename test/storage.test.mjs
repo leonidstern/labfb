@@ -163,3 +163,43 @@ test('done threads with nothing new in 30 days are archived on start; open and r
   assert.match(lab.log(), /archived 1 done thread/);
   await lab.stop();
 });
+
+test('a page file from before v1 loads unchanged in meaning: replies lose resolved:false, agent replies get their intent, the file is written as v1', async () => {
+  const dir = folder();
+  fs.mkdirSync(path.join(dir, '.lab/comments'), { recursive: true });
+  const now = new Date().toISOString();
+  const comments = {
+    t1: { id: 't1', parent: null, name: 'Leo', text: 'red', createdAt: now, resolved: true, resolvedBy: 'agent', anchor },
+    r1: { id: 'r1', parent: 't1', name: 'Claude', text: 'Done: red', createdAt: now, resolved: false, anchor: null, session: { agent: 'claude' } },
+    r2: { id: 'r2', parent: 't1', name: 'Claude', text: 'On it', createdAt: now, resolved: false, anchor: null, session: { agent: 'claude' } },
+    r3: { id: 'r3', parent: 't1', name: 'Leo', text: 'Done: thanks', createdAt: now, resolved: false, anchor: null, from: 'this computer' },
+  };
+  fs.writeFileSync(path.join(dir, '.lab/comments/x.json'), JSON.stringify({ page: '/x', comments }));
+  const lab = await start(dir);
+  const got = Object.fromEntries((await lab.list('/x')).map((c) => [c.id, c]));
+  assert.equal(got.t1.resolved, true, 'a thread keeps its state');
+  assert.equal(got.t1.resolvedBy, 'agent');
+  assert.equal(got.t1.v, 1);
+  assert.equal('resolved' in got.r1, false, 'a reply has no resolved state');
+  assert.equal(got.r1.intent, 'done', "the agent's Done, read from its words");
+  assert.equal(got.r2.intent, 'working');
+  assert.equal(got.r3.intent, undefined, "a person's words never become an intent");
+  await lab.post({ page: '/x', name: 'Leo', text: 'one more', anchor });
+  await until(() => readJson(path.join(dir, '.lab/comments/x.json')).v === 1, 'the file written as v1');
+  await lab.stop();
+});
+
+test('a done thread is archived a month after it was resolved, not after its last message', async () => {
+  const dir = folder();
+  fs.mkdirSync(path.join(dir, '.lab/comments'), { recursive: true });
+  const ago = (days) => new Date(Date.now() - days * 864e5).toISOString();
+  const comments = {
+    late: { id: 'late', parent: null, name: 'Leo', text: 'old ask', createdAt: ago(90), resolved: true, resolvedAt: ago(3), anchor }, // resolved 3 days ago: stays
+    early: { id: 'early', parent: null, name: 'Leo', text: 'old ask', createdAt: ago(90), resolved: true, resolvedAt: ago(60), anchor }, // resolved 60 days ago: archived
+  };
+  fs.writeFileSync(path.join(dir, '.lab/comments/k.json'), JSON.stringify({ page: '/k', comments }));
+  const lab = await start(dir);
+  assert.deepEqual((await lab.list('/k')).map((x) => x.id), ['late']);
+  assert.deepEqual(Object.keys(readJson(path.join(dir, '.lab/archive/k.json')).comments), ['early']);
+  await lab.stop();
+});

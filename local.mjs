@@ -14,6 +14,7 @@ import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
 import { REGISTRY, runningLabs } from './lib/labs.ts';
 import { ZoomError, dirOf, place, zoomName } from './lib/zoom.ts';
+import { intentFromText, upgrade, VERSION as SCHEMA } from './api/_schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -63,8 +64,9 @@ For the agent, from the project (any folder under it):
       wait left in the foreground holds the person's turn open and they can't say anything to you until it ends.
       An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
-  labit reply <id> "what you did" [--resolve] [--wait] [--page /path]
-      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread; --wait listens again right after.
+  labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
+      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --done says the ask is done (the
+      thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
   labit resolve <id> [--page /path]
   labit zoom <id> <file>
       Answer a zoom: <file> holds one element, the deeper look or the bigger picture. The lab places it on the page.
@@ -260,11 +262,11 @@ const storeName = (page) => {
   return (safe.length > 180 ? `${safe.slice(0, 140)}~${createHash('sha1').update(page).digest('hex').slice(0, 12)}` : safe) + '.json';
 };
 // A page's file, made from the comments as they are held: each one is already a JSON string, so nothing is parsed again.
-// A page left with no comments has no file.
+// A page left with no comments has no file. v is the file's shape (api/_schema.mjs); a file without one is 0.
 const savePage = (page, dir = STORE) => {
   const h = db.get(`lab:comments:${page}`);
   const file = path.join(dir, storeName(page));
-  if (h?.size) writeAtomic(file, `{"page":${JSON.stringify(page)},"comments":{${[...h].map(([id, v]) => `${JSON.stringify(id)}:${v}`).join(',')}}}`);
+  if (h?.size) writeAtomic(file, `{"v":${SCHEMA},"page":${JSON.stringify(page)},"comments":{${[...h].map(([id, v]) => `${JSON.stringify(id)}:${v}`).join(',')}}}`);
   else fs.rmSync(file, { force: true });
 };
 // A file that can't be read is put aside (never loaded again, never overwritten) and the rest goes on without it.
@@ -298,7 +300,8 @@ if (migrate) {
     }
   }
 }
-const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(c)]))]));
+// Each comment comes up to the current shape as it loads (api/_schema.mjs), whatever version its file was written in.
+const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(upgrade(c))]))]));
 saved = null;
 if (migrate) {
   // Written into a folder of its own and then renamed, so a lab stopped halfway starts over from the old file.
@@ -319,7 +322,8 @@ const api = await apiOn(db, REPO);
 const commentsOf = (page) => [...(db.get(`lab:comments:${page}`)?.values() ?? [])].map((v) => JSON.parse(v)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 const pages = () => [...db.keys()].filter((k) => k.startsWith('lab:comments:') && db.get(k).size).map((k) => k.slice('lab:comments:'.length));
 
-// Done threads leave the live store when nothing has been said in them for a month: they go to
+// Done threads leave the live store when nothing has been said or done in them for a month (the last message, or the
+// resolve when that came later): they go to
 // .lab/archive/<page>.json (added to what's there), and are no longer loaded or sent to the pages, so a busy lab's
 // pages don't keep carrying every thread ever closed. Open threads, and done ones with a recent message, stay.
 // Checked as the lab starts and once a day.
@@ -334,7 +338,8 @@ function archiveOld(now = Date.now()) {
       .filter((c) => !c.parent && c.resolved)
       .map((root) => [root, ...all.filter((c) => c.parent === root.id)])
       .filter((thread) => {
-        const newest = Math.max(...thread.map((c) => Date.parse(c.createdAt))); // NaN (a date it can't read) keeps it
+        const dates = [...thread.map((c) => c.createdAt), ...(thread[0].resolvedAt ? [thread[0].resolvedAt] : [])];
+        const newest = Math.max(...dates.map((d) => Date.parse(d))); // NaN (a date it can't read) keeps it
         return Number.isFinite(newest) && now - newest > ARCHIVE_DAYS * 864e5;
       });
     if (!old.length) continue;
@@ -348,7 +353,7 @@ function archiveOld(now = Date.now()) {
     // Written to the archive first: a lab stopped in between has the thread in both, never in neither.
     try {
       fs.mkdirSync(ARCHIVE, { recursive: true });
-      writeAtomic(file, JSON.stringify({ page, comments: { ...kept, ...Object.fromEntries(old.flat().map((c) => [c.id, c])) } }));
+      writeAtomic(file, JSON.stringify({ v: SCHEMA, page, comments: { ...kept, ...Object.fromEntries(old.flat().map((c) => [c.id, c])) } }));
     } catch (e) {
       console.error(`[lab] could not archive done threads on ${page}:`, e.message);
       continue;
@@ -1415,17 +1420,20 @@ const handler = async (req, res) => {
           const [key, h] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
           const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: sessionFrom(req) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
           if (!agent) delete stored.suggest; // only the agent's answer offers a rule
+          if (!agent) delete stored.intent; // and only the agent's answer says it is done, on it, or a question
           h.set(comment.id, JSON.stringify(stored));
           // A person answering a resolved thread ("still wrong") reopens it, here too, where the browser is admin.
           if (!agent && stored.parent && h.has(stored.parent)) {
             const root = JSON.parse(h.get(stored.parent));
-            if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined }));
+            if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined, resolvedAt: undefined }));
           }
-          // The agent answering "Done: …" closes the thread itself (Leo, 15 Nov: 37 threads sat open with nothing left to
-          // do), but only when it answered one clear thing: one message from people since the agent last spoke, and not
-          // a list ("1) … 2) …", "- … - …"). Several things going on stay open. A person writing again reopens it, as
-          // above. Other answers (a question, options) leave it open.
-          if (agent && stored.parent && h.has(stored.parent) && /^done\b/i.test(String(stored.text).trim())) {
+          // The agent answering done (labit reply --done) closes the thread itself (Leo, 15 Nov: 37 threads sat open with
+          // nothing left to do). An answer that doesn't say (an older agent or skill) counts as done when its words start
+          // "Done", and then only when it answered one clear thing: one message from people since the agent last spoke,
+          // and not a list ("1) … 2) …", "- … - …"). A person writing again reopens it, as above. Other answers (on it, a
+          // question, options) leave it open. Page chats stay open either way.
+          const said = stored.intent || intentFromText(stored.text);
+          if (agent && stored.parent && h.has(stored.parent) && said === 'done') {
             const root = JSON.parse(h.get(stored.parent));
             const thread = [root, ...[...h.values()].map((v) => JSON.parse(v)).filter((x) => x.parent === root.id && x.id !== stored.id)]
               .sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
@@ -1433,7 +1441,8 @@ const handler = async (req, res) => {
             const asks = thread.slice(lastAgent + 1).filter((x) => !x.session);
             const listy = (t) => String(t).split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length >= 2;
             const oneThing = asks.length === 1 && !listy(asks[0].text);
-            if (oneThing && !root.resolved && root.anchor?.kind !== 'page') h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
+            if ((stored.intent === 'done' || oneThing) && !root.resolved && root.anchor?.kind !== 'page')
+              h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent', resolvedAt: stored.createdAt }));
           }
           // A zoom closes itself once its block is on the page and the agent has answered (Leo, 16 Nov): the block is the
           // answer. Only while the person hasn't written more in the thread; writing again reopens it, as above.
@@ -1441,7 +1450,7 @@ const handler = async (req, res) => {
             const root = JSON.parse(h.get(stored.parent));
             const more = [...h.values()].map((v) => JSON.parse(v)).some((x) => x.parent === root.id && x.id !== stored.id && !x.session);
             const placed = root.anchor?.zoom && root.zoomed && !root.resolved && !more;
-            if (placed) h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
+            if (placed) h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent', resolvedAt: stored.createdAt }));
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
         }
