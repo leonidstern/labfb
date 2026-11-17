@@ -164,7 +164,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // A link for a phone on the same wifi: one use, ten minutes. Claude hands it over in chat; the lab must be --wifi.
     // `invite <name>` says who is coming, so their phone starts out named; with none, your own name goes along.
     if (cmd === 'invite') {
-      const out = await call('/_lab/invite', { name: [ref, ...words].filter(Boolean).join(' ') });
+      const out = await call('/_lab/invite', { name: [ref, ...words].filter(Boolean).join(' '), page: opts.page || '' });
       if (out.status === 404) die('This lab is open to this computer only. Start it with --wifi to let a phone in.');
       if (out.status >= 300) die(`Could not make a link: ${out.text}`);
       const { links, name } = JSON.parse(out.text);
@@ -203,7 +203,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       }
     const want = opts.page ? '/' + opts.page.replace(/^\/+/, '') : null;
     let hit = null;
-    for (const [page, list] of Object.entries(data)) if (list[ref]) hit = { page, id: list[ref].parent || ref };
+    // A reply's id: the answer goes in its thread, and says which message it answers (shown as a quote, as in chat).
+    for (const [page, list] of Object.entries(data)) if (list[ref]) hit = { page, id: list[ref].parent || ref, to: list[ref].parent ? ref : '' };
     if (!hit && /^\d+$/.test(ref || '')) {
       const hits = Object.entries(data)
         .filter(([page]) => !want || page === want)
@@ -237,7 +238,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (!words.length) die(`Reply text is missing: ${CMD} reply <id> "what you did"`);
       const who = process.env.LAB_AGENT_NAME || session.agent;
       const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
-      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, name, text: words.join(' ') });
+      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}) });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
     }
     if (cmd === 'resolve' || opts.resolve) {

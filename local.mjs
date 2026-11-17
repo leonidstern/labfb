@@ -10,6 +10,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { fileURLToPath } from 'node:url';
 import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
+import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
 import { REGISTRY, runningLabs } from './lib/labs.ts';
 import { ZoomError, dirOf, place, zoomName } from './lib/zoom.ts';
@@ -48,7 +49,7 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       Codex: codex mcp add labit -- npx @leonidstern/labit@latest mcp
   labit preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
-  labit invite [name]
+  labit invite [name] [--page /path]
       A one-time link for a phone on the same wifi (--wifi labs only): one use, ten minutes. Hand it over as a link.
       The link carries a name — the one you give, or yours — so the phone that opens it starts out named.
 
@@ -673,10 +674,10 @@ const guestOk = (req) => {
   const raw = /(?:^|;\s*)lab_guest=([0-9a-f]{16})\.([0-9a-f]{32})(?:\s*;|$)/.exec(req.headers.cookie || '');
   if (!raw) return false;
   const want = Buffer.from(sign(raw[1])), got = Buffer.from(raw[2]);
-  return want.length === got.length && timingSafeEqual(want, got);
+  return want.length === got.length && timingSafeEqual(want, got) && raw[1];
 };
 // Loopback is this computer: the browser here never needs a link. Without --wifi nobody else gets this far anyway.
-const mayIn = (req) => isLoopback(req) || !WIFI || guestOk(req);
+const mayIn = (req) => isLoopback(req) || !WIFI || !!guestOk(req);
 // The labit mark (the cut for small sizes), drawn in the text colour: on the lab's own screens. The widget has the
 // same shapes split into parts (src/widget/live.ts); the tab icon is public/_lab/favicon.svg.
 const markSvg = (size, style = '') =>
@@ -689,16 +690,21 @@ const gate = (res, why = 'This lab opens with a one-time link.') =>
       `<title>labit</title><link rel="icon" href="${GATE_ICON}"><body style="font:16px/1.5 system-ui;margin:0;display:grid;place-items:center;height:100vh;color:#111">` +
       `<div style="max-width:22rem;padding:1.5rem;text-align:center">${markSvg(32, 'display:block;margin:0 auto .75rem')}<p style="font-weight:600;margin:0 0 .5rem">${why}</p>` +
       `<p style="margin:0;color:#666">Ask for a fresh link and open it on this device.</p></div>`);
-const redeem = (req, res, code, me = '') => {
+// Where a link lands: a page of this lab (a path), never another site.
+const landing = (to) => (typeof to === 'string' && to.length < 300 && /^\/(?![/\\])\S*$/.test(to) ? to : '/');
+const GUEST_LIFE = 86400;
+const guestCookie = (id) => `lab_guest=${id}.${sign(id)}; Path=/; Max-Age=${GUEST_LIFE}; HttpOnly; SameSite=Lax`;
+const redeem = (req, res, code, me = '', to = '') => {
   const until = passes.get(code);
   passes.delete(code);
-  if (!until || until < Date.now()) return gate(res, 'That link is used up or too old.');
+  // A link that's used up or too old, opened where the lab already lets you in (the phone that used it, this
+  // computer): it still takes you to its page.
+  if (!until || until < Date.now()) return mayIn(req) ? res.writeHead(302, { location: landing(to) }).end() : gate(res, 'That link is used up or too old.');
   console.log(`[lab] a guest opened a one-time link (${String(req.socket.remoteAddress).replace(/^::ffff:/, '')})`);
-  const id = randomBytes(8).toString('hex');
-  const cookies = [`lab_guest=${id}.${sign(id)}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax`];
+  const cookies = [guestCookie(randomBytes(8).toString('hex'))];
   // The name the link carried, for that device alone: read by the server, handed to the widget, never a way in.
   if (NAME_OK(me)) cookies.push(`lab_me=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
-  return res.writeHead(302, { location: '/', 'set-cookie': cookies }).end();
+  return res.writeHead(302, { location: landing(to), 'set-cookie': cookies }).end();
 };
 const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
 const sessionFrom = (req) => {
@@ -717,6 +723,8 @@ const sessionFrom = (req) => {
 
 // ---------- live pages and the session that listens ----------
 let session = null;
+// Your rules for answers go to each session once, and again only when they change (Leo, 17 Nov: ~250 tokens a pin).
+const rulesSent = new Map();
 // What the page says about Claude: listening (a wait is open), working (it got comments and hasn't waited again
 // yet), or away (no wait, or nothing from it for two minutes after it got comments).
 let mode = 'away';
@@ -905,6 +913,14 @@ async function threadsText(page, threads) {
 // handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for comments
 // from before these marks.
 const stamp = (c) => [c.createdAt, c.movedAt].filter(Boolean).sort().pop(); // new when written or moved
+const rulesOnce = () => {
+  const rules = rulesText();
+  const who = session?.id || session?.name || '';
+  if (!rules || rulesSent.get(who) === rules) return '';
+  rulesSent.set(who, rules);
+  return rules;
+};
+
 async function unseen(scope = pages()) {
   const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
@@ -954,7 +970,8 @@ async function unseen(scope = pages()) {
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n` + (blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '') +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
     (/\nzoom: (in|out)\b/.test(blocks.join('\n')) ? `\nA pin that says "zoom": read ${ZOOM_SKILL} first. Write one block to a file, then ${CMD} zoom <id> <file>, then reply.` : '') +
-    `\n${WRITE_SHORT}`;
+    (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
+    `\n${WRITE_SHORT}` + rulesOnce();
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = given.map(({ page, c }) => [page, c.id, stamp(c)]);
@@ -1145,8 +1162,11 @@ const handler = async (req, res) => {
       return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
     const pathname = decodeURIComponent(url.pathname);
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
-    if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '');
+    if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '', url.searchParams.get('to') || '');
     if (!mayIn(req)) return gate(res);
+    // A guest who keeps using the lab stays in: each page they open starts their day again.
+    const guest = WIFI && !isLoopback(req) && req.method === 'GET' && !pathname.startsWith('/_lab/') && guestOk(req);
+    if (guest) res.setHeader('set-cookie', guestCookie(guest));
     if (PROXY && !pathname.startsWith('/_lab/')) return proxy.page(req, res, url);
     // .lab (comments, admin key), .git, .env and other dot files are never served.
     if (pathname.split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
@@ -1182,6 +1202,24 @@ const handler = async (req, res) => {
       return;
     }
     // `labit invite`: a link for a phone on the same wifi. Only the agent on this computer may ask for one.
+    // Keep, no, or undo a rule the agent offered (src/widget/thread.ts): out of replies.md, and the answer says so.
+    if (pathname === '/_lab/rule' && req.method === 'POST') {
+      const b = JSON.parse((await new Response(req).text()) || '{}');
+      const page = String(b.page || '');
+      // keep / no: a rule the agent offered (--suggest-rule). Otherwise: undo a rule it saved.
+      if (b.action === 'keep' || b.action === 'no') {
+        const c = commentsOf(page).find((x) => x.id === b.id && x.suggest && x.session);
+        if (!c) return res.writeHead(404).end('no offer');
+        if (!c.suggestDone && b.action === 'keep') addRule(c.suggest);
+        if (!c.suggestDone) setComment(page, c.id, b.action === 'keep' ? { suggestDone: 'kept', rule: c.suggest } : { suggestDone: 'no' });
+        return res.writeHead(204).end();
+      }
+      const c = commentsOf(page).find((x) => x.id === b.id && x.rule && x.session);
+      if (!c) return res.writeHead(404).end('no rule');
+      if (!c.ruleUndone) dropRule(c.rule);
+      setComment(page, c.id, { ruleUndone: true });
+      return res.writeHead(204).end();
+    }
     if (pathname === '/_lab/invite') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
       if (!WIFI) return res.writeHead(404).end('this lab is open to this computer only');
@@ -1189,9 +1227,14 @@ const handler = async (req, res) => {
       const hosts = [`${hostName}.local`, ...wifiAddrs()];
       // `labit invite <name>`, or your own name by default: the guest's browser knows nobody, so the link says who
       // is coming and their phone starts out named.
-      const asked = JSON.parse((await new Response(req).text()) || '{}').name;
+      const body = JSON.parse((await new Response(req).text()) || '{}');
+      const asked = body.name;
       const who = NAME_OK(asked) ? asked.trim() : myName;
-      const tail = who ? `?me=${encodeURIComponent(who)}` : '';
+      // `labit invite --page /x`: the link opens that page.
+      const q = new URLSearchParams();
+      if (who) q.set('me', who);
+      if (body.page) q.set('to', landing('/' + String(body.page).replace(/^\/+/, '')));
+      const tail = q.size ? `?${q}` : '';
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) }));
     }
@@ -1371,6 +1414,7 @@ const handler = async (req, res) => {
           // Mark who wrote it, so Claude can tell this computer from a guest, and its own replies from people's.
           const [key, h] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
           const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: sessionFrom(req) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
+          if (!agent) delete stored.suggest; // only the agent's answer offers a rule
           h.set(comment.id, JSON.stringify(stored));
           // A person answering a resolved thread ("still wrong") reopens it, here too, where the browser is admin.
           if (!agent && stored.parent && h.has(stored.parent)) {

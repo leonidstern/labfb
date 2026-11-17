@@ -42,8 +42,10 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
   stamp.append(el('span', { class: 'tm' }, prefix + time));
   if (mine(m) && !m.session) {
     const thread = root ? [root, ...repliesOf(root.id)] : [m];
-    const answered = thread.some((x) => x.session && x.createdAt > m.createdAt);
     const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
+    // Answered: a reply from the agent after it, or the thread done with nothing after it, as a plain "go" is (the
+    // agent resolves it without a word: one green ✓ where the grey ✓✓ was, Leo 17 Nov).
+    const answered = thread.some((x) => x.session && x.createdAt > m.createdAt) || Boolean(root?.resolved && latest);
     // The agent is on this very message (its newest one in the thread): the ring, as on the pin. Answered: green ✓.
     if (!answered && latest && root && workState(root)[0] === 'now') {
       stamp.classList.add('busy');

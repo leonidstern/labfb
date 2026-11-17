@@ -105,10 +105,76 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   // Messages as in the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, and
   // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.
   body.classList.add('msgs');
+  // At its newest it stays at its newest while it gets shorter (the keyboard coming up as you answer), as the chat does;
+  // scrolled back to read, it stays put (Leo, 17 Nov: "when I'm answering, the messages scrolled up").
+  let stick = true;
+  body.addEventListener('scroll', () => (stick = body.scrollHeight - body.scrollTop - body.clientHeight < 48), { passive: true });
+  if ('ResizeObserver' in window) new ResizeObserver(() => stick && (body.scrollTop = body.scrollHeight)).observe(body);
+  // Going to answer: the last message comes into view, so you write under what you're answering (Leo, 17 Nov).
+  foot.addEventListener('focusin', (e) => {
+    if ((e.target as Element).localName !== 'textarea') return;
+    stick = true;
+    body.scrollTop = body.scrollHeight;
+  });
+  // A rule the agent offered on its own (--suggest-rule), from your reply about how it answered: on your own message,
+  // where the words came from, "make it a rule" (Leo, 17 Nov). Leaving it is a no.
+  const STAR = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5l1.7 4.8L14.5 8l-4.8 1.7L8 14.5l-1.7-4.8L1.5 8l4.8-1.7z"/></svg>';
+  const offerOn = (mine) => {
+    const all = [c, ...W.repliesOf(c.id)];
+    const ans = all.slice(all.indexOf(mine) + 1).find((x) => x.session);
+    if (!ans?.suggest || ans.suggestDone || ans.rule) return null;
+    const b = W.el('button', { class: 'btn offer', type: 'button', title: ans.suggest });
+    // The words where the time is, the star where the tick is, each in their size and colour (Leo, 17 Nov).
+    b.append(W.el('span', { class: 'tm' }, 'rule?'));
+    const star = W.el('span', { class: 'tick' });
+    star.innerHTML = STAR;
+    b.append(star);
+    b.addEventListener('click', async () => {
+      const r = await fetch('/_lab/rule', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: W.S.page, id: ans.id, action: 'keep' }) }).catch(() => null);
+      if (!r?.ok) return void (b.lastChild!.textContent = 'failed, try again');
+      ans.suggestDone = 'kept';
+      ans.rule = ans.suggest;
+      for (const n of card.querySelectorAll(`.msg[data-id="${mine.id}"] .offering`)) n.classList.remove('offering');
+      card.querySelectorAll(`.msg[data-id="${mine.id}"] .offer`).forEach((n) => n.remove()); // and its invisible copy
+      card.querySelector(`.msg[data-id="${ans.id}"]`)?.append(ruleLine(ans)); // the rule shows on the agent's answer
+    });
+    return b;
+  };
+  const ruleLine = (item) => {
+    const line = W.el('span', { class: 'rule' });
+    if (item.ruleUndone) return line.append(W.el('b', {}, 'rule removed')), line;
+    const undo = W.el('button', { class: 'btn', type: 'button' }, 'undo');
+    undo.addEventListener('click', async () => {
+      const r = await fetch('/_lab/rule', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: W.S.page, id: item.id }) }).catch(() => null);
+      if (!r?.ok) return void (undo.textContent = 'failed, try again');
+      item.ruleUndone = true;
+      line.replaceWith(ruleLine(item));
+    });
+    line.append(W.el('b', {}, 'rule'), document.createTextNode(item.rule), undo);
+    return line;
+  };
   const itemEl = (item) => {
     const box = W.el('div', { class: `item msg${W.mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(W.agentOf(item) ? { 'data-agent': W.agentOf(item) } : {}) });
-    box.append(W.nameLine(item.name, false), ...W.readable(item.text));
-    W.stamped(box, W.stampOf(item, c, item === c && !c.resolved ? `#${W.numberOf(c)} · ` : ''));
+    box.append(W.nameLine(item.name, false));
+    // An answer to a later message in the thread quotes it, as the chat does (Leo, 17 Nov: "show what you replied on").
+    const to = item.to && W.repliesOf(c.id).find((x) => x.id === item.to);
+    if (to) {
+      const q = W.el('span', { class: 'quote' });
+      q.append(W.el('b', {}, String(to.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(to.text.replace(/\s+/g, ' ').slice(0, 90)));
+      q.addEventListener('click', () => card.querySelector(`.msg[data-id="${to.id}"]`)?.scrollIntoView({ block: 'center', behavior: W.still.matches ? 'auto' : 'smooth' }));
+      box.append(q);
+    }
+    box.append(...W.readable(item.text));
+    if (item.session && item.rule) box.append(ruleLine(item));
+    const stamp = W.stampOf(item, c, item === c && !c.resolved ? `#${W.numberOf(c)} · ` : '');
+    // The offer sits in your message's corner in place of the time and tick, so the bubble keeps its size (Leo, 17 Nov:
+    // 57 + 60, then "it makes bigger row"). Kept or gone, the time comes back.
+    const offer = !item.session && offerOn(item);
+    if (offer) {
+      stamp.classList.add('offering');
+      stamp.prepend(offer);
+    }
+    W.stamped(box, stamp);
     return box;
   };
   const shown = new Set();
@@ -120,6 +186,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     shown.add(item.id);
   }
   card.sync = () => {
+    const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 48;
     for (const r of W.repliesOf(c.id)) {
       if (shown.has(r.id)) continue;
       const items = card.querySelectorAll('.item');
@@ -129,6 +196,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       shown.add(r.id);
       W.markSeen([r]);
     }
+    if (atEnd) body.scrollTop = body.scrollHeight; // at the newest: the new one comes into view
   };
   // Resolve: admins, and whoever started the thread (its key is kept in their browser). Delete: admins.
   const ownKey = W.store.get(`lab-edit:${c.id}`);

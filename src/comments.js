@@ -28,7 +28,7 @@ import {
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
-import { bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
@@ -737,7 +737,11 @@ import { zoomWords } from '../lib/zoom.ts';
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
     const prevHeight = S.stepping && coarse && prev ? prev.offsetHeight : 0; // stepping on a phone: the sheet's top doesn't drop
     // The same thread drawn again (reopened, resolved, a reply came in): it keeps where its messages were scrolled to.
-    const prevScroll = prev ? prev.querySelector('.body')?.scrollTop ?? null : null;
+    const prevBody = prev?.querySelector('.body');
+    const prevScroll = prevBody ? prevBody.scrollTop : null;
+    // …or, read at its newest, stays at its newest, so an answer that just came in is in view (as the chat follows new
+    // messages; Leo, 17 Nov: "message scrolled up" on a phone).
+    const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
     layer.replaceChildren();
@@ -764,8 +768,11 @@ import { zoomWords } from '../lib/zoom.ts';
         const sent = newPin?.getBoundingClientRect();
         if (newPin) newPin.style.animationDelay = '250ms'; // it pops in as the card arrives (lab B2)
         const dur = leave(prev, 0, sent && { x: sent.left + sent.width / 2, y: sent.top + sent.height / 2 });
-        setTimeout(() => (prev.remove(), letGo(prev)), dur);
+        setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
       }
+      // Phones: a new comment's sheet has gone (dropped, swiped away; a sent one waits for its card above): the page goes
+      // back where it was (sheets.ts).
+      if (coarse && prev?.classList.contains('float') && !prev.classList.contains('out') && !root.querySelector('.float:not(.out)')) setTimeout(backFromReveal, 320);
       // Phones: a sheet that opens grows out of what was tapped (sheets.ts).
       if (coarse) {
         const sheet = /** @type {HTMLElement | null} */ (root.querySelector('.card:not(.out), .float:not(.out)')) || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
@@ -875,7 +882,10 @@ import { zoomWords } from '../lib/zoom.ts';
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
-        if (!appear && prevScroll != null) card.querySelector('.body').scrollTop = prevScroll;
+        if (!appear && prevScroll != null) {
+          const body = card.querySelector('.body');
+          body.scrollTop = prevAtEnd ? body.scrollHeight : prevScroll;
+        }
         else if (appear) {
           // Computers: at the first new message when there is one. Phones: already at the end when it shows, the last
           // message in view, as the chat opens (Leo, 15 Nov: no scroll you can see; the sheet's height is fixed now, so
@@ -1379,6 +1389,19 @@ import { zoomWords } from '../lib/zoom.ts';
   swipeDown(chatEl, () => ((S.chatOpen = false), render()), true);
   S.press = null;
   const stopPress = () => S.press && (clearTimeout(S.press.timer), (S.press = null));
+  // The page can't be selected while a finger is down on it (see lab-press in the CSS below), and can again a frame
+  // after the lift, once iOS has let go of its own long press. Safari doesn't repaint the quoted words' green when the
+  // text turns selectable, so the highlight a hold just set is set again, a frame later.
+  const pressing = (on) => {
+    const html = document.documentElement;
+    if (on) return html.classList.add('lab-press');
+    if (!html.classList.contains('lab-press')) return;
+    requestAnimationFrame(() => {
+      html.classList.remove('lab-press');
+      const lit = window.CSS?.highlights?.get('lab-quote');
+      if (lit) CSS.highlights.set('lab-quote', new Highlight(...lit));
+    });
+  };
   document.addEventListener(
     'pointerdown',
     (e) => {
@@ -1387,6 +1410,7 @@ import { zoomWords } from '../lib/zoom.ts';
       if (e.pointerType === 'touch') S.lastTouch = Date.now();
       if (e.pointerType !== 'touch' || S.draft || !(e.target instanceof Element) || e.composedPath().includes(host) || e.target.closest(OFF)) return;
       const { clientX: x, clientY: y } = e;
+      pressing(true);
       S.press = {
         x,
         y,
@@ -1411,17 +1435,19 @@ import { zoomWords } from '../lib/zoom.ts';
   document.addEventListener('pointerup', (e) => {
     if (e.pointerType === 'touch') S.lastTouch = Date.now();
     stopPress();
+    pressing(false);
     if (S.pinnedByHold) /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, true);
   // The lift after a hold: no click follows it (it would land on the dimmed page and take the cursor away), and the
   // touch's own end puts the cursor in the box, so the phone opens its keyboard.
   document.addEventListener('touchend', (e) => {
+    pressing(false);
     if (!S.pinnedByHold) return;
     S.pinnedByHold = false;
     e.preventDefault();
     /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, { capture: true, passive: false });
-  document.addEventListener('pointercancel', stopPress, true);
+  document.addEventListener('pointercancel', () => (stopPress(), pressing(false)), true);
   addEventListener('scroll', stopPress, { passive: true, capture: true });
   document.addEventListener('contextmenu', (e) => (S.press || S.afterDrag) && e.preventDefault(), true);
   S.selRect = null;
@@ -1678,9 +1704,11 @@ import { zoomWords } from '../lib/zoom.ts';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
   fonts.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
   // Phones: with comments on, a hold is labit's (a pin), not the start of a text selection: iOS would cancel the touch
-  // for its selection, and the lift that lets the box open the keyboard would never come.
+  // for its selection, and the lift that lets the box open the keyboard would never come. Only while a finger is down
+  // (lab-press): Safari paints the quoted words' green (::highlight) over whole blocks of text that can't be selected,
+  // so with the page unselectable all the time an open comment tinted half the page (iOS 27 simulator, 17 Nov).
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
-  fonts.textContent += `@media (pointer: coarse) { html.lab-pinning body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
+  fonts.textContent += `@media (pointer: coarse) { html.lab-pinning.lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
   const setAlt = (down) => document.documentElement.classList.toggle('lab-alt', Boolean(down));
   addEventListener('keydown', (e) => e.key === 'Alt' && setAlt(true), true);
   addEventListener('keyup', (e) => e.key === 'Alt' && setAlt(false), true);
