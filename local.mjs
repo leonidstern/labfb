@@ -1076,7 +1076,7 @@ async function unseen(scope = pages(), who = '') {
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n` + (blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '') +
-    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
+    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question] [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
     (/\nzoom: (in|out)\b/.test(blocks.join('\n')) ? `\nA pin that says "zoom": read ${ZOOM_SKILL} first. Write one block to a file, then ${CMD} zoom <id> <file>, then reply.` : '') +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     `\n${WRITE_SHORT}` + rulesOnce();
