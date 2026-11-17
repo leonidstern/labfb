@@ -804,14 +804,18 @@ const claimed = () => {
 };
 const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed().has(p)));
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
-// ends after an hour of no page. Each tab has an id. A tab in the background drops its stream but still counts as
-// open; it leaves when it says bye on pagehide (closed, or navigated away), or after half an hour with no stream.
+// ends after an hour of no page. A browser's tabs of this lab share one stream (the widget passes it on), held under
+// the id of the tab that opened it; when that tab goes, another opens the stream under its own. A tab counts while
+// its stream is open or it checks in (GET /_lab/state?tab=); it leaves when it says bye on pagehide (closed, or
+// navigated away), or after 90 s with neither (a crashed tab, a phone that froze it). Half an hour, before: a tab that
+// never said bye kept Claude listening for that long.
 // A reload says bye and reconnects within a second. Claude starting wait again right after a timed-out one keeps
 // the same hour; a wait asked for later (the person said "listen") starts a new one.
 const CLOSE_GRACE = Number(process.env.LAB_CLOSE_GRACE || 3600) * 1000;
+const TAB_TTL = Number(process.env.LAB_TAB_TTL || 90) * 1000;
 const tabs = new Map(); // id -> { streams, seen }
 const openTabs = () => {
-  for (const [id, t] of tabs) if (!t.streams && Date.now() - t.seen > 1800000) tabs.delete(id);
+  for (const [id, t] of tabs) if (!t.streams && Date.now() - t.seen > TAB_TTL) tabs.delete(id);
   return tabs.size;
 };
 let closedSince = Date.now(); // null while a page is open
@@ -834,7 +838,7 @@ const pagesChanged = () => {
     setMode('away');
   }, Math.max(0, closedSince + CLOSE_GRACE - Date.now()));
 };
-setInterval(pagesChanged, 60000).unref();
+setInterval(pagesChanged, Math.min(60000, TAB_TTL)).unref();
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
 async function threadsText(page, threads) {
   const text = await agentText(page);
@@ -1112,7 +1116,7 @@ const handler = async (req, res) => {
         clients.delete(client);
         tab.streams--;
         tab.seen = Date.now();
-        if (tab.anonymous) tabs.delete(id); // a stream without a tab id is the whole page
+        if (tab.anonymous || tab.gone) tabs.delete(id); // a stream without a tab id is the whole page
         pagesChanged();
       });
       return;
@@ -1144,7 +1148,12 @@ const handler = async (req, res) => {
     }
     if (pathname === '/_lab/bye') {
       const { tab } = JSON.parse((await new Response(req).text()) || '{}');
-      if (!tabs.get(tab)?.streams) tabs.delete(tab);
+      // A bye lets the tab go even if its stream hasn't closed yet: the page closes the stream and says bye at once,
+      // and the bye can come first (CI, 17 Nov: the tab then stayed, as a silent one, until the 90 s timeout). A page
+      // back from the back-forward cache opens a new stream and counts again.
+      const gone = tabs.get(tab);
+      if (gone) gone.gone = true;
+      tabs.delete(tab);
       pagesChanged();
       return res.writeHead(204).end();
     }

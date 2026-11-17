@@ -1,11 +1,11 @@
 // The commands that answer and exit: preview, add / remove, list, pages (the labs on this computer) and the agent's
 // wait, reply, resolve, invite. Loaded by local.mjs only for these, so starting a lab never reads it.
-import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { listenPages, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
 import { runningLabs, type Lab } from './labs.ts';
+import { findLab, labCall, WAIT_SAID } from './labcall.ts';
 
 type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
 
@@ -148,37 +148,18 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   // ---------- Claude's side: wait, reply, resolve ----------
   if (['wait', 'reply', 'resolve', 'invite', 'zoom'].includes(pos[0])) {
     const [cmd, ref, ...words] = pos;
-    let dir = path.resolve(opts.dir || '.');
-    while (!fs.existsSync(path.join(dir, '.lab/server.json'))) {
-      if (path.dirname(dir) === dir) die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
-      dir = path.dirname(dir);
-    }
-    const server = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8'));
+    const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
+    const { dir, server } = lab;
     const session = mySession(opts.name, opts.model);
-    // node:http, not fetch: a wait can last longer than fetch's 5-minute header timeout.
     const call = (pathname: string, body: object) =>
-      new Promise<{ status: number; text: string }>((resolve) => {
-        const data = JSON.stringify(body);
-        const req = http.request(
-          { host: '127.0.0.1', port: server.port, path: pathname, method: 'POST',
-            headers: { host: `localhost:${server.port}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(data),
-              'x-lab-admin': server.token, 'x-lab-agent': '1', 'x-lab-session': encodeURIComponent(JSON.stringify(session)) } },
-          (res) => {
-            let text = '';
-            res.on('data', (c) => (text += c));
-            res.on('end', () => resolve({ status: res.statusCode || 0, text }));
-          },
-        );
-        req.on('error', () =>
-          die(
-            process.env.CODEX_SANDBOX_NETWORK_DISABLED
-              ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Use labit's MCP server instead: ` +
-                  `codex mcp add labit -- npx @leonidstern/labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
-              : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
-          ),
-        );
-        req.end(data);
-      });
+      labCall(server, pathname, body, session).catch(() =>
+        die(
+          process.env.CODEX_SANDBOX_NETWORK_DISABLED
+            ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Use labit's MCP server instead: ` +
+                `codex mcp add labit -- npx @leonidstern/labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
+            : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
+        ),
+      );
 
     // A link for a phone on the same wifi: one use, ten minutes. Claude hands it over in chat; the lab must be --wifi.
     // `invite <name>` says who is coming, so their phone starts out named; with none, your own name goes along.
@@ -195,10 +176,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
 
     if (cmd === 'wait') {
       const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages(opts, true) });
-      if (out.status === 204) console.log('No new comments yet. Run wait again to keep listening.');
-      else if (out.status === 409) console.log('Another session is listening now; this one stopped.');
-      else if (out.status === 410) console.log('The page was closed, so this stopped listening. Wait again only when the person asks or opens the page.');
-      else console.log(out.text);
+      console.log(WAIT_SAID[out.status] ?? out.text);
       process.exit(out.status < 300 || out.status === 409 || out.status === 410 ? 0 : 1);
     }
 
@@ -261,7 +239,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // --wait: answer and listen again in one command (one round trip less per pin).
     if (opts.wait) {
       const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500, pages: listenPages(opts) });
-      console.log(out.status === 204 ? 'No new comments yet. Run wait again to keep listening.' : out.status === 409 ? 'Another session is listening now; this one stopped.' : out.status === 410 ? 'The page was closed, so this stopped listening.' : out.text);
+      console.log(WAIT_SAID[out.status] ?? out.text);
     }
     process.exit(0);
   }

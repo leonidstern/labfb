@@ -6,8 +6,8 @@ export function bindLive(w: unknown) {
   W = w;
 }
 
-// Local mode (local.mjs sets data-live): one event stream while the tab is visible, so many tabs don't use up
-// the browser's connections. The page reloads when its files change, keeping the scroll position, and the
+// Local mode (local.mjs sets data-live): one event stream for all of a lab's tabs (see startLive), so many tabs
+// don't use up the browser's connections. The page reloads when its files change, keeping the scroll position, and the
 // comments refresh when someone else, like an agent, changes them. A label says which Claude session listens.
 export function startLive() {
   if (W.script?.dataset.live) {
@@ -299,45 +299,56 @@ export function startLive() {
       if (of('img').length) swapImages(of('img'));
       if (of('font').length) reloadFonts(of('font'));
     };
-    // The server counts open tabs: a tab in the background still counts, and says bye when it closes, so closing
-    // the page stops Claude listening.
-    const tab = Math.random().toString(36).slice(2, 12);
-    // A tab in front keeps one live stream. A tab in the background lets it go after 30 s and asks for the lab's
-    // state every 20 s instead (a quick request each time), so its "(3)" title and pins keep up without holding a
-    // connection: browsers allow only 6 to one lab at a time, and held ones by background tabs made the rest hang.
-        let pollTimer: any = 0;
-        let dropTimer: any = 0;
-    const poll = async () => {
-      try {
-        onState(await (await fetch(`${W.script.dataset.live.replace(/live$/, 'state')}?tab=${tab}`, { cache: 'no-store' })).json());
-      } catch {}
+    // One live stream per browser for this lab, shared by its tabs: the tab holding the lock "labit-live" (locks and
+    // channels are per origin, so per lab) opens it and passes each message to the lab's other tabs over a
+    // BroadcastChannel; they listen there. When it closes, the next tab takes the lock and opens the stream. So a tab
+    // in the background stays live (its title count and pins update at once), and any number of tabs use one of the
+    // browser's 6 connections to a lab. (Before, each tab held its own and let it go 30 s into the background, asking
+    // for the state every 20 s instead.) Without locks or channels a tab opens its own stream.
+    const tab = Math.random().toString(36).slice(2, 12); // the lab counts open tabs by their streams; bye on close
+    const bc = 'BroadcastChannel' in window ? new BroadcastChannel('labit-live') : null;
+    const shared = Boolean(bc && navigator.locks);
+    let leading = !shared;
+    let release: (() => void) | null = null;
+    let last = null; // the last state, for a tab that joins
+    const got = (v) => {
+      beat = Date.now();
+      last = v;
+      onState(v);
     };
-    const toBackground = () => {
-      clearTimeout(dropTimer);
-      dropTimer = setTimeout(() => {
-        stream?.close();
-        stream = null;
-        clearInterval(pollTimer);
-        pollTimer = setInterval(poll, 20000);
-      }, 30000);
-    };
-    const toFront = () => {
-      clearTimeout(dropTimer);
-      clearInterval(pollTimer);
-      pollTimer = 0;
-      connect();
-    };
+    if (bc)
+      bc.onmessage = ({ data: d }) => {
+        if (d.t === 'hello' && stream && last) bc.postMessage({ t: 'state', v: last }); // a tab joined: it gets the state now
+        if (stream) return; // a tab with its own stream listens to that
+        if (d.t === 'state') got(d.v);
+        if (d.t === 'beat') beat = Date.now();
+        if (d.t === 'down') showAway('reconnecting');
+      };
     const connect = () => {
       if (stream) return;
       stream = new EventSource(`${W.script.dataset.live}?tab=${tab}`);
       beat = Date.now();
-      stream.addEventListener('beat', () => (beat = Date.now()));
-      stream.onerror = () => showAway('reconnecting');
-      stream.onmessage = (e) => {
+      stream.addEventListener('beat', () => {
         beat = Date.now();
-        onState(JSON.parse(e.data));
+        if (leading) bc?.postMessage({ t: 'beat' });
+      });
+      stream.onerror = () => {
+        showAway('reconnecting');
+        if (leading) bc?.postMessage({ t: 'down' });
+      };
+      stream.onmessage = (e) => {
+        const v = JSON.parse(e.data);
+        got(v);
+        if (leading) bc?.postMessage({ t: 'state', v });
       };
     };
+    // Waits for the lock (another tab may hold it), then opens the stream and keeps the lock until the page goes.
+    const lead = () =>
+      navigator.locks.request('labit-live', () => new Promise<void>((r) => {
+        release = r;
+        leading = true;
+        connect();
+      }));
     function onState(v) {
       {
         // A new widget script: this page needs it, so it reloads (when it's safe, as always).
@@ -392,19 +403,24 @@ export function startLive() {
         who.hidden = false;
       }
     }
+    // Back in front: a save that waited reloads now; a stream that went quiet while hidden is checked at once.
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) return toBackground();
+      if (document.hidden) return;
       if (reloadWhenShown) return reload();
-      toFront(); // back in front: the live stream again, and the first message says what changed meanwhile
+      check();
     });
     addEventListener('pagehide', () => {
       stream?.close();
       stream = null;
+      release?.(); // the next tab takes over the stream
+      release = null;
+      leading = !shared;
       fetch(W.script.dataset.live.replace(/live$/, 'bye'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab }) }).catch(() => {});
     });
-    addEventListener('pageshow', (e) => e.persisted && connect()); // back from the back-forward cache
-    // Back from sleep, or the connection went quiet: connect again at once and catch up on what was missed (the first
-    // message after it says what changed). A clock that jumped (the laptop slept) or 40 s without a beat both count.
+    addEventListener('pageshow', (e) => e.persisted && start()); // back from the back-forward cache
+    // Back from sleep, or the stream went quiet: catch up (the first message after it says what changed). A clock that
+    // jumped (the laptop slept) or 40 s without a beat both count. A tab without a stream whose sharing tab went
+    // quiet (frozen, asleep) opens its own.
     let tick = Date.now();
     const freshStream = () => {
       stream?.close();
@@ -412,16 +428,26 @@ export function startLive() {
       showAway('reconnecting');
       connect();
     };
+    const check = (slept = false) => {
+      const stale = Date.now() - beat > 40000;
+      if (stream && (slept || stale)) freshStream();
+      else if (!stream && stale) connect();
+      else if (!stream && slept) bc?.postMessage({ t: 'hello' });
+    };
     // Hidden tabs' timers are slowed to about once a minute, which would look like sleep: only a tab in front checks.
     setInterval(() => {
       const now = Date.now();
       const slept = now - tick > 20000;
       tick = now;
-      if (document.hidden) return;
-      if (slept || (stream && now - beat > 40000)) freshStream();
+      if (!document.hidden) check(slept);
     }, 5000);
-    addEventListener('online', () => !document.hidden && freshStream());
-    connect();
-    if (document.hidden) toBackground();
+    addEventListener('online', () => !document.hidden && check(true));
+    const start = () => {
+      if (!shared) return connect();
+      beat = Date.now(); // a joining tab waits up to 40 s for the shared stream before opening its own
+      lead();
+      bc.postMessage({ t: 'hello' });
+    };
+    start();
   }
 }
