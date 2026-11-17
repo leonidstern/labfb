@@ -16,6 +16,7 @@ import {
   anchorAt,
   drafting,
   drawZone,
+  goToBlock,
   inPage,
   markQuote,
   nameLine,
@@ -33,8 +34,6 @@ import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
-import { bindZoom, draw as drawZoom, goTo as goToBlock, setZoom, startZoom, zoomAsked, zoomIcon, zoomKey } from './widget/zoom.ts';
-import { zoomWords } from '../lib/zoom.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -43,8 +42,6 @@ import { zoomWords } from '../lib/zoom.ts';
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
     get $() { return $; },
-    get API() { return API; },
-    get headers() { return headers; },
     get DRAFT_MODE() { return DRAFT_MODE; },
     get LIST_WINDOW() { return LIST_WINDOW; },
     get OFF() { return OFF; },
@@ -96,10 +93,6 @@ import { zoomWords } from '../lib/zoom.ts';
     get position() { return position; },
     get readable() { return readable; },
     get reflow() { return reflow; },
-    get drawZoom() { return drawZoom; }, // after a page patch: a zoom asked for may just have been placed
-    get refreshPinCursor() { return refreshPinCursor; },
-    get setCursor() { return setCursor; },
-    get recheck() { return recheck; },
     get render() { return render; },
     get repliesOf() { return repliesOf; },
     get root() { return root; },
@@ -119,7 +112,6 @@ import { zoomWords } from '../lib/zoom.ts';
     get vv() { return vv; },
   };
   bindLive(W);
-  bindZoom(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
@@ -127,7 +119,7 @@ import { zoomWords } from '../lib/zoom.ts';
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', go: '2', zoom: '3', pointer: '4', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
+  const KEYS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -230,7 +222,7 @@ import { zoomWords } from '../lib/zoom.ts';
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.zoom} in, ${KEYS.zoom} again out · ${KEYS.pointer} pointer · ${KEYS.pause} pause · ${KEYS.toggle} hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.pointer} pointer · ${KEYS.pause} pause · ${KEYS.toggle} hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -243,7 +235,7 @@ import { zoomWords } from '../lib/zoom.ts';
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (${KEYS.pause})">pause motion</button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
-      <button class="secondary go-btn" type="button" hidden title="tap: comment → go → zoom in → zoom out · keys: 1 comment · 2 go: every click approves what it's on · 3 zoom in, 3 again zoom out: ask the agent for a deeper look or the bigger picture · 4 pointer: clicks are the page's own">go</button>
+      <button class="secondary go-btn" type="button" hidden title="1 comment · 2 go: every click approves what it's on · 3 pointer: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
@@ -287,7 +279,7 @@ import { zoomWords } from '../lib/zoom.ts';
   const el = (tag, attrs = {}, text) => {
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    if (text instanceof Node) node.append(text); // an icon (a zoom pin's arrows)
+    if (text instanceof Node) node.append(text); // an icon
     else if (text != null) node.textContent = text;
     return node;
   };
@@ -396,8 +388,8 @@ import { zoomWords } from '../lib/zoom.ts';
   // Go mode (V): every new spot (a click, a drawn area, selected words, a hold on phones) is posted at once as "go",
   // approving what it's on, with no box to type in. In draft mode go pins wait with the other drafts.
   S.goMode = store.get('lab-go') === '1';
-  // Pointer (4): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
-  // Option-click still pins. 1 comment, 2 go and 3 zoom leave it.
+  // Pointer (3): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
+  // Option-click still pins. 1 comment and 2 go leave it.
   S.cursorMode = store.get('lab-cursor') === '1';
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
   // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
@@ -421,11 +413,10 @@ import { zoomWords } from '../lib/zoom.ts';
   const setPinning = () => {
     const placing = S.on && !S.cursorMode && !anyWriting();
     document.documentElement.classList.toggle('lab-pinning', placing);
-    document.documentElement.classList.toggle('lab-go', placing && S.goMode && !S.zoomMode);
+    document.documentElement.classList.toggle('lab-go', placing && S.goMode);
     recheck();
   };
   const setCursor = (v) => {
-    if (v && S.zoomMode) setZoom('');
     S.cursorMode = v;
     store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
@@ -435,7 +426,6 @@ import { zoomWords } from '../lib/zoom.ts';
   };
   const setGo = (v) => {
     if (S.cursorMode) setCursor(false);
-    if (S.zoomMode) setZoom('');
     S.goMode = v;
     queueMicrotask(goFace);
     store.set('lab-go', v ? '1' : '');
@@ -447,17 +437,13 @@ import { zoomWords } from '../lib/zoom.ts';
   };
   function begin(anchor) {
     const name = store.get('lab-name').trim();
-    // Zoom (3) is placed at once like go, asking the agent to zoom in or out from what it's on (src/widget/zoom.ts).
-    // Command-Z takes it back.
-    const zoom = S.zoomMode;
-    if (zoom) anchor = { ...anchor, zoom };
-    // Go or zoom with no name yet (a guest's first): the card asks only the name; the go or zoom is implied (Leo, 16 Nov).
-    if ((!S.goMode && !zoom) || !name) {
-      S.draft = { anchor, go: S.goMode && !zoom };
+    // Go with no name yet (a guest's first): the card asks only the name; the go is implied (Leo, 16 Nov).
+    if (!S.goMode || !name) {
+      S.draft = { anchor, go: S.goMode };
       keepSpot(anchor);
       return render();
     }
-    const text = zoom ? zoomWords(zoom) : 'go';
+    const text = 'go';
     if (drafting()) {
       store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
       return render();
@@ -468,7 +454,6 @@ import { zoomWords } from '../lib/zoom.ts';
         S.comments.push(comment);
         markSeen([comment]);
         S.posted = comment.id;
-        if (zoom && anchor.block) zoomAsked(anchor.block, zoom); // the page goes to what comes back
         render();
       })
       .catch(() => ((S.draft = { anchor }), keepSpot(anchor), render())); // couldn't post: the usual box, so nothing is lost
@@ -514,7 +499,7 @@ import { zoomWords } from '../lib/zoom.ts';
     }
     if (S.openId === id) S.openId = null;
     render();
-    say(`took back ${c.anchor?.zoom ? 'a zoom' : /^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
+    say(`took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
   }
   // A short note in the hint strip (an undo, a copied link), then the strip goes back to its own words.
   const said = { was: undefined, t: undefined };
@@ -632,15 +617,13 @@ import { zoomWords } from '../lib/zoom.ts';
       if (!b.hidden) first = false;
     }
   }
-  // The switch shows what a click will place: 1 your comment pin (your initial), 2 a go pin, 3 a zoom pin (+ in,
-  // − out), 4 nothing (the pointer).
+  // The switch shows what a click will place: 1 your comment pin (your initial), 2 a go pin, 3 nothing (the pointer).
   function goFace() {
     const gp = goBtn.querySelector('.gp');
-    // On phones the switch is a small round pin: zoom shows as its arrows alone.
-    if (gp) gp.replaceChildren(...(S.zoomMode ? [zoomIcon(S.zoomMode), ...(matchMedia('(pointer: coarse)').matches ? [] : [el('span', { class: 'zw' }, S.zoomMode)])] : [!S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go']));
+    if (gp) gp.textContent = !S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go';
     // Read out as what a click places, not the letter on it.
-    goBtn.setAttribute('aria-label', `a click places: ${S.zoomMode ? `a zoom ${S.zoomMode}` : S.cursorMode ? 'nothing (pointer)' : S.goMode ? 'go' : 'a comment'}`);
-    goBtn.setAttribute('aria-keyshortcuts', [KEYS.comment, KEYS.go, KEYS.zoom, KEYS.pointer].join(' '));
+    goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (pointer)' : S.goMode ? 'go' : 'a comment'}`);
+    goBtn.setAttribute('aria-keyshortcuts', [KEYS.comment, KEYS.go, KEYS.pointer].join(' '));
   }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
@@ -806,7 +789,6 @@ import { zoomWords } from '../lib/zoom.ts';
     copyBtn.hidden = !S.on || !S.isAdmin || list.every((c) => c.resolved);
     drawList();
     drawChat();
-    drawZoom(); // the zoom tool's outline and card go back into the layer it was just emptied from
     if (!S.on) return done();
     for (const h of held()) {
       const { left, top } = position(h.anchor);
@@ -828,15 +810,15 @@ import { zoomWords } from '../lib/zoom.ts';
       const pin = el(
         'button',
         {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.anchor?.zoom ? ' zoom' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
+          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
           type: 'button',
           title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
           // Its state in words too (the ring, the tick and the new dot are only seen).
-          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : c.anchor?.zoom ? `zoom ${c.anchor.zoom}` : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}${moved ? ', moved' : ''}`,
+          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}${moved ? ', moved' : ''}`,
         },
-        // Done wins over every face: a go or a zoom that has been answered or resolved is a pin like any other,
+        // Done wins over every face: a go that has been answered or resolved is a pin like any other,
         // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
-        state === 'done' || c.resolved ? '✓' : /^go$/i.test(c.text.trim()) ? 'go' : c.anchor?.zoom ? zoomIcon(String(c.anchor.zoom).startsWith('in') ? 'in' : 'out') : flag('agentPins') && byAgent(c) ? agentMark() : initial(c.name),
+        state === 'done' || c.resolved ? '✓' : /^go$/i.test(c.text.trim()) ? 'go' : flag('agentPins') && byAgent(c) ? agentMark() : initial(c.name),
       );
       // Its face changed since the last drawing (the agent took it, it's done, something new in it): it eases into the
       // new one and the ring fades in or out, instead of a cut (see .swap in styles.css).
@@ -909,8 +891,7 @@ import { zoomWords } from '../lib/zoom.ts';
       const { left, top, zone } = position(anchor);
       drawZone(zone, 'draft');
       quoted = zone ? null : anchor; // an area lights no single word
-      const zoom = anchor.zoom; // a zoom comment: its pin shows + or −, and it can be sent with no words
-      const pin = el('div', { class: `pin draft${zoom ? ` zoom` : ''}${anim}` }, zoom ? zoomIcon(zoom) : initial(store.get('lab-name')));
+      const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
       layer.append(pin);
@@ -918,9 +899,9 @@ import { zoomWords } from '../lib/zoom.ts';
       float.append(
         el('div', { class: 'handle' }),
         composer({
-          placeholder: zoom === 'in' ? 'zoom in: what to go deeper into (or just send)' : zoom === 'out' ? 'zoom out: what to see around it (or just send)' : S.draft.go ? 'go' : 'add a comment',
-          empty: zoom ? zoomWords(zoom) : S.draft.go ? 'go' : '',
-          nameFirst: Boolean(S.draft.go || zoom),
+          placeholder: S.draft.go ? 'go' : 'add a comment',
+          empty: S.draft.go ? 'go' : '',
+          nameFirst: Boolean(S.draft.go),
           autofocus: true,
           draftKey: `lab-typing:${S.page}:new`,
           onSubmit: async (name, text) => {
@@ -932,7 +913,6 @@ import { zoomWords } from '../lib/zoom.ts';
             }
             const { comment, edit } = await send({ name, text, anchor });
             if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
-            if (zoom && anchor.block) zoomAsked(anchor.block, zoom); // the page goes to what comes back
             S.comments.push(comment);
             markSeen([comment]);
             S.draft = null;
@@ -999,14 +979,7 @@ import { zoomWords } from '../lib/zoom.ts';
       e.stopPropagation();
     }
   }, true);
-  // A tap steps through what a click places: comment → go → zoom in → zoom out → comment. Phones have no number keys,
-  // so this is how they reach zoom; 4 (pointer) stays a key.
-  goBtn.addEventListener('click', () => {
-    if (S.zoomMode === 'in') return setZoom('out');
-    if (S.zoomMode === 'out') return setZoom(''), setGo(false);
-    if (S.goMode && !S.cursorMode) return setZoom('in');
-    setGo(true);
-  });
+  goBtn.addEventListener('click', () => setGo(!S.goMode));
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
   // Pause motion (p): everything that moves on the page stops where it is, to pin a moment of an animation (Leo,
@@ -1142,24 +1115,18 @@ import { zoomWords } from '../lib/zoom.ts';
       if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 260 });
       return stepNew(e.shiftKey ? -1 : 1);
     }
-    // 1 comment, 2 go, 3 zoom in (3 again: zoom out), 4 pointer: like picking a tool (the keys are settings).
+    // 1 comment, 2 go, 3 pointer: like picking a tool (the keys are settings).
     const act = actionOf(e);
-    if (S.on && ['comment', 'go', 'zoom', 'pointer'].includes(act) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if (S.on && ['comment', 'go', 'pointer'].includes(act) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
-      if (act === 'zoom') return setZoom(S.zoomMode === 'in' ? 'out' : 'in');
-      if (S.zoomMode) setZoom('');
       if (act === 'pointer') setCursor(true);
       else setGo(act === 'go');
       return;
     }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
-    // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C.
-    // The letter typed when it's Latin (QWERTZ and AZERTY move letters), else the key's place (Cyrillic and others).
-    const letter = /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
+    // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment,
-    // 2 go, 3 zoom (src/widget/zoom.ts), 4 pointer, P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    // In zoom, Escape (nothing open) leaves it.
-    if (S.on && S.zoomMode && !S.draft && !S.openId && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && zoomKey(e, letter)) return e.preventDefault();
+    // 2 go, 3 pointer, P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
     if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
       const k = act;
       e.preventDefault();
@@ -1618,7 +1585,7 @@ import { zoomWords } from '../lib/zoom.ts';
   const place = (x, y, target) => {
     const show = Boolean(target) && target !== host && !host.contains(target) && getComputedStyle(target).cursor === 'none';
     ptr.classList.toggle('show', show);
-    ptr.classList.toggle('go', S.goMode && !S.zoomMode);
+    ptr.classList.toggle('go', S.goMode);
     ptr.style.transform = `translate(${x - 1}px, ${y - 27}px)`;
   };
   const recheck = () => S.mouse && requestAnimationFrame(() => S.mouse && place(S.mouse.x, S.mouse.y, document.elementFromPoint(S.mouse.x, S.mouse.y)));
@@ -1643,10 +1610,10 @@ import { zoomWords } from '../lib/zoom.ts';
   // moves) the system pointer is a plain crosshair for comments and the copy arrow for go.
   S.cursorKey = '';
   function refreshPinCursor() {
-    const ch = S.zoomMode ? `zoom-${S.zoomMode}` : (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
+    const ch = (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
     if (ch === S.cursorKey) return; // nothing changed: leave the pointers alone
     S.cursorKey = ch;
-    ptr.querySelector('.ini').replaceChildren(S.zoomMode ? zoomIcon(S.zoomMode) : ch);
+    ptr.querySelector('.ini').textContent = ch;
     // In a cascade layer, so a page's own pointers (a clickable card) still win over ours.
     const plain = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
     const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
@@ -1730,6 +1697,5 @@ import { zoomWords } from '../lib/zoom.ts';
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
-  startZoom();
   startLive();
 })();
