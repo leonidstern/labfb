@@ -804,11 +804,11 @@ const claimed = () => {
 };
 const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed().has(p)));
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
-// ends after an hour of no page. Each tab has an id. A tab in the background drops its stream but still counts as
-// open while it checks in (it asks for the state every 20 s, about once a minute where the browser slows hidden
-// tabs); it leaves when it says bye on pagehide (closed, or navigated away), or after 90 s with neither a stream nor a
-// check-in (a crashed tab, a phone that froze it). Half an hour, before: a tab that never said bye kept Claude
-// listening for that long.
+// ends after an hour of no page. A browser's tabs of this lab share one stream (the widget passes it on), held under
+// the id of the tab that opened it; when that tab goes, another opens the stream under its own. A tab counts while
+// its stream is open or it checks in (GET /_lab/state?tab=); it leaves when it says bye on pagehide (closed, or
+// navigated away), or after 90 s with neither (a crashed tab, a phone that froze it). Half an hour, before: a tab that
+// never said bye kept Claude listening for that long.
 // A reload says bye and reconnects within a second. Claude starting wait again right after a timed-out one keeps
 // the same hour; a wait asked for later (the person said "listen") starts a new one.
 const CLOSE_GRACE = Number(process.env.LAB_CLOSE_GRACE || 3600) * 1000;

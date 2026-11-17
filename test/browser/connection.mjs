@@ -1,6 +1,7 @@
-// The widget's live connection in real browsers (WebKit and Chrome's engine): one stream per tab, let go 30 s into the
-// background with the state polled instead, opened again in front, opened again when it goes quiet (no beat for
-// 40 s), a bye when the page goes away (a listening agent hears the page closed); and a comment reaching two open tabs without a reload.
+// The widget's live connection in real browsers (WebKit and Chrome's engine): one stream, kept in the background (a
+// comment shows there at once), opened again when it goes quiet (no beat for 40 s), a bye when the page goes away (a
+// listening agent hears the page closed); and 8 tabs of one lab sharing one stream, handed to another tab when the
+// one holding it leaves, every tab getting each comment without a reload.
 // Not part of `npm test`; CI runs it in the `browser` job. Run: node test/browser/connection.mjs (needs playwright;
 // NODE_PATH can point at a node_modules that has it). One line per check; exits 1 if any fails.
 import fs from 'node:fs';
@@ -73,7 +74,7 @@ try {
   for (const eng of ['webkit', 'chromium']) {
     const browser = await pw[eng].launch();
     try {
-      // ---- one tab, its stream through background, front, a stall and leaving ----
+      // ---- one tab: its stream through the background, front, a stall and leaving ----
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
       await ctx.addInitScript(trackStreams);
@@ -89,37 +90,30 @@ try {
       await until(() => p.evaluate(() => window.__streams.length === 1 && window.__streams[0].readyState === 1));
       await sleep(800);
       const streams = () => p.evaluate(() => window.__streams.map((s) => s.readyState)); // 0 connecting, 1 open, 2 closed
-      check(eng, 'one live stream per tab, open', JSON.stringify(await streams()) === '[1]' && seen.live === 1, `${JSON.stringify(await streams())}, ${seen.live} requests`);
+      check(eng, 'one live stream, open', JSON.stringify(await streams()) === '[1]' && seen.live === 1, `${JSON.stringify(await streams())}, ${seen.live} requests`);
 
       await p.evaluate(setHidden, true);
-      await p.clock.runFor(29000);
-      check(eng, 'in the background the stream stays for 30 s', (await streams())[0] === 1);
-      await p.clock.runFor(2000);
-      check(eng, 'then it is let go', (await streams())[0] === 2);
-      const polledFrom = seen.state;
-      await p.clock.runFor(41000);
+      await p.clock.runFor(90000);
       await sleep(300);
-      check(eng, 'and the state is polled every 20 s instead', seen.state - polledFrom >= 2, `${seen.state - polledFrom} polls in 41 s`);
-
+      check(eng, 'in the background the stream stays open, no polling', JSON.stringify(await streams()) === '[1]' && seen.state === 0, `${JSON.stringify(await streams())}, ${seen.state} polls`);
+      const pinsOf = (t) => t.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot.querySelectorAll('.pin').length ?? -1);
+      const hiddenBefore = await pinsOf(p);
+      await post(`while hidden in ${eng}`);
+      check(eng, 'a comment made while it is in the background shows there at once', await until(async () => (await pinsOf(p)) === hiddenBefore + 1, 4000));
       await p.evaluate(setHidden, false);
-      await until(async () => (await streams()).at(-1) === 1);
-      const s = await streams();
-      check(eng, 'back in front: one new stream, open', s.length === 2 && s[1] === 1 && s.filter((x) => x === 1).length === 1, JSON.stringify(s));
-      const pollsInFront = seen.state;
-      await p.clock.runFor(30000);
-      await sleep(300);
-      check(eng, 'and the polling stops', seen.state === pollsInFront, `${seen.state - pollsInFront} polls`);
+      await sleep(500);
+      check(eng, 'back in front: the same stream, no reconnect', JSON.stringify(await streams()) === '[1]' && seen.live === 1, JSON.stringify(await streams()));
 
       // The server's beat comes every 15 s of real time; 46 s of page time with none looks like a stalled connection.
-      await p.clock.runFor(16000);
-      await until(async () => (await streams()).length === 3 && (await streams())[2] === 1);
+      await p.clock.runFor(46000);
+      await until(async () => (await streams()).length === 2 && (await streams())[1] === 1);
       const st = await streams();
-      check(eng, 'a stream quiet for 40 s is replaced, never two open at once', st.length === 3 && st.filter((x) => x === 1).length === 1, JSON.stringify(st));
+      check(eng, 'a stream quiet for 40 s is replaced, never two open at once', st.length === 2 && st.filter((x) => x === 1).length === 1, JSON.stringify(st));
 
       // Leaving says bye, so the lab stops counting the tab and a listening agent's wait ends after the grace.
       // (Checked by what it does: Playwright doesn't report Chrome's last request from a page being left.)
       const agentWait = (s) => new Promise((r) => execFile(process.execPath, [LAB, 'wait', '--timeout', s], { cwd: DIR, env }, (e, out) => r(out)));
-      await agentWait('1'); // the last round's comment is handed over now, so this wait has nothing waiting for it
+      await agentWait('1'); // comments made so far are handed over now, so this wait has nothing waiting for it
       const listening = agentWait('15');
       await sleep(800);
       const t0 = Date.now();
@@ -128,24 +122,38 @@ try {
       check(eng, 'leaving the page says bye: a listening agent hears the page closed', /page was closed/.test(ended) && Date.now() - t0 < 6000, `${ended.trim()} after ${Date.now() - t0} ms`);
       await ctx.close();
 
-      // ---- two tabs of one lab: a comment reaches both, no reload ----
+      // ---- eight tabs of one lab: one stream for all, handed over when its tab goes ----
       const ctx2 = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx2.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
-      const tabs = [await ctx2.newPage(), await ctx2.newPage()];
+      await ctx2.addInitScript(trackStreams);
+      const tabs = [];
       let loads = 0;
-      for (const t of tabs) {
+      for (let i = 0; i < 8; i++) {
+        const t = await ctx2.newPage();
         t.on('load', () => loads++);
         await t.goto(B + '/');
+        tabs.push(t);
       }
-      await sleep(1200);
-      const pins = (t) => t.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot.querySelectorAll('.pin').length ?? -1);
-      const before = await Promise.all(tabs.map(pins));
-      await post(`synced in ${eng}`);
-      const both = await until(async () => (await Promise.all(tabs.map(pins))).every((n, i) => n === before[i] + 1), 5000);
-      check(eng, 'a new comment shows in both open tabs, no reload', both && loads === 2, `pins ${before} → ${await Promise.all(tabs.map(pins))}, loads ${loads}`);
+      await sleep(1500);
+      const open = async (list) => (await Promise.all(list.map((t) => t.evaluate(() => window.__streams.filter((s) => s.readyState === 1).length)))).reduce((a, b) => a + b, 0);
+      check(eng, '8 tabs share one open stream', (await open(tabs)) === 1, `${await open(tabs)} open`);
+      let before = await Promise.all(tabs.map(pinsOf));
+      await post(`to all 8 in ${eng}`);
+      const all8 = await until(async () => (await Promise.all(tabs.map(pinsOf))).every((n, i) => n === before[i] + 1), 5000);
+      check(eng, 'a new comment shows in all 8, no reload', all8 && loads === 8, `pins ${before} → ${await Promise.all(tabs.map(pinsOf))}, loads ${loads}`);
+
+      const holder = (await Promise.all(tabs.map((t) => t.evaluate(() => window.__streams.some((s) => s.readyState === 1))))).indexOf(true);
+      await tabs[holder].goto('about:blank');
+      const rest = tabs.filter((_, i) => i !== holder);
+      check(eng, 'the tab with the stream leaves: another opens it within 2 s', await until(async () => (await open(rest)) === 1, 2000), `${await open(rest)} open`);
+      for (const t of rest) await t.evaluate(setHidden, true);
+      before = await Promise.all(rest.map(pinsOf));
+      await post(`to the other 7 in ${eng}`);
+      const all7 = await until(async () => (await Promise.all(rest.map(pinsOf))).every((n, i) => n === before[i] + 1), 5000);
+      check(eng, 'and all 7 left, every one in the background, still get the next comment', all7, `pins ${before} → ${await Promise.all(rest.map(pinsOf))}`);
       // Left, not just shut: closing a browser context fires no pagehide, so the tabs would never say bye and would count
-      // as background tabs for the next engine's checks.
-      for (const t of tabs) await t.goto('about:blank');
+      // as open for the next engine's checks.
+      for (const t of rest) await t.goto('about:blank');
       await ctx2.close();
     } finally {
       await browser.close();
