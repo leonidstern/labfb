@@ -4,7 +4,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 
-type Server = { port: number; token: string };
+// agent: the agent's own key (labs since 17 Nov); a lab from before has only token, the browser's key, and takes that.
+type Server = { port: number; token: string; agent?: string };
 type Session = Record<string, unknown>;
 
 /** The lab serving `from` or a folder above it, from its .lab/server.json; null when none is there. */
@@ -24,7 +25,7 @@ export const labCall = (server: Server, pathname: string, body: object, session:
     const req = http.request(
       { host: '127.0.0.1', port: server.port, path: pathname, method: 'POST', signal,
         headers: { host: `localhost:${server.port}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(data),
-          'x-lab-admin': server.token, 'x-lab-agent': '1', 'x-lab-session': encodeURIComponent(JSON.stringify(session)) } },
+          'x-lab-admin': server.agent || server.token, 'x-lab-agent': '1', 'x-lab-session': encodeURIComponent(JSON.stringify(session)) } },
       (res) => {
         let text = '';
         res.on('data', (c) => (text += c));

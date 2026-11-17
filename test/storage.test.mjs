@@ -203,3 +203,34 @@ test('a done thread is archived a month after it was resolved, not after its las
   assert.deepEqual(Object.keys(readJson(path.join(dir, '.lab/archive/k.json')).comments), ['early']);
   await lab.stop();
 });
+
+test('reads.json and claims.json: a damaged one is put aside, not read as empty and written over; saves go whole', async () => {
+  const dir = folder();
+  fs.mkdirSync(path.join(dir, '.lab'));
+  fs.writeFileSync(path.join(dir, '.lab/reads.json'), '{"leo":{"/index":["a"');
+  fs.writeFileSync(path.join(dir, '.lab/claims.json'), 'not json');
+  const lab = await start(dir);
+  const names = () => fs.readdirSync(path.join(dir, '.lab'));
+  assert.ok(names().some((n) => n.startsWith('reads.json.broken-')), names().join(' '));
+  assert.ok(names().some((n) => n.startsWith('claims.json.broken-')), names().join(' '));
+  assert.equal(fs.readFileSync(path.join(dir, '.lab', names().find((n) => n.startsWith('reads.json.broken-'))), 'utf8'), '{"leo":{"/index":["a"', 'kept as it was');
+  const c = (await lab.post({ page: '/index', name: 'Leo', text: 'mark me', anchor })).comment;
+  await fetch(lab.B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: lab.B }, body: JSON.stringify({ name: 'Leo', page: '/index', ids: [c.id] }) });
+  await until(() => fs.existsSync(path.join(dir, '.lab/reads.json')), 'read marks saved');
+  assert.deepEqual(readJson(path.join(dir, '.lab/reads.json')), { leo: { '/index': [c.id] } });
+  assert.ok(!names().some((n) => n.endsWith('.tmp')), 'no half-written file left');
+  await lab.stop();
+});
+
+test('links.json: labit add writes it whole, and a damaged one is put aside', async () => {
+  const dir = folder();
+  fs.mkdirSync(path.join(dir, '.lab'));
+  const links = path.join(dir, '.lab/links.json');
+  fs.writeFileSync(links, '[{"url":"https://lab.example/a"');
+  const add = await new Promise((r) => execFile(process.execPath, [LAB, 'add', 'https://lab.example/b', '--name', 'B'], { cwd: dir }, (err, out, errOut) => r({ code: err?.code ?? 0, out: out + errOut })));
+  assert.equal(add.code, 0, add.out);
+  assert.match(add.out, /links\.json was damaged; moved it to links\.json\.broken-/);
+  assert.deepEqual(readJson(links), [{ url: 'https://lab.example/b', title: 'B' }]);
+  const aside = fs.readdirSync(path.join(dir, '.lab')).find((n) => n.startsWith('links.json.broken-'));
+  assert.equal(fs.readFileSync(path.join(dir, '.lab', aside), 'utf8'), '[{"url":"https://lab.example/a"');
+});

@@ -169,7 +169,7 @@ for (const eng of ['webkit', 'chromium']) {
   check(eng, '2 is go, 3 is cursor (a click pins nothing)', go && !pinnedIn3);
 
   // A go pin is a pin like any other: resolved, it wears the tick rather than saying "go" for ever.
-  const admin = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).token;
+  const admin = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
   const post = (body) =>
     fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': admin, 'x-lab-agent': '1' }, body: JSON.stringify(body) }).then((r) => r.json());
   const page = await p.evaluate(() => document.querySelector('script[src*="comments.js"]').dataset.page);

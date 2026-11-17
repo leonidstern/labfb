@@ -72,7 +72,7 @@ For the agent, from the project (any folder under it):
       Answer a zoom: <file> holds one element, the deeper look or the bigger picture. The lab places it on the page.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
-page), archive/ (done threads with nothing new in 30 days), server.json (port, key, session; owner-only), seen.
+page), archive/ (done threads with nothing new in 30 days), server.json (port, keys, session; owner-only), seen.
 Delete .lab to start over.`;
 
 // ---------- arguments ----------
@@ -153,15 +153,35 @@ if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in yo
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
 
 // ---------- finding the dev server ----------
-// A server already running for this folder answers below, whatever kind it is.
-const alreadyRunning = (() => {
+// A lab counts as running for this folder only if it answers on its port as this folder's lab: a pid alone can be a
+// lab that hangs, or another program that got the number after a crash.
+const answersHere = (port) =>
+  new Promise((done) => {
+    if (!Number.isInteger(port) || port <= 0) return done(false);
+    const req = http.get({ host: '127.0.0.1', port, path: '/_lab/pages', headers: { host: `localhost:${port}` }, timeout: 1500 }, (res) => {
+      let t = '';
+      res.on('data', (c) => (t += c));
+      res.on('end', () => {
+        try {
+          done(JSON.parse(t).root === ROOT);
+        } catch {
+          done(false);
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => done(false));
+  });
+const runningServer = async () => {
   try {
-    process.kill(JSON.parse(fs.readFileSync(path.join(ROOT, '.lab/server.json'), 'utf8')).pid, 0);
-    return true;
+    const running = JSON.parse(fs.readFileSync(path.join(ROOT, '.lab/server.json'), 'utf8'));
+    return (await answersHere(running.port)) ? running : null;
   } catch {
-    return false;
+    return null;
   }
-})();
+};
+// A server already running for this folder answers below, whatever kind it is.
+const alreadyRunning = Boolean(await runningServer());
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
@@ -225,15 +245,74 @@ const SEEN = path.join(LAB, 'seen');
 fs.mkdirSync(LAB, { recursive: true });
 
 // One server per folder: two would overwrite each other's comments.
-try {
-  const running = JSON.parse(fs.readFileSync(SERVER, 'utf8'));
-  process.kill(running.pid, 0);
+const alreadyHere = (running) => {
   // Started by the preview pane on another port: say why it can't open, so the pane doesn't wait on nothing.
   if (process.env.PORT && !opts.port && Number(process.env.PORT) !== running.port)
     die(`[lab] already running for this folder at http://localhost:${running.port}. Stop that one (Ctrl+C) to open it here.`);
   console.log(`[lab] already running for this folder: http://localhost:${running.port}`);
   process.exit(0);
-} catch {}
+};
+{
+  const running = await runningServer();
+  if (running) alreadyHere(running);
+}
+// .lab/lock is taken before the store is read and held until this lab exits, so two started at once can't both load
+// the comments and then overwrite each other's (server.json comes only once the lab listens). A lock whose holder
+// is gone, or is running but stopped answering long after it started, is taken over.
+const LOCK = path.join(LAB, 'lock');
+const takeLock = () => {
+  try {
+    fs.writeSync(fs.openSync(LOCK, 'wx', 0o600), JSON.stringify({ pid: process.pid, at: Date.now() }));
+    return true;
+  } catch (e) {
+    if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EEXIST') throw e;
+    return false;
+  }
+};
+const readLock = () => {
+  try {
+    return JSON.parse(fs.readFileSync(LOCK, 'utf8'));
+  } catch {
+    return null;
+  }
+};
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return /** @type {NodeJS.ErrnoException} */ (e).code === 'EPERM'; // someone else's process, alive
+  }
+};
+for (let tries = 0; !takeLock(); tries++) {
+  const held = readLock();
+  // The holder answers (on the port it wrote in the lock once it listened): this folder's lab is running.
+  if (held?.port && (await answersHere(held.port))) alreadyHere(held);
+  const running = await runningServer();
+  if (running) alreadyHere(running);
+  // Gone, or alive a minute without answering (a lab that hangs, or another program that got its pid): taken over.
+  // Only the lock as it was read is removed, so two labs taking over the same stale lock can't remove each other's.
+  // A lock with nothing readable in it yet is a lab that has only just made it; left like that for seconds, a dead one.
+  const age = (() => {
+    try {
+      return Date.now() - fs.statSync(LOCK).mtimeMs;
+    } catch {
+      return Infinity;
+    }
+  })();
+  const stale = !held ? age > 5000 : !Number.isInteger(held.pid) || !alive(held.pid) || (Date.now() - (Number(held.at) || 0) > 60000 && tries >= 2);
+  if (stale && JSON.stringify(readLock()) === JSON.stringify(held)) {
+    fs.rmSync(LOCK, { force: true });
+    if (takeLock()) break;
+  }
+  if (tries >= 40) die(`[lab] another lab is starting for this folder (pid ${held?.pid}) and hasn't answered. If it hangs, stop it, or delete ${LOCK}.`);
+  await new Promise((r) => setTimeout(r, 250)); // another lab is starting here: it will answer in a moment
+}
+process.on('exit', () => {
+  try {
+    if (JSON.parse(fs.readFileSync(LOCK, 'utf8')).pid === process.pid) fs.rmSync(LOCK);
+  } catch {}
+});
 
 // Kept across restarts (owner-only file), so the pin keys guests' browsers hold keep working.
 const KEY = path.join(LAB, 'key');
@@ -246,6 +325,10 @@ const TOKEN = (() => {
   fs.writeFileSync(KEY, k, { mode: 0o600 });
   return k;
 })();
+// The agent's key: new for each run, kept only in .lab/server.json (owner-only), never in a page. The browser on this
+// computer holds TOKEN (data-admin, for resolving, moving and deleting); a script on a page can read that, so it is not
+// enough to listen as the agent, take its pins or speak as it (wait, invite, zoom, a reply marked as the agent's).
+const AGENT_KEY = randomBytes(16).toString('hex');
 process.env.LAB_HOST = 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
@@ -537,6 +620,7 @@ const forGuests = (c) => {
   if (!c || typeof c !== 'object') return c;
   const rest = { ...c };
   if (rest.session) rest.session = { name: rest.session.name, agent: rest.session.agent, kind: rest.session.kind };
+  delete rest.deliveredTo; // which session has the thread: an id, this computer's business
   return rest;
 };
 function commentChangesSince(page, since) {
@@ -711,7 +795,11 @@ const redeem = (req, res, code, me = '', to = '') => {
   if (NAME_OK(me)) cookies.push(`lab_me=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
   return res.writeHead(302, { location: landing(to), 'set-cookie': cookies }).end();
 };
-const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
+const isAgent = (req) => {
+  const sent = Buffer.from(String(req.headers['x-lab-admin'] || ''));
+  const key = Buffer.from(AGENT_KEY);
+  return req.headers['x-lab-agent'] === '1' && sent.length === key.length && timingSafeEqual(sent, key);
+};
 const sessionFrom = (req) => {
   try {
     const s = JSON.parse(decodeURIComponent(req.headers['x-lab-session'] || ''));
@@ -750,7 +838,7 @@ const register = () => {
     writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: path.basename(ROOT), proxy: PROXY?.origin || null, startedAt: new Date().toISOString() }, null, 2));
   } catch {}
 };
-const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
+const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
 const clients = new Set();
 // A beat every 15 s on every live connection: a page that hears nothing for longer knows its connection stalled (the
 // laptop slept, the wifi changed) and connects again at once instead of waiting for the browser to notice.
@@ -762,15 +850,26 @@ setInterval(() => {
 const READS = path.join(LAB, 'reads.json');
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
-const reads = (() => {
+// Side files (read marks, claims) are written whole through a .tmp, and one that can't be read is put aside like a
+// page's file, not taken for empty and then written over.
+const readSide = (file, what) => {
+  let text;
   try {
-    const raw = JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
-    const out = Object.create(null);
-    for (const [name, pagesOf] of Object.entries(raw)) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
-    return out;
+    text = fs.readFileSync(file, 'utf8');
   } catch {
-    return Object.create(null);
+    return null; // not made yet
   }
+  try {
+    const data = JSON.parse(text);
+    if (data && typeof data === 'object' && !Array.isArray(data)) return data;
+  } catch {}
+  putAside(file, what);
+  return null;
+};
+const reads = (() => {
+  const out = Object.create(null);
+  for (const [name, pagesOf] of Object.entries(readSide(READS, 'reads.json') || {})) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
+  return out;
 })();
 /** @type {any} */
 let readsBroadcast = 0;
@@ -779,7 +878,13 @@ const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase
 let readsTimer;
 const saveReads = () => {
   clearTimeout(readsTimer);
-  readsTimer = setTimeout(() => fs.promises.writeFile(READS, JSON.stringify(reads)).catch((e) => console.error('[lab] could not save read marks:', e.message)), 300);
+  readsTimer = setTimeout(() => {
+    try {
+      writeAtomic(READS, JSON.stringify(reads));
+    } catch (e) {
+      console.error('[lab] could not save read marks:', e.message);
+    }
+  }, 300);
 };
 const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
@@ -844,20 +949,14 @@ let waiters = [];
 const CLAIM_MS = 1800000;
 const CLAIMS_FILE = path.join(LAB, 'claims.json');
 const claims = new Map(
-  (() => {
-    try {
-      return Object.entries(JSON.parse(fs.readFileSync(CLAIMS_FILE, 'utf8'))).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS);
-    } catch {
-      return [];
-    }
-  })(),
+  Object.entries(readSide(CLAIMS_FILE, 'claims.json') || {}).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS),
 ); // page -> last time a wait for it was open
 const claim = (pages) => {
   if (!pages?.length) return;
   const now = Date.now();
   for (const p of pages) claims.set(p, now);
   try {
-    fs.writeFileSync(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
+    writeAtomic(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
   } catch {}
 };
 const claimed = () => {
@@ -926,7 +1025,10 @@ const rulesOnce = () => {
   return rules;
 };
 
-async function unseen(scope = pages()) {
+// Who a wait is: the session's id, or its name for an agent with no id. Each comment handed over is marked with it
+// (deliveredTo), so a reply goes as one line only to the session that already has its thread.
+const whoOf = (s) => s?.id || s?.name || '';
+async function unseen(scope = pages(), who = '') {
   const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
@@ -938,12 +1040,13 @@ async function unseen(scope = pages()) {
   if (!fresh.length && !missed.length) return null;
   const blocks = [];
   const sent = new Set(); // page + thread id actually written into the text
-  // A reply in a thread the agent already has: only the new words and one line on what the thread is about, not the
-  // whole thread again (the full one is at /_lab/agent/<page>).
+  // A reply in a thread this session already has: only the new words and one line on what the thread is about, not
+  // the whole thread again (the full one is at /_lab/agent/<page>). A thread handed to another session goes whole.
+  // (A thread marked before deliveredTo was kept counts as known to any session, as it did.)
   const known = (f) => {
     if (!f.c.parent) return false;
     const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
-    return Boolean(root?.deliveredAt) && !fresh.some((g) => g.c.id === root.id);
+    return Boolean(root?.deliveredAt) && (root.deliveredTo === undefined || root.deliveredTo === who) && !fresh.some((g) => g.c.id === root.id);
   };
   const replies = fresh.filter(known);
   const whole = fresh.filter((f) => !known(f));
@@ -983,11 +1086,11 @@ async function unseen(scope = pages()) {
   return { text, marks, handed };
 }
 // Hand the new comments to a wait; each is marked as handed over only once it is written to it.
-function deliver(res, got) {
+function deliver(res, got, who = '') {
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
-  for (const [page, id, at] of got.marks) setComment(page, id, { deliveredAt: at });
+  for (const [page, id, at] of got.marks) setComment(page, id, { deliveredAt: at, deliveredTo: who });
   const at = new Date().toISOString();
-  for (const [page, id] of got.handed) setComment(page, id, { handedAt: at });
+  for (const [page, id] of got.handed) setComment(page, id, { handedAt: at, deliveredTo: who }); // the thread: this session has it now
   for (const page of new Set([...got.marks, ...got.handed].map(([page]) => page))) persist(page).catch(() => {});
   setMode('working');
 }
@@ -1004,12 +1107,12 @@ function wake() {
 async function wakeNow() {
   for (const w of Array.from(waiters)) {
     if (!waiters.includes(w)) continue;
-    const got = await unseen(scopeOf(w));
+    const got = await unseen(scopeOf(w), w.who);
     if (!got?.text || !waiters.includes(w)) continue;
     waiters = waiters.filter((x) => x !== w);
     waitEnded = Date.now();
     clearTimeout(w.timer);
-    deliver(w.res, got);
+    deliver(w.res, got, w.who);
   }
 }
 
@@ -1293,10 +1396,10 @@ const handler = async (req, res) => {
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
-      const w = { res, pages: want, key };
+      const w = { res, pages: want, key, who: whoOf(session) };
       claim(want);
-      const got = await unseen(scopeOf(w));
-      if (got?.text) return deliver(res, got);
+      const got = await unseen(scopeOf(w), w.who);
+      if (got?.text) return deliver(res, got, w.who);
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;
         waiters = waiters.filter((x) => x !== w);
@@ -1411,7 +1514,8 @@ const handler = async (req, res) => {
       const kept = listing && cachedList(listPage, kind);
       if (kept) return res.writeHead(kept.status, kept.headers).end(kept.out);
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
-      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost' });
+      // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does).
+      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost', ...(agent ? { 'x-lab-admin': TOKEN } : {}) });
       const text = await out.text();
       if (req.method === 'POST' && out.ok) {
         const { comment } = JSON.parse(text);
@@ -1552,6 +1656,7 @@ server.on('listening', async () => {
   newerVersion().then((v) => v && console.log(`[lab] labit ${v} is out (you have ${VERSION}): npx @leonidstern/labit@latest`));
   origin = `http://localhost:${PORT}`;
   saveServer();
+  writeAtomic(LOCK, JSON.stringify({ pid: process.pid, at: Date.now(), port: PORT }), 0o600); // a lab starting next asks this port
   register();
   await persist();
   console.log(`[lab] ${origin}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
@@ -1575,4 +1680,5 @@ const bye = () => {
 };
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
+process.on('SIGHUP', bye); // the terminal it ran in closed
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');
