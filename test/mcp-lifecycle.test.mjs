@@ -13,8 +13,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-mcplife-')));
 const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
-const PORT = String(6100 + Math.floor(Math.random() * 200));
-const B = `http://localhost:${PORT}`;
+// Clear of the other test files' ranges (they run at the same time); the address is read back from the lab itself,
+// as a taken port moves a lab to the next one.
+const PORT = String(7700 + Math.floor(Math.random() * 200));
+let B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
 const servers = new Set();
@@ -52,6 +54,17 @@ const start = () => {
 };
 
 test('the lab starts', async () => {
+  const file = path.join(DIR, '.lab/server.json');
+  const ours = () => {
+    try {
+      const s = JSON.parse(fs.readFileSync(file, 'utf8'));
+      return s.pid === lab.pid && s.port;
+    } catch {
+      return false;
+    }
+  };
+  await until(ours, 8000, 'the lab to write its server file');
+  B = `http://localhost:${ours()}`;
   await until(async () => (await fetch(B + '/').catch(() => null))?.ok, 8000, 'the lab');
 });
 

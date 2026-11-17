@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sync-'));
-const PORT = String(5700 + Math.floor(Math.random() * 250));
+const PORT = String(8600 + Math.floor(Math.random() * 200)); // clear of the other test files' ranges (they run at the same time)
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 fs.writeFileSync(path.join(DIR, 'other.html'), '<!doctype html><title>o</title><h1 id="o">Other</h1>');
