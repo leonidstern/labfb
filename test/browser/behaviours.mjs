@@ -62,9 +62,9 @@ for (const eng of ['webkit', 'chromium']) {
   write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
   const browser = await pw[eng].launch();
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
-  // show-done from the start: a resolved pin stays on the page, so the go check below needs no reload
+  // Done pins show by default: a resolved pin stays on the page, so the go check below needs no reload
   // (a reload would land in the counts the save checks at the end make).
-  await ctx.addInitScript(() => (localStorage.setItem('lab-name', 'leo'), localStorage.setItem('lab-show-done', '1')));
+  await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
   const p = await ctx.newPage();
   let loads = 0;
   p.on('load', () => loads++);

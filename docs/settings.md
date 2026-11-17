@@ -117,8 +117,7 @@ win over yours, key by key.
 | `pointer` | `3` | A click is just a click |
 | `chat` | `c` | Open the chat |
 | `next` | `w` | The next new comment (with Shift: the one before) |
-| `pause` | `p` | Pause the page (animations and videos stop) |
-| `done` | `d` | Show or hide done threads |
+| `done` | `d` | Hide or show done threads (shown, faded, at first) |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
 
