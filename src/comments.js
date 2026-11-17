@@ -834,7 +834,9 @@ import { zoomWords } from '../lib/zoom.ts';
           // Its state in words too (the ring, the tick and the new dot are only seen).
           'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : c.anchor?.zoom ? `zoom ${c.anchor.zoom}` : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}${moved ? ', moved' : ''}`,
         },
-        /^go$/i.test(c.text.trim()) ? 'go' : state === 'done' || c.resolved ? '✓' : c.anchor?.zoom ? zoomIcon(String(c.anchor.zoom).startsWith('in') ? 'in' : 'out') : flag('agentPins') && byAgent(c) ? agentMark() : initial(c.name),
+        // Done wins over every face: a go or a zoom that has been answered or resolved is a pin like any other,
+        // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
+        state === 'done' || c.resolved ? '✓' : /^go$/i.test(c.text.trim()) ? 'go' : c.anchor?.zoom ? zoomIcon(String(c.anchor.zoom).startsWith('in') ? 'in' : 'out') : flag('agentPins') && byAgent(c) ? agentMark() : initial(c.name),
       );
       // Its face changed since the last drawing (the agent took it, it's done, something new in it): it eases into the
       // new one and the ring fades in or out, instead of a cut (see .swap in styles.css).

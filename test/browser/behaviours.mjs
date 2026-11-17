@@ -62,7 +62,9 @@ for (const eng of ['webkit', 'chromium']) {
   write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
   const browser = await pw[eng].launch();
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
-  await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+  // show-done from the start: a resolved pin stays on the page, so the go check below needs no reload
+  // (a reload would land in the counts the save checks at the end make).
+  await ctx.addInitScript(() => (localStorage.setItem('lab-name', 'leo'), localStorage.setItem('lab-show-done', '1')));
   const p = await ctx.newPage();
   let loads = 0;
   p.on('load', () => loads++);
@@ -165,6 +167,21 @@ for (const eng of ['webkit', 'chromium']) {
   const pinnedIn3 = await shadow(() => { return Boolean(r.querySelector('.float')); });
   await p.keyboard.press('1');
   check(eng, '2 is go, 3 is cursor (a click pins nothing)', go && !pinnedIn3);
+
+  // A go pin is a pin like any other: resolved, it wears the tick rather than saying "go" for ever.
+  const admin = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).token;
+  const post = (body) =>
+    fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': admin, 'x-lab-agent': '1' }, body: JSON.stringify(body) }).then((r) => r.json());
+  const page = await p.evaluate(() => document.querySelector('script[src*="comments.js"]').dataset.page);
+  const placed = await post({ page, name: 'leo', text: 'go', anchor: { kind: 'element', selector: '#p3', x: 0.5, y: 0.5, element: '<p>', text: 'paragraph 3 with some words', section: '' } });
+  await sleep(1200);
+  const goFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
+  if (!placed.comment) throw new Error(`could not place the go pin: ${JSON.stringify(placed)}`);
+  await post({ page, action: 'resolve', id: placed.comment.id });
+  await sleep(1500);
+  const doneFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
+  check(eng, 'a go pin says go, and wears the tick once it is done', goFace === 'go' && doneFace === '✓', `${goFace} → ${doneFace}`);
+  await post({ page, action: 'delete', id: placed.comment.id });
 
   // A script change reloads; a lab restart doesn't
   // (a reload waits while you've just pressed a key or clicked: give it a moment)
