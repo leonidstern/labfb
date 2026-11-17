@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Threads: an answer to a later message in the thread quotes it, as the chat does; a plain "go" the agent resolves without a word shows one green ✓ on your message; an open thread stays at its newest message while it gets shorter (the keyboard) or an answer comes in, as the chat does, and goes to it when you tap the reply box.
+
 ## 0.6.2 · 2026-11-17
 
 - Things being tried arrive as flags: off unless somebody turns one on, tried in a real lab, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). `flags` in `labit.json` or your own settings, switches under a **trying** heading in the ⋯ menu (this computer only), `labit settings` lists them, and a switch writes the project's `labit.json` so the agent sees the same thing. First two: `liveUrl` (a lab in front of a live page) and `agentPins` (a pin the agent left wears labit's own mark, the one the bar shows while an agent listens).

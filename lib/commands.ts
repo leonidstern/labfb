@@ -203,7 +203,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       }
     const want = opts.page ? '/' + opts.page.replace(/^\/+/, '') : null;
     let hit = null;
-    for (const [page, list] of Object.entries(data)) if (list[ref]) hit = { page, id: list[ref].parent || ref };
+    // A reply's id: the answer goes in its thread, and says which message it answers (shown as a quote, as in chat).
+    for (const [page, list] of Object.entries(data)) if (list[ref]) hit = { page, id: list[ref].parent || ref, to: list[ref].parent ? ref : '' };
     if (!hit && /^\d+$/.test(ref || '')) {
       const hits = Object.entries(data)
         .filter(([page]) => !want || page === want)
@@ -237,7 +238,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (!words.length) die(`Reply text is missing: ${CMD} reply <id> "what you did"`);
       const who = process.env.LAB_AGENT_NAME || session.agent;
       const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
-      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, name, text: words.join(' ') });
+      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' ') });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
     }
     if (cmd === 'resolve' || opts.resolve) {

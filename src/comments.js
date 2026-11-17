@@ -737,7 +737,11 @@ import { zoomWords } from '../lib/zoom.ts';
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
     const prevHeight = S.stepping && coarse && prev ? prev.offsetHeight : 0; // stepping on a phone: the sheet's top doesn't drop
     // The same thread drawn again (reopened, resolved, a reply came in): it keeps where its messages were scrolled to.
-    const prevScroll = prev ? prev.querySelector('.body')?.scrollTop ?? null : null;
+    const prevBody = prev?.querySelector('.body');
+    const prevScroll = prevBody ? prevBody.scrollTop : null;
+    // …or, read at its newest, stays at its newest, so an answer that just came in is in view (as the chat follows new
+    // messages; Leo, 17 Nov: "message scrolled up" on a phone).
+    const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
     layer.replaceChildren();
@@ -875,7 +879,10 @@ import { zoomWords } from '../lib/zoom.ts';
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
-        if (!appear && prevScroll != null) card.querySelector('.body').scrollTop = prevScroll;
+        if (!appear && prevScroll != null) {
+          const body = card.querySelector('.body');
+          body.scrollTop = prevAtEnd ? body.scrollHeight : prevScroll;
+        }
         else if (appear) {
           // Computers: at the first new message when there is one. Phones: already at the end when it shows, the last
           // message in view, as the chat opens (Leo, 15 Nov: no scroll you can see; the sheet's height is fixed now, so
