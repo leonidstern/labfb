@@ -308,11 +308,12 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .bar > button.quiet.first { box-shadow: none; }
   .bar .list-btn, .bar .done-btn { min-width: 0; }
   .bar .mn { color: var(--_muted); font-weight: 400; }
-  /* Words stay grey (as the bar's buttons were); the count is the one thing in the text colour: a plain number. */
+  /* Words stay grey (as the bar's buttons were); the count is a plain number: grey at 0, green when something is new. */
   .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
   .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
   .bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
   .bar .cnt.zero { color: var(--_muted); }
+  .bar .cnt:not(.zero) { color: rgb(36, 160, 70); } /* something new: green, the go pin's green (Leo, 17 Nov) */
   .bar button.go-btn.on { background: none; color: var(--_fg); }
   .bar button.go-btn.on kbd { color: var(--_muted) !important; }
   .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
