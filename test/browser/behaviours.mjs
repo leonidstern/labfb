@@ -199,6 +199,19 @@ for (const eng of ['webkit', 'chromium']) {
   check(eng, 'option-click on a pin resolves its thread without opening it', clicked && Boolean(afterOne?.resolved) && !cardOpen, JSON.stringify({ clicked, resolved: afterOne?.resolved, cardOpen }));
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'reopen', id: afterOne?.id }) });
   await sleep(700);
+  // Pin over controls: off, a control keeps its own pointer and the menu says how to pin there once; on, it shows the pin
+  const sum = await p.locator('#d summary').boundingBox();
+  await p.mouse.move(sum.x + 8, sum.y + 6);
+  await p.mouse.move(sum.x + 10, sum.y + 7);
+  await sleep(150);
+  const overOff = await shadow(() => { return { hint: r.querySelector('.over-btn kbd')?.textContent || '', ctl: document.documentElement.classList.contains('lab-ctl'), over: document.documentElement.classList.contains('lab-over') }; });
+  await shadow(() => { r.querySelector('.over-btn').click(); });
+  await p.mouse.move(sum.x + 12, sum.y + 8);
+  await sleep(150);
+  const overOn = await shadow(() => { return { hint: r.querySelector('.over-btn kbd')?.textContent || '', over: document.documentElement.classList.contains('lab-over'), cursor: getComputedStyle(document.querySelector('#d summary')).cursor }; });
+  await shadow(() => { r.querySelector('.over-btn').click(); });
+  check(eng, 'pin over controls: the menu shows option-click while off, the pin shows over a control while on',
+    overOff.hint.endsWith('click') && overOff.ctl && !overOff.over && !overOn.hint && overOn.over && /^(none|crosshair)$/.test(overOn.cursor), JSON.stringify([overOff, overOn]));
 
   // A script change reloads; a lab restart doesn't
   // (a reload waits while you've just pressed a key or clicked: give it a moment)
