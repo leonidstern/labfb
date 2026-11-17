@@ -11,7 +11,26 @@ export function listenPages(opts: Opts, forWait = false): string[] | null {
 }
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
-const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--new', '--all', '--fast', '--no-fast'];
+const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--new', '--all', '--bg', '--fast', '--no-fast'];
+/** The longest a wait sits open when nobody has said it is running in the background. */
+export const FOREGROUND_CAP = 60;
+/** The wait's own default, when no --timeout is given. */
+export const WAIT_DEFAULT = 1500;
+
+/** How many seconds a wait may sit open.
+ *
+ *  A wait run in the foreground of an agent's turn holds that turn open for its whole timeout: the person can't say
+ *  anything to their agent until it ends, and the message they do send kills the command. From inside the process the
+ *  two look the same -- same environment, same stdin, same stdout -- so a foreground run can't be spotted, only
+ *  promised against: an agent that puts the command in the background says so with --bg and gets the full wait.
+ *  Without that promise the wait is capped at a minute: long enough to catch a pin, short enough that nobody is held
+ *  up. Someone at a terminal (a tty) is not inside anybody's turn, so they keep the full wait. */
+export function waitSeconds(opts: Opts, isTTY = false): { seconds: number; capped: boolean } {
+  const asked = Number(opts.timeout) || WAIT_DEFAULT;
+  if (opts.bg || isTTY || process.env.LABIT_BACKGROUND === '1') return { seconds: asked, capped: false };
+  return { seconds: Math.min(asked, FOREGROUND_CAP), capped: asked > FOREGROUND_CAP };
+}
+
 // --fast / --no-fast switched the quick model, removed 15 Nov: still accepted, so older scripts keep working; they do nothing.
 // How answers should read, said with every pin (the page shows short blocks and '- ' lists as such).
 export const WRITE_SHORT = "Write answers short: they're read in a small window, often on a phone. One point per line or two, a blank line between points, '- ' lines for lists.";
