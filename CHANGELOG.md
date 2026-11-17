@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- A go pin is a pin like any other: once it is done or resolved it wears the tick, where before it said "go" for ever and a finished one looked unfinished. Checked in both engines by the browser job.
+
 - A done pin is a solid green ✓, full size, even when the page changed under it: faded and small is how a pin that lost its spot looks, and done pins looked lost.
 - Rules from how you reply: when a reply is about how the agent answered (too long, unclear, didn't show where), the agent offers a rule with its answer (`labit reply <id> "…" --suggest-rule "…"`) and your message shows **rule?** where its time was. One tap keeps it, ignoring it is a no, and undo on the answer takes it back. Rules live in `~/.config/labit/replies.md` (yours, every project, every agent; the same rule again counts again) and the 15 kept most go to each session once, and again when they change.
 - Threads: an answer to a later message in the thread quotes it, as the chat does; a plain "go" the agent resolves without a word shows one green ✓ on your message; an open thread stays at its newest message while it gets shorter (the keyboard) or an answer comes in, as the chat does, and goes to it when you tap the reply box.
