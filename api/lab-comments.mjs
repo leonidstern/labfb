@@ -406,7 +406,13 @@ export async function POST(request) {
     limited ? ['INCR', hourKey] : ['HLEN', key],
     limited && ['EXPIRE', hourKey, 3600],
   );
-  if (count >= MAX.perPage) return json({ error: 'too many comments on this page' }, 429);
+  // A page full of open talk takes no more from people: open threads (and their replies) count, done ones don't, so a
+  // long-lived page doesn't fill up for good. Admins (the owner, the agent) are never refused: an answer always lands.
+  if (limited && count >= MAX.perPage) {
+    const all = ((await run('HVALS', key)) || []).map((v) => JSON.parse(v));
+    const done = new Set(all.filter((c) => !c.parent && c.resolved).map((c) => c.id));
+    if (all.filter((c) => !done.has(c.parent || c.id)).length >= MAX.perPage) return json({ error: 'too many comments on this page' }, 429);
+  }
   if (limited && used > (Number(process.env.LAB_COMMENTS_PER_HOUR) || 60)) return json({ error: 'too many comments, try again later' }, 429);
 
   // Replies attach to the thread (a reply to a reply goes to its thread). Someone answering a resolved thread
