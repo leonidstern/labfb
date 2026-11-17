@@ -97,17 +97,16 @@ test('shortcuts merge key by key (the project\'s over yours over the defaults); 
   assert.ok(s.problems.some((p) => /"x" is used twice/.test(p)));
 });
 
-test('labit.json is found from a folder inside the project; zoom.skill is a path from it, and must exist', () => {
-  const { proj, cfg } = setup({ zoom: { skill: 'docs/zoom.md' } });
+test('labit.json is found from a folder inside the project; an old zoom setting is named and ignored', () => {
+  const { proj, cfg } = setup({ port: 4600, zoom: { skill: 'docs/zoom.md' }, shortcuts: { zoom: 'z' } });
   const sub = path.join(proj, 'src', 'pages');
   fs.mkdirSync(sub, { recursive: true });
-  let s = withConfig(cfg, () => loadSettings(sub));
-  assert.equal(s.values.zoom.skill, '', 'the file is missing: the built-in skill');
-  assert.ok(s.problems.some((p) => /zoom \.skill: no file/.test(p)));
-  fs.mkdirSync(path.join(proj, 'docs'));
-  fs.writeFileSync(path.join(proj, 'docs', 'zoom.md'), '# our zoom');
-  s = withConfig(cfg, () => loadSettings(sub));
-  assert.equal(s.values.zoom.skill, path.join(proj, 'docs', 'zoom.md'));
+  const s = withConfig(cfg, () => loadSettings(sub));
+  assert.equal(s.values.port, 4600);
+  assert.equal(s.values.zoom, undefined);
+  assert.equal(s.values.shortcuts.pointer, '3', 'pointer is 3 again');
+  assert.ok(s.problems.some((p) => /zoom is not a setting/.test(p)));
+  assert.ok(s.problems.some((p) => /\.zoom is not an action/.test(p)));
 });
 
 const cli = (cwd, args, env = {}) =>
@@ -130,10 +129,9 @@ test('`labit settings` shows each value and where it came from, and fails on a p
   assert.match(r.out, /wifi can only be set in your own settings/);
 });
 
-test('a lab started with a labit.json: its port, its shortcuts on the page, its zoom skill in the agent text', async () => {
+test('a lab started with a labit.json: its port, its shortcuts on the page, its batchSeconds', async () => {
   const port = 7400 + Math.floor(Math.random() * 200); // clear of the other test files' ranges
-  const { proj, cfg } = setup({ port, shortcuts: { chat: 'x' }, zoom: { skill: 'our-zoom.md' }, batchSeconds: 0 });
-  fs.writeFileSync(path.join(proj, 'our-zoom.md'), '# zoom, our way');
+  const { proj, cfg } = setup({ port, shortcuts: { chat: 'x' }, batchSeconds: 0 });
   fs.writeFileSync(path.join(proj, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hi</h1>');
   const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg };
   const lab = spawn(process.execPath, [LAB, '--no-open', '--new'], { cwd: proj, env });
@@ -152,9 +150,11 @@ test('a lab started with a labit.json: its port, its shortcuts on the page, its 
   await fetch(B + '/_lab/api/comments', {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: B },
-    body: JSON.stringify({ page: '/index', name: 'Leo', text: 'go deeper', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', block: 't', zoom: 'in' } }),
+    body: JSON.stringify({ page: '/index', name: 'Leo', text: 'make it red', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', block: 't' } }),
   });
   const { out } = await waiting;
   assert.ok(Date.now() - t0 < 1500, 'batchSeconds 0: handed over at once');
-  assert.match(out, new RegExp(`read ${path.join(proj, 'our-zoom.md').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} first`), 'the project\'s zoom skill');
+  assert.match(out, /make it red/);
+  assert.match(out, /block: t/);
+  assert.doesNotMatch(out, /^zoom:|zoom skill/m);
 });

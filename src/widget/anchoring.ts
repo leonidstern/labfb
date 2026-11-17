@@ -17,9 +17,8 @@ type Quote = {
 /** Everything a pin remembers about its spot. Saved with the comment and read by agents. */
 type Anchor = {
   selector: string;
-  /** The nearest element with an id around the spot (zoom: lib/zoom.ts), and on a zoom its direction ("in" or "out"). */
+  /** The nearest element with an id around the spot, so an agent knows the block a pin is on. */
   block?: string;
-  zoom?: string;
   /** Where in the element, as shares of its width and height. */
   x: number;
   y: number;
@@ -647,7 +646,7 @@ export function anchorAt(clientX, clientY) {
     }
   }
   Object.assign(anchor, schemeAt(target));
-  // The nearest element with an id around the spot: the block a zoom is on (lib/zoom.ts).
+  // The nearest element with an id around the spot: the block the pin is on.
   for (let b: Element | null = target; b && b !== document.body && b !== document.documentElement; b = b.parentElement) {
     if (b.id) {
       anchor.block = b.id;
@@ -979,10 +978,19 @@ export const nameLine = (name, done) => {
 };
 // Draft mode is parked for now (Leo, 2026-11-15): its button is hidden and new pins post at once.
 export const DRAFT_MODE = false;
+// A block named in a message: its heading in view with room above, and outlined for a moment. On the element itself
+// (the widget's layer is redrawn as comments arrive, which would drop an outline drawn there).
+export function goToBlock(e: Element) {
+  const r = e.getBoundingClientRect();
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  scrollTo({ top: Math.max(0, r.top + scrollY - 24), behavior: still ? 'auto' : 'smooth' });
+  const ring = '2px solid rgb(52, 199, 89)';
+  e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: 2000 });
+}
 export const drafting = () => DRAFT_MODE && store.get('lab-hold') === '1';
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that
-// id, as a link that goes to it there (an agent names the block it placed, a zoom's deeper look: "#speed-deeper").
-// The widget listens for lab-goto and scrolls (src/comments.js).
+// id, as a link that goes to it there (an agent names the block it placed: "#speed-deeper").
+// The widget listens for lab-goto and scrolls (src/comments.js, goToBlock).
 const onPage = (id) => {
   const e = document.getElementById(id);
   return Boolean(e) && !e.closest('[data-lab-comments]');

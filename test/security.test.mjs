@@ -209,7 +209,7 @@ test("the agent's endpoints need the lab's key", async () => {
   assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: { 'content-type': 'application/json', origin: `http://localhost:${PORT}` } })).status, 403);
 });
 
-test("the key a page carries (data-admin) is not the agent's: it can't listen, invite, zoom or speak as the agent", async () => {
+test("the key a page carries (data-admin) is not the agent's: it can't listen, invite or speak as the agent", async () => {
   const page = await raw('/', { headers: { accept: 'text/html' } });
   const browserKey = page.text.match(/data-admin="([0-9a-f]+)"/)?.[1];
   assert.ok(browserKey, 'this computer gets the browser key');
@@ -221,7 +221,6 @@ test("the key a page carries (data-admin) is not the agent's: it can't listen, i
   const as = (key) => ({ 'content-type': 'application/json', origin: `http://localhost:${PORT}`, 'x-lab-agent': '1', 'x-lab-admin': key });
   assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: as(browserKey) })).status, 403, 'wait');
   assert.equal((await raw('/_lab/invite', { method: 'POST', body: '{}', headers: as(browserKey) })).status, 403, 'invite');
-  assert.equal((await raw('/_lab/api/zoom', { method: 'POST', body: '{}', headers: as(browserKey) })).status, 403, 'zoom');
   const post = async (key, body) => JSON.parse((await raw('/_lab/api/comments', { method: 'POST', body: JSON.stringify(body), headers: as(key) })).text);
   const { comment } = await post(browserKey, { page: '/index', name: 'Page script', text: 'hi', anchor: { selector: 'h1' } });
   const stored = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/comments/index.json'), 'utf8')).comments[comment.id];

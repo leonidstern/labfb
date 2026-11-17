@@ -54,13 +54,13 @@ const pin = async (text) =>
     body: JSON.stringify({ page: '/index', name: 'Leo', text, anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }),
   })).json()).comment.id;
 
-test('it starts like an MCP server and lists comments, reply and wait', async () => {
+test('it starts like an MCP server and lists comments, reply, pin and wait', async () => {
   await up();
   const init = await ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
   assert.equal(init.result.serverInfo.name, 'labit');
   mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const { result } = await ask('tools/list');
-  assert.deepEqual(result.tools.map((t) => t.name), ['comments', 'reply', 'wait']);
+  assert.deepEqual(result.tools.map((t) => t.name), ['comments', 'reply', 'pin', 'wait']);
 });
 
 test('comments shows a pin, reply answers on it', async () => {
@@ -72,6 +72,18 @@ test('comments shows a pin, reply answers on it', async () => {
   assert.ok(!r.result.isError, r.result.content[0].text);
   const all = await (await fetch(B + '/_lab/api/comments?page=/index')).json();
   assert.ok((all.comments || all).some((c) => c.parent === id && c.text === 'Done: red'));
+});
+
+test('pin leaves the agent\'s own pin on a spot', async () => {
+  const r = await ask('tools/call', { name: 'pin', arguments: { selector: '#t', text: '- 1. a bigger title?', at: '0.2,0.4' } });
+  assert.ok(!r.result.isError, r.result.content[0].text);
+  const id = /Pinned (\w+)/.exec(r.result.content[0].text)?.[1];
+  const all = await (await fetch(B + '/_lab/api/comments?page=/index')).json();
+  const c = (all.comments || all).find((x) => x.id === id);
+  assert.equal(c?.text, '- 1. a bigger title?');
+  assert.deepEqual([c.anchor.selector, c.anchor.x, c.anchor.y], ['#t', 0.2, 0.4]);
+  const bad = await ask('tools/call', { name: 'pin', arguments: { selector: ' ', text: 'x' } });
+  assert.ok(bad.result.isError);
 });
 
 test('wait returns the next pin', async () => {

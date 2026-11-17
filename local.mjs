@@ -12,8 +12,7 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
-import { REGISTRY, runningLabs } from './lib/labs.ts';
-import { ZoomError, dirOf, place, zoomName } from './lib/zoom.ts';
+import { REGISTRY, keyFor, runningLabs } from './lib/labs.ts';
 import { intentFromText, slim, upgrade, VERSION as SCHEMA } from './api/_schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
@@ -45,7 +44,7 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
   labit add <url> [--name "title"]   ·   labit remove <url>
       Save a cloud lab page (https://<lab domain>/<page>) for this folder, in .lab/links.json.
   labit mcp
-      Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply and wait, for this folder's lab.
+      Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply, pin and wait, for this folder's lab.
       Claude Code: claude mcp add labit -- npx @leonidstern/labit@latest mcp
       Codex: codex mcp add labit -- npx @leonidstern/labit@latest mcp
   labit preview [folder]
@@ -68,8 +67,9 @@ For the agent, from the project (any folder under it):
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --done says the ask is done (the
       thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
   labit resolve <id> [--page /path]
-  labit zoom <id> <file>
-      Answer a zoom: <file> holds one element, the deeper look or the bigger picture. The lab places it on the page.
+  labit pin <selector> "text" [--page /path] [--at x,y]
+      Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
+      of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
 page), archive/ (done threads with nothing new in 30 days), server.json (port, keys, session; owner-only), seen.
@@ -93,7 +93,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite', 'zoom', 'mcp', 'settings'];
+const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -122,7 +122,6 @@ if (pos[0] === 'settings') {
   const changed = changedShortcuts(SET.shortcuts);
   const show = (k, v) =>
     k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
-      : k === 'zoom' ? v.skill || 'the built-in skill'
       : k === 'flags' ? (flagsOn(v).join(', ') || 'none on')
       : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
@@ -134,8 +133,8 @@ if (pos[0] === 'settings') {
   process.exit(SETTINGS.problems.length ? 1 : 0);
 }
 
-// The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, invite): lib/commands.ts.
-if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'invite', 'zoom'].includes(pos[0])) {
+// The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
+if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -185,7 +184,7 @@ const alreadyRunning = Boolean(await runningServer());
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
-if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'zoom'].includes(pos[0])) {
+if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'pin'].includes(pos[0])) {
   const home = runningLabs().find((lab) => ROOT.startsWith(lab.root + path.sep));
   if (home) {
     const url = `http://localhost:${home.port}/${path.relative(home.root, ROOT).split(path.sep).map(encodeURIComponent).join('/')}/`;
@@ -327,7 +326,7 @@ const TOKEN = (() => {
 })();
 // The agent's key: new for each run, kept only in .lab/server.json (owner-only), never in a page. The browser on this
 // computer holds TOKEN (data-admin, for resolving, moving and deleting); a script on a page can read that, so it is not
-// enough to listen as the agent, take its pins or speak as it (wait, invite, zoom, a reply marked as the agent's).
+// enough to listen as the agent, take its pins or speak as it (wait, invite, a reply marked as the agent's).
 const AGENT_KEY = randomBytes(16).toString('hex');
 process.env.LAB_HOST = 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
@@ -461,12 +460,6 @@ function archiveOld(now = Date.now()) {
 }
 for (const p of archiveOld()) savePage(p);
 
-// Pages are keyed by their file: Pricing.html is /pricing, a/index.html is /a/index. Anything the lab's page
-// format doesn't allow (dots, spaces, other scripts) is spelled as _ and its hex bytes, so keys stay unique.
-const keyFor = (rel) =>
-  '/' + rel.replace(/\.html?$/i, '').split(path.sep).map((seg) =>
-    [...Buffer.from(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join(''),
-  ).join('/');
 let fileIndex = null;
 // Each page's file is remembered (a miss too): a dev server's page is guessed by trying up to ~100 paths, too many
 // to repeat for every page on every comment. With plain files the watcher clears it; behind a dev server it lasts 30 s.
@@ -480,8 +473,6 @@ const fileFor = (page) => {
   if (!fileMemo.has(page)) fileMemo.set(page, findFile(page));
   return fileMemo.get(page);
 };
-// The zoom skill an agent reads before answering a zoom (skills/ ships in the package, beside dist/).
-const ZOOM_SKILL = SET.zoom.skill || path.join(REPO, 'skills/labit/zoom.md'); // labit.json zoom.skill: the project's own
 const findFile = (page) => {
   if (!fileIndex) {
     fileIndex = new Map(pagesUnder(ROOT).map((rel) => [keyFor(rel), rel]));
@@ -1138,7 +1129,6 @@ async function unseen(scope = pages(), who = '') {
   const full = !(now - toldAt.get(who) < 1800000);
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${blocks.join('\n\n')}` +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
-    (/\nzoom: (in|out)\b/.test(blocks.join('\n')) ? `\nA pin that says "zoom": read ${ZOOM_SKILL} first. Write one block to a file, then ${CMD} zoom <id> <file>, then reply.` : '') +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     (full ? `\n${WRITE_SHORT}` : '') + rulesOnce();
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
@@ -1538,32 +1528,6 @@ const handler = async (req, res) => {
       const ids = (name && reads[name]?.[url.searchParams.get('page') || '']) || [];
       return answer(res, { ids });
     }
-    // Zoom (lib/zoom.ts): an agent hands over the block it wrote; the lab puts it on the page. The pin keeps its id.
-    if (pathname === '/_lab/api/zoom' && req.method === 'POST') {
-      if (!isAgent(req)) return res.writeHead(403).end();
-      const b = await sent(req);
-      const fail = (status, error) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ error }));
-      const page = String(b.page || '');
-      const c = commentsOf(page).find((x) => x.id === b.id && !x.parent);
-      const dir = dirOf(c?.anchor?.zoom);
-      if (!c || !dir) return fail(404, 'that pin is not a zoom');
-      if (c.zoomed) return fail(409, `the ${zoomName(dir)} for this pin is already on the page: #${c.zoomed}`);
-      if (!c.anchor.block) return fail(409, `the spot is in no element with an id: put the ${zoomName(dir)} on the page yourself, next to the spot`);
-      const rel = !PROXY && fileFor(page);
-      if (!rel || !/\.html?$/i.test(rel)) return fail(409, `this page is not a plain HTML file the lab can write: put the ${zoomName(dir)} on the page yourself`);
-      try {
-        const out = place({ html: fs.readFileSync(path.join(ROOT, rel), 'utf8'), block: c.anchor.block, dir, made: String(b.html || '') });
-        // Written in place, not through a .tmp beside it: the watcher takes a .tmp for "something else changed" and
-        // reloads the page, where a saved page alone is patched in place.
-        fs.writeFileSync(path.join(ROOT, rel), out.html);
-        setComment(page, c.id, { zoomed: out.id });
-        res.writeHead(200, { 'content-type': 'application/json' });
-        return res.end(JSON.stringify({ id: out.id, dir, file: rel }));
-      } catch (e) {
-        if (e instanceof ZoomError) return fail(422, e.message);
-        throw e;
-      }
-    }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);
       // The widget's list (GET ?page=/x and nothing else) is sent as kept while that page hasn't changed. Kept apart for
@@ -1594,8 +1558,6 @@ const handler = async (req, res) => {
           // "Done", and then only when it answered one clear thing: one message from people since the agent last spoke,
           // and not a list ("1) … 2) …", "- … - …"). A person writing again reopens it (the API does). Other answers (on
           // it, a question, options) leave it open. Page chats stay open either way.
-          // A zoom closes itself once its block is on the page and the agent has answered (Leo, 16 Nov): the block is the
-          // answer. Only while the person hasn't written more in the thread; writing again reopens it.
           if (agent && stored.parent && h.has(stored.parent)) {
             const root = JSON.parse(h.get(stored.parent));
             const thread = [root, ...[...h.values()].map((v) => JSON.parse(v)).filter((x) => x.parent === root.id && x.id !== stored.id)]
@@ -1603,8 +1565,7 @@ const handler = async (req, res) => {
             const asks = thread.slice(thread.map((x) => Boolean(x.session)).lastIndexOf(true) + 1).filter((x) => !x.session);
             const listy = (t) => String(t).split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length >= 2;
             const done = stored.intent === 'done' && (said || (asks.length === 1 && !listy(asks[0].text))) && root.anchor?.kind !== 'page';
-            const placed = root.anchor?.zoom && root.zoomed && !thread.some((x) => x.parent && !x.session);
-            if (!root.resolved && (done || placed)) h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent', resolvedAt: stored.createdAt }));
+            if (done && !root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent', resolvedAt: stored.createdAt }));
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
         }

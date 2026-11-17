@@ -19,12 +19,11 @@ permissions:
   contents: write # the vX.Y.Z tag
   id-token: write # trusted publishing
 
-concurrency:
-  group: publish
-  cancel-in-progress: false
-
 jobs:
   publish:
+    concurrency:
+      group: publish
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,3 +73,4 @@ jobs:
         run: |
           npm version "${{ steps.v.outputs.next }}" --no-git-tag-version
           npx --yes npm@11.6.2 publish --access public --provenance --tag next
+

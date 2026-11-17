@@ -4,13 +4,15 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Pins find their spot better after edits: own section first; text pins sit on their words, found anywhere on the page if their element is gone; a pin between two blocks stays between them; made-up ids/classes ignored; a lost card among look-alikes shows as moved; a pin found elsewhere saves its new path.
-- `labit reply --done | --on-it | --question` sets the reply's intent; the thread closes from `--done` ("Done…" text still works).
-- `resolvedAt`; the agent's resolve records `agent`; archive a month after resolving. Comments carry `v: 2`, older ones upgrade on load: one `suggest: { text, state }`, no `anchor` on replies, wait marks in `.lab/handed.json` (~100 bytes less a comment).
+- `labit pin <selector> "text" [--page /path] [--at x,y]`: the agent leaves its own pin on a spot of the page, for suggestions and questions, one pin per point, numbered, instead of a list in a reply. It prints the pin's id; `--page` takes the page's path, file or address (default: the lab's only page), `--at` where on the element (default its middle). Also an MCP tool, `pin`.
+- Zoom is out for now: no zoom pins, no `labit zoom`, no `zoom` setting, no zoom skill. The keys are 1 comment, 2 go, 3 pointer again (pointer was 4). Zoom pins saved earlier show as ordinary comments, and a `zoom` left in a `labit.json` or a `shortcuts.zoom` key is named when the lab starts and ignored. `#id` links in messages stay.
+- Pins find their spot better after edits: own section first; text pins sit on their words (found anywhere on the page if the element is gone); gap pins stay between their blocks; made-up ids/classes ignored; a lost look-alike shows as moved; a pin found elsewhere saves its new path.
+- `labit reply --done | --on-it | --question` sets the reply's intent; `--done` closes the thread ("Done…" text still works).
+- Comments carry `v: 2`, older ones upgrade on load: `resolvedAt` (archive a month after it), one `suggest: { text, state }`, no `anchor` on replies, wait marks in `.lab/handed.json`.
 - The agent has its own key in `.lab/server.json`; page scripts can't act as the agent. Older CLIs can't either.
-- The 500 cap skips owner, agent and done threads. One lab per folder (`.lab/lock`). A new session gets whole threads. Side files are written whole.
-- A page file renamed or moved (`mv`) keeps its comments. `wait` says how to answer once per session, then in one line.
-- Shared API: a write can't undo a change made meanwhile; it marks the agent's answers itself; npm ships it in `dist/`, not `api/`.
+- The 500 cap skips owner, agent and done threads. One lab per folder (`.lab/lock`). A new session gets whole threads.
+- A page file renamed with `mv` keeps its comments. `wait` says how to answer once per session, then in one line.
+- Shared API: a write can't undo a change made meanwhile; npm ships it in `dist/`, not `api/`.
 
 - Releases publish themselves: a version bump merged to main goes to npm as `latest` (tagged `vX.Y.Z`), and every merge to main goes out as `next` (0.6.3-main.41…). `npx @leonidstern/labit@latest` is the newest release; `@next` is main as it is now, for whoever wants each merge in their labs. From GitHub Actions with npm trusted publishing, no token.
 

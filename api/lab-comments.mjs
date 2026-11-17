@@ -174,9 +174,8 @@ function cleanAnchor(a) {
     eh: int(a.eh), // the element's height then (a big container can tell it grew)
     time: sec(a.time),
     duration: sec(a.duration),
-    // Zoom (lib/zoom.ts): the nearest element with an id around the spot, and on a zoom its direction.
+    // The nearest element with an id around the spot.
     block: /^[A-Za-z][\w:.-]{0,119}$/.test(a.block || '') ? a.block : undefined,
-    zoom: a.zoom === 'in' || a.zoom === 'out' ? a.zoom : undefined,
   };
   if (a.quote && typeof a.quote === 'object') {
     const exact = clean(a.quote.exact, 300); // selected words can run long; a click quotes one word
@@ -304,9 +303,8 @@ function asText(path, comments, host) {
     if (a.chosen) lines.push(`chosen option: ${a.chosen}`);
     if (a.cssText) lines.push(`text added by CSS: ${a.cssText} (search the CSS for it)`);
     if (a.section) lines.push(`section: "${a.section}"`);
-    // The block is said when "inside" above doesn't already say it, and on a zoom (which is about the block).
-    if (a.block && (a.zoom || a.inside !== `#${a.block}`)) lines.push(`block: ${a.block}`);
-    if (a.zoom) lines.push(a.zoom === 'out' ? 'zoom: out, the bigger picture (not a change request: write one block that shows the bigger picture this block sits in; see the zoom skill)' : 'zoom: in, dive deeper (not a change request: write one block that goes deeper into this block; see the zoom skill)');
+    // The block is said when "inside" above doesn't already say it.
+    if (a.block && a.inside !== `#${a.block}`) lines.push(`block: ${a.block}`);
     if (a.zw) {
       lines.push(`type: area comment, ${a.docW}×${a.docH} px on screen`);
       lines.push(`area on element: ${pct(a.x)}–${pct(a.x + a.zw)} across, ${pct(a.y)}–${pct(a.y + a.zh)} down`);
@@ -386,7 +384,6 @@ export async function POST(request) {
       if (thread.parent || !body.anchor || typeof body.anchor !== 'object') return false;
       const anchor = cleanAnchor(body.anchor);
       if (body.found) return { ...thread, anchor: { ...thread.anchor, selector: anchor.selector, docX: anchor.docX, docY: anchor.docY, eh: anchor.eh } };
-      if (thread.anchor?.zoom && !anchor.zoom) anchor.zoom = thread.anchor.zoom; // a moved zoom stays a zoom, whatever the widget sent
       return { ...thread, anchor, movedAt: new Date().toISOString() };
     });
     return comment ? json({ comment }) : json({ error: comment === null ? 'not found' : 'bad move' }, comment === null ? 404 : 400);
