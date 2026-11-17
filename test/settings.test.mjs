@@ -1,0 +1,160 @@
+// Settings (lib/settings.ts): labit.json in the project and ~/.config/labit/settings.json fill in what flags and
+// variables leave out. The rules on their own first, then `labit settings`, then a lab started with a labit.json.
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawn, execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { loadSettings } from '../lib/settings.ts';
+
+const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
+const dirs = [];
+const kids = [];
+after(() => {
+  for (const k of kids) k.kill();
+  for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+});
+const tmp = (name) => {
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `labit-set-${name}-`)));
+  dirs.push(d);
+  return d;
+};
+// A project folder with labit.json, and a config home with your settings.json.
+const setup = (project, personal) => {
+  const proj = tmp('proj');
+  const cfg = tmp('cfg');
+  if (project) fs.writeFileSync(path.join(proj, 'labit.json'), JSON.stringify(project));
+  if (personal) {
+    fs.mkdirSync(path.join(cfg, 'labit'));
+    fs.writeFileSync(path.join(cfg, 'labit', 'settings.json'), JSON.stringify(personal));
+  }
+  return { proj, cfg, load: (flags = {}, env = {}) => withConfig(cfg, () => loadSettings(proj, flags, env)) };
+};
+const withConfig = (cfg, fn) => {
+  const was = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = cfg;
+  try {
+    return fn();
+  } finally {
+    process.env.XDG_CONFIG_HOME = was;
+  }
+};
+
+test('the first that has a setting wins: flag, variable, labit.json, your settings, default', () => {
+  const { load } = setup({ port: 4700, batchSeconds: 1 }, { port: 4800, batchSeconds: 5, remindAfterMinutes: 9 });
+  let s = load();
+  assert.equal(s.values.port, 4700);
+  assert.match(s.from.port, /labit\.json$/);
+  assert.equal(s.values.remindAfterMinutes, 9, 'yours, where the project says nothing');
+  assert.equal(s.values.archiveAfterDays, 30, 'the default');
+  assert.equal(s.from.archiveAfterDays, 'default');
+  s = load({}, { PORT: '5000', LAB_SETTLE_MS: '500' });
+  assert.equal(s.values.port, 5000);
+  assert.equal(s.from.port, 'env PORT');
+  assert.equal(s.values.batchSeconds, 0.5);
+  s = load({ port: 5100 }, { PORT: '5000' });
+  assert.equal(s.values.port, 5100);
+  assert.equal(s.from.port, 'flag');
+  assert.deepEqual(s.problems, []);
+});
+
+test('a project file can\'t name you or open your lab to the wifi; your file can\'t pick a project\'s folder', () => {
+  const { load } = setup({ name: 'mallory', wifi: true, model: 'X' }, { folder: 'dist', proxy: '3000' });
+  const s = load();
+  assert.equal(s.values.name, '');
+  assert.equal(s.values.wifi, false);
+  assert.equal(s.values.folder, '.');
+  assert.equal(s.values.proxy, '');
+  for (const key of ['name', 'wifi', 'model', 'folder', 'proxy']) assert.ok(s.problems.some((p) => p.includes(`${key} can only be set`)), key);
+});
+
+test('unknown keys, wrong types and broken JSON are said and skipped, the rest still counts', () => {
+  const { proj, load } = setup({ port: 'fast', nope: 1, open: false, archiveAfterDays: 0 });
+  let s = load();
+  assert.equal(s.values.port, 4400);
+  assert.equal(s.values.open, false);
+  assert.equal(s.values.archiveAfterDays, 30);
+  assert.ok(s.problems.some((p) => /port must be a number/.test(p)));
+  assert.ok(s.problems.some((p) => /nope is not a setting/.test(p)));
+  assert.ok(s.problems.some((p) => /archiveAfterDays must be a number of at least 1/.test(p)));
+  fs.writeFileSync(path.join(proj, 'labit.json'), '{ "port": 4700, }');
+  s = load();
+  assert.equal(s.values.port, 4400);
+  assert.ok(s.problems.some((p) => /not valid JSON/.test(p)));
+});
+
+test('shortcuts merge key by key (the project\'s over yours over the defaults); a key used twice is said', () => {
+  const { load } = setup({ shortcuts: { chat: 'x' } }, { shortcuts: { chat: 'q', toggle: 'h', next: 'X', bogus: 'z', pause: 'pp' } });
+  const s = load();
+  assert.equal(s.values.shortcuts.chat, 'x');
+  assert.equal(s.values.shortcuts.toggle, 'h');
+  assert.equal(s.values.shortcuts.next, 'x', 'lowercased');
+  assert.equal(s.values.shortcuts.comment, '1', 'a default');
+  assert.equal(s.values.shortcuts.pause, 'p', 'two letters: refused, the default stays');
+  assert.ok(s.problems.some((p) => /bogus is not an action/.test(p)));
+  assert.ok(s.problems.some((p) => /"x" is used twice/.test(p)));
+});
+
+test('labit.json is found from a folder inside the project; zoom.skill is a path from it, and must exist', () => {
+  const { proj, cfg } = setup({ zoom: { skill: 'docs/zoom.md' } });
+  const sub = path.join(proj, 'src', 'pages');
+  fs.mkdirSync(sub, { recursive: true });
+  let s = withConfig(cfg, () => loadSettings(sub));
+  assert.equal(s.values.zoom.skill, '', 'the file is missing: the built-in skill');
+  assert.ok(s.problems.some((p) => /zoom \.skill: no file/.test(p)));
+  fs.mkdirSync(path.join(proj, 'docs'));
+  fs.writeFileSync(path.join(proj, 'docs', 'zoom.md'), '# our zoom');
+  s = withConfig(cfg, () => loadSettings(sub));
+  assert.equal(s.values.zoom.skill, path.join(proj, 'docs', 'zoom.md'));
+});
+
+const cli = (cwd, args, env = {}) =>
+  new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd, env: { ...process.env, PORT: '', ...env } }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
+
+test('`labit settings` shows each value and where it came from, and fails on a problem', async () => {
+  const { proj, cfg } = setup({ port: 4700, shortcuts: { chat: 'x' } }, { name: 'Leo', model: 'Opus 5.5' });
+  let r = await cli(proj, ['settings'], { XDG_CONFIG_HOME: cfg });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /^port\s+4700\s+labit\.json$/m);
+  assert.match(r.out, /^name\s+Leo\s+your settings$/m);
+  assert.match(r.out, /^model\s+Opus 5\.5\s+your settings$/m);
+  assert.match(r.out, /^shortcuts\s+chat x\s+labit\.json$/m);
+  assert.match(r.out, /^archiveAfterDays\s+30\s+default$/m);
+  r = await cli(proj, ['settings', '--port', '4999'], { XDG_CONFIG_HOME: cfg });
+  assert.match(r.out, /^port\s+4999\s+flag$/m);
+  fs.writeFileSync(path.join(proj, 'labit.json'), JSON.stringify({ wifi: true }));
+  r = await cli(proj, ['settings'], { XDG_CONFIG_HOME: cfg });
+  assert.equal(r.code, 1);
+  assert.match(r.out, /wifi can only be set in your own settings/);
+});
+
+test('a lab started with a labit.json: its port, its shortcuts on the page, its zoom skill in the agent text', async () => {
+  const port = 7400 + Math.floor(Math.random() * 200); // clear of the other test files' ranges
+  const { proj, cfg } = setup({ port, shortcuts: { chat: 'x' }, zoom: { skill: 'our-zoom.md' }, batchSeconds: 0 });
+  fs.writeFileSync(path.join(proj, 'our-zoom.md'), '# zoom, our way');
+  fs.writeFileSync(path.join(proj, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hi</h1>');
+  const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg };
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--new'], { cwd: proj, env });
+  kids.push(lab);
+  const B = `http://localhost:${port}`;
+  let html = '';
+  for (let i = 0; i < 80 && !html; i++) {
+    html = await fetch(B + '/').then((r) => r.text(), () => '');
+    if (!html) await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.ok(html, `the lab answers on ${port}, the port in labit.json`);
+  assert.match(html, /data-keys='\{"chat":"x"\}'/, 'only the changed key goes to the page');
+  const waiting = cli(proj, ['wait', '--timeout', '10'], { XDG_CONFIG_HOME: cfg });
+  await new Promise((r) => setTimeout(r, 500));
+  const t0 = Date.now();
+  await fetch(B + '/_lab/api/comments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: B },
+    body: JSON.stringify({ page: '/index', name: 'Leo', text: 'go deeper', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', block: 't', zoom: 'in' } }),
+  });
+  const { out } = await waiting;
+  assert.ok(Date.now() - t0 < 1500, 'batchSeconds 0: handed over at once');
+  assert.match(out, new RegExp(`read ${path.join(proj, 'our-zoom.md').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} first`), 'the project\'s zoom skill');
+});
