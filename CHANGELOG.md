@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Phone links: `labit invite --page /path` opens that page. A used or old link opened again on a device the lab already lets in takes you to its page instead of the gate, and a guest who keeps using the lab stays in (each page they open renews the day). Only a path of this lab is a landing; anything else lands on `/`.
+
 ## 0.6.2 · 2026-11-17
 
 - Things being tried arrive as flags: off unless somebody turns one on, tried in a real lab, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). `flags` in `labit.json` or your own settings, switches under a **trying** heading in the ⋯ menu (this computer only), `labit settings` lists them, and a switch writes the project's `labit.json` so the agent sees the same thing. First two: `liveUrl` (a lab in front of a live page) and `agentPins` (a pin the agent left wears labit's own mark, the one the bar shows while an agent listens).

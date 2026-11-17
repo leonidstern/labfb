@@ -223,8 +223,8 @@ test('a one-time link works once, and an unknown one never', async () => {
   const first = await wraw(path_);
   assert.equal(first.status, 302);
   assert.match(first.cookie || '', /^lab_guest=[0-9a-f]{16}\.[0-9a-f]{32}; Path=\/; Max-Age=86400; HttpOnly; SameSite=Lax$/);
-  assert.equal((await wraw(path_)).status, 403, 'the same link a second time');
-  assert.equal((await wraw('/_lab/j/' + 'f'.repeat(32))).status, 403, 'a guessed link');
+  assert.equal((await wraw(path_, { host: lan || '127.0.0.1' })).status, lan ? 403 : 302, 'the same link a second time, from a device that is not in');
+  assert.equal((await wraw('/_lab/j/' + 'f'.repeat(32), { host: lan || '127.0.0.1' })).status, lan ? 403 : 302, 'a guessed link, from a device that is not in');
 });
 
 test('a guest on the wifi sees the gate until they open a link', { skip: !lan && 'no network address to come in on' }, async () => {
@@ -236,4 +236,28 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal((await wraw('/', { host: lan, headers: { cookie } })).status, 200, 'in with the cookie');
   const forged = cookie.slice(0, -1) + (cookie.endsWith('0') ? '1' : '0'); // always one character off the real one
   assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
+});
+
+test('a link can open a page; a used one still does where the lab already lets you in; a guest who keeps using it stays in', { skip: !lan && 'no network address to come in on' }, async () => {
+  const token = await wifiToken();
+  const mint = async (page) => {
+    const r = await wraw('/_lab/invite', { method: 'POST', body: JSON.stringify({ page }), headers: { 'content-type': 'application/json', 'x-lab-agent': '1', 'x-lab-admin': token } });
+    return new URL(JSON.parse(r.text).links[0]);
+  };
+  const link = await mint('learn');
+  assert.equal(link.searchParams.get('to'), '/learn');
+  const first = await wraw(link.pathname + link.search, { host: lan });
+  assert.equal(first.location, '/learn');
+  const cookie = first.cookie.split(';')[0];
+  const again = await wraw(link.pathname + link.search, { host: lan, headers: { cookie } });
+  assert.equal(again.status, 302, 'the phone that used it goes straight in');
+  assert.equal(again.location, '/learn');
+  assert.equal((await wraw(link.pathname + link.search, { host: lan })).status, 403, 'anyone else meets the gate');
+  const page = await wraw('/', { host: lan, headers: { cookie } });
+  assert.equal(page.cookie?.split(';')[0], cookie, 'a page renews the same pass');
+  for (const evil of ['//evil.example', '/\\evil.example', 'https://evil.example']) {
+    const l = await mint('x');
+    l.searchParams.set('to', evil);
+    assert.equal((await wraw(l.pathname + l.search, { host: lan })).location, '/', `${evil} lands on the lab`);
+  }
 });
