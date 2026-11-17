@@ -7,7 +7,7 @@ import { apiOn, callApi, sendFile } from '../lib/dev.ts';
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 process.env.LAB_HOST ??= 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN ??= 'admintoken';
-const api = await apiOn(new Map(), REPO);
+const api = await apiOn(new Map());
 const port = Number(process.env.PORT || 4321);
 const SITE = path.resolve(REPO, process.env.BENCH_SITE || 'bench/site');
 const AT = process.env.BENCH_AT || '/bench';

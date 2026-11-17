@@ -13,6 +13,7 @@ import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
 import { REGISTRY, keyFor, runningLabs } from './lib/labs.ts';
+import { intentFromText, slim, upgrade, VERSION as SCHEMA } from './api/_schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -62,15 +63,16 @@ For the agent, from the project (any folder under it):
       wait left in the foreground holds the person's turn open and they can't say anything to you until it ends.
       An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
-  labit reply <id> "what you did" [--resolve] [--wait] [--page /path]
-      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread; --wait listens again right after.
+  labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
+      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --done says the ask is done (the
+      thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
-page), archive/ (done threads with nothing new in 30 days), server.json (port, key, session; owner-only), seen.
+page), archive/ (done threads with nothing new in 30 days), server.json (port, keys, session; owner-only), seen.
 Delete .lab to start over.`;
 
 // ---------- arguments ----------
@@ -150,15 +152,35 @@ if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in yo
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
 
 // ---------- finding the dev server ----------
-// A server already running for this folder answers below, whatever kind it is.
-const alreadyRunning = (() => {
+// A lab counts as running for this folder only if it answers on its port as this folder's lab: a pid alone can be a
+// lab that hangs, or another program that got the number after a crash.
+const answersHere = (port) =>
+  new Promise((done) => {
+    if (!Number.isInteger(port) || port <= 0) return done(false);
+    const req = http.get({ host: '127.0.0.1', port, path: '/_lab/pages', headers: { host: `localhost:${port}` }, timeout: 1500 }, (res) => {
+      let t = '';
+      res.on('data', (c) => (t += c));
+      res.on('end', () => {
+        try {
+          done(JSON.parse(t).root === ROOT);
+        } catch {
+          done(false);
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => done(false));
+  });
+const runningServer = async () => {
   try {
-    process.kill(JSON.parse(fs.readFileSync(path.join(ROOT, '.lab/server.json'), 'utf8')).pid, 0);
-    return true;
+    const running = JSON.parse(fs.readFileSync(path.join(ROOT, '.lab/server.json'), 'utf8'));
+    return (await answersHere(running.port)) ? running : null;
   } catch {
-    return false;
+    return null;
   }
-})();
+};
+// A server already running for this folder answers below, whatever kind it is.
+const alreadyRunning = Boolean(await runningServer());
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
@@ -222,15 +244,74 @@ const SEEN = path.join(LAB, 'seen');
 fs.mkdirSync(LAB, { recursive: true });
 
 // One server per folder: two would overwrite each other's comments.
-try {
-  const running = JSON.parse(fs.readFileSync(SERVER, 'utf8'));
-  process.kill(running.pid, 0);
+const alreadyHere = (running) => {
   // Started by the preview pane on another port: say why it can't open, so the pane doesn't wait on nothing.
   if (process.env.PORT && !opts.port && Number(process.env.PORT) !== running.port)
     die(`[lab] already running for this folder at http://localhost:${running.port}. Stop that one (Ctrl+C) to open it here.`);
   console.log(`[lab] already running for this folder: http://localhost:${running.port}`);
   process.exit(0);
-} catch {}
+};
+{
+  const running = await runningServer();
+  if (running) alreadyHere(running);
+}
+// .lab/lock is taken before the store is read and held until this lab exits, so two started at once can't both load
+// the comments and then overwrite each other's (server.json comes only once the lab listens). A lock whose holder
+// is gone, or is running but stopped answering long after it started, is taken over.
+const LOCK = path.join(LAB, 'lock');
+const takeLock = () => {
+  try {
+    fs.writeSync(fs.openSync(LOCK, 'wx', 0o600), JSON.stringify({ pid: process.pid, at: Date.now() }));
+    return true;
+  } catch (e) {
+    if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EEXIST') throw e;
+    return false;
+  }
+};
+const readLock = () => {
+  try {
+    return JSON.parse(fs.readFileSync(LOCK, 'utf8'));
+  } catch {
+    return null;
+  }
+};
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return /** @type {NodeJS.ErrnoException} */ (e).code === 'EPERM'; // someone else's process, alive
+  }
+};
+for (let tries = 0; !takeLock(); tries++) {
+  const held = readLock();
+  // The holder answers (on the port it wrote in the lock once it listened): this folder's lab is running.
+  if (held?.port && (await answersHere(held.port))) alreadyHere(held);
+  const running = await runningServer();
+  if (running) alreadyHere(running);
+  // Gone, or alive a minute without answering (a lab that hangs, or another program that got its pid): taken over.
+  // Only the lock as it was read is removed, so two labs taking over the same stale lock can't remove each other's.
+  // A lock with nothing readable in it yet is a lab that has only just made it; left like that for seconds, a dead one.
+  const age = (() => {
+    try {
+      return Date.now() - fs.statSync(LOCK).mtimeMs;
+    } catch {
+      return Infinity;
+    }
+  })();
+  const stale = !held ? age > 5000 : !Number.isInteger(held.pid) || !alive(held.pid) || (Date.now() - (Number(held.at) || 0) > 60000 && tries >= 2);
+  if (stale && JSON.stringify(readLock()) === JSON.stringify(held)) {
+    fs.rmSync(LOCK, { force: true });
+    if (takeLock()) break;
+  }
+  if (tries >= 40) die(`[lab] another lab is starting for this folder (pid ${held?.pid}) and hasn't answered. If it hangs, stop it, or delete ${LOCK}.`);
+  await new Promise((r) => setTimeout(r, 250)); // another lab is starting here: it will answer in a moment
+}
+process.on('exit', () => {
+  try {
+    if (JSON.parse(fs.readFileSync(LOCK, 'utf8')).pid === process.pid) fs.rmSync(LOCK);
+  } catch {}
+});
 
 // Kept across restarts (owner-only file), so the pin keys guests' browsers hold keep working.
 const KEY = path.join(LAB, 'key');
@@ -243,6 +324,10 @@ const TOKEN = (() => {
   fs.writeFileSync(KEY, k, { mode: 0o600 });
   return k;
 })();
+// The agent's key: new for each run, kept only in .lab/server.json (owner-only), never in a page. The browser on this
+// computer holds TOKEN (data-admin, for resolving, moving and deleting); a script on a page can read that, so it is not
+// enough to listen as the agent, take its pins or speak as it (wait, invite, a reply marked as the agent's).
+const AGENT_KEY = randomBytes(16).toString('hex');
 process.env.LAB_HOST = 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
@@ -259,11 +344,12 @@ const storeName = (page) => {
   return (safe.length > 180 ? `${safe.slice(0, 140)}~${createHash('sha1').update(page).digest('hex').slice(0, 12)}` : safe) + '.json';
 };
 // A page's file, made from the comments as they are held: each one is already a JSON string, so nothing is parsed again.
-// A page left with no comments has no file.
+// A page left with no comments has no file. v is the file's shape (api/_schema.mjs); a file without one is 0.
 const savePage = (page, dir = STORE) => {
   const h = db.get(`lab:comments:${page}`);
   const file = path.join(dir, storeName(page));
-  if (h?.size) writeAtomic(file, `{"page":${JSON.stringify(page)},"comments":{${[...h].map(([id, v]) => `${JSON.stringify(id)}:${v}`).join(',')}}}`);
+  const home = homes.get(page);
+  if (h?.size) writeAtomic(file, `{"v":${SCHEMA},"page":${JSON.stringify(page)},${home ? `"file":${JSON.stringify(home[0])},"fid":"${home[1]}",` : ''}"comments":{${[...h].map(([id, v]) => `${JSON.stringify(id)}:${v}`).join(',')}}}`);
   else fs.rmSync(file, { force: true });
 };
 // A file that can't be read is put aside (never loaded again, never overwritten) and the rest goes on without it.
@@ -273,6 +359,14 @@ const putAside = (file, what) => {
   console.log(`[lab] ${what} was damaged; moved it to ${path.relative(LAB, aside)}`);
 };
 let saved = {};
+// What each wait was handed, kept beside the comments (.lab/handed.json) and not in them: { comment id: [the stamp it
+// had when handed over, the session it went to, when it was last brought up again] }. In the comments (before 17 Nov)
+// every wait rewrote its pages' files, sent each mark to every open page, and each comment carried ~100 bytes of them.
+// Only handedAt stays on a thread: from it the page shows that the agent has the thread.
+const handoff = Object.create(null);
+const outdated = []; // pages whose file is in an older shape: written again in today's once the lab is up
+// Each page's own file, and what the disk knows that file by (see rehome): kept in its comments file as file and fid.
+const homes = new Map();
 // A lab from before 16 Nov has the single file: its pages are moved into the folder once, and the old file is kept
 // beside it as comments.json.bak.
 const migrate = !fs.existsSync(STORE) && fs.existsSync(OLD_DATA);
@@ -289,15 +383,18 @@ if (migrate) {
     if (!name.endsWith('.json')) continue; // half-written .tmp files and damaged ones put aside
     const file = path.join(STORE, name);
     try {
-      const { page, comments } = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const { v, page, comments, file: rel, fid } = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (typeof page !== 'string' || !page.startsWith('/') || !comments || typeof comments !== 'object') throw new Error('not a page');
       saved[page] = comments;
+      if (typeof rel === 'string' && /^[\d.]+$/.test(fid)) homes.set(page, [rel, fid]);
+      if (v !== SCHEMA) outdated.push(page);
     } catch {
       putAside(file, `comments/${name}`);
     }
   }
 }
-const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(c)]))]));
+// Each comment comes up to the current shape as it loads (api/_schema.mjs), whatever version its file was written in.
+const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(upgrade(c, handoff))]))]));
 saved = null;
 if (migrate) {
   // Written into a folder of its own and then renamed, so a lab stopped halfway starts over from the old file.
@@ -314,11 +411,12 @@ fs.mkdirSync(STORE, { recursive: true });
 // only lets in this computer and the home network, where one phone reviewing a page can pass that in an evening
 // (15 Nov): 600 here, unless LAB_COMMENTS_PER_HOUR says otherwise.
 process.env.LAB_COMMENTS_PER_HOUR ||= '600';
-const api = await apiOn(db, REPO);
+const api = await apiOn(db);
 const commentsOf = (page) => [...(db.get(`lab:comments:${page}`)?.values() ?? [])].map((v) => JSON.parse(v)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 const pages = () => [...db.keys()].filter((k) => k.startsWith('lab:comments:') && db.get(k).size).map((k) => k.slice('lab:comments:'.length));
 
-// Done threads leave the live store when nothing has been said in them for a month: they go to
+// Done threads leave the live store when nothing has been said or done in them for a month (the last message, or the
+// resolve when that came later): they go to
 // .lab/archive/<page>.json (added to what's there), and are no longer loaded or sent to the pages, so a busy lab's
 // pages don't keep carrying every thread ever closed. Open threads, and done ones with a recent message, stay.
 // Checked as the lab starts and once a day.
@@ -333,7 +431,8 @@ function archiveOld(now = Date.now()) {
       .filter((c) => !c.parent && c.resolved)
       .map((root) => [root, ...all.filter((c) => c.parent === root.id)])
       .filter((thread) => {
-        const newest = Math.max(...thread.map((c) => Date.parse(c.createdAt))); // NaN (a date it can't read) keeps it
+        const dates = [...thread.map((c) => c.createdAt), ...(thread[0].resolvedAt ? [thread[0].resolvedAt] : [])];
+        const newest = Math.max(...dates.map((d) => Date.parse(d))); // NaN (a date it can't read) keeps it
         return Number.isFinite(newest) && now - newest > ARCHIVE_DAYS * 864e5;
       });
     if (!old.length) continue;
@@ -347,7 +446,7 @@ function archiveOld(now = Date.now()) {
     // Written to the archive first: a lab stopped in between has the thread in both, never in neither.
     try {
       fs.mkdirSync(ARCHIVE, { recursive: true });
-      writeAtomic(file, JSON.stringify({ page, comments: { ...kept, ...Object.fromEntries(old.flat().map((c) => [c.id, c])) } }));
+      writeAtomic(file, JSON.stringify({ v: SCHEMA, page, comments: { ...kept, ...Object.fromEntries(old.flat().map((c) => [c.id, c])) } }));
     } catch (e) {
       console.error(`[lab] could not archive done threads on ${page}:`, e.message);
       continue;
@@ -376,22 +475,53 @@ const fileFor = (page) => {
 };
 const findFile = (page) => {
   if (!fileIndex) {
-    fileIndex = new Map();
-    const walk = (dir, depth) => {
-      for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (d.name.startsWith('.') || d.name === 'node_modules') continue;
-        const full = path.join(dir, d.name);
-        if (d.isDirectory() && depth < 6) walk(full, depth + 1);
-        else if (/\.html?$/i.test(d.name)) fileIndex.set(keyFor(path.relative(ROOT, full)), path.relative(ROOT, full));
-      }
-    };
-    walk(ROOT, 0);
+    fileIndex = new Map(pagesUnder(ROOT).map((rel) => [keyFor(rel), rel]));
+    rehome();
   }
   const html = fileIndex.get(page);
   // Behind a dev server the top index.html is the app's shell (Vite, React): the route's own file says more.
   if (PROXY) return sourceFor(page) || (html && html !== 'index.html' ? html : null);
   return html || sourceFor(page);
 };
+// A page's comments follow its file when it is renamed or moved (a.html to b/c.html). The disk knows a file by its
+// inode and the time it was made, and a rename keeps both: a page whose file is gone is looked for by them under its
+// new name, and its comments go there. A file written anew under another name is a new file to the disk: its comments
+// stay where they were. Looked at whenever the pages are listed again (the lab starts, a page is added or renamed).
+const fidOf = (rel) => {
+  try {
+    const st = fs.statSync(path.join(ROOT, rel));
+    return `${st.ino}.${Math.round(st.birthtimeMs)}`;
+  } catch {
+    return '';
+  }
+};
+function rehome() {
+  let byFid = null;
+  for (const page of PROXY ? [] : pages()) {
+    const [was, fid] = homes.get(page) || [];
+    const rel = fileIndex.get(page);
+    if (rel) {
+      const now = fidOf(rel);
+      if (now === fid && rel === was) continue;
+      homes.set(page, [rel, now]);
+      unsaved.add(page);
+      continue;
+    }
+    byFid ||= new Map([...fileIndex].map(([key, f]) => [fidOf(f), key]));
+    const to = fid && byFid.get(fid);
+    if (!to) continue;
+    const there = db.get(`lab:comments:${to}`) ?? new Map();
+    for (const [id, c] of db.get(`lab:comments:${page}`)) there.set(id, c);
+    db.set(`lab:comments:${to}`, there);
+    db.delete(`lab:comments:${page}`);
+    homes.delete(page);
+    homes.set(to, [fileIndex.get(to), fid]);
+    for (const mine of Object.values(reads)) if (mine[page]) mine[to] = [...(mine[to] || []), ...mine[page]];
+    console.log(`[lab] ${was} is now ${fileIndex.get(to)}: its comments went with it`);
+    for (const p of [page, to]) persist(p).catch((e) => console.error('[lab] could not save comments:', e.message));
+    broadcast();
+  }
+}
 // A path as the disk spells it (src/pages/Orders.jsx), though a case-insensitive disk also found "orders.jsx".
 const realCase = (rel) => {
   let dir = ROOT;
@@ -503,6 +633,7 @@ const shot = new Map(); // page -> Map(id -> JSON string), as last sent
 const changeLog = []; // { rev, page, set: [JSON strings], del: [ids] }, the latest 300
 const takeShot = (p) => new Map(db.get(`lab:comments:${p}`) || []);
 for (const p of pages()) shot.set(p, takeShot(p));
+for (const p of outdated) unsaved.add(p);
 function logChanges(page, rev) {
   for (const p of page ? [page] : [...new Set([...pages(), ...shot.keys()])]) {
     const was = shot.get(p) || new Map();
@@ -697,7 +828,11 @@ const redeem = (req, res, code, me = '', to = '') => {
   if (NAME_OK(me)) cookies.push(`lab_me=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
   return res.writeHead(302, { location: landing(to), 'set-cookie': cookies }).end();
 };
-const isAgent = (req) => req.headers['x-lab-agent'] === '1' && req.headers['x-lab-admin'] === TOKEN;
+const isAgent = (req) => {
+  const sent = Buffer.from(String(req.headers['x-lab-admin'] || ''));
+  const key = Buffer.from(AGENT_KEY);
+  return req.headers['x-lab-agent'] === '1' && sent.length === key.length && timingSafeEqual(sent, key);
+};
 const sessionFrom = (req) => {
   try {
     const s = JSON.parse(decodeURIComponent(req.headers['x-lab-session'] || ''));
@@ -716,6 +851,9 @@ const sessionFrom = (req) => {
 let session = null;
 // Your rules for answers go to each session once, and again only when they change (Leo, 17 Nov: ~250 tokens a pin).
 const rulesSent = new Map();
+// How to answer goes to each session in full once, and again after half an hour (a long session may have dropped it
+// from what it remembers); in between, one short line (~70 tokens less a pin).
+const toldAt = new Map();
 // What the page says about Claude: listening (a wait is open), working (it got comments and hasn't waited again
 // yet), or away (no wait, or nothing from it for two minutes after it got comments).
 let mode = 'away';
@@ -736,7 +874,7 @@ const register = () => {
     writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: path.basename(ROOT), proxy: PROXY?.origin || null, startedAt: new Date().toISOString() }, null, 2));
   } catch {}
 };
-const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
+const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
 const clients = new Set();
 // A beat every 15 s on every live connection: a page that hears nothing for longer knows its connection stalled (the
 // laptop slept, the wifi changed) and connects again at once instead of waiting for the browser to notice.
@@ -748,25 +886,56 @@ setInterval(() => {
 const READS = path.join(LAB, 'reads.json');
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
-const reads = (() => {
+// Side files (read marks, claims) are written whole through a .tmp, and one that can't be read is put aside like a
+// page's file, not taken for empty and then written over.
+const readSide = (file, what) => {
+  let text;
   try {
-    const raw = JSON.parse(fs.readFileSync(READS, 'utf8')) || {};
-    const out = Object.create(null);
-    for (const [name, pagesOf] of Object.entries(raw)) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
-    return out;
+    text = fs.readFileSync(file, 'utf8');
   } catch {
-    return Object.create(null);
+    return null; // not made yet
   }
+  try {
+    const data = JSON.parse(text);
+    if (data && typeof data === 'object' && !Array.isArray(data)) return data;
+  } catch {}
+  putAside(file, what);
+  return null;
+};
+const reads = (() => {
+  const out = Object.create(null);
+  for (const [name, pagesOf] of Object.entries(readSide(READS, 'reads.json') || {})) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
+  return out;
 })();
 /** @type {any} */
 let readsBroadcast = 0;
 let readsRev = 0;
 const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
-let readsTimer;
-const saveReads = () => {
-  clearTimeout(readsTimer);
-  readsTimer = setTimeout(() => fs.promises.writeFile(READS, JSON.stringify(reads)).catch((e) => console.error('[lab] could not save read marks:', e.message)), 300);
+// A side file is saved whole, a moment after its last change.
+const saver = (file, data, what) => {
+  let timer;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      try {
+        writeAtomic(file, JSON.stringify(data()));
+      } catch (e) {
+        console.error(`[lab] could not save ${what}:`, e.message);
+      }
+    }, 300);
+  };
 };
+const saveReads = saver(READS, () => reads, 'read marks');
+// The hand-off marks (see handoff, above): the file's own win over what old comment files still said, and the marks of
+// comments that are gone (deleted, archived) go as it is saved.
+const HANDED = path.join(LAB, 'handed.json');
+const saveHanded = saver(HANDED, () => {
+  const live = new Set(pages().flatMap((p) => [...db.get(`lab:comments:${p}`).keys()]));
+  for (const id of Object.keys(handoff)) if (!live.has(id)) delete handoff[id];
+  return handoff;
+}, 'hand-off marks');
+if (Object.keys(handoff).length) saveHanded();
+for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
 const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
@@ -794,6 +963,7 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
       fileIndex = null;
       fileMemo.clear();
       indexStale = false;
+      if (pages().length) fileFor(pages()[0]); // listed again at once, so a renamed page's comments go with it now
     }
     const hotOnly = !otherSaved && hotSaved.size > 0;
     const hot = [...hotSaved].slice(0, 50).map(([p, kind]) => ({ path: p, kind }));
@@ -830,20 +1000,14 @@ let waiters = [];
 const CLAIM_MS = 1800000;
 const CLAIMS_FILE = path.join(LAB, 'claims.json');
 const claims = new Map(
-  (() => {
-    try {
-      return Object.entries(JSON.parse(fs.readFileSync(CLAIMS_FILE, 'utf8'))).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS);
-    } catch {
-      return [];
-    }
-  })(),
+  Object.entries(readSide(CLAIMS_FILE, 'claims.json') || {}).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS),
 ); // page -> last time a wait for it was open
 const claim = (pages) => {
   if (!pages?.length) return;
   const now = Date.now();
   for (const p of pages) claims.set(p, now);
   try {
-    fs.writeFileSync(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
+    writeAtomic(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
   } catch {}
 };
 const claimed = () => {
@@ -900,9 +1064,9 @@ async function threadsText(page, threads) {
   return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids } : null;
 }
 // A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale). Each comment
-// handed to a wait is marked with the stamp it had (deliveredAt), so a comment counts as new until it itself has been
-// handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for comments
-// from before these marks.
+// handed to a wait is marked with the stamp it had (handoff[id][0]), so a comment counts as new until it itself has
+// been handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for
+// comments from before these marks.
 const stamp = (c) => [c.createdAt, c.movedAt].filter(Boolean).sort().pop(); // new when written or moved
 const rulesOnce = () => {
   const rules = rulesText();
@@ -912,24 +1076,27 @@ const rulesOnce = () => {
   return rules;
 };
 
-async function unseen(scope = pages()) {
-  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
+// Who a wait is: the session's id, or its name for an agent with no id. Each comment handed over is marked with it
+// (handoff[id][1]), so a reply goes as one line only to the session that already has its thread.
+const whoOf = (s) => s?.id || s?.name || '';
+async function unseen(scope = pages(), who = '') {
+  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
   const now = Date.now();
   const lastBy = (c, mine) => [c, ...commentsOf(c._page).filter((r) => r.parent === c.id)].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
   const missed = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
-    .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(c.remindedAt && now - Date.parse(c.remindedAt) < 600000))
+    .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(now - Date.parse(handoff[c.id]?.[2]) < 600000))
     .filter(({ page, c }) => !fresh.some((f) => f.page === page && (f.c.id === c.id || f.c.parent === c.id)));
   if (!fresh.length && !missed.length) return null;
   const blocks = [];
   const sent = new Set(); // page + thread id actually written into the text
-  // A reply in a thread the agent already has: only the new words and one line on what the thread is about, not the
-  // whole thread again (the full one is at /_lab/agent/<page>).
+  // A reply in a thread this session already has: only the new words and one line on what the thread is about, not
+  // the whole thread again (the full one is at /_lab/agent/<page>). A thread handed to another session goes whole.
+  // (A thread marked before the session was kept counts as known to any session, as it did.)
   const known = (f) => {
-    if (!f.c.parent) return false;
-    const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
-    return Boolean(root?.deliveredAt) && !fresh.some((g) => g.c.id === root.id);
+    const mark = handoff[f.c.parent];
+    return Boolean(mark?.[0]) && (mark[1] == null || mark[1] === who) && !fresh.some((g) => g.c.id === f.c.parent);
   };
   const replies = fresh.filter(known);
   const whole = fresh.filter((f) => !known(f));
@@ -952,28 +1119,35 @@ async function unseen(scope = pages()) {
   if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
   if (missed.length) {
     blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
-    for (const { page, c } of missed) setComment(page, c.id, { remindedAt: new Date(now).toISOString() });
+    for (const { c } of missed) (handoff[c.id] ||= ['', null])[2] = new Date(now).toISOString();
+    saveHanded();
   }
   const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
   if (!given.length && !missed.length) return null;
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
-  const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n` + (blocks.length ? `# New comments\n\n${blocks.join('\n\n')}` : '') +
-    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
+  const full = !(now - toldAt.get(who) < 1800000);
+  const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${blocks.join('\n\n')}` +
+    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
-    `\n${WRITE_SHORT}` + rulesOnce();
+    (full ? `\n${WRITE_SHORT}` : '') + rulesOnce();
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = given.map(({ page, c }) => [page, c.id, stamp(c)]);
-  return { text, marks, handed };
+  return { text, marks, handed, full };
 }
 // Hand the new comments to a wait; each is marked as handed over only once it is written to it.
-function deliver(res, got) {
+function deliver(res, got, who = '') {
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
-  for (const [page, id, at] of got.marks) setComment(page, id, { deliveredAt: at });
+  if (got.full) toldAt.set(who, Date.now());
+  for (const [, id, at] of got.marks) handoff[id] = [at, who];
   const at = new Date().toISOString();
-  for (const [page, id] of got.handed) setComment(page, id, { handedAt: at });
-  for (const page of new Set([...got.marks, ...got.handed].map(([page]) => page))) persist(page).catch(() => {});
+  for (const [page, id] of got.handed) {
+    (handoff[id] ||= ['', who])[1] = who; // the thread: this session has it now
+    setComment(page, id, { handedAt: at });
+  }
+  saveHanded();
+  for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
   setMode('working');
 }
 // A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made one after another go
@@ -989,12 +1163,12 @@ function wake() {
 async function wakeNow() {
   for (const w of Array.from(waiters)) {
     if (!waiters.includes(w)) continue;
-    const got = await unseen(scopeOf(w));
+    const got = await unseen(scopeOf(w), w.who);
     if (!got?.text || !waiters.includes(w)) continue;
     waiters = waiters.filter((x) => x !== w);
     waitEnded = Date.now();
     clearTimeout(w.timer);
-    deliver(w.res, got);
+    deliver(w.res, got, w.who);
   }
 }
 
@@ -1093,9 +1267,9 @@ const labPage = (title, body) =>
   `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1, viewport-fit=cover">` +
   `<title>${title}</title><link rel=icon href="/_lab/favicon.svg"><link rel=stylesheet href="/_lab/lab.css">` +
   `<body class=lab><main><a class="lab-brand" href="/">${markSvg(20)}labit</a>${body}</main></body>`;
+const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const notFound = (req, res, what) => {
   if (!/text\/html/.test(req.headers.accept || '')) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
-  const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
   res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
   return res.end(labPage('labit · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));
 };
@@ -1110,7 +1284,6 @@ const ago = (ms) => {
   return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 const listing = (res, dir, urlPath) => {
-  const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
   const pages = pagesUnder(dir)
     .map((rel) => {
       const file = path.join(dir, rel);
@@ -1147,6 +1320,9 @@ const listing = (res, dir, urlPath) => {
   );
 };
 
+// What a request sent (JSON), and a JSON answer (never kept by the browser).
+const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}');
+const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
 const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
@@ -1197,20 +1373,18 @@ const handler = async (req, res) => {
     // `labit invite`: a link for a phone on the same wifi. Only the agent on this computer may ask for one.
     // Keep, no, or undo a rule the agent offered (src/widget/thread.ts): out of replies.md, and the answer says so.
     if (pathname === '/_lab/rule' && req.method === 'POST') {
-      const b = JSON.parse((await new Response(req).text()) || '{}');
+      const b = await sent(req);
       const page = String(b.page || '');
-      // keep / no: a rule the agent offered (--suggest-rule). Otherwise: undo a rule it saved.
-      if (b.action === 'keep' || b.action === 'no') {
-        const c = commentsOf(page).find((x) => x.id === b.id && x.suggest && x.session);
-        if (!c) return res.writeHead(404).end('no offer');
-        if (!c.suggestDone && b.action === 'keep') addRule(c.suggest);
-        if (!c.suggestDone) setComment(page, c.id, b.action === 'keep' ? { suggestDone: 'kept', rule: c.suggest } : { suggestDone: 'no' });
-        return res.writeHead(204).end();
+      // keep / no: a rule the agent offered (--suggest-rule). Otherwise: undo a kept one.
+      const c = commentsOf(page).find((x) => x.id === b.id && x.suggest && x.session);
+      const to = b.action === 'keep' ? 'kept' : b.action === 'no' ? 'no' : 'undone';
+      if (!c || (to === 'undone' && !c.suggest.state)) return res.writeHead(404).end('no rule');
+      if (c.suggest.state === (to === 'undone' ? 'kept' : undefined)) {
+        if (to !== 'no') (to === 'kept' ? addRule : dropRule)(c.suggest.text);
+        setComment(page, c.id, { suggest: { ...c.suggest, state: to } });
+        persist(page).catch(() => {});
+        broadcast();
       }
-      const c = commentsOf(page).find((x) => x.id === b.id && x.rule && x.session);
-      if (!c) return res.writeHead(404).end('no rule');
-      if (!c.ruleUndone) dropRule(c.rule);
-      setComment(page, c.id, { ruleUndone: true });
       return res.writeHead(204).end();
     }
     if (pathname === '/_lab/invite') {
@@ -1220,7 +1394,7 @@ const handler = async (req, res) => {
       const hosts = [`${hostName}.local`, ...wifiAddrs()];
       // `labit invite <name>`, or your own name by default: the guest's browser knows nobody, so the link says who
       // is coming and their phone starts out named.
-      const body = JSON.parse((await new Response(req).text()) || '{}');
+      const body = await sent(req);
       const asked = body.name;
       const who = NAME_OK(asked) ? asked.trim() : myName;
       // `labit invite --page /x`: the link opens that page.
@@ -1228,29 +1402,27 @@ const handler = async (req, res) => {
       if (who) q.set('me', who);
       if (body.page) q.set('to', landing('/' + String(body.page).replace(/^\/+/, '')));
       const tail = q.size ? `?${q}` : '';
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      return res.end(JSON.stringify({ name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) }));
+      return answer(res, { name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) });
     }
     // What is being tried in this lab: the ⋯ menu's switches. From this computer only -- a guest reads the page,
     // they don't decide what labit is trying. The answer is written into the project's labit.json, so the agent sees
     // the same thing, and every open page is told to come back for the new state.
     if (pathname === '/_lab/flags') {
       if (!isLoopback(req)) return res.writeHead(403).end('forbidden');
-      const { flag, on } = JSON.parse((await new Response(req).text()) || '{}');
+      const { flag, on } = await sent(req);
       if (!(flag in FLAGS)) return res.writeHead(400).end('no such flag');
       const file = saveFlag(HERE, flag, Boolean(on));
       SET.flags = { ...SET.flags, [flag]: Boolean(on) };
       console.log(`[lab] trying ${flag}: ${on ? 'on' : 'off'} (${file})`);
       version = { ...version, files: version.files + 1 }; // the pages come back with the new state in their tag
       pagesChanged();
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      return res.end(JSON.stringify({ flags: SET.flags, file }));
+      return answer(res, { flags: SET.flags, file });
     }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.
     if (pathname === '/_lab/me') {
       if (!isLoopback(req)) return res.writeHead(403).end('forbidden');
-      const { name } = JSON.parse((await new Response(req).text()) || '{}');
+      const { name } = await sent(req);
       if (!NAME_OK(name)) return res.writeHead(400).end('name: 1 to 60 characters');
       const was = myName;
       myName = writeMe(name);
@@ -1258,7 +1430,7 @@ const handler = async (req, res) => {
       return res.writeHead(204).end();
     }
     if (pathname === '/_lab/bye') {
-      const { tab } = JSON.parse((await new Response(req).text()) || '{}');
+      const { tab } = await sent(req);
       // A bye lets the tab go even if its stream hasn't closed yet: the page closes the stream and says bye at once,
       // and the bye can come first (CI, 17 Nov: the tab then stayed, as a silent one, until the 90 s timeout). A page
       // back from the back-forward cache opens a new stream and counts again.
@@ -1270,7 +1442,7 @@ const handler = async (req, res) => {
     }
     if (pathname === '/_lab/wait') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
-      const { timeout, pages: only } = JSON.parse((await new Response(req).text()) || '{}');
+      const { timeout, pages: only } = await sent(req);
       const want = Array.isArray(only) && only.length ? only.map(String).sort() : null;
       // A new wait for the same pages replaces the old one (the same session listening again, or another taking over);
       // waits for other pages stay.
@@ -1281,10 +1453,10 @@ const handler = async (req, res) => {
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
-      const w = { res, pages: want, key };
+      const w = { res, pages: want, key, who: whoOf(session) };
       claim(want);
-      const got = await unseen(scopeOf(w));
-      if (got?.text) return deliver(res, got);
+      const got = await unseen(scopeOf(w), w.who);
+      if (got?.text) return deliver(res, got, w.who);
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;
         waiters = waiters.filter((x) => x !== w);
@@ -1315,11 +1487,10 @@ const handler = async (req, res) => {
       if (PROXY) list.push({ url: origin + '/', title: '', file: '', key: '/' });
       // A dev server's pages: the ones with comments.
       for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      return res.end(JSON.stringify({
+      return answer(res, {
         name: path.basename(ROOT), root: ROOT, port: PORT, proxy: PROXY?.origin || null, mode, listening: session?.name || null,
         pages: list.map(({ key, ...p }) => ({ ...p, path: key, open: openOn(key) })),
-      }));
+      });
     }
     if (pathname.startsWith('/_lab/agent/')) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
@@ -1329,12 +1500,11 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/api/changes' && req.method === 'GET') {
       const out = commentChangesSince(url.searchParams.get('page') || '', Number(url.searchParams.get('since')));
       if (out && !isLoopback(req)) out.set = out.set.map(forGuests);
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      return res.end(JSON.stringify(out || { full: true }));
+      return answer(res, out || { full: true });
     }
     if (pathname === '/_lab/api/reads') {
       if (req.method === 'POST') {
-        const b = JSON.parse((await new Response(req).text()) || '{}');
+        const b = await sent(req);
         const name = plainName(b.name);
         const page = String(b.page || '').slice(0, 500);
         if (!name || !page || !db.has(`lab:comments:${page}`)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and a page with comments needed');
@@ -1359,8 +1529,7 @@ const handler = async (req, res) => {
       }
       const name = plainName(url.searchParams.get('name'));
       const ids = (name && reads[name]?.[url.searchParams.get('page') || '']) || [];
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      return res.end(JSON.stringify({ ids }));
+      return answer(res, { ids });
     }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);
@@ -1373,34 +1542,33 @@ const handler = async (req, res) => {
       const kept = listing && cachedList(listPage, kind);
       if (kept) return res.writeHead(kept.status, kept.headers).end(kept.out);
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
-      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost' });
+      // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does), and the
+      // API hears from the lab alone who speaks, the agent or a person: a page can't say it is the agent.
+      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost', 'x-lab-agent': agent ? '1' : '0', ...(agent ? { 'x-lab-admin': TOKEN } : {}) });
       const text = await out.text();
       if (req.method === 'POST' && out.ok) {
         const { comment } = JSON.parse(text);
         if (out.status === 201) {
           // Mark who wrote it, so Claude can tell this computer from a guest, and its own replies from people's.
           const [key, h] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
-          const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: sessionFrom(req) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
-          if (!agent) delete stored.suggest; // only the agent's answer offers a rule
+          const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: slim(sessionFrom(req)) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
+          // An answer that doesn't say what it is (an older agent or skill) is read from its first words, once, here.
+          const said = stored.intent;
+          if (agent && stored.parent) stored.intent ||= intentFromText(stored.text);
           h.set(comment.id, JSON.stringify(stored));
-          // A person answering a resolved thread ("still wrong") reopens it, here too, where the browser is admin.
-          if (!agent && stored.parent && h.has(stored.parent)) {
-            const root = JSON.parse(h.get(stored.parent));
-            if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined }));
-          }
-          // The agent answering "Done: …" closes the thread itself (Leo, 15 Nov: 37 threads sat open with nothing left to
-          // do), but only when it answered one clear thing: one message from people since the agent last spoke, and not
-          // a list ("1) … 2) …", "- … - …"). Several things going on stay open. A person writing again reopens it, as
-          // above. Other answers (a question, options) leave it open.
-          if (agent && stored.parent && h.has(stored.parent) && /^done\b/i.test(String(stored.text).trim())) {
+          // The agent answering done (labit reply --done) closes the thread itself (Leo, 15 Nov: 37 threads sat open with
+          // nothing left to do). An answer that doesn't say (an older agent or skill) counts as done when its words start
+          // "Done", and then only when it answered one clear thing: one message from people since the agent last spoke,
+          // and not a list ("1) … 2) …", "- … - …"). A person writing again reopens it (the API does). Other answers (on
+          // it, a question, options) leave it open. Page chats stay open either way.
+          if (agent && stored.parent && h.has(stored.parent)) {
             const root = JSON.parse(h.get(stored.parent));
             const thread = [root, ...[...h.values()].map((v) => JSON.parse(v)).filter((x) => x.parent === root.id && x.id !== stored.id)]
               .sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
-            const lastAgent = thread.map((x) => Boolean(x.session)).lastIndexOf(true);
-            const asks = thread.slice(lastAgent + 1).filter((x) => !x.session);
+            const asks = thread.slice(thread.map((x) => Boolean(x.session)).lastIndexOf(true) + 1).filter((x) => !x.session);
             const listy = (t) => String(t).split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length >= 2;
-            const oneThing = asks.length === 1 && !listy(asks[0].text);
-            if (oneThing && !root.resolved && root.anchor?.kind !== 'page') h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent' }));
+            const done = stored.intent === 'done' && (said || (asks.length === 1 && !listy(asks[0].text))) && root.anchor?.kind !== 'page';
+            if (done && !root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent', resolvedAt: stored.createdAt }));
           }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
         }
@@ -1502,6 +1670,7 @@ server.on('listening', async () => {
   newerVersion().then((v) => v && console.log(`[lab] labit ${v} is out (you have ${VERSION}): npx @leonidstern/labit@latest`));
   origin = `http://localhost:${PORT}`;
   saveServer();
+  writeAtomic(LOCK, JSON.stringify({ pid: process.pid, at: Date.now(), port: PORT }), 0o600); // a lab starting next asks this port
   register();
   await persist();
   console.log(`[lab] ${origin}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
@@ -1525,4 +1694,5 @@ const bye = () => {
 };
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
+process.on('SIGHUP', bye); // the terminal it ran in closed
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');

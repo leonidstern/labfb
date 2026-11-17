@@ -11,7 +11,14 @@ export function listenPages(opts: Opts, forWait = false): string[] | null {
 }
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
-const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--new', '--all', '--bg', '--fast', '--no-fast'];
+const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--new', '--all', '--bg', '--fast', '--no-fast', '--done', '--on-it', '--question'];
+/** What an agent's reply is, from its flag (reply --done / --on-it / --question): the thread's state is read from it.
+ *  undefined when none is given; an error when more than one is. */
+export function replyIntent(opts: Opts): 'done' | 'working' | 'question' | undefined | Error {
+  const given = (['done', 'on-it', 'question'] as const).filter((f) => opts[f]);
+  if (given.length > 1) return new Error(`Give one of --done, --on-it, --question, not ${given.map((f) => `--${f}`).join(' and ')}.`);
+  return given[0] === 'on-it' ? 'working' : given[0];
+}
 /** The longest a wait sits open when nobody has said it is running in the background. */
 export const FOREGROUND_CAP = 60;
 /** The wait's own default, when no --timeout is given. */

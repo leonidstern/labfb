@@ -5,9 +5,10 @@
 // LAB_HOST (e.g. lab.example.com), LAB_COMMENTS_ADMIN_TOKEN for resolving and deleting (see adminFor()).
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { INTENTS, upgrade, VERSION } from './_schema.mjs';
 
 const LAB_HOST = process.env.LAB_HOST || '';
-const MAX = { name: 60, text: 2000, path: 300, selector: 600, context: 400, perPage: 500 };
+const MAX = { name: 60, text: 2000, path: 300, selector: 600, perPage: 500 };
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -40,6 +41,20 @@ function store() {
     });
   };
   return run;
+}
+
+// One stored comment changed without undoing what someone else changed meanwhile (a reply reopens the thread while
+// its pin is moved): it is written only if it is still as it was read (one EVAL, nothing lands in between), else read
+// again. null: no such comment; false: `to` refused.
+const SWAP = "if redis.call('HGET',KEYS[1],ARGV[1])==ARGV[2] then redis.call('HSET',KEYS[1],ARGV[1],ARGV[3]) return 1 end return 0";
+async function change(run, key, id, to) {
+  for (let tries = 0; tries < 6; tries++) {
+    const was = await run('HGET', key, id);
+    if (!was) return null;
+    const next = to(upgrade(JSON.parse(was)));
+    if (!next || (await run('EVAL', SWAP, 1, key, id, was, JSON.stringify(next)))) return next;
+  }
+  throw new Error('busy');
 }
 
 // Only pages proxied under <lab host>/<slug>/... can carry comments.
@@ -159,7 +174,6 @@ function cleanAnchor(a) {
     eh: int(a.eh), // the element's height then (a big container can tell it grew)
     time: sec(a.time),
     duration: sec(a.duration),
-    context: clean(a.context, MAX.context) || undefined, // older widget versions
     // The nearest element with an id around the spot.
     block: /^[A-Za-z][\w:.-]{0,119}$/.test(a.block || '') ? a.block : undefined,
   };
@@ -192,7 +206,7 @@ export async function GET(request) {
   const comments = values
     .map((v) => {
       try {
-        return JSON.parse(v);
+        return upgrade(JSON.parse(v));
       } catch {
         return null;
       }
@@ -289,20 +303,22 @@ function asText(path, comments, host) {
     if (a.chosen) lines.push(`chosen option: ${a.chosen}`);
     if (a.cssText) lines.push(`text added by CSS: ${a.cssText} (search the CSS for it)`);
     if (a.section) lines.push(`section: "${a.section}"`);
-    if (a.block) lines.push(`block: ${a.block}`);
+    // The block is said when "inside" above doesn't already say it.
+    if (a.block && a.inside !== `#${a.block}`) lines.push(`block: ${a.block}`);
     if (a.zw) {
       lines.push(`type: area comment, ${a.docW}×${a.docH} px on screen`);
       lines.push(`area on element: ${pct(a.x)}–${pct(a.x + a.zw)} across, ${pct(a.y)}–${pct(a.y + a.zh)} down`);
       if (a.zoneText) lines.push(`text in area: "${a.zoneText}"`);
       if (a.zoneItems?.length) lines.push('in the area:', ...a.zoneItems.map((v) => `  - ${body(v)}`));
-    } else if (a.kind !== 'page') lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`);
+    } else if (a.kind !== 'page' && !(a.kind === 'text' && a.quote)) lines.push(`where on element: ${area(a.x, a.y)} (${pct(a.x)} across, ${pct(a.y)} down)`); // not on words: they say where
     if (a.gapAbove || a.gapBelow) lines.push(`between: ${a.gapAbove || 'the top'} (above) and ${a.gapBelow || 'the end'} (below)`, `page y: ${a.docY} px`);
     if (a.scheme) lines.push(`colours: ${a.scheme}${a.background ? ` (background ${a.background})` : ''}`);
     if (a.width) lines.push(`viewport: ${a.width}${a.height ? `×${a.height}` : 'px wide'}${a.dpr ? ` @${a.dpr}x` : ''}`);
     if (a.build) lines.push(`build: ${a.build}`);
     if (a.kind !== 'page') lines.push(`selector (at comment time): ${a.selector || 'body'}`);
     for (const r of comments.filter((r) => r.parent === c.id)) {
-      const rule = r.rule ? ` (kept as rule: ${r.rule})` : r.suggest ? ` (offered as rule: ${r.suggest}${r.suggestDone === 'no' ? ', they said no' : ''})` : '';
+      const s = r.suggest;
+      const rule = !s ? '' : s.state === 'kept' ? ` (kept as rule: ${s.text})` : ` (offered as rule: ${s.text}${s.state ? ', they said no' : ''})`;
       lines.push(`reply: ${r.name}${r.from && r.from !== c.from ? ` (${r.from})` : ''} · ${stamp(r.createdAt)} · id ${r.id}: ${body(r.text)}${rule}`);
     }
   });
@@ -344,31 +360,33 @@ export async function POST(request) {
     const own = body.action !== 'delete' && edit && typeof body.edit === 'string' && sameKey(body.edit, edit);
     if (!admin && !own) return json({ error: 'forbidden' }, 403);
     if (body.action === 'delete') {
-      const all = ((await run('HVALS', key)) || []).map((v) => JSON.parse(v));
+      const all = ((await run('HVALS', key)) || []).map((v) => upgrade(JSON.parse(v)));
       if (!all.some((c) => c.id === id)) return json({ error: 'not found' }, 404);
       await run('HDEL', key, id, ...all.filter((c) => c.parent === id).map((c) => c.id));
       return json({ ok: true });
     }
-    const current = await run('HGET', key, id);
-    if (!current) return json({ error: 'not found' }, 404);
-    const comment = { ...JSON.parse(current), resolved: body.action === 'resolve', resolvedBy: body.action === 'resolve' ? admin?.name || 'author' : undefined };
-    await run('HSET', key, id, JSON.stringify(comment));
-    return json({ comment });
+    // Who resolved it: the agent (an admin request the lab marks as the agent's, as labit resolve and --resolve are), an
+    // admin by name, or whoever started the thread. Reopening clears who and when.
+    const by = admin && request.headers.get('x-lab-agent') === '1' ? 'agent' : admin?.name || 'author';
+    const resolve = body.action === 'resolve';
+    const comment = await change(run, key, id, (c) => ({ ...c, resolved: resolve, resolvedBy: resolve ? by : undefined, resolvedAt: resolve ? new Date().toISOString() : undefined }));
+    return comment ? json({ comment }) : json({ error: 'not found' }, 404);
   }
 
   // Move a pin: the thread's starter (with its key) or an admin. The spot is replaced, nothing else changes.
+  // found: the widget found the pin's element again somewhere else on a changed page, and says where it is now, so the
+  // next look starts there. Only the path and the page position change, and the pin does not count as moved.
   if (body.action === 'move') {
     const id = clean(body.id, 40);
     const edit = editKey(path, id);
     if (!isAdmin(request, path) && !(edit && typeof body.edit === 'string' && sameKey(body.edit, edit))) return json({ error: 'forbidden' }, 403);
-    const current = await run('HGET', key, id);
-    if (!current) return json({ error: 'not found' }, 404);
-    const thread = JSON.parse(current);
-    if (thread.parent || !body.anchor || typeof body.anchor !== 'object') return json({ error: 'bad move' }, 400);
-    const anchor = cleanAnchor(body.anchor);
-    const comment = { ...thread, anchor, movedAt: new Date().toISOString() };
-    await run('HSET', key, id, JSON.stringify(comment));
-    return json({ comment });
+    const comment = await change(run, key, id, (thread) => {
+      if (thread.parent || !body.anchor || typeof body.anchor !== 'object') return false;
+      const anchor = cleanAnchor(body.anchor);
+      if (body.found) return { ...thread, anchor: { ...thread.anchor, selector: anchor.selector, docX: anchor.docX, docY: anchor.docY, eh: anchor.eh } };
+      return { ...thread, anchor, movedAt: new Date().toISOString() };
+    });
+    return comment ? json({ comment }) : json({ error: comment === null ? 'not found' : 'bad move' }, comment === null ? 404 : 400);
   }
 
   const name = clean(body.name, MAX.name);
@@ -383,7 +401,7 @@ export async function POST(request) {
     const was = await run('GET', nonceKey);
     const earlier = was && (await run('HGET', key, was));
     if (earlier) {
-      const c = JSON.parse(earlier);
+      const c = upgrade(JSON.parse(earlier));
       const edit = c.parent ? null : editKey(path, c.id);
       return json(edit ? { comment: c, edit } : { comment: c }, 200);
     }
@@ -394,6 +412,10 @@ export async function POST(request) {
   // The count goes up before the checks below, so a post refused for a full page or a missing thread counts too.
   let parent = body.parent ? clean(body.parent, 40) : null;
   const limited = !isAdmin(request, path);
+  // Who speaks: the agent (an admin request marked as the agent's, as labit reply is) or a person. A local lab says
+  // which for every request ("1" or "0"); on the web an admin who doesn't say is not taken for either.
+  const says = request.headers.get('x-lab-agent');
+  const agent = !limited && says === '1';
   const ip = (request.headers.get('x-vercel-forwarded-for') || request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for') || '')
     .split(',')[0].trim() || 'unknown';
   const hourKey = `lab:rate:${ip}:${Math.floor(Date.now() / 3600000)}`;
@@ -403,40 +425,52 @@ export async function POST(request) {
     limited ? ['INCR', hourKey] : ['HLEN', key],
     limited && ['EXPIRE', hourKey, 3600],
   );
-  if (count >= MAX.perPage) return json({ error: 'too many comments on this page' }, 429);
+  // A page full of open talk takes no more from people: open threads (and their replies) count, done ones don't, so a
+  // long-lived page doesn't fill up for good. Admins (the owner, the agent) are never refused: an answer always lands.
+  if (limited && count >= MAX.perPage) {
+    const all = ((await run('HVALS', key)) || []).map((v) => JSON.parse(v));
+    const done = new Set(all.filter((c) => !c.parent && c.resolved).map((c) => c.id));
+    if (all.filter((c) => !done.has(c.parent || c.id)).length >= MAX.perPage) return json({ error: 'too many comments on this page' }, 429);
+  }
   if (limited && used > (Number(process.env.LAB_COMMENTS_PER_HOUR) || 60)) return json({ error: 'too many comments, try again later' }, 429);
 
-  // Replies attach to the thread (a reply to a reply goes to its thread). Someone answering a resolved thread
+  // Replies attach to the thread (a reply to a reply goes to its thread). A person answering a resolved thread
   // ("still broken") reopens it, so the agent sees it again.
   let thread = null;
   if (parent) {
     if (!found) return json({ error: 'thread not found' }, 404);
-    thread = JSON.parse(found);
+    thread = upgrade(JSON.parse(found));
     if (thread.parent) {
       parent = thread.parent;
       const root = await run('HGET', key, parent);
       if (!root) return json({ error: 'thread not found' }, 404);
-      thread = JSON.parse(root);
+      thread = upgrade(JSON.parse(root));
     }
   }
 
   const anchor = body.anchor || {};
   const comment = {
+    v: VERSION,
     id: crypto.randomUUID().replace(/-/g, '').slice(0, 12),
     parent,
     name,
     text,
     createdAt: new Date().toISOString(),
-    resolved: false,
-    anchor: parent ? null : cleanAnchor(anchor),
+    // Only a thread is open or resolved, and only a thread has a spot; a reply has neither.
+    ...(parent ? {} : { resolved: false, anchor: cleanAnchor(anchor) }),
     // The message in the thread this one answers, when it isn't the first (shown as a quote).
     ...(parent && body.to ? { to: clean(body.to, 40) } : {}),
-    // A rule the agent offers on its own, from a reply about how it answered (labit reply --suggest-rule): kept with a tap.
-    ...(parent && body.suggest && !limited ? { suggest: cleanText(body.suggest, 200) } : {}),
+    // The agent's own words carry session (a local lab fills in which session); a person's never do.
+    ...(agent ? { session: { name } } : {}),
+    // A rule the agent offers on its own, from a reply about how it answered (labit reply --suggest-rule): kept with a
+    // tap. state: none while it is only offered, then 'kept' | 'no' | 'undone'.
+    ...(parent && agent && cleanText(body.suggest, 200) ? { suggest: { text: cleanText(body.suggest, 200) } } : {}),
+    // What the agent's answer is (labit reply --done / --on-it / --question): the thread's state is read from it, not
+    // from the words.
+    ...(parent && INTENTS.includes(body.intent) && agent ? { intent: body.intent } : {}),
   };
-  // The comment, and the reopened thread when someone (not an admin) answers a resolved one: one round trip.
-  if (thread?.resolved && limited) await run('HSET', key, comment.id, JSON.stringify(comment), parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined }));
-  else await run('HSET', key, comment.id, JSON.stringify(comment));
+  await run('HSET', key, comment.id, JSON.stringify(comment));
+  if (thread?.resolved && (limited || says === '0')) await change(run, key, parent, (t) => ({ ...t, resolved: false, resolvedBy: undefined, resolvedAt: undefined }));
   if (nonceKey) await run('SET', nonceKey, comment.id, 'EX', 900);
   const edit = parent ? null : editKey(path, comment.id);
   return json(edit ? { comment, edit } : { comment }, 201);
