@@ -615,6 +615,7 @@ const forGuests = (c) => {
   if (!c || typeof c !== 'object') return c;
   const rest = { ...c };
   if (rest.session) rest.session = { name: rest.session.name, agent: rest.session.agent, kind: rest.session.kind };
+  delete rest.deliveredTo; // which session has the thread: an id, this computer's business
   return rest;
 };
 function commentChangesSince(page, since) {
@@ -1008,7 +1009,10 @@ const rulesOnce = () => {
   return rules;
 };
 
-async function unseen(scope = pages()) {
+// Who a wait is: the session's id, or its name for an agent with no id. Each comment handed over is marked with it
+// (deliveredTo), so a reply goes as one line only to the session that already has its thread.
+const whoOf = (s) => s?.id || s?.name || '';
+async function unseen(scope = pages(), who = '') {
   const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (c.deliveredAt || seen)).map((c) => ({ page, c })));
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
@@ -1020,12 +1024,13 @@ async function unseen(scope = pages()) {
   if (!fresh.length && !missed.length) return null;
   const blocks = [];
   const sent = new Set(); // page + thread id actually written into the text
-  // A reply in a thread the agent already has: only the new words and one line on what the thread is about, not the
-  // whole thread again (the full one is at /_lab/agent/<page>).
+  // A reply in a thread this session already has: only the new words and one line on what the thread is about, not
+  // the whole thread again (the full one is at /_lab/agent/<page>). A thread handed to another session goes whole.
+  // (A thread marked before deliveredTo was kept counts as known to any session, as it did.)
   const known = (f) => {
     if (!f.c.parent) return false;
     const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
-    return Boolean(root?.deliveredAt) && !fresh.some((g) => g.c.id === root.id);
+    return Boolean(root?.deliveredAt) && (root.deliveredTo === undefined || root.deliveredTo === who) && !fresh.some((g) => g.c.id === root.id);
   };
   const replies = fresh.filter(known);
   const whole = fresh.filter((f) => !known(f));
@@ -1065,11 +1070,11 @@ async function unseen(scope = pages()) {
   return { text, marks, handed };
 }
 // Hand the new comments to a wait; each is marked as handed over only once it is written to it.
-function deliver(res, got) {
+function deliver(res, got, who = '') {
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
-  for (const [page, id, at] of got.marks) setComment(page, id, { deliveredAt: at });
+  for (const [page, id, at] of got.marks) setComment(page, id, { deliveredAt: at, deliveredTo: who });
   const at = new Date().toISOString();
-  for (const [page, id] of got.handed) setComment(page, id, { handedAt: at });
+  for (const [page, id] of got.handed) setComment(page, id, { handedAt: at, deliveredTo: who }); // the thread: this session has it now
   for (const page of new Set([...got.marks, ...got.handed].map(([page]) => page))) persist(page).catch(() => {});
   setMode('working');
 }
@@ -1086,12 +1091,12 @@ function wake() {
 async function wakeNow() {
   for (const w of Array.from(waiters)) {
     if (!waiters.includes(w)) continue;
-    const got = await unseen(scopeOf(w));
+    const got = await unseen(scopeOf(w), w.who);
     if (!got?.text || !waiters.includes(w)) continue;
     waiters = waiters.filter((x) => x !== w);
     waitEnded = Date.now();
     clearTimeout(w.timer);
-    deliver(w.res, got);
+    deliver(w.res, got, w.who);
   }
 }
 
@@ -1375,10 +1380,10 @@ const handler = async (req, res) => {
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
-      const w = { res, pages: want, key };
+      const w = { res, pages: want, key, who: whoOf(session) };
       claim(want);
-      const got = await unseen(scopeOf(w));
-      if (got?.text) return deliver(res, got);
+      const got = await unseen(scopeOf(w), w.who);
+      if (got?.text) return deliver(res, got, w.who);
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;
         waiters = waiters.filter((x) => x !== w);

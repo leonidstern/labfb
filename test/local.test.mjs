@@ -149,6 +149,30 @@ test('a reply in a thread the agent has gets only the new words; reply --wait an
   assert.doesNotMatch(out, /^## /m, 'not the whole thread again');
 });
 
+test('a reply goes as one line only to the session that has its thread; another session gets the thread whole', async () => {
+  await up();
+  const as = (id) => ({ env: { ...process.env, CLAUDE_CODE_SESSION_ID: id, CODEX_THREAD_ID: '', AMP_CURRENT_THREAD_ID: '' } });
+  const { comment } = await post({ page: '/index', name: 'Leo', text: 'tighten the spacing under the title', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
+  assert.match((await run(['wait', '--timeout', '5'], as('sess-a'))).out, /tighten the spacing/);
+  const waiting = run(['wait', '--timeout', '10'], as('sess-b'));
+  await new Promise((r) => setTimeout(r, 600));
+  await post({ page: '/index', name: 'Leo', text: 'a bit more', parent: comment.id });
+  const b = (await waiting).out;
+  assert.match(b, /^## /m, 'the whole thread for a session that never had it');
+  assert.match(b, /tighten the spacing under the title/);
+  assert.match(b, /a bit more/);
+  const again = run(['wait', '--timeout', '10'], as('sess-b'));
+  await new Promise((r) => setTimeout(r, 600));
+  await post({ page: '/index', name: 'Leo', text: 'and less on mobile', parent: comment.id });
+  const b2 = (await again).out;
+  assert.match(b2, new RegExp(`thread id ${comment.id} ".*": Leo · .* · id \\w+: and less on mobile`), 'now it has the thread: one line');
+  assert.doesNotMatch(b2, /^## /m);
+  const stored = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/comments/index.json'), 'utf8')).comments[comment.id];
+  assert.equal(stored.deliveredTo, 'sess-b');
+  const seen = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === comment.id);
+  assert.equal(seen.deliveredTo, 'sess-b', 'this computer sees it (a guest would not)');
+});
+
 test('one lab per folder: two started at once make one; a dead lock or a silent server.json does not block; SIGHUP cleans up', async () => {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-lock-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
