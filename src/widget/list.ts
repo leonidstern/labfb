@@ -49,7 +49,7 @@ export function drawList() {
       W.listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);
       W.listBtn.setAttribute('aria-keyshortcuts', W.KEYS.next);
     }
-    W.listBtn.title = 'next new comment: W, or Control-D while typing (Shift for the one before)';
+    W.listBtn.title = 'next new comment: W, or ⌥W while typing (Shift for the one before)';
     W.listBtn.disabled = !freshAll;
     W.listBtn.classList.toggle('quiet', !freshAll);
     const doneCount = all.filter((c) => !W.isPage(c) && (c.resolved || workState(c)[0] === 'done') && !W.unread(c).length).length;

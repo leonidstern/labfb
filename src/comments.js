@@ -1157,12 +1157,14 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       setOn(!S.on);
       return;
     }
-    // Control-D goes to the next new comment from anywhere, the reply box too (plain D types a letter there); Shift: back.
     if (S.on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || '') || (!/^[a-z]$/i.test(e.key || '') && e.code === 'KeyZ')) && !typing(e) && !inOtherWidget && placed.length) {
       e.preventDefault();
       return void undoLast();
     }
-    if (S.on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD' && !(typing(e) && !e.composedPath().includes(host))) {
+    // ⌥W (Leo 18 Nov: w does nothing in a text box) or Control-D goes to the next new comment from the widget's text boxes
+    // too, where a plain W types a letter; Shift: back. By the key's place: Option turns W into ∑ on a Mac.
+    const nextKey = (e.altKey && !e.ctrlKey && e.code === 'KeyW') || (e.ctrlKey && !e.altKey && e.code === 'KeyD');
+    if (S.on && nextKey && !e.metaKey && !(typing(e) && !e.composedPath().includes(host))) {
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
