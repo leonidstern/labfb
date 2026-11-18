@@ -259,7 +259,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.evaluate(() => document.getElementById('p9').scrollIntoView({ block: 'center' }));
   await sleep(200);
   const mine = (tag) => shadow(() => {
-    const pin = [...r.querySelectorAll('.pin.working')].find((b) => b.getAttribute('aria-label').includes('keep running') || b.title.includes('leo'));
+    const pin = [...r.querySelectorAll('.pin')].find((b) => (b.getAttribute('aria-label') || '').includes('agent working on it'));
     if (!pin) return null;
     if (a) pin.__tag = a;
     const ring = pin.querySelector('.ring');
