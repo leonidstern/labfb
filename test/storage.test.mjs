@@ -304,3 +304,26 @@ test('looked files: a damaged one is put aside; old snaps and names are pruned',
   assert.ok(!names().some((n) => n.endsWith('.tmp')), 'no half-written file left');
   await lab.stop();
 });
+
+// A question with choices and the pick on it are only added fields: a page file with them loads as it was written,
+// version 2, with nothing to upgrade, and is not rewritten into another shape.
+test('choices and a pick load unchanged, v stays 2', async () => {
+  const dir = folder();
+  fs.mkdirSync(path.join(dir, '.lab/comments'), { recursive: true });
+  const now = new Date().toISOString();
+  const comments = {
+    t1: { v: 2, id: 't1', parent: null, name: 'Leo', text: 'tone?', createdAt: now, resolved: false, anchor: { ...anchor, kind: 'text', quote: { exact: 'here', prefix: 'some words ', suffix: ' after it' } } },
+    q1: { v: 2, id: 'q1', parent: 't1', name: 'Claude', text: 'Which?', createdAt: now, anchor: null, session: { agent: 'claude' }, intent: 'question', choices: ['here', 'there', 'over there'], recommend: 1 },
+    p1: { v: 2, id: 'p1', parent: 't1', to: 'q1', name: 'Leo', text: 'Picked B: there', createdAt: now, anchor: null, from: 'this computer', picked: { of: 'q1', n: 1 } },
+  };
+  fs.writeFileSync(path.join(dir, '.lab/comments/x.json'), JSON.stringify({ page: '/x', comments }));
+  const lab = await start(dir);
+  const got = Object.fromEntries((await lab.list('/x')).map((c) => [c.id, c]));
+  assert.deepEqual([got.q1.choices, got.q1.recommend, got.q1.intent, got.q1.v], [['here', 'there', 'over there'], 1, 'question', 2]);
+  assert.deepEqual([got.p1.picked, got.p1.to, got.p1.v], [{ of: 'q1', n: 1 }, 'q1', 2]);
+  assert.equal(got.t1.v, 2);
+  await lab.stop();
+  const saved = readJson(path.join(dir, '.lab/comments/x.json')).comments;
+  assert.deepEqual(saved.q1.choices, ['here', 'there', 'over there'], 'still there when the file is written again');
+  assert.deepEqual(saved.p1.picked, { of: 'q1', n: 1 });
+});

@@ -69,13 +69,8 @@ button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius
 /* Closed: a resolved pin is a green ✓, faded and small, so the open ones stand out (closed pins show by default; D
    hides them). A pin whose spot is gone (.moved) is shown the same way: no state of its own (Leo, 17 Nov). */
 .pin.resolved { color: rgb(36, 160, 70); }
-/* Statuses. A go pin says "go": green in a green outline when placed, the turning stroke while the agent is on it,
-   and a white ✓ on green once it is done — a go is a pin like any other, and a done pin wears the tick. A comment
-   pin: your initial, the stroke, then a green tick. */
-button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 11px; font-weight: 600; letter-spacing: .006em;
-                box-shadow: inset 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
-button.pin.go.done { background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16); }
-button.pin.done:not(.go) { color: rgb(36, 160, 70); }
+/* Statuses. A pin: your initial, the stroke while the agent is on it, then a green tick. A "go" comment is a pin like any other. */
+button.pin.done { color: rgb(36, 160, 70); }
 .pin:is(.resolved, .moved) { opacity: .5; scale: .8; }
 button.pin:is(.resolved, .moved):is(:hover, .open) { opacity: 1; }
 .pin.grab { touch-action: none; }
@@ -134,6 +129,30 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 /* A long thread scrolls inside the card, which keeps one size; the step buttons and the reply box stay put. */
 .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; }
 .card > .foot { flex: none; }
+/* A question with choices (labit reply --choice), V1 "plain list" (Leo, 18 Nov): no bubble, no letters, no tags. The
+   question, the versions as a plain list of rows (the page's own words muted, "· now"), a tick on the one shown, one
+   Keep at the end. An answered question keeps its rows, the pick ticked in green. */
+.msg.asks, .msg.asks[data-agent] { max-width: none; align-self: stretch; background: none; padding: 0; border-radius: 0; } /* over the agent's wash */
+.msg.asks > b { display: none; }
+.msg.asks .p { font-weight: 600; }
+.msg.asks .stamp { bottom: auto; top: 3px; right: 0; }
+.choices { display: grid; gap: 8px; margin: 8px 0 2px; }
+.choices .rows { display: grid; gap: 2px; }
+button.choice { display: flex; align-items: baseline; gap: 8px; width: 100%; margin: 0; padding: 7px 8px; border: 0; border-radius: var(--_r-s);
+                background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background .12s; }
+button.choice::before { content: ''; flex: none; width: 14px; text-align: center; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--_fg); }
+button.choice.on::before { content: '✓'; }
+button.choice:hover:not(:disabled) { background: var(--_soft); }
+button.choice:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--_accent) 40%, transparent); }
+button.choice:disabled { cursor: default; opacity: .7; }
+button.choice.picked { opacity: 1; }
+button.choice.picked::before { content: '✓'; color: rgb(36, 160, 70); }
+.choice .tx { min-width: 0; overflow-wrap: anywhere; color: inherit; }
+.choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); }
+button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding: 6px 12px; background: var(--_accent); color: var(--_accent-fg);
+              font-size: 12.5px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity .12s; }
+button.keep:hover:not(:disabled) { opacity: .9; }
+button.keep:disabled { opacity: .4; cursor: default; }
 .card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .fd.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; }
 .item { display: grid; row-gap: 3px; }
@@ -724,3 +743,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .since-panel { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); width: auto; max-width: none; padding: 6px; z-index: 2; }
   .news-item { padding: 11px 10px; }
 }
+/* Phones: a choice is a 44 pt row to tap, Keep a full-size button under them (V1: not stuck, so it never covers a row). */
+@media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
+  button.keep { padding: 10px 16px; font-size: 14px; } }

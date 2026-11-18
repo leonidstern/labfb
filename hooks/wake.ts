@@ -11,6 +11,10 @@
 // starts the moment the current one ends), so a long build never leaves pins sitting. Only a pin that is still
 // unheard on two looks in a row is queued then, so an agent about to run `wait` itself isn't woken for nothing.
 //
+// Progress: while this session (or a helper it started) runs tools, the pins handed to it and not answered get a short
+// progress line by themselves ("editing comments.js", "running tests"), at most one per pin a minute. A pin then goes
+// grey ("no update") only when the work has really stopped, not when the agent forgot `reply --progress`.
+//
 // Labs: the one in the session's folder (.lab/server.json, or above), and every lab whose registry file
 // (~/.labit/servers/<port>.json, what `labit list` reads) names this session as its listener, so it also works when the
 // session's folder is somewhere else. Localhost only, a few labs at most, and each look is quick.
@@ -19,13 +23,18 @@ import type { Register } from 'claude-code';
 const EVERY_MS = 4000;
 const MAX_LABS = 4; // labs one look asks, at most
 const MAX_FILES = 40; // registry files one look reads, at most
-type Pending = { fresh: number; pages: string[]; key: string; listening: boolean; last: string; dir: string; cmd: string; url: string };
+type Pending = { working?: { page: string; id: string }[]; fresh: number; pages: string[]; key: string; listening: boolean; last: string; dir: string; cmd: string; url: string };
 type Lab = { port: number; key: string };
 
 let busy = false; // a main-loop turn is running
 const told = new Map<number, string>(); // lab port -> the set of pins this session was last woken for
 let heard = ''; // port:key seen unheard while busy, on the look before
 let timer: { cancel: () => void } | null = null;
+const PROGRESS_MS = 60000; // a pin's progress line is renewed once a minute at most
+const WORKING_MS = 15000; // how long the list of pins being worked on is kept before it is asked for again
+let working: { lab: Lab; page: string; id: string }[] = [];
+let workingAt = -Infinity;
+const noted = new Map<string, number>(); // lab port + pin id -> when its line was last written
 // When the last wake was submitted, until its turn starts. A wake the person cancels (Escape takes it out of the
 // queue) never starts a turn: after SUBMIT_MS it counts as not delivered, and the same pins may wake the session again.
 // A wake queued behind a running turn starts that clock when the turn ends (`queued`), not before.
@@ -75,6 +84,48 @@ async function labsFor($: any, me: string): Promise<Lab[]> {
   return labs.slice(0, MAX_LABS);
 }
 
+// What a tool call says it is doing, as a short line: "editing comments.js", "running npm test", "reading list.ts".
+const base = (p: unknown) => String(p || '').split('/').pop() || '';
+const lineFor = (e: any): string => {
+  const tool = String(e.tool || '');
+  if (/^(Edit|Write|NotebookEdit)$/.test(tool)) return `editing ${base(e.file_path || e.notebook_path)}`.trim();
+  if (tool === 'Bash') return `running ${String(e.command || '').replace(/\s+/g, ' ').slice(0, 60)}`.trim();
+  if (/^(Read|Grep|Glob)$/.test(tool)) return tool === 'Read' ? `reading ${base(e.file_path)}`.trim() : `searching ${String(e.pattern || '').slice(0, 40)}`.trim();
+  if (tool === 'Agent') return `helper: ${String(e.description || 'working').slice(0, 60)}`;
+  return '';
+};
+
+async function progress($: any, e: any): Promise<void> {
+  const line = lineFor(e);
+  if (!line) return;
+  const now = await $.clock.now();
+  if (now - workingAt > WORKING_MS) {
+    workingAt = now;
+    const me = await $.session.id();
+    const list: typeof working = [];
+    for (const lab of await labsFor($, me)) {
+      try {
+        const res = await $.http.fetch(`http://127.0.0.1:${lab.port}/_lab/pending`, { headers: { host: `localhost:${lab.port}`, 'x-lab-admin': lab.key, 'x-lab-agent': '1' } });
+        const p: Pending = res.ok ? JSON.parse(res.text) : null;
+        if (p?.last === me) for (const w of p.working || []) list.push({ lab, ...w });
+      } catch {}
+    }
+    working = list;
+  }
+  for (const w of working) {
+    const key = `${w.lab.port}:${w.id}`;
+    if (now - (noted.get(key) ?? -Infinity) < PROGRESS_MS) continue;
+    noted.set(key, now);
+    void $.http
+      .fetch(`http://127.0.0.1:${w.lab.port}/_lab/api/comments`, {
+        method: 'POST',
+        headers: { host: `localhost:${w.lab.port}`, 'x-lab-admin': w.lab.key, 'x-lab-agent': '1', 'content-type': 'application/json' },
+        body: JSON.stringify({ page: w.page, action: 'progress', id: w.id, text: line }),
+      })
+      .catch(() => {});
+  }
+}
+
 async function look($: any): Promise<void> {
   if (submittedAt) {
     if ((await $.clock.now()) - submittedAt < SUBMIT_MS) return;
@@ -119,6 +170,11 @@ async function look($: any): Promise<void> {
 }
 
 export const register: Register = (on) => {
+  // A tool call by this session or a helper of it: the pins being worked on show it. Never delays the call.
+  on('tool.call', ($, e, next) => {
+    void progress($, e).catch(() => {});
+    return next(e);
+  });
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) {
       busy = true;
