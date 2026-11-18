@@ -86,14 +86,16 @@ test('unknown keys, wrong types and broken JSON are said and skipped, the rest s
 });
 
 test('shortcuts merge key by key (the project\'s over yours over the defaults); a key used twice is said', () => {
-  const { load } = setup({ shortcuts: { chat: 'x' } }, { shortcuts: { chat: 'q', toggle: 'h', next: 'X', bogus: 'z', pause: 'pp' } });
+  const { load } = setup({ shortcuts: { chat: 'x' } }, { shortcuts: { chat: 'q', toggle: 'h', next: 'X', bogus: 'z', done: 'dd', pause: 'p' } });
   const s = load();
   assert.equal(s.values.shortcuts.chat, 'x');
   assert.equal(s.values.shortcuts.toggle, 'h');
   assert.equal(s.values.shortcuts.next, 'x', 'lowercased');
   assert.equal(s.values.shortcuts.comment, '1', 'a default');
-  assert.equal(s.values.shortcuts.pause, 'p', 'two letters: refused, the default stays');
+  assert.equal(s.values.shortcuts.done, 'd', 'two letters: refused, the default stays');
   assert.ok(s.problems.some((p) => /bogus is not an action/.test(p)));
+  assert.equal(s.values.shortcuts.pause, undefined, 'pause was removed: a stored one is ignored');
+  assert.ok(s.problems.some((p) => /\.pause is not an action/.test(p)), 'and said, not a crash');
   assert.ok(s.problems.some((p) => /"x" is used twice/.test(p)));
 });
 
