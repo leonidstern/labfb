@@ -140,20 +140,23 @@ try {
         const s = await span(p, '#t', 'drag across');
         const x = s.first.left + 20;
         const y = s.first.top + s.first.height / 2;
-        const cursor = () => p.evaluate(([x, y]) => ({ shift: document.documentElement.classList.contains('lab-shift'), cursor: getComputedStyle(document.elementFromPoint(x, y)).cursor }), [x, y]);
+        const IBEAM = 'data:image/svg+xml'; // the drawn I-beam with the green pin tip, falling back to text
+        const cursor = () => p.evaluate(([x, y]) => ({ shift: document.documentElement.classList.contains('lab-shift-cur'), selectable: document.documentElement.classList.contains('lab-shift'), cursor: getComputedStyle(document.elementFromPoint(x, y)).cursor }), [x, y]);
         await p.mouse.move(x - 5, y);
         await p.mouse.move(x, y);
         await sleep(200);
         const off = await cursor();
-        check(eng, 'no Shift: the pin pointer, not the text cursor', !off.shift && off.cursor !== 'text', JSON.stringify(off));
+        check(eng, 'no Shift: the pin pointer, not the text cursor', !off.shift && !off.cursor.includes(IBEAM), JSON.stringify(off));
         await p.keyboard.down('Shift');
         await sleep(200);
         const on = await cursor();
-        check(eng, 'Shift held over words: the text cursor (I-beam)', on.shift && on.cursor === 'text', JSON.stringify(on));
+        check(eng, 'Shift held over words: the drawn I-beam with the pin tip (text as fallback)', on.shift && on.cursor.includes(IBEAM) && on.cursor.includes('%2324a046') && /,\s*text$/.test(on.cursor), JSON.stringify(on));
         await p.keyboard.up('Shift');
+        const quick = await cursor(); // no waiting: the cursor follows the key at once, the text stays selectable a moment longer
+        check(eng, '…right after Shift is let go the cursor is no longer the I-beam (text still selectable for the selection)', !quick.shift && !quick.cursor.includes(IBEAM) && quick.selectable, JSON.stringify(quick));
         await sleep(700);
         const back = await cursor();
-        check(eng, '…Shift let go: the pin pointer again', !back.shift && back.cursor !== 'text', JSON.stringify(back));
+        check(eng, '…Shift let go: the pin pointer again', !back.shift && !back.cursor.includes(IBEAM), JSON.stringify(back));
         const field = await p.locator('#field').boundingBox();
         await p.keyboard.down('Shift');
         await p.mouse.move(field.x + 10, field.y + 5);

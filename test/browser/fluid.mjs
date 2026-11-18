@@ -21,9 +21,9 @@ const pw = (() => {
 })();
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-'));
+let DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-'));
 const PORT = String(5500 + Math.floor(Math.random() * 300));
-const B = `http://localhost:${PORT}`;
+let B = `http://localhost:${PORT}`;
 const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const LONG = 'This is a very long paragraph meant to be selected whole, it keeps going and going with plenty of words so that the selection runs over several lines of the window, and then it goes on a little more for good measure, with yet more words to be sure that it is over three hundred characters long, until finally it ends.';
 const PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>fluid</title>
@@ -52,6 +52,30 @@ for (let i = 0; i < 80; i++) {
     await sleep(100);
   }
 }
+// A second lab whose labit.json changes the actions (go, then two of your own): scenes run in it through withLab2.
+const DIR2 = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-actions-'));
+const PORT2 = String(5850 + Math.floor(Math.random() * 100));
+const B2 = `http://localhost:${PORT2}`;
+fs.writeFileSync(path.join(DIR2, 'labit.json'), JSON.stringify({ actions: { words: ['go', { label: 'tighter', send: 'Tighter: less space' }, { label: 'shorter', send: 'Shorter:', ask: true }] } }));
+for (let i = 0; i <= 100; i++) fs.writeFileSync(path.join(DIR2, i ? `s${i}.html` : 'index.html'), PAGE);
+const server2 = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT2], { cwd: DIR2, env: { ...env, XDG_CONFIG_HOME: path.join(DIR2, 'nobody') }, stdio: 'ignore' });
+for (let i = 0; i < 80; i++) {
+  try {
+    await fetch(B2 + '/');
+    break;
+  } catch {
+    await sleep(100);
+  }
+}
+const withLab2 = async (fn) => {
+  const was = [B, DIR];
+  [B, DIR] = [B2, DIR2];
+  try {
+    await fn();
+  } finally {
+    [B, DIR] = was;
+  }
+};
 let failed = 0;
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
@@ -460,6 +484,40 @@ try {
         const off = await st();
         check(eng, 'rewrite shows on with the words in the box; picked again it is off and the box is a plain comment again', on.on === 'rewrite' && on.text === 'delta echo' && off.on === '' && off.text === '', JSON.stringify([on, off]));
       });
+      // Actions of your own (labit.json `actions`: go, tighter, shorter): the bar, the row and the slash keys follow them
+      await withLab2(() => scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-bar button')].map((b) => b.textContent).join(' '));
+        check(eng, 'actions in labit.json: the bar is comment, then the listed ones in their order', names === 'comment go tighter shorter', names);
+        await inRoot(p, (r) => r.querySelector('.p-bar [data-k=tighter]').click());
+        await sleep(1500);
+        const c = await sent('Tighter: less space');
+        check(eng, '…an action of your own sends its text at once, on the words', Boolean(c) && c.anchor?.quote?.exact === 'delta echo' && (await fd(p)) === null, JSON.stringify(c?.anchor?.quote));
+      }));
+      await withLab2(() => scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'foxtrot golf');
+        await sleep(700);
+        await inRoot(p, (r) => r.querySelector('.p-bar [data-k=shorter]').click());
+        await sleep(800);
+        const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.p-dlg .quick .on')].map((b) => b.dataset.k).join(), row: [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '), text: r.querySelector('.p-dlg textarea').value, focus: r.activeElement?.localName }));
+        check(eng, 'an action with ask opens the box with its text to finish, shown on', st.on === 'shorter' && st.text === 'Shorter:' && st.row === 'go tighter shorter' && st.focus === 'textarea', JSON.stringify(st));
+        await p.keyboard.type(' by half');
+        await p.keyboard.press('Enter');
+        await sleep(1500);
+        check(eng, '…and sends what the box holds', Boolean(await sent('Shorter: by half')));
+      }));
+      await withLab2(() => scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'india juliet');
+        await sleep(700);
+        await p.keyboard.type('/t');
+        await sleep(800);
+        const lit = await inRoot(p, (r) => r.querySelector('.p-dlg .quick .hl')?.textContent);
+        await p.keyboard.press('Enter');
+        await sleep(1500);
+        check(eng, 'slash keys follow the labels\' first letters: /t lights tighter and Enter sends it', lit === 'tighter' && Boolean(await sent('Tighter: less space')), String(lit));
+      }));
+
       // Sending: leaves, a new selection while it goes
       await scene(eng, browser, {}, async (p) => {
         const s = await span(p, '#a', 'delta echo');
@@ -623,7 +681,9 @@ try {
   }
 } finally {
   server.kill();
+  server2.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
+  fs.rmSync(DIR2, { recursive: true, force: true });
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);
