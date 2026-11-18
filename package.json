@@ -44,7 +44,7 @@
   "homepage": "https://github.com/leonidstern/labit#readme",
   "bugs": "https://github.com/leonidstern/labit/issues",
   "author": "leonidstern (https://github.com/LeonidStern)",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "PolyForm-Small-Business-1.0.0",
   "publishConfig": {
     "access": "public"
   }
