@@ -53,11 +53,11 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 
 | Name | Property | Duration | Easing | For |
 | --- | --- | --- | --- | --- |
-| `.pin` | transform, box-shadow, opacity | quick | standard, standard, out | a pin growing as you point at it |
+| `.pin` | transform, opacity | quick | standard, out | a pin growing as you point at it (its green edge comes at once) |
 | `lab-pin` (`.pin.in`) | transform | base | standard | a pin appearing with the card |
 | `lab-arrive` (`.pin.arrive`) | opacity, transform | 1.25 × slow (delay quick) | pop | phones: the new pin pops in as the sent card goes |
 | `lab-halo` (`button.pin.arrive::before`) | box-shadow (`--_halo` green) | 2.5 × slow (delay as the pin) | out | phones: one green ring leaves the sent pin |
-| `lab-swap` (`.pin.swap`) | transform, opacity | slow | pop | a pin's face changed (taken, done, replied) |
+| `lab-swap` (`.pin.swap`) | transform, opacity | base | standard | a pin's face changed (taken, done): a quiet change |
 | `lab-gone` (`.ring.gone`) | opacity | slow | in | the agent's ring fading out |
 | `lab-halo` | box-shadow | 2.5 × slow | standard | one faint halo from a new comment's pin |
 | `lab-fade` (`.zone.live`, `.row .ask`, `.box.open .line/.who`, `.more-menu`, `.sw-box`) | opacity | quick | out | small things appearing |
@@ -108,12 +108,13 @@ biggest movements sit at the short end of that range; the old 340–380 ms sheet
 | `lab-fade` on the hint | 200 ms | 200 ms (same) |
 | `lab-out` | 140 ms | 120 ms |
 | `lab-ready` | 160 ms | 120 ms |
+| ring states (crossfade), tip, progress line | 300 / 120 / 200 ms | slow / quick / base, out curve |
 | `lab-in` | 180 ms | 200 ms |
 | `lab-pin` | 260 ms | 200 ms |
 | `lab-rise`, `.gp` colour | 200 ms | 200 ms (same) |
 | `lab-gone` | 300 ms | 300 ms |
 | `lab-fly` | 320 ms | 300 ms |
-| `lab-swap` | 360 ms, curve .3, .7, .4, 1.25 | 300 ms, pop curve (.34, 1.56, .64, 1): a little more overshoot |
+| `lab-swap` | 240 ms, standard curve | 200 ms, standard curve |
 | `lab-draw` | 400 ms | 300 ms |
 | `lab-arrive` | 460 ms, delay 130 ms | 375 ms, delay 120 ms |
 | sent pin's green ring (`lab-halo`) | 700 ms, ease-out | 750 ms, out |
