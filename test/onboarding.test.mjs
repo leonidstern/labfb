@@ -80,8 +80,8 @@ test('a folder with no index.html at the top lists its pages, not its folders, a
       await new Promise((r) => setTimeout(r, 100));
     }
   }
-  assert.match(html, /href="\/site\/"><span class="lab-page-t">Home</); // a page with a title shows it, its path in grey
-  assert.match(html, /<span class="lab-page-f">site\/index\.html</);
+  assert.match(html, /href="\/site\/"><span class="lab-page-t">Home</); // a page with a title shows it, not its file
+  assert.doesNotMatch(html, /<span class="lab-page-f">/);
   assert.match(html, /href="\/site\/about\/team\.html"><span class="lab-page-t">site\/about\/team\.html</);
   assert.doesNotMatch(html, /lib/);
   assert.match(out, /opening site\/index\.html/);
@@ -110,7 +110,7 @@ test('a running lab is listed for the Lab panel: a registry file while it runs, 
   // `pages` turns every running lab into a Markdown list in .lab/lab-pages.md.
   const out = await new Promise((resolve) => execFile(process.execPath, [LAB, 'pages'], { cwd: dir, env: { ...process.env, LABIT_HOME: home } }, (err, stdout) => resolve(stdout.trim())));
   assert.equal(out, path.join(dir, '.lab', 'lab-pages.md'));
-  assert.equal(fs.readFileSync(out, 'utf8'), `- [Start](http://localhost:${port}/)\n`);
+  assert.equal(fs.readFileSync(out, 'utf8'), `- [Start](http://localhost:${port}/) · just now\n`);
   lab.kill();
   await new Promise((r) => lab.on('exit', r));
   assert.ok(!fs.existsSync(reg), 'registry file removed on exit');
@@ -137,7 +137,7 @@ test('a folder that a running lab already serves opens that lab instead of start
   assert.match(nested.out, new RegExp(`already served by the lab for .*: http://localhost:${port}/sub/`));
   assert.ok(!fs.existsSync(path.join(dir, 'sub', '.lab')), 'no second lab started');
   const list = await run2(['list'], dir);
-  assert.match(list.out, new RegExp(`http://localhost:${port}  ${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · 2 pages`));
+  assert.match(list.out, new RegExp(`http://localhost:${port}  ${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · labit [^,]+, up [^·]+ · 2 pages`));
   lab.kill();
   await new Promise((r) => lab.on('exit', r));
   assert.match((await run2(['list'], dir)).out, /No labs running/);
