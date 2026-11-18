@@ -26,7 +26,7 @@ test('every flag is off until somebody says otherwise', () => {
   assert.equal(s.from.flags, 'default');
 });
 
-test("a flag in the project's file turns it on, and the others stay off", () => {
+test("a flag in the project's file turns it on, and the others stay off", { skip: !Object.keys(FLAGS).length && 'nothing is being tried' }, () => {
   const dir = tmp();
   const one = Object.keys(FLAGS)[0];
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { [one]: true } }));
@@ -46,7 +46,7 @@ test('a name nobody is trying is said out loud, not obeyed', () => {
   assert.deepEqual(flagsOn(s.values.flags), []);
 });
 
-test('a flag that is not true or false is ignored, with a word about it', () => {
+test('a flag that is not true or false is ignored, with a word about it', { skip: !Object.keys(FLAGS).length && 'nothing is being tried' }, () => {
   const dir = tmp();
   const one = Object.keys(FLAGS)[0];
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { [one]: 'yes' } }));

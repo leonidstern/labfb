@@ -89,7 +89,7 @@ A new instrument arrives as a flag: off unless you turn it on, tried in a real l
 it is simply labit — or dropped, and the code goes with it. Nothing is in labit because it was built.
 
 ```json
-{ "flags": { "liveUrl": true } }
+{ "flags": { "<flag>": true } }
 ```
 
 Put it in the project's `labit.json` (or in your own `~/.config/labit/settings.json`, for every lab you run) and
@@ -99,9 +99,9 @@ came from.
 
 | Flag | What it is |
 | --- | --- |
-| `liveUrl` | a lab in front of a page that is already live, so you pin on what shipped |
-| `agentPins` | a pin the agent left wears labit's own mark, the one the bar shows while an agent listens |
 | `sinceLooked` | a "New · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
+
+`agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.

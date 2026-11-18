@@ -378,7 +378,7 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .more-menu button:hover:not(:disabled) { background: var(--_soft); }
   .more-menu button:disabled { color: var(--_muted); cursor: default; }
   .more-menu button[hidden] { display: none; }
-  /* A pin left by the agent: labit's mark in place of a letter (flag: agentPins). */
+  /* A pin left by the agent: labit's mark in place of a letter. */
   .pin .agentmark { width: 60%; height: 60%; display: block; }
   .more-menu kbd { margin: 0; }
   /* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */

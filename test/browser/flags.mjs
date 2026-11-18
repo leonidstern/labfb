@@ -1,6 +1,5 @@
 // Flags from labit.json in real browsers (WebKit and Chrome's engine): the ⋯ menu has no switches for them (no
-// "trying" section), the lab takes no switch from a page, and a flag set in the file still turns its feature on
-// (agentPins: an agent's pin wears labit's mark, not a letter). Not part of `npm test`; CI runs it in the `browser` job.
+// "trying" section), the lab takes no switch from a page, and an agent's pin wears labit's mark with no flag set. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/flags.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -25,7 +24,7 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-flags-'));
 const PORT = 7970 + Math.floor(Math.random() * 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>f</title><h1 id="t">Flags</h1><p>text</p>');
-fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, flags: { agentPins: true } }));
+fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -47,7 +46,7 @@ try {
   // The lab no longer takes a switch from a page: the old endpoint is not there.
   const sw = await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: 'liveUrl', on: true }) });
   check('lab', 'POST /_lab/flags switches nothing', sw.status !== 200, String(sw.status));
-  check('lab', 'labit.json is as it was', JSON.parse(fs.readFileSync(path.join(DIR, 'labit.json'), 'utf8')).flags.liveUrl === undefined);
+  check('lab', 'labit.json is as it was', JSON.parse(fs.readFileSync(path.join(DIR, 'labit.json'), 'utf8')).flags === undefined);
   // An agent's pin, left the way an agent leaves one.
   execFileSync(process.execPath, [LAB, 'pin', '#t', 'a question from the agent'], { cwd: DIR, env: { ...env, PORT: String(PORT) }, stdio: 'pipe' });
 
@@ -77,7 +76,7 @@ try {
       check(eng, 'the ⋯ menu opens', menu.open);
       check(eng, 'the ⋯ menu has no trying section', menu.switches === 0 && !/trying/i.test(menu.text), menu.text.slice(0, 120));
       check(eng, "no flag's name is in the menu", !/live URL|labit's mark/.test(menu.text));
-      check(eng, "agentPins from labit.json: the agent's pin wears labit's mark", menu.agentMark === 1, String(menu.agentMark));
+      check(eng, "with no flag set, the agent's pin wears labit's mark", menu.agentMark === 1, String(menu.agentMark));
       await p.goto('about:blank');
       await ctx.close();
     } finally {
