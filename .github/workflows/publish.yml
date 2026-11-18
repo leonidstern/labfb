@@ -1,10 +1,8 @@
-# Publishes labit to npm by itself, on every push to main:
-# - `latest`, the release people get: whenever package.json has a version npm doesn't have yet (a release
-#   bump). Merges without a bump leave it alone. Also tagged vX.Y.Z, with a GitHub release whose notes are
-#   that version's CHANGELOG section (made on any run where it's missing, so a manual run can add one late).
-# - `next`, main as it is now: every push, as the next patch with a build number (0.6.2 on main → 0.6.3-main.41),
-#   so `npx @leonidstern/labit@next` runs everything merged, released or not. A prerelease never becomes
-#   `latest` and a plain `npx @leonidstern/labit` never picks it.
+# Publishes labit to npm by itself, only for a release: whenever package.json on main has a version npm doesn't
+# have yet (a release bump), it goes out as `latest`, tagged vX.Y.Z, with a GitHub release whose notes are that
+# version's CHANGELOG section (made on any run where it's missing, so a manual run can add one late). Merges
+# without a bump publish nothing (Leo, 18 Nov: not every merge to npm; his own labs run main + open PRs, built on
+# his Mac). The `next` tag that every merge used to update stays at its last version.
 #
 # No token: npm trusted publishing (OIDC). One-time setup on npmjs.com, package settings → Trusted publisher →
 # GitHub Actions, repository leonidstern/labit, workflow publish.yml. Each version also gets a provenance statement.
@@ -37,14 +35,13 @@ jobs:
         run: |
           name=$(node -p "require('./package.json').name")
           version=$(node -p "require('./package.json').version")
-          next=$(node -p "const [a,b,c]=process.argv[1].split('-')[0].split('.').map(Number); [a,b,c+1].join('.')" "$version")-main.$GITHUB_RUN_NUMBER
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "next=$next" >> "$GITHUB_OUTPUT"
           if npm view "$name@$version" version >/dev/null 2>&1; then release=0; else release=1; fi
           echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "release: $([ $release = 1 ] && echo "$version → latest" || echo "none, $version is on npm") · main: $next → next" >> "$GITHUB_STEP_SUMMARY"
+          echo "release: $([ $release = 1 ] && echo "$version → latest" || echo "none, $version is on npm")" >> "$GITHUB_STEP_SUMMARY"
 
       - run: npm test
+        if: steps.v.outputs.release == '1'
 
       # Trusted publishing needs npm 11.5.1 or newer.
       - name: Release (latest)
@@ -67,10 +64,3 @@ jobs:
           awk -v h="## $VERSION " 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
           printf '\nnpx @leonidstern/labit@%s\n' "$VERSION" >> "$RUNNER_TEMP/notes.md"
           gh release create "v$VERSION" --verify-tag --latest --title "labit $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
-
-      # After the release, so `next` is never older than `latest`. The version change stays in this checkout only.
-      - name: Main (next)
-        run: |
-          npm version "${{ steps.v.outputs.next }}" --no-git-tag-version
-          npx --yes npm@11.6.2 publish --access public --provenance --tag next
-
