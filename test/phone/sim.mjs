@@ -239,6 +239,23 @@ if (cmd === 'serve') {
       const end = ss.at(-1);
       return [['scrolling makes no comment box', !ss.some((s) => s.float)], ['the page scrolled', end.sy - s0.sy > 100, `scrollY ${s0.sy} → ${end.sy}`], ['no text got selected', ss.every((s) => !s.sel)]];
     } },
+    // Since you looked: a paragraph is edited in the page's file (the lab patches the open page), a mark comes up in the
+    // margin, and a tap on it shows the old and new words in a card that fits the screen.
+    { name: 'tap-mark', say: async () => {
+      const file = path.join(RUN, 'site', 'index.html');
+      fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('Paragraph 12. The quick brown fox', 'Paragraph 12. The slow grey fox'));
+      await sleep(3500); // the patch, then the second look a second later
+      const m = lines().at(-1).marks.find((x) => /chg/.test(x.c));
+      return m ? `tap ${fmt(dev(lines().at(-1), m.x + m.w / 2, m.y + m.h / 2))} (the amber mark in the margin, by paragraph 12)` : 'no mark came up (was the page opened before the edit?)';
+    }, expect: (ss) => {
+      const end = ss.at(-1);
+      const m = end.marks.find((x) => /chg/.test(x.c));
+      return [
+        ['a mark is 28px wide', Boolean(m) && m.w >= 28, m ? `${m.w}px` : 'no mark'],
+        ['a tap on it opens the card', Boolean(end.chgCard), JSON.stringify(end.chgCard)],
+        ['the card fits the screen width', Boolean(end.chgCard) && end.chgCard.x >= 0 && end.chgCard.x + end.chgCard.w <= end.iw, JSON.stringify(end.chgCard)],
+      ];
+    } },
   ];
   const fmt = (p) => (p ? `(${p.x}, ${p.y})` : '(not on screen)');
 
@@ -252,7 +269,7 @@ if (cmd === 'serve') {
     if (!s) { console.log('the recorder has sent nothing yet: open the page first'); process.exit(1); }
     if (st.step === 0) st.count0 = (await comments()).length;
     st.mark = Date.now();
-    console.log(`${st.as} · step ${st.step + 1}/${steps.length} ${step.name}: ${step.say(s)}`);
+    console.log(`${st.as} · step ${st.step + 1}/${steps.length} ${step.name}: ${await step.say(s)}`);
     save(st);
   } else if (cmd === 'check') {
     const step = steps[st.step];

@@ -76,3 +76,15 @@ test('a switch keeps the rest of labit.json as it was', () => {
   saveFlag(dir, one, false);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'labit.json'), 'utf8')), { port: 4455 });
 });
+
+test('sinceLooked is off until switched on, and the widget starts nothing without it', () => {
+  assert.equal(flagDefaults().sinceLooked, false);
+  assert.ok(FLAGS.sinceLooked.name && FLAGS.sinceLooked.since);
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sinceLooked: true } }));
+  assert.deepEqual(flagsOn(read(dir).values.flags), ['sinceLooked']);
+  // The widget's only way in: the badge, the marks, the kept looks and every request come from startChanges().
+  const widget = fs.readFileSync(new URL('../src/comments.js', import.meta.url), 'utf8');
+  assert.match(widget, /flag\('sinceLooked'\)\) startChanges\(\)/);
+  assert.equal(widget.match(/startChanges\(/g).length, 1, 'started in one place only');
+});
