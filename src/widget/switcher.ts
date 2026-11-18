@@ -22,7 +22,7 @@ let d: Deps;
 let box: HTMLElement;
 let input: HTMLInputElement;
 let list: HTMLElement;
-let data: { labs: Lab[]; parked: Parked[]; guest: boolean } | null = null;
+let data: { labs: Lab[]; parked: Parked[]; guest: boolean; local?: { name: string; port: number }[] } | null = null;
 let active = 0;
 let toCur = false; // the first list after opening starts on the page you're on, scrolled to it
 let armed = ''; // the park or archive button waiting for its second click: "action port"
@@ -156,12 +156,11 @@ async function act(action: 'stop' | 'park' | 'archive' | 'unarchive' | 'start', 
 
 const say = (lab: Lab) => {
   const open = lab.pages.reduce((n, p) => n + p.open, 0);
-  // A word in the lab's line, the badge's colours: green listening or working, dark when pins wait for nobody. The
-  // agent's session name is on hover (Leo 18 Nov: "nav-switcher listening" confused).
-  if (lab.unreachable) return ['not answering', 'warn'];
-  if (lab.mode === 'listening') return ['listening', 'ok'];
-  if (lab.mode === 'working') return ['working', 'ok'];
-  return ['no agent', open ? 'warn' : ''];
+  // Who listens, in words, for the lab's hover (Leo 18 Nov: an agent session's own name confused).
+  if (lab.unreachable) return ['not answering'];
+  if (lab.mode === 'listening') return ['Claude listening'];
+  if (lab.mode === 'working') return ['Claude working'];
+  return [`no agent listening${open ? `, ${open} open pins waiting` : ''}`];
 };
 const hit = (q: string, ...words: string[]) => !q || words.some((w) => (w || '').toLowerCase().includes(q));
 const short = (lab: Lab, p: Page) => p.title || p.path;
@@ -177,22 +176,9 @@ const ago = (iso?: string | null) => {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 };
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-/** Who commented: up to three initials in circles, the rest as +N; the names on hover. */
-const faces = (names: string[]) => {
-  const box = d.el('span', { class: 'sw-faces', title: names.join(', ') });
-  for (const n of names.slice(0, 3)) box.append(d.el('i', {}, (n.trim()[0] || '?').toUpperCase()));
-  if (names.length > 3) box.append(d.el('i', { class: 'more' }, `+${names.length - 3}`));
-  return box;
-};
-/** Pins open (filled dot) and closed (hollow), who commented, and a time: a page's row and a lab's line both. */
-const pinFacts = (open: number, done: number, people: string[], when: string) => {
-  const m = d.el('span', { class: 'sw-m' });
-  if (open) m.append(d.el('span', { class: 'sw-dot o' }, String(open)));
-  if (done) m.append(d.el('span', { class: 'sw-dot c' }, String(done)));
-  if (people.length) m.append(faces(people));
-  if (when) m.append(d.el('span', { class: 'sw-when' }, when));
-  return m;
-};
+/** A page's pins and last comment, in words (Leo 18 Nov: "make it all text"): "2 open · 1 closed · 10m ago". */
+const pinFacts = (open: number, done: number, when: string) =>
+  d.el('span', { class: 'sw-m' }, [open ? `${open} open` : '', done ? `${done} closed` : '', when].filter(Boolean).join(' · '));
 /** The last comment's time as the rows show it: "just now", "4m ago", "Nov 3". */
 const since = (iso?: string | null) => {
   const a = ago(iso);
@@ -228,11 +214,10 @@ function draw() {
     if (q && !pages.length && !labHit) continue;
     // The lab: its name and port, who listens, its pins, and what you can do about it (this computer only).
     const head = el('div', { class: 'sw-lab' });
-    const [status, tone] = say(lab);
+    const [status] = say(lab);
     const left = el('div', { class: 'sw-name' });
-    // One line (Leo 18 Nov: "one line, no status line"): who's listening as a dot before the name, then the same pin
-    // dots, faces and time as a page's row. The rest (counts in words, replies, created, running since, the agent's
-    // session) is on hover.
+    // Just the lab's name, a heading over its pages (Leo 18 Nov: "focus on pages"); the lab's totals, who listens, when
+    // it was made and how long it has run are on hover.
     const sum = (f: (p: Page) => number) => lab.pages.reduce((n, p) => n + f(p), 0);
     const open = sum((p) => p.open);
     const done = sum((p) => p.done || 0);
@@ -240,12 +225,7 @@ function draw() {
     const agent = sum((p) => p.agent || 0);
     const people = [...new Map(lab.pages.flatMap((p) => p.people || []).map((n) => [n.toLowerCase(), n] as const)).values()]; // "Leo" and "leo" are one
     const last = latest(...lab.pages.map((p) => p.last));
-    left.append(
-      home(lab),
-      el('span', { class: 'sw-port' }, ` ${lab.port}${lab.here ? ' · here' : ''} ·`),
-      el('span', { class: `sw-live ${tone}` }, status),
-      pinFacts(open, done, people, since(last)),
-    );
+    left.append(home(lab), el('span', { class: 'sw-port' }, `:${lab.port}`));
     left.title = [
       status,
       open + done ? `${open} open, ${done} closed` : 'no pins yet',
@@ -297,7 +277,7 @@ function draw() {
       const here = lab.here && p.path === d.page;
       const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page' });
       // Open pins (filled dot) and closed (hollow), who commented, and the last comment's time.
-      const meta = pinFacts(p.open, p.done || 0, p.people || [], here ? 'you’re here' : since(p.last));
+      const meta = pinFacts(p.open, p.done || 0, here ? 'you’re here' : since(p.last));
       // The time is the last comment's (Leo 18 Nov: file times were all the same after a copy); the file's is on hover.
       const tip = [p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
         p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
@@ -315,7 +295,19 @@ function draw() {
     }
     if (!pages.length) out.push(el('div', { class: 'sw-none' }, lab.unreachable ? 'this lab isn’t answering' : 'no pages yet'));
   }
-  if (data.guest && data.labs.length < 2) out.push(el('div', { class: 'sw-none' }, 'Other labs on that computer are open to this computer only.'));
+  // A phone: the labs it can't open (not on the wifi, or an older labit), named so none seems missing (Leo 18 Nov).
+  const away = (data.local || []).filter((l) => hit(q, l.name, String(l.port)));
+  if (data.guest && away.length) {
+    out.push(el('div', { class: 'sw-group' }, `on the computer only · ${away.length}`));
+    for (const l of away) {
+      const r = el('div', { class: 'sw-lab parked' });
+      const n = el('div', { class: 'sw-name' });
+      n.append(el('b', {}, l.name), el('span', { class: 'sw-port' }, `:${l.port}`));
+      r.append(n);
+      out.push(r);
+    }
+    out.push(el('div', { class: 'sw-none' }, 'They open here once they run the newest labit with --wifi.'));
+  }
   if (local) {
     const all = data.parked.filter((p) => hit(q, p.name, String(p.port)));
     const order = (ps: Parked[]) => [...ps].sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));

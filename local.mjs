@@ -1621,7 +1621,10 @@ const handler = async (req, res) => {
         name: lab.name, port: lab.port, here: lab.here, mode: lab.mode, listening: lab.listening, created: lab.created, started: lab.started,
         pages: lab.pages.map(({ url, root: _root, file: _file, ...p }) => ({ ...p, url: hop ? `/_lab/hop?port=${lab.port}&to=${encodeURIComponent(p.path)}` : new URL(url).pathname })),
       });
-      return answer(res, { labs: [forGuest(mine, false), ...others.filter((l) => l.wifi && !l.unreachable).map((l) => forGuest(l, true))], parked: [], guest: true });
+      // Labs not open to the wifi (or on an older labit that doesn't say): named, so the phone knows they're there, but
+      // their pages stay on this computer.
+      const local = others.filter((l) => !l.wifi || l.unreachable).map((l) => ({ name: l.name, port: l.port }));
+      return answer(res, { labs: [forGuest(mine, false), ...others.filter((l) => l.wifi && !l.unreachable).map((l) => forGuest(l, true))], parked: [], guest: true, local });
     }
     // A phone this lab let in goes to another lab on this computer: this lab asks that one for a one-time link (with
     // that lab's agent key, from its folder) for the same name and page, and sends the phone there. Only labs open to
