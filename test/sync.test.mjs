@@ -16,8 +16,9 @@ const PORT = String(8600 + Math.floor(Math.random() * 200)); // clear of the oth
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 fs.writeFileSync(path.join(DIR, 'other.html'), '<!doctype html><title>o</title><h1 id="o">Other</h1>');
+fs.writeFileSync(path.join(DIR, 'third.html'), '<!doctype html><title>3</title><h1 id="h">Third</h1>'); // its own session's page: a claim on it leaves the others alone
 // A 1 s grace once every page is closed, and pins 300 ms apart go over together. A tab with neither a stream nor a check-in is gone after 3 s here (90 s in a real lab).
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LAB_TAB_TTL: '3', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LAB_TAB_TTL: '3', LAB_BETWEEN_MS: '800', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
 const procs = new Set();
 after(() => {
@@ -160,6 +161,56 @@ test('a wait that times out ends quietly and the pages say no agent is listening
   p.close();
 });
 
+test('right after a wait runs out the pages still say listening, for the next wait to come (LAB_BETWEEN_MS)', async () => {
+  await drain();
+  const p = await live('bt-1');
+  const w = wait([], 1);
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  await w.done;
+  await sleep(300);
+  assert.equal(modeOf(p), 'listening', 'still listening inside the grace');
+  const again = wait();
+  await sleep(1000); // past the grace: the new wait keeps it listening
+  assert.equal(modeOf(p), 'listening');
+  again.kill();
+  await again.done;
+  await until(() => modeOf(p) === 'away', 3000, 'away once cancelled');
+  p.close();
+});
+
+test('two sessions on one lab: when one gets its pins, the other is still listening', async () => {
+  await drain();
+  const p = await live('two-s');
+  await until(() => modeOf(p) === 'away', 3000, 'away before the test');
+  const other = wait(['--pages', 'other']);
+  const idx = wait(['--pages', 'third']);
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  await post('for the third session', '/third');
+  const { out } = await idx.done;
+  assert.match(out, /for the third session/);
+  await sleep(300);
+  assert.equal(modeOf(p), 'listening', 'the /other wait is still open: not working, not away');
+  other.kill();
+  await other.done;
+  p.close();
+});
+
+test('pages say which of them are heard: a wait with --pages hears its own, not the others', async () => {
+  await drain();
+  const p = await live('hd-1');
+  await until(() => modeOf(p) === 'away', 3000, 'away before the test');
+  const mine = wait(['--pages', 'other']);
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  assert.deepEqual(p.last().heard, { all: false, pages: ['/other'], except: [] });
+  const plain = wait();
+  await until(() => p.last().heard?.all === true, 4000, 'a plain wait hears every page');
+  assert.ok(!p.last().heard.except.includes('/index'), 'index is heard');
+  plain.kill();
+  mine.kill();
+  await Promise.all([plain.done, mine.done]);
+  p.close();
+});
+
 test('a new wait for the same pages replaces the old one: the old one is told, the pages never show away in between', async () => {
   await drain();
   const p = await live('re-1');
@@ -271,4 +322,25 @@ test('a bye that arrives before its stream has closed still lets the tab go', as
   assert.match(out, /page was closed/);
   const ms = Date.now() - t0;
   assert.ok(ms < 2500, `ended ${ms} ms after: within the 1 s grace, not after the 3 s silent-tab timeout`);
+});
+
+test('labs & pages: this lab and its pages; stop listening needs the key and ends the wait with its own word', async () => {
+  await drain();
+  const got = await (await fetch(B + '/_lab/labs')).json();
+  const me = got.labs.find((l) => l.here);
+  assert.equal(me.port, Number(PORT));
+  assert.ok(me.pages.some((p) => p.path === '/other'), 'its pages are listed');
+  const w = wait();
+  const p = await live('sw-1');
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  const no = await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'stop', port: Number(PORT) }) });
+  assert.equal(no.status, 403, 'no key, no stop');
+  const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  const ok = await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ action: 'stop', port: Number(PORT) }) });
+  assert.equal(ok.status, 200);
+  const { out } = await w.done;
+  assert.match(out, /stopped listening from the page/);
+  await until(() => modeOf(p) === 'away', 3000, 'away once stopped');
+  p.close();
+  await sleep(300); // its bye reaches the lab before the file's end stops it
 });

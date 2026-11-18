@@ -75,6 +75,7 @@ Your `~/.config/labit/settings.json`:
 | `updateCheck` | `true` | `LABIT_NO_UPDATE_CHECK=1` | Say when a newer labit is out (checked at most once a day). | both |
 | `name` | none | | Your name on pins. The page asks once and keeps it here. | yours |
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
+| `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
 | `flags` | everything off | | What this lab is trying: `{ "<flag>": true }`. See **Trying things** below. | either |
 

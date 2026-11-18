@@ -80,11 +80,14 @@ export function startLive() {
     let stream = null;
     let beat = 0;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
+    // A dropped connection isn't "nobody listening": the badge keeps its last state, faded, and says reconnecting
+    // (Leo, 18 Nov: the black rabbit came and went at random, from these).
     const showAway = (word) => {
       lbl.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
       who.setAttribute('aria-label', word);
-      who.classList.add('idle');
-      who.classList.remove('working');
+      who.classList.add('stale');
+      W.chatBtn.classList.add('stale');
+      if (!who.classList.contains('working') && !last) who.classList.add('idle');
       who.hidden = false;
     };
     let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
@@ -379,7 +382,12 @@ export function startLive() {
         }
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
-        const mode = s ? v.mode || 'listening' : 'away';
+        // A lab with listeners can still have none for this page (a wait with --page for another one): this page says
+        // so, instead of "talking to Claude" while its pins wait for nobody. An older lab doesn't send heard.
+        const h = v.heard;
+        const here = !h || h.pages.includes(W.S.page) || (h.all && !h.except.includes(W.S.page));
+        const mode = s && here ? v.mode || 'listening' : 'away';
+        W.S.unheard = mode === 'away';
         const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
         // "Codex is working (ooze)": the agent first, the session's name after it in brackets. With the model the
         // session said it runs on: "talking to Claude · Sonnet 5.5 (ooze)".
@@ -387,7 +395,9 @@ export function startLive() {
         const tag = s && s.name !== (s.agent || 'Claude') ? [span(`(${s.name})`)] : [];
         if (mode === 'listening') lbl.replaceChildren(span('talking to'), agent, ...tag);
         else if (mode === 'working') lbl.replaceChildren(agent, span('is working'), ...tag);
-        else lbl.replaceChildren(span('no agent listening'));
+        else lbl.replaceChildren(span(s && !here ? 'no agent on this page' : 'no agent listening'));
+        who.classList.remove('stale');
+        W.chatBtn.classList.remove('stale');
         who.classList.toggle('idle', mode === 'away');
         who.classList.toggle('working', mode === 'working');
         W.listBtn.dataset.agent = mode;
@@ -398,7 +408,8 @@ export function startLive() {
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
-        who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labit wait' : s?.resume || '';
+        // How to get one listening again: what to say to the agent, for this page.
+        who.title = mode === 'away' ? `To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : s?.resume || '';
         who.hidden = false;
       }
     }

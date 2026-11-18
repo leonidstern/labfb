@@ -24,6 +24,9 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags'; def: unknown; o
   updateCheck: { type: 'boolean', def: true },
   name: { type: 'string', def: '', only: 'personal' },
   model: { type: 'string', def: '', only: 'personal' },
+  // The one lab for pages that belong to no project (tries, demos, options): agents add pages there, a folder per
+  // topic, instead of starting a lab of their own (Leo 18 Nov: "def reuse it, why we have so much").
+  pagesFolder: { type: 'string', def: '~/lab-pages', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
   // What is being tried here (lib/flags.ts). Off unless a file or the ⋯ menu turns one on.
   flags: { type: 'flags', def: flagDefaults() },

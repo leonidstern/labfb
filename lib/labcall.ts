@@ -41,4 +41,5 @@ export const WAIT_SAID: Record<number, string> = {
   204: 'No new comments yet. Run wait again to keep listening.',
   409: 'Another session is listening now; this one stopped.',
   410: 'The page was closed, so this stopped listening. Wait again only when the person asks or opens the page.',
+  423: 'The person stopped listening from the page (labs & pages). Don\'t wait again until they ask you to.',
 };
