@@ -14,7 +14,7 @@ In your project:
 npx @leonidstern/labit@latest
 ```
 
-It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, and opens the page with comments on top. Click to comment, drag to mark an area. `M` hides the comments.
+It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, and opens the page with comments on top. Click to comment, drag to mark an area, Shift-drag to quote words. `M` hides the comments.
 
 ## Let your agent answer
 
