@@ -204,6 +204,20 @@ const faces = (names: string[]) => {
   if (names.length > 3) box.append(d.el('i', { class: 'more' }, `+${names.length - 3}`));
   return box;
 };
+/** Pins open (filled dot) and closed (hollow), who commented, and a time: a page's row and a lab's line both. */
+const pinFacts = (open: number, done: number, people: string[], when: string) => {
+  const m = d.el('span', { class: 'sw-m' });
+  if (open) m.append(d.el('span', { class: 'sw-dot o' }, String(open)));
+  if (done) m.append(d.el('span', { class: 'sw-dot c' }, String(done)));
+  if (people.length) m.append(faces(people));
+  if (when) m.append(d.el('span', { class: 'sw-when' }, when));
+  return m;
+};
+/** The last comment's time as the rows show it: "just now", "4m ago", "Nov 3". */
+const since = (iso?: string | null) => {
+  const a = ago(iso);
+  return !a ? '' : a === 'now' ? 'just now' : /\d[mhd]$/.test(a) ? `${a} ago` : a;
+};
 const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort().pop() || '';
 const touched = (p: Page) => latest(p.last, p.edited);
 const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)) || lab.started || '';
@@ -249,8 +263,9 @@ function draw() {
     const head = el('div', { class: 'sw-lab' });
     const [status, tone] = say(lab);
     const left = el('div', { class: 'sw-name' });
-    // What the lab keeps, at a glance: its pins open against closed (a bar), the replies and how many came from an
-    // agent, who commented, when it was made and last written on; how long it has run is on hover.
+    // One line (Leo 18 Nov: "one line, no status line"): who's listening as a dot before the name, then the same pin
+    // dots, faces and time as a page's row. The rest (counts in words, replies, created, running since, the agent's
+    // session) is on hover.
     const sum = (f: (p: Page) => number) => lab.pages.reduce((n, p) => n + f(p), 0);
     const open = sum((p) => p.open);
     const done = sum((p) => p.done || 0);
@@ -258,18 +273,22 @@ function draw() {
     const agent = sum((p) => p.agent || 0);
     const people = [...new Set(lab.pages.flatMap((p) => p.people || []))];
     const last = latest(...lab.pages.map((p) => p.last));
-    const pinsLine = el('span', { class: 'sw-facts' });
-    if (open + done) {
-      const bar = el('span', { class: 'sw-bar', title: `${open} open, ${done} closed` });
-      bar.append(el('i', { class: 'o', style: `flex:${open}` }), el('i', { class: 'c', style: `flex:${done}` }));
-      pinsLine.append(bar, `${open} open · ${done} closed${replies ? ` · ${replies} ${replies === 1 ? 'reply' : 'replies'}${agent ? `, ${agent} from Claude` : ''}` : ''}`);
-    } else pinsLine.append('no pins yet');
-    const when = [lab.created ? `created ${day(lab.created)}` : '', last ? `last comment ${ago(last) === 'now' ? 'just now' : `${ago(last)} ago`}` : ''].filter(Boolean).join(' · ');
-    const whoLine = el('span', { class: 'sw-facts' });
-    if (people.length) whoLine.append(faces(people), ' ');
-    whoLine.append(when);
-    left.append(el('b', {}, lab.name), ` · ${lab.port}${lab.here ? ' · this lab' : ''}`, pinsLine, whoLine, el('span', { class: `sw-st ${tone}`, ...(lab.listening ? { title: `the agent's session: ${lab.listening}` } : {}) }, status));
-    if (lab.started) left.title = `running since ${new Date(lab.started).toLocaleString()}`;
+    left.append(
+      el('span', { class: `sw-live ${tone}`, 'aria-label': status }),
+      el('b', {}, lab.name),
+      el('span', { class: 'sw-port' }, ` ${lab.port}${lab.here ? ' · here' : ''}`),
+      pinFacts(open, done, people, since(last)),
+    );
+    left.title = [
+      status,
+      open + done ? `${open} open, ${done} closed` : 'no pins yet',
+      replies ? `${replies} replies${agent ? `, ${agent} from Claude` : ''}` : '',
+      people.length ? `by ${people.join(', ')}` : '',
+      last ? `last comment ${new Date(last).toLocaleString()}` : '',
+      lab.created ? `created ${day(lab.created)}` : '',
+      lab.started ? `running since ${new Date(lab.started).toLocaleString()}` : '',
+      lab.listening ? `agent session: ${lab.listening}` : '',
+    ].filter(Boolean).join('\n');
     head.append(left);
     if (local) {
       const acts = el('div', { class: 'sw-acts' });
@@ -311,12 +330,7 @@ function draw() {
       const here = lab.here && p.path === d.page;
       const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page' });
       // Open pins (filled dot) and closed (hollow), who commented, and the last comment's time.
-      const meta = el('span', { class: 'sw-m' });
-      if (p.open) meta.append(el('span', { class: 'sw-dot o', title: `${p.open} open` }, String(p.open)));
-      if (p.done) meta.append(el('span', { class: 'sw-dot c', title: `${p.done} closed` }, String(p.done)));
-      if (p.people?.length) meta.append(faces(p.people));
-      const t = here ? 'you’re here' : p.last ? ago(p.last) : '';
-      if (t) meta.append(el('span', { class: 'sw-when' }, t));
+      const meta = pinFacts(p.open, p.done || 0, p.people || [], here ? 'you’re here' : since(p.last));
       // The time is the last comment's (Leo 18 Nov: file times were all the same after a copy); the file's is on hover.
       const tip = [p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
         p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
