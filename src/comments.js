@@ -869,7 +869,8 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       }
       // Its face changed since the last drawing (the agent took it, it's done, something new in it): it eases into the
       // new one and the ring fades in or out, instead of a cut (see .swap in styles.css).
-      const face = `${state}${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}`;
+      // A new reply read (the dot goes) is no change of face: it doesn't play (Leo, 18 Nov: closing one made it jump).
+      const face = `${state}${c.resolved ? ' resolved' : ''}`;
       const was = S.faces.get(c.id);
       S.faces.set(c.id, face);
       const changed = was !== undefined && was !== face && !still.matches;

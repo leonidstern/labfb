@@ -41,8 +41,8 @@ button.pin.arrive::before { content: ''; position: absolute; inset: 0; border-ra
                   --_halo: rgba(52, 199, 89, .75); animation: lab-halo .7s ease-out both; animation-delay: inherit; }
 /* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
    lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
-.pin.swap { animation: lab-swap .36s cubic-bezier(.3, .7, .4, 1.25); }
-@keyframes lab-swap { from { transform: scale(.72); opacity: .35; } }
+.pin.swap { animation: lab-swap .24s cubic-bezier(.2, .8, .2, 1); }
+@keyframes lab-swap { from { transform: scale(.9); opacity: .5; } } /* a quiet change of face */
 .pin .ring.gone { animation: lab-gone .3s ease-in forwards; }
 @keyframes lab-gone { to { opacity: 0; } }
 /* A new comment lands with one faint halo from its pin. */
