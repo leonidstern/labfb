@@ -305,7 +305,7 @@ test('a one-time link works once, and an unknown one never', async () => {
   const path_ = new URL((await invite())[0]).pathname;
   const first = await wraw(path_);
   assert.equal(first.status, 302);
-  assert.match(first.cookie || '', /^lab_guest=[0-9a-f]{16}\.[0-9a-f]{32}; Path=\/; Max-Age=86400; HttpOnly; SameSite=Lax$/);
+  assert.match(first.cookie || '', new RegExp(`^lab_guest_${WPORT}=[0-9a-f]{16}\\.[0-9a-f]{32}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax$`));
   assert.equal((await wraw(path_, { host: lan || '127.0.0.1' })).status, lan ? 403 : 302, 'the same link a second time, from a device that is not in');
   assert.equal((await wraw('/_lab/j/' + 'f'.repeat(32), { host: lan || '127.0.0.1' })).status, lan ? 403 : 302, 'a guessed link, from a device that is not in');
 });
@@ -319,6 +319,25 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal((await wraw('/', { host: lan, headers: { cookie } })).status, 200, 'in with the cookie');
   const forged = cookie.slice(0, -1) + (cookie.endsWith('0') ? '1' : '0'); // always one character off the real one
   assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
+});
+
+test('two labs on one computer keep their own passes: another lab\'s cookie never pushes this one out, and a used link still lands', { skip: !lan && 'no network address to come in on' }, async () => {
+  // A browser keeps cookies per host, not per port: a phone that joined a second lab (a try lab on another port) holds
+  // that lab's pass too. Before 18 Nov both were "lab_guest", the newer one replaced the other, and this lab met the
+  // phone with "That link is used up or too old".
+  const link = new URL((await invite())[0]);
+  const first = await wraw(link.pathname, { host: lan });
+  const mine = first.cookie.split(';')[0];
+  assert.match(mine, new RegExp(`^lab_guest_${WPORT}=`));
+  const other = `lab_guest_${WPORT + 1}=${'a'.repeat(16)}.${'b'.repeat(32)}`; // the other lab's pass: its own key
+  const otherOld = `lab_guest=${'c'.repeat(16)}.${'d'.repeat(32)}`; // an older labit's shared name, from another lab
+  const both = [otherOld, other, mine].join('; ');
+  assert.equal((await wraw('/', { host: lan, headers: { cookie: both } })).status, 200, 'in, beside the other labs\' cookies');
+  const again = await wraw(link.pathname, { host: lan, headers: { cookie: both } });
+  assert.equal(again.status, 302, 'the used link takes this phone to its page');
+  assert.equal((await wraw('/', { host: lan, headers: { cookie: [other, otherOld].join('; ') } })).status, 403, 'another lab\'s pass alone is not a way in');
+  const legacy = mine.replace(`lab_guest_${WPORT}=`, 'lab_guest=');
+  assert.equal((await wraw('/', { host: lan, headers: { cookie: legacy } })).status, 200, 'a pass from before, under the old name, still works');
 });
 
 test('a link can open a page; a used one still does where the lab already lets you in; a guest who keeps using it stays in', { skip: !lan && 'no network address to come in on' }, async () => {
