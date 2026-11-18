@@ -780,10 +780,20 @@ const writeMe = (name) => {
 };
 let myName = readMe();
 // A guest's name rides in their one-time link and then in a cookie of their own, since their browser is not this one.
+// Cookies are named per lab port: a browser keeps cookies per host, not per port, so two labs on one computer (4460
+// and a try lab on 4472) wrote over each other's pass and the first lab met the phone with "used up" (Leo, 18 Nov).
+// The old shared names are still read for a while; a pass is checked by its signature either way.
+const cookieOf = (req, name) => {
+  const all = req.headers.cookie || '';
+  for (const n of [`${name}_${PORT}`, name]) {
+    const m = new RegExp(`(?:^|;\\s*)${n}=([^;]+)(?:\\s*;|$)`).exec(all);
+    if (m) return m[1];
+  }
+  return '';
+};
 const guestName = (req) => {
-  const raw = /(?:^|;\s*)lab_me=([^;]+)(?:\s*;|$)/.exec(req.headers.cookie || '');
   try {
-    const n = decodeURIComponent(raw?.[1] || '');
+    const n = decodeURIComponent(cookieOf(req, 'lab_me'));
     return NAME_OK(n) ? n.trim() : '';
   } catch {
     return '';
@@ -793,10 +803,14 @@ const nameFor = (req) => (isLoopback(req) ? myName : guestName(req));
 
 const sign = (id) => createHmac('sha256', TOKEN).update(`lab-guest:${id}`).digest('hex').slice(0, 32);
 const guestOk = (req) => {
-  const raw = /(?:^|;\s*)lab_guest=([0-9a-f]{16})\.([0-9a-f]{32})(?:\s*;|$)/.exec(req.headers.cookie || '');
-  if (!raw) return false;
-  const want = Buffer.from(sign(raw[1])), got = Buffer.from(raw[2]);
-  return want.length === got.length && timingSafeEqual(want, got) && raw[1];
+  const all = req.headers.cookie || '';
+  for (const n of [`lab_guest_${PORT}`, 'lab_guest']) {
+    const raw = new RegExp(`(?:^|;\\s*)${n}=([0-9a-f]{16})\\.([0-9a-f]{32})(?:\\s*;|$)`).exec(all);
+    if (!raw) continue;
+    const want = Buffer.from(sign(raw[1])), got = Buffer.from(raw[2]);
+    if (want.length === got.length && timingSafeEqual(want, got)) return raw[1];
+  }
+  return false;
 };
 // Loopback is this computer: the browser here never needs a link. Without --wifi nobody else gets this far anyway.
 const mayIn = (req) => isLoopback(req) || !WIFI || !!guestOk(req);
@@ -815,7 +829,7 @@ const gate = (res, why = 'This lab opens with a one-time link.') =>
 // Where a link lands: a page of this lab (a path), never another site.
 const landing = (to) => (typeof to === 'string' && to.length < 300 && /^\/(?![/\\])\S*$/.test(to) ? to : '/');
 const GUEST_LIFE = 86400;
-const guestCookie = (id) => `lab_guest=${id}.${sign(id)}; Path=/; Max-Age=${GUEST_LIFE}; HttpOnly; SameSite=Lax`;
+const guestCookie = (id) => `lab_guest_${PORT}=${id}.${sign(id)}; Path=/; Max-Age=${GUEST_LIFE}; HttpOnly; SameSite=Lax`;
 const redeem = (req, res, code, me = '', to = '') => {
   const until = passes.get(code);
   passes.delete(code);
@@ -825,7 +839,7 @@ const redeem = (req, res, code, me = '', to = '') => {
   console.log(`[lab] a guest opened a one-time link (${String(req.socket.remoteAddress).replace(/^::ffff:/, '')})`);
   const cookies = [guestCookie(randomBytes(8).toString('hex'))];
   // The name the link carried, for that device alone: read by the server, handed to the widget, never a way in.
-  if (NAME_OK(me)) cookies.push(`lab_me=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
+  if (NAME_OK(me)) cookies.push(`lab_me_${PORT}=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
   return res.writeHead(302, { location: landing(to), 'set-cookie': cookies }).end();
 };
 const isAgent = (req) => {
