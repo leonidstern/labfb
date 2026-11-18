@@ -1,11 +1,10 @@
-// Flags: what the lab is trying. Off unless a file or the ⋯ menu turns one on; a switch writes the project's
-// labit.json, and turning it off again leaves no trace in the file.
+// Flags: what the lab is trying. Off unless labit.json turns one on; the page has no switches of its own.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadSettings, saveFlag } from '../lib/settings.ts';
+import { loadSettings } from '../lib/settings.ts';
 import { FLAGS, flagDefaults, flagsOn } from '../lib/flags.ts';
 
 const dirs = [];
@@ -54,27 +53,6 @@ test('a flag that is not true or false is ignored, with a word about it', () => 
   const s = read(dir);
   assert.match(s.problems[0], /must be true or false/);
   assert.equal(s.values.flags[one], false);
-});
-
-test('a switch writes the file, and off again leaves nothing behind', () => {
-  const dir = tmp();
-  const one = Object.keys(FLAGS)[0];
-  const file = saveFlag(dir, one, true);
-  assert.equal(file, path.join(dir, 'labit.json'));
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { flags: { [one]: true } });
-  assert.equal(read(dir).values.flags[one], true);
-
-  saveFlag(dir, one, false);
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {});
-  assert.equal(read(dir).values.flags[one], false);
-});
-
-test('a switch keeps the rest of labit.json as it was', () => {
-  const dir = tmp();
-  const one = Object.keys(FLAGS)[0];
-  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ port: 4455, flags: { [one]: true } }, null, 2));
-  saveFlag(dir, one, false);
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'labit.json'), 'utf8')), { port: 4455 });
 });
 
 test('sinceLooked is off until switched on, and the widget starts nothing without it', () => {

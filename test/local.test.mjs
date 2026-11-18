@@ -447,3 +447,121 @@ test('agent text says who looked, whether before or after the last save, and wha
     fs.writeFileSync(path.join(DIR, 'index.html'), was);
   }
 });
+
+// ---------- never stuck: labit reply --progress ----------
+const threadsOf = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+const pinFor = async (text) => (await post({ page: '/index', name: 'Leo', text, anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } })).comment.id;
+
+test('reply --progress keeps one line on the thread, replaced each time, with its time; no message, nothing done', async () => {
+  await up();
+  const id = await pinFor('progress thread');
+  const before = (await threadsOf()).length;
+  const first = await run(['reply', id, '--progress', 'drawing W1–W6 · 1 of 4']);
+  assert.equal(first.code, 0, first.out);
+  assert.match(first.out, /Progress noted on \/index/);
+  let c = (await threadsOf()).find((x) => x.id === id);
+  assert.equal(c.progress.text, 'drawing W1–W6 · 1 of 4');
+  assert.ok(Math.abs(Date.parse(c.progress.at) - Date.now()) < 15000, 'with the time it was said');
+  assert.equal((await threadsOf()).length, before, 'no message bubble');
+  assert.ok(!c.resolved, 'not done');
+  await run(['reply', id, '--progress', 'drawing W1–W6 · 2 of 4']);
+  c = (await threadsOf()).find((x) => x.id === id);
+  assert.equal(c.progress.text, 'drawing W1–W6 · 2 of 4', 'the latest replaces the last');
+  assert.equal((await threadsOf()).length, before);
+  // The page is told: the lab's comments version moves, so open pages fetch the change.
+  const rev = async () => {
+    const ctl = new AbortController();
+    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+    const { value } = await res.body.getReader().read();
+    ctl.abort();
+    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).comments;
+  };
+  const was = await rev();
+  await run(['reply', id, '--progress', 'drawing W1–W6 · 3 of 4']);
+  assert.equal(await rev(), was + 1);
+});
+
+test('an answer, a new message or resolving clears the progress line', async () => {
+  await up();
+  const get = async (id) => (await threadsOf()).find((x) => x.id === id);
+  const a = await pinFor('cleared by an answer');
+  await run(['reply', a, '--progress', 'working']);
+  assert.ok((await get(a)).progress);
+  await run(['reply', a, 'Here is the answer', '--on-it']);
+  assert.equal((await get(a)).progress, undefined, 'a reply clears it, on-it too');
+  const b = await pinFor('cleared by done');
+  await run(['reply', b, '--progress', 'working']);
+  await run(['reply', b, 'all done', '--done']);
+  assert.equal((await get(b)).progress, undefined, '--done');
+  assert.ok((await get(b)).resolved);
+  const q = await pinFor('cleared by a question');
+  await run(['reply', q, '--progress', 'working']);
+  await run(['reply', q, 'green or red?', '--question']);
+  assert.equal((await get(q)).progress, undefined, '--question');
+  const p = await pinFor('cleared by the person');
+  await run(['reply', p, '--progress', 'working']);
+  await post({ page: '/index', name: 'Leo', text: 'actually blue', parent: p });
+  assert.equal((await get(p)).progress, undefined, 'a person writing on the thread');
+  const r = await pinFor('cleared by resolve');
+  await run(['reply', r, '--progress', 'working']);
+  await run(['resolve', r]);
+  assert.equal((await get(r)).progress, undefined, 'resolving');
+});
+
+test('--progress takes only its line: no text, no answer flags, an id that exists, and only the agent may say it', async () => {
+  await up();
+  const id = await pinFor('progress refusals');
+  assert.match((await run(['reply', id, '--progress'])).out, /Progress text is missing/);
+  assert.match((await run(['reply', id, 'some words', '--progress', 'x'])).out, /--progress is only the line/);
+  assert.match((await run(['reply', id, '--progress', 'x', '--done'])).out, /--progress is only the line/);
+  assert.notEqual((await run(['reply', 'nope0000', '--progress', 'x'])).code, 0);
+  const forged = await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'progress', id, text: 'from a page' }) });
+  assert.equal(forged.status, 403, 'a page cannot write it');
+  assert.equal((await threadsOf()).find((x) => x.id === id).progress, undefined);
+  // A long line is cut, and one line (no breaks).
+  await run(['reply', id, '--progress', `${'long '.repeat(60)}`]);
+  assert.ok((await threadsOf()).find((x) => x.id === id).progress.text.length <= 120);
+});
+
+test('stale: a pin the agent said it is on, with no sign since, comes back in its next wait with how long and its last line', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-stale-')));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
+  const port = String(5300 + Math.floor(Math.random() * 300));
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '1500', LAB_SETTLE_MS: '0' };
+  const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', port], { cwd: dir, env });
+  const base = `http://localhost:${port}`;
+  const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  try {
+    for (let i = 0; i < 50; i++) {
+      try {
+        await fetch(base + '/');
+        break;
+      } catch {
+        await sleep(100);
+      }
+    }
+    const { comment } = await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'make it red', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }) })).json();
+    assert.match(await cli(['wait', '--timeout', '5']), new RegExp(comment.id), 'handed over');
+    await cli(['reply', comment.id, 'On it', '--on-it']);
+    await cli(['reply', comment.id, '--progress', 'drawing 2 of 4']);
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'a sign just now: nothing to remind of');
+    await sleep(1800);
+    const out = await cli(['wait', '--timeout', '3']);
+    assert.match(out, /^# Still waiting for your answer/m);
+    assert.match(out, new RegExp(`id ${comment.id} "make it red" · no sign for 0 min, last: drawing 2 of 4`));
+    assert.match(out, /1 still waiting/);
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'once, not on every wait (10 minutes between)');
+    // An answered thread (a plain reply, not on-it) is not stale however long it is quiet.
+    const done = (await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'and bigger', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }) })).json()).comment.id;
+    assert.match(await cli(['wait', '--timeout', '5']), new RegExp(done));
+    await cli(['reply', done, 'Bigger now']);
+    await sleep(1800);
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'a plain answer ends the wait for it');
+  } finally {
+    lab.kill();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

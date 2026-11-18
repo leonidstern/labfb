@@ -2,7 +2,7 @@
 // a while, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). The changelog says
 // which. Nothing is in the product because it was built.
 //
-// Each flag: the key as it is written in labit.json, the one line the ⋯ menu shows, and when it was first offered.
+// Each flag: the key as it is written in labit.json, one line saying what it is, and when it was first offered.
 
 export const FLAGS: Record<string, { name: string; since: string }> = {
   liveUrl: { name: 'a lab on a live URL', since: '0.6.2' },

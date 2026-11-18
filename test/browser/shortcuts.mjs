@@ -54,7 +54,7 @@ const look = (p) =>
   });
 
 try {
-  for (const eng of ['webkit', 'chromium']) {
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });

@@ -1,4 +1,5 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { lineWords } from './list.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -34,9 +35,11 @@ export function placeBeside(node, left, top) {
   }
 }
 
-export function grab(pin, c) {
+// `now` gives the thread the pin shows now: the pin is kept across redraws (src/comments.js, render), so it can't hold one.
+export function grab(pin, now) {
   pin.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !pin.classList.contains('grab')) return;
+    const c = now();
     const r = pin.getBoundingClientRect();
     const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
     const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
@@ -268,6 +271,8 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     if (actions) nav.append(actions);
     if (nav.firstChild) card.insertBefore(nav, body);
   }
+  // Phones have no pill: while the agent works, its line heads the sheet (list.ts paintLines keeps it current).
+  if (W.coarse && lineWords()) card.insertBefore(W.el('div', { class: 'agentline' }, lineWords()), card.querySelector('.nav') || body);
   foot.append(
     W.composer({
       placeholder: 'reply',

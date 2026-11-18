@@ -55,4 +55,8 @@ test('pending: the agent key only; it says what nobody was handed, who listened 
   assert.equal(p.fresh, 0, 'handed over: nothing pending');
   assert.equal(p.last, 'w1', 'the session that listened last');
   assert.ok(p.cmd && p.dir && p.url);
+  // The registry names the session that listened last, so the wake hook finds this lab from any folder.
+  const reg = JSON.parse(fs.readFileSync(path.join(env.LABIT_HOME, 'servers', `${PORT}.json`), 'utf8'));
+  assert.equal(reg.listener, 'w1');
+  assert.equal(reg.port, Number(PORT));
 });
