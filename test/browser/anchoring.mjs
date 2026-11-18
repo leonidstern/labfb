@@ -180,6 +180,25 @@ try {
       check(eng, 'a gap pin whose upper block is gone sits just above the lower one', !r.alone.moved && r.alone.top <= r.below && r.alone.top >= r.below - 16, JSON.stringify([r.alone, r.below]));
       await p.close();
 
+      // A gap pin after the last block (nothing below it) whose block is then removed: it sits at the box's end
+      // instead of crashing the widget (one such pin stopped the bar from drawing on its page).
+      p = await open(ctx, `<main style="padding-bottom:120px"><section class="a"><h2>Alpha</h2><p>one</p></section>
+        <section class="b"><h2>Beta</h2><p>two</p></section></main>`);
+      r = await p.evaluate(() => {
+        const b = document.querySelector('.b');
+        const m = document.querySelector('main').getBoundingClientRect();
+        const anchor = A.anchorAt(m.left + 200, b.getBoundingClientRect().bottom + 40);
+        b.remove();
+        try {
+          return { said: [anchor.gapAbove, anchor.gapBelow], at: A.position(anchor) };
+        } catch (e) {
+          return { said: [anchor.gapAbove, anchor.gapBelow], error: String(e) };
+        }
+      });
+      check(eng, 'a gap pin after the last block names only the block above', /Beta/.test(r.said[0]) && !r.said[1], JSON.stringify(r.said));
+      check(eng, 'a gap pin after a removed last block does not throw', !r.error && Number.isFinite(r.at?.top), JSON.stringify(r));
+      await p.close();
+
       // A gap between look-alikes (cards with no words of their own) is the one it was put in.
       p = await open(ctx, '<main><div id="top"></div>' + '<div class="card" style="height:40px;margin-bottom:60px;background:#ccc"></div>'.repeat(4) + '</main>');
       r = await p.evaluate(() => {

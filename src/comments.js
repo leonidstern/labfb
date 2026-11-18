@@ -1,13 +1,9 @@
 /*!
- * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
+ * lab comments: click anywhere on a lab page to pin a comment. No login, just a name.
  * https://github.com/leonidstern/labit · PolyForm Perimeter 1.0.0
- * Comments are off by default; the bar button or c turns them on (remembered per browser). When on, click anywhere that isn't a link or control to pin one (alt/option-click pins on those too). c (or the bar button) hides
- * and shows them; esc or a click outside closes an open comment. Dragging (mouse/pen) marks an area instead of a point.
- * Include on a page served through your lab domain:
- *   <script src="https://lab.example.com/_lab/comments.js" defer></script>
- * The layer only turns on when the page is opened on the host the script is loaded from (or data-host),
- * so the deployment's own address and local dev stay clean. data-enable="always" turns it on everywhere.
- * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
+ * The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
+ * link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
+ * Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
  */
 import styles from './widget/styles.css';
 import {
@@ -139,12 +135,10 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const i = word.indexOf(key);
     return i >= 0 ? keyWord(word.slice(0, i), key, word.slice(i + 1)) : keyWord(`${word} `, key, '');
   };
-  const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
-  const enabled = location.hostname === labHost || script?.dataset.enable === 'always';
-  if (!enabled || /** @type {any} */ (window).__labComments) return;
+  if (/** @type {any} */ (window).__labComments) return;
   /** @type {any} */ (window).__labComments = true;
 
-  const API = script?.dataset.api || '/_lab/api/comments';
+  const API = '/_lab/api/comments';
   const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
   S.page = pageNow();
   const store = {
@@ -180,20 +174,8 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     fetch(MEAPI, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {});
   };
 
-  // Admin keys are kept per lab (name.scope.sig), so one browser can hold links for /anna and /mira at once.
-  // The owner token has no scope and works everywhere.
-  const scopeOf = (key) => (key.split('.').length === 3 ? key.split('.')[1] : '');
-  // Admin links carry the key after # (never sent to the server, so it stays out of the member site's logs); ?lab-admin= still works.
-  const adminParam = new URLSearchParams(location.hash.slice(1)).get('lab-admin') || new URLSearchParams(location.search).get('lab-admin');
-  if (adminParam) {
-    const scope = scopeOf(adminParam);
-    store.set(scope ? `lab-admin:${scope}` : 'lab-admin', adminParam);
-    const url = new URL(location.href);
-    url.searchParams.delete('lab-admin');
-    if (/lab-admin=/.test(url.hash)) url.hash = '';
-    history.replaceState(null, '', url);
-  }
-  const adminToken = script?.dataset.admin || store.get(`lab-admin:${S.page.split('/')[1] || ''}`) || store.get('lab-admin:*') || store.get('lab-admin');
+  // The lab hands this computer's browser its admin key; a guest's page has none.
+  const adminToken = script?.dataset.admin || '';
 
   S.comments = [];
   S.isAdmin = false;
@@ -317,33 +299,15 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // ---------- data ----------
   const headers = () => ({ 'content-type': 'application/json', ...(adminToken ? { 'x-lab-admin': adminToken } : {}) });
 
-  // The API answers 404 anywhere but on the lab host. A script loaded with a relative src can't tell the
-  // lab host from the deployment's own address, so the first answer decides: no API here, no layer.
-  S.gone = false;
   S.loaded = false;
-  S.retried = false;
   const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}`, { headers: headers(), cache: 'no-store' });
-      if (res.status === 404 && !S.loaded && script?.dataset.enable !== 'always') {
-        if (!S.retried) {
-          S.retried = true;
-          setTimeout(load, 1500);
-          return;
-        }
-        S.gone = true;
-        S.on = false;
-        document.documentElement.classList.remove('lab-pinning');
-        host.remove();
-        fonts.remove();
-        return;
-      }
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       S.comments = data.comments || [];
       S.isAdmin = Boolean(data.admin);
-      S.rev = data.rev;
       // A thread you were part-way through writing in opens again: the page may have reloaded under you
       // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.
       if (!S.loaded && !S.openId) {
@@ -391,20 +355,6 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       return load();
     }
     shownAgain();
-  }
-  // On the web there is no live stream (local labs have one, see live.ts): an open page asks for its comments'
-  // revision every 10 s, a few bytes, and loads them again only when it moved, so someone else's reply or resolve
-  // shows within seconds. Not while the tab is hidden (it loads on coming back, below), and not from an API too old
-  // to say a revision.
-  if (!script?.dataset.live) {
-    setInterval(async () => {
-      if (document.hidden || !S.loaded || S.gone || S.rev === undefined) return;
-      try {
-        const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}&rev`, { headers: headers(), cache: 'no-store' });
-        const { rev } = res.ok ? await res.json() : {};
-        if (Number.isInteger(rev) && rev !== S.rev) load();
-      } catch {}
-    }, 10000);
   }
   function shownAgain() {
     if (!typed() && !S.grabbing) render();
@@ -1150,7 +1100,6 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
-    if (S.gone) return;
     const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
     if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
@@ -1583,7 +1532,6 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
   const navigated = () => {
-    if (S.gone) return;
     if (!host.isConnected && document.body) document.body.append(host);
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
