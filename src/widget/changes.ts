@@ -245,9 +245,10 @@ export function startChanges() {
     const nodes: Node[] = [];
     for (const m of marks) {
       const r = rectOf(m);
-      if (!r || (!r.height && m.kind !== 'rm')) continue;
+      if (m.kind === 'rm') continue; // removed text gets no mark in the margin (Leo, 18 Nov); the badge still counts it
+      if (!r || !r.height) continue;
       const b = W.el('button', { type: 'button', class: `chg-mark ${m.kind}${openAt === m ? ' open' : ''}`, 'aria-label': `${LABEL[m.kind]} since you looked` });
-      const bar = Math.max(2, (m.kind === 'rm' ? r.left : edge(m.el as Element)) - 14); // the bar, 14px left of the block and never off the screen
+      const bar = Math.max(2, edge(m.el as Element) - 14); // the bar, 14px left of the block and never off the screen
       b.style.left = `${bar - 20 + scrollX}px`; // the button reaches 20px further left than the bar: a thumb can hit it
       b.style.top = `${r.top + scrollY}px`;
       b.style.height = `${Math.max(r.height, 12)}px`;
@@ -265,7 +266,7 @@ export function startChanges() {
         if (note) head.onclick = () => W.goTo(note);
         const body = W.el('div', { class: 'chg-body' });
         if (m.kind === 'chg') body.append(wordDiff(m.old || '', m.now || ''));
-        else body.append(W.el('span', { class: m.kind === 'rm' ? 'del' : 'ins' }, m.kind === 'rm' ? m.old : m.now));
+        else body.append(W.el('span', { class: 'ins' }, m.now));
         const card = W.el('div', { class: 'chg-card' });
         card.append(head, body);
         const w = Math.min(320, innerWidth - 16);
@@ -291,7 +292,7 @@ export function startChanges() {
         place();
       }
       // In page order, round and round: a changed or removed block opens its card as it is reached.
-      const order = marks.filter((m) => rectOf(m)).sort((a, b) => (rectOf(a)?.top ?? 0) - (rectOf(b)?.top ?? 0));
+      const order = marks.filter((m) => m.kind !== 'rm' && rectOf(m)).sort((a, b) => (rectOf(a)?.top ?? 0) - (rectOf(b)?.top ?? 0));
       if (!order.length) return;
       const m = order[step++ % order.length];
       scrollTo({ top: (rectOf(m)?.top ?? 0) + scrollY - innerHeight / 3, behavior: W.still.matches ? 'auto' : 'smooth' });

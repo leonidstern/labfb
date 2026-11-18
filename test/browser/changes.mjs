@@ -90,7 +90,7 @@ try {
     check(eng, 'the first look is kept in this browser', await p.evaluate(() => JSON.parse(localStorage.getItem('lab-looked:/index')).blocks.length >= 5));
     write('index.html', page({ b: 'The second block talks about cost and a lower price.', mid: '<p id="n">A brand new block about security.</p>', c: false }));
     const got = await until(async () => /\+1\s*~1\s*−1/.test(await badge()));
-    check(eng, 'added, changed, removed: +1 ~1 −1 and three marks', got && (await marks()).length === 3 && (await marks()).join() === 'add,chg,rm', `${await badge()} · ${await marks()}`);
+    check(eng, 'added, changed, removed: +1 ~1 −1, marks only for added and changed (no tick for removed text)', got && (await marks()).join() === 'add,chg', `${await badge()} · ${await marks()}`);
     check(eng, 'the badge is a status with "seen ✓" and "hide"', /since you looked.*hide.*seen ✓/.test(await badge()) && (await shadow(() => { return r.querySelector('.since').getAttribute('role'); })) === 'status');
     const hit = await shadow(() => { return Math.round(r.querySelector('.chg-mark').getBoundingClientRect().width); });
     check(eng, 'a mark is 28px wide to hit with a thumb', hit === 28, `${hit}px`);
@@ -102,8 +102,8 @@ try {
     check(eng, 'a tap on a changed mark shows old and new words', card && /lower/.test(card.ins || '') && card.head === 'changed since you looked' && card.w <= 320, JSON.stringify(card));
     await p.keyboard.press('Escape');
     check(eng, 'Esc closes the card', (await shadow(() => { return r.querySelectorAll('.chg-card').length; })) === 0);
-    await click('.chg-mark.rm');
-    check(eng, 'a removed mark shows what the block said', (await shadow(() => { return r.querySelector('.chg-card .del')?.textContent; })) === 'The third block will go away soon.');
+    check(eng, 'removed text has no mark in the margin', (await shadow(() => { return r.querySelectorAll('.chg-mark.rm').length; })) === 0);
+    await click('.chg-mark.chg');
     await p.mouse.click(5, 5);
     check(eng, 'a click elsewhere closes the card', (await shadow(() => { return r.querySelectorAll('.chg-card').length; })) === 0);
 
@@ -115,14 +115,14 @@ try {
       await sleep(80);
       seq.push([await p.evaluate(() => Math.round(scrollY)), await shadow(() => { return r.querySelector('.chg-card .chg-head')?.textContent || ''; })]);
     }
-    check(eng, 'the counts step through the marks in page order and wrap', seq[0][0] > 0 && seq[0][0] < seq[1][0] && seq[1][0] < seq[2][0] && seq[3][0] === seq[0][0] && seq[1][1] === 'changed since you looked' && seq[2][1] === 'removed since you looked' && seq[0][1] === '', JSON.stringify(seq));
+    check(eng, 'the counts step through the marks in page order and wrap (removed text has no mark to step to)', seq[0][0] > 0 && seq[0][0] < seq[1][0] && seq[2][0] === seq[0][0] && seq[3][0] === seq[1][0] && seq[1][1] === 'changed since you looked' && seq[0][1] === '', JSON.stringify(seq));
     check(eng, 'reduced motion: the jump is instant', seq[0][0] > 0, `scrollY ${seq[0][0]} 80 ms after the click`);
 
     // ---- hide, seen ----
     await click('.since-btn');
     check(eng, 'hide takes the marks away and keeps the badge, with "show"', (await marks()).length === 0 && /show/.test(await badge()) && /\+1/.test(await badge()), `${await badge()}`);
     await click('.since-btn');
-    check(eng, 'show brings them back', (await marks()).length === 3);
+    check(eng, 'show brings them back', (await marks()).length === 2);
     await shadow(() => { [...r.querySelectorAll('.since-btn')].find((b) => /seen/.test(b.textContent)).click(); });
     check(eng, 'seen clears the badge and the marks', (await badge()) === '' && (await marks()).length === 0);
     await p.reload();
@@ -205,14 +205,14 @@ try {
     check(eng, 'the first look reaches the lab, under the name', (await lookOf(ME, 'sync'))?.length >= 5);
     write('sync.html', page({ b: 'The second block talks about cost and a lower price.', c: false }));
     await until(async () => /~1/.test(await mac.badge()) && /~1/.test(await phone.badge()) && /~1/.test(await mira.badge()) && /~1/.test(await nobody.badge()), 8000);
-    check(eng, 'same name in a second browser: the same marks', (await phone.marks()).join() === (await mac.marks()).join() && (await mac.marks()).join() === 'chg,rm', `${await mac.marks()} · ${await phone.marks()}`);
+    check(eng, 'same name in a second browser: the same marks', (await phone.marks()).join() === (await mac.marks()).join() && (await mac.marks()).join() === 'chg', `${await mac.marks()} · ${await phone.marks()}`);
     check(eng, 'at 390px the label goes and the card is as wide as the screen leaves', await (async () => {
       await phone.click('.chg-mark.chg');
       return phone.shadow(() => { const c = r.querySelector('.chg-card').getBoundingClientRect(); return !getComputedStyle(r.querySelector('.since-lbl')).display.includes('inline') && c.left >= 0 && c.right <= innerWidth; });
     })());
     await mac.shadow(() => { [...r.querySelectorAll('.since-btn')].find((b) => /seen/.test(b.textContent)).click(); });
     check(eng, 'seen on one clears the other within a second or two', await until(async () => (await phone.badge()) === '' && (await phone.marks()).length === 0, 3000), await phone.badge());
-    check(eng, "another name keeps its marks: Leo's seen leaves Mira's", (await mira.marks()).length === 2 && /~1/.test(await mira.badge()));
+    check(eng, "another name keeps its marks: Leo's seen leaves Mira's", (await mira.marks()).length === 1 && /~1/.test(await mira.badge()));
     await phone.p.reload();
     await sleep(2500);
     check(eng, 'seen on the Mac stays clear on the phone after a reload', (await phone.badge()) === '');
