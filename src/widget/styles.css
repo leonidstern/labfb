@@ -558,14 +558,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-lab + .sw-lab, .sw-row + .sw-lab, .sw-none + .sw-lab { margin-top: 6px; border-top: var(--_hair); }
 .sw-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 5px; font-size: 12px; color: var(--_muted); min-width: 0; white-space: nowrap; }
 .sw-port { font-size: 12px; color: var(--_muted); }
-.sw-home { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--_fg); font-weight: 650; font-size: 15px; letter-spacing: -.015em; text-decoration: none; border-radius: var(--_r-s); }
-.sw-home:hover { text-decoration: underline; text-underline-offset: 2px; }
 .sw-row .sw-t .sw-path { font-size: 12px; color: var(--_muted); }
 .sw-name b { color: var(--_fg); font-weight: 600; font-size: 13px; }
-.sw-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; flex-shrink: 0; max-width: 60%; }
-.sw-acts button { border: 0; background: var(--_soft); color: var(--_fg); font-size: 12px; padding: 4px 8px; border-radius: var(--_r-s); white-space: nowrap; }
-.sw-acts button:hover { background: var(--_hover); }
-.sw-acts button.armed { background: rgb(196, 60, 40); color: #fff; }
+.sw-row.armed .sw-m { color: rgb(196, 60, 40); } /* ⇧⌥A once: archiving the whole lab waits for a second press */
 .sw-row { display: flex; justify-content: space-between; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 7px 10px;
   border-radius: var(--_r-s); font-size: 14px; color: var(--_fg); }
 .sw-row.on, .sw-row:hover { background: var(--_soft); }
@@ -593,7 +588,5 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .sw-row:not(.parked) { flex-direction: column; gap: 1px; }
   .sw-row .sw-t { white-space: normal; }
   .sw-lab { align-items: center; }
-  .sw-acts button { font-size: 13px; padding: 5px 9px; }
-  .sw-acts { justify-content: flex-start; max-width: none; }
   .sw-foot { display: none; }
 }
