@@ -1917,8 +1917,18 @@ server.on('error', (e) => {
   // A port given by the preview pane (PORT) is the one it opens: don't move off it.
   const fixed = !opts.port && process.env.PORT;
   if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EADDRINUSE' || fixed || PORT >= Number(opts.port || 4400) + 20) die(`[lab] could not start: ${e.message}`);
-  server.listen(++PORT, WIFI ? undefined : '127.0.0.1');
+  PORT = skipLabs(PORT + 1);
+  server.listen(PORT, WIFI ? undefined : '127.0.0.1');
 });
+// A port another lab holds is taken even when listening here would work: a lab on the wifi listens on every address
+// (IPv6 *), and the system still lets this one take 127.0.0.1 on the same port, so localhost reached one lab or the
+// other (18 Nov, :4481). Skip the ports in ~/.labit/servers.
+function skipLabs(port) {
+  if (!opts.port && process.env.PORT) return port; // the preview pane's port is the one it opens
+  const held = new Set(runningLabs().filter((l) => l.pid !== process.pid).map((l) => l.port));
+  while (held.has(port)) port++;
+  return port;
+}
 // A newer labit on npm: said once when the lab starts. Checked at most once a day (kept in ~/.labit/latest.json)
 // with a short timeout, never in CI or with LABIT_NO_UPDATE_CHECK=1. The request names only the package.
 async function newerVersion() {
@@ -1973,4 +1983,5 @@ const bye = () => {
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed
+PORT = skipLabs(PORT);
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');
