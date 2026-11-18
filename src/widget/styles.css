@@ -547,6 +547,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-box { pointer-events: auto; }
 /* The page behind dims with the widget's own .scrim (a click there closes it, as it closes a sheet). */
 :host([data-labs]) .scrim { display: block; background: rgba(0, 0, 0, .18); }
+:host([data-labs]) .hint { visibility: hidden; }
 .sw-box { position: absolute; left: 50%; top: 12vh; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); max-height: 70vh;
   display: flex; flex-direction: column; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
 .sw-box input { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 14px 16px 12px; font-size: 16px; color: var(--_fg); border-bottom: var(--_hair); }
