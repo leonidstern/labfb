@@ -35,6 +35,7 @@ import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepNew, wor
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
+import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
@@ -121,6 +122,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get vv() { return vv; },
   };
   bindLive(W);
+  bindChanges(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
@@ -1082,6 +1084,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
+    S.checkChanges?.(); // hidden comments: no "New" pill
     if (S.on) showHint();
     S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
@@ -1767,6 +1770,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.openId = null;
     render();
     load();
+    setTimeout(() => S.checkChanges?.(), 400);
   };
   for (const m of ['pushState', 'replaceState']) {
     const original = history[m];
@@ -1945,6 +1949,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
+    if (script?.dataset.live && flag('sinceLooked')) startChanges(); // the ids added since you looked (local labs, where pages change under you)
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
