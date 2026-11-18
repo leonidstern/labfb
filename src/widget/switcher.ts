@@ -165,24 +165,19 @@ const ago = (iso?: string | null) => {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 };
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-/** A page's pins as two numbers in the pins' own colours, open then closed (green), and its last activity, if any
- *  (Leo 18 Nov: "just numbers with colors"): "2 5 · active 3m ago". */
-const pinFacts = (open: number, done: number, when: string) => {
-  const m = d.el('span', { class: 'sw-m', title: `${open} open, ${done} closed` });
-  m.append(d.el('b', { class: 'sw-open' }, String(open)), ' ', d.el('b', { class: 'sw-done' }, String(done)), when ? ` · ${when}` : '');
-  return m;
-};
 /** A time as the rows show it: "just now", "4m ago", "Nov 3". */
 const since = (iso?: string | null) => {
   const a = ago(iso);
   return !a ? '' : a === 'now' ? 'just now' : /\d[mhd]$/.test(a) ? `${a} ago` : a;
 };
 const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort().pop() || '';
-const touched = (p: Page) => p.last || ''; // newest first: the last comment, reply or close, as the rows show
+// A page's last activity: a comment, reply or close, or someone opening it (Leo 18 Nov: "show last activity, don't show
+// comments count, sort it by last activity"). The rows show it and are ordered by it, newest first.
+const touched = (p: Page) => latest(p.last, p.opened);
 const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)) || lab.started || '';
-// One order (Leo 18 Nov: no sorting): the lab you're in first, then the others, last active first; pages likewise.
+// One order (Leo 18 Nov: no sorting): last active first, labs and their pages alike.
 const orderPages = (ps: Page[]) => [...ps].sort((a, b) => touched(b).localeCompare(touched(a)));
-const orderLabs = (labs: Lab[]) => [...labs].sort((a, b) => Number(b.here) - Number(a.here) || labTouched(b).localeCompare(labTouched(a)));
+const orderLabs = (labs: Lab[]) => [...labs].sort((a, b) => labTouched(b).localeCompare(labTouched(a)));
 
 /** A lab as its topic (labit --name "Lab navigation"), else its folder, "~/projects/site" (Leo 18 Nov: "lab-nav :4481"
  *  confused). A guest, without the path, gets the name. */
@@ -293,8 +288,8 @@ function draw() {
     for (const p of pages) {
       const here = lab.here && p.path === d.page;
       const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page', 'data-page': p.path });
-      // Open and closed pins, and the last activity: a comment, a reply or a close (Leo 18 Nov: "like last activity").
-      const meta = pinFacts(p.open, p.done || 0, p.last ? `active ${since(p.last)}` : '');
+      // Only its last activity, "5m ago" (Leo 18 Nov: "show last activity, don't show comments count").
+      const meta = el('span', { class: 'sw-m' }, since(touched(p)));
       // When it was last opened, and the file's time, are on hover.
       const tip = [p.opened ? `opened ${new Date(p.opened).toLocaleString()}` : 'never opened', p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
         p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
