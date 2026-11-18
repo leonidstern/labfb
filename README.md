@@ -30,6 +30,7 @@ It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, an
 ```sh
 npx @leonidstern/labit@latest wait                    # ends with your next comment
 npx @leonidstern/labit@latest reply <id> --done "…"   # answers on the pin and closes it
+npx @leonidstern/labit@latest reply <id> --progress "…"  # during long work: one line next to its name, replaced by the next
 npx @leonidstern/labit@latest pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered
 ```
 
