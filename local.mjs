@@ -1413,6 +1413,15 @@ const inject = (html, tag) => {
   html = at === -1 || inScript ? html + tag : html.slice(0, at) + tag + html.slice(at);
   return holdFirst(html);
 };
+// A lab tab wears labit's mark, unless the page names its own icon or the folder has a favicon.ico: put in the page,
+// so the tab has it from the first paint, not once the widget has loaded and asked.
+// Behind a dev server the widget decides instead (src/widget/live.ts): only the dev server knows what it serves.
+const LAB_ICON = '<link rel="icon" href="/_lab/favicon.svg">';
+const withIcon = (html) => {
+  if (/<link\b[^>]*\brel=["']?(?:[^"'>]*\s)?icon[\s"'>/]/i.test(html) || fs.existsSync(path.join(ROOT, 'favicon.ico'))) return html;
+  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
+};
 // A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
 // where it sits: Chrome's location.reload is its own, and cannot be replaced, and by the time the widget loads the
 // dev server's client already holds its socket. So this goes in first, before anything else on the page: it wraps
@@ -2022,6 +2031,8 @@ const handler = async (req, res) => {
     let file = path.join(base, pathname);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
+    // A browser asks for /favicon.ico on its own (for a tab, a bookmark, history): a folder without one gets labit's.
+    if (!fs.existsSync(file) && pathname === '/favicon.ico') return res.writeHead(302, { location: '/_lab/favicon.svg' }).end();
     if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
@@ -2033,7 +2044,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
+        inject(withIcon(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
     }
     sendFile(req, res, file);
   } catch (e) {
