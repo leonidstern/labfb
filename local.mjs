@@ -46,6 +46,8 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
   labit settings
       Each setting, its value and where it came from: a flag or variable, labit.json in the project, your own
       ~/.config/labit/settings.json, or the default. See docs/settings.md.
+  labit skill
+      How an agent works with labit (the skill the plugin installs), printed: for an agent without the plugin.
   labit mcp
       Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply, pin and wait, for this folder's lab.
       Claude Code: claude mcp add labit -- npx @leonidstern/labit@latest mcp
@@ -96,7 +98,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
+const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'skill'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -120,6 +122,12 @@ if (fromFile('remindAfterMinutes')) process.env.LAB_REMIND_MS = String(SET.remin
 if (fromFile('updateCheck') && !SET.updateCheck) process.env.LABIT_NO_UPDATE_CHECK = '1';
 if (fromFile('model') && SET.model) process.env.LAB_MODEL = SET.model;
 for (const p of SETTINGS.problems) console.error(`[labit] ${p}`);
+// `labit skill`: the agent's instructions (skills/labit/SKILL.md, shipped in the package), for an agent that has no
+// plugin. The lab's first lines point it here, so a bare `npx @leonidstern/labit@latest` is all a person has to paste.
+if (pos[0] === 'skill') {
+  process.stdout.write(fs.readFileSync(path.join(REPO, 'skills', 'labit', 'SKILL.md'), 'utf8').replace(/^---\n[\s\S]*?\n---\n+/, ''));
+  process.exit(0);
+}
 // `labit settings`: each setting, its value and where it came from.
 if (pos[0] === 'settings') {
   const changed = changedShortcuts(SET.shortcuts);
@@ -2030,6 +2038,7 @@ server.on('listening', async () => {
   console.log(WIFI ? `[lab] other devices on this wifi need a one-time link: run \`${CMD} invite\`, or ask Claude for one`
     : '[lab] only this computer can open it (--wifi lets phones on the same wifi in)');
   console.log(`[lab] your agent: run \`${CMD} wait\` in the background from ${ROOT}; it ends with the next comment.`);
+  console.log(`[lab] agents without the labit plugin or skill: read \`${CMD} skill\` once, for how to answer pins.`);
   // Open a page, not a list of folders: the project's main page when there's no index.html at the top.
   const first = !PROXY && !fs.existsSync(path.join(ROOT, 'index.html')) ? pagesUnder(ROOT)[0] : null;
   const start = first ? urlOf(first) : '/';
