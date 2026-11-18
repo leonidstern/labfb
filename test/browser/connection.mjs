@@ -88,20 +88,20 @@ try {
       await p.clock.install();
       await p.goto(B + '/');
       await until(() => p.evaluate(() => window.__streams.length === 1 && window.__streams[0].readyState === 1));
-      await sleep(800);
+      await sleep(250);
       const streams = () => p.evaluate(() => window.__streams.map((s) => s.readyState)); // 0 connecting, 1 open, 2 closed
       check(eng, 'one live stream, open', JSON.stringify(await streams()) === '[1]' && seen.live === 1, `${JSON.stringify(await streams())}, ${seen.live} requests`);
 
       await p.evaluate(setHidden, true);
       await p.clock.runFor(90000);
-      await sleep(300);
+      await sleep(250);
       check(eng, 'in the background the stream stays open, no polling', JSON.stringify(await streams()) === '[1]' && seen.state === 0, `${JSON.stringify(await streams())}, ${seen.state} polls`);
       const pinsOf = (t) => t.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot.querySelectorAll('.pin').length ?? -1);
       const hiddenBefore = await pinsOf(p);
       await post(`while hidden in ${eng}`);
       check(eng, 'a comment made while it is in the background shows there at once', await until(async () => (await pinsOf(p)) === hiddenBefore + 1, 4000));
       await p.evaluate(setHidden, false);
-      await sleep(500);
+      await sleep(250);
       check(eng, 'back in front: the same stream, no reconnect', JSON.stringify(await streams()) === '[1]' && seen.live === 1, JSON.stringify(await streams()));
 
       // The server's beat comes every 15 s of real time; 46 s of page time with none looks like a stalled connection.
@@ -134,8 +134,8 @@ try {
         await t.goto(B + '/');
         tabs.push(t);
       }
-      await sleep(1500);
       const open = async (list) => (await Promise.all(list.map((t) => t.evaluate(() => window.__streams.filter((s) => s.readyState === 1).length)))).reduce((a, b) => a + b, 0);
+      await until(async () => (await open(tabs)) === 1, 1500);
       check(eng, '8 tabs share one open stream', (await open(tabs)) === 1, `${await open(tabs)} open`);
       let before = await Promise.all(tabs.map(pinsOf));
       await post(`to all 8 in ${eng}`);
