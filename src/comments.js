@@ -969,7 +969,7 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
           markSeen([comment]);
           S.draft = null;
           keepSpot(null);
-          S.openId = null; // as in most comment tools: once posted, the card closes and the new pin stays (click it to open)
+          S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
           S.posted = comment.id;
           if (fluid) fluidDrop(); // goes out as a card does, as the pin pops in
           holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
