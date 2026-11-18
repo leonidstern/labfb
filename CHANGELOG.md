@@ -4,7 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Since you looked (flag `sinceLooked`): a "New · 3" pill lists the `id`s the agent added since you last looked; going to one, or a second in view, clears it. Kept per name in `.lab/looked/`, so Mac and phone agree; the agent text says `unseen by Leo: #v3`.
+- Since you looked (flag `sinceLooked`): a "New · 3" pill lists the ids the agent added since you looked; seeing one clears it. The agent text says `unseen by Leo: #v3`.
 - "Pin over controls": with it on, the pointer over the page's links, buttons and clickable cards is the pin, not their hand. The menu item shows how to do it once without the switch: (⌥ click).
 - Phones: a sent comment's card slides down whole, like any sheet, and its new pin pops in with one green ring. It used to shrink and fly into the pin, which squeezed the card, and the pin was already there while it flew (its pop-in had been dropped by a later change).
 
