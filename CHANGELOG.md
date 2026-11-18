@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Quoting words: a drag that starts or ends inside a word takes the whole word, so a note is on "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
 - A pin between two blocks whose block above is gone (the section was deleted) no longer crashes the widget: it sits at the end of the box instead. Before, one such pin stopped the bar from drawing on its page.
 - License: from the next release labit is under [PolyForm Perimeter 1.0.0](LICENSE) instead of MIT. Use and change it freely, except to build a competing product. Versions already on npm (0.6.2 and earlier) keep MIT.
 - Phone links with two labs on one computer: each lab keeps its own pass (`lab_guest_<port>`), so joining a try lab no longer logs the phone out of the other, and a used link again takes that phone to its page instead of "used up".

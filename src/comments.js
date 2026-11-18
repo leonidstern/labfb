@@ -1471,8 +1471,20 @@ import { holdWhileOpen } from './widget/hold.ts';
   // again), not just the word under the pin.
   const commentOnSelection = () => {
     const sel = getSelection?.();
-    const range = sel?.rangeCount && sel.getRangeAt(0);
-    const exact = String(sel || '').replace(/\s+/g, ' ').trim();
+    const range = sel?.rangeCount && sel.getRangeAt(0).cloneRange(); // a copy: the page's own selection isn't moved
+    // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
+    // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
+    /** @param {Node} node @param {number} i @param {number} step */
+    const grow = (node, i, step) => {
+      const d = node.nodeType === 3 ? /** @type {Text} */ (node).data : '';
+      while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
+      return i;
+    };
+    if (range && /\s/.test(String(range).trim())) {
+      range.setStart(range.startContainer, grow(range.startContainer, range.startOffset, -1));
+      range.setEnd(range.endContainer, grow(range.endContainer, range.endOffset, 1));
+    }
+    const exact = String(range || '').replace(/\s+/g, ' ').trim();
     if (!range || !exact || host.contains(range.commonAncestorContainer)) return false;
     // The pin sits on the last selected letter (where the selection ended), when that's in the same element as its
     // first; a selection over several items keeps it on the first, so the pin finds its place again.
