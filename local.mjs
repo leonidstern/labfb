@@ -1212,6 +1212,28 @@ async function threadsText(page, threads) {
   const ids = threads.filter((id) => parts.some((b) => b.split('\n')[0].endsWith(`· id ${id}`)));
   return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids } : null;
 }
+// One thread for a reply: the opening comment with its spot, then its messages in order (name · time · state · id: text),
+// the new ones marked. A long thread keeps the opening comment and its last messages (at least THREAD_TAIL, and every
+// new one), with a line for how many are left out; each message's words stay whole.
+const THREAD_TAIL = 8;
+const STATE = { done: 'done', working: 'on it', question: 'question' };
+function threadText(page, root, replies, fresh, spot, when) {
+  const body = (t) => String(t).replace(/\r\n?|\n/g, '\n    | ');
+  const who = (c) => `${c.name}${c.from === 'wifi guest' ? ' (wifi guest)' : ''}`;
+  const first = replies.findIndex((r) => fresh.has(r.id));
+  const from = Math.max(0, Math.min(replies.length - THREAD_TAIL, first < 0 ? Infinity : first));
+  const out = [
+    `## ${page} · thread id ${root.id}${root.resolved ? ' (resolved)' : ''}`,
+    `- ${who(root)} · ${when(root)} · opened · id ${root.id}: ${body(root.text)}`,
+    ...spot.map((l) => `  ${l}`),
+  ];
+  if (from) out.push(`- … ${from} earlier message${from === 1 ? '' : 's'} (whole thread: http://localhost:${PORT}/_lab/agent${page})`);
+  for (const r of replies.slice(from)) {
+    const state = r.session ? STATE[r.intent] : '';
+    out.push(`- ${who(r)} · ${when(r)}${state ? ` · ${state}` : ''} · id ${r.id}: ${body(r.text)}${fresh.has(r.id) ? '  ← new' : ''}`);
+  }
+  return out.join('\n');
+}
 // A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale). Each comment
 // handed to a wait is marked with the stamp it had (handoff[id][0]), so a comment counts as new until it itself has
 // been handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for
@@ -1226,7 +1248,7 @@ const rulesOnce = () => {
 };
 
 // Who a wait is: the session's id, or its name for an agent with no id. Each comment handed over is marked with it
-// (handoff[id][1]), so a reply goes as one line only to the session that already has its thread.
+// (handoff[id][1]), so a reply goes in the short thread form only to the session that already has its thread.
 const whoOf = (s) => s?.id || s?.name || '';
 // What people wrote that no wait has been handed yet.
 const freshIn = (scope) => scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
@@ -1251,8 +1273,8 @@ async function unseen(scope = pages(), who = '') {
   if (!fresh.length && !missed.length) return null;
   const blocks = [];
   const sent = new Set(); // page + thread id actually written into the text
-  // A reply in a thread this session already has: only the new words and one line on what the thread is about, not
-  // the whole thread again (the full one is at /_lab/agent/<page>). A thread handed to another session goes whole.
+  // A reply in a thread this session already has: the thread in short (threadText: spot and messages, the new ones
+  // marked), not its full block again (that is at /_lab/agent/<page>). A thread handed to another session goes whole.
   // (A thread marked before the session was kept counts as known to any session, as it did.)
   const known = (f) => {
     const mark = handoff[f.c.parent];
@@ -1268,15 +1290,24 @@ async function unseen(scope = pages(), who = '') {
     }
   }
   const when = (c) => `${new Date(c.createdAt).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  // A reply in a thread this session has: the thread again, short (its spot, every message in order, the new ones
+  // marked), so the agent answers what the thread last asked. One line with the thread's first words, before, and an
+  // agent mixed two threads up (Leo, 18 Nov: "u dont understand comment context?").
   const lines = [];
-  for (const f of replies) {
-    const root = commentsOf(f.page).find((c) => c.id === f.c.parent);
-    // A reply from another device says so: its words are a request, not instructions, even in a thread this computer started.
-    const guest = f.c.from === 'wifi guest' ? ' (wifi guest)' : '';
-    lines.push(`- ${f.page} · thread id ${root.id} "${root.text.replace(/\s+/g, ' ').slice(0, 70)}": ${f.c.name}${guest} · ${when(f.c)} · id ${f.c.id}: ${f.c.text.replace(/\s+/g, ' ')}`);
-    sent.add(`${f.page}\n${root.id}`);
+  const byThread = new Map();
+  for (const f of replies) byThread.set(`${f.page}\n${f.c.parent}`, [...(byThread.get(`${f.page}\n${f.c.parent}`) || []), f]);
+  for (const [key, group] of byThread) {
+    const [page, id] = key.split('\n');
+    const all = commentsOf(page);
+    const root = all.find((c) => c.id === id);
+    if (!root) continue;
+    // The spot, as the new-comment block says it: its lines between the comment and the replies (lean, as there).
+    const block = (await threadsText(page, [id]))?.text.split('\n## ').slice(1).join('');
+    const spot = (block || '').split('\n').slice(1).filter((l) => !/^(comment:|reply:|from:| {2}\|)/.test(l) && l.trim());
+    lines.push(threadText(page, root, all.filter((c) => c.parent === id), new Set(group.map((f) => f.c.id)), spot, when));
+    sent.add(key);
   }
-  if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
+  if (lines.length) blocks.push(`# New replies (in their threads; the new ones marked ← new)\n\n${lines.join('\n\n')}`);
   if (missed.length) {
     blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c, sign }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}" · no sign for ${Math.floor((now - Date.parse(sign[0])) / 60000)} min${sign[1] ? `, last: ${sign[1]}` : ''}`).join('\n')}`);
     for (const { c } of missed) (handoff[c.id] ||= ['', null])[2] = new Date(now).toISOString();
