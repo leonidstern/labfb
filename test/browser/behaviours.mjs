@@ -35,6 +35,8 @@ const write = (f, t) => fs.writeFileSync(path.join(DIR, f), t);
 write('index.html', PAGE);
 write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
 write('pic.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="42"><rect width="320" height="42" fill="#cde"/></svg>');
+write('notes.md', '# notes');
+write('data.json', '{"a":1}');
 
 let server;
 const start = () => (server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env }));
@@ -213,11 +215,16 @@ for (const eng of ['webkit', 'chromium']) {
   check(eng, 'pin over controls: the menu shows option-click while off, the pin shows over a control while on',
     overOff.hint.endsWith('click') && overOff.ctl && !overOff.over && !overOn.hint && overOn.over && /^(none|crosshair)$/.test(overOn.cursor), JSON.stringify([overOff, overOn]));
 
-  // A script change reloads; a lab restart doesn't
+  // A save the page has nothing to do with leaves it alone; one it may fetch reloads it; a lab restart doesn't.
+  // (A page with its own <script> is not used here: such a page never patches in place, it reloads on every HTML
+  // save, which is what the checks above cover. Whether a page uses a saved script is tested in hot.test.mjs.)
   // (a reload waits while you've just pressed a key or clicked: give it a moment)
-  write('app.js', 'console.log(1)');
+  write('notes.md', '# notes, changed');
   await sleep(3000);
-  check(eng, 'a script save reloads the page', loads === 2, `loads ${loads}`);
+  check(eng, 'a save the page does not use leaves it alone', loads === 1, `loads ${loads}`);
+  write('data.json', '{"a":2}');
+  await sleep(3000);
+  check(eng, 'a save it may fetch reloads the page', loads === 2, `loads ${loads}`);
   await sleep(800);
   server.kill();
   await sleep(600);

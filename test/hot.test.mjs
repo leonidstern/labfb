@@ -107,6 +107,17 @@ test('a script save is a reload', async () => {
   const reload = await live.next((s) => s.files > first.files);
   live.stop();
   assert.ok(reload, 'files version went up');
+  assert.ok(reload.changed?.includes('/app.js'), 'the page is told which file it was');
+});
+
+// The page decides: it reloads only if it uses one of these. A README or another page's script leaves it alone.
+test('a reload says which files changed', async () => {
+  const live = await listen();
+  const first = await live.next(() => true);
+  save('notes.md', '# notes');
+  const reload = await live.next((s) => s.files > first.files);
+  live.stop();
+  assert.deepEqual(reload?.changed, ['/notes.md']);
 });
 
 test('comment changes reach pages as deltas: a new comment, a reply, a delete', async () => {

@@ -124,10 +124,15 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       let pages = '';
       try {
         const info = await (await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) })).json();
-        const open = info.pages.reduce((n, p) => n + p.open, 0);
-        pages = ` · ${info.pages.length} page${info.pages.length === 1 ? '' : 's'}${open ? `, ${open} open comment${open === 1 ? '' : 's'}` : ''}${info.listening ? ` · ${info.listening} listening` : ''}`;
+        const waiting = info.pages.reduce((n, p) => n + (p.waiting ?? p.open), 0);
+        pages = ` · ${info.pages.length} page${info.pages.length === 1 ? '' : 's'}${waiting ? `, ${waiting} waiting` : ''}${info.listening ? ` · ${info.listening} listening` : ''}`;
       } catch {}
-      console.log(`${lab.name}  http://localhost:${lab.port}  ${lab.root}${lab.proxy ? ` (on ${lab.proxy})` : ''}${pages}`);
+      // What it runs and how long it has been up: between releases every lab says the same version, and the age is
+      // what tells a lab left running for days (serving old code) from a fresh one.
+      const age = lab.startedAt ? Date.now() - Date.parse(lab.startedAt) : NaN;
+      const since = !Number.isFinite(age) ? '' : age < 36e5 ? `${Math.max(1, Math.round(age / 6e4))} min` : age < 864e5 ? `${Math.round(age / 36e5)} h` : `${Math.round(age / 864e5)} days`;
+      const what = `${lab.version ? ` · labit ${lab.version}` : ''}${since ? `, up ${since}` : ''}`;
+      console.log(`${lab.name}  http://localhost:${lab.port}  ${lab.root}${lab.proxy ? ` (on ${lab.proxy})` : ''}${what}${pages}`);
     }
     process.exit(0);
   }
@@ -154,7 +159,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (groups.length > 1) lines.push(`**${group.name}**`, '');
       for (const p of group.pages) {
         const name = (p.title || p.file || p.path).replace(/[[\]]/g, '');
-        lines.push(`- [${name}](${p.url})${p.open ? ` · ${p.open} open` : ''}`);
+        const heard = p.listener ? ` · ${p.listener} listening` : p.waiting ? ' · nobody listening' : '';
+        lines.push(`- [${name}](${p.url})${p.waiting ? ` · ${p.waiting} waiting` : ''}${heard}${p.when ? ` · ${p.when}` : ''}`);
       }
       lines.push('');
     }
@@ -171,15 +177,28 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
     const { dir, server } = lab;
     const session = mySession(opts.name, opts.model);
-    const call = (pathname: string, body: object) =>
-      labCall(server, pathname, body, session).catch(() =>
-        die(
-          process.env.CODEX_SANDBOX_NETWORK_DISABLED
-            ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Use labit's MCP server instead: ` +
-                `codex mcp add labit -- npx @leonidstern/labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
-            : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
-        ),
+    const gone = () =>
+      die(
+        process.env.CODEX_SANDBOX_NETWORK_DISABLED
+          ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Use labit's MCP server instead: ` +
+              `codex mcp add labit -- npx @leonidstern/labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
+          : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
       );
+    // A lab that goes and comes back (--dev, an update, a crash and a start again) shouldn't end a wait: the command
+    // holds on for a few seconds and carries on. The clock starts when the lab first goes, not when the call began --
+    // a wait sits open for 25 minutes, so a deadline set up front would already have passed by then.
+    const call = async (pathname: string, body: object, seconds = 5) => {
+      let until = 0;
+      for (;;) {
+        try {
+          return await labCall(server, pathname, body, session);
+        } catch {
+          if (!until) until = Date.now() + seconds * 1000;
+          if (Date.now() >= until) return gone();
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      }
+    };
 
     // The same words sent again by the same session to the same thing (the agent ran reply again because it never saw
     // the first one's answer) carry the same nonce, so the lab gives back the first comment instead of a second one,
@@ -206,7 +225,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       // A wait sits open for as long as it is allowed to; in an agent's foreground that is the person's whole turn,
       // so without --bg it is held to a minute. See waitSeconds in args.ts for why it can't just be detected.
       const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
-      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true });
+      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true }, 20);
       console.log(WAIT_SAID[out.status] ?? out.text);
       await labAck(server, out.delivery, session);
       if (capped && out.status === 204)
@@ -327,7 +346,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // session listening on one page stopped hearing it after its first answer (Leo, 18 Nov).
     if (opts.wait) {
       const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
-      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true });
+      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true }, 20);
       console.log(WAIT_SAID[out.status] ?? out.text);
       await labAck(server, out.delivery, session);
       if (capped && out.status === 204)
