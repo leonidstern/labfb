@@ -488,6 +488,15 @@ try {
         const sheet = await concentric(p, '.float:not(.out, .p-dlg *)', '.float:not(.p-dlg *) > .quick button:first-child, .float:not(.p-dlg *) > .composer .box', ['left', 'right']);
         check(eng, '…and the sheet\'s first button and box (12 px in from its corners)', sheet.n === 2 && sheet.bad.length === 0 && sheet.sample.R > 24, JSON.stringify(sheet));
       });
+      // …computers: a comment on a spot is one card like the dialog on words, its box 8 px in and concentric with it
+      await scene(eng, browser, {}, async (p) => {
+        const a = await p.evaluate(() => document.querySelector('#b').getBoundingClientRect().toJSON());
+        await p.mouse.click(a.right + 120, a.top + a.height / 2);
+        await untilRoot(p, (r) => { const f = r.querySelector('.float:not(.p-dlg *)'); return Boolean(f?.querySelector('.box')) && f.getAnimations().length === 0; }, null, 1200);
+        const card = await inRoot(p, (r) => { const f = getComputedStyle(r.querySelector('.float:not(.p-dlg *)')); return { bg: f.backgroundColor, pad: f.paddingTop, shadow: f.boxShadow !== 'none' }; });
+        const spot = await concentric(p, '.float:not(.out, .p-dlg *)', '.float:not(.p-dlg *) .box');
+        check(eng, 'a spot\'s comment is one card (background, shadow, 8 px in) with its box concentric inside', card.bg !== 'rgba(0, 0, 0, 0)' && card.pad === '8px' && card.shadow && spot.n === 1 && spot.bad.length === 0, JSON.stringify({ card, spot }));
+      });
 
       // Picking an action shows it on; picking it again goes back to the plain comment
       await scene(eng, browser, {}, async (p) => {
