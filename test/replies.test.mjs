@@ -71,3 +71,24 @@ test('the agent can offer a rule on its own; keep saves it, no does not; a perso
   assert.doesNotMatch(fs.readFileSync(RULES, 'utf8'), /Say where/);
   assert.equal((await post({ id: pin.id }, '/_lab/rule')).status, 404, 'a comment with no rule has nothing to undo');
 });
+
+// Ask with choices and listen in one command: the pick, when the person makes it, is what the wait returns, with the
+// question it answers.
+test('reply --choice --wait returns the pick', async () => {
+  const pin = (await post({ name: 'leo', text: 'which tone?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } })).json.comment;
+  await cli('wait', '--bg', '--timeout', '2'); // the pin itself is read
+  const asking = cli('reply', pin.id, 'Which tone?', '--choice', 'Hi', '--choice', 'Hello', '--recommend', 'B', '--wait', '--timeout', '20');
+  let ask;
+  for (let i = 0; i < 50 && !ask; i++) {
+    ask = (await thread()).find((c) => c.choices && c.parent === pin.id);
+    if (!ask) await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.ok(ask, 'the question is saved');
+  assert.deepEqual([ask.choices, ask.recommend, ask.intent], [['Hi', 'Hello'], 1, 'question']);
+  await post({ name: 'leo', text: 'Picked B: Hello', parent: ask.id, to: ask.id, picked: 1 });
+  const { code, out } = await asking;
+  assert.equal(code, 0, out);
+  assert.match(out, /Asked with A\) Hi {2}B\) Hello {2}\(your pick: B\)/);
+  assert.match(out, /Picked B: Hello \(their pick on your question id /);
+  assert.ok(out.includes(`(their pick on your question id ${ask.id})`));
+});

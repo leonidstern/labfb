@@ -140,6 +140,24 @@ test('comment changes reach pages as deltas: a new comment, a reply, a delete', 
   assert.ok(d3.del.includes(comment.id), 'the delete is in the delta');
 });
 
+// A question's pick is a reply like any: the widget's other tabs get it as a delta, with its picked field, so their
+// rows are drawn again as answered.
+test('a pick reaches pages as a delta', async () => {
+  const live = await listen();
+  const first = await live.next(() => true);
+  const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const { comment } = await post({ page: '/index', name: 'Leo', text: 'tone?', anchor });
+  const key = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
+  const asked = await (await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': key }, body: JSON.stringify({ page: '/index', name: 'Claude', text: 'Which?', parent: comment.id, choices: ['Hello', 'Hi there'], recommend: 1 }) })).json();
+  const mid = await live.next((s) => s.comments > first.comments);
+  const picked = await post({ page: '/index', name: 'Leo', text: 'Picked B: Hi there', parent: asked.comment.id, to: asked.comment.id, picked: 1 });
+  await live.next((s) => s.comments > mid.comments);
+  const d = await (await fetch(`${B}/_lab/api/changes?page=/index&since=${first.comments}`)).json();
+  live.stop();
+  assert.deepEqual(d.set.find((c) => c.id === asked.comment.id).choices, ['Hello', 'Hi there'], 'the question carries its choices');
+  assert.deepEqual(d.set.find((c) => c.id === picked.comment.id).picked, { of: asked.comment.id, n: 1 }, 'the pick says which question and which row');
+});
+
 test('a delta from too long ago, or from the future, asks for the whole list', async () => {
   const far = await (await fetch(`${B}/_lab/api/changes?page=/index&since=999999`)).json();
   assert.equal(far.full, true);

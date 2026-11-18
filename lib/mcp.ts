@@ -86,6 +86,8 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
           intent: { type: 'string', enum: ['done', 'working', 'question'], description: 'done: the ask is done; working: you are on it; question: you need the person' },
           resolve: { type: 'boolean', description: 'Close the thread' },
           progress: { type: 'string', description: 'A short line on what you are doing now, e.g. "drawing W1–W6 · 2 of 4". Alone: no text, intent or resolve' },
+          choices: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 6, description: 'Ask with choices (text is the question): the person picks one on the page; the pick comes back in wait as "Picked B: …"' },
+          recommend: { type: 'string', description: 'With choices: the letter of your own pick (A, B…)' },
           dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' },
         },
         required: ['id'],
@@ -159,7 +161,10 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       const flag = { done: '--done', working: '--on-it', question: '--question' }[a.intent];
       if (a.intent !== undefined && !flag) return text('`intent` must be done, working or question.', true);
       if (a.dir !== undefined && typeof a.dir !== 'string') return text('`dir` must be a folder path.', true);
-      const r = await run(['reply', a.id, a.text, ...(flag ? [flag] : []), ...(a.resolve ? ['--resolve'] : [])], 30000, project(a));
+      if (a.choices !== undefined && (!Array.isArray(a.choices) || a.choices.some((c) => typeof c !== 'string'))) return text('`choices` must be a list of strings.', true);
+      if (a.recommend !== undefined && typeof a.recommend !== 'string') return text('`recommend` must be a letter, like "B".', true);
+      const asked = [...(a.choices || []).flatMap((c: string) => ['--choice', c]), ...(a.recommend ? ['--recommend', a.recommend] : [])];
+      const r = await run(['reply', ...asked, ...(flag ? [flag] : []), ...(a.resolve ? ['--resolve'] : []), '--', a.id, a.text], 30000, project(a));
       return text(r.text, !r.ok);
     }
     if (name === 'pin') {
