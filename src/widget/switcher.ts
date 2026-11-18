@@ -238,7 +238,7 @@ function draw() {
     const done = sum((p) => p.done || 0);
     const replies = sum((p) => p.replies || 0);
     const agent = sum((p) => p.agent || 0);
-    const people = [...new Set(lab.pages.flatMap((p) => p.people || []))];
+    const people = [...new Map(lab.pages.flatMap((p) => p.people || []).map((n) => [n.toLowerCase(), n] as const)).values()]; // "Leo" and "leo" are one
     const last = latest(...lab.pages.map((p) => p.last));
     left.append(
       home(lab),

@@ -1366,6 +1366,8 @@ const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/
 // This lab's pages with their open comments, who listens, and which pages that covers (the switcher and `labit list`).
 // When this lab was made: its .lab folder's birth (the first run in this folder). Linux may not keep births: then its
 // oldest comment, else nothing.
+// Names once each, whatever their case ("Leo" and "leo" are one person).
+const oneEach = (names) => names.filter((n, i) => names.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
 const created = () => {
   try {
     const t = fs.statSync(LAB).birthtimeMs;
@@ -1384,7 +1386,7 @@ const labInfo = () => {
     return {
       open: roots.filter((c) => !c.resolved).length, done: roots.filter((c) => c.resolved).length, last,
       first: roots[0]?.createdAt || null, replies: replies.length, agent: replies.filter((c) => c.session).length,
-      people: [...new Set(all.filter((c) => !c.session && c.name).map((c) => String(c.name)))].slice(0, 8),
+      people: oneEach(all.filter((c) => !c.session && c.name).map((c) => String(c.name).trim())).slice(0, 8),
     };
   };
   const edited = (file) => {
