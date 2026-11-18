@@ -939,7 +939,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
       const oldTip = pin.querySelector(':scope > .tip');
       if (!tip) oldTip?.remove();
-      else if (oldTip) oldTip.textContent !== tip && (oldTip.textContent = tip);
+      else if (oldTip) { if (oldTip.textContent !== tip) oldTip.textContent = tip; }
       else pin.append(el('span', { class: 'tip', 'aria-hidden': 'true' }, tip));
       if (coarse && !pin.querySelector(':scope > .hit')) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
       pin.style.left = `${left}px`;
