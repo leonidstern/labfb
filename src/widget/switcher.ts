@@ -1,5 +1,5 @@
 // Labs & pages (⌘K, or the ⋯ menu): every lab running on this computer and its pages, to go to one; who listens on
-// each, to stop it; park a lab and start it again. A guest on a phone sees this lab's pages only. Part of the comment
+// each, to stop it; archive a lab and start it again. A guest on a phone sees this lab's pages only. Part of the comment
 // widget (src/comments.js bundles it). Leo, 18 Nov (the lab-navigation page, option B).
 
 type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[]; opened?: string | null };
@@ -25,7 +25,7 @@ let list: HTMLElement;
 let data: { labs: Lab[]; parked: Parked[]; guest: boolean; local?: { name: string; port: number }[]; self?: string | null } | null = null;
 let active = 0;
 let toCur = false; // the first list after opening starts on the page you're on, scrolled to it
-let armed = ''; // the park or archive button waiting for its second click: "action port"
+let armed = ''; // the archive button waiting for its second click: "action port"
 let showArchived = false;
 
 let panelEl: HTMLElement;
@@ -64,27 +64,23 @@ export function bindSwitcher(deps: Deps) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       rows[active]?.dispatchEvent(new MouseEvent('click', { metaKey: e.metaKey || e.ctrlKey }));
-    } else if (e.altKey && !e.metaKey && !e.ctrlKey && /^Key[SPAR]$/.test(e.code)) {
+    } else if (e.altKey && !e.metaKey && !e.ctrlKey && /^Key[SA]$/.test(e.code)) {
       // Option + a letter, read by key position (Option turns the letter into another character on a Mac).
       e.preventDefault();
       if (data?.guest) return;
       const row = rows[active];
       const port = Number(row?.dataset.port);
       if (!row || !port) return;
-      const parked = row.dataset.kind === 'parked';
       const lab = data?.labs.find((l) => l.port === port);
-      if (e.code === 'KeyR' && parked) return start(port, row);
-      if (e.code === 'KeyA' && parked) return void act(row.dataset.archived ? 'unarchive' : 'archive', port);
-      if (parked || !lab) return;
+      if (row.dataset.kind === 'parked' || !lab) return;
       if (e.code === 'KeyS' && lab.mode !== 'away') return void act('stop', port);
-      if (e.code === 'KeyP' || e.code === 'KeyA') {
-        const action = e.code === 'KeyP' ? 'park' : 'archive';
-        if (armed !== `${action} ${port}`) {
-          armed = `${action} ${port}`;
+      if (e.code === 'KeyA') {
+        if (armed !== `archive ${port}`) {
+          armed = `archive ${port}`;
           return draw();
         }
         armed = '';
-        void act(action, port);
+        void act('archive', port);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -146,11 +142,11 @@ function start(port: number, row: HTMLElement) {
   void act('start', port);
 }
 
-async function act(action: 'stop' | 'park' | 'archive' | 'unarchive' | 'start', port: number) {
+async function act(action: 'stop' | 'archive' | 'start', port: number) {
   try {
     await fetch(d.api, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': d.admin }, body: JSON.stringify({ action, port }) });
   } catch {}
-  // A lab that starts takes a moment to answer; one that parks a moment to go.
+  // A lab that starts takes a moment to answer; one that's archived a moment to go.
   setTimeout(load, action === 'start' ? 1500 : 400);
   if (action === 'start') setTimeout(load, 4000);
 }
@@ -209,8 +205,8 @@ function draw() {
     return;
   }
   const local = !data.guest;
-  // The lab keys only where they work: a guest can go to pages, not stop, park or start labs (they did nothing, silently).
-  foot.textContent = `↑↓ choose · ↵ go · ⌘↵ new tab${local ? ' · ⌥S stop listening · ⌥P stop lab · ⌥A archive · ⌥R start' : ''} · esc close`;
+  // Lean (Leo 18 Nov: "make this lean"); the lab keys only where they work, a guest can't stop or archive labs.
+  foot.textContent = `↵ go · ⌘↵ new tab${local ? ' · ⌥S stop listening · ⌥A archive' : ''}`;
   if (data.self) {
     const note = el('div', { class: 'sw-none' }, 'This is your computer, opened through its wifi address, so it sees what a phone sees. ');
     note.append(el('a', { href: data.self }, 'Open it on localhost'), ' for every lab and the lab keys.');
@@ -263,29 +259,25 @@ function draw() {
           navigator.clipboard?.writeText(line).catch(() => {});
           (acts.querySelector('button') as HTMLElement).textContent = 'copied: paste it to Claude';
         }, 'copies one line to paste to your agent');
-      const twice = (action: 'park' | 'archive', label: string, title: string) => {
-        const key = `${action} ${lab.port}`;
-        const b = btn(armed === key ? (lab.here ? `${label}: this page closes` : `${label}: sure?`) : label, () => {
-          if (armed !== key) {
-            armed = key;
-            draw();
-            return keepKeys();
-          }
-          armed = '';
-          void act(action, lab.port);
-        }, title);
-        if (armed === key) b.classList.add('armed');
-      };
-      // "stop lab", not "park" (Leo 18 Nov: "what park means"); it waits under "stopped" to start again.
-      twice('park', 'stop lab', 'stop this lab’s server; it stays listed under "stopped", ↵ starts it again (⌥P)');
-      twice('archive', 'archive', 'stop this lab and fold it away under "archived" (⌥A)');
+      // Archive asks twice; there's no "park" any more (Leo 18 Nov: "remove parked").
+      const key = `archive ${lab.port}`;
+      const b = btn(armed === key ? (lab.here ? 'archive: this page closes' : 'archive: sure?') : 'archive', () => {
+        if (armed !== key) {
+          armed = key;
+          draw();
+          return keepKeys();
+        }
+        armed = '';
+        void act('archive', lab.port);
+      }, 'stop this lab and fold it away under "archived", ↵ starts it again (⌥A)');
+      if (armed === key) b.classList.add('armed');
       head.append(acts);
     }
     out.push(head);
     for (const p of pages) {
       const here = lab.here && p.path === d.page;
       const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page' });
-      // Open pins (filled dot) and closed (hollow), who commented, and the last comment's time.
+      // Open and closed pins, and when the page was last opened.
       const meta = pinFacts(p.open, p.done || 0, here ? 'you’re here' : p.opened ? `opened ${since(p.opened)}` : 'never opened');
       // The time is the last comment's (Leo 18 Nov: file times were all the same after a copy); the file's is on hover.
       const tip = [p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
@@ -319,31 +311,17 @@ function draw() {
   }
   if (local) {
     const all = data.parked.filter((p) => hit(q, p.name, String(p.port)));
-    const order = (ps: Parked[]) => [...ps].sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
-    const parkedRow = (p: Parked) => {
-      const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(p.port), 'data-kind': 'parked', ...(p.archived ? { 'data-archived': '1' } : {}) });
+    // Every saved lab that isn't running (archived, or parked by an older build) folds away under "archived".
+    const archivedRow = (p: Parked) => {
+      const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(p.port), 'data-kind': 'parked' });
       const t = el('span', { class: 'sw-t' });
       t.append(el('b', {}, p.name), ` · ${p.port}`);
-      const m = el('span', { class: 'sw-m' }, `${p.archived ? 'archived' : 'stopped'} ${ago(p.at)}`.trim());
-      const flip = el('span', { class: 'sw-mini', role: 'button', title: p.archived ? 'back to parked (⌥A)' : 'fold away under archived (⌥A)' }, p.archived ? 'unarchive' : 'archive');
-      flip.addEventListener('click', (e) => {
-        e.stopPropagation();
-        void act(p.archived ? 'unarchive' : 'archive', p.port);
-      });
-      row.title = 'start it again (↵ or ⌥R)';
-      const right = el('span', { class: 'sw-m2' });
-      right.append(m, flip);
-      row.append(t, right);
-      row.addEventListener('click', (e) => {
-        // The archive/unarchive chip sits inside the row: its click mustn't also start the lab.
-        if (e.composedPath().some((n) => n instanceof HTMLElement && n.classList.contains('sw-mini'))) return;
-        start(p.port, row);
-      });
+      row.title = 'start it again (↵)';
+      row.append(t, el('span', { class: 'sw-m' }, `archived ${ago(p.at)}`.trim()));
+      row.addEventListener('click', () => start(p.port, row));
       return row;
     };
-    const parked = order(all.filter((p) => !p.archived));
-    const archived = order(all.filter((p) => p.archived));
-    if (parked.length) out.push(el('div', { class: 'sw-group' }, 'stopped · ↵ starts'), ...parked.map(parkedRow));
+    const archived = [...all].sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
     if (archived.length) {
       const open = showArchived || Boolean(q);
       const g = el('button', { type: 'button', class: 'sw-group sw-fold', 'aria-expanded': String(open) }, `${open ? '▾' : '▸'} archived · ${archived.length}`);
@@ -353,7 +331,7 @@ function draw() {
         keepKeys();
       });
       out.push(g);
-      if (open) out.push(...archived.map(parkedRow));
+      if (open) out.push(...archived.map(archivedRow));
     }
   }
   if (!out.length) out.push(el('div', { class: 'sw-none' }, 'nothing matches'));

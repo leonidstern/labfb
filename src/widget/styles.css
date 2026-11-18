@@ -576,9 +576,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-lab.parked { padding-top: 6px; border-top: 0; margin-top: 0; }
 .sw-row.parked .sw-t { font-size: 12px; color: var(--_muted); }
 .sw-row.parked .sw-t b { color: var(--_fg); font-weight: 600; font-size: 13px; }
-.sw-m2 { display: flex; align-items: center; gap: 8px; }
-.sw-mini { font-size: 12px; color: var(--_muted); padding: 2px 6px; border-radius: var(--_r-s); background: var(--_soft); }
-.sw-mini:hover { background: var(--_hover); color: var(--_fg); }
 .sw-fold { display: block; width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-bottom: 0; cursor: pointer; font-family: inherit; padding-bottom: 6px; }
 .sw-foot { font-size: 11px; color: var(--_muted); padding: 7px 14px 9px; border-top: var(--_hair); }
 /* Phones: labs & pages is one of the widget's sheets, the comment and chat drawer (sheets.ts): the shared dimmed page
@@ -599,5 +596,4 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .sw-acts button { font-size: 13px; padding: 5px 9px; }
   .sw-acts { justify-content: flex-start; max-width: none; }
   .sw-foot { display: none; }
-      .sw-mini { font-size: 14px; padding: 5px 9px; }
 }
