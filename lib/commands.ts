@@ -323,7 +323,14 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       hit = hits[0];
     }
     if (!hit) die(`No open comment ${ref || ''}${want ? ` on ${want}` : ''}. See .lab/comments.md.`);
-    if (cmd === 'reply') {
+    // --progress: the line the page shows while you work, kept on the thread (the latest only), not a message.
+    const progress = cmd === 'reply' && opts.progress !== undefined;
+    if (progress) {
+      if (typeof opts.progress !== 'string' || !opts.progress.trim()) die(`Progress text is missing: ${CMD} reply <id> --progress "what you're on now"`);
+      if (words.length || opts.done || opts['on-it'] || opts.question || opts.resolve) die('--progress is only the line, with no answer text, --done, --on-it, --question or --resolve: those are answers, and an answer clears it.');
+      const out = await call('/_lab/api/comments', { page: hit.page, action: 'progress', id: hit.id, text: opts.progress });
+      if (out.status >= 300) die(`Could not note progress: ${out.text}`);
+    } else if (cmd === 'reply') {
       if (!words.length) die(`Reply text is missing: ${CMD} reply <id> "what you did"`);
       const intent = replyIntent(opts);
       if (intent instanceof Error) die(intent.message);
@@ -340,7 +347,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       const out = await call('/_lab/api/comments', { page: hit.page, action: 'resolve', id: hit.id });
       if (out.status >= 300) die(`Could not resolve: ${out.text}`);
     }
-    console.log(`${cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
+    console.log(`${progress ? 'Progress noted' : cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
     // --wait: answer and listen again in one command (one round trip less per pin). It listens where --page or
     // --pages says, as wait does: `reply <id> --wait --page /x` used to listen on every page but /x's claim, so a
     // session listening on one page stopped hearing it after its first answer (Leo, 18 Nov).
