@@ -38,8 +38,7 @@ button.pin:active { transform: scale(.96); }
 .pin.arrive { animation: lab-arrive .46s cubic-bezier(.34, 1.56, .64, 1) both; }
 @keyframes lab-arrive { from { opacity: 0; transform: scale(.7); } }
 button.pin.arrive::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-                  animation: lab-sent .7s ease-out both; animation-delay: inherit; }
-@keyframes lab-sent { from { box-shadow: 0 0 0 0 rgba(52, 199, 89, .75); } to { box-shadow: 0 0 0 16px rgba(52, 199, 89, 0); } }
+                  --_halo: rgba(52, 199, 89, .75); animation: lab-halo .7s ease-out both; animation-delay: inherit; }
 /* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
    lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
 .pin.swap { animation: lab-swap .36s cubic-bezier(.3, .7, .4, 1.25); }
@@ -378,8 +377,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .msg :is(.stamp, .stamp-room) .ring, .gp { corner-shape: round; } /* circles stay circles */
 }
 @keyframes lab-pin { from { transform: scale(1.1); } }
-@keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
-                      to { box-shadow: 0 0 0 16px color-mix(in srgb, var(--_fg) 0%, transparent); } }
+/* One ring that grows and fades; --_halo sets its colour (a sent pin's is green). */
+@keyframes lab-halo { from { box-shadow: 0 0 0 0 var(--_halo, color-mix(in srgb, var(--_fg) 12%, transparent)); }
+                      to { box-shadow: 0 0 0 16px transparent; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 480px) { kbd { display: none; } }
 .handle { display: none; }
