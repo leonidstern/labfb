@@ -1,13 +1,9 @@
 /*!
- * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
- * https://github.com/leonidstern/labit · PolyForm Perimeter 1.0.0
- * Comments are off by default; the bar button or c turns them on (remembered per browser). When on, click anywhere that isn't a link or control to pin one (alt/option-click pins on those too). c (or the bar button) hides
- * and shows them; esc or a click outside closes an open comment. Dragging (mouse/pen) marks an area instead of a point.
- * Include on a page served through your lab domain:
- *   <script src="https://lab.example.com/_lab/comments.js" defer></script>
- * The layer only turns on when the page is opened on the host the script is loaded from (or data-host),
- * so the deployment's own address and local dev stay clean. data-enable="always" turns it on everywhere.
- * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
+ * lab comments: click anywhere on a lab page to pin a comment. No login, just a name.
+ * https://github.com/leonidstern/labit · PolyForm Small Business 1.0.0
+ * The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
+ * link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
+ * Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
  */
 import styles from './widget/styles.css';
 import {
@@ -36,6 +32,7 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
+import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -121,7 +118,7 @@ import { holdWhileOpen } from './widget/hold.ts';
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
+  const KEYS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -138,12 +135,10 @@ import { holdWhileOpen } from './widget/hold.ts';
     const i = word.indexOf(key);
     return i >= 0 ? keyWord(word.slice(0, i), key, word.slice(i + 1)) : keyWord(`${word} `, key, '');
   };
-  const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
-  const enabled = location.hostname === labHost || script?.dataset.enable === 'always';
-  if (!enabled || /** @type {any} */ (window).__labComments) return;
+  if (/** @type {any} */ (window).__labComments) return;
   /** @type {any} */ (window).__labComments = true;
 
-  const API = script?.dataset.api || '/_lab/api/comments';
+  const API = '/_lab/api/comments';
   const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
   S.page = pageNow();
   const store = {
@@ -179,20 +174,8 @@ import { holdWhileOpen } from './widget/hold.ts';
     fetch(MEAPI, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {});
   };
 
-  // Admin keys are kept per lab (name.scope.sig), so one browser can hold links for /anna and /mira at once.
-  // The owner token has no scope and works everywhere.
-  const scopeOf = (key) => (key.split('.').length === 3 ? key.split('.')[1] : '');
-  // Admin links carry the key after # (never sent to the server, so it stays out of the member site's logs); ?lab-admin= still works.
-  const adminParam = new URLSearchParams(location.hash.slice(1)).get('lab-admin') || new URLSearchParams(location.search).get('lab-admin');
-  if (adminParam) {
-    const scope = scopeOf(adminParam);
-    store.set(scope ? `lab-admin:${scope}` : 'lab-admin', adminParam);
-    const url = new URL(location.href);
-    url.searchParams.delete('lab-admin');
-    if (/lab-admin=/.test(url.hash)) url.hash = '';
-    history.replaceState(null, '', url);
-  }
-  const adminToken = script?.dataset.admin || store.get(`lab-admin:${S.page.split('/')[1] || ''}`) || store.get('lab-admin:*') || store.get('lab-admin');
+  // The lab hands this computer's browser its admin key; a guest's page has none.
+  const adminToken = script?.dataset.admin || '';
 
   S.comments = [];
   S.isAdmin = false;
@@ -224,7 +207,7 @@ import { holdWhileOpen } from './widget/hold.ts';
     <div class="scrim"></div>
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.pointer} pointer · ${KEYS.pause} pause · ${KEYS.toggle} hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -235,7 +218,6 @@ import { holdWhileOpen } from './widget/hold.ts';
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
-      <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (${KEYS.pause})">pause motion</button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
       <button class="secondary go-btn" type="button" hidden title="1 comment · 2 go: every click approves what it's on · 3 pointer: clicks are the page's own">go</button>
       <button class="toggle" type="button"></button>
@@ -260,13 +242,13 @@ import { holdWhileOpen } from './widget/hold.ts';
   const newPrev = $('.new-prev');
   const showDoneBtn = $('.show-done');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
-  const pauseBtn = $('.pause-btn');
   const overBtn = $('.over-btn');
   // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
   // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
   const LIST_WINDOW = false;
   const tabTitle = { base: '' };
-  S.showDone = store.get('lab-show-done') === '1';
+  // Done pins show unless hidden (Leo, 17 Nov): closed ones are faded on the page, and D hides them.
+  S.showDone = store.get('lab-hide-done') !== '1';
   const newNext = $('.new-next');
   const sendBtn = $('.send-all');
   const listEl = $('.list');
@@ -316,33 +298,15 @@ import { holdWhileOpen } from './widget/hold.ts';
   // ---------- data ----------
   const headers = () => ({ 'content-type': 'application/json', ...(adminToken ? { 'x-lab-admin': adminToken } : {}) });
 
-  // The API answers 404 anywhere but on the lab host. A script loaded with a relative src can't tell the
-  // lab host from the deployment's own address, so the first answer decides: no API here, no layer.
-  S.gone = false;
   S.loaded = false;
-  S.retried = false;
   const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}`, { headers: headers(), cache: 'no-store' });
-      if (res.status === 404 && !S.loaded && script?.dataset.enable !== 'always') {
-        if (!S.retried) {
-          S.retried = true;
-          setTimeout(load, 1500);
-          return;
-        }
-        S.gone = true;
-        S.on = false;
-        document.documentElement.classList.remove('lab-pinning');
-        host.remove();
-        fonts.remove();
-        return;
-      }
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       S.comments = data.comments || [];
       S.isAdmin = Boolean(data.admin);
-      S.rev = data.rev;
       // A thread you were part-way through writing in opens again: the page may have reloaded under you
       // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.
       if (!S.loaded && !S.openId) {
@@ -391,20 +355,6 @@ import { holdWhileOpen } from './widget/hold.ts';
     }
     shownAgain();
   }
-  // On the web there is no live stream (local labs have one, see live.ts): an open page asks for its comments'
-  // revision every 10 s, a few bytes, and loads them again only when it moved, so someone else's reply or resolve
-  // shows within seconds. Not while the tab is hidden (it loads on coming back, below), and not from an API too old
-  // to say a revision.
-  if (!script?.dataset.live) {
-    setInterval(async () => {
-      if (document.hidden || !S.loaded || S.gone || S.rev === undefined) return;
-      try {
-        const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}&rev`, { headers: headers(), cache: 'no-store' });
-        const { rev } = res.ok ? await res.json() : {};
-        if (Number.isInteger(rev) && rev !== S.rev) load();
-      } catch {}
-    }, 10000);
-  }
   function shownAgain() {
     if (!typed() && !S.grabbing) render();
     // Someone is in a box: the open thread gets its new replies in place, the chat its new messages (its box is left
@@ -425,14 +375,17 @@ import { holdWhileOpen } from './widget/hold.ts';
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
   // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
   S.overControls = store.get('lab-over') === '1';
+  // While it is off the item shows how to pin over a control anyway, once: option-click (Leo, 17 Nov).
+  const OPTION = /Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt';
   const sayOver = () => {
-    overBtn.textContent = S.overControls ? 'controls keep clicks' : 'pin over controls';
+    overBtn.replaceChildren(S.overControls ? 'controls keep clicks' : 'pin over controls', ...(S.overControls ? [] : [el('kbd', { 'aria-hidden': 'true' }, `${OPTION} click`)]));
     overBtn.setAttribute('aria-pressed', String(S.overControls));
   };
   const setOver = (v) => {
     S.overControls = v;
     store.set('lab-over', v ? '1' : '');
     sayOver();
+    setPinning(); // the pointer over controls follows the switch (lab-over)
     S.ctlTarget = null; // what the mouse is over is worked out again: the answer has just changed
     S.recheckCtl?.(); // without waiting for the mouse to move
     setPinning();
@@ -445,6 +398,9 @@ import { holdWhileOpen } from './widget/hold.ts';
     const placing = S.on && !S.cursorMode && !anyWriting();
     document.documentElement.classList.toggle('lab-pinning', placing);
     document.documentElement.classList.toggle('lab-go', placing && S.goMode);
+    // "Pin over controls" on: the page's own links, buttons and clickable cards show the pin too, not their hand: a click
+    // there pins, so the pointer says so (Leo, 17 Nov: "still controls giving me hand").
+    document.documentElement.classList.toggle('lab-over', placing && S.overControls);
     recheck();
   };
   const setCursor = (v) => {
@@ -531,6 +487,25 @@ import { holdWhileOpen } from './widget/hold.ts';
     if (S.openId === id) S.openId = null;
     render();
     say(`took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
+  }
+  // Option-click on a pin: its thread is resolved, or opened again, without opening its card (Leo, 17 Nov). For whoever
+  // may resolve it, as in the card: this computer, and whoever started the thread (its key is kept in their browser).
+  const mayResolve = (c) => S.isAdmin || Boolean(store.get(`lab-edit:${c.id}`));
+  function toggleResolved(c) {
+    const ownKey = store.get(`lab-edit:${c.id}`);
+    const reopen = Boolean(c.resolved);
+    send({ action: reopen ? 'reopen' : 'resolve', id: c.id, ...(ownKey ? { edit: ownKey } : {}) }).then(
+      ({ comment }) => {
+        Object.assign(c, comment);
+        if (!reopen && S.openId === c.id) { // as its resolve button closes it
+          S.closeFast = true;
+          S.openId = null;
+        }
+        render();
+        say(reopen ? 'open again' : 'resolved');
+      },
+      () => say("couldn't save that, try again"),
+    );
   }
   // A short note in the hint strip (an undo, a copied link), then the strip goes back to its own words.
   const said = { was: undefined, t: undefined };
@@ -637,9 +612,25 @@ import { holdWhileOpen } from './widget/hold.ts';
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
+  // Labs & pages (⌘K, src/widget/switcher.ts): local labs only. The menu opens with which lab this is, then the item.
+  const LABS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'labs') : '';
+  const labHead = LABS ? el('div', { class: 'lab-head' }, `${script?.dataset.labName || 'lab'} · ${location.port || '80'}`) : null;
+  const labsBtn = LABS ? el('button', { type: 'button', class: 'labs-btn' }) : null;
+  if (labsBtn) {
+    labsBtn.append('labs & pages', el('kbd', { 'aria-hidden': 'true' }, navigator.platform.startsWith('Mac') ? '⌘K' : 'ctrl K'));
+    // The menu closes without taking the focus back to ⋯ (its own click handler would, after the box opened, and on a
+    // phone that blurred the search and bounced the keyboard).
+    labsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setMenu(false);
+      openSwitcher();
+    });
+  }
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
-    for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
+    // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
+    // the version line.
+    if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
     moreBtn.hidden = !S.on;
@@ -780,11 +771,10 @@ import { holdWhileOpen } from './widget/hold.ts';
         prev.classList.add('out');
         prev.inert = true;
         layer.append(prev);
-        // It shrinks back with the keyboard going (sheets.ts): after a send, into the new pin.
+        // It shrinks back with the keyboard going (sheets.ts); after a send it slides down and the new pin pops in.
         const newPin = S.posted && pinsById.get(S.posted);
-        const sent = newPin?.getBoundingClientRect();
-        if (newPin) newPin.style.animationDelay = '250ms'; // it pops in as the card arrives (lab B2)
-        const dur = leave(prev, 0, sent && { x: sent.left + sent.width / 2, y: sent.top + sent.height / 2 });
+        if (newPin) newPin.style.animationDelay = '130ms'; // as the card goes (lab option 5)
+        const dur = leave(prev, 0, Boolean(newPin));
         setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
       }
       // Phones: a new comment's sheet has gone (dropped, swiped away; a sent one waits for its card above): the page goes
@@ -811,7 +801,8 @@ import { holdWhileOpen } from './widget/hold.ts';
       el('kbd', { 'aria-hidden': 'true' }, KEYS.toggle),
     );
     toggleBtn.classList.toggle('secondary', S.on);
-    host.toggleAttribute('data-sheet', Boolean(S.on && (S.draft || S.openId || S.listOpen || S.chatOpen))); // phones: the sheet has the screen's bottom
+    host.toggleAttribute('data-labs', Boolean(!coarse && S.labsOpen)); // the page dims behind labs & pages (the widget's .scrim)
+    host.toggleAttribute('data-sheet', Boolean((coarse && S.labsOpen) || (S.on && (S.draft || S.openId || S.listOpen || S.chatOpen)))); // phones: the sheet has the screen's bottom
     if (coarse && appear && now) { // a sheet opening slides in once its first frame is drawn (see data-opening in styles.css)
       host.setAttribute('data-opening', '');
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
@@ -835,7 +826,7 @@ import { holdWhileOpen } from './widget/hold.ts';
 
     list.forEach((c) => {
       if (isPage(c)) return; // in the chat, not on the page
-      // Done pins with nothing new in them step aside (the list's "done" button shows them again); an open one stays.
+      // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
       if (S.openId === c.id) drawZone(zone, `saved${anim}`); // a drawn area shows its outline while open
@@ -845,11 +836,11 @@ import { holdWhileOpen } from './widget/hold.ts';
       const pin = el(
         'button',
         {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
+          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? (coarse ? ' arrive' : ' in') : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
           type: 'button',
-          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
+          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`,
           // Its state in words too (the ring, the tick and the new dot are only seen).
-          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}${moved ? ', moved' : ''}`,
+          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}`,
         },
         // Done wins over every face: a go that has been answered or resolved is a pin like any other,
         // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
@@ -880,6 +871,7 @@ import { holdWhileOpen } from './widget/hold.ts';
       pin.addEventListener('click', (e) => {
         e.stopPropagation();
         if (pin.dataset.dragged) return;
+        if (e.altKey && mayResolve(c)) return toggleResolved(c);
         // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
         if (coarse && S.openId !== c.id) return goTo(c);
         S.openId = S.openId === c.id ? null : c.id;
@@ -934,7 +926,7 @@ import { holdWhileOpen } from './widget/hold.ts';
       float.append(
         el('div', { class: 'handle' }),
         composer({
-          placeholder: S.draft.go ? 'go' : 'add a comment',
+          placeholder: S.draft.go ? 'go' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
           empty: S.draft.go ? 'go' : '',
           nameFirst: Boolean(S.draft.go),
           autofocus: true,
@@ -952,9 +944,9 @@ import { holdWhileOpen } from './widget/hold.ts';
             markSeen([comment]);
             S.draft = null;
             keepSpot(null);
-            S.openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
+            S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
             S.posted = comment.id;
-            holdKeyboard(); // the keyboard waits until the card has flown into its pin (sheets.ts)
+            holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
             render();
           },
         }),
@@ -995,6 +987,7 @@ import { holdWhileOpen } from './widget/hold.ts';
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
   function setMenu(open, refocus = false) {
+    if (open && LABS) preloadSwitcher();
     moreMenu.hidden = !open;
     moreBtn.setAttribute('aria-expanded', String(open));
     if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
@@ -1017,39 +1010,10 @@ import { holdWhileOpen } from './widget/hold.ts';
   goBtn.addEventListener('click', () => setGo(!S.goMode));
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
-  // Pause motion (p): everything that moves on the page stops where it is, to pin a moment of an animation (Leo,
-  // 16 Nov); again to play on. Animations that start while paused stop too (checked every 100 ms). The widget moves on.
-  S.paused = null;
-  const pageAnim = (a) => { const t = a.effect?.target; return Boolean(t) && t.getRootNode() !== root; };
-  const freeze = () => {
-    for (const a of document.getAnimations()) {
-      if (!pageAnim(a) || a.playState !== 'running') continue;
-      a.pause();
-      S.paused.anims.add(a);
-    }
-    for (const v of document.querySelectorAll('video')) {
-      if (v.paused) continue;
-      v.pause();
-      S.paused.videos.add(v);
-    }
-  };
   overBtn.addEventListener('click', () => setOver(!S.overControls));
-  pauseBtn.addEventListener('click', () => {
-    if (S.paused) {
-      clearInterval(S.paused.timer);
-      for (const a of S.paused.anims) a.play();
-      for (const v of S.paused.videos) v.play().catch(() => {});
-      S.paused = null;
-    } else {
-      S.paused = { anims: new Set(), videos: new Set(), timer: setInterval(freeze, 100) };
-      freeze();
-    }
-    pauseBtn.textContent = S.paused ? 'play motion' : 'pause motion';
-    pauseBtn.setAttribute('aria-pressed', String(Boolean(S.paused)));
-  });
   showDoneBtn.addEventListener('click', () => {
     S.showDone = !S.showDone;
-    store.set('lab-show-done', S.showDone ? '1' : '');
+    store.set('lab-hide-done', S.showDone ? '' : '1');
     render();
   });
   newNext.addEventListener('click', () => stepNew(1));
@@ -1131,19 +1095,20 @@ import { holdWhileOpen } from './widget/hold.ts';
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
-    if (S.gone) return;
     const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
     if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
       return;
     }
-    // Control-D goes to the next new comment from anywhere, the reply box too (plain D types a letter there); Shift: back.
     if (S.on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || '') || (!/^[a-z]$/i.test(e.key || '') && e.code === 'KeyZ')) && !typing(e) && !inOtherWidget && placed.length) {
       e.preventDefault();
       return void undoLast();
     }
-    if (S.on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD' && !(typing(e) && !e.composedPath().includes(host))) {
+    // ⌥W (Leo 18 Nov: w does nothing in a text box) or Control-D goes to the next new comment from the widget's text boxes
+    // too, where a plain W types a letter; Shift: back. By the key's place: Option turns W into ∑ on a Mac.
+    const nextKey = (e.altKey && !e.ctrlKey && e.code === 'KeyW') || (e.ctrlKey && !e.altKey && e.code === 'KeyD');
+    if (S.on && nextKey && !e.metaKey && !(typing(e) && !e.composedPath().includes(host))) {
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
@@ -1161,11 +1126,10 @@ import { holdWhileOpen } from './widget/hold.ts';
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment,
-    // 2 go, 3 pointer, P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
+    // 2 go, 3 pointer, M hide, D show/hide done. With a thread open: R reply, E resolve.
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
       const k = act;
       e.preventDefault();
-      if (k === 'pause') return pauseBtn.click();
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
       if (k === 'done') return showDoneBtn.click();
@@ -1355,8 +1319,9 @@ import { holdWhileOpen } from './widget/hold.ts';
   const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
   /** @returns {HTMLElement | null} */
-  const openSheet = () => root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
+  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
   const closeAll = () => {
+    if (S.labsOpen) return closeSwitcher(); // labs & pages sits over the others: only it goes
     S.draft = null;
     S.openId = null;
     S.listOpen = false;
@@ -1573,7 +1538,6 @@ import { holdWhileOpen } from './widget/hold.ts';
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
   const navigated = () => {
-    if (S.gone) return;
     if (!host.isConnected && document.body) document.body.append(host);
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
@@ -1672,8 +1636,9 @@ import { holdWhileOpen } from './widget/hold.ts';
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
       `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
       // Holding Option (Alt) pins links and controls too: the drawn pin shows over them (the system pointer hides).
-      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
-      `html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }` +
+      // The same with "pin over controls" on, without the key (lab-over; not while Shift selects words).
+      `html:is(.lab-alt, .lab-over:not(.lab-shift)) body, html:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
+      `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }` +
       `html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
@@ -1745,4 +1710,16 @@ import { holdWhileOpen } from './widget/hold.ts';
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
   startLive();
+  if (LABS) bindSwitcher({
+      root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
+        setMenu(false);
+        if (coarse) S.listOpen = S.chatOpen = false; // one sheet at a time on a phone
+      },
+      // Phones: labs & pages is a sheet like the list and the chat (see openSheet); a computer keeps its box over the page.
+      sheet: (open) => {
+        S.labsOpen = open;
+        render();
+      },
+      swipe: swipeDown,
+    });
 })();

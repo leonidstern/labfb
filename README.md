@@ -1,6 +1,6 @@
 <h1><picture><source media="(prefers-color-scheme: dark)" srcset="docs/labit-mark-dark.svg"><img src="docs/labit-mark-light.svg" alt="" width="34" height="34" align="top"></picture> labit</h1>
 
-[![npm](https://img.shields.io/npm/v/@leonidstern/labit)](https://www.npmjs.com/package/@leonidstern/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![license: PolyForm Perimeter](https://img.shields.io/badge/license-PolyForm%20Perimeter-black)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@leonidstern/labit)](https://www.npmjs.com/package/@leonidstern/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![license: PolyForm Small Business](https://img.shields.io/badge/license-PolyForm%20Small%20Business-black)](LICENSE)
 
 **Review is the new build.** Pin comments on your pages. Your coding agent reads them, changes the code, and answers on the pin.
 
@@ -28,20 +28,19 @@ It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, an
 **Any other agent:** tell it to run these in your project.
 
 ```sh
-npx @leonidstern/labit wait                    # ends with your next comment
-npx @leonidstern/labit reply <id> --done "…"   # answers on the pin and closes it
-npx @leonidstern/labit pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered
+npx @leonidstern/labit@latest wait                    # ends with your next comment
+npx @leonidstern/labit@latest reply <id> --done "…"   # answers on the pin and closes it
+npx @leonidstern/labit@latest pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered
 ```
 
 Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
 
-Everything merged to main, before it is released: `npx @leonidstern/labit@next`.
 
 **Fewer permission prompts (Claude Code):** copy [examples/claude-settings.json](examples/claude-settings.json) to `.claude/settings.json` in your project (or merge its `permissions` into yours). labit's commands and MCP tools then run without asking; `--wifi` and `invite`, which let another device in, still ask. Claude Code reads a project's allow rules only once you've opened the folder in it and trusted it.
 
 ## Good to know
 
-- `--wifi` lets your phone comment too. Each device opens a one-time link from `npx @leonidstern/labit invite`, so being on the same wifi isn't enough. The pages still travel in the clear over the wifi.
+- `--wifi` lets your phone comment too. Each device opens a one-time link from `npx @leonidstern/labit@latest invite`, so being on the same wifi isn't enough. The pages still travel in the clear over the wifi.
 - Agents learn how you like answers: reply as usual, and when you say an answer was too long or unclear, your message shows **rule?**. Tap it and the rule goes to `~/.config/labit/replies.md`, handed to every agent with your pins.
 - You name yourself once. The name is kept for this computer in `~/.config/labit/settings.json`, so every later lab starts out knowing you — browsers keep it per port, labs don't. `labit invite [name]` carries a name to a phone the same way. `--page /path` makes the link open that page. Opening a used or old link again on a phone that's already in just takes you there, and a phone that keeps using the lab stays in.
 - Settings (port, your dev server, keys, how long the lab waits…): `labit.json` in the project and `~/.config/labit/settings.json` for you. `labit settings` shows them all; [docs/settings.md](docs/settings.md) explains each.
@@ -53,6 +52,6 @@ Shared labs on a domain (comments from people you send a link to) come later.
 
 ## License
 
-[PolyForm Perimeter 1.0.0](LICENSE). You can use labit, change it, and ship it inside your own work, for free and for any purpose, except to offer a product that competes with labit. That makes labit source-available, not OSI open source. Versions already on npm (0.6.2 and earlier) stay under MIT.
+[PolyForm Small Business 1.0.0](LICENSE). labit is free for people and companies with fewer than 100 people and under $1M in yearly revenue: use it, change it and ship it inside your own work. Larger companies need a paid license from the author. That makes labit source-available, not OSI open source. Versions already on npm (0.6.2 and earlier) stay under MIT.
 
 Made by [leonidstern](https://github.com/LeonidStern) · [OOZE](https://ooze.design)

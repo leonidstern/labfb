@@ -1,4 +1,4 @@
-// The rules that guard a lab: who may resolve, delete, move and invite on the cloud API, and what the local
+// The rules that guard a lab: who may resolve, delete and move on the comments API, and what the local
 // server refuses (other hosts, other sites, dot files, paths outside the folder, the agent's endpoints).
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +12,6 @@ import { apiOn } from '../lib/dev.ts';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const OWNER = 'owner-secret-0123456789abcdef';
-process.env.LAB_HOST = 'lab.test';
 process.env.LAB_COMMENTS_ADMIN_TOKEN = OWNER;
 process.env.LAB_COMMENTS_PER_HOUR = '3';
 const db = new Map();
@@ -27,10 +26,9 @@ const call = (body, headers = {}, method = 'POST') =>
 let ips = 0;
 const pin = async (page, text = 'hello', ip = `10.5.0.${++ips}`) => (await (await call({ page, name: 'Ann', text, anchor: { selector: 'h1' } }, { ip })).json());
 
-// ---------- cloud API ----------
+// ---------- comments API ----------
 
-test('only the lab domain, only JSON, only real page paths', async () => {
-  assert.equal((await api.POST(new Request('https://evil.test/_lab/api/comments', { method: 'POST', headers: { host: 'evil.test', 'content-type': 'application/json' }, body: '{}' }))).status, 404);
+test('only JSON, only real page paths', async () => {
   assert.equal((await api.POST(new Request('https://lab.test/x', { method: 'POST', headers: { host: 'lab.test', 'content-type': 'text/plain' }, body: 'x' }))).status, 415);
   for (const page of ['/../etc', '/a/../b', 'no-slash', '/a b', '/' + 'x'.repeat(400)]) assert.equal((await call({ page, name: 'A', text: 'x' })).status, 400, page);
 });
@@ -44,19 +42,6 @@ test('resolve and delete need an admin key; delete takes the replies with it', a
   assert.equal((await call({ page: '/anna/site/home', action: 'delete', id: comment.id }, { 'x-lab-admin': OWNER })).status, 200);
   const left = (await (await call({ page: '/anna/site/home' }, {}, 'GET')).json()).comments;
   assert.equal(left.length, 0, 'thread and reply both gone');
-});
-
-test('invited keys work only under their own slug, and can be revoked', async () => {
-  assert.equal((await call({ page: '/anna/x', action: 'invite', name: 'anna' })).status, 403, 'only the owner invites');
-  const { key } = await (await call({ page: '/anna/x', action: 'invite', name: 'anna' }, { 'x-lab-admin': OWNER })).json();
-  const mine = (await pin('/anna/site/p')).comment.id;
-  const theirs = (await pin('/mira/site/p')).comment.id;
-  assert.equal((await call({ page: '/anna/site/p', action: 'resolve', id: mine }, { 'x-lab-admin': key })).status, 200);
-  assert.equal((await call({ page: '/mira/site/p', action: 'resolve', id: theirs }, { 'x-lab-admin': key })).status, 403, 'other slug');
-  assert.equal((await call({ page: '/anna/site/p', action: 'resolve', id: mine }, { 'x-lab-admin': key.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A')) })).status, 403, 'forged signature');
-  process.env.LAB_REVOKED = 'anna';
-  assert.equal((await call({ page: '/anna/site/p', action: 'reopen', id: mine }, { 'x-lab-admin': key })).status, 403, 'revoked');
-  delete process.env.LAB_REVOKED;
 });
 
 test('a pin moves only with its own edit key or an admin key', async () => {

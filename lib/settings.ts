@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
+const SHORTCUTS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
 // wifi; your own file can't say which folder or dev server a project uses).
@@ -24,6 +24,9 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags'; def: unknown; o
   updateCheck: { type: 'boolean', def: true },
   name: { type: 'string', def: '', only: 'personal' },
   model: { type: 'string', def: '', only: 'personal' },
+  // The one lab for pages that belong to no project (tries, demos, options): agents add pages there, a folder per
+  // topic, instead of starting a lab of their own (Leo 18 Nov: "def reuse it, why we have so much").
+  pagesFolder: { type: 'string', def: '~/lab-pages', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
   // What is being tried here (lib/flags.ts). Off unless a file or the ⋯ menu turns one on.
   flags: { type: 'flags', def: flagDefaults() },

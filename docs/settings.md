@@ -75,6 +75,7 @@ Your `~/.config/labit/settings.json`:
 | `updateCheck` | `true` | `LABIT_NO_UPDATE_CHECK=1` | Say when a newer labit is out (checked at most once a day). | both |
 | `name` | none | | Your name on pins. The page asks once and keeps it here. | yours |
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
+| `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
 | `flags` | everything off | | What this lab is trying: `{ "<flag>": true }`. See **Trying things** below. | either |
 
@@ -116,8 +117,7 @@ win over yours, key by key.
 | `pointer` | `3` | A click is just a click |
 | `chat` | `c` | Open the chat |
 | `next` | `w` | The next new comment (with Shift: the one before) |
-| `pause` | `p` | Pause the page (animations and videos stop) |
-| `done` | `d` | Show or hide done threads |
+| `done` | `d` | Hide or show done threads (shown, faded, at first) |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
 
@@ -128,5 +128,4 @@ on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat
 
 - **Per run, flags only:** `--new`, `--all`, `--pages`, `--timeout`, `--resolve`, `--done`, `--on-it`, `--question`, `--wait`, `--page`, `--dir`.
 - **Set by agents:** `LAB_AGENT`, `LAB_AGENT_NAME`, `LAB_SESSION_NAME` and the agents' own session ids.
-- **Secrets for cloud labs:** keep tokens in environment variables, never in a file you commit.
 - **For tests:** `LABIT_HOME`, `LAB_TAB_TTL`.

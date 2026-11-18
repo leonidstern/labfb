@@ -45,6 +45,25 @@ test('pages get the comment layer', async () => {
   assert.match(html, /Hello/);
 });
 
+test('a lab tab wears labit\'s icon unless the page or the folder has its own', async () => {
+  await up();
+  assert.match((await (await fetch(B + '/')).text()).slice(0, 200), /<link rel="icon" href="\/_lab\/favicon\.svg">/);
+  fs.writeFileSync(path.join(DIR, 'own-icon.html'), '<!doctype html><head><link rel="shortcut icon" href="/mine.png"><title>o</title></head><p>x');
+  assert.doesNotMatch(await (await fetch(B + '/own-icon')).text(), /_lab\/favicon/);
+  const ico = await fetch(B + '/favicon.ico', { redirect: 'manual' });
+  assert.equal(ico.status, 302);
+  assert.equal(ico.headers.get('location'), '/_lab/favicon.svg');
+  assert.match((await fetch(B + '/_lab/favicon.svg')).headers.get('content-type') || '', /image\/svg/);
+  fs.writeFileSync(path.join(DIR, 'favicon.ico'), 'x');
+  try {
+    assert.doesNotMatch(await (await fetch(B + '/')).text(), /_lab\/favicon/);
+    assert.equal((await fetch(B + '/favicon.ico', { redirect: 'manual' })).status, 200);
+  } finally {
+    fs.rmSync(path.join(DIR, 'favicon.ico'));
+    fs.rmSync(path.join(DIR, 'own-icon.html'));
+  }
+});
+
 test('wait hears a new comment, reply answers it, the text file has both', async () => {
   await up();
   const waiting = run(['wait', '--timeout', '10']);
@@ -241,6 +260,76 @@ test('one lab per folder: two started at once make one; a dead lock or a silent 
   } finally {
     for (const p of procs) if (p.exitCode === null && p.signalCode === null) p.kill();
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('labit --name gives the lab its topic, and later starts keep it', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-name-')));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
+  const port = 4870 + Math.floor(Math.random() * 60);
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
+  const run = async (...more) => {
+    const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), ...more], { cwd: dir, env });
+    p.out = '';
+    p.stdout.on('data', (d) => (p.out += d));
+    p.stderr.on('data', (d) => (p.out += d));
+    const done = new Promise((r) => p.on('exit', r));
+    try {
+      for (let i = 0; i < 100 && !/\[lab\] http:\/\/localhost/.test(p.out); i++) await new Promise((r) => setTimeout(r, 100));
+      return (await (await fetch(`http://localhost:${port}/_lab/pages`)).json()).name;
+    } finally {
+      p.kill('SIGTERM');
+      await done;
+    }
+  };
+  try {
+    assert.equal(await run(), path.basename(dir), 'no topic: the folder');
+    assert.equal(await run('--name', 'Lab navigation'), 'Lab navigation');
+    assert.equal(await run(), 'Lab navigation', 'kept in .lab/name');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a page can be archived and brought back (labs & pages), in .lab/archived.json; the file stays', async () => {
+  for (let i = 0; i < 50 && !fs.existsSync(path.join(DIR, '.lab/server.json')); i++) await new Promise((r) => setTimeout(r, 100));
+  const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  const post = (body) => fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ port: Number(PORT), ...body }) });
+  const page = async () => (await (await fetch(B + '/_lab/pages')).json()).pages.find((p) => p.path === '/index');
+  assert.equal((await post({ action: 'archive-page', page: '/index' })).status, 200);
+  assert.ok((await page()).archived, 'archived, with when');
+  assert.ok(fs.existsSync(path.join(DIR, 'index.html')), 'the file stays');
+  assert.equal((await post({ action: 'archive-page', page: 'index' })).status, 400, 'a page is a /path');
+  assert.equal((await post({ action: 'unarchive-page', page: '/index' })).status, 200);
+  assert.equal((await page()).archived, null);
+  assert.equal((await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'archive-page', port: Number(PORT), page: '/index' }) })).status, 403, 'needs the key');
+});
+
+test('labit publish puts a page in the one pages lab, starts it once, and publishing again keeps the link', async () => {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-pub-')));
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), LABIT_HOME: path.join(home, '.labit'), LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
+  const port = 4940 + Math.floor(Math.random() * 9);
+  fs.mkdirSync(path.join(home, '.config/labit'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.config/labit/settings.json'), JSON.stringify({ port }));
+  fs.writeFileSync(path.join(home, 'Heading options.html'), '<!doctype html><title>Heading options</title><h1>one</h1>');
+  const publish = () => new Promise((r) => execFile(process.execPath, [LAB, 'publish', 'Heading options.html'], { cwd: home, env }, (err, out) => r(String(out).split('\n')[0])));
+  let pid;
+  try {
+    const link = await publish();
+    assert.match(link, /^http:\/\/localhost:\d+\/heading-options$/);
+    pid = JSON.parse(fs.readFileSync(path.join(home, '.labit/servers', fs.readdirSync(path.join(home, '.labit/servers'))[0]), 'utf8')).pid;
+    assert.match(await (await fetch(link)).text(), /<h1>one<\/h1>/);
+    fs.writeFileSync(path.join(home, 'Heading options.html'), '<!doctype html><title>Heading options</title><h1>two</h1>');
+    assert.equal(await publish(), link, 'same link');
+    assert.match(await (await fetch(link)).text(), /<h1>two<\/h1>/, 'updated');
+    assert.equal(fs.readdirSync(path.join(home, '.labit/servers')).length, 1, 'one lab');
+    assert.ok(fs.existsSync(path.join(home, 'lab-pages/heading-options.html')));
+  } finally {
+    if (pid) process.kill(pid);
+    await new Promise((r) => setTimeout(r, 300));
     fs.rmSync(home, { recursive: true, force: true });
   }
 });

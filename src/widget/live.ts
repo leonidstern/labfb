@@ -37,18 +37,36 @@ export function startLive() {
       W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || W.S.listOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
-        let reloadTimer: any = 0;
-    const reload = () => {
-      // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
-      if (document.hidden) return void (reloadWhenShown = true);
-      if (busy()) {
-        if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
-        return;
-      }
+    let reloadTimer: any = 0;
+    // A held reload is invisible otherwise: the page sits old while you read, then jumps the moment you close the
+    // thread. This says one is ready, and takes it now when tapped.
+    const soon = document.createElement('button');
+    soon.className = 'soon';
+    soon.type = 'button';
+    soon.hidden = true;
+    soon.textContent = 'update waiting';
+    soon.title = 'Take the update now';
+    soon.addEventListener('click', () => {
+      clearTimeout(reloadTimer);
+      reloadTimer = 0;
+      now();
+    });
+    const now = () => {
       try {
         sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, list: W.S.listOpen, filter: W.S.filter, chat: W.S.chatOpen }));
       } catch {}
       location.reload();
+    };
+    const reload = () => {
+      // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
+      if (document.hidden) return void (reloadWhenShown = true);
+      if (busy()) {
+        soon.hidden = false;
+        if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
+        return;
+      }
+      soon.hidden = true;
+      now();
     };
     const who = document.createElement('a');
     who.className = 'listener';
@@ -66,6 +84,20 @@ export function startLive() {
     const lbl = who.querySelector('.lbl');
     who.hidden = true;
     W.root.querySelector('.left').prepend(who);
+    W.root.querySelector('.left').append(soon);
+    // Files a save can mean for this page: the page itself, anything it loads, and data it may fetch as it runs.
+    // Everything else -- a README, another page's script, the project's own server code -- leaves it alone.
+    const FETCHED = /\.(json|wasm|csv|tsv|xml|txt|map|woff2?)$/i;
+    const tidy = (u) => decodeURIComponent(u).replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '');
+    const usedHere = (p) => {
+      if (tidy(location.pathname) === tidy(p) || FETCHED.test(p)) return true;
+      for (const n of document.querySelectorAll('script[src], link[href], iframe[src], object[data], embed[src]')) {
+        if (W.host.contains(n)) continue;
+        const v = n.getAttribute('src') || n.getAttribute('href') || n.getAttribute('data');
+        if (v && samePath(v.split('#')[0], [p])) return true;
+      }
+      return false;
+    };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
     if (!document.querySelector('link[rel~="icon"]')) {
@@ -80,11 +112,14 @@ export function startLive() {
     let stream = null;
     let beat = 0;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
+    // A dropped connection isn't "nobody listening": the badge keeps its last state, faded, and says reconnecting
+    // (Leo, 18 Nov: the black rabbit came and went at random, from these).
     const showAway = (word) => {
       lbl.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
       who.setAttribute('aria-label', word);
-      who.classList.add('idle');
-      who.classList.remove('working');
+      who.classList.add('stale');
+      W.chatBtn.classList.add('stale');
+      if (!who.classList.contains('working') && !last) who.classList.add('idle');
       who.hidden = false;
     };
     let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
@@ -352,6 +387,8 @@ export function startLive() {
       {
         // A new widget script: this page needs it, so it reloads (when it's safe, as always).
         if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) return reload();
+        // Comments stored in a new shape (lib/schema.mjs VERSION): this page reads them with the widget that knows it.
+        if (v.schema && W.script.dataset.schema && String(v.schema) !== W.script.dataset.schema) return reload();
         // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
         // and patched (only if its file changed does anything move), and the comments are loaded again.
         if (v.lab && W.script.dataset.lab && v.lab !== W.script.dataset.lab) {
@@ -362,7 +399,11 @@ export function startLive() {
           morphPage();
           W.load();
         }
-        if (String(v.files) !== W.script.dataset.version) return reload();
+        if (String(v.files) !== W.script.dataset.version) {
+          // The lab says which files changed (no list: a burst too big to judge, so reload as before).
+          if (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere)) W.script.dataset.version = String(v.files);
+          else return reload();
+        }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
         if (hotAt !== null && v.hot !== hotAt) {
@@ -370,7 +411,10 @@ export function startLive() {
           else hotUpdate(v.hotFiles || []);
         }
         hotAt = v.hot;
-        if (commentsRev !== null && v.comments !== commentsRev) W.loadChanges(commentsRev); // keeps typed text: it adds replies in place
+        // One version on and it names the pages it changed, none of them this one: nothing to fetch. (An older lab sends
+        // no commentPages; more than one version on, the pages in between aren't known.)
+        const elsewhere = v.comments === commentsRev + 1 && Array.isArray(v.commentPages) && !v.commentPages.includes(W.S.page);
+        if (commentsRev !== null && v.comments !== commentsRev && !elsewhere) W.loadChanges(commentsRev); // keeps typed text: it adds replies in place
         commentsRev = v.comments;
         // read on another device with your name
         if (v.reads !== readsAt) {
@@ -379,7 +423,12 @@ export function startLive() {
         }
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
-        const mode = s ? v.mode || 'listening' : 'away';
+        // A lab with listeners can still have none for this page (a wait with --page for another one): this page says
+        // so, instead of "talking to Claude" while its pins wait for nobody. An older lab doesn't send heard.
+        const h = v.heard;
+        const here = !h || h.pages.includes(W.S.page) || (h.all && !h.except.includes(W.S.page));
+        const mode = s && here ? v.mode || 'listening' : 'away';
+        W.S.unheard = mode === 'away';
         const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
         // "Codex is working (ooze)": the agent first, the session's name after it in brackets. With the model the
         // session said it runs on: "talking to Claude · Sonnet 5.5 (ooze)".
@@ -387,7 +436,9 @@ export function startLive() {
         const tag = s && s.name !== (s.agent || 'Claude') ? [span(`(${s.name})`)] : [];
         if (mode === 'listening') lbl.replaceChildren(span('talking to'), agent, ...tag);
         else if (mode === 'working') lbl.replaceChildren(agent, span('is working'), ...tag);
-        else lbl.replaceChildren(span('no agent listening'));
+        else lbl.replaceChildren(span(s && !here ? 'no agent on this page' : 'no agent listening'));
+        who.classList.remove('stale');
+        W.chatBtn.classList.remove('stale');
         who.classList.toggle('idle', mode === 'away');
         who.classList.toggle('working', mode === 'working');
         W.listBtn.dataset.agent = mode;
@@ -398,7 +449,8 @@ export function startLive() {
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
-        who.title = mode === 'away' ? 'Ask your agent to run: npx @leonidstern/labit wait' : s?.resume || '';
+        // How to get one listening again: what to say to the agent, for this page.
+        who.title = mode === 'away' ? `To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : s?.resume || '';
         who.hidden = false;
       }
     }

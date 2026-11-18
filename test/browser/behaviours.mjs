@@ -35,6 +35,8 @@ const write = (f, t) => fs.writeFileSync(path.join(DIR, f), t);
 write('index.html', PAGE);
 write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
 write('pic.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="42"><rect width="320" height="42" fill="#cde"/></svg>');
+write('notes.md', '# notes');
+write('data.json', '{"a":1}');
 
 let server;
 const start = () => (server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env }));
@@ -62,9 +64,9 @@ for (const eng of ['webkit', 'chromium']) {
   write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
   const browser = await pw[eng].launch();
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
-  // show-done from the start: a resolved pin stays on the page, so the go check below needs no reload
+  // Done pins show by default: a resolved pin stays on the page, so the go check below needs no reload
   // (a reload would land in the counts the save checks at the end make).
-  await ctx.addInitScript(() => (localStorage.setItem('lab-name', 'leo'), localStorage.setItem('lab-show-done', '1')));
+  await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
   const p = await ctx.newPage();
   let loads = 0;
   p.on('load', () => loads++);
@@ -217,12 +219,47 @@ for (const eng of ['webkit', 'chromium']) {
   const doneFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
   check(eng, 'a go pin says go, and wears the tick once it is done', goFace === 'go' && doneFace === '✓', `${goFace} → ${doneFace}`);
   await post({ page, action: 'delete', id: placed.comment.id });
+  // Option-click on a pin resolves its thread without opening it; again opens it again
+  const elsewhere = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'from elsewhere');
+  const optClick = async () => {
+    const at = await shadow(() => { const b = [...r.querySelectorAll('button.pin')].find((x) => x.title.includes('Sam') && !x.classList.contains('moved')); if (!b) return null; b.scrollIntoView({ block: 'center' }); const q = b.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; });
+    if (!at) return false;
+    await p.keyboard.down('Alt');
+    await p.mouse.click(at[0], at[1]);
+    await p.keyboard.up('Alt');
+    await sleep(500);
+    return true;
+  };
+  const clicked = await optClick();
+  const afterOne = await elsewhere();
+  const cardOpen = await shadow(() => { return Boolean(r.querySelector('.card')); });
+  check(eng, 'option-click on a pin resolves its thread without opening it', clicked && Boolean(afterOne?.resolved) && !cardOpen, JSON.stringify({ clicked, resolved: afterOne?.resolved, cardOpen }));
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'reopen', id: afterOne?.id }) });
+  await sleep(700);
+  // Pin over controls: off, a control keeps its own pointer and the menu says how to pin there once; on, it shows the pin
+  const sum = await p.locator('#d summary').boundingBox();
+  await p.mouse.move(sum.x + 8, sum.y + 6);
+  await p.mouse.move(sum.x + 10, sum.y + 7);
+  await sleep(150);
+  const overOff = await shadow(() => { return { hint: r.querySelector('.over-btn kbd')?.textContent || '', ctl: document.documentElement.classList.contains('lab-ctl'), over: document.documentElement.classList.contains('lab-over') }; });
+  await shadow(() => { r.querySelector('.over-btn').click(); });
+  await p.mouse.move(sum.x + 12, sum.y + 8);
+  await sleep(150);
+  const overOn = await shadow(() => { return { hint: r.querySelector('.over-btn kbd')?.textContent || '', over: document.documentElement.classList.contains('lab-over'), cursor: getComputedStyle(document.querySelector('#d summary')).cursor }; });
+  await shadow(() => { r.querySelector('.over-btn').click(); });
+  check(eng, 'pin over controls: the menu shows option-click while off, the pin shows over a control while on',
+    overOff.hint.endsWith('click') && overOff.ctl && !overOff.over && !overOn.hint && overOn.over && /^(none|crosshair)$/.test(overOn.cursor), JSON.stringify([overOff, overOn]));
 
-  // A script change reloads; a lab restart doesn't
+  // A save the page has nothing to do with leaves it alone; one it may fetch reloads it; a lab restart doesn't.
+  // (A page with its own <script> is not used here: such a page never patches in place, it reloads on every HTML
+  // save, which is what the checks above cover. Whether a page uses a saved script is tested in hot.test.mjs.)
   // (a reload waits while you've just pressed a key or clicked: give it a moment)
-  write('app.js', 'console.log(1)');
+  write('notes.md', '# notes, changed');
   await sleep(3000);
-  check(eng, 'a script save reloads the page', loads === 2, `loads ${loads}`);
+  check(eng, 'a save the page does not use leaves it alone', loads === 1, `loads ${loads}`);
+  write('data.json', '{"a":2}');
+  await sleep(3000);
+  check(eng, 'a save it may fetch reloads the page', loads === 2, `loads ${loads}`);
   await sleep(800);
   server.kill();
   await sleep(600);

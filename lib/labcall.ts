@@ -20,7 +20,7 @@ export function findLab(from: string): { dir: string; server: Server } | null {
 /** A POST to the lab with its key. node:http, not fetch: a wait can outlast fetch's 5-minute header timeout. Rejects
  *  when the lab can't be reached, or when `signal` aborts (the request is dropped, so the lab sees the wait end). */
 export const labCall = (server: Server, pathname: string, body: object, session: Session, signal?: AbortSignal) =>
-  new Promise<{ status: number; text: string }>((resolve, reject) => {
+  new Promise<{ status: number; text: string; delivery: string }>((resolve, reject) => {
     const data = JSON.stringify(body);
     const req = http.request(
       { host: '127.0.0.1', port: server.port, path: pathname, method: 'POST', signal,
@@ -29,16 +29,22 @@ export const labCall = (server: Server, pathname: string, body: object, session:
       (res) => {
         let text = '';
         res.on('data', (c) => (text += c));
-        res.on('end', () => resolve({ status: res.statusCode || 0, text }));
+        // delivery: a wait's hand-off to confirm once it is shown (labAck), so the lab doesn't send its pins again.
+        res.on('end', () => resolve({ status: res.statusCode || 0, text, delivery: String(res.headers['x-lab-delivery'] || '') }));
       },
     );
     req.on('error', reject);
     req.end(data);
   });
 
+/** Tells the lab a wait's hand-off was shown to the agent. Best-effort: unconfirmed, the lab sends those pins again. */
+export const labAck = (server: Server, delivery: string, session: Session) =>
+  delivery ? labCall(server, '/_lab/ack', { id: delivery }, session).then(() => {}, () => {}) : Promise.resolve();
+
 /** What a wait that ended without pins says, by the lab's answer. */
 export const WAIT_SAID: Record<number, string> = {
   204: 'No new comments yet. Run wait again to keep listening.',
   409: 'Another session is listening now; this one stopped.',
   410: 'The page was closed, so this stopped listening. Wait again only when the person asks or opens the page.',
+  423: 'The person stopped listening from the page (labs & pages). Don\'t wait again until they ask you to.',
 };
