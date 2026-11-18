@@ -28,10 +28,18 @@ options later (new ones get the next numbers). `rec` marks your recommendation.
 
 ```html
 <ol class="lab-options">
-  <li value="1" class="rec"><b>Keep the 2 s batch</b><span>Pins in a row reach the agent together.</span></li>
-  <li value="2"><b>Hand each pin over at once</b><span>Faster, more wake-ups.</span></li>
+  <li value="1" id="v1" class="rec"><b>Keep the 2 s batch</b><span>Pins in a row reach the agent together.</span></li>
+  <li value="2" id="v2"><b>Hand each pin over at once</b><span>Faster, more wake-ups.</span></li>
 </ol>
 ```
+
+**Versions have ids, and your replies link to them.** Whenever you offer alternatives (options, two designs, two
+screenshots, two builds), show them as versions with this block, never as loose paragraphs, and give each one an id:
+`id="v1"`, `id="v2"`… (the lab adds `v<number>` to an option that has none, when nothing else on the page has it).
+With several groups on a page, write the ids yourself so none repeats (`layout-v1`, `layout-v2`, `color-v1`). In a
+reply or a pin, name a version with a link to it, `[plain list](#v1)` or just `#v1`: a click in the comment scrolls the
+page to the version and outlines it, so the person can jump between them from the thread. The same works for a
+version not in a list: put an `id` on its element (a card, a figure, a section) and link `#that-id`.
 
 ## Compare
 

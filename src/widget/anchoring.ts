@@ -989,7 +989,8 @@ export function goToBlock(e: Element) {
 }
 export const drafting = () => DRAFT_MODE && store.get('lab-hold') === '1';
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that
-// id, as a link that goes to it there (an agent names the block it placed: "#speed-deeper").
+// id, as a link that goes to it there (an agent names the block it placed: "#speed-deeper"); [words](#id) the same,
+// showing the words ("V2 · [plain list](#v2)").
 // The widget listens for lab-goto and scrolls (src/comments.js, goToBlock).
 const onPage = (id) => {
   const e = document.getElementById(id);
@@ -998,17 +999,18 @@ const onPage = (id) => {
 const linked = (text) => {
   const out = [];
   let at = 0;
-  for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]|(?<![\w&/#])#([A-Za-z][\w:.-]*[\w])/g)) {
-    if (m[1] && !onPage(m[1])) continue;
+  for (const m of text.matchAll(/\[([^\]\n]+)\]\(#([A-Za-z][\w:.-]*[\w])\)|\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]|(?<![\w&/#])#([A-Za-z][\w:.-]*[\w])/g)) {
+    const id = m[2] || m[3];
+    if (id && !onPage(id)) continue;
     if (m.index > at) out.push(document.createTextNode(text.slice(at, m.index)));
-    const a = m[1]
-      ? el('a', { href: `#${m[1]}`, class: 'link' }, m[0])
+    const a = id
+      ? el('a', { href: `#${id}`, class: 'link' }, m[2] ? m[1] : m[0])
       : el('a', { href: m[0], target: '_blank', rel: 'noopener noreferrer', class: 'link' }, m[0]);
     a.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (!m[1]) return;
+      if (!id) return;
       e.preventDefault();
-      dispatchEvent(new CustomEvent('lab-goto', { detail: m[1] }));
+      dispatchEvent(new CustomEvent('lab-goto', { detail: id }));
     });
     out.push(a);
     at = m.index + m[0].length;

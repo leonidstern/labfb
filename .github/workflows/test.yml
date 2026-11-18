@@ -46,5 +46,7 @@ jobs:
       - run: node test/browser/shortcuts.mjs
       # Pins finding their spot again: reordered twins, their own box first, quoted words, made-up ids and classes.
       - run: node test/browser/anchoring.mjs
+      # Version links: options get ids, #id and [words](#id) in a message go to them, an address with the id outlines it.
+      - run: node test/browser/labversions.mjs
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
       - run: node bench/run.mjs

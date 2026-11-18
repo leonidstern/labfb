@@ -33,6 +33,21 @@ test('the shell: its title, the lab stylesheet, the lab column, light and dark f
   assert.match(labShell('<p>nothing</p>', 'file-name'), /<title>file-name<\/title>/);
 });
 
+test('versions get ids: v<number>, never over an id the page has, never twice', () => {
+  const page = labShell(
+    '<ol class="lab-options"><li value="1"><b>A</b></li><li value="2" id="mine"><b>B</b></li><li value="3" class="rec"><b>C</b></li></ol>' +
+      '<ol class="lab-options"><li value="1"><b>A again</b></li></ol><ol><li value="9">not options</li></ol>',
+    'x',
+  );
+  assert.match(page, /<li value="1" id="v1">/);
+  assert.match(page, /<li value="2" id="mine">/, 'its own id is kept');
+  assert.match(page, /<li value="3" class="rec" id="v3">/);
+  assert.match(page, /<li value="1"><b>A again/, 'a second block does not repeat v1');
+  assert.match(page, /<li value="9">/, 'only options blocks');
+  assert.equal(page.match(/id="v1"/g).length, 1);
+  assert.match(labShell('<li value="1" id="v1">x</li><ol class="lab-options"><li value="1">y</li></ol>', 'x'), /<li value="1">y/, 'an id already on the page is not taken again');
+});
+
 test('Markdown: headings with ids, lists, checklists, tables, code, quotes, figures, raw HTML blocks', () => {
   const { html, title } = renderMarkdown(
     [

@@ -11,13 +11,27 @@ export const isLabPage = (html: string) =>
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** Each option in an options block gets the id `v<number>` (from its `value`) when it has none and nothing on the page
+ *  has that id yet, so a reply can link to it (`#v2`). Several blocks on a page: write the ids, e.g. `layout-v2`. */
+const versionIds = (html: string) => {
+  const used = new Set([...html.matchAll(/\sid=["']?([^\s"'>]+)/gi)].map((m) => m[1]));
+  return html.replace(/<ol\b[^>]*\bclass=["'][^"']*\blab-options\b[^"']*["'][^>]*>[\s\S]*?<\/ol>/gi, (block) =>
+    block.replace(/<li\b([^>]*)>/gi, (tag, attrs) => {
+      const n = /\bvalue=["']?(\d+)/i.exec(attrs)?.[1];
+      if (!n || /\bid=/i.test(attrs) || used.has(`v${n}`)) return tag;
+      used.add(`v${n}`);
+      return `<li${attrs} id="v${n}">`;
+    }),
+  );
+};
+
 /** The page around a lab page's content: charset, viewport, its title, the lab's stylesheet, its body class. */
 export function labShell(content: string, fallbackTitle: string) {
   const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(content);
   const body = title ? content.replace(title[0], '') : content;
   const name = title?.[1].trim() || /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(body)?.[1].replace(/<[^>]+>/g, '').trim() || fallbackTitle;
   // Its own <main>, if it has one; otherwise the lab's column holds the content.
-  const inner = /<main[\s>]/i.test(body) ? body : `<main>\n${body.trim()}\n</main>`;
+  const inner = versionIds(/<main[\s>]/i.test(body) ? body : `<main>\n${body.trim()}\n</main>`);
   return (
     `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n` +
     `<title>${title ? title[1].trim() : esc(name)}</title>\n<link rel="stylesheet" href="/_lab/lab.css">\n</head>\n<body class="lab lab-doc">\n${inner}\n</body>\n</html>\n`

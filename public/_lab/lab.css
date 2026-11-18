@@ -148,6 +148,12 @@ ol.lab-options { list-style: none; margin: 0; padding: 6px; display: grid; gap: 
 .lab-options > li > b { font-weight: 600; }
 .lab-options > li > span { color: var(--lab-muted); font-size: 14px; }
 .lab-options > li + li { border-top: var(--lab-hair); }
+/* A link to a version (#v2, from a comment or the address) lands on it: a short light outline, still when motion is reduced. */
+.lab-options > li:target, .lab [data-version]:target { outline: 2px solid var(--lab-green-3); outline-offset: 2px; border-radius: var(--lab-corner-s); }
+@media (prefers-reduced-motion: no-preference) {
+  .lab-options > li:target, .lab [data-version]:target { animation: lab-landed 2s ease-out forwards; }
+}
+@keyframes lab-landed { 0%, 60% { outline-color: var(--lab-green-3); } 100% { outline-color: transparent; } }
 /* Compare: a table in a box; th.rec / td.rec mark the recommended column. */
 .lab-compare { background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 4px 6px; overflow-x: auto; }
 .lab-compare .rec { color: var(--lab-green); }
