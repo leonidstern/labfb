@@ -78,6 +78,9 @@ For the agent, from the project (any folder under it):
       thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
   labit reply <id> --progress "what you're on now"
       During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
+  labit reply <id> "question" --choice "A words" --choice "B words" [--choice …] [--recommend B]
+      Ask with 2 to 6 choices: the person picks one on the page and the pick comes back in your next wait as
+      "Picked B: …". --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
@@ -1312,7 +1315,9 @@ function threadText(page, root, replies, fresh, spot, when) {
   if (from) out.push(`- … ${from} earlier message${from === 1 ? '' : 's'} (whole thread: http://localhost:${PORT}/_lab/agent${page})`);
   for (const r of replies.slice(from)) {
     const state = r.session ? STATE[r.intent] : '';
-    out.push(`- ${who(r)} · ${when(r)}${state ? ` · ${state}` : ''} · id ${r.id}: ${body(r.text)}${fresh.has(r.id) ? '  ← new' : ''}`);
+    // A pick on a question with choices says which question it answers (the words already say which choice).
+    const pick = r.picked ? ` (their pick on your question id ${r.picked.of})` : '';
+    out.push(`- ${who(r)} · ${when(r)}${state ? ` · ${state}` : ''} · id ${r.id}: ${body(r.text)}${pick}${fresh.has(r.id) ? '  ← new' : ''}`);
   }
   return out.join('\n');
 }
