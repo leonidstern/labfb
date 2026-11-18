@@ -12,7 +12,7 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
-import { REGISTRY, keyFor, runningLabs } from './lib/labs.ts';
+import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { intentFromText, slim, upgrade, VERSION as SCHEMA } from './api/_schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
@@ -1240,7 +1240,7 @@ const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? `
 const widget = (page, admin, me = '') =>
   `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR}` +
+  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${path.basename(ROOT).replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
@@ -1362,6 +1362,38 @@ const listing = (res, dir, urlPath) => {
 // What a request sent (JSON), and a JSON answer (never kept by the browser).
 const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}');
 const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+// This lab's pages with their open comments, who listens, and which pages that covers (the switcher and `labit list`).
+const labInfo = () => {
+  const openOn = (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length;
+  const list = (PROXY ? [] : pagesUnder(ROOT)).map((rel) => ({ url: origin + urlOf(rel), title: titleOf(path.join(ROOT, rel)), file: rel, key: keyFor(rel) }));
+  if (PROXY) list.push({ url: origin + '/', title: '', file: '', key: '/' });
+  // A dev server's pages: the ones with comments.
+  for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
+  return {
+    name: path.basename(ROOT), root: ROOT, port: PORT, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
+    pages: list.map(({ key, ...p }) => ({ ...p, path: key, open: openOn(key) })),
+  };
+};
+// The browser's key on this computer (data-admin), sent back as x-lab-admin.
+const keyOk = (req) => {
+  const got = Buffer.from(String(req.headers['x-lab-admin'] || ''));
+  const key = Buffer.from(TOKEN);
+  return got.length === key.length && timingSafeEqual(got, key);
+};
+// "stop listening" from the switcher: every open wait ends with 423, which tells the agent the person stopped it (it
+// shouldn't wait again until asked). Pins stay where they are.
+const stopListening = () => {
+  const all = waiters;
+  waiters = [];
+  waitEnded = Date.now();
+  for (const w of all) {
+    clearTimeout(w.timer);
+    w.res.writeHead(423).end('stopped from the page');
+  }
+  recent = [];
+  console.log('[lab] listening stopped from the page');
+  setMode('away');
+};
 const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
@@ -1527,18 +1559,71 @@ const handler = async (req, res) => {
       });
       return;
     }
+    // ---------- the switcher (⌘K): every lab on this computer, its pages, who listens; park, start, stop listening ----------
+    // This computer: every running lab (each asked for its own pages) and the parked ones. A guest: this lab's pages
+    // alone, no folders, no other labs (their pass is for this lab).
+    if (pathname === '/_lab/labs' && req.method === 'GET') {
+      const here = isLoopback(req);
+      const mine = { ...labInfo(), here: true };
+      if (!here) return answer(res, { labs: [{ name: mine.name, port: PORT, here: true, mode: mine.mode, listening: mine.listening, pages: mine.pages.map(({ url, ...p }) => ({ ...p, url: new URL(url).pathname })) }], parked: [], guest: true });
+      const others = await Promise.all(
+        runningLabs()
+          .filter((l) => l.port !== PORT)
+          .map(async (l) => {
+            try {
+              const r = await fetch(`http://localhost:${l.port}/_lab/pages`, { signal: AbortSignal.timeout(1500) });
+              return { ...(await r.json()), port: l.port, here: false };
+            } catch {
+              return { name: l.name, root: l.root, port: l.port, here: false, pages: [], mode: 'away', unreachable: true };
+            }
+          }),
+      );
+      return answer(res, { labs: [mine, ...others.sort((a, b) => a.name.localeCompare(b.name))], parked: parkedLabs().filter((p) => !runningLabs().some((l) => l.port === p.port)), guest: false });
+    }
+    // stop (listening), park, start: this computer only, with the lab's key (a web page elsewhere can't post here).
+    if (pathname === '/_lab/labs' && req.method === 'POST') {
+      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
+      const { action, port } = await sent(req);
+      const n = Number(port);
+      if (action === 'start') {
+        const p = parkedLabs().find((x) => x.port === n);
+        if (!p) return res.writeHead(404).end('not parked');
+        if (runningLabs().some((l) => l.port === n)) return res.writeHead(409).end('already running');
+        const env = { ...process.env, ...(p.edge ? { LABIT_EDGE: p.edge } : {}) };
+        spawn(process.execPath, [...p.execArgv, ...p.argv.filter((a) => a !== '--no-open'), '--no-open'], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
+        fs.rmSync(path.join(PARKED, `${n}.json`), { force: true });
+        console.log(`[lab] started ${p.name} again on ${n}`);
+        return answer(res, { ok: true });
+      }
+      if (!['stop', 'park'].includes(action)) return res.writeHead(400).end('action: stop, park or start');
+      if (n !== PORT) {
+        // Another lab: it does it itself, asked with its own key (from its folder, on this same computer).
+        const lab = runningLabs().find((l) => l.port === n);
+        if (!lab) return res.writeHead(404).end('no lab on that port');
+        try {
+          const key = JSON.parse(fs.readFileSync(path.join(lab.root, '.lab/server.json'), 'utf8')).token;
+          const r = await fetch(`http://localhost:${n}/_lab/labs`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': key }, body: JSON.stringify({ action, port: n }), signal: AbortSignal.timeout(3000) });
+          return res.writeHead(r.status, { 'content-type': 'application/json' }).end(await r.text());
+        } catch {
+          return res.writeHead(502).end('that lab did not answer');
+        }
+      }
+      stopListening();
+      if (action === 'stop') return answer(res, { ok: true });
+      try {
+        fs.mkdirSync(PARKED, { recursive: true });
+        const edge = process.env.LABIT_EDGE;
+        writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: path.basename(ROOT), argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), at: new Date().toISOString() }, null, 2));
+      } catch {}
+      console.log('[lab] parked from the page: start it again from the switcher (⌘K) in another lab, or run labit here');
+      answer(res, { ok: true });
+      setTimeout(bye, 200); // after the answer is out
+      return;
+    }
     // What the Lab panel lists: this lab's pages with their open comments. This computer only.
     if (pathname === '/_lab/pages') {
       if (!isLoopback(req)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
-      const openOn = (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length;
-      const list = (PROXY ? [] : pagesUnder(ROOT)).map((rel) => ({ url: origin + urlOf(rel), title: titleOf(path.join(ROOT, rel)), file: rel, key: keyFor(rel) }));
-      if (PROXY) list.push({ url: origin + '/', title: '', file: '', key: '/' });
-      // A dev server's pages: the ones with comments.
-      for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
-      return answer(res, {
-        name: path.basename(ROOT), root: ROOT, port: PORT, proxy: PROXY?.origin || null, mode, listening: session?.name || null,
-        pages: list.map(({ key, ...p }) => ({ ...p, path: key, open: openOn(key) })),
-      });
+      return answer(res, labInfo());
     }
     if (pathname.startsWith('/_lab/agent/')) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });

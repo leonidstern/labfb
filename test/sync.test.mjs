@@ -323,3 +323,24 @@ test('a bye that arrives before its stream has closed still lets the tab go', as
   const ms = Date.now() - t0;
   assert.ok(ms < 2500, `ended ${ms} ms after: within the 1 s grace, not after the 3 s silent-tab timeout`);
 });
+
+test('labs & pages: this lab and its pages; stop listening needs the key and ends the wait with its own word', async () => {
+  await drain();
+  const got = await (await fetch(B + '/_lab/labs')).json();
+  const me = got.labs.find((l) => l.here);
+  assert.equal(me.port, Number(PORT));
+  assert.ok(me.pages.some((p) => p.path === '/other'), 'its pages are listed');
+  const w = wait();
+  const p = await live('sw-1');
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  const no = await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'stop', port: Number(PORT) }) });
+  assert.equal(no.status, 403, 'no key, no stop');
+  const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  const ok = await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ action: 'stop', port: Number(PORT) }) });
+  assert.equal(ok.status, 200);
+  const { out } = await w.done;
+  assert.match(out, /stopped listening from the page/);
+  await until(() => modeOf(p) === 'away', 3000, 'away once stopped');
+  p.close();
+  await sleep(300); // its bye reaches the lab before the file's end stops it
+});

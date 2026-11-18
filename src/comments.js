@@ -36,6 +36,7 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
+import { bindSwitcher, openSwitcher } from './widget/switcher.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -637,8 +638,16 @@ import { holdWhileOpen } from './widget/hold.ts';
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
+  // Labs & pages (⌘K, src/widget/switcher.ts): local labs only. The menu opens with which lab this is, then the item.
+  const LABS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'labs') : '';
+  const labHead = LABS ? el('div', { class: 'lab-head' }, `${script?.dataset.labName || 'lab'} · ${location.port || '80'}`) : null;
+  const labsBtn = LABS ? el('button', { type: 'button', class: 'labs-btn' }) : null;
+  if (labsBtn) {
+    labsBtn.append('labs & pages', el('kbd', { 'aria-hidden': 'true' }, navigator.platform.startsWith('Mac') ? '⌘K' : 'ctrl K'));
+    labsBtn.addEventListener('click', () => setTimeout(openSwitcher, 0)); // after the menu closes
+  }
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
     for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
@@ -1733,4 +1742,5 @@ import { holdWhileOpen } from './widget/hold.ts';
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
   startLive();
+  if (LABS) bindSwitcher({ root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => setMenu(false) });
 })();

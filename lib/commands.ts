@@ -198,7 +198,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
             'add --bg for the full wait: in the foreground this command holds your turn open, and the person cannot ' +
             'say anything to you until it ends.',
         );
-      process.exit(out.status < 300 || out.status === 409 || out.status === 410 ? 0 : 1);
+      process.exit(out.status < 300 || out.status === 409 || out.status === 410 || out.status === 423 ? 0 : 1);
     }
 
     // The agent's own pin on a spot: a suggestion or a question about the page, where a person would have pinned it.
