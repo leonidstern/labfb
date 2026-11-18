@@ -30,8 +30,10 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
        transition: transform .16s var(--_ease), opacity .16s; } /* the green edge comes at once: eased, it flickered on a click (Leo, 18 Nov) */
 /* A 1 px edge in the text colour (dark on light pins, light in dark mode) so a pin shows on white and black alike;
    the one you point at or have open gets a green edge. */
-button.pin:hover, button.pin.open { transform: scale(1.03); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 3px 10px rgba(0,0,0,.16); }
+button.pin:hover { transform: scale(1.03); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 3px 10px rgba(0,0,0,.16); }
 button.pin:active { transform: scale(1.03); } /* no press movement: it stays as hovered */
+/* The open one only gets the green edge, no lift: clicking away then changes nothing but the edge (Leo, 18 Nov). */
+button.pin.open:not(:hover) { box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
 .pin.in { animation: lab-pin .26s var(--_ease); }
 /* Phones: as the sent card slides away its new pin pops in from 70% with a small overshoot, and one green ring leaves
    it: sent (lab option 5, Leo 17 Nov). */
