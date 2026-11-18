@@ -151,6 +151,8 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
 
   // Text selection
   const lede = await p.locator('#p5').boundingBox();
+  // What the press saw, so a failure says why (Linux WebKit only, now and then).
+  await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { window.__press ??= { shift: e.shiftKey, labShift: document.documentElement.classList.contains('lab-shift') }; }, { capture: true, once: true }); });
   await p.keyboard.down('Shift');
   await p.keyboard.up('Shift');
   await p.mouse.move(lede.x + 10, lede.y + 8);
@@ -158,7 +160,8 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.mouse.move(lede.x + 16, lede.y + 9);
   await p.mouse.up();
   await sleep(100);
-  check(eng, 'a click right after Shift selects no text', (await p.evaluate(() => getSelection().toString())) === '');
+  const sel = await p.evaluate(() => { const g = getSelection(); const n = g.anchorNode; return { text: g.toString(), at: n ? (n.nodeType === 3 ? n.parentElement : n)?.closest('[id]')?.id ?? n.nodeName : null, labShift: document.documentElement.classList.contains('lab-shift'), press: window.__press }; });
+  check(eng, 'a click right after Shift selects no text', sel.text === '', JSON.stringify(sel));
   await p.keyboard.press('Escape');
   await sleep(200);
 
