@@ -27,7 +27,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-since-')));
 const PORT = 5400 + Math.floor(Math.random() * 300);
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, PORT: '', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, PORT: '', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const write = (f, t) => fs.writeFileSync(path.join(DIR, f), t);
 // A page with six ids of its own (a, b, c, d, hid, z) and room: its blocks are far apart, so what comes after them is
