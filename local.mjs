@@ -1438,7 +1438,7 @@ const keyOk = (req) => {
   const key = Buffer.from(TOKEN);
   return got.length === key.length && timingSafeEqual(got, key);
 };
-// "stop listening" from the switcher: every open wait ends with 423, which tells the agent the person stopped it (it
+// Archiving a lab from the switcher (and the API's "stop"): every open wait ends with 423, which tells the agent the person stopped it (it
 // shouldn't wait again until asked). Pins stay where they are.
 const stopListening = () => {
   const all = waiters;
@@ -1617,7 +1617,7 @@ const handler = async (req, res) => {
       });
       return;
     }
-    // ---------- the switcher (⌘K): every lab on this computer, its pages, who listens; park, start, stop listening ----------
+    // ---------- the switcher (⌘K): every lab on this computer, its pages, who listens; archive (which stops listening) and start ----------
     // This computer: every running lab (each asked for its own pages) and the parked ones. A guest: this lab's pages
     // alone, no folders, no other labs (their pass is for this lab).
     if (pathname === '/_lab/labs' && req.method === 'GET') {

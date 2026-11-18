@@ -1,5 +1,5 @@
 // Labs & pages (⌘K, or the ⋯ menu): every lab running on this computer and its pages, to go to one; who listens on
-// each, to stop it; archive a lab and start it again. A guest on a phone sees this lab's pages only. Part of the comment
+// each; archive a lab (which stops its listening) and start it again. A guest on a phone sees this lab's pages only. Part of the comment
 // widget (src/comments.js bundles it). Leo, 18 Nov (the lab-navigation page, option B).
 
 type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[]; opened?: string | null };
@@ -64,8 +64,8 @@ export function bindSwitcher(deps: Deps) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       rows[active]?.dispatchEvent(new MouseEvent('click', { metaKey: e.metaKey || e.ctrlKey }));
-    } else if (e.altKey && !e.metaKey && !e.ctrlKey && /^Key[SA]$/.test(e.code)) {
-      // Option + a letter, read by key position (Option turns the letter into another character on a Mac).
+    } else if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyA') {
+      // ⌥A archives, read by key position (Option turns the letter into another character on a Mac); it asks twice.
       e.preventDefault();
       if (data?.guest) return;
       const row = rows[active];
@@ -73,15 +73,12 @@ export function bindSwitcher(deps: Deps) {
       if (!row || !port) return;
       const lab = data?.labs.find((l) => l.port === port);
       if (row.dataset.kind === 'parked' || !lab) return;
-      if (e.code === 'KeyS' && lab.mode !== 'away') return void act('stop', port);
-      if (e.code === 'KeyA') {
-        if (armed !== `archive ${port}`) {
-          armed = `archive ${port}`;
-          return draw();
-        }
-        armed = '';
-        void act('archive', port);
+      if (armed !== `archive ${port}`) {
+        armed = `archive ${port}`;
+        return draw();
       }
+      armed = '';
+      void act('archive', port);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -142,7 +139,7 @@ function start(port: number, row: HTMLElement) {
   void act('start', port);
 }
 
-async function act(action: 'stop' | 'archive' | 'start', port: number) {
+async function act(action: 'archive' | 'start', port: number) {
   try {
     await fetch(d.api, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': d.admin }, body: JSON.stringify({ action, port }) });
   } catch {}
@@ -205,8 +202,8 @@ function draw() {
     return;
   }
   const local = !data.guest;
-  // Lean (Leo 18 Nov: "make this lean"); the lab keys only where they work, a guest can't stop or archive labs.
-  foot.textContent = `↵ go · ⌘↵ new tab${local ? ' · ⌥S stop listening · ⌥A archive' : ''}`;
+  // Lean (Leo 18 Nov: "make this lean"); the lab keys only where they work, a guest can't archive labs.
+  foot.textContent = `↵ go · ⌘↵ new tab${local ? ' · ⌥A archive' : ''}`;
   if (data.self) {
     const note = el('div', { class: 'sw-none' }, 'This is your computer, opened through its wifi address, so it sees what a phone sees. ');
     note.append(el('a', { href: data.self }, 'Open it on localhost'), ' for every lab and the lab keys.');
@@ -252,8 +249,8 @@ function draw() {
         acts.append(b);
         return b;
       };
-      if (lab.mode !== 'away') btn('stop listening', () => act('stop', lab.port), 'end the agent’s wait on this lab; its pins stay (⌥S)');
-      else
+      // No "stop listening" of its own: archiving stops it (Leo 18 Nov: "remove stop listening too, put it in archive").
+      if (lab.mode === 'away')
         btn('get Claude listening', () => {
           const line = `Listen for pins on http://localhost:${lab.port}${lab.here ? d.page : '/'} with labit wait${lab.here ? ` --page ${d.page}` : ''}`;
           navigator.clipboard?.writeText(line).catch(() => {});
@@ -269,7 +266,7 @@ function draw() {
         }
         armed = '';
         void act('archive', lab.port);
-      }, 'stop this lab and fold it away under "archived", ↵ starts it again (⌥A)');
+      }, 'stop Claude listening and this lab, and fold it away under "archived"; ↵ starts it again (⌥A)');
       if (armed === key) b.classList.add('armed');
       head.append(acts);
     }
