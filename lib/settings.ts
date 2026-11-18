@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
+const SHORTCUTS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
 // The actions row on selected words ("words") and, once the regular dialog has one, on a spot ("spot"). The comment itself is
 // always there, first and unlisted; the list holds the built-in rewrite, cut and go, and your own: { label, send, ask? }.
 const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go'];
@@ -120,6 +120,7 @@ const check = (key: string, v: unknown, file: string, problems: string[]): unkno
     if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object of action → key');
     const out: Record<string, string> = {};
     for (const [action, key1] of Object.entries(v)) {
+      if (action === 'pointer') continue; // the old key 3: key 1 now switches between comment and pointer; a leftover setting is ignored, not said
       if (!(action in SHORTCUTS)) bad(`.${action} is not an action (${Object.keys(SHORTCUTS).join(', ')})`);
       else if (typeof key1 !== 'string' || !/^[a-z0-9]$/i.test(key1)) bad(`.${action} must be one letter or digit`);
       else out[action] = key1.toLowerCase();

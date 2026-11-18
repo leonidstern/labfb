@@ -106,7 +106,7 @@ test('labit.json is found from a folder inside the project; an old zoom setting 
   const s = withConfig(cfg, () => loadSettings(sub));
   assert.equal(s.values.port, 4600);
   assert.equal(s.values.zoom, undefined);
-  assert.equal(s.values.shortcuts.pointer, '3', 'pointer is 3 again');
+  assert.equal(s.values.shortcuts.pointer, undefined, 'no pointer key: key 1 switches');
   assert.ok(s.problems.some((p) => /zoom is not a setting/.test(p)));
   assert.ok(s.problems.some((p) => /\.zoom is not an action/.test(p)));
 });

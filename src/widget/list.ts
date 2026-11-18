@@ -32,7 +32,7 @@ export function drawList() {
   paintLines();
   W.listBtn.hidden = !W.S.on || (!W.coarse && !all.length && !W.held().length); // on phones it carries the agent's light
   W.goBtn.hidden = !W.S.on;
-  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, '+'), W.el('kbd', { 'aria-hidden': 'true' }, [W.KEYS.comment, W.KEYS.pointer].join('/')));
+  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, '+'), W.el('kbd', { 'aria-hidden': 'true' }, W.KEYS.comment));
   W.goFace();
     W.goBtn.classList.toggle('cursor', W.S.cursorMode);
   W.goBtn.setAttribute('aria-pressed', String(!W.S.cursorMode));
