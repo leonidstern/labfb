@@ -182,6 +182,23 @@ for (const eng of ['webkit', 'chromium']) {
   const doneFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
   check(eng, 'a go pin says go, and wears the tick once it is done', goFace === 'go' && doneFace === '✓', `${goFace} → ${doneFace}`);
   await post({ page, action: 'delete', id: placed.comment.id });
+  // Option-click on a pin resolves its thread without opening it; again opens it again
+  const elsewhere = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'from elsewhere');
+  const optClick = async () => {
+    const at = await shadow(() => { const b = [...r.querySelectorAll('button.pin')].find((x) => x.title.includes('Sam') && !x.classList.contains('moved')); if (!b) return null; b.scrollIntoView({ block: 'center' }); const q = b.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; });
+    if (!at) return false;
+    await p.keyboard.down('Alt');
+    await p.mouse.click(at[0], at[1]);
+    await p.keyboard.up('Alt');
+    await sleep(500);
+    return true;
+  };
+  const clicked = await optClick();
+  const afterOne = await elsewhere();
+  const cardOpen = await shadow(() => { return Boolean(r.querySelector('.card')); });
+  check(eng, 'option-click on a pin resolves its thread without opening it', clicked && Boolean(afterOne?.resolved) && !cardOpen, JSON.stringify({ clicked, resolved: afterOne?.resolved, cardOpen }));
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'reopen', id: afterOne?.id }) });
+  await sleep(700);
 
   // A script change reloads; a lab restart doesn't
   // (a reload waits while you've just pressed a key or clicked: give it a moment)

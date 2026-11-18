@@ -482,6 +482,25 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     render();
     say(`took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
   }
+  // Option-click on a pin: its thread is resolved, or opened again, without opening its card (Leo, 17 Nov). For whoever
+  // may resolve it, as in the card: this computer, and whoever started the thread (its key is kept in their browser).
+  const mayResolve = (c) => S.isAdmin || Boolean(store.get(`lab-edit:${c.id}`));
+  function toggleResolved(c) {
+    const ownKey = store.get(`lab-edit:${c.id}`);
+    const reopen = Boolean(c.resolved);
+    send({ action: reopen ? 'reopen' : 'resolve', id: c.id, ...(ownKey ? { edit: ownKey } : {}) }).then(
+      ({ comment }) => {
+        Object.assign(c, comment);
+        if (!reopen && S.openId === c.id) { // as its resolve button closes it
+          S.closeFast = true;
+          S.openId = null;
+        }
+        render();
+        say(reopen ? 'open again' : 'resolved');
+      },
+      () => say("couldn't save that, try again"),
+    );
+  }
   // A short note in the hint strip (an undo, a copied link), then the strip goes back to its own words.
   const said = { was: undefined, t: undefined };
   function say(words) {
@@ -814,7 +833,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
         {
           class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
           type: 'button',
-          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}`,
+          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`,
           // Its state in words too (the ring, the tick and the new dot are only seen).
           'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}`,
         },
@@ -847,6 +866,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       pin.addEventListener('click', (e) => {
         e.stopPropagation();
         if (pin.dataset.dragged) return;
+        if (e.altKey && mayResolve(c)) return toggleResolved(c);
         // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
         if (coarse && S.openId !== c.id) return goTo(c);
         S.openId = S.openId === c.id ? null : c.id;
