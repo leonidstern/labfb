@@ -51,6 +51,12 @@ const up = async () => {
   throw new Error('lab did not start');
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Waits on the condition the next step needs; `ms` is the longest it waits, and it never throws (the check after it reports the real failure).
+const until = (p, fn, arg, ms) => p.waitForFunction(fn, arg, { timeout: ms, polling: 'raf' }).catch(() => {});
+// Until a comment of the page satisfies `pred`.
+async function untilApi(pred, ms) {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(40)) if ((await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.some(pred)) return;
+}
 let failed = 0;
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
@@ -71,8 +77,10 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   let loads = 0;
   p.on('load', () => loads++);
   const shadow = (fn, arg) => p.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
+  const untilShadow = (page, fn, arg, ms) =>
+    until(page, ([src, a]) => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot; return Boolean(r) && new Function('r', 'a', `return (${src})(r, a)`)(r, a); }, [fn.toString(), arg], ms);
   await p.goto(B + '/');
-  await sleep(1200);
+  await until(p, () => [...document.querySelectorAll('*')].some((n) => n.shadowRoot), null, 1200);
 
   // Saved files
   await p.fill('#i', 'kept text');
@@ -80,10 +88,10 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.mouse.move(5, 5);
   await sleep(1700);
   write('s.css', 'h1{color:rgb(0,0,255)} body{margin:30px}');
-  await sleep(1200);
+  await until(p, () => [...document.querySelectorAll('link[rel=stylesheet]')].some((x) => /lab-v=/.test(x.href)), null, 1200);
   check(eng, 'CSS save swaps the stylesheet, no reload', loads === 1 && (await p.$$eval('link[rel=stylesheet]', (l) => l.some((x) => /lab-v=/.test(x.href)))));
   write('index.html', PAGE.replace('<title>T1', '<title>T2').replace('a caption under it', 'a caption, changed'));
-  await sleep(1500);
+  await until(p, () => document.title.replace(/^\(\d+\) /, '') === 'T2' && document.querySelector('.cap').textContent === 'a caption, changed', null, 1500);
   const st = await p.evaluate(() => ({ t: document.title.replace(/^\(\d+\) /, ''), // the unread count prefix is the widget's own
     cap: document.querySelector('.cap').textContent, v: document.querySelector('#i').value, open: document.querySelector('#d').open }));
   check(eng, 'HTML save patches in place, no reload', loads === 1 && st.t === 'T2' && st.cap === 'a caption, changed', JSON.stringify(st));
@@ -93,33 +101,34 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   const under = () => p.evaluate(() => Math.round(document.querySelector('#p30').getBoundingClientRect().top)); // where a paragraph in view sits on screen
   const was = await under();
   write('index.html', PAGE.replace('<title>T1', '<title>T2').replace('a caption under it', 'a caption, changed').replace('<div id="top"></div>', '<div id="top"><p>new</p><p>new</p><p>new</p><p>new</p></div>'));
-  await sleep(1600);
+  await until(p, () => Boolean(document.querySelector('#top p')), null, 1600);
+    await sleep(200); // the page keeps the place just after the patch
   const now = await under();
   check(eng, 'what you look at keeps its place', Math.abs(now - was) <= 2, `paragraph at ${was} px → ${now} px`);
   write('pic.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="42"><rect width="320" height="42" fill="#fdc"/></svg>');
-  await sleep(1300);
+  await until(p, () => /lab-v=/.test(document.querySelector('#pic').getAttribute('src')), null, 1300);
   check(eng, 'picture save swaps it, no reload', loads === 1 && /lab-v=/.test(await p.$eval('#pic', (i) => i.getAttribute('src'))));
 
   // Comments arriving
   await p.evaluate(() => scrollTo(0, 0));
   const pinsBefore = await shadow(() => { return r.querySelectorAll('button.pin').length; });
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'from elsewhere', anchor: { selector: '#p2', x: 0.1, y: 0.5, docX: 0.1, docY: 300, width: 1000, element: '<p id="p2">' } }) });
-  await sleep(900);
+  await untilShadow(p, (r, n) => r.querySelectorAll('button.pin').length === n, pinsBefore + 1, 900);
   check(eng, 'a comment from elsewhere shows up, no reload', loads === 1 && (await shadow(() => { return r.querySelectorAll('button.pin').length; })) === pinsBefore + 1);
   // Pages toggle state classes; a pin stays on its element. One whose element is gone waits on the left edge, at its height.
   await p.evaluate(() => document.querySelector('#p2').classList.add('offscreen'));
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'gone', anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 400, width: 1000, element: '<p id="nope">' } }) });
-  await sleep(900);
+  await untilShadow(p, (r) => [...r.querySelectorAll('button.pin.moved')].some((b) => b.style.left === '10px' && b.style.top === '400px'), null, 900);
   const pins = await shadow(() => { return [...r.querySelectorAll('button.pin')].map((b) => [b.classList.contains('moved'), b.style.left, b.style.top]); });
   check(eng, 'a pin keeps its element when the page adds a class to it', pins.every(([m, l]) => !m || l === '10px'), JSON.stringify(pins));
   check(eng, 'a pin whose element is gone waits on the left edge at its height', pins.some(([m, l, t]) => m && l === '10px' && t === '400px'), JSON.stringify(pins));
   // With wide margins (a centred column on a wide window) it waits beside the content, not at the window's edge.
   write('s.css', 'h1{color:rgb(0,0,255)} body{margin:30px 300px}');
-  await sleep(1300);
+  await untilShadow(p, (r) => { const m = [...r.querySelectorAll('button.pin.moved')]; return m.length > 0 && m.every((b) => b.style.left === '270px'); }, null, 1300);
   const wide = await shadow(() => { return [...r.querySelectorAll('button.pin.moved')].map((b) => b.style.left); });
   check(eng, 'on a page with wide margins it waits beside the content', wide.length > 0 && wide.every((l) => l === '270px'), JSON.stringify(wide));
   write('s.css', 'h1{color:rgb(0,0,255)} body{margin:30px}');
-  await sleep(1300);
+  await untilShadow(p, (r) => { const m = [...r.querySelectorAll('button.pin.moved')]; return m.length > 0 && m.every((b) => b.style.left === '10px'); }, null, 1300);
 
   // Areas
   const img = await p.locator('#pic').boundingBox();
@@ -130,12 +139,12 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.mouse.down();
   for (let i = 1; i <= 12; i++) await p.mouse.move(x + 330 * i / 12, y + 20 * i / 12);
   await p.mouse.up();
-  await sleep(300);
+  await untilShadow(p, (r) => Boolean(r.querySelector('.zone.draft')), null, 300);
   const zone = await shadow(() => { const z = r.querySelector('.zone.draft'); return z ? Math.round(z.getBoundingClientRect().width) + 'x' + Math.round(z.getBoundingClientRect().height) : null; });
   check(eng, 'a narrow area can be drawn, even after a stray click', zone === '330x20', String(zone));
   await p.keyboard.type('narrow strip');
   await p.keyboard.press('Enter');
-  await sleep(600);
+  await untilApi((c) => c.text === 'narrow strip', 600);
   const saved = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'narrow strip');
   check(eng, 'an area a little past a picture stays on the picture', /<img/.test(saved?.anchor?.element || ''), saved?.anchor?.element);
   await p.keyboard.press('Escape');
@@ -172,10 +181,10 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     await p.mouse.move(at.x2, at.y, { steps: 6 });
     await p.mouse.up();
     await p.keyboard.up('Shift');
-    await sleep(400);
+    await untilShadow(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.getAnimations().length === 0; }, null, 400);
     await p.keyboard.type(text);
     await p.keyboard.press('Enter');
-    await sleep(600);
+    await untilApi((c) => c.text === text, 600);
     const all = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
     return all.find((c) => c.text === text)?.anchor?.quote?.exact;
   };
@@ -191,7 +200,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   // Keys
   const chatOpen = () => shadow(() => { return !r.querySelector('.chatwin').hidden; });
   await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'с', code: 'KeyC', bubbles: true })));
-  await sleep(300);
+  await untilShadow(p, (r) => !r.querySelector('.chatwin').hidden, null, 300);
   check(eng, 'C opens the chat, on a Cyrillic layout too', await chatOpen());
   await p.keyboard.press('Escape');
   await sleep(200);
@@ -212,11 +221,11 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': admin, 'x-lab-agent': '1' }, body: JSON.stringify(body) }).then((r) => r.json());
   const page = await p.evaluate(() => document.querySelector('script[src*="comments.js"]').dataset.page);
   const placed = await post({ page, name: 'leo', text: 'go', anchor: { kind: 'element', selector: '#p3', x: 0.5, y: 0.5, element: '<p>', text: 'paragraph 3 with some words', section: '' } });
-  await sleep(1200);
+  await untilShadow(p, (r) => Boolean(r.querySelector('.pin.go')), null, 1200);
   const goFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
   if (!placed.comment) throw new Error(`could not place the go pin: ${JSON.stringify(placed)}`);
   await post({ page, action: 'resolve', id: placed.comment.id });
-  await sleep(1500);
+  await untilShadow(p, (r) => r.querySelector('.pin.go')?.textContent.trim() === '✓', null, 1500);
   const doneFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
   check(eng, 'a go pin says go, and wears the tick once it is done', goFace === 'go' && doneFace === '✓', `${goFace} → ${doneFace}`);
   await post({ page, action: 'delete', id: placed.comment.id });
@@ -228,7 +237,8 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     await p.keyboard.down('Alt');
     await p.mouse.click(at[0], at[1]);
     await p.keyboard.up('Alt');
-    await sleep(500);
+    await untilApi((c) => c.text === 'from elsewhere' && c.resolved, 500);
+        await sleep(100);
     return true;
   };
   const clicked = await optClick();
@@ -236,7 +246,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   const cardOpen = await shadow(() => { return Boolean(r.querySelector('.card')); });
   check(eng, 'option-click on a pin resolves its thread without opening it', clicked && Boolean(afterOne?.resolved) && !cardOpen, JSON.stringify({ clicked, resolved: afterOne?.resolved, cardOpen }));
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'reopen', id: afterOne?.id }) });
-  await sleep(700);
+  await untilApi((c) => c.text === 'from elsewhere' && !c.resolved, 700);
   // Pin over controls: off, a control keeps its own pointer and the menu says how to pin there once; on, it shows the pin
   const sum = await p.locator('#d summary').boundingBox();
   await p.mouse.move(sum.x + 8, sum.y + 6);
@@ -306,7 +316,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await sleep(3000);
   check(eng, 'a save the page does not use leaves it alone', loads === 1, `loads ${loads}`);
   write('data.json', '{"a":2}');
-  await sleep(3000);
+  for (const end = Date.now() + 3000; Date.now() < end && loads < 2; ) await sleep(50);
   check(eng, 'a save it may fetch reloads the page', loads === 2, `loads ${loads}`);
   await sleep(800);
   server.kill();

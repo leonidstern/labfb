@@ -36,6 +36,13 @@ for (let i = 0; i < 80; i++) {
     await sleep(100);
   }
 }
+// Waits on the condition the next step needs; `ms` is the longest it waits, and it never throws (the check after it reports the real failure).
+const until = (p, fn, arg, ms) => p.waitForFunction(fn, arg, { timeout: ms, polling: 'raf' }).catch(() => {});
+const untilRoot = (p, fn, ms) =>
+  until(p, (src) => {
+    const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+    return Boolean(r) && new Function('r', `return (${src})(r)`)(r);
+  }, fn.toString(), ms);
 let failed = 0;
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
@@ -61,30 +68,30 @@ try {
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
       const p = await ctx.newPage();
       await p.goto(B + '/');
-      await sleep(1200);
+      await untilRoot(p, () => true, 1200);
       const start = await look(p);
       await p.keyboard.press('m');
-      await sleep(300);
+      await sleep(250);
       check(eng, 'the old toggle key (m) does nothing', (await look(p)).on === start.on);
       await p.keyboard.press('h');
-      await sleep(300);
+      await until(p, ([src, on]) => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot; return Boolean(r) && [...r.querySelectorAll('button')].some((b) => /hide comments/.test(b.textContent || '')) !== on; }, [0, start.on], 300);
       const on = await look(p);
       check(eng, 'the new toggle key (h) shows and hides comments', on.on !== start.on);
       if (!on.on) {
         await p.keyboard.press('h');
-        await sleep(300);
+        await untilRoot(p, (r) => [...r.querySelectorAll('button')].some((b) => /hide comments/.test(b.textContent || '')), 300);
       }
       check(eng, 'the chat button shows the new key', /\(x\)/.test((await look(p)).chatWords), (await look(p)).chatWords);
       await p.keyboard.press('c');
-      await sleep(400);
+      await sleep(250);
       check(eng, 'the old chat key (c) does nothing', !(await look(p)).chat);
       await p.keyboard.press('x');
-      await sleep(600);
+      await untilRoot(p, (r) => { const c = r.querySelector('.chatwin'); return Boolean(c && !c.hidden && c.offsetHeight); }, 600);
       check(eng, 'the new chat key (x) opens the chat', (await look(p)).chat);
       // With the bar showing (words selected with Shift-drag), a key that is a shortcut elsewhere is a letter: the
       // changed toggle key (h) starts the comment, it doesn't hide the comments.
       await p.keyboard.press('Escape');
-      await sleep(300);
+      await untilRoot(p, (r) => { const c = r.querySelector('.chatwin'); return !c || c.hidden || !c.offsetHeight; }, 300);
       const word = await p.evaluate(() => {
         const t = document.querySelector('p').firstChild;
         const r = document.createRange();
@@ -99,9 +106,9 @@ try {
       await p.mouse.move(word.right - 1, word.top + word.height / 2, { steps: 6 });
       await p.mouse.up();
       await p.keyboard.up('Shift');
-      await sleep(700);
+      await untilRoot(p, (r) => Boolean(r.querySelector('.fd .p-bar.on')) && r.querySelector('.fd').getAnimations().length === 0, 700);
       await p.keyboard.press('h');
-      await sleep(900);
+      await untilRoot(p, (r) => r.querySelector('.fd textarea')?.value === 'h', 900);
       const typed = await p.evaluate(() => {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
         return r?.querySelector('.fd textarea')?.value;
