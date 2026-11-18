@@ -58,6 +58,19 @@ const inRoot = (p, fn) =>
     const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
     return new Function('r', `return (${src})(r)`)(r);
   }, fn.toString());
+// Waits on the condition the next step needs; `ms` is the longest it waits, and it never throws (the check after it reports the real failure).
+const until = (p, fn, arg, ms) => p.waitForFunction(fn, arg, { timeout: ms, polling: 'raf' }).catch(() => {});
+const untilRoot = (p, fn, ms) =>
+  until(p, (src) => {
+    const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+    return Boolean(r) && new Function('r', `return (${src})(r)`)(r);
+  }, fn.toString(), ms);
+const barUp = (p, ms = 700) => untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-bar').classList.contains('on') && e.getAnimations().length === 0 && r.querySelectorAll('.fd').length === 1; }, ms);
+const dlgUp = (p, ms = 700) => untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.getAnimations().length === 0 && r.querySelectorAll('.fd').length === 1; }, ms);
+// Until the page has a comment with this text (sent).
+async function untilSent(text, ms) {
+  for (const end = Date.now() + ms; Date.now() < end && !(await comments()).some((x) => x.text === text); ) await sleep(40);
+}
 // What the widget shows: the bar, the dialog, an area drawn, a pin or box for a point.
 const look = (p) =>
   inRoot(p, (r) => {
@@ -99,7 +112,8 @@ async function scene(browser, run) {
   await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
   const p = await ctx.newPage();
   await p.goto(B + PG);
-  await sleep(1100);
+  await untilRoot(p, () => true, 1100);
+  await sleep(300); // the widget's handlers are in place a moment after its markup
   try {
     await run(p);
   } finally {
@@ -113,25 +127,25 @@ try {
     try {
       await scene(browser, async (p) => {
         await dragWords(p, '#t', 'words to drag');
-        await sleep(500);
+        await untilRoot(p, (r) => r.querySelectorAll('.zone.draft').length === 1, 500);
         const l = await look(p);
         check(eng, 'a plain drag over words marks an area, no bar', l.zone === 1 && !l.bar && !l.dlg, JSON.stringify(l));
         check(eng, '…and selects none of the page\'s text', (await p.evaluate(() => String(getSelection()))) === '');
         await p.keyboard.type('over words');
         await p.keyboard.press('Enter');
-        await sleep(700);
+        await untilSent('over words', 700);
         const c = (await comments()).find((x) => x.text === 'over words');
         check(eng, '…saved as an area anchor, not a quote', typeof c?.anchor?.zw === 'number' && !c.anchor.quote?.selected, JSON.stringify(c?.anchor?.kind));
       });
       await scene(browser, async (p) => {
         const s = await dragWords(p, '#t', 'words to drag', true);
-        await sleep(700);
+        await barUp(p);
         const l = await look(p);
         check(eng, 'Shift-drag over words shows the actions bar, no area', l.bar && !l.zone && !l.draftPin, JSON.stringify(l));
         await p.keyboard.type('shifted');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.press('Enter');
-        await sleep(700);
+        await untilSent('shifted', 700);
         const c = (await comments()).find((x) => x.text === 'shifted');
         check(eng, '…its comment is a text anchor quoting exactly the words', c?.anchor?.kind === 'text' && c.anchor.quote?.exact === 'words to drag', JSON.stringify(c?.anchor?.quote));
         check(eng, '…the page\'s text is not left selected', (await p.evaluate(() => String(getSelection()))) === '' && Boolean(s));
@@ -148,13 +162,13 @@ try {
         const off = await cursor();
         check(eng, 'no Shift: the pin pointer, not the text cursor', !off.shift && !off.cursor.includes(IBEAM), JSON.stringify(off));
         await p.keyboard.down('Shift');
-        await sleep(200);
+        await until(p, ([x, y]) => document.documentElement.classList.contains('lab-shift-cur') && getComputedStyle(document.elementFromPoint(x, y)).cursor.includes('data:image/svg+xml'), [x, y], 400);
         const on = await cursor();
         check(eng, 'Shift held over words: the drawn I-beam with the pin tip (text as fallback)', on.shift && on.cursor.includes(IBEAM) && on.cursor.includes('%2324a046') && /,\s*text$/.test(on.cursor), JSON.stringify(on));
         await p.keyboard.up('Shift');
         const quick = await cursor(); // no waiting: the cursor follows the key at once, the text stays selectable a moment longer
         check(eng, '…right after Shift is let go the cursor is no longer the I-beam (text still selectable for the selection)', !quick.shift && !quick.cursor.includes(IBEAM) && quick.selectable, JSON.stringify(quick));
-        await sleep(700);
+        await until(p, () => !document.documentElement.classList.contains('lab-shift'), null, 700);
         const back = await cursor();
         check(eng, '…Shift let go: the pin pointer again', !back.shift && !back.cursor.includes(IBEAM), JSON.stringify(back));
         const field = await p.locator('#field').boundingBox();
@@ -167,58 +181,58 @@ try {
       });
       await scene(browser, async (p) => {
         await dragWords(p, '#t', 'ords to dra', true); // starts and ends inside words
-        await sleep(700);
+        await barUp(p);
         await p.keyboard.type('snap');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.press('Enter');
-        await sleep(700);
+        await untilSent('snap', 700);
         const c = (await comments()).find((x) => x.text === 'snap');
         check(eng, 'a Shift-drag from inside a word to inside another takes both whole words', c?.anchor?.quote?.exact === 'words to drag', JSON.stringify(c?.anchor?.quote));
       });
       await scene(browser, async (p) => {
         await dragWords(p, '#t', 'aragra', true); // inside "paragraph" only
-        await sleep(700);
+        await barUp(p);
         await p.keyboard.type('inside');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.press('Enter');
-        await sleep(700);
+        await untilSent('inside', 700);
         const c = (await comments()).find((x) => x.text === 'inside');
         check(eng, '…a Shift-drag inside one word keeps exactly its letters', c?.anchor?.quote?.exact === 'aragra', JSON.stringify(c?.anchor?.quote));
       });
       await scene(browser, async (p) => {
         await dragTo(p, [700, 40], [900, 120]); // right of the column: nothing to select there
-        await sleep(400);
+        await untilRoot(p, (r) => r.querySelectorAll('.zone.draft').length === 1, 400);
         const l = await look(p);
         check(eng, 'a drag from empty space marks an area, no bar', l.zone === 1 && !l.bar, JSON.stringify(l));
         await p.keyboard.type('area');
         await p.keyboard.press('Enter');
-        await sleep(700);
+        await untilSent('area', 700);
         const c = (await comments()).find((x) => x.text === 'area');
         check(eng, '…saved as an area anchor', typeof c?.anchor?.zw === 'number' && c.anchor.kind !== 'text', JSON.stringify(c?.anchor?.kind));
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'drag across');
         await p.mouse.click(s.first.left + 10, s.first.top + 10);
-        await sleep(500);
+        await untilRoot(p, (r) => r.querySelectorAll('.float').length === 1, 500);
         const l = await look(p);
         check(eng, 'a plain click on words places a point pin, no bar', l.box === 1 && !l.bar && !l.dlg, JSON.stringify(l));
         await p.keyboard.type('point');
         await p.keyboard.press('Enter');
-        await sleep(700);
+        await untilSent('point', 700);
         const c = (await comments()).find((x) => x.text === 'point');
         check(eng, '…saved as a point (no quote selected)', Boolean(c) && !c.anchor.quote?.selected && c.anchor.zw === undefined, JSON.stringify(c?.anchor?.kind));
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'paragraph');
         await p.mouse.dblclick((s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2);
-        await sleep(900);
+        await sleep(300);
         const l = await look(p);
         check(eng, 'a double-click on a word without Shift selects nothing and shows no bar', !l.bar && !l.dlg && (await p.evaluate(() => String(getSelection()))) === '', JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'quite a few');
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
-        await sleep(900);
+        await sleep(300);
         const l = await look(p);
         check(eng, 'a triple-click without Shift shows no bar', !l.bar, JSON.stringify(l));
       });
@@ -227,13 +241,13 @@ try {
         await p.keyboard.down('Shift');
         await p.mouse.dblclick((s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2);
         await p.keyboard.up('Shift');
-        await sleep(900);
+        await barUp(p, 900);
         const l = await look(p);
         check(eng, 'Shift + double-click on a word shows the actions bar (no box left from the first click)', l.bar && !l.box && !l.draftPin, JSON.stringify(l));
         await p.keyboard.type('word');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.press('Enter');
-        await sleep(700);
+        await untilSent('word', 700);
         const c = (await comments()).find((x) => x.text === 'word');
         check(eng, '…quoting that word', c?.anchor?.quote?.exact === 'paragraph', JSON.stringify(c?.anchor?.quote));
       });
@@ -242,7 +256,7 @@ try {
         await p.keyboard.down('Shift');
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await p.keyboard.up('Shift');
-        await sleep(900);
+        await barUp(p, 900);
         const l = await look(p);
         check(eng, 'Shift + triple-click selects the paragraph and shows the actions bar', l.bar && !l.box, JSON.stringify(l));
       });

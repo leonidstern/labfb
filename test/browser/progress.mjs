@@ -70,7 +70,7 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     const p = await ctx.newPage();
     await p.clock.install({ time: Date.now() });
     await p.goto(L.B + '/');
-    await sleep(1200);
+    await until(() => p.evaluate(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim'))), 1200); // not p.waitForFunction: the page's clock is faked
     // In the widget's shadow root. The pins are in the order the threads were made.
     const shadow = (fn, arg) => p.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
     const pins = () => shadow(() => { return [...r.querySelectorAll('button.pin')].map((b) => [(/\bgone\b/.test(b.querySelector('.ring')?.className) ? '' : b.querySelector('.ring')?.className.replace(/\s*(come|off)\b/g, '')) || '', b.querySelector('.tip')?.textContent || '']); });
@@ -79,6 +79,8 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     const pill = () => shadow(() => { return r.querySelector('.listener .lbl')?.textContent || ''; });
     const pillIs = (re) => until(async () => re.test(await pill()), 8000);
     const ringIs = (i, ring) => until(async () => (await ringOf(i)) === ring);
+    // All the rings at once, so the check after it doesn't catch one pin a moment behind another.
+    const ringsAre = (want) => until(async () => JSON.stringify((await pins()).map((x) => x[0])) === JSON.stringify(want));
 
     const ids = [await L.post('make it red', '#a'), await L.post('and bigger', '#b'), await L.post('and blue', '#c')];
     await until(async () => (await pins()).length === 3);
@@ -87,7 +89,7 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     // The agent takes all three: the oldest is picked up (pale green, still), the others wait in line (muted, still).
     const heard = await L.cli('wait', '--timeout', '5');
     check(eng, 'the agent got them', ids.every((id) => heard.out.includes(id)));
-    await ringIs(0, 'ring got');
+    await ringsAre(['ring got', 'ring wait', 'ring wait']);
     check(eng, 'picked up: a still pale green ring; the rest wait with a still muted ring', (await ringOf(0)) === 'ring got' && (await ringOf(1)) === 'ring wait' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill counts those waiting', await pillIs(/is working · 2 waiting/), await pill());
     await shadow(() => { [...r.querySelectorAll('button.pin')][1].click(); });
@@ -99,7 +101,7 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     // Progress: the ring turns, the pill says what it does, hovering says it too, and no message is added.
     const say = await L.cli('reply', ids[0], '--progress', 'drawing W1–W6 · 2 of 4');
     check(eng, 'labit reply --progress works', say.code === 0 && /Progress noted/.test(say.out), say.out.trim());
-    await ringIs(0, 'ring');
+    await ringsAre(['ring', 'ring wait', 'ring wait']);
     check(eng, 'working (progress): the green ring turns; the others still wait', (await ringOf(0)) === 'ring' && (await ringOf(1)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill reads the line with its age and the queue', await pillIs(/^Claude· drawing W1–W6 · 2 of 4 · just now · 2 waiting/), await pill());
     check(eng, 'hovering the ring shows the same line', (await tipOf(0)) === 'drawing W1–W6 · 2 of 4 · just now', await tipOf(0));
@@ -117,14 +119,14 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     check(eng, 'a question: an amber ring, and the pill has no line', (await ringOf(0)) === 'ring asks' && (await pillIs(/is working · 1 waiting/)) && !/drawing/.test(await pill()), `${await ringOf(0)} | ${await pill()}`);
     check(eng, 'the progress line is gone from the thread (cleared by the answer)', (await L.comments()).find((c) => c.id === ids[0]).progress === undefined);
     await L.cli('reply', ids[0], 'Done: red', '--done');
-    await ringIs(1, 'ring got');
+    await ringsAre(['', 'ring got', 'ring wait']);
     check(eng, 'done: no ring; the next is picked up and the last is first in line', (await ringOf(0)) === '' && (await ringOf(1)) === 'ring got' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
 
     // Gone quiet: 6 minutes with no sign → grey still ring; the pill says so and what came last; a new line brings it back.
     await L.cli('reply', ids[1], '--progress', 'drawing W1–W6 · 3 of 4');
     await ringIs(1, 'ring');
     await p.clock.runFor(6.5 * 60 * 1000);
-    await ringIs(1, 'ring stale');
+    await ringsAre(['', 'ring stale', 'ring wait']);
     check(eng, 'no sign for 5+ min: a grey still ring (the one waiting behind it is not grey)', (await ringOf(1)) === 'ring stale' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill says how long and what came last', await pillIs(/no update for 6 min · last: drawing W1–W6 · 3 of 4 · 1 waiting/), await pill());
     check(eng, 'the tooltip says it too', /^no update for 6 min · last: drawing W1–W6 · 3 of 4$/.test(await tipOf(1)), await tipOf(1));
