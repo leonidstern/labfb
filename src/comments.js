@@ -1,6 +1,6 @@
 /*!
  * lab comments: click anywhere on a lab page to pin a comment. No login, just a name.
- * https://github.com/leonidstern/labit · PolyForm Perimeter 1.0.0
+ * https://github.com/leonidstern/labit · PolyForm Small Business 1.0.0
  * The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
  * link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
  * Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
@@ -377,14 +377,17 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
   // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
   S.overControls = store.get('lab-over') === '1';
+  // While it is off the item shows how to pin over a control anyway, once: option-click (Leo, 17 Nov).
+  const OPTION = /Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt';
   const sayOver = () => {
-    overBtn.textContent = S.overControls ? 'controls keep clicks' : 'pin over controls';
+    overBtn.replaceChildren(S.overControls ? 'controls keep clicks' : 'pin over controls', ...(S.overControls ? [] : [el('kbd', { 'aria-hidden': 'true' }, `${OPTION} click`)]));
     overBtn.setAttribute('aria-pressed', String(S.overControls));
   };
   const setOver = (v) => {
     S.overControls = v;
     store.set('lab-over', v ? '1' : '');
     sayOver();
+    setPinning(); // the pointer over controls follows the switch (lab-over)
     S.ctlTarget = null; // what the mouse is over is worked out again: the answer has just changed
     S.recheckCtl?.(); // without waiting for the mouse to move
     setPinning();
@@ -397,6 +400,9 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const placing = S.on && !S.cursorMode && !anyWriting();
     document.documentElement.classList.toggle('lab-pinning', placing);
     document.documentElement.classList.toggle('lab-go', placing && S.goMode);
+    // "Pin over controls" on: the page's own links, buttons and clickable cards show the pin too, not their hand: a click
+    // there pins, so the pointer says so (Leo, 17 Nov: "still controls giving me hand").
+    document.documentElement.classList.toggle('lab-over', placing && S.overControls);
     recheck();
   };
   const setCursor = (v) => {
@@ -1002,7 +1008,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
             markSeen([comment]);
             S.draft = null;
             keepSpot(null);
-            S.openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
+            S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
             S.posted = comment.id;
             holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
             render();
@@ -1683,8 +1689,9 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
       `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
       // Holding Option (Alt) pins links and controls too: the drawn pin shows over them (the system pointer hides).
-      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
-      `html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }` +
+      // The same with "pin over controls" on, without the key (lab-over; not while Shift selects words).
+      `html:is(.lab-alt, .lab-over:not(.lab-shift)) body, html:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
+      `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }` +
       `html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.

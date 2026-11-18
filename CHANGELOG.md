@@ -8,6 +8,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 - A pin stays the same element across redraws: clicking it, closing it, pointing away or clicking the page no longer restarts its ring, pop or face change. Reading a new reply no longer plays the face change, and the change is quieter.
 
+- "Pin over controls": with it on, the pointer over the page's links, buttons and clickable cards is the pin, not their hand. The menu item shows how to do it once without the switch: (⌥ click).
 - Phones: a sent comment's card slides down whole, like any sheet, and its new pin pops in with one green ring. It used to shrink and fly into the pin, which squeezed the card, and the pin was already there while it flew (its pop-in had been dropped by a later change).
 
 - Option-click on a pin resolves its thread without opening it (again opens it again), for whoever may resolve it.
@@ -40,7 +41,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Two sessions on one lab: when one gets its pins, the lab stays "listening" while the other's wait is open, and the ten-minute timer after a hand-over no longer turns every page away while a wait is still open. Before, one session working on its pins turned the other's pages to "no agent listening".
 - `reply <id> --wait --page /x` listens on /x, as `wait --page /x` does. It used to drop the page and listen on every page instead, so a session answering on one page stopped hearing it.
 - A pin between two blocks whose block above is gone (the section was deleted) no longer crashes the widget: it sits at the end of the box instead. Before, one such pin stopped the bar from drawing on its page.
-- License: from the next release labit is under [PolyForm Perimeter 1.0.0](LICENSE) instead of MIT. Use and change it freely, except to build a competing product. Versions already on npm (0.6.2 and earlier) keep MIT.
+- License: from the next release labit is under [PolyForm Small Business 1.0.0](LICENSE) instead of MIT. Free for companies with fewer than 100 people and under $1M in yearly revenue; larger companies need a paid license. Versions already on npm (0.6.2 and earlier) keep MIT.
 - Phone links with two labs on one computer: each lab keeps its own pass (`lab_guest_<port>`), so joining a try lab no longer logs the phone out of the other, and a used link again takes that phone to its page instead of "used up".
 - Cloud labs are parked (kept whole on the `park/cloud-lab` branch); labit is the local lab only. Gone: `labit add` / `labit remove` and saved cloud pages in `list` and `pages`, the MCP `comments` tool's `url`, the skill's Cloud lab part, the Vercel deploy (`vercel.json`, `public/index.html`), and from the comments API and widget everything only a hosted lab used: invite links and per-person admin keys (`#lab-admin=`, `LAB_REVOKED`), the lab-host check (`LAB_HOST`, `data-host`, `data-enable`), page revisions and the 10 s check, and the Upstash store. The API moved from `api/` to `lib/comments-api.mjs` and talks to the lab's in-memory store directly. The widget is 49.1 → 48.5 KB gzipped (152 → 151 KB).
 - With a dev server (`--proxy`), its reload waits while the chat, a thread, the list or a new comment is open, not only while words are typed, so an update no longer closes the chat under you. It comes in once you close it, as the lab's own reload already did.
@@ -77,6 +78,13 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - MCP server, checked against the spec (2025-11-25, 2026-07-28) and the SDK's practice: when the client goes away (stdin closed, SIGTERM, SIGINT) a `wait` in flight stops with it, so the page no longer says an agent is listening for up to the wait's length; a `wait` refused for a bad argument no longer sends progress forever after its answer; a cancel for a request already answered is ignored (an id used again got no answer); roots are asked for after the client's `initialized`, not before; a batch gets an Invalid Request error instead of silence.
 - `examples/claude-settings.json`: Claude Code settings to give people. labit's commands and MCP tools run without a prompt; `--wifi` and `invite` still ask. Checked with `claude -p` in a fresh folder.
 - The last of the old name is gone: no `labfb` command (use `labit`), and `LABFB_HOME` / `LABFB_NO_UPDATE_CHECK` are no longer read (use `LABIT_HOME` / `LABIT_NO_UPDATE_CHECK`).
+- A saved file now reloads only the pages that use it. The lab says which files changed and each page decides: a file it loads, the page itself, or data it may fetch means a reload, while a README, another page's script or the project's own server code leaves it where it is. A burst too big to list (a branch switch, a build) reloads everything, as before.
+- A reload held while you read or type now says so: an "update waiting" pill next to the status, and tapping it takes the update at once instead of waiting until you close the thread.
+- The page lists count threads still waiting -- nobody answered, or the newest word in them is a person's -- instead of every unresolved one. An answered thread left open is bookkeeping, not work: on a real lab it turned "166 open" into "1 waiting".
+- Both page lists say who is listening where, and "nobody listening" on a page with something waiting and no one to hear it. A page's last change now counts what was said on it, not only when its file was saved, and the list shows the page's own name without its file name.
+- `.lab/comments.md` opens with the pages that have pins and nobody listening, and the one command that covers them. It follows who is listening, not only what changed.
+- The lab says which version it is: on the line it prints when it starts, in `labit list` (with how long it has been up, which tells a lab left running for days from a fresh one) and in the state open pages read.
+- `labit --dev` and `npm run dev`, for working on labit itself: the lab runs under `node --watch` and comes back by itself when `local.mjs` or `lib/` change, with the widget build in the same terminal. A running `wait` (and `reply`, `resolve`, `invite`) holds on while the lab is away instead of ending with "the lab server isn't running".
 
 ## 0.6.1 · 2026-11-16
 
@@ -271,7 +279,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
   - The quick model's changes ride along with the next pins the session gets, for a glance (they never wake it by themselves).
   - Every quick decision is a line in `.lab/quick.jsonl` (done, pass, put back; why; files; lines; seconds).
   - 👍 keep / 👎 put back on a quick fix (this computer): 👎 restores the files if nobody changed them since, and hands the pin to the agent marked as rejected.
-- Sharper pins, from a frontend fix benchmark against Agentation:
+- Sharper pins, from a frontend fix benchmark:
   - Every element on a React dev build now gets its own JSX file and line ("written at") and the component that rendered it, not only a component's outermost element (it was 3 of 24 pins in the benchmark).
   - The "looks" line names only CSS variables that are colours: a radius or spacing variable no longer names a text colour (it did on 12 of 24 pins).
   - Behind a dev server, the app's index.html shell isn't given as a page's file; the route's source is, spelled as on disk (src/pages/Orders.jsx).
