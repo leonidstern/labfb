@@ -151,6 +151,10 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
 
   // Text selection
   const lede = await p.locator('#p5').boundingBox();
+  // Comment mode is back first: after Escape the closed box is still going out, and with it comment mode is off for a
+  // moment (the page's own pointer shows while one is open), so a drag then selects text on purpose (CI said: text "a",
+  // no Shift, lab-shift off).
+  await until(p, () => document.documentElement.classList.contains('lab-pinning'), null, 2000);
   // What the press saw, so a failure says why (Linux WebKit only, now and then).
   await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { window.__press ??= { shift: e.shiftKey, labShift: document.documentElement.classList.contains('lab-shift') }; }, { capture: true, once: true }); });
   await p.keyboard.down('Shift');
