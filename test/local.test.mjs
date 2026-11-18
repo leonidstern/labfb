@@ -45,6 +45,25 @@ test('pages get the comment layer', async () => {
   assert.match(html, /Hello/);
 });
 
+test('a lab tab wears labit\'s icon unless the page or the folder has its own', async () => {
+  await up();
+  assert.match((await (await fetch(B + '/')).text()).slice(0, 200), /<link rel="icon" href="\/_lab\/favicon\.svg">/);
+  fs.writeFileSync(path.join(DIR, 'own-icon.html'), '<!doctype html><head><link rel="shortcut icon" href="/mine.png"><title>o</title></head><p>x');
+  assert.doesNotMatch(await (await fetch(B + '/own-icon')).text(), /_lab\/favicon/);
+  const ico = await fetch(B + '/favicon.ico', { redirect: 'manual' });
+  assert.equal(ico.status, 302);
+  assert.equal(ico.headers.get('location'), '/_lab/favicon.svg');
+  assert.match((await fetch(B + '/_lab/favicon.svg')).headers.get('content-type') || '', /image\/svg/);
+  fs.writeFileSync(path.join(DIR, 'favicon.ico'), 'x');
+  try {
+    assert.doesNotMatch(await (await fetch(B + '/')).text(), /_lab\/favicon/);
+    assert.equal((await fetch(B + '/favicon.ico', { redirect: 'manual' })).status, 200);
+  } finally {
+    fs.rmSync(path.join(DIR, 'favicon.ico'));
+    fs.rmSync(path.join(DIR, 'own-icon.html'));
+  }
+});
+
 test('wait hears a new comment, reply answers it, the text file has both', async () => {
   await up();
   const waiting = run(['wait', '--timeout', '10']);
