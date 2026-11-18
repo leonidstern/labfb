@@ -8,7 +8,22 @@
   --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_edge: var(--lab-edge, #c7c7cc); --_muted: var(--lab-muted, rgba(0,0,0,.50));
   --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
   --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
-  --_ease: cubic-bezier(.2, .8, .2, 1); }
+  /* Motion: one set of durations and curves, and every transition and animation below uses it (docs/motion.md). Set
+     --lab-t-quick, --lab-t-base, --lab-t-slow, --lab-t-loop, --lab-t-hold or --lab-ease, --lab-ease-out, --lab-ease-in,
+     --lab-ease-settle, --lab-ease-pop the same way as the colours. */
+  --_t-instant: var(--lab-t-instant, 0ms);   /* no motion: the state changes at once */
+  --_t-quick: var(--lab-t-quick, 120ms);     /* a hover, a fade, a press: small and local */
+  --_t-base: var(--lab-t-base, 200ms);       /* something appears, moves a little, or a box changes size */
+  --_t-slow: var(--lab-t-slow, 360ms);       /* a sheet, a flight, a pin changing face: the biggest movement */
+  --_t-loop: var(--lab-t-loop, 1200ms);      /* one turn of something that goes on (the agent's ring) */
+  --_twitch: calc(var(--_t-loop) * 2) ease-in-out infinite; /* the listening mark's ears: a twitch, then a long rest (two loops) */
+  --_fade: var(--_t-quick) var(--_ease-out); --_fade-base: var(--_t-base) var(--_ease-out); /* the two fades (lab-fade): duration and curve together */
+  --_t-hold: var(--lab-t-hold, 1000ms);      /* how long a highlight stays; a wait, not a movement, so it is kept with reduced motion */
+  --_ease: var(--lab-ease, cubic-bezier(.2, .8, .2, 1));            /* standard: it starts quickly and settles */
+  --_ease-out: var(--lab-ease-out, cubic-bezier(0, 0, .58, 1));     /* a fade or a colour coming in */
+  --_ease-in: var(--lab-ease-in, cubic-bezier(.4, 0, 1, 1));        /* something leaving: it speeds up as it goes */
+  --_ease-settle: var(--lab-ease-settle, cubic-bezier(.32, .72, 0, 1)); /* a sheet: iOS's curve, fast then a long settle */
+  --_ease-pop: var(--lab-ease-pop, cubic-bezier(.34, 1.56, .64, 1)); /* an arrival with a small overshoot */ }
 @media (prefers-color-scheme: dark) {
   :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
           --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
@@ -27,27 +42,27 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
        background: var(--_bg); border: 0; box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
        display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12px; font-weight: 500;
        font-variant-numeric: tabular-nums; letter-spacing: 0; transform-origin: 0 100%;
-       transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
+       transition: transform var(--_t-quick) var(--_ease), box-shadow var(--_t-quick) var(--_ease), opacity var(--_t-quick) var(--_ease-out); }
 /* A 1 px edge in the text colour (dark on light pins, light in dark mode) so a pin shows on white and black alike;
    the one you point at or have open gets a green edge. */
 button.pin:hover, button.pin.open { transform: scale(1.08); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 4px 14px rgba(0,0,0,.2); }
 button.pin:active { transform: scale(.96); }
-.pin.in { animation: lab-pin .26s var(--_ease); }
+.pin.in { animation: lab-pin var(--_t-base) var(--_ease); }
 /* Phones: as the sent card slides away its new pin pops in from 70% with a small overshoot, and one green ring leaves
    it: sent (lab option 5, Leo 17 Nov). */
-.pin.arrive { animation: lab-arrive .46s cubic-bezier(.34, 1.56, .64, 1) both; }
+.pin.arrive { animation: lab-arrive calc(var(--_t-slow) * 1.25) var(--_ease-pop) both; }
 @keyframes lab-arrive { from { opacity: 0; transform: scale(.7); } }
 button.pin.arrive::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-                  --_halo: rgba(52, 199, 89, .75); animation: lab-halo .7s ease-out both; animation-delay: inherit; }
+                  --_halo: rgba(52, 199, 89, .75); animation: lab-halo calc(var(--_t-slow) * 2.5) var(--_ease-out) both; animation-delay: inherit; }
 /* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
    lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
-.pin.swap { animation: lab-swap .36s cubic-bezier(.3, .7, .4, 1.25); }
+.pin.swap { animation: lab-swap var(--_t-slow) var(--_ease-pop); }
 @keyframes lab-swap { from { transform: scale(.72); opacity: .35; } }
-.pin .ring.gone { animation: lab-gone .3s ease-in forwards; }
+.pin .ring.gone { animation: lab-gone var(--_t-slow) var(--_ease-in) forwards; }
 @keyframes lab-gone { to { opacity: 0; } }
 /* A new comment lands with one faint halo from its pin. */
 button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-                  animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
+                  animation: lab-halo calc(var(--_t-slow) * 2.5) var(--_ease) forwards; }
 /* Closed: a resolved pin is a green ✓, faded and small, so the open ones stand out (closed pins show by default; D
    hides them). A pin whose spot is gone (.moved) is shown the same way: no state of its own (Leo, 17 Nov). */
 .pin.resolved { color: rgb(36, 160, 70); }
@@ -69,7 +84,7 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 /* Green dots, the same green as quoted words, with no dark ring under them. */
 .zone rect.ring { display: none; }
 .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
-.zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
+.zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade var(--_fade); }
 /* The agent is on it: a green stroke runs round the pin's own teardrop outline. The ring (a still 2 px teardrop mask)
    holds a conic gradient that turns by transform, so the screen turns it without redrawing: 30 such pins cost ~1 ms
    a second, against ~125 ms when the gradient's angle itself was animated. */
@@ -77,18 +92,18 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
              -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
              mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 .ring::before { content: ''; position: absolute; inset: -50%; will-change: transform;
-                background: conic-gradient(rgb(52, 199, 89) 0 var(--lab-arc, 66%), rgba(52, 199, 89, .22) var(--lab-arc, 66%) 100%); animation: lab-turn 1.2s linear infinite; }
+                background: conic-gradient(rgb(52, 199, 89) 0 var(--lab-arc, 66%), rgba(52, 199, 89, .22) var(--lab-arc, 66%) 100%); animation: lab-turn var(--_t-loop) linear infinite; }
 @keyframes lab-turn { to { transform: rotate(360deg); } }
 /* The agent takes it: the green arc draws itself in while it turns (lab C2, Leo 16 Nov; --lab-arc is registered on the page). */
-.pin .ring.come::before { animation: lab-draw .4s ease-out, lab-turn 1.2s linear infinite; }
+.pin .ring.come::before { animation: lab-draw var(--_t-slow) var(--_ease-out), lab-turn var(--_t-loop) linear infinite; }
 @keyframes lab-draw { from { --lab-arc: 0%; } }
 /* The drawn pointer: your pin, following the mouse (it moves without a transition; only its look eases). */
 .ptr { position: fixed; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px 14px 14px 2px; corner-shape: round;
        background: var(--_bg); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 2px 6px rgba(0,0,0,.18);
        display: grid; place-items: center; pointer-events: none; z-index: 2147483647; opacity: 0; will-change: transform;
-       transition: opacity .12s ease-out, background-color .16s ease-out; }
+       transition: opacity var(--_t-quick) var(--_ease-out), background-color var(--_t-quick) var(--_ease-out); }
 .ptr.show { opacity: 1; }
-.ptr span { grid-area: 1 / 1; font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 1; transition: opacity .16s ease-out, transform .16s ease-out; }
+.ptr span { grid-area: 1 / 1; font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 1; transition: opacity var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease-out); }
 .ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 11px; letter-spacing: .006em; }
 .ptr.go { background: rgb(36, 160, 70); }
 .ptr.go .ini { opacity: 0; transform: scale(.5); }
@@ -102,8 +117,8 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 /* A long thread scrolls inside the card, which keeps one size; the step buttons and the reply box stay put. */
 .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; }
 .card > .foot { flex: none; }
-.card.in, .float.in { animation: lab-in .18s var(--_ease); }
-.card.out, .float.out { animation: lab-out .14s ease-in forwards; pointer-events: none; }
+.card.in, .float.in { animation: lab-in var(--_t-base) var(--_ease); }
+.card.out, .float.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; }
 .item { display: grid; row-gap: 3px; }
 .item + .item { margin-top: 14px; }
 .msg.item { display: block; } .msg.item + .msg.item { margin-top: 0; }
@@ -117,15 +132,15 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
 .card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 12px; letter-spacing: 0; }
 button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
-             letter-spacing: 0; border-radius: var(--_r-s); transition: color .12s; }
+             letter-spacing: 0; border-radius: var(--_r-s); transition: color var(--_t-quick) var(--_ease-out); }
 button.btn:hover { color: var(--_fg); }
 button.btn.danger, button.btn.danger:hover { color: #e5484d; }
-.row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: 0; padding: 2px 0; animation: lab-fade .12s ease-out; }
+.row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: 0; padding: 2px 0; animation: lab-fade var(--_fade); }
 .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
 .card .composer { margin-top: 6px; } /* close under resolve / delete */
 .card > .body > .row:not(.nav) { margin-right: 7px; } /* resolve / delete end where the send button does */
 .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
-       border-radius: var(--_radius); padding: 7px 7px 7px 14px; margin: 0; transition: box-shadow .15s;
+       border-radius: var(--_radius); padding: 7px 7px 7px 14px; margin: 0; transition: box-shadow var(--_t-quick) var(--_ease-out);
        /* One box for the chat, threads and new comments: its look comes only from these two, which a place sets on
           its container (never by restyling the box, idle or typing), so the three can't drift apart (Leo, 15 Nov). */
        background: var(--_box-bg, var(--_soft)); box-shadow: var(--_box-edge, none); }
@@ -144,8 +159,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .who span { color: var(--_muted); }
 .who input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; outline: none; color: var(--_muted); text-overflow: ellipsis; }
 .who input:focus { color: var(--_fg); }
-.box.open .line { display: block; animation: lab-fade .16s ease-out; }
-.box.open .who { display: flex; animation: lab-fade .16s ease-out; }
+.box.open .line { display: block; animation: lab-fade var(--_fade); }
+.box.open .who { display: flex; animation: lab-fade var(--_fade); }
 /* One line once your name is known: text, a quiet "as <name>" (still editable) and the arrow, side by side.
    The text grows upward; the name and arrow stay on its last line. Only a first comment, with no name yet, opens
    the second row to ask for it. */
@@ -154,10 +169,10 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .box.one .who { align-self: end; line-height: 20px; padding-bottom: 2px; max-width: 40%; } /* the text's last line box, so they share a line */
 .box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
 .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
-        background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
+        background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background var(--_t-quick) var(--_ease-out), color var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease); }
 .send.ready:hover { transform: scale(1.06); }
 .send.ready:active { transform: scale(.94); }
-.send.ready { background: var(--_accent); color: var(--_accent-fg); animation: lab-ready .16s ease-out; }
+.send.ready { background: var(--_accent); color: var(--_accent-fg); animation: lab-ready var(--_t-quick) var(--_ease-out); }
 /* The first letter typed: the arrow turns dark with a tiny pop, so you see it's ready (lab A5, Leo 16 Nov). */
 @keyframes lab-ready { 50% { transform: scale(1.08); } }
 /* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
@@ -169,7 +184,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
 .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
               box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
-              letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color .15s, transform .15s var(--_ease); }
+              letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease); }
 .bar button:active { transform: scale(.97); }
 /* The list and the chat: a header, a part that scrolls, and (the chat) a box at the bottom that doesn't. */
 .list { position: fixed; right: 16px; bottom: 66px; width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: hidden;
@@ -212,8 +227,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
 /* Something just sent eases in; the arrow flies off and comes back. */
-.fresh { animation: lab-rise .2s var(--_ease); }
-.send.sent .arr { animation: lab-fly .32s var(--_ease); }
+.fresh { animation: lab-rise var(--_t-base) var(--_ease); }
+.send.sent .arr { animation: lab-fly var(--_t-slow) var(--_ease); }
 @keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
 @keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
 .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
@@ -289,15 +304,15 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .listener.stale .mark { opacity: .4; }
 .mark :is(.e1, .e2, .eye) { transform-box: fill-box; transform-origin: 35% 100%; }
 .mark .eye { transform-origin: 50% 50%; }
-.listener.working .mark :is(.e1, .e2) { animation: lab-twitch 2.4s ease-in-out infinite; }
-.listener.working .mark .e2 { animation-delay: .18s; }
+.listener.working .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
+.listener.working .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
 @keyframes lab-twitch { 0%, 62%, 100% { transform: rotate(0); } 70% { transform: rotate(-9deg); } 80% { transform: rotate(5deg); } 90% { transform: rotate(-3deg); } }
 .listener { cursor: default; }
 /* Letter spacing follows the size, as Apple's SF text does: looser below 12 px, tighter above (11 +.006em,
    13 −.006, 15 −.016, 17 −.025). Uppercase labels and the ✓✓ overlap keep their own. */
 /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
 kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
-      color: var(--_muted) !important; opacity: .45; transition: opacity .15s; }
+      color: var(--_muted) !important; opacity: .45; transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar:hover kbd { opacity: .75; }
 .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
 .bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/2/3) reads like (c)hat and ne(w) */
@@ -328,7 +343,7 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .bar button.go-btn.on { background: none; color: var(--_fg); }
   .bar button.go-btn.on kbd { color: var(--_muted) !important; }
   .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
-        color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color .2s, color .2s; }
+        color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
   .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
   /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
   .go-btn:not(.on):not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
@@ -339,7 +354,7 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
                               font-size: 10px; font-weight: 600; letter-spacing: 0; }
   .more { font-size: 15px !important; letter-spacing: .05em; }
   .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
-               border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
+               border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
   .more-menu[hidden] { display: none; }
   .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
                       border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
@@ -362,7 +377,7 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
 kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
 .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
         box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
-        letter-spacing: -.006em; animation: lab-fade .2s ease-out; }
+        letter-spacing: -.006em; animation: lab-fade var(--_fade-base); }
 /* 16px fields keep iOS from zooming the page when one is focused. */
 @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.019em; } kbd { display: none; }
   .box textarea { line-height: 22px; padding: 7px 0; } /* phones: 22 + 7 + 7 = 36, the send button's size */
@@ -385,7 +400,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* One ring that grows and fades; --_halo sets its colour (a sent pin's is green). */
 @keyframes lab-halo { from { box-shadow: 0 0 0 0 var(--_halo, color-mix(in srgb, var(--_fg) 12%, transparent)); }
                       to { box-shadow: 0 0 0 16px transparent; } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* Reduced motion: the durations go to nothing, so what moves ends where it would have ended, and what is on screen stays
+   (--_t-hold, a highlight's wait, is not a movement and is kept). A loop is one still frame, not a flicker. This is the
+   one place for it: the tokens are the only durations, in the CSS and in the code (ms() in anchoring.ts). */
+@media (prefers-reduced-motion: reduce) {
+  :host { --_t-quick: 0ms; --_t-base: 0ms; --_t-slow: 0ms; --_t-loop: 0ms; }
+  *, *::before, *::after { animation-iteration-count: 1 !important; animation-delay: 0ms !important; }
+}
 @media (max-width: 480px) { kbd { display: none; } }
 .handle { display: none; }
 /* Phones: a thread or a new comment opens as a sheet from the bottom, full width, instead of beside the pin. */
@@ -441,14 +462,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* The bar steps down under the screen's edge while a sheet is open and comes back as the sheet goes: --lab-p is
      how far the sheet is on its way out (0 open, 1 gone), set while a finger drags it and while it slides away,
      so the bar rises with it, in step, instead of after it (Leo, 15 Nov). */
-  .bar { transition: transform .34s cubic-bezier(.32, .72, 0, 1), opacity .2s; }
+  .bar { transition: transform var(--_t-slow) var(--_ease-settle), opacity var(--_t-base) var(--_ease-out); }
   :host([data-sheet]) .bar { transform: translateY(calc((100% + 16px + env(safe-area-inset-bottom, 0px)) * (1 - var(--lab-p, 0))));
                              opacity: var(--lab-p, 0); pointer-events: none;
-                             transition: transform .24s cubic-bezier(.4, 0, 1, 1), opacity .2s .04s; }
+                             transition: transform var(--_t-base) var(--_ease-in), opacity var(--_t-base) var(--_ease-out) calc(var(--_t-quick) / 3); }
   :host([data-sheet]) .bar button { pointer-events: none; }
   /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
      sheet never scrolls the page. */
-  :host([data-sheet]) .scrim { display: block; animation: lab-fade .22s ease-out; }
+  :host([data-sheet]) .scrim { display: block; animation: lab-fade var(--_fade-base); }
   /* Held at their start until the sheet's first frame is drawn (data-opening, see render): laying out the first sheet
      after the page loads took 130 ms and used up the slide, so it showed up already open (iOS 27 simulator, 16 Nov). */
   :host([data-opening]) :is(.card.in, .float.in, .scrim) { animation-play-state: paused; }
@@ -458,7 +479,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
           font-size: 15px; letter-spacing: -.016em; z-index: 3; }
   /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
   .chatwin { height: var(--_sheet-max); }
-  .chatwin, .card { transition: height .38s cubic-bezier(.32, .72, 0, 1); } /* a comment pulls up to full height as the chat does */
+  .chatwin, .card { transition: height var(--_t-slow) var(--_ease-settle); } /* a comment pulls up to full height as the chat does */
   /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
   .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
   /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
@@ -515,8 +536,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chat-btn[data-agent=listening] .mark { fill: rgb(36, 160, 70); }
   .chat-btn[data-agent=away] .mark { fill: var(--_fg); }
   .chat-btn.stale .mark { opacity: .4; }
-  .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch 2.4s ease-in-out infinite; }
-  .chat-btn[data-agent=working] .mark .e2 { animation-delay: .18s; }
+  .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
+  .chat-btn[data-agent=working] .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
   .send { width: 36px; height: 36px; }
   .send .arr { width: 17px; height: 15px; margin: auto; }
 }
@@ -537,7 +558,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
   .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px - var(--_gap) + var(--_kb)); }
   .scrim { background: transparent; }
-  .card.in, .float.in, .list:not([hidden]), .sw-box { animation: lab-card-in .3s cubic-bezier(.2, .9, .25, 1); }
+  .card.in, .float.in, .list:not([hidden]), .sw-box { animation: lab-card-in var(--_t-slow) var(--_ease); }
 }
 @keyframes lab-card-in { from { transform: scale(.3); opacity: 0; } 40% { opacity: 1; } }
 /* Feedback on an agent's answer (src/widget/thread.ts): the button under the answer, the bar over the reply box while
@@ -559,7 +580,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 :host([data-labs]) .scrim { display: block; background: rgba(0, 0, 0, .18); }
 :host([data-labs]) .hint { visibility: hidden; }
 .sw-box { position: absolute; left: 50%; top: 12vh; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); max-height: 70vh;
-  display: flex; flex-direction: column; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
+  display: flex; flex-direction: column; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
 .sw-box input { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 14px 16px 12px; font-size: 16px; color: var(--_fg); border-bottom: var(--_hair); }
 .sw-box input::placeholder { color: var(--_muted); }
 .sw-box a { cursor: default; } /* no hand in this box: its buttons show the arrow by default, its links need it said */

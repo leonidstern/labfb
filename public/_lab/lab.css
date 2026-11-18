@@ -45,8 +45,26 @@
   --lab-corner-s: var(--lab-r-s);
   --lab-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --lab-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Motion: the durations and curves the widget moves with (docs/motion.md); a lab page that moves things uses the same,
+     so it feels like one product. Set them and the widget follows, as it does the colours. */
+  --lab-t-instant: 0ms;  /* no motion: the state changes at once */
+  --lab-t-quick: 120ms;  /* a hover, a fade, a press: small and local */
+  --lab-t-base: 200ms;   /* something appears, moves a little, or a box changes size */
+  --lab-t-slow: 360ms;   /* a sheet, a flight, a pin changing face: the biggest movement */
+  --lab-t-loop: 1200ms;  /* one turn of something that goes on */
+  --lab-t-hold: 1000ms;  /* how long a highlight stays (a wait, kept with reduced motion) */
+  --lab-ease: cubic-bezier(.2, .8, .2, 1);            /* standard */
+  --lab-ease-out: cubic-bezier(0, 0, .58, 1);         /* a fade or a colour coming in */
+  --lab-ease-in: cubic-bezier(.4, 0, 1, 1);           /* something leaving */
+  --lab-ease-settle: cubic-bezier(.32, .72, 0, 1);    /* a sheet */
+  --lab-ease-pop: cubic-bezier(.34, 1.56, .64, 1);    /* an arrival with a small overshoot */
   color-scheme: light;
 }
+/* Reduced motion: the durations go to nothing, here and (through these names) in the widget. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --lab-t-quick: 0ms; --lab-t-base: 0ms; --lab-t-slow: 0ms; --lab-t-loop: 0ms; }
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --lab-bg: var(--lab-paper-dark); --lab-fg: #f4f4f5; --lab-page: var(--lab-black); --lab-muted: var(--lab-white-4);
