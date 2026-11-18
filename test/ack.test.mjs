@@ -14,7 +14,12 @@ const B = `http://localhost:${PORT}`;
 for (const n of ['index', 'other', 'third']) fs.writeFileSync(path.join(DIR, n + '.html'), `<!doctype html><title>${n}</title><h1>${n}</h1>`);
 const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '100', LAB_ACK_MS: '1500', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
-after(() => { for (const t of tabs) t.destroy(); server.kill(); fs.rmSync(DIR, { recursive: true, force: true }); });
+after(async () => {
+  for (const t of tabs) t.destroy();
+  // The lab writes to .lab as it shuts down: wait for it to exit before removing the folder.
+  if (server.exitCode === null) await new Promise((r) => { server.once('exit', r); server.kill(); });
+  fs.rmSync(DIR, { recursive: true, force: true, maxRetries: 5 });
+});
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const key = () => JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
 

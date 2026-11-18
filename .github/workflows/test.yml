@@ -57,6 +57,10 @@ jobs:
       - run: node test/browser/shortcuts.mjs
       # Pins finding their spot again: reordered twins, their own box first, quoted words, made-up ids and classes.
       - run: node test/browser/anchoring.mjs
+      # Selected words: the chip, the dialog it grows into, slash actions, Escape, reload, saved files, right to left, reduced motion.
+      - run: node test/browser/fluid.mjs
+      # What a drag does: words (the chip, no Shift), empty space (an area), a click (a point), a double-click, fields and links.
+      - run: node test/browser/selection.mjs
       # New since you looked: the pill and list of the ids the agent added, what drops one off, two names, a phone's sheet, and what must never count.
       - run: node test/browser/changes.mjs
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
