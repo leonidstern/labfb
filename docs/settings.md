@@ -145,7 +145,6 @@ win over yours, key by key.
 | --- | --- | --- |
 | `toggle` | `m` | Show or hide comments |
 | `comment` | `1` | A click places a comment |
-| `go` | `2` | A click places a go pin (do it, no questions) |
 | `pointer` | `3` | A click is just a click |
 | `chat` | `c` | Open the chat |
 | `next` | `w` | The next new comment (with Shift: the one before) |

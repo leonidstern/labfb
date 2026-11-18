@@ -196,14 +196,15 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.keyboard.press('Escape');
   await sleep(200);
   await p.keyboard.press('2');
-  const go = await shadow(() => { return r.querySelector('.go-btn').classList.contains('on'); });
+  const keys = await shadow(() => { return r.querySelector('.go-btn').textContent.replace(/\s/g, ''); });
+  const goLeft = await shadow(() => { return document.documentElement.classList.contains('lab-go') || r.querySelector('.go-btn').classList.contains('cursor'); });
   await p.keyboard.press('3');
   await sleep(100);
   await p.mouse.click(500, 400);
   await sleep(300);
   const pinnedIn3 = await shadow(() => { return Boolean(r.querySelector('.float')); });
   await p.keyboard.press('1');
-  check(eng, '2 is go, 3 is cursor (a click pins nothing)', go && !pinnedIn3);
+  check(eng, 'there is no go mode: 2 does nothing, 3 is cursor (a click pins nothing)', !goLeft && /\(?1\/3\)?$/.test(keys) && !pinnedIn3, keys);
 
   // A go pin is a pin like any other: resolved, it wears the tick rather than saying "go" for ever.
   const admin = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;

@@ -131,7 +131,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
+  const KEYS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -229,7 +229,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <style>${styles}</style>
     <div class="scrim"></div>
     <div class="layer"></div>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
     <div class="list" hidden><div class="agentline" hidden></div><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -241,7 +241,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
-      <button class="secondary go-btn" type="button" hidden title="1 comment · 2 go: every click approves what it's on · 3 pointer: clicks are the page's own">go</button>
+      <button class="secondary go-btn" type="button" hidden title="1 comment · 3 pointer: clicks are the page's own">mode</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
@@ -407,11 +407,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
   }, 10000);
 
-  // Go mode (V): every new spot (a click, a drawn area, selected words, a hold on phones) is posted at once as "go",
-  // approving what it's on, with no box to type in. In draft mode go pins wait with the other drafts.
-  S.goMode = store.get('lab-go') === '1';
   // Pointer (3): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
-  // Option-click still pins. 1 comment and 2 go leave it.
+  // Option-click still pins. 1 comment leaves it.
   S.cursorMode = store.get('lab-cursor') === '1';
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
   // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
@@ -438,7 +435,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const setPinning = () => {
     const placing = S.on && !S.cursorMode && !anyWriting();
     document.documentElement.classList.toggle('lab-pinning', placing);
-    document.documentElement.classList.toggle('lab-go', placing && S.goMode);
     // "Pin over controls" on: the page's own links, buttons and clickable cards show the pin too, not their hand: a click
     // there pins, so the pointer says so (Leo, 17 Nov: "still controls giving me hand").
     document.documentElement.classList.toggle('lab-over', placing && S.overControls);
@@ -448,45 +444,15 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.cursorMode = v;
     store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
-    goBtn.classList.toggle('on', S.goMode && !v); // cursor replaces go's green at once
     goFace();
     setPinning();
-  };
-  const setGo = (v) => {
-    if (S.cursorMode) setCursor(false);
-    S.goMode = v;
-    queueMicrotask(goFace);
-    store.set('lab-go', v ? '1' : '');
-    goBtn.classList.toggle('on', v);
-    goBtn.setAttribute('aria-pressed', String(v && !S.cursorMode));
-    document.documentElement.classList.toggle('lab-go', S.on && v);
-    ptr.classList.toggle('go', v); // the drawn pointer turns at once, without waiting for the mouse to move
-    recheck();
   };
   // fluid: words that were selected; their box is the one element that grew out of the bar (fluid.ts). act: the bar's
   // button that was pressed (rewrite, cut, go: run once the dialog's row is there).
   function begin(anchor, fluid = false, act = '') {
-    const name = store.get('lab-name').trim();
-    // Go with no name yet (a guest's first): the card asks only the name; the go is implied (Leo, 16 Nov).
-    if (!S.goMode || !name) {
-      S.draft = { anchor, go: S.goMode, fluid: fluid && !S.goMode, act };
-      keepSpot(anchor, S.draft);
-      return render();
-    }
-    const text = 'go';
-    if (drafting()) {
-      store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
-      return render();
-    }
-    send({ name, text, anchor })
-      .then(({ comment, edit }) => {
-        if (edit) store.set(`lab-edit:${comment.id}`, edit);
-        S.comments.push(comment);
-        markSeen([comment]);
-        S.posted = comment.id;
-        render();
-      })
-      .catch(() => ((S.draft = { anchor }), keepSpot(anchor), render())); // couldn't post: the usual box, so nothing is lost
+    S.draft = { anchor, fluid, act };
+    keepSpot(anchor, S.draft);
+    render();
   }
   // Sent once the lab answers: while it can't be reached (restarting, the laptop just woke), the message waits and is
   // tried again every 2 s for up to 5 minutes, instead of failing. Only a lab that answers with an error fails it.
@@ -664,13 +630,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (!b.hidden) first = false;
     }
   }
-  // The switch shows what a click will place: 1 your comment pin (your initial), 2 a go pin, 3 nothing (the pointer).
+  // The switch shows what a click will place: 1 your comment pin (your initial), 3 nothing (the pointer).
   function goFace() {
     const gp = goBtn.querySelector('.gp');
-    if (gp) gp.textContent = !S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go';
+    if (gp) gp.textContent = initial(store.get('lab-name')) || '+';
     // Read out as what a click places, not the letter on it.
-    goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (pointer)' : S.goMode ? 'go' : 'a comment'}`);
-    goBtn.setAttribute('aria-keyshortcuts', [KEYS.comment, KEYS.go, KEYS.pointer].join(' '));
+    goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (pointer)' : 'a comment'}`);
+    goBtn.setAttribute('aria-keyshortcuts', [KEYS.comment, KEYS.pointer].join(' '));
   }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
@@ -1045,9 +1011,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
       const float = el('div', { class: `float${draft.fluid ? '' : anim}` });
       const box = composer({
-        placeholder: draft.go ? 'go' : draft.fluid && !coarse ? 'add a comment · / for actions' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
-        empty: draft.go ? 'go' : '',
-        nameFirst: Boolean(draft.go),
+        placeholder: draft.fluid && !coarse ? 'add a comment · / for actions' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
+        empty: '',
+        nameFirst: false,
         opened: Boolean(draft.fluid), // selected words: the comment is already picked and its box open (rewrite, cut, go one tap away)
         autofocus: !(draft.fluid && coarse),
         draftKey: `lab-typing:${S.page}:new`,
@@ -1148,7 +1114,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       e.stopPropagation();
     }
   }, true);
-  goBtn.addEventListener('click', () => setGo(!S.goMode));
+  goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
   overBtn.addEventListener('click', () => setOver(!S.overControls));
@@ -1259,18 +1225,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
       return stepNew(e.shiftKey ? -1 : 1);
     }
-    // 1 comment, 2 go, 3 pointer: like picking a tool (the keys are settings).
+    // 1 comment, 3 pointer (2 is free): like picking a tool (the keys are settings).
     const act = actionOf(e);
-    if (S.on && ['comment', 'go', 'pointer'].includes(act) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if (S.on && ['comment', 'pointer'].includes(act) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
-      if (act === 'pointer') setCursor(true);
-      else setGo(act === 'go');
+      setCursor(act === 'pointer');
       return;
     }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment,
-    // 2 go, 3 pointer, M hide, D show/hide done. With a thread open: R reply, E resolve.
+    // 3 pointer, M hide, D show/hide done. With a thread open: R reply, E resolve.
     if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
       const k = act;
       e.preventDefault();
@@ -1560,7 +1525,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   //  1. Computers: Shift + drag (or Shift + double or triple click) selects words; a plain drag marks an area wherever it
   //     starts, a click pins, and the page's text can't be selected without Shift (it shows the I-beam cursor, html.lab-shift-cur).
   //     Letting go shows the actions bar at the words' end (no chip first, Leo 18 Nov); clicking comment, Tab or
-  //     Enter, or just typing (F4) adds the box; rewrite, cut and go go as they do in the box. In go mode (2) letting go still sends a go on the words at once.
+  //     Enter, or just typing (F4) adds the box; rewrite, cut and go go as they do in the box.
   //  2. Phones: words selected the phone's way got a "Comment" chip (selChip); a tap pinned on them. Kept: the bar is
   //     the fluid element, below the words' end, gone with the selection; comment grows it into the usual bottom sheet
   //     (sheets.ts: fromTap / revealDraft / leave all as before), with no keyboard until the box is tapped.
@@ -1644,7 +1609,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     sel.removeAllRanges();
     return anchor;
   };
-  // Phones (the bar's comment) and go mode: straight to the comment (or the go) on the words.
+  // Phones (the bar's comment): straight to the comment on the words.
   const commentOnSelection = (act = '') => {
     const anchor = selectionAnchor();
     if (!anchor) return;
@@ -1654,7 +1619,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   // Computers, a drag over words let go: the actions bar, at the words' end; the box joins it (with the letter typed, if any).
   const offerSelection = () => {
-    if (S.goMode && store.get('lab-name').trim()) return commentOnSelection(); // go mode: a go on the words at once
     const sel = getSelection?.();
     const live = sel?.rangeCount ? rectsOf(sel.getRangeAt(0)) : []; // read before the anchor lets the selection go
     const got = selectionAnchor();
@@ -1835,25 +1799,24 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
 
   // A comment pin as the pointer over everything you can comment on (links and controls keep theirs): the white
   // teardrop with a +, clicking at its point. Holding Shift gives the text cursor back for selecting words.
-  // It looks like your own pin: the white teardrop with your initial (a + before you've given a name). Go mode's is
-  // the same shape in green with a white tick. Both point (bottom left) where the click lands.
+  // It looks like your own pin: the white teardrop with your initial (a + before you've given a name). It points (bottom
+  // left) where the click lands.
   // Drawn once into PNGs (1x and 2x): browsers re-decode SVG pointers when the pointer changes, which flickers (Safari
   // most); a PNG pointer stays put. The SVG one shows only for the moment before the PNGs are ready.
   const pinCursorStyle = document.createElement('style');
   // The pointer itself is drawn (an element styled with CSS that follows the mouse), not an image: so it changes
-  // smoothly, the pin turning green with a tick for go, and fading out where the system pointer takes over (links,
+  // smoothly, and fading out where the system pointer takes over (links,
   // fields, the widget, Shift). Mice only; touch and pens keep what they had.
   const ptr = el('div', { class: 'ptr', 'aria-hidden': 'true' });
-  ptr.append(el('span', { class: 'ini' }, '+'), el('span', { class: 'tick' }, 'go'));
+  ptr.append(el('span', { class: 'ini' }, '+'));
   root.append(ptr);
   // It shows exactly where the system pointer is hidden (cursor: none from the rules above): never two pointers, never
   // none. That's checked on every move, and again when the page scrolls under a still mouse, Shift or Option is pressed,
-  // or go or comments are switched.
+  // or comments are switched.
   S.mouse = null; // the last mouse position
   const place = (x, y, target) => {
     const show = Boolean(target) && target !== host && !host.contains(target) && getComputedStyle(target).cursor === 'none';
     ptr.classList.toggle('show', show);
-    ptr.classList.toggle('go', S.goMode);
     ptr.style.transform = `translate(${x - 1}px, ${y - 27}px)`;
   };
   const recheck = () => S.mouse && requestAnimationFrame(() => S.mouse && place(S.mouse.x, S.mouse.y, document.elementFromPoint(S.mouse.x, S.mouse.y)));
@@ -1875,7 +1838,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   document.documentElement.addEventListener('mouseleave', () => ((S.mouse = null), ptr.classList.remove('show')));
   addEventListener('blur', () => ((S.mouse = null), ptr.classList.remove('show')));
   // No pictures: where the drawn pin can't show (an open dialog or full screen draws above it, or before the mouse first
-  // moves) the system pointer is a plain crosshair for comments and the copy arrow for go.
+  // moves) the system pointer is a plain crosshair for comments.
   S.cursorKey = '';
   function refreshPinCursor() {
     const ch = (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
@@ -1897,8 +1860,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // Holding Option (Alt) pins links and controls too: the drawn pin shows over them (the system pointer hides).
       // The same with "pin over controls" on, without the key (lab-over; not while Shift selects words).
       `html:is(.lab-alt, .lab-over:not(.lab-shift)) body, html:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
-      `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }` +
-      `html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
+      `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.

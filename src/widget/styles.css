@@ -125,10 +125,6 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
        transition: opacity var(--_t-quick) var(--_ease-out), background-color var(--_t-quick) var(--_ease-out); }
 .ptr.show { opacity: 1; }
 .ptr span { grid-area: 1 / 1; font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 1; transition: opacity var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease-out); }
-.ptr .tick { opacity: 0; transform: scale(.5); color: #fff; font-size: 11px; letter-spacing: .006em; }
-.ptr.go { background: rgb(36, 160, 70); }
-.ptr.go .ini { opacity: 0; transform: scale(.5); }
-.ptr.go .tick { opacity: 1; transform: none; }
 .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                   background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
 .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
@@ -293,11 +289,9 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
 .bar button.secondary { color: var(--_muted); }
 .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
-.bar button.go-btn.on { color: #fff; background: rgb(36, 160, 70); }
 .bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; letter-spacing: -.016em; line-height: 1; color: var(--_fg); }
 .bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
 .bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
-.bar button.go-btn.on kbd { color: #fff !important; }
 .newline { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0; font-weight: 500; color: var(--_muted); }
 .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
 /* The left side: who's listening, then copy link; the right side is the bar. */
@@ -341,7 +335,7 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
       color: var(--_muted) !important; opacity: .45; transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar:hover kbd { opacity: .75; }
 .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
-.bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/2/3) reads like (c)hat and ne(w) */
+.bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/3) reads like (c)hat and ne(w) */
 /* One bar of segments, a hairline between them; the less used ones in the ⋯ menu above it (phones too: same bar, bigger to tap). */
 @media all {
   .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
@@ -366,13 +360,10 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
   .bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
   .bar .cnt.zero { color: var(--_muted); }
   .bar .cnt:not(.zero) { color: rgb(36, 160, 70); } /* something new: green, the go pin's green (Leo, 17 Nov) */
-  .bar button.go-btn.on { background: none; color: var(--_fg); }
-  .bar button.go-btn.on kbd { color: var(--_muted) !important; }
   .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
         color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
-  .go-btn.on .gp { background: rgb(36, 160, 70); color: #fff; }
   /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
-  .go-btn:not(.on):not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
+  .go-btn:not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
   /* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
      grey. It had a thicker, darker ring and regular letters, which read as another control (Leo, 16 Nov). */
   .go-btn.cursor .gp { color: transparent; background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); position: relative; }
