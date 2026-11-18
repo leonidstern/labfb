@@ -131,7 +131,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
+  const KEYS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -239,6 +239,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       <button class="secondary new-prev" type="button" hidden aria-label="previous new comment">‹</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
+      <button class="secondary pause-btn" type="button" hidden aria-pressed="false" title="pause the page's videos and animations (P); a comment on a paused video says which second">pause</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
       <button class="secondary go-btn" type="button" hidden title="1 comment · 3 pointer: clicks are the page's own">mode</button>
@@ -264,6 +265,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const newPrev = $('.new-prev');
   const showDoneBtn = $('.show-done');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
+  const pauseBtn = /** @type {HTMLButtonElement} */ ($('.pause-btn'));
   const overBtn = $('.over-btn');
   // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
   // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
@@ -459,6 +461,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
+    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true } }; // paused when written: the agent is told
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
@@ -1122,6 +1125,35 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }, true);
   goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
   newPrev.addEventListener('click', () => stepNew(-1));
+  // Pause (Leo, 18 Nov): a page with video or animation always has a pause here. Paused, the videos and the page's
+  // animations stand still (the widget's own keep moving), and a comment on a video says which second (anchoring.ts).
+  const stopped = { anims: new Set(), videos: new Set(), style: null };
+  const pageAnims = () => document.getAnimations().filter((a) => !(a.effect?.target && root.contains(a.effect.target)));
+  const moving = () => Boolean(document.querySelector('video')) || pageAnims().some((a) => a.playState === 'running');
+  const sayPause = () => {
+    pauseBtn.textContent = S.paused ? 'play' : 'pause';
+    pauseBtn.setAttribute('aria-pressed', String(Boolean(S.paused)));
+    pauseBtn.hidden = !S.on || !(S.paused || moving());
+  };
+  const setPause = (on) => {
+    S.paused = on;
+    if (on) {
+      stopped.style = document.createElement('style');
+      stopped.style.textContent = '*, *::before, *::after { animation-play-state: paused !important; }';
+      document.head.append(stopped.style);
+      for (const a of pageAnims()) if (a.playState === 'running') (a.pause(), stopped.anims.add(a));
+      for (const v of document.querySelectorAll('video')) if (!v.paused) (v.pause(), stopped.videos.add(v));
+    } else {
+      stopped.style?.remove();
+      for (const a of stopped.anims) a.play();
+      for (const v of stopped.videos) v.play?.().catch(() => {});
+      stopped.anims.clear();
+      stopped.videos.clear();
+    }
+    sayPause();
+  };
+  pauseBtn.addEventListener('click', () => setPause(!S.paused));
+  setInterval(sayPause, 1000);
   doneBtn.addEventListener('click', () => showDoneBtn.click());
   overBtn.addEventListener('click', () => setOver(!S.overControls));
   showDoneBtn.addEventListener('click', () => {
@@ -1242,9 +1274,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment,
     // 3 pointer, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
       const k = act;
       e.preventDefault();
+      if (k === 'pause') return pauseBtn.click();
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
       if (k === 'done') return showDoneBtn.click();
