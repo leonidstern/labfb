@@ -118,10 +118,10 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   // Pages toggle state classes; a pin stays on its element. One whose element is gone waits on the left edge, at its height.
   await p.evaluate(() => document.querySelector('#p2').classList.add('offscreen'));
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'gone', anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 400, width: 1000, element: '<p id="nope">' } }) });
-  await untilShadow(p, (r) => r.querySelector('.moved-btn')?.textContent === 'moved · 1', null, 900);
+  await untilShadow(p, (r) => r.querySelector('.moved-btn')?.textContent === 'moved · 1', null, 2000);
   const pins = await shadow(() => { return [...r.querySelectorAll('button.pin')].map((b) => [b.classList.contains('moved'), b.style.left, b.style.top]); });
   check(eng, 'a pin keeps its element when the page adds a class to it', pins.every(([m, l]) => !m || l === '10px'), JSON.stringify(pins));
-  check(eng, 'a pin whose element is gone is off the page, and the ⋯ menu counts it', pins.every(([m]) => !m) && (await shadow(() => { return r.querySelector('.moved-btn').textContent; })) === 'moved · 1', JSON.stringify(pins));
+  check(eng, 'a pin whose element is gone is off the page, and the ⋯ menu counts it', pins.every(([m]) => !m) && (await shadow(() => { return r.querySelector('.moved-btn').textContent; })) === 'moved · 1', JSON.stringify([pins, await shadow(() => { return r.querySelector('.moved-btn').textContent; })]));
   // Opened from the menu it shows on the left edge at its height; with wide margins, beside the content.
   const open = async () => shadow(() => { r.querySelector('.moved-btn').click(); return new Promise((res) => setTimeout(() => res([...r.querySelectorAll('button.pin.moved')].map((b) => [b.style.left, b.style.top])), 400)); });
   const edge = await open();

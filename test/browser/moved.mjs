@@ -91,8 +91,9 @@ try {
       check(eng, 'after the drop it is back on the page and the count is gone', s.pins === 2 && !s.shown, JSON.stringify(s));
       await p.goto('about:blank');
       await ctx.close();
-      // Back as it was for the next engine.
-      await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'move', id: lost.id, anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 300, width: 1000, element: '<p id="nope">' } }) });
+      // Back as it was for the next engine (moving another's pin takes the lab's admin key).
+      const admin = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
+      await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': admin, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/index', action: 'move', id: lost.id, anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 300, width: 1000, element: '<p id="nope">' } }) });
     } finally {
       await browser.close();
     }
