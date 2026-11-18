@@ -980,6 +980,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
+    S.checkChanges?.(); // hidden comments show no marks
     if (S.on) showHint();
     S.draft = null;
     S.openId = null;
@@ -1697,7 +1698,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
-    if (script?.dataset.live) startChanges(); // what changed since you looked (local labs, where pages change under you)
+    if (script?.dataset.live && flag('sinceLooked')) startChanges(); // what changed since you looked (local labs, where pages change under you)
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);

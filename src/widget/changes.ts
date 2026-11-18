@@ -1,11 +1,12 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 //
-// "Since you looked": when the agent changes a page, you don't hunt for what moved. This browser keeps the page's
-// blocks (paragraphs, headings, list items, cells…) as you last looked at them; on load and on every hot update the
-// page is compared with that. A badge in the bottom-left says how much changed, a mark in the margin sits by each
-// block that was added (green), changed (amber) or removed (a red tick where it was), and a tap on a mark shows the
-// old and new words. "seen" makes now the new "last looked". A first visit just remembers the page.
-// Per browser (localStorage, `lab-looked:<page>`): each device has its own "last looked".
+// "Since you looked": when the agent changes a page, you don't hunt for what moved. The page's blocks (paragraphs,
+// headings, list items, cells…) are kept as you last looked at them; on load and on every hot update the page is
+// compared with that. A badge by the listening pill says how much changed, a mark in the margin sits by each block
+// that was added (green), changed (amber) or removed (a red tick where it was), and a tap on a mark shows the old
+// and new words. "seen" makes now the new "last looked". A first visit just remembers the page.
+// The last look sits in localStorage (`lab-looked:<page>`) as { at, files, blocks }, so each browser has its own.
+// Flag: sinceLooked (lib/flags.ts).
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -14,17 +15,26 @@ export function bindChanges(w: unknown) {
 }
 
 const BLOCK = 'h1,h2,h3,h4,h5,h6,p,li,dt,dd,td,th,pre,blockquote,figcaption,caption,summary,label,legend';
-const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
-
-type Mark = { kind: 'add' | 'chg' | 'rm'; el: Element | null; after?: Element | null; old?: string; now?: string };
-
-// The page's blocks in order: the innermost ones only (a <li> holding a <p> counts as its <p>), with some text.
-function blocks(): Element[] {
-  const all = [...document.body.querySelectorAll(BLOCK)].filter((e) => !W.host.contains(e) && !e.closest('[data-lab-comments], script, style, template, noscript'));
-  return all.filter((e) => !e.querySelector(BLOCK) && norm(e.textContent || '') && (e as HTMLElement).offsetParent !== null);
+const CUT = 2000;
+// One block's words, as they are kept and compared: spacing squeezed. A very long one is cut, with a hash of what was
+// cut off, so a change far down in it still counts and the kept copy stays small.
+function words(e: Element) {
+  const t = (e.textContent || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= CUT) return t;
+  let h = 0;
+  for (let i = CUT; i < t.length; i++) h = (Math.imul(h, 31) + t.charCodeAt(i)) | 0;
+  return `${t.slice(0, CUT)}…${(h >>> 0).toString(36)}`;
 }
 
-// The longest common run of two lists (same strings, in order): which old and new blocks are the same block.
+const LABEL = { add: 'new', chg: 'changed', rm: 'removed' };
+type Mark = { kind: 'add' | 'chg' | 'rm'; el: Element | null; after?: Element | null; old?: string; now?: string };
+type Look = { at: number; files: string; blocks: string[] };
+
+// Every block in order: the innermost ones only (a <li> holding a <p> counts as its <p>), with some text. Hidden ones
+// stay in (a closed <details>, a collapsed menu): opening one must not read as new words; only the laid-out ones get a mark.
+const blocks = (): Element[] => [...document.body.querySelectorAll(BLOCK)].filter((e) => !W.host.contains(e) && !e.closest('[data-lab-comments], script, style, template, noscript') && !e.querySelector(BLOCK) && words(e));
+
+// Which old and new blocks are the same block: the longest common run of two lists (same strings, in order).
 function lcs(a: string[], b: string[]): Array<[number, number]> {
   let s = 0;
   while (s < a.length && s < b.length && a[s] === b[s]) s++;
@@ -34,7 +44,11 @@ function lcs(a: string[], b: string[]): Array<[number, number]> {
   const B = b.slice(s, b.length - e);
   const pairs: Array<[number, number]> = [];
   for (let i = 0; i < s; i++) pairs.push([i, i]);
-  if (A.length * B.length > 4e6) return pairs.concat(Array.from({ length: e }, (_, k) => [a.length - e + k, b.length - e + k]) as Array<[number, number]>); // too big: treat the middle as all changed
+  const tail = () => {
+    for (let k = 0; k < e; k++) pairs.push([a.length - e + k, b.length - e + k]);
+    return pairs;
+  };
+  if (A.length * B.length > 4e6) return tail(); // too big: treat the middle as all changed
   const t = Array.from({ length: A.length + 1 }, () => new Uint16Array(B.length + 1));
   for (let i = A.length - 1; i >= 0; i--) for (let j = B.length - 1; j >= 0; j--) t[i][j] = A[i] === B[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]);
   for (let i = 0, j = 0; i < A.length && j < B.length; ) {
@@ -42,74 +56,82 @@ function lcs(a: string[], b: string[]): Array<[number, number]> {
     else if (t[i + 1][j] >= t[i][j + 1]) i++;
     else j++;
   }
-  for (let k = 0; k < e; k++) pairs.push([a.length - e + k, b.length - e + k]);
-  return pairs;
+  return tail();
 }
 
-const words = (s: string) => s.split(/(\s+)/).filter(Boolean);
 // How alike two blocks are, by shared words: an edited sentence pairs with its old self; a new one doesn't.
 function alike(x: string, y: string) {
   const a = new Set(x.toLowerCase().split(' '));
   const b = y.toLowerCase().split(' ');
   return b.filter((w) => a.has(w)).length / Math.max(a.size, b.length, 1);
 }
+// The same block with its numbers changed (a clock, a counter), or nearly the same words.
+const alikeish = (x: string, y: string) => x.replace(/\d+/g, '#') === y.replace(/\d+/g, '#') || alike(x, y) > 0.34;
 
+// Old against new. `els` are the page's blocks now; the gaps between matched blocks hold what was removed and what was
+// added, an alike pair counted as one changed block.
 function diff(old: string[], els: Element[]): Mark[] {
-  const now = els.map((e) => norm(e.textContent || ''));
-  const pairs = lcs(old, now);
+  const now = els.map(words);
+  const lit = els.map((e) => e.getClientRects().length > 0); // laid out: a block that is hidden gets no mark
+  const near = (k: number, step: number) => {
+    for (; k >= 0 && k < els.length; k += step) if (lit[k]) return els[k];
+    return null;
+  };
   const marks: Mark[] = [];
   let i = 0;
   let j = 0;
-  // Each gap between matched blocks: removed old ones and added new ones, an alike pair counted as one changed block.
   const gap = (i2: number, j2: number) => {
     const gone = old.slice(i, i2);
-    const added = els.slice(j, j2);
     const used = new Set<number>();
-    added.forEach((el, k) => {
-      const t = now[j + k];
+    for (let k = j; k < j2; k++) {
       let best = -1;
       let score = 0.34;
       gone.forEach((g, m) => {
-        if (used.has(m)) return;
-        const sc = alike(g, t);
-        if (sc > score) ((best = m), (score = sc));
+        const sc = used.has(m) ? 0 : alike(g, now[k]);
+        if (sc > score) {
+          best = m;
+          score = sc;
+        }
       });
-      if (best >= 0) {
-        used.add(best);
-        marks.push({ kind: 'chg', el, old: gone[best], now: t });
-      } else marks.push({ kind: 'add', el, now: t });
-    });
-    const before = j2 < els.length ? els[j2] : null;
-    gone.forEach((g, m) => !used.has(m) && marks.push({ kind: 'rm', el: before, after: j > 0 ? els[j - 1] : null, old: g }));
+      if (best >= 0) used.add(best);
+      if (lit[k]) marks.push(best >= 0 ? { kind: 'chg', el: els[k], old: gone[best], now: now[k] } : { kind: 'add', el: els[k], now: now[k] });
+    }
+    gone.forEach((g, m) => !used.has(m) && marks.push({ kind: 'rm', el: near(j2, 1), after: near(j2 - 1, -1), old: g }));
   };
-  for (const [pi, pj] of pairs) {
+  for (const [pi, pj] of lcs(old, now)) {
     gap(pi, pj);
     i = pi + 1;
     j = pj + 1;
   }
   gap(old.length, els.length);
+  // A block that only moved is a removal and an addition of the same words: neither is a change.
+  for (const r of marks.filter((m) => m.kind === 'rm')) {
+    const a = marks.findIndex((m) => m.kind === 'add' && m.now === r.old);
+    if (a >= 0) {
+      marks.splice(a, 1);
+      marks.splice(marks.indexOf(r), 1);
+    }
+  }
   return marks;
 }
 
 // Old and new words, side by side: what went struck through in red, what came in green.
 function wordDiff(a: string, b: string) {
-  const A = words(a);
-  const B = words(b);
-  const keep = new Set<string>();
-  for (const [x, y] of lcs(A, B)) keep.add(`${x},${y}`);
+  const split = (s: string) => s.split(/(\s+)/).filter(Boolean);
+  const A = split(a);
+  const B = split(b);
   const frag = document.createDocumentFragment();
   let i = 0;
   let j = 0;
   const put = (cls: string, t: string) => {
     const last = frag.lastChild as HTMLElement | null;
     if (last && last.className === cls) last.textContent += t;
-    else frag.append(Object.assign(document.createElement('span'), { className: cls, textContent: t }));
+    else frag.append(W.el('span', { class: cls }, t));
   };
   for (const [x, y] of lcs(A, B)) {
     while (i < x) put('del', A[i++]);
     while (j < y) put('ins', B[j++]);
-    put('same', A[i]);
-    i++;
+    put('same', A[i++]);
     j++;
   }
   while (i < A.length) put('del', A[i++]);
@@ -119,11 +141,9 @@ function wordDiff(a: string, b: string) {
 
 export function startChanges() {
   const key = () => `lab-looked:${W.S.page}`;
-  const box = document.createElement('div');
-  box.className = 'chgs';
+  const box = W.el('div', { class: 'chgs' });
   W.root.insertBefore(box, W.root.querySelector('.layer'));
-  const badge = document.createElement('div');
-  badge.className = 'since';
+  const badge = W.el('div', { class: 'since', role: 'status' });
   badge.hidden = true;
   badge.addEventListener('click', (e) => e.stopPropagation()); // its buttons open a mark; a click elsewhere closes it
   W.root.querySelector('.left').append(badge);
@@ -131,15 +151,26 @@ export function startChanges() {
   let shown = true;
   let openAt: Mark | null = null;
   let step = 0;
+  let gen = 0;
+  let timer: ReturnType<typeof setTimeout>;
+  let full = false; // the browser's store has no room: no look can be kept, so nothing is compared
 
-  const remember = () => W.store.set(key(), JSON.stringify(blocks().map((e) => norm(e.textContent || ''))));
-  const kept = (): string[] | null => {
+  // What the lab has saved so far, as this page knows it: a new word here means a file was saved (hot saves count in data-hot).
+  const saves = () => `${W.script.dataset.lab}.${W.script.dataset.version}.${W.script.dataset.hot || 0}`;
+  const read = (): Look | null => {
     try {
       const v = JSON.parse(W.store.get(key()) || 'null');
-      return Array.isArray(v) ? v : null;
+      // The first build kept a plain list of blocks, with no time or saves.
+      return Array.isArray(v) ? { at: 0, files: '', blocks: v } : v && Array.isArray(v.blocks) ? v : null;
     } catch {
       return null;
     }
+  };
+  // Now is your last look.
+  const remember = () => {
+    const s = JSON.stringify({ at: Date.now(), files: saves(), blocks: blocks().map(words) });
+    W.store.set(key(), s);
+    full = W.store.get(key()) !== s;
   };
 
   // The margin a mark sits in: left of the block, or of its list for a list item (its bullet sits outside it).
@@ -150,20 +181,34 @@ export function startChanges() {
     // A removed block: a short tick between the blocks it sat between.
     const a = m.after?.getBoundingClientRect();
     const top = a ? a.bottom : r ? r.top - 8 : 0;
-    const left = (m.el ? edge(m.el) : m.after ? edge(m.after) : 30) + 14;
+    const left = m.el ? edge(m.el) : m.after ? edge(m.after) : 30;
     return { top: top - 2, bottom: top + 10, left, height: 12 } as DOMRect;
   };
+  // Marks follow the page's own words, not the OS: a light page gets the light set, a dark page the dark one.
+  const dark = () => {
+    const [r, g, b] = (getComputedStyle(document.body).color.match(/[\d.]+/g) || []).map(Number);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 128;
+  };
+  // The thread whose pin sits in a block, if any, so the card can say whose note it is.
+  const noteIn = (el: Element | null) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return W.threads().find((c) => {
+      if (c.resolved || c.anchor?.kind === 'page') return false;
+      const p = W.position(c.anchor || {});
+      return p.top >= r.top + scrollY - 2 && p.top <= r.bottom + scrollY + 2 && p.left >= r.left + scrollX - 2 && p.left <= r.right + scrollX + 2;
+    });
+  };
   const place = () => {
+    box.classList.toggle('dk', dark());
     if (!marks.length || !shown) return box.replaceChildren();
     const nodes: Node[] = [];
     for (const m of marks) {
       const r = rectOf(m);
       if (!r || (!r.height && m.kind !== 'rm')) continue;
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = `chg-mark ${m.kind}${openAt === m ? ' open' : ''}`;
-      b.setAttribute('aria-label', m.kind === 'add' ? 'added since you looked' : m.kind === 'chg' ? 'changed since you looked: show old and new' : 'removed since you looked: show what it said');
-      b.style.left = `${Math.max(2, (m.kind === 'rm' ? r.left : edge(m.el as Element)) - 14) + scrollX}px`;
+      const b = W.el('button', { type: 'button', class: `chg-mark ${m.kind}${openAt === m ? ' open' : ''}`, 'aria-label': `${LABEL[m.kind]} since you looked` });
+      const bar = Math.max(2, (m.kind === 'rm' ? r.left : edge(m.el as Element)) - 14); // the bar, 14px left of the block and never off the screen
+      b.style.left = `${bar - 20 + scrollX}px`; // the button reaches 20px further left than the bar: a thumb can hit it
       b.style.top = `${r.top + scrollY}px`;
       b.style.height = `${Math.max(r.height, 12)}px`;
       b.onclick = (e) => {
@@ -173,17 +218,18 @@ export function startChanges() {
       };
       nodes.push(b);
       if (openAt === m) {
-        const card = document.createElement('div');
-        card.className = 'chg-card';
-        const head = document.createElement('div');
-        head.className = 'chg-head';
-        head.textContent = m.kind === 'add' ? 'new since you looked' : m.kind === 'chg' ? 'changed since you looked' : 'removed since you looked';
-        const body = document.createElement('div');
-        body.className = 'chg-body';
+        const note = noteIn(m.el || m.after || null);
+        const since = new Date(read()?.at || 0).getTime();
+        const answer = note && W.repliesOf(note.id).find((x) => x.session && Date.parse(x.createdAt) > since);
+        const head = note ? W.el('button', { type: 'button', class: 'chg-head note' }, `for note ${W.numberOf(note)}${answer ? ` · ${answer.name}` : ''}`) : W.el('div', { class: 'chg-head' }, `${LABEL[m.kind]} since you looked`);
+        if (note) head.onclick = () => W.goTo(note);
+        const body = W.el('div', { class: 'chg-body' });
         if (m.kind === 'chg') body.append(wordDiff(m.old || '', m.now || ''));
-        else body.append(Object.assign(document.createElement('span'), { className: m.kind === 'rm' ? 'del' : 'ins', textContent: m.kind === 'rm' ? m.old : m.now }));
+        else body.append(W.el('span', { class: m.kind === 'rm' ? 'del' : 'ins' }, m.kind === 'rm' ? m.old : m.now));
+        const card = W.el('div', { class: 'chg-card' });
         card.append(head, body);
-        card.style.left = `${Math.min(Math.max(8, r.left - 14) + scrollX, scrollX + innerWidth - 336)}px`;
+        const w = Math.min(320, innerWidth - 16);
+        card.style.left = `${Math.min(Math.max(8, bar), innerWidth - w - 8) + scrollX}px`;
         card.style.top = `${r.top + scrollY + Math.max(r.height, 12) + 6}px`;
         card.onclick = (e) => e.stopPropagation();
         nodes.push(card);
@@ -196,57 +242,68 @@ export function startChanges() {
     const n = (k: Mark['kind']) => marks.filter((m) => m.kind === k).length;
     badge.hidden = !marks.length;
     if (!marks.length) return;
-    const parts = [['add', '+', n('add')], ['chg', '~', n('chg')], ['rm', '−', n('rm')]].filter(([, , c]) => c);
-    const count = document.createElement('button');
-    count.type = 'button';
-    count.className = 'since-count';
-    count.title = 'go to the next change';
-    count.append(Object.assign(document.createElement('span'), { className: 'since-lbl', textContent: 'since you looked' }));
-    for (const [k, sign, c] of parts) count.append(Object.assign(document.createElement('b'), { className: String(k), textContent: `${sign}${c}` }));
+    const count = W.el('button', { type: 'button', class: 'since-count', title: 'go to the next change' });
+    count.append(W.el('span', { class: 'since-lbl' }, 'since you looked'));
+    for (const [k, sign] of [['add', '+'], ['chg', '~'], ['rm', '−']]) if (n(k as Mark['kind'])) count.append(W.el('b', { class: k }, `${sign}${n(k as Mark['kind'])}`));
     count.onclick = () => {
-      if (!shown) ((shown = true), place());
-      const visible = marks.filter((m) => rectOf(m));
-      if (!visible.length) return;
-      const m = visible[step++ % visible.length];
-      const r = rectOf(m) as DOMRect;
-      scrollTo({ top: r.top + scrollY - innerHeight / 3, behavior: W.still.matches ? 'auto' : 'smooth' });
+      if (!shown) {
+        shown = true;
+        place();
+      }
+      // In page order, round and round: a changed or removed block opens its card as it is reached.
+      const order = marks.filter((m) => rectOf(m)).sort((a, b) => (rectOf(a)?.top ?? 0) - (rectOf(b)?.top ?? 0));
+      if (!order.length) return;
+      const m = order[step++ % order.length];
+      scrollTo({ top: (rectOf(m)?.top ?? 0) + scrollY - innerHeight / 3, behavior: W.still.matches ? 'auto' : 'smooth' });
       openAt = m.kind === 'add' ? null : m;
       place();
     };
-    const hide = document.createElement('button');
-    hide.type = 'button';
-    hide.className = 'since-btn';
-    hide.textContent = shown ? 'hide' : 'show';
-    hide.onclick = () => {
-      shown = !shown;
-      openAt = null;
-      place();
-      drawBadge();
+    const button = (text: string, onclick: () => void) => {
+      const b = W.el('button', { type: 'button', class: 'since-btn' }, text);
+      b.onclick = onclick;
+      return b;
     };
-    const seen = document.createElement('button');
-    seen.type = 'button';
-    seen.className = 'since-btn';
-    seen.textContent = 'seen ✓';
-    seen.title = 'what you see now becomes "last looked"';
-    seen.onclick = () => {
-      remember();
-      marks = [];
-      openAt = null;
-      place();
-      drawBadge();
-    };
-    badge.replaceChildren(count, hide, seen);
+    badge.replaceChildren(
+      count,
+      button(shown ? 'hide' : 'show', () => {
+        shown = !shown;
+        openAt = null;
+        place();
+        drawBadge();
+      }),
+      button('seen ✓', () => {
+        remember();
+        show([]);
+      }),
+    );
+  };
+
+  const show = (next: Mark[]) => {
+    // The open card stays open across a new check when its change is still there.
+    const was = openAt;
+    marks = next;
+    openAt = (was && next.find((m) => m.kind === was.kind && m.old === was.old && m.now === was.now)) || null;
+    place();
+    drawBadge();
   };
 
   const check = () => {
-    if (!document.body) return;
-    const old = kept();
-    if (!old) return remember(); // first visit: nothing to compare yet
-    marks = diff(old, blocks());
-    if (!marks.length) remember();
-    if (openAt && !marks.includes(openAt)) openAt = null;
-    place();
-    drawBadge();
+    const run = ++gen;
+    clearTimeout(timer);
+    const was = read();
+    if (!document.body || !W.S.on || full) return show([]); // comments hidden: no badge, no marks; the last look stays
+    if (!was) return remember(); // first visit: nothing to compare yet
+    if (was.files === saves()) return show([]); // no file was saved since your look: whatever moves on the page is the page's own
+    // Words that change by themselves (a clock, a counter) are not an edit: the page is read twice, a second apart, and
+    // a block that differs between the two is never marked.
+    const first = blocks().map(words);
+    timer = setTimeout(() => {
+      if (run !== gen) return;
+      const els = blocks();
+      const loud = first.length === els.length ? els.filter((e, i) => words(e) !== first[i]) : [];
+      const said = loud.map(words);
+      show(diff(was.blocks.filter((t) => !said.some((l) => alikeish(t, l))), els.filter((e) => !loud.includes(e))));
+    }, 1000);
   };
   W.S.checkChanges = check;
   // After the page's own scripts and fonts have settled, so their first paint doesn't count as a change.
@@ -262,4 +319,6 @@ export function startChanges() {
   addEventListener('scroll', later, { capture: true, passive: true });
   if ('ResizeObserver' in window) new ResizeObserver(later).observe(document.body);
   addEventListener('click', () => openAt && ((openAt = null), place()));
+  addEventListener('keydown', (e) => e.key === 'Escape' && openAt && ((openAt = null), place()));
+  addEventListener('storage', (e) => e.key === key() && check()); // seen in another tab of this browser
 }

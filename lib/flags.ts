@@ -7,6 +7,7 @@
 export const FLAGS: Record<string, { name: string; since: string }> = {
   liveUrl: { name: 'a lab on a live URL', since: '0.6.2' },
   agentPins: { name: "agent pins wear labit's mark", since: '0.6.2' },
+  sinceLooked: { name: 'a badge and margin marks for what changed since you looked', since: '0.6.3' },
 };
 
 /** Every flag, off. */

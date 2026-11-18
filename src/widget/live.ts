@@ -395,6 +395,7 @@ export function startLive() {
         if (v.lab && W.script.dataset.lab && v.lab !== W.script.dataset.lab) {
           W.script.dataset.lab = v.lab;
           W.script.dataset.version = String(v.files);
+          W.script.dataset.hot = String(v.hot || 0);
           hotAt = v.hot;
           commentsRev = v.comments;
           morphPage();
@@ -414,6 +415,7 @@ export function startLive() {
         hotAt = v.hot;
         // One version on and it names the pages it changed, none of them this one: nothing to fetch. (An older lab sends
         // no commentPages; more than one version on, the pages in between aren't known.)
+        W.script.dataset.hot = String(v.hot || 0); // what "since you looked" counts saves by
         const elsewhere = v.comments === commentsRev + 1 && Array.isArray(v.commentPages) && !v.commentPages.includes(W.S.page);
         if (commentsRev !== null && v.comments !== commentsRev && !elsewhere) W.loadChanges(commentsRev); // keeps typed text: it adds replies in place
         commentsRev = v.comments;
