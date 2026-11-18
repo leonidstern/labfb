@@ -80,11 +80,14 @@ export function startLive() {
     let stream = null;
     let beat = 0;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
+    // A dropped connection isn't "nobody listening": the badge keeps its last state, faded, and says reconnecting
+    // (Leo, 18 Nov: the black rabbit came and went at random, from these).
     const showAway = (word) => {
       lbl.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
       who.setAttribute('aria-label', word);
-      who.classList.add('idle');
-      who.classList.remove('working');
+      who.classList.add('stale');
+      W.chatBtn.classList.add('stale');
+      if (!who.classList.contains('working') && !last) who.classList.add('idle');
       who.hidden = false;
     };
     let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
@@ -393,6 +396,8 @@ export function startLive() {
         if (mode === 'listening') lbl.replaceChildren(span('talking to'), agent, ...tag);
         else if (mode === 'working') lbl.replaceChildren(agent, span('is working'), ...tag);
         else lbl.replaceChildren(span(s && !here ? 'no agent on this page' : 'no agent listening'));
+        who.classList.remove('stale');
+        W.chatBtn.classList.remove('stale');
         who.classList.toggle('idle', mode === 'away');
         who.classList.toggle('working', mode === 'working');
         W.listBtn.dataset.agent = mode;

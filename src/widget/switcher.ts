@@ -105,7 +105,7 @@ const say = (lab: Lab) => {
   const open = lab.pages.reduce((n, p) => n + p.open, 0);
   if (lab.unreachable) return ['not answering', 'warn'];
   if (lab.mode === 'listening') return [`${lab.listening || 'Claude'} listening`, 'ok'];
-  if (lab.mode === 'working') return [`${lab.listening || 'Claude'} working`, 'ok'];
+  if (lab.mode === 'working') return [`${lab.listening || 'Claude'} working`, 'work'];
   return [`nobody listening${open ? ` · ${open} open` : ''}`, open ? 'warn' : ''];
 };
 const hit = (q: string, ...words: string[]) => !q || words.some((w) => w.toLowerCase().includes(q));
