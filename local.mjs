@@ -1312,7 +1312,7 @@ function threadText(page, root, replies, fresh, spot, when) {
     `- ${who(root)} · ${when(root)} · opened · id ${root.id}: ${body(root.text)}`,
     ...spot.map((l) => `  ${l}`),
   ];
-  if (from) out.push(`- … ${from} earlier message${from === 1 ? '' : 's'} (whole thread: http://localhost:${PORT}/_lab/agent${page})`);
+  if (from) out.push(`- … ${from} earlier message${from === 1 ? '' : 's'} (read them first, the whole thread: http://localhost:${PORT}/_lab/agent${page})`);
   for (const r of replies.slice(from)) {
     const state = r.session ? STATE[r.intent] : '';
     // A pick on a question with choices says which question it answers (the words already say which choice).
@@ -1407,6 +1407,7 @@ async function unseen(scope = pages(), who = '') {
   const full = !(now - toldAt.get(who) < 1800000);
   const rules = rulesOnce();
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${blocks.join('\n\n')}` +
+    `\n\nRead each thread whole (every message and reply, not only the newest) before answering; the page, URL or #section is where a pin sits, not what it asks.` +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     (full ? `\n${WRITE_SHORT}` : '') + (rules || '');

@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Agents read a pin's or chat message's whole thread before answering, and don't guess from the page, URL or #section what it asks (`wait`, the plugin's wake turn and the skill say so).
 - Removed the parked list window and draft mode (both were off): their code, styles and the held-draft pins. The bar's New pill, J/K and show/hide done work as before.
 - A click outside an open comment closes it even with text typed in it; the words stay as a draft (Escape still discards them). Before, the box held on to the click and couldn't be closed that way.
 - The npm package no longer carries CHANGELOG.md (−28 KB packed); the changelog lives on GitHub and in each release's notes.
