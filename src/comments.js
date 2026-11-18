@@ -944,7 +944,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
             markSeen([comment]);
             S.draft = null;
             keepSpot(null);
-            S.openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
+            S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
             S.posted = comment.id;
             holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
             render();
