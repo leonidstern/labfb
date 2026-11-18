@@ -224,6 +224,12 @@ try {
         await dlgUp(p);
         const c = await fd(p);
         check(eng, 'a click on comment adds the box, with the cursor in it', Boolean(c?.dlg) && c.text === '' && (await inRoot(p, (r) => r.activeElement?.localName === 'textarea')), JSON.stringify(c));
+        // No scrollbar while the box can still grow; one only once it is at its tallest (Leo, 18 Nov).
+        await p.keyboard.type('a short note');
+        const short = await inRoot(p, (r) => getComputedStyle(r.querySelector('.fd textarea')).overflowY);
+        await p.keyboard.type(' and more words'.repeat(40));
+        const long = await inRoot(p, (r) => { const t = r.querySelector('.fd textarea'); return { o: getComputedStyle(t).overflowY, h: t.clientHeight }; });
+        check(eng, 'the box shows no scrollbar until it is at its tallest', short === 'hidden' && long.o === 'auto' && long.h >= 190, JSON.stringify({ short, long }));
       });
       // Comment preopened (Leo, 18 Nov): the dialog and the sheet open as a comment (the row has rewrite · cut · go, no pill for comment) with the box open; computers have the cursor in it
       await scene(eng, browser, {}, async (p) => {
