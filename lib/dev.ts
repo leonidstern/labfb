@@ -14,6 +14,8 @@ type Handler = (req: Request) => Promise<Response>;
 export async function apiOn(db: Db): Promise<any> {
   process.env.KV_REST_API_URL = 'http://lab.store';
   process.env.KV_REST_API_TOKEN = 'local';
+  // The key the lab sends with who wrote a comment (x-lab-stamp), so the API saves it in the same write.
+  process.env.LAB_STAMP_KEY ||= (await import('node:crypto')).randomBytes(16).toString('hex');
   const hash = (k: string): Map<string, string> => db.get(k) ?? (db.set(k, new Map()), db.get(k));
   const cmds: Record<string, (...args: any[]) => unknown> = {
     HSET: (k, ...pairs) => { const h = hash(k); let added = 0; for (let i = 0; i < pairs.length; i += 2) { if (!h.has(pairs[i])) added++; h.set(pairs[i], pairs[i + 1]); } return added; },

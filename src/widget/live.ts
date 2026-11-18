@@ -355,6 +355,8 @@ export function startLive() {
       {
         // A new widget script: this page needs it, so it reloads (when it's safe, as always).
         if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) return reload();
+        // Comments stored in a new shape (api/_schema.mjs VERSION): this page reads them with the widget that knows it.
+        if (v.schema && W.script.dataset.schema && String(v.schema) !== W.script.dataset.schema) return reload();
         // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
         // and patched (only if its file changed does anything move), and the comments are loaded again.
         if (v.lab && W.script.dataset.lab && v.lab !== W.script.dataset.lab) {
@@ -373,7 +375,10 @@ export function startLive() {
           else hotUpdate(v.hotFiles || []);
         }
         hotAt = v.hot;
-        if (commentsRev !== null && v.comments !== commentsRev) W.loadChanges(commentsRev); // keeps typed text: it adds replies in place
+        // One version on and it names the pages it changed, none of them this one: nothing to fetch. (An older lab sends
+        // no commentPages; more than one version on, the pages in between aren't known.)
+        const elsewhere = v.comments === commentsRev + 1 && Array.isArray(v.commentPages) && !v.commentPages.includes(W.S.page);
+        if (commentsRev !== null && v.comments !== commentsRev && !elsewhere) W.loadChanges(commentsRev); // keeps typed text: it adds replies in place
         commentsRev = v.comments;
         // read on another device with your name
         if (v.reads !== readsAt) {

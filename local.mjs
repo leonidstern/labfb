@@ -13,7 +13,7 @@ import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
-import { intentFromText, slim, upgrade, VERSION as SCHEMA } from './api/_schema.mjs';
+import { slim, upgrade, VERSION as SCHEMA } from './api/_schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -589,7 +589,7 @@ const widgetRev = () => {
     return '';
   }
 };
-let version = { files: 0, comments: 0, lab: randomBytes(4).toString('hex'), widget: widgetRev() };
+let version = { files: 0, comments: 0, commentPages: [], lab: randomBytes(4).toString('hex'), widget: widgetRev(), schema: SCHEMA };
 // Saving: the files of the pages that changed (.lab/comments/<page>.json) and comments.md are rewritten in the
 // background, one write at a time; changes that land meanwhile go into the next one. Each page's agent text is kept
 // and rebuilt only when that page changed, so a comment costs the same with 10 comments or 20,000. The request that
@@ -691,6 +691,9 @@ function persist(page) {
   else for (const p of pages()) dirty.add(p);
   version = { ...version, comments: version.comments + 1 };
   logChanges(page, version.comments);
+  // Which pages this version changed, so an open page on another one skips the pull (a reply on /a used to make every
+  // open tab on every page ask for its changes).
+  version.commentPages = changeLog.filter((e) => e.rev === version.comments && e.page !== null).map((e) => e.page);
   if (writing) {
     again = true;
     return writing;
@@ -1227,9 +1230,54 @@ async function unseen(scope = pages(), who = '') {
   const marks = given.map(({ page, c }) => [page, c.id, stamp(c)]);
   return { text, marks, handed, full };
 }
+// Hand-offs the agent hasn't said it got yet (a wait that asked with ack: true). The marks go on at once, so no other
+// wait takes the same pins and the page shows them being worked on; the agent's `wait` (or MCP server) says it printed
+// them with POST /_lab/ack. Without that within ACK_MS, or when the same session waits again first (it never saw
+// them: an MCP wait cancelled after the lab answered, a killed command), the marks are taken back and the pins go out
+// again. Before, a hand-off that never arrived left its pins "being worked on" for 3 minutes, then came back as
+// one line each, not the whole thread (Plannotator's "Delivered to" is the agent's own read, the same idea).
+const ACK_MS = Number(process.env.LAB_ACK_MS ?? 20000);
+const unacked = new Map(); // delivery id -> { who, back, timer }
+function takeBack(id) {
+  const d = unacked.get(id);
+  if (!d) return;
+  unacked.delete(id);
+  clearTimeout(d.timer);
+  d.back();
+  console.log('[lab] a hand-off was not confirmed by the agent: its pins go out again');
+}
+function confirmed(id) {
+  const d = unacked.get(id);
+  if (!d) return false;
+  unacked.delete(id);
+  clearTimeout(d.timer);
+  return true;
+}
 // Hand the new comments to a wait; each is marked as handed over only once it is written to it.
-function deliver(res, got, who = '') {
-  res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
+function deliver(res, got, who = '', ack = false) {
+  // What the marks were, to put back if the agent never confirms.
+  const ids = [...new Set([...got.marks.map(([, id]) => id), ...got.handed.map(([, id]) => id)])];
+  const before = ids.map((id) => [id, handoff[id] ? [...handoff[id]] : undefined]);
+  const handedBefore = got.handed.map(([page, id]) => [page, id, commentsOf(page).find((c) => c.id === id)?.handedAt]);
+  const delivery = ack ? randomBytes(6).toString('hex') : '';
+  res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', ...(delivery ? { 'x-lab-delivery': delivery } : {}) }).end(got.text);
+  if (delivery)
+    unacked.set(delivery, {
+      who,
+      timer: setTimeout(() => takeBack(delivery), ACK_MS).unref(),
+      back: () => {
+        for (const [id, was] of before) {
+          if (was) handoff[id] = was;
+          else delete handoff[id];
+        }
+        for (const [page, id, was] of handedBefore) setComment(page, id, { handedAt: was });
+        saveHanded();
+        for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
+        if (got.full) toldAt.delete(who);
+        broadcast();
+        wake();
+      },
+    });
   if (got.full) toldAt.set(who, Date.now());
   for (const [, id, at] of got.marks) handoff[id] = [at, who];
   const at = new Date().toISOString();
@@ -1260,7 +1308,7 @@ async function wakeNow() {
     waitEnded = Date.now();
     clearTimeout(w.timer);
     remember(w);
-    deliver(w.res, got, w.who);
+    deliver(w.res, got, w.who, w.ack);
   }
 }
 
@@ -1292,7 +1340,7 @@ const flagsAttr = () => {
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? ` · edge: ${process.env.LABIT_EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
 const widget = (page, admin, me = '') => {
   markOpened(page);
-  return `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
+  return `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
   `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
@@ -1601,9 +1649,15 @@ const handler = async (req, res) => {
       pagesChanged();
       return res.writeHead(204).end();
     }
+    // The agent's wait printed a hand-off (see unacked): it is the agent's now.
+    if (pathname === '/_lab/ack' && req.method === 'POST') {
+      if (!isAgent(req)) return res.writeHead(403).end('forbidden');
+      const { id } = await sent(req);
+      return res.writeHead(confirmed(String(id || '')) ? 204 : 404).end();
+    }
     if (pathname === '/_lab/wait') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
-      const { timeout, pages: only } = await sent(req);
+      const { timeout, pages: only, ack } = await sent(req);
       const want = Array.isArray(only) && only.length ? only.map(String).sort() : null;
       // A new wait for the same pages replaces the old one (the same session listening again, or another taking over);
       // waits for other pages stay.
@@ -1614,13 +1668,15 @@ const handler = async (req, res) => {
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
-      const w = { res, pages: want, key, who: whoOf(session) };
+      const w = { res, pages: want, key, who: whoOf(session), ack: ack === true };
+      // The same session waiting again before it said it got the last hand-off never saw it: those pins go out again.
+      for (const [id, d] of unacked) if (d.who === w.who) takeBack(id);
       claim(want);
       const got = await unseen(scopeOf(w), w.who);
       recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
       if (got?.text) {
         remember(w);
-        return deliver(res, got, w.who);
+        return deliver(res, got, w.who, w.ack);
       }
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;
@@ -1822,33 +1878,21 @@ const handler = async (req, res) => {
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
       // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does), and the
       // API hears from the lab alone who speaks, the agent or a person: a page can't say it is the agent.
-      const out = await callApi(fn, req, `http://localhost/api${url.search}`, { host: 'localhost', 'x-lab-agent': agent ? '1' : '0', ...(agent ? { 'x-lab-admin': TOKEN } : {}) });
+      // Who wrote it (the agent's session, or this computer / a wifi guest) goes in with it, under the lab's own key.
+      const stamp = agent ? { session: slim(sessionFrom(req)) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' };
+      const out = await callApi(fn, req, `http://localhost/api${url.search}`, {
+        host: 'localhost', 'x-lab-agent': agent ? '1' : '0', ...(agent ? { 'x-lab-admin': TOKEN } : {}),
+        'x-lab-stamp-key': process.env.LAB_STAMP_KEY, 'x-lab-stamp': encodeURIComponent(JSON.stringify(stamp)),
+      });
       const text = await out.text();
       if (req.method === 'POST' && out.ok) {
+        // An answer or a resolve from a session is proof it has what it was handed.
+        if (agent) for (const [id, d] of unacked) if (d.who === whoOf(sessionFrom(req))) confirmed(id);
         const { comment } = JSON.parse(text);
-        if (out.status === 201) {
-          // Mark who wrote it, so Claude can tell this computer from a guest, and its own replies from people's.
-          const [key, h] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
-          const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: slim(sessionFrom(req)) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
-          // An answer that doesn't say what it is (an older agent or skill) is read from its first words, once, here.
-          const said = stored.intent;
-          if (agent && stored.parent) stored.intent ||= intentFromText(stored.text);
-          h.set(comment.id, JSON.stringify(stored));
-          // The agent answering done (labit reply --done) closes the thread itself (Leo, 15 Nov: 37 threads sat open with
-          // nothing left to do). An answer that doesn't say (an older agent or skill) counts as done when its words start
-          // "Done", and then only when it answered one clear thing: one message from people since the agent last spoke,
-          // and not a list ("1) … 2) …", "- … - …"). A person writing again reopens it (the API does). Other answers (on
-          // it, a question, options) leave it open. Page chats stay open either way.
-          if (agent && stored.parent && h.has(stored.parent)) {
-            const root = JSON.parse(h.get(stored.parent));
-            const thread = [root, ...[...h.values()].map((v) => JSON.parse(v)).filter((x) => x.parent === root.id && x.id !== stored.id)]
-              .sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
-            const asks = thread.slice(thread.map((x) => Boolean(x.session)).lastIndexOf(true) + 1).filter((x) => !x.session);
-            const listy = (t) => String(t).split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length >= 2;
-            const done = stored.intent === 'done' && (said || (asks.length === 1 && !listy(asks[0].text))) && root.anchor?.kind !== 'page';
-            if (done && !root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: true, resolvedBy: 'agent', resolvedAt: stored.createdAt }));
-          }
-          if (!agent) announce(key.slice('lab:comments:'.length), stored);
+        // Who wrote it, its intent and an agent's done closing the thread are saved by the API, in its own write.
+        if (out.status === 201 && !agent) {
+          const [key] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
+          announce(key.slice('lab:comments:'.length), comment);
         }
         // The page that changed (a delete leaves no comment to find it by: then all pages are rebuilt).
         const changed = (() => {
