@@ -13,6 +13,7 @@ import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
 import { REGISTRY, keyFor, runningLabs } from './lib/labs.ts';
+import { isLabPage, labShell, renderMarkdown, starter } from './lib/labpage.ts';
 import { intentFromText, slim, upgrade, VERSION as SCHEMA } from './api/_schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
@@ -38,6 +39,9 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
   labit pages [--all]
       Write .lab/lab-pages.md here: this folder's labs and saved cloud pages as links, with open comment counts.
       --all lists every lab on this computer.
+  labit new <name> [--md]
+      A lab page to fill with blocks (skills/labit/blocks.md): <name>.html with just its content, or Markdown with --md.
+      The lab adds the page around it and its stylesheet. A full HTML document is served as it is.
   labit settings
       Each setting, its value and where it came from: a flag or variable, labit.json in the project, your own
       ~/.config/labit/settings.json, or the default. See docs/settings.md.
@@ -93,7 +97,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
+const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'new'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -117,6 +121,21 @@ if (fromFile('remindAfterMinutes')) process.env.LAB_REMIND_MS = String(SET.remin
 if (fromFile('updateCheck') && !SET.updateCheck) process.env.LABIT_NO_UPDATE_CHECK = '1';
 if (fromFile('model') && SET.model) process.env.LAB_MODEL = SET.model;
 for (const p of SETTINGS.problems) console.error(`[labit] ${p}`);
+// `labit new <name> [--md]`: a lab page to fill with blocks (skills/labit/blocks.md), in this folder.
+if (pos[0] === 'new') {
+  const name = String(pos[1] || '').replace(/\.(html?|md)$/i, '');
+  if (!/^[\w][\w.-]*$/.test(name)) die(`Name the page: ${CMD} new <name> [--md], e.g. ${CMD} new pricing`);
+  const file = path.join(HERE, `${name}.${opts.md ? 'md' : 'html'}`);
+  const other = path.join(HERE, `${name}.${opts.md ? 'html' : 'md'}`);
+  if (fs.existsSync(file) || fs.existsSync(other)) die(`${fs.existsSync(file) ? file : other} is there already: open it, or pick another name.`);
+  fs.writeFileSync(file, starter(name, Boolean(opts.md)));
+  console.log(file);
+  const lab = runningLabs().find((l) => file.startsWith(l.root + path.sep));
+  if (lab) console.log(`http://localhost:${lab.port}/${path.relative(lab.root, file).split(path.sep).map(encodeURIComponent).join('/').replace(/\.(html|md)$/, '')}`);
+  else console.log(`No lab serves this folder yet: start one with ${CMD} --no-open`);
+  console.log(`Fill it with blocks: ${path.join(REPO, 'skills/labit/blocks.md')}`);
+  process.exit(0);
+}
 // `labit settings`: each setting, its value and where it came from.
 if (pos[0] === 'settings') {
   const changed = changedShortcuts(SET.shortcuts);
@@ -960,7 +979,7 @@ let indexStale = false;
 // Saves in one burst that are all CSS, pictures, fonts or HTML pages: the pages update in place (stylesheets and
 // pictures swapped, fonts reloaded, HTML patched), so nothing flashes and your place stays. Anything else (a script,
 // data) → a reload.
-const HOT = { css: /\.css$/i, img: /\.(png|jpe?g|gif|webp|avif|svg|ico)$/i, font: /\.(woff2?|ttf|otf)$/i, html: /\.html?$/i };
+const HOT = { css: /\.css$/i, img: /\.(png|jpe?g|gif|webp|avif|svg|ico)$/i, font: /\.(woff2?|ttf|otf)$/i, html: /\.(html?|md)$/i }; // an .md page is drawn by the lab, so it patches in place like HTML
 const hotSaved = new Map(); // served path -> kind
 let otherSaved = false;
 if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
@@ -1257,6 +1276,8 @@ const pagesUnder = (top) => {
       const full = path.join(dir, d.name);
       if (d.isDirectory() && depth < 6) walk(full, depth + 1);
       else if (/\.html?$/i.test(d.name)) out.push(path.relative(top, full));
+      // A Markdown page (lib/labpage.ts) is listed unless an .html page has its name.
+      else if (/\.md$/i.test(d.name) && !fs.existsSync(full.replace(/\.md$/i, '.html'))) out.push(path.relative(top, full));
     }
   };
   walk(top, 0);
@@ -1266,10 +1287,11 @@ const pagesUnder = (top) => {
     return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.localeCompare(b);
   });
 };
-const urlOf = (rel) => '/' + rel.split(path.sep).map(encodeURIComponent).join('/').replace(/(^|\/)index\.html?$/i, '$1');
+const urlOf = (rel) => '/' + rel.split(path.sep).map(encodeURIComponent).join('/').replace(/(^|\/)index\.(html?|md)$/i, '$1');
 const titleOf = (file) => {
   try {
     const head = fs.readFileSync(file, 'utf8').slice(0, 4000);
+    if (/\.md$/i.test(file)) return renderMarkdown(head).title.replace(/[*_`]/g, '');
     return head.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1].trim() || '';
   } catch {
     return '';
@@ -1619,18 +1641,29 @@ const handler = async (req, res) => {
     let file = path.join(base, pathname);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
+    if (!lab && !fs.existsSync(file) && fs.existsSync(file + '.md')) file += '.md'; // a Markdown page, /notes is notes.md
     if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (fs.statSync(file).isDirectory() && !pathname.endsWith('/') && fs.existsSync(file + '.html')) file += '.html'; // /a is a.html, /a/ is a/index.html
     if (fs.statSync(file).isDirectory()) {
       if (!pathname.endsWith('/')) return res.writeHead(302, { location: url.pathname + '/' + url.search }).end();
-      if (!fs.existsSync(path.join(file, 'index.html'))) return listing(res, file, url.pathname);
-      file = path.join(file, 'index.html');
+      const index = ['index.html', 'index.md'].find((n) => fs.existsSync(path.join(file, n)));
+      if (!index) return listing(res, file, url.pathname);
+      file = path.join(file, index);
     }
-    if (!lab && /\.html?$/i.test(file)) {
+    // A page the lab made, or Markdown, gets the lab's shell and stylesheet (lib/labpage.ts); a full HTML document is
+    // served as it is. Asked for as raw text (?raw), an .md file comes as it is.
+    const md = !lab && /\.md$/i.test(file) && !url.searchParams.has('raw');
+    if (!lab && (/\.html?$/i.test(file) || md)) {
+      const name = path.basename(file).replace(/\.(html?|md)$/i, '');
+      let html = fs.readFileSync(file, 'utf8');
+      if (md) {
+        const page = renderMarkdown(html);
+        html = labShell(page.title ? `<title>${page.title.replace(/[<>&]/g, '')}</title>\n${page.html}` : page.html, name);
+      } else if (isLabPage(html)) html = labShell(html, name);
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
+        inject(html, widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
     }
     sendFile(req, res, file);
   } catch (e) {

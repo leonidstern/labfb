@@ -67,8 +67,9 @@
 body.lab {
   margin: 0; background: var(--lab-page); color: var(--lab-fg); font: 15px/1.45 var(--lab-font);
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
-  padding: 24px max(16px, env(safe-area-inset-right, 0px)) 96px max(16px, env(safe-area-inset-left, 0px));
+  padding: max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(96px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
 }
+[hidden] { display: none !important; }
 .lab main, .lab-main { max-width: 680px; margin: 0 auto; display: grid; gap: 20px; }
 .lab h1 { font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
 .lab h2 { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--lab-muted); margin: 0 0 8px; }
@@ -119,11 +120,151 @@ body.lab {
 .lab-table th { color: var(--lab-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .lab-button.go kbd { background: rgba(255, 255, 255, .22); color: #fff; }
 
+/* Lab pages (lib/labpage.ts): a page an agent made for the lab, or a Markdown page, gets this stylesheet and
+   body.lab.lab-doc. Headings read as a document's (the lab's own screens keep h2 as a caps label). */
+.lab-doc main { gap: 16px; max-width: 720px; }
+.lab-doc h1 { font-size: 28px; }
+.lab-doc h2 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; text-transform: none; color: var(--lab-fg); margin: 14px 0 0; text-wrap: balance; }
+.lab-doc h3 { font-size: 15px; font-weight: 600; margin: 6px 0 0; }
+.lab-doc header, .lab-doc section { display: grid; gap: 10px; min-width: 0; }
+.lab-doc header { gap: 4px; }
+.lab-doc ul, .lab-doc ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.lab-doc pre { margin: 0; padding: 12px 14px; background: var(--lab-soft); border-radius: var(--lab-corner-s); overflow-x: auto; font: 12.5px/1.5 var(--lab-mono); }
+.lab-doc pre code { background: none; padding: 0; }
+.lab-doc blockquote { margin: 0; padding-left: 12px; box-shadow: inset 2px 0 0 var(--lab-line); color: var(--lab-muted); }
+.lab-doc hr { border: 0; border-top: var(--lab-hair); margin: 8px 0; width: 100%; }
+.lab-doc img { max-width: 100%; height: auto; }
+.lab-scroll { overflow-x: auto; min-width: 0; }
+
+/* Blocks (skills/labit/blocks.md): ready parts for lab pages. Each goes in a <section id="…"> so it can be pinned,
+   linked and zoomed. Only the tokens above, so every block follows light and dark. */
+/* Options to pick from: each <li value="n"> shows its number (written in the page, so numbers never shift when options
+   are added; Safari doesn't count list items drawn as grids). .rec marks the recommended ones. */
+ol.lab-options { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); }
+.lab-options > li { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: baseline; padding: 8px 10px; }
+.lab-options > li::before { content: attr(value); grid-row: span 3; align-self: start; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--lab-soft); font: 600 12px/1 var(--lab-font); font-variant-numeric: tabular-nums; }
+.lab-options > li.rec::before { background: var(--lab-green-soft); color: var(--lab-green); }
+.lab-options > li > b { font-weight: 600; }
+.lab-options > li > span { color: var(--lab-muted); font-size: 14px; }
+.lab-options > li + li { border-top: var(--lab-hair); }
+/* Compare: a table in a box; th.rec / td.rec mark the recommended column. */
+.lab-compare { background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 4px 6px; overflow-x: auto; }
+.lab-compare .rec { color: var(--lab-green); }
+.lab-compare th.rec { font-weight: 600; }
+/* Before and after: two pictures side by side, stacked on a phone. */
+.lab-ba { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+/* A picture with its caption (also each side of .lab-ba). */
+.lab-figure, .lab-ba figure { margin: 0; display: grid; gap: 6px; min-width: 0; }
+.lab-figure img, .lab-ba img { display: block; max-width: 100%; height: auto; border-radius: var(--lab-corner); box-shadow: var(--lab-shadow); }
+.lab-figure figcaption { font-size: 13px; color: var(--lab-muted); }
+.lab-ba figcaption { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--lab-muted); }
+/* Numbers in a row: the figure, then what it is. */
+.lab-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.lab-stats > div { display: grid; gap: 2px; align-content: start; background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 12px 14px; }
+.lab-stats b { font-size: 22px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.lab-stats span { font-size: 13px; color: var(--lab-muted); }
+/* A checklist: li.done is ticked. Markdown task lists (- [x]) come out as this. */
+ul.lab-checklist { list-style: none; padding: 0; display: grid; gap: 6px; }
+.lab-checklist > li { position: relative; padding-left: 26px; }
+.lab-checklist > li::before { content: ''; position: absolute; left: 0; top: .15em; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1.25px var(--lab-line);
+  font: 600 10px/16px var(--lab-font); text-align: center; color: #fff; }
+.lab-checklist > li.done::before { content: '✓'; background: var(--lab-green); box-shadow: none; }
+/* A question with its choices; the person answers with a pin. li.rec is the one you'd pick. */
+.lab-question { display: grid; gap: 10px; background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 14px 16px; }
+.lab-question > p:first-child { font-weight: 600; }
+ul.lab-choices { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.lab-choices > li { padding: 6px 10px; border-radius: var(--lab-corner-s); background: var(--lab-soft); font-size: 14px; }
+.lab-choices > li.rec { background: var(--lab-green-soft); color: var(--lab-green); font-weight: 600; }
+/* A timeline: when, then what, a hairline between rows. */
+ol.lab-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.lab-timeline > li { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 8px 0; }
+.lab-timeline > li + li { border-top: var(--lab-hair); }
+.lab-timeline time { font-size: 13px; color: var(--lab-muted); font-variant-numeric: tabular-nums; }
+/* A note set apart from the text; .go for a green one (a decision, a recommendation). */
+.lab-note { background: var(--lab-soft); border-radius: var(--lab-corner); padding: 12px 14px; }
+.lab-note.go { background: var(--lab-green-soft); }
+/* Cards in a grid: one idea each, a title and a few lines. */
+.lab-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.lab-cards > * { display: grid; gap: 4px; align-content: start; background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 12px 14px; min-width: 0; }
+.lab-cards h3 { margin: 0; }
+/* Flat numbers and cards (.flat): no box, a hairline above each, for a page where boxes would be everywhere. */
+.lab-stats.flat > div, .lab-cards.flat > * { background: none; box-shadow: none; border-radius: 0; border-top: var(--lab-hair); padding: 10px 0 0; }
+
+/* Bars: a chart drawn to scale from the real numbers. The block's --max and each row's --v are those numbers
+   (style="--max: 100", style="--v: 58"): each bar is v / max of its track, so nothing is eyeballed. A label, the bar,
+   the value as text; .rec draws a bar in green. Colours come from the theme. */
+.lab-bars { display: grid; gap: 8px; --max: 100; }
+.lab-bars > div { display: grid; grid-template-columns: minmax(0, 36%) minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 14px; }
+.lab-bars > div > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab-bars > div > i { position: relative; height: 10px; border-radius: 5px; background: var(--lab-soft); overflow: hidden; }
+.lab-bars > div > i::before { content: ''; position: absolute; inset: 0 auto 0 0; width: calc(var(--v, 0) / var(--max) * 100%); border-radius: inherit; background: var(--lab-fg); opacity: .7; }
+.lab-bars > div.rec > i::before { background: var(--lab-green); opacity: 1; }
+.lab-bars > div > b { min-width: 3.2em; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) {
+  .lab-bars > div { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  .lab-bars > div > span { grid-column: 1 / -1; }
+}
+
+/* More charts, all to scale from the real numbers (--max on the block, --v on a part). Colours from the theme.
+   Columns: values standing up, for steps in order; the value above, the label under. */
+.lab-cols { --max: 100; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.lab-cols > div { display: grid; grid-template-rows: auto 120px auto; gap: 4px; text-align: center; font-size: 12px; min-width: 0; }
+.lab-cols > div > b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.lab-cols > div > i { align-self: end; height: calc(var(--v, 0) / var(--max) * 100%); border-radius: 4px 4px 0 0; background: var(--lab-fg); opacity: .7; }
+.lab-cols > div.rec > i { background: var(--lab-green); opacity: 1; }
+.lab-cols > div > span { color: var(--lab-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Line: a trend, as an <svg viewBox="0 0 100 40"> the agent writes from the numbers (a polyline, a dot on the last). */
+.lab-line { display: block; width: 100%; height: 72px; color: var(--lab-fg); overflow: visible; }
+.lab-line polyline { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.lab-line circle { fill: var(--lab-green); }
+/* Stacked: parts of a whole in one bar, each part's share as --v; a legend under it. */
+.lab-stack { --max: 100; display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--lab-soft); }
+.lab-stack > i { width: calc(var(--v, 0) / var(--max) * 100%); background: var(--lab-fg); opacity: .7; }
+.lab-stack > i + i { opacity: .35; }
+.lab-stack > i + i + i { opacity: .15; }
+.lab-stack > i.rec { background: var(--lab-green); opacity: 1; }
+ul.lab-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--lab-muted); }
+.lab-legend b { color: var(--lab-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Meter: one value against a goal. */
+.lab-meter { --max: 100; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.lab-meter > i { position: relative; height: 10px; border-radius: 5px; background: var(--lab-soft); overflow: hidden; }
+.lab-meter > i::before { content: ''; position: absolute; inset: 0 auto 0 0; width: calc(var(--v, 0) / var(--max) * 100%); background: var(--lab-green); border-radius: inherit; }
+.lab-meter > b { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Before and after: two values per row on one scale, --a then --b, joined by a line; the after dot in green. */
+.lab-dots { --max: 100; display: grid; gap: 12px; }
+.lab-dots > div { display: grid; grid-template-columns: minmax(0, 36%) minmax(0, 1fr); align-items: center; gap: 10px; font-size: 14px; }
+.lab-dots > div > i { position: relative; height: 16px; }
+.lab-dots > div > i::before { content: ''; position: absolute; top: 7px; height: 2px; background: var(--lab-line);
+  left: calc(min(var(--a), var(--b)) / var(--max) * 100%); width: calc(max(var(--a) - var(--b), var(--b) - var(--a)) / var(--max) * 100%); }
+.lab-dots > div > i > b, .lab-dots > div > i > s { position: absolute; top: 2px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; }
+.lab-dots > div > i > s { left: calc(var(--a) / var(--max) * 100%); background: var(--lab-bg); box-shadow: inset 0 0 0 2px var(--lab-muted); }
+.lab-dots > div > i > b { left: calc(var(--b) / var(--max) * 100%); background: var(--lab-green); }
+@media (max-width: 480px) { .lab-dots > div { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+
+/* States: what happened to an item once the person answered, on any block's item (an option, a card, a choice, a
+   checklist or timeline row, a table cell): data-state="picked | building | built | dropped | later". A pill says it;
+   built is green with a tick, dropped fades and is struck through. The page stays one page: answers show where they
+   were asked. */
+[data-state]::after { content: attr(data-state); display: inline-block; margin-left: 8px; padding: 3px 7px; border-radius: var(--lab-corner-s);
+  font: 600 11px/1 var(--lab-font); letter-spacing: .02em; vertical-align: 1px; white-space: nowrap; background: var(--lab-soft); color: var(--lab-muted); }
+[data-state="picked"]::after { background: var(--lab-green-soft); color: var(--lab-green); }
+[data-state="building"]::after { content: 'building…'; color: var(--lab-fg); }
+[data-state="built"]::after { content: '✓ built'; background: var(--lab-green); color: #fff; }
+[data-state="dropped"] { opacity: .55; }
+[data-state="dropped"] > b, [data-state="dropped"] > h3, [data-state="dropped"] > span:not(:only-child) { text-decoration: line-through; }
+/* Where the pill goes in each block: under the text in the grid blocks, after the words elsewhere. */
+.lab-options > li[data-state]::after, .lab-timeline > li[data-state]::after { grid-column: 2; justify-self: start; margin: 4px 0 0; }
+.lab-cards > [data-state]::after { justify-self: start; margin: 4px 0 0; }
+.lab-choices > li[data-state]::after { margin-left: 6px; padding: 0; background: none; color: inherit; content: ''; }
+.lab-choices > li[data-state="picked"], .lab-choices > li[data-state="built"] { background: var(--lab-green); color: #fff; font-weight: 600; }
+.lab-choices > li[data-state="picked"]::after, .lab-choices > li[data-state="built"]::after { content: '✓'; color: #fff; background: none; }
+
 /* Apple's continuous corners (squircle) in Safari 26 and Chrome: a squircle needs about 1.8 times the radius to look the
    same size. */
 @supports (corner-shape: squircle) {
   :root { --lab-corner: calc(var(--lab-radius) * 1.8); --lab-corner-s: 11px; }
   body.lab * { corner-shape: squircle; }
-  /* The pin keeps its teardrop. */
-  body.lab .pin { corner-shape: round; }
+  /* The pin keeps its teardrop; dots and number badges stay circles. */
+  body.lab .pin, body.lab .lab-dots s, body.lab .lab-dots b, body.lab .lab-options > li::before, body.lab .lab-checklist > li::before { corner-shape: round; }
 }
