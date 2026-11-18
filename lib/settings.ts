@@ -7,6 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
+// The states ink can be coloured for (docs/settings.md); one colour serves light and dark.
+const INK_STATES = ['draft', 'sent', 'working', 'asks', 'done'];
 const SHORTCUTS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
 // The actions row on selected words ("words") and, once the regular dialog has one, on a spot ("spot"). The comment itself is
 // always there, first and unlisted; the list holds the built-in rewrite, cut and go, and your own: { label, send, ask? }.
@@ -16,7 +18,7 @@ const MAX_ACTIONS = 5; // with comment, 6 in all
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
 // wifi; your own file can't say which folder or dev server a project uses).
-const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags' | 'actions'; def: unknown; only?: 'project' | 'personal'; min?: number }> = {
+const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags' | 'actions' | 'colors'; def: unknown; only?: 'project' | 'personal'; min?: number }> = {
   port: { type: 'number', def: 4400, min: 1 },
   proxy: { type: 'string', def: '', only: 'project' },
   folder: { type: 'string', def: '.', only: 'project' },
@@ -36,6 +38,9 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags' | 'actions'; def
   actions: { type: 'actions', def: ACTIONS },
   // What is being tried here (lib/flags.ts). Off unless labit.json (or your settings) turns one on.
   flags: { type: 'flags', def: flagDefaults() },
+  // Ink on selected words (flag inkOnText): quiet stills everything but "asks"; colours repaint the bands.
+  quietInk: { type: 'boolean', def: false },
+  inkColors: { type: 'colors', def: {} },
 };
 // The environment variables that set a setting (as before), and how their values read.
 const ENV: Record<string, [string, (v: string) => unknown]> = {
@@ -136,6 +141,16 @@ const check = (key: string, v: unknown, file: string, problems: string[]): unkno
     }
     return out;
   }
+  if (s.type === 'colors') {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object of state → colour');
+    const out: Record<string, string> = {};
+    for (const [state, c] of Object.entries(v)) {
+      if (!INK_STATES.includes(state)) bad(`.${state} is not an ink state (${INK_STATES.join(', ')})`);
+      else if (typeof c !== 'string' || !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) bad(`.${state} must be a colour like #e08a1a or #e80`);
+      else out[state] = c.toLowerCase();
+    }
+    return out;
+  }
   if (s.type === 'flags') {
     if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object of flag → true or false');
     const out: Record<string, boolean> = {};
@@ -186,8 +201,8 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       }
       const v = check(key, data[key], file, problems);
       if (v === undefined) continue;
-      // Shortcuts and flags add up, one at a time: the project's over yours over the defaults.
-      if (s.type === 'shortcuts' || s.type === 'flags' || s.type === 'actions') {
+      // Shortcuts, flags, actions and colours add up, one at a time: the project's over yours over the defaults.
+      if (s.type === 'shortcuts' || s.type === 'flags' || s.type === 'actions' || s.type === 'colors') {
         values[key] = { ...(v as object), ...values[key] };
         from[key] = from[key] ? `${from[key]} + ${file}` : file;
         continue;
@@ -216,6 +231,13 @@ export const changedShortcuts = (keys: Record<string, string>) => Object.fromEnt
 
 /** The actions lists that differ from the defaults (what the widget needs to hear). */
 export const changedActions = (actions: Record<string, unknown[]>) => Object.fromEntries(Object.entries(actions).filter(([area, list]) => JSON.stringify(ACTIONS[area as keyof typeof ACTIONS]) !== JSON.stringify(list)));
+/** What the page needs to hear about ink: only what differs from the defaults, or nothing. */
+export function changedInk(quiet: boolean, colors: Record<string, string>) {
+  const out: Record<string, unknown> = {};
+  if (quiet) out.quiet = true;
+  if (Object.keys(colors).length) out.colors = colors;
+  return Object.keys(out).length ? out : null;
+}
 
 /** Sets one setting in your own file, keeping the rest. */
 export function savePersonal(key: string, value: unknown) {

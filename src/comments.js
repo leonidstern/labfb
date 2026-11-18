@@ -25,6 +25,7 @@ import {
   rectsOf,
   readable,
   short,
+  wholeWords,
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
@@ -39,6 +40,7 @@ import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
+import { bindInk, drawInks, inkCount, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInks, startInk } from './widget/ink.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -62,7 +64,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get coarse() { return coarse; },
     get composer() { return composer; },
     get contentEnd() { return contentEnd; },
+    get control() { return control; },
     get doneBtn() { return doneBtn; },
+    get flag() { return flag; },
     get drafting() { return drafting; },
     get drawList() { return drawList; },
     get el() { return el; },
@@ -128,6 +132,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   bindThread(W);
   bindSheets(W);
   bindFluid(W);
+  bindInk(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
@@ -296,6 +301,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // further down are read when called.
   bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
+  startInk(script?.dataset.ink); // comments on selected words show as ink on them, not a pin (src/widget/ink.ts)
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -762,7 +768,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const appear = now !== S.shown;
     const anim = appear ? ' in' : '';
     let quoted = null;
+    const inkNow = []; // comments on selected words: ink on them instead of a pin
     const done = () => {
+      drawInks(inkNow);
       patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       if (S.closeFast && !now && prev) {
         S.closeFast = false;
@@ -777,7 +785,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         prev.inert = true;
         layer.append(prev);
         // It shrinks back with the keyboard going (sheets.ts); after a send it slides down and the new pin pops in.
-        const newPin = S.posted && pinsById.get(S.posted);
+        const newPin = S.posted && (pinsById.get(S.posted) || inkEnd(S.posted));
         if (newPin) newPin.style.animationDelay = 'var(--_t-quick)'; // as the card goes (lab option 5)
         const dur = leave(prev, 0, Boolean(newPin));
         setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
@@ -796,6 +804,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
       markQuote(quoted || (fluidState() === 'bar' && S.offer));
       S.quoted = quoted;
+      inkQuote(); // with ink on words, the quoted words get a band, not the green (ink.ts)
       S.shown = now;
       S.posted = null;
     };
@@ -834,9 +843,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
 
     list.forEach((c) => {
       if (isPage(c)) return; // in the chat, not on the page
-      // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
-      if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
+      const lines = !moved && !zone && inkLines(c.anchor); // its words are where they were: ink, no pin
+      const ink = lines && { c, lines, pin: null };
+      if (ink) inkNow.push(ink);
       if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
@@ -925,14 +935,19 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           d.hot = true;
           if (coarse || S.openId === d.c.id) return;
           if (d.zone) d.shown = drawZone(d.zone, 'saved');
-          else if (d.c.anchor?.quote) markQuote(d.c.anchor);
+          else if (d.c.anchor?.quote) {
+            markQuote(d.c.anchor);
+            inkQuote();
+          }
         });
         pin.addEventListener('pointerleave', () => {
           const d = pinData.get(pin);
           d.hot = false;
           d.shown?.remove();
           d.shown = null;
-          if (!d.zone && d.c.anchor?.quote) markQuote(S.quoted || (fluidState() === 'bar' && S.offer));
+          if (d.zone || !d.c.anchor?.quote) return;
+          markQuote(S.quoted || (fluidState() === 'bar' && S.offer));
+          inkQuote();
         });
         pin.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -952,8 +967,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (zone) info.shown = add(drawZone(zone, 'saved'));
         else if (c.anchor?.quote && !quoted) quoted = c.anchor;
       }
-      next.push(pin);
-      pinsById.set(c.id, pin);
+      if (ink) ink.pin = pin; // not shown: the ink takes its clicks and label (ink.ts)
+      else {
+        next.push(pin);
+        pinsById.set(c.id, pin);
+      }
       if (S.openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
@@ -993,6 +1011,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // goes out). Phones: the usual sheet, which the bar grows into, with no keyboard until the box is tapped.
     const rects = S.draft?.fluid && !sheetMode.matches && quoteRects(S.draft.anchor);
     const fluid = Boolean(rects?.length); // words not found: the plain box
+    // Words selected with ink on words (ink.ts): the band in the draft's grey while you write, the dialog open or not;
+    // a plain box's pin stays, unseen, for the sheet to aim at.
+    const draftInk = S.draft && !position(S.draft.anchor).zone && inkLines(S.draft.anchor);
+    if (draftInk) inkNow.push({ anchor: S.draft.anchor, lines: draftInk });
     if (S.draft && fluidHas(S.draft)) {
       quoted = S.draft.anchor; // the words stay lit while it is open
       if (rects) fluidFollow(rects); // and it stays with them (a saved file moved them); gone, it stays, cut and rewrite off
@@ -1003,7 +1025,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
       if (!fluid) {
-        const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
+        const pin = el('div', { class: `pin draft${anim}${draftInk ? ' on-ink' : ''}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
         layer.append(pin);
@@ -1281,8 +1303,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.recheckCtl = () => S.mouse && sayCtl(document.elementFromPoint(S.mouse.x, S.mouse.y));
   const control = (t) => {
     if (S.overControls) return false; // with the switch on, nothing on the page keeps its click
+    const hand = !document.documentElement.classList.contains('lab-ink-over'); // over inked words the hand is ours (ink.ts)
     for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
-      if (n.matches(INTERACTIVE) || getComputedStyle(n).cursor === 'pointer') return true;
+      if (n.matches(INTERACTIVE) || (hand && getComputedStyle(n).cursor === 'pointer')) return true;
     return false;
   };
   // data-uncommentable: no new pins or areas start inside this part of the page (same attribute as Claude artifacts).
@@ -1567,18 +1590,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     };
     range.setEnd(range.endContainer, trim(range.endContainer, range.endOffset, -1));
     range.setStart(range.startContainer, trim(range.startContainer, range.startOffset, 1));
-    // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
-    // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
-    /** @param {Node} node @param {number} i @param {number} step */
-    const grow = (node, i, step) => {
-      const d = node.nodeType === 3 ? /** @type {Text} */ (node).data : '';
-      while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
-      return i;
-    };
-    if (/\s/.test(String(range).trim())) {
-      range.setStart(range.startContainer, grow(range.startContainer, range.startOffset, -1));
-      range.setEnd(range.endContainer, grow(range.endContainer, range.endOffset, 1));
-    }
+    wholeWords(range); // a drag that starts or ends inside a word takes the whole word (anchoring.ts)
     const exact = String(range).replace(/\s+/g, ' ').trim();
     if (!exact) return;
     // The pin sits on the last selected letter (where the selection ended), when that's in the same element as its
@@ -1605,6 +1617,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       exact: short(exact, 300),
       prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, '').slice(-40),
       suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
+      selected: true, // picked by selecting, not the word under a click: shown as ink on the words (ink.ts)
+      // Saved at 300 characters; a longer selection also keeps its last words, so the ink reaches them (anchoring.ts).
+      ...(exact.length > 300 && { tail: exact.slice(-40) }),
     };
     sel.removeAllRanges();
     return anchor;
@@ -1732,9 +1747,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   const movePins = () => {
     const list = threads().filter((c) => c.anchor?.kind !== 'page');
-    if (!S.on || S.openId || list.length !== pinsById.size) return render();
-    const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
-    if (places.some(([pin]) => !pin)) return render();
+    if (!S.on || S.openId || list.length !== pinsById.size + inkCount() || !moveInks()) return render();
+    const places = list.filter((c) => !inkEnd(c.id)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]);
+    // A pin whose words show again (scrolled back into their box, back after an edit) turns into ink again.
+    if (places.some(([pin, { moved, zone }, c]) => !pin || (!moved && !zone && inkLines(c.anchor)))) return render();
     for (const [pin, { left, top, moved }] of places) {
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
@@ -1909,6 +1925,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
+  // Over inked words (a click opens their comment, ink.ts) the page shows a hand.
+  fonts.textContent += 'html.lab-ink-over body, html.lab-ink-over body * { cursor: pointer !important; }';
   // The agent's ring draws its arc in (lab C2): an arc length that can animate has to be registered on the page itself.
   fonts.textContent += '@property --lab-arc { syntax: "<percentage>"; inherits: false; initial-value: 66%; }';
   // The room a phone's sheet made below the page's end (see goTo) stays after the sheet closes, so the page doesn't jump
@@ -1944,10 +1962,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     refreshPinCursor();
     if (S.on) showHint();
     document.body.append(host);
-    // The page's own selection while commenting, and the quoted words of an open text comment.
+    // The page's own selection while commenting (ink on words off), and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    fonts.textContent += inkSelectionCss(); // with ink on words: the selection is drawn as sent ink instead (ink.ts)
     load();
     if (script?.dataset.live && flag('sinceLooked')) startChanges(); // the ids added since you looked (local labs, where pages change under you)
   };

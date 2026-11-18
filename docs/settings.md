@@ -78,6 +78,8 @@ Your `~/.config/labit/settings.json`:
 | `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
 | `actions` | below | | The buttons on words you select (and, later, on a spot). | both |
+| `quietInk` | `false` | | Ink on selected words (flag `inkOnText`): a still blue tint while the agent works, no fill when a note arrives, the drain to a hairline at once. Only "asks" still moves. | both |
+| `inkColors` | below | | The ink's colours, per state: `{ "sent": "#e0a800" }`. States: `draft`, `sent`, `working`, `asks`, `done`; each a `#rgb` or `#rrggbb`. One colour serves light and dark; the strengths stay. The project's win over yours, state by state. Hosted labs use the defaults. | both |
 | `flags` | everything off | | What this lab is trying: `{ "<flag>": true }`. See **Trying things** below. | either |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
@@ -100,6 +102,7 @@ came from.
 | Flag | What it is |
 | --- | --- |
 | `sinceLooked` | a "New · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
+| `inkOnText` | a comment on selected words shows no pin: the words carry its state as ink under them. Turn it on in `labit.json`: `{ "flags": { "inkOnText": true } }` |
 
 `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 

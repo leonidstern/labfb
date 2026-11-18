@@ -66,3 +66,13 @@ test('sinceLooked is off until switched on, and the widget starts nothing withou
   assert.match(widget, /flag\('sinceLooked'\)\) startChanges\(\)/);
   assert.equal(widget.match(/startChanges\(/g).length, 1, 'started in one place only');
 });
+
+test('inkOnText is a flag, off until a file turns it on (the page side is test/browser/ink.mjs)', () => {
+  assert.ok(FLAGS.inkOnText);
+  const dir = tmp();
+  assert.equal(read(dir).values.flags.inkOnText, false);
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { inkOnText: true } }));
+  const s = read(dir);
+  assert.equal(s.values.flags.inkOnText, true);
+  assert.deepEqual(s.problems, []);
+});

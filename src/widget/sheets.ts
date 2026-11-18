@@ -72,7 +72,7 @@ export function leave(node: HTMLElement, ms = 0, sent = false) {
   else letKeysGo();
   // Back into its pin where the pin is now (the page scrolled it into view after the tap); the list and the chat back
   // to where they were tapped open.
-  const pin = sent ? null : W.root.querySelector(node.classList.contains('card') ? '.pin.open' : node.classList.contains('float') ? '.pin.draft' : 'none');
+  const pin = sent ? null : W.root.querySelector(node.classList.contains('card') ? '.pin.open, .ink-end.open' : node.classList.contains('float') ? '.pin.draft' : 'none');
   const p = pin?.getBoundingClientRect();
   if (p) fromTap(node, { x: p.left + p.width / 2, y: p.top + p.height / 2 });
   void node.offsetHeight;

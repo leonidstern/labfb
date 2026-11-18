@@ -7,6 +7,7 @@
     "composer.ts": "the text box for a comment or a reply, and its send button",
     "fluid.ts": "selected words: the actions bar and the comment dialog that grows out of it and lands on the words (the dialog is the thread card's box; on phones the bottom sheet)",
     "hold.ts": "a dev server's reload waits while a sheet is open",
+    "ink.ts": "ink on selected words (flag inkOnText): the band under the words that shows a comment's state instead of a pin",
     "list.ts": "the list of pins (a sheet on phones)",
     "live.ts": "the live stream: listening badge, mode, who is heard",
     "messages.ts": "one message in a thread or the chat",
@@ -16,7 +17,7 @@
     "styles.css": "the widget's one stylesheet",
     "types.d.ts": "types shared by the modules"
   },
-  "animations": ["lab-arrive", "lab-swap", "lab-gone", "lab-turn", "lab-draw", "lab-ready", "lab-rise", "lab-fly", "lab-twitch", "lab-fade", "lab-in", "lab-out", "lab-pin", "lab-halo", "lab-card-in"],
+  "animations": ["lab-arrive", "lab-swap", "lab-gone", "lab-turn", "lab-draw", "lab-ready", "lab-rise", "lab-fly", "lab-twitch", "lab-fade", "lab-in", "lab-out", "lab-pin", "lab-halo", "lab-card-in", "lab-ink-fill", "lab-ink-pulse", "lab-ink-breath"],
   "$where": "Files that may own a part: the drawer's gestures and keyboard fit live in sheets.ts (comments.js wires them up).",
   "gestures": ["sheets.ts", "comments.js"],
   "keyboardFit": ["sheets.ts", "comments.js"]

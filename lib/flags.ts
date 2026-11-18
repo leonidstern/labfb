@@ -7,6 +7,7 @@
 // agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
 export const FLAGS: Record<string, { name: string; since: string }> = {
   sinceLooked: { name: 'a "New" pill: what was added since you looked', since: '0.6.3' },
+  inkOnText: { name: 'ink on selected words, not a pin', since: '0.6.3' },
 };
 
 /** Every flag, off. */
