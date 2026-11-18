@@ -274,3 +274,17 @@ test('labit --name gives the lab its topic, and later starts keep it', async () 
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('a page can be archived and brought back (labs & pages), in .lab/archived.json; the file stays', async () => {
+  for (let i = 0; i < 50 && !fs.existsSync(path.join(DIR, '.lab/server.json')); i++) await new Promise((r) => setTimeout(r, 100));
+  const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  const post = (body) => fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ port: Number(PORT), ...body }) });
+  const page = async () => (await (await fetch(B + '/_lab/pages')).json()).pages.find((p) => p.path === '/index');
+  assert.equal((await post({ action: 'archive-page', page: '/index' })).status, 200);
+  assert.ok((await page()).archived, 'archived, with when');
+  assert.ok(fs.existsSync(path.join(DIR, 'index.html')), 'the file stays');
+  assert.equal((await post({ action: 'archive-page', page: 'index' })).status, 400, 'a page is a /path');
+  assert.equal((await post({ action: 'unarchive-page', page: '/index' })).status, 200);
+  assert.equal((await page()).archived, null);
+  assert.equal((await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'archive-page', port: Number(PORT), page: '/index' }) })).status, 403, 'needs the key');
+});

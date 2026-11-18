@@ -945,6 +945,21 @@ const markOpened = (page) => {
     } catch {}
   }, 3000);
 };
+// Pages archived in labs & pages (Leo 18 Nov: "it should archive pages… or pages and folders"): .lab/archived.json as
+// { page: ISO time }. The file stays; the page folds away under "archived" in the box until it's brought back.
+const ARCHIVED = path.join(LAB, 'archived.json');
+const archivedPages = (() => {
+  try {
+    return new Map(Object.entries(JSON.parse(fs.readFileSync(ARCHIVED, 'utf8'))));
+  } catch {
+    return new Map();
+  }
+})();
+const archivePage = (page, on) => {
+  if (on) archivedPages.set(page, new Date().toISOString());
+  else archivedPages.delete(page);
+  writeAtomic(ARCHIVED, JSON.stringify(Object.fromEntries(archivedPages)));
+};
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
 // Side files (read marks, claims) are written whole through a .tmp, and one that can't be read is put aside like a
@@ -1443,7 +1458,7 @@ const labInfo = () => {
     name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
     created: created(),
-    pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file), opened: opened.get(key) || null })),
+    pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file), opened: opened.get(key) || null, archived: archivedPages.get(key) || null })),
   };
 };
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
@@ -1692,8 +1707,16 @@ const handler = async (req, res) => {
     // stop (listening), park, start: this computer only, with the lab's key (a web page elsewhere can't post here).
     if (pathname === '/_lab/labs' && req.method === 'POST') {
       if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
-      const { action, port } = await sent(req);
+      const { action, port, page } = await sent(req);
       const n = Number(port);
+      // A page of a lab, archived or brought back: that lab keeps the list (another lab is asked, with its key).
+      if (action === 'archive-page' || action === 'unarchive-page') {
+        if (typeof page !== 'string' || !page.startsWith('/')) return res.writeHead(400).end('page: /path');
+        if (n === PORT) {
+          archivePage(page, action === 'archive-page');
+          return answer(res, { ok: true });
+        }
+      }
       if (action === 'start') {
         const p = parkedLabs().find((x) => x.port === n);
         if (!p) return res.writeHead(404).end('not parked');
@@ -1714,14 +1737,14 @@ const handler = async (req, res) => {
         return answer(res, { ok: true });
       }
       if (action === 'unarchive') return res.writeHead(409).end('running, not archived');
-      if (!['stop', 'park', 'archive'].includes(action)) return res.writeHead(400).end('action: stop, park, archive, unarchive or start');
+      if (!['stop', 'park', 'archive', 'archive-page', 'unarchive-page'].includes(action)) return res.writeHead(400).end('action: stop, park, archive, unarchive, start, archive-page or unarchive-page');
       if (n !== PORT) {
         // Another lab: it does it itself, asked with its own key (from its folder, on this same computer).
         const lab = runningLabs().find((l) => l.port === n);
         if (!lab) return res.writeHead(404).end('no lab on that port');
         try {
           const key = JSON.parse(fs.readFileSync(path.join(lab.root, '.lab/server.json'), 'utf8')).token;
-          const r = await fetch(`http://localhost:${n}/_lab/labs`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': key }, body: JSON.stringify({ action, port: n }), signal: AbortSignal.timeout(3000) });
+          const r = await fetch(`http://localhost:${n}/_lab/labs`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': key }, body: JSON.stringify({ action, port: n, page }), signal: AbortSignal.timeout(3000) });
           return res.writeHead(r.status, { 'content-type': 'application/json' }).end(await r.text());
         } catch {
           return res.writeHead(502).end('that lab did not answer');

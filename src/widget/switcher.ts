@@ -2,7 +2,7 @@
 // each; archive a lab (which stops its listening) and start it again. A guest on a phone sees this lab's pages only. Part of the comment
 // widget (src/comments.js bundles it). Leo, 18 Nov (the lab-navigation page, option B).
 
-type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[]; opened?: string | null };
+type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[]; opened?: string | null; archived?: string | null };
 type Lab = { name: string; port: number; here: boolean; mode: string; listening: string | null; pages: Page[]; root?: string; unreachable?: boolean; started?: string; created?: string | null };
 type Parked = { name: string; port: number; root: string; archived?: boolean; at?: string };
 type Deps = {
@@ -65,20 +65,14 @@ export function bindSwitcher(deps: Deps) {
       e.preventDefault();
       rows[active]?.dispatchEvent(new MouseEvent('click', { metaKey: e.metaKey || e.ctrlKey }));
     } else if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyA') {
-      // ⌥A archives, read by key position (Option turns the letter into another character on a Mac); it asks twice.
+      // ⌥A archives the chosen page, or brings an archived one back; read by key position (Option turns the letter into
+      // another character on a Mac). A whole lab is archived with its button.
       e.preventDefault();
       if (data?.guest) return;
       const row = rows[active];
       const port = Number(row?.dataset.port);
-      if (!row || !port) return;
-      const lab = data?.labs.find((l) => l.port === port);
-      if (row.dataset.kind === 'parked' || !lab) return;
-      if (armed !== `archive ${port}`) {
-        armed = `archive ${port}`;
-        return draw();
-      }
-      armed = '';
-      void act('archive', port);
+      if (!row || !port || !row.dataset.page) return;
+      void act(row.dataset.kind === 'archived-page' ? 'unarchive-page' : 'archive-page', port, row.dataset.page);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -139,11 +133,12 @@ function start(port: number, row: HTMLElement) {
   void act('start', port);
 }
 
-async function act(action: 'archive' | 'start', port: number) {
+async function act(action: 'archive' | 'start' | 'archive-page' | 'unarchive-page', port: number, page?: string) {
   try {
-    await fetch(d.api, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': d.admin }, body: JSON.stringify({ action, port }) });
+    await fetch(d.api, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': d.admin }, body: JSON.stringify({ action, port, page }) });
   } catch {}
-  // A lab that starts takes a moment to answer; one that's archived a moment to go.
+  // A lab that starts takes a moment to answer; one that's archived a moment to go; a page is at once.
+  if (action.endsWith('-page')) return void load();
   setTimeout(load, action === 'start' ? 1500 : 400);
   if (action === 'start') setTimeout(load, 4000);
 }
@@ -200,6 +195,25 @@ function home(lab: Lab) {
   return a;
 }
 
+// A page row goes to its page (⌘-click: a new tab).
+function goes(row: HTMLElement, lab: Lab, p: Page) {
+  const url = lab.here ? new URL(p.url, location.href).pathname : p.url;
+  row.addEventListener('click', (e: MouseEvent) => {
+    if ((e.target as HTMLElement).closest?.('.sw-x')) return; // its archive word acts instead
+    if (e.metaKey || e.ctrlKey) window.open(lab.here ? location.origin + url : url, '_blank');
+    else location.href = url;
+  });
+}
+// The word a page row shows while it's chosen or under the mouse: archive it, or bring it back.
+function shelf(row: HTMLElement, label: string, title: string, fn: () => void) {
+  const x = d.el('span', { class: 'sw-x', title }, label);
+  x.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fn();
+  });
+  return x;
+}
+
 function draw() {
   const { el } = d;
   const q = input.value.trim().toLowerCase();
@@ -216,9 +230,12 @@ function draw() {
     note.append(el('a', { href: data.self }, 'Open it on localhost'), ' for every lab and the lab keys.');
     out.push(note);
   }
+  const shelved: { lab: Lab; p: Page }[] = []; // archived pages, listed under "archived" at the bottom
   for (const lab of orderLabs(data.labs)) {
     const labHit = hit(q, lab.name, String(lab.port));
-    const pages = orderPages(lab.pages.filter((p) => labHit || hit(q, p.title, p.path, p.file)));
+    const found = lab.pages.filter((p) => labHit || hit(q, p.title, p.path, p.file));
+    for (const p of found) if (p.archived) shelved.push({ lab, p });
+    const pages = orderPages(found.filter((p) => !p.archived));
     if (q && !pages.length && !labHit) continue;
     // The lab: its name and port, who listens, its pins, and what you can do about it (this computer only).
     const head = el('div', { class: 'sw-lab' });
@@ -281,7 +298,7 @@ function draw() {
     out.push(head);
     for (const p of pages) {
       const here = lab.here && p.path === d.page;
-      const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page' });
+      const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page', 'data-page': p.path });
       // Open and closed pins, and the last activity: a comment, a reply or a close (Leo 18 Nov: "like last activity").
       const meta = pinFacts(p.open, p.done || 0, p.last ? `active ${since(p.last)}` : 'no comments yet');
       // When it was last opened, and the file's time, are on hover.
@@ -292,14 +309,11 @@ function draw() {
       const t = el('span', { class: 'sw-t' }, short(lab, p));
       if (p.title) t.append(el('span', { class: 'sw-path' }, ` ${p.path}`));
       row.append(t, meta);
-      const url = lab.here ? new URL(p.url, location.href).pathname : p.url;
-      row.addEventListener('click', (e: MouseEvent) => {
-        if (e.metaKey || e.ctrlKey) window.open(lab.here ? location.origin + url : url, '_blank');
-        else location.href = url;
-      });
+      if (local) row.append(shelf(row, 'archive', 'fold this page away under "archived"; its file stays (⌥A)', () => act('archive-page', lab.port, p.path)));
+      goes(row, lab, p);
       out.push(row);
     }
-    if (!pages.length) out.push(el('div', { class: 'sw-none' }, lab.unreachable ? 'this lab isn’t answering' : 'no pages yet'));
+    if (!pages.length) out.push(el('div', { class: 'sw-none' }, lab.unreachable ? 'this lab isn’t answering' : lab.pages.length ? 'its pages are archived' : 'no pages yet'));
   }
   // A phone: the labs it can't open (not on the wifi, or an older labit), named so none seems missing (Leo 18 Nov).
   const away = (data.local || []).filter((l) => hit(q, l.name, String(l.port)));
@@ -326,17 +340,29 @@ function draw() {
       row.addEventListener('click', () => start(p.port, row));
       return row;
     };
+    // An archived page: ↵ still opens it; "bring back" (⌥A) puts it back in its lab.
+    const shelvedRow = ({ lab, p }: { lab: Lab; p: Page }) => {
+      const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(lab.port), 'data-kind': 'archived-page', 'data-page': p.path });
+      const t = el('span', { class: 'sw-t' }, short(lab, p));
+      if (p.title) t.append(el('span', { class: 'sw-path' }, ` ${p.path}`));
+      row.append(t, el('span', { class: 'sw-m' }, `${where(lab)} · archived ${ago(p.archived)}`.trim()));
+      row.append(shelf(row, 'bring back', 'back in its lab’s list (⌥A)', () => act('unarchive-page', lab.port, p.path)));
+      goes(row, lab, p);
+      return row;
+    };
     const archived = [...all].sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
-    if (archived.length) {
+    shelved.sort((a, b) => String(b.p.archived).localeCompare(String(a.p.archived)));
+    const count = archived.length + shelved.length;
+    if (count) {
       const open = showArchived || Boolean(q);
-      const g = el('button', { type: 'button', class: 'sw-group sw-fold', 'aria-expanded': String(open) }, `${open ? '▾' : '▸'} archived · ${archived.length}`);
+      const g = el('button', { type: 'button', class: 'sw-group sw-fold', 'aria-expanded': String(open) }, `${open ? '▾' : '▸'} archived · ${count}`);
       g.addEventListener('click', () => {
         showArchived = !showArchived;
         draw();
         keepKeys();
       });
       out.push(g);
-      if (open) out.push(...archived.map(archivedRow));
+      if (open) out.push(...shelved.map(shelvedRow), ...archived.map(archivedRow));
     }
   }
   if (!out.length) out.push(el('div', { class: 'sw-none' }, 'nothing matches'));

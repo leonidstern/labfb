@@ -571,6 +571,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-row .sw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sw-row.cur .sw-m { color: rgb(36, 160, 70); }
 .sw-row .sw-m { color: var(--_muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* A page row's archive (or bring back) word: only on the row that's chosen or under the mouse, so the rows stay plain text. */
+.sw-x { display: none; color: var(--_muted); font-size: 12px; white-space: nowrap; text-decoration: underline; text-underline-offset: 2px; }
+.sw-row.on .sw-x, .sw-row:hover .sw-x { display: inline; }
+.sw-x:hover { color: var(--_fg); }
 .sw-none { color: var(--_muted); font-size: 12px; padding: 4px 10px 6px; }
 .sw-group { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--_muted); padding: 12px 10px 0; margin-top: 6px; border-top: var(--_hair); }
 .sw-lab.parked { padding-top: 6px; border-top: 0; margin-top: 0; }
