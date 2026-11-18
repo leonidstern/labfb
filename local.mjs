@@ -97,7 +97,8 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'new'];
+const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
+COMMANDS.push('new'); // labit new <name> (below): its own line, so other commands can join the list beside it
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -121,21 +122,6 @@ if (fromFile('remindAfterMinutes')) process.env.LAB_REMIND_MS = String(SET.remin
 if (fromFile('updateCheck') && !SET.updateCheck) process.env.LABIT_NO_UPDATE_CHECK = '1';
 if (fromFile('model') && SET.model) process.env.LAB_MODEL = SET.model;
 for (const p of SETTINGS.problems) console.error(`[labit] ${p}`);
-// `labit new <name> [--md]`: a lab page to fill with blocks (skills/labit/blocks.md), in this folder.
-if (pos[0] === 'new') {
-  const name = String(pos[1] || '').replace(/\.(html?|md)$/i, '');
-  if (!/^[\w][\w.-]*$/.test(name)) die(`Name the page: ${CMD} new <name> [--md], e.g. ${CMD} new pricing`);
-  const file = path.join(HERE, `${name}.${opts.md ? 'md' : 'html'}`);
-  const other = path.join(HERE, `${name}.${opts.md ? 'html' : 'md'}`);
-  if (fs.existsSync(file) || fs.existsSync(other)) die(`${fs.existsSync(file) ? file : other} is there already: open it, or pick another name.`);
-  fs.writeFileSync(file, starter(name, Boolean(opts.md)));
-  console.log(file);
-  const lab = runningLabs().find((l) => file.startsWith(l.root + path.sep));
-  if (lab) console.log(`http://localhost:${lab.port}/${path.relative(lab.root, file).split(path.sep).map(encodeURIComponent).join('/').replace(/\.(html|md)$/, '')}`);
-  else console.log(`No lab serves this folder yet: start one with ${CMD} --no-open`);
-  console.log(`Fill it with blocks: ${path.join(REPO, 'skills/labit/blocks.md')}`);
-  process.exit(0);
-}
 // `labit settings`: each setting, its value and where it came from.
 if (pos[0] === 'settings') {
   const changed = changedShortcuts(SET.shortcuts);
@@ -150,6 +136,21 @@ if (pos[0] === 'settings') {
   for (const [k, v] of Object.entries(SET)) console.log(`${k.padEnd(w)}  ${show(k, v).padEnd(20)}  ${src(SETTINGS.from[k])}`);
   console.log(`\nA flag or variable wins over labit.json, which wins over your file. See docs/settings.md.`);
   process.exit(SETTINGS.problems.length ? 1 : 0);
+}
+// `labit new <name> [--md]`: a lab page to fill with blocks (skills/labit/blocks.md), in this folder.
+if (pos[0] === 'new') {
+  const name = String(pos[1] || '').replace(/\.(html?|md)$/i, '');
+  if (!/^[\w][\w.-]*$/.test(name)) die(`Name the page: ${CMD} new <name> [--md], e.g. ${CMD} new pricing`);
+  const file = path.join(HERE, `${name}.${opts.md ? 'md' : 'html'}`);
+  const other = path.join(HERE, `${name}.${opts.md ? 'html' : 'md'}`);
+  if (fs.existsSync(file) || fs.existsSync(other)) die(`${fs.existsSync(file) ? file : other} is there already: open it, or pick another name.`);
+  fs.writeFileSync(file, starter(name, Boolean(opts.md)));
+  console.log(file);
+  const lab = runningLabs().find((l) => file.startsWith(l.root + path.sep));
+  if (lab) console.log(`http://localhost:${lab.port}/${path.relative(lab.root, file).split(path.sep).map(encodeURIComponent).join('/').replace(/\.(html|md)$/, '')}`);
+  else console.log(`No lab serves this folder yet: start one with ${CMD} --no-open`);
+  console.log(`Fill it with blocks: ${path.join(REPO, 'skills/labit/blocks.md')}`);
+  process.exit(0);
 }
 
 // The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
