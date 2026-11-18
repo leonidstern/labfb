@@ -4,6 +4,6 @@
   "version": "0.6.2",
   "description": "Pin comments on pages; your agent reads them as plain text and answers on the pins. Skill + MCP server (comments, reply, wait).",
   "author": { "name": "leonidstern", "url": "https://github.com/LeonidStern" },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "keywords": ["comments", "feedback", "review", "pins", "mcp"]
 }

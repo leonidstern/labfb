@@ -1,6 +1,6 @@
 <h1><picture><source media="(prefers-color-scheme: dark)" srcset="docs/labit-mark-dark.svg"><img src="docs/labit-mark-light.svg" alt="" width="34" height="34" align="top"></picture> labit</h1>
 
-[![npm](https://img.shields.io/npm/v/@leonidstern/labit)](https://www.npmjs.com/package/@leonidstern/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@leonidstern/labit)](https://www.npmjs.com/package/@leonidstern/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![license: PolyForm Perimeter](https://img.shields.io/badge/license-PolyForm%20Perimeter-black)](LICENSE)
 
 **Review is the new build.** Pin comments on your pages. Your coding agent reads them, changes the code, and answers on the pin.
 
@@ -51,4 +51,8 @@ Everything merged to main, before it is released: `npx @leonidstern/labit@next`.
 
 Shared labs on a domain (comments from people you send a link to) come later.
 
-MIT · made by [leonidstern](https://github.com/LeonidStern) · [OOZE](https://ooze.design)
+## License
+
+[PolyForm Perimeter 1.0.0](LICENSE). You can use labit, change it, and ship it inside your own work, for free and for any purpose, except to offer a product that competes with labit. That makes labit source-available, not OSI open source. Versions already on npm (0.6.2 and earlier) stay under MIT.
+
+Made by [leonidstern](https://github.com/LeonidStern) · [OOZE](https://ooze.design)
