@@ -32,6 +32,7 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
+import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -587,9 +588,25 @@ import { holdWhileOpen } from './widget/hold.ts';
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
+  // Labs & pages (⌘K, src/widget/switcher.ts): local labs only. The menu opens with which lab this is, then the item.
+  const LABS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'labs') : '';
+  const labHead = LABS ? el('div', { class: 'lab-head' }, `${script?.dataset.labName || 'lab'} · ${location.port || '80'}`) : null;
+  const labsBtn = LABS ? el('button', { type: 'button', class: 'labs-btn' }) : null;
+  if (labsBtn) {
+    labsBtn.append('labs & pages', el('kbd', { 'aria-hidden': 'true' }, navigator.platform.startsWith('Mac') ? '⌘K' : 'ctrl K'));
+    // The menu closes without taking the focus back to ⋯ (its own click handler would, after the box opened, and on a
+    // phone that blurred the search and bounced the keyboard).
+    labsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setMenu(false);
+      openSwitcher();
+    });
+  }
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
-    for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
+    // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
+    // the version line.
+    if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
     moreBtn.hidden = !S.on;
@@ -761,7 +778,8 @@ import { holdWhileOpen } from './widget/hold.ts';
       el('kbd', { 'aria-hidden': 'true' }, KEYS.toggle),
     );
     toggleBtn.classList.toggle('secondary', S.on);
-    host.toggleAttribute('data-sheet', Boolean(S.on && (S.draft || S.openId || S.listOpen || S.chatOpen))); // phones: the sheet has the screen's bottom
+    host.toggleAttribute('data-labs', Boolean(!coarse && S.labsOpen)); // the page dims behind labs & pages (the widget's .scrim)
+    host.toggleAttribute('data-sheet', Boolean((coarse && S.labsOpen) || (S.on && (S.draft || S.openId || S.listOpen || S.chatOpen)))); // phones: the sheet has the screen's bottom
     if (coarse && appear && now) { // a sheet opening slides in once its first frame is drawn (see data-opening in styles.css)
       host.setAttribute('data-opening', '');
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
@@ -884,7 +902,7 @@ import { holdWhileOpen } from './widget/hold.ts';
       float.append(
         el('div', { class: 'handle' }),
         composer({
-          placeholder: S.draft.go ? 'go' : 'add a comment',
+          placeholder: S.draft.go ? 'go' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
           empty: S.draft.go ? 'go' : '',
           nameFirst: Boolean(S.draft.go),
           autofocus: true,
@@ -945,6 +963,7 @@ import { holdWhileOpen } from './widget/hold.ts';
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
   function setMenu(open, refocus = false) {
+    if (open && LABS) preloadSwitcher();
     moreMenu.hidden = !open;
     moreBtn.setAttribute('aria-expanded', String(open));
     if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
@@ -1087,12 +1106,14 @@ import { holdWhileOpen } from './widget/hold.ts';
       setOn(!S.on);
       return;
     }
-    // Control-D goes to the next new comment from anywhere, the reply box too (plain D types a letter there); Shift: back.
     if (S.on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || '') || (!/^[a-z]$/i.test(e.key || '') && e.code === 'KeyZ')) && !typing(e) && !inOtherWidget && placed.length) {
       e.preventDefault();
       return void undoLast();
     }
-    if (S.on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD' && !(typing(e) && !e.composedPath().includes(host))) {
+    // ⌥W (Leo 18 Nov: w does nothing in a text box) or Control-D goes to the next new comment from the widget's text boxes
+    // too, where a plain W types a letter; Shift: back. By the key's place: Option turns W into ∑ on a Mac.
+    const nextKey = (e.altKey && !e.ctrlKey && e.code === 'KeyW') || (e.ctrlKey && !e.altKey && e.code === 'KeyD');
+    if (S.on && nextKey && !e.metaKey && !(typing(e) && !e.composedPath().includes(host))) {
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
@@ -1304,8 +1325,9 @@ import { holdWhileOpen } from './widget/hold.ts';
   const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
   /** @returns {HTMLElement | null} */
-  const openSheet = () => root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
+  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
   const closeAll = () => {
+    if (S.labsOpen) return closeSwitcher(); // labs & pages sits over the others: only it goes
     S.draft = null;
     S.openId = null;
     S.listOpen = false;
@@ -1681,4 +1703,16 @@ import { holdWhileOpen } from './widget/hold.ts';
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
   startLive();
+  if (LABS) bindSwitcher({
+      root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
+        setMenu(false);
+        if (coarse) S.listOpen = S.chatOpen = false; // one sheet at a time on a phone
+      },
+      // Phones: labs & pages is a sheet like the list and the chat (see openSheet); a computer keeps its box over the page.
+      sheet: (open) => {
+        S.labsOpen = open;
+        render();
+      },
+      swipe: swipeDown,
+    });
 })();

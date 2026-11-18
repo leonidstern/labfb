@@ -12,7 +12,7 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
-import { REGISTRY, keyFor, runningLabs } from './lib/labs.ts';
+import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { intentFromText, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
@@ -25,7 +25,7 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf
 const HELP = `labit ${VERSION}: comment on local pages, your agent (Claude, Codex, Cursor…) answers on the pins.
 Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 
-  labit [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
+  labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
       Run it in your project. If the project has a dev server (Astro, Next, Vite…) running, comments go on top
       of it: it finds the server run from this folder, even with other projects' servers running. Give
       --proxy <port> to pick one yourself. A folder of HTML files is served as it is at http://localhost:4400
@@ -33,6 +33,11 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       --wifi lets phones and laptops on the same wifi comment too (as guests). Each one needs a one-time link
       (labit invite), so finding the port isn't enough. The pages still travel in the clear over the wifi.
       A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
+      --name gives the lab its topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder; it's
+      kept in .lab/name, so later starts keep it.
+  labit publish <page.html | folder> [--name "topic"]
+      Show a page the way an Artifact is shown: it goes into your one pages lab (pagesFolder, ~/lab-pages), which
+      starts if it isn't running, and the page's link is printed. Publish it again to update it, at the same link.
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labit pages [--all]
@@ -91,7 +96,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
+const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -131,8 +136,8 @@ if (pos[0] === 'settings') {
   process.exit(SETTINGS.problems.length ? 1 : 0);
 }
 
-// The commands that answer and exit (preview, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
-if (['preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
+// The commands that answer and exit (publish, preview, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
+if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -240,6 +245,18 @@ const ARCHIVE = path.join(LAB, 'archive'); // done threads a month old, one file
 const SERVER = path.join(LAB, 'server.json');
 const SEEN = path.join(LAB, 'seen');
 fs.mkdirSync(LAB, { recursive: true });
+// The lab's name: its topic, given when it starts (labit --name "Lab navigation", Leo 18 Nov: "named as topic on starting
+// lab"), kept in .lab/name so a restart keeps it. Without one, the folder's name. (wait/add use --name for themselves.)
+const NAME_FILE = path.join(LAB, 'name');
+const SERVES = !COMMANDS.includes(pos[0]);
+if (SERVES && typeof opts.name === 'string' && opts.name.trim()) fs.writeFileSync(NAME_FILE, opts.name.trim().slice(0, 80) + '\n');
+const LAB_NAME = (() => {
+  try {
+    return fs.readFileSync(NAME_FILE, 'utf8').trim() || path.basename(ROOT);
+  } catch {
+    return path.basename(ROOT);
+  }
+})();
 
 // One server per folder: two would overwrite each other's comments.
 const alreadyHere = (running) => {
@@ -865,20 +882,33 @@ const toldAt = new Map();
 // yet), or away (no wait, or nothing from it for two minutes after it got comments).
 let mode = 'away';
 let awayTimer;
+// A wait that runs out (no pins in its time) is usually followed by the next one within seconds: the page keeps
+// saying "listening" for this long (LAB_BETWEEN_MS, 45 s) instead of flashing "no agent" in between. A cancelled
+// wait, a closed page or an agent that quits still shows away at once.
+const BETWEEN_MS = Number(process.env.LAB_BETWEEN_MS ?? 45000);
+let betweenTimer;
+// The pages of waits that just ended (handed pins over, or ran out): still heard while their session works on the
+// pins or comes back to wait, until the page says away.
+let recent = [];
 const setMode = (m) => {
   mode = m;
   clearTimeout(awayTimer);
-  if (m === 'working') awayTimer = setTimeout(() => setMode('away'), 600000); // ten minutes without a sign of Claude
+  clearTimeout(betweenTimer);
+  if (m === 'away') recent = [];
+  // Ten minutes without a sign of Claude: away, unless another wait is still open (two sessions on one lab: one
+  // working on its pins must not turn the other's pages away, Leo 18 Nov).
+  if (m === 'working') awayTimer = setTimeout(() => setMode(waiters.length ? 'listening' : 'away'), 600000);
   saveServer();
   broadcast();
 };
 let PORT = Number(opts.port || process.env.PORT || 4400);
+const STARTED = new Date().toISOString(); // the switcher shows how long a lab has run
 // Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
 const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
 const register = () => {
   try {
     fs.mkdirSync(REGISTRY, { recursive: true });
-    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: path.basename(ROOT), proxy: PROXY?.origin || null, startedAt: new Date().toISOString() }, null, 2));
+    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, startedAt: new Date().toISOString() }, null, 2));
   } catch {}
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
@@ -891,6 +921,41 @@ setInterval(() => {
 // Read marks per name: a person on their phone and their Mac (same name) shares what's new and what's read. Kept in
 // .lab/reads.json as { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
 const READS = path.join(LAB, 'reads.json');
+// When each page was last opened (served with the widget), for labs & pages: .lab/opened.json as { page: ISO time },
+// written at most every few seconds.
+const OPENED = path.join(LAB, 'opened.json');
+const opened = (() => {
+  try {
+    return new Map(Object.entries(JSON.parse(fs.readFileSync(OPENED, 'utf8'))));
+  } catch {
+    return new Map();
+  }
+})();
+let openedTimer = null;
+const markOpened = (page) => {
+  opened.set(page, new Date().toISOString());
+  openedTimer ??= setTimeout(() => {
+    openedTimer = null;
+    try {
+      writeAtomic(OPENED, JSON.stringify(Object.fromEntries(opened)));
+    } catch {}
+  }, 3000);
+};
+// Pages archived in labs & pages (Leo 18 Nov: "it should archive pages… or pages and folders"): .lab/archived.json as
+// { page: ISO time }. The file stays; the page folds away under "archived" in the box until it's brought back.
+const ARCHIVED = path.join(LAB, 'archived.json');
+const archivedPages = (() => {
+  try {
+    return new Map(Object.entries(JSON.parse(fs.readFileSync(ARCHIVED, 'utf8'))));
+  } catch {
+    return new Map();
+  }
+})();
+const archivePage = (page, on) => {
+  if (on) archivedPages.set(page, new Date().toISOString());
+  else archivedPages.delete(page);
+  writeAtomic(ARCHIVED, JSON.stringify(Object.fromEntries(archivedPages)));
+};
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
 // Side files (read marks, claims) are written whole through a .tmp, and one that can't be read is put aside like a
@@ -943,7 +1008,7 @@ const saveHanded = saver(HANDED, () => {
 }, 'hand-off marks');
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, heard: heard(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1023,6 +1088,18 @@ const claimed = () => {
   return new Set([...claims].filter(([, at]) => now - at < CLAIM_MS).map(([p]) => p));
 };
 const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed().has(p)));
+// Which pages a comment is heard on right now, for the page to say so: a wait for every page hears all of them but
+// the ones another session has claimed; a wait with --page hears its own. Without this, a lab with one listener on
+// /a told every other page "talking to Claude" while their pins went nowhere (Leo, 18 Nov).
+const heard = () => {
+  const open = [...waiters, ...recent];
+  const named = new Set(open.flatMap((w) => w.pages || []));
+  const all = open.some((w) => !w.pages);
+  return { all, pages: [...named], except: all ? [...claimed()].filter((p) => !named.has(p)) : [] };
+};
+const remember = (w) => {
+  recent = [...recent.filter((r) => r.key !== w.key), { key: w.key, pages: w.pages }];
+};
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
 // ends after an hour of no page. A browser's tabs of this lab share one stream (the widget passes it on), held under
 // the id of the tab that opened it; when that tab goes, another opens the stream under its own. A tab counts while
@@ -1155,7 +1232,7 @@ function deliver(res, got, who = '') {
   }
   saveHanded();
   for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
-  setMode('working');
+  setMode(waiters.length ? 'listening' : 'working'); // another session still waits: the lab is still listening
 }
 // A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made one after another go
 // over together, in one round trip, instead of one wake-up each.
@@ -1175,6 +1252,7 @@ async function wakeNow() {
     waiters = waiters.filter((x) => x !== w);
     waitEnded = Date.now();
     clearTimeout(w.timer);
+    remember(w);
     deliver(w.res, got, w.who);
   }
 }
@@ -1205,11 +1283,13 @@ const flagsAttr = () => {
 // Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
 // of main (LABIT_EDGE, set by a script that builds one, e.g. "main + #89 #91").
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? ` · edge: ${process.env.LABIT_EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
-const widget = (page, admin, me = '') =>
-  `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
+const widget = (page, admin, me = '') => {
+  markOpened(page);
+  return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR}` +
+  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
+};
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
 const inject = (html, tag) => {
@@ -1319,7 +1399,10 @@ const listing = (res, dir, urlPath) => {
       `<header><h1>${esc(path.basename(dir))}</h1><p class="lede">${pages.length} page${pages.length === 1 ? '' : 's'}${open ? ` · ${open} open comment${open === 1 ? '' : 's'}` : ''} · newest first</p></header>` +
         (many ? `<input class="lab-filter" type="search" placeholder="Filter pages" aria-label="Filter pages" autocomplete="off">` : '') +
         `<ul class="lab-box lab-rows lab-pages">${li || '<li class="lab-muted" style="padding:8px 10px">No HTML pages here. Running a dev server? Start it, then run labit again.</li>'}</ul>` +
-        `<p class="lab-muted lab-hint">On a page, press <kbd>${SET.shortcuts.toggle}</kbd> to show comments, or hold <kbd>⌥</kbd> and click.</p>` +
+        `<p class="lab-muted lab-hint lab-keys">On a page, press <kbd>${SET.shortcuts.toggle}</kbd> to show comments, or hold <kbd>⌥</kbd> and click. <kbd>⌘K</kbd> goes to another lab.</p>` +
+        // A phone has no keys: what to do there instead (it said "press m", Leo's phone, 18 Nov).
+        `<p class="lab-muted lab-hint lab-touch">On a page, hold a spot to comment. ⋯ then "labs &amp; pages" goes to another lab.</p>` +
+        `<style>.lab-touch{display:none}@media (pointer:coarse){.lab-keys{display:none}.lab-touch{display:block}}</style>` +
         (many
           ? `<script>const f=document.querySelector('.lab-filter'),r=[...document.querySelectorAll('.lab-pages li')];f.addEventListener('input',()=>{const q=f.value.trim().toLowerCase();for(const l of r)l.hidden=!!q&&!l.textContent.toLowerCase().includes(q)});addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement!==f){e.preventDefault();f.focus()}})</script>`
           : ''),
@@ -1330,6 +1413,70 @@ const listing = (res, dir, urlPath) => {
 // What a request sent (JSON), and a JSON answer (never kept by the browser).
 const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}');
 const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+// When this lab was made: its .lab folder's birth (the first run in this folder). Linux may not keep births: then its
+// oldest comment, else nothing.
+// Names once each, whatever their case ("Leo" and "leo" are one person).
+const oneEach = (names) => names.filter((n, i) => names.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
+const created = () => {
+  try {
+    const t = fs.statSync(LAB).birthtimeMs;
+    if (t > 0) return new Date(t).toISOString();
+  } catch {}
+  const first = pages().flatMap((k) => commentsOf(k).map((c) => c.createdAt)).sort()[0];
+  return first || null;
+};
+// This lab's pages with their open comments, who listens, and which pages that covers (the switcher and `labit list`).
+const labInfo = () => {
+  // Per page: open and done pins, when the file last changed and when anyone last wrote on it (the switcher's dates).
+  const tally = (key) => {
+    const all = commentsOf(key);
+    const roots = all.filter((c) => !c.parent);
+    const last = all.flatMap((c) => [c.createdAt, c.resolvedAt]).filter(Boolean).sort().pop() || null;
+    const replies = all.filter((c) => c.parent);
+    return {
+      open: roots.filter((c) => !c.resolved).length, done: roots.filter((c) => c.resolved).length, last,
+      first: roots[0]?.createdAt || null, replies: replies.length, agent: replies.filter((c) => c.session).length,
+      people: oneEach(all.filter((c) => !c.session && c.name).map((c) => String(c.name).trim())).slice(0, 8),
+    };
+  };
+  const edited = (file) => {
+    try {
+      return file ? new Date(fs.statSync(path.join(ROOT, file)).mtimeMs).toISOString() : null;
+    } catch {
+      return null;
+    }
+  };
+  const list = (PROXY ? [] : pagesUnder(ROOT)).map((rel) => ({ url: origin + urlOf(rel), title: titleOf(path.join(ROOT, rel)), file: rel, key: keyFor(rel) }));
+  if (PROXY) list.push({ url: origin + '/', title: '', file: '', key: '/' });
+  // A dev server's pages: the ones with comments. Pages without a file (moved or deleted) keep their pins but aren't offered: going there would find nothing.
+  if (PROXY) for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
+  return {
+    name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
+    started: STARTED,
+    created: created(),
+    pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file), opened: opened.get(key) || null, archived: archivedPages.get(key) || null })),
+  };
+};
+// The browser's key on this computer (data-admin), sent back as x-lab-admin.
+const keyOk = (req) => {
+  const got = Buffer.from(String(req.headers['x-lab-admin'] || ''));
+  const key = Buffer.from(TOKEN);
+  return got.length === key.length && timingSafeEqual(got, key);
+};
+// Archiving a lab from the switcher (and the API's "stop"): every open wait ends with 423, which tells the agent the person stopped it (it
+// shouldn't wait again until asked). Pins stay where they are.
+const stopListening = () => {
+  const all = waiters;
+  waiters = [];
+  waitEnded = Date.now();
+  for (const w of all) {
+    clearTimeout(w.timer);
+    w.res.writeHead(423).end('stopped from the page');
+  }
+  recent = [];
+  console.log('[lab] listening stopped from the page');
+  setMode('away');
+};
 const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
@@ -1463,13 +1610,21 @@ const handler = async (req, res) => {
       const w = { res, pages: want, key, who: whoOf(session) };
       claim(want);
       const got = await unseen(scopeOf(w), w.who);
-      if (got?.text) return deliver(res, got, w.who);
+      recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
+      if (got?.text) {
+        remember(w);
+        return deliver(res, got, w.who);
+      }
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;
         waiters = waiters.filter((x) => x !== w);
         waitEnded = Date.now();
         res.writeHead(204).end();
-        if (!waiters.length) setMode('away');
+        if (waiters.length) return broadcast();
+        remember(w);
+        clearTimeout(betweenTimer);
+        betweenTimer = setTimeout(() => !waiters.length && mode === 'listening' && setMode('away'), BETWEEN_MS);
+        broadcast();
       }, Math.min(Number(timeout) || 1500, 7000) * 1000);
       if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
       waiters.push(w);
@@ -1483,21 +1638,130 @@ const handler = async (req, res) => {
         waitEnded = Date.now();
         clearTimeout(w.timer);
         if (!waiters.length) setMode('away');
+        else broadcast();
       });
+      return;
+    }
+    // ---------- the switcher (⌘K): every lab on this computer, its pages, who listens; archive (which stops listening) and start ----------
+    // This computer: every running lab (each asked for its own pages) and the parked ones. A guest: this lab's pages
+    // alone, no folders, no other labs (their pass is for this lab).
+    if (pathname === '/_lab/labs' && req.method === 'GET') {
+      const here = isLoopback(req);
+      const mine = { ...labInfo(), here: true };
+      const others = await Promise.all(
+        runningLabs()
+          .filter((l) => l.port !== PORT)
+          .map(async (l) => {
+            try {
+              const r = await fetch(`http://localhost:${l.port}/_lab/pages`, { signal: AbortSignal.timeout(1500) });
+              return { ...(await r.json()), port: l.port, here: false };
+            } catch {
+              return { name: l.name, root: l.root, port: l.port, here: false, pages: [], mode: 'away', unreachable: true };
+            }
+          }),
+      );
+      others.sort((a, b) => a.name.localeCompare(b.name));
+      if (here) return answer(res, { labs: [mine, ...others], parked: parkedLabs().filter((p) => !runningLabs().some((l) => l.port === p.port)), guest: false });
+      // A guest (a phone this lab let in): this lab's pages, and the other labs open to the wifi, whose pages go
+      // through /_lab/hop: this lab vouches for the phone there (Leo, 18 Nov). No folders, no labs only this computer sees.
+      const forGuest = (lab, hop) => ({
+        name: lab.name, port: lab.port, here: lab.here, mode: lab.mode, listening: lab.listening, created: lab.created, started: lab.started,
+        pages: lab.pages.map(({ url, root: _root, file: _file, ...p }) => ({ ...p, url: hop ? `/_lab/hop?port=${lab.port}&to=${encodeURIComponent(p.path)}` : new URL(url).pathname })),
+      });
+      // Labs not open to the wifi (or on an older labit that doesn't say): named, so the phone knows they're there, but
+      // their pages stay on this computer.
+      const local = others.filter((l) => !l.wifi || l.unreachable).map((l) => ({ name: l.name, port: l.port }));
+      // This computer itself, come in through its wifi address: still a guest (only localhost is trusted), but it's told
+      // where it gets every lab and the keys (Leo's Mac on 192.168.1.78, 18 Nov).
+      const self = wifiAddrs().includes(String(req.socket.remoteAddress || '').replace(/^::ffff:/, '')) ? `http://localhost:${PORT}${url.searchParams.get('page') || '/'}` : null;
+      return answer(res, { labs: [forGuest(mine, false), ...others.filter((l) => l.wifi && !l.unreachable).map((l) => forGuest(l, true))], parked: [], guest: true, local, self });
+    }
+    // A phone this lab let in goes to another lab on this computer: this lab asks that one for a one-time link (with
+    // that lab's agent key, from its folder) for the same name and page, and sends the phone there. Only labs open to
+    // the wifi; the phone gets that lab's own pass, as if it had been invited.
+    if (pathname === '/_lab/hop' && req.method === 'GET') {
+      const n = Number(url.searchParams.get('port'));
+      const lab = runningLabs().find((l) => l.port === n && n !== PORT);
+      if (!lab) return res.writeHead(404, { 'content-type': 'text/plain' }).end('no such lab running');
+      try {
+        const srv = JSON.parse(fs.readFileSync(path.join(lab.root, '.lab/server.json'), 'utf8'));
+        const r = await fetch(`http://localhost:${n}/_lab/invite`, {
+          method: 'POST', signal: AbortSignal.timeout(3000),
+          headers: { 'content-type': 'application/json', 'x-lab-admin': srv.agent || srv.token, 'x-lab-agent': '1', origin: `http://localhost:${n}` },
+          body: JSON.stringify({ name: nameFor(req) || '', page: url.searchParams.get('to') || '/' }),
+        });
+        if (!r.ok) return res.writeHead(r.status, { 'content-type': 'text/plain' }).end(await r.text());
+        const { links } = await r.json();
+        // The same address the phone used here (the Mac's .local name or its wifi address), on the other lab's port.
+        const host = String(req.headers.host || '').replace(/:\d+$/, '');
+        const go = links.find((l) => new URL(l).hostname === host) || links[0];
+        return res.writeHead(302, { location: go, 'cache-control': 'no-store' }).end();
+      } catch {
+        return res.writeHead(502, { 'content-type': 'text/plain' }).end('that lab did not answer');
+      }
+    }
+    // stop (listening), park, start: this computer only, with the lab's key (a web page elsewhere can't post here).
+    if (pathname === '/_lab/labs' && req.method === 'POST') {
+      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
+      const { action, port, page } = await sent(req);
+      const n = Number(port);
+      // A page of a lab, archived or brought back: that lab keeps the list (another lab is asked, with its key).
+      if (action === 'archive-page' || action === 'unarchive-page') {
+        if (typeof page !== 'string' || !page.startsWith('/')) return res.writeHead(400).end('page: /path');
+        if (n === PORT) {
+          archivePage(page, action === 'archive-page');
+          return answer(res, { ok: true });
+        }
+      }
+      if (action === 'start') {
+        const p = parkedLabs().find((x) => x.port === n);
+        if (!p) return res.writeHead(404).end('not parked');
+        if (runningLabs().some((l) => l.port === n)) return res.writeHead(409).end('already running');
+        const env = { ...process.env, ...(p.edge ? { LABIT_EDGE: p.edge } : {}) };
+        spawn(process.execPath, [...p.execArgv, ...p.argv.filter((a) => a !== '--no-open'), '--no-open'], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
+        fs.rmSync(path.join(PARKED, `${n}.json`), { force: true });
+        console.log(`[lab] started ${p.name} again on ${n}`);
+        return answer(res, { ok: true });
+      }
+      // Archive: a parked lab moves out of the way, under "archived" (folded), to start or bring back later. A running
+      // one is parked first, as archived. Unarchive brings it back to "parked".
+      const parkedFile = path.join(PARKED, `${n}.json`);
+      if ((action === 'archive' || action === 'unarchive') && !runningLabs().some((l) => l.port === n)) {
+        const p = parkedLabs().find((x) => x.port === n);
+        if (!p) return res.writeHead(404).end('not parked');
+        writeAtomic(parkedFile, JSON.stringify({ ...p, archived: action === 'archive', at: new Date().toISOString() }, null, 2));
+        return answer(res, { ok: true });
+      }
+      if (action === 'unarchive') return res.writeHead(409).end('running, not archived');
+      if (!['stop', 'park', 'archive', 'archive-page', 'unarchive-page'].includes(action)) return res.writeHead(400).end('action: stop, park, archive, unarchive, start, archive-page or unarchive-page');
+      if (n !== PORT) {
+        // Another lab: it does it itself, asked with its own key (from its folder, on this same computer).
+        const lab = runningLabs().find((l) => l.port === n);
+        if (!lab) return res.writeHead(404).end('no lab on that port');
+        try {
+          const key = JSON.parse(fs.readFileSync(path.join(lab.root, '.lab/server.json'), 'utf8')).token;
+          const r = await fetch(`http://localhost:${n}/_lab/labs`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': key }, body: JSON.stringify({ action, port: n, page }), signal: AbortSignal.timeout(3000) });
+          return res.writeHead(r.status, { 'content-type': 'application/json' }).end(await r.text());
+        } catch {
+          return res.writeHead(502).end('that lab did not answer');
+        }
+      }
+      stopListening();
+      if (action === 'stop') return answer(res, { ok: true });
+      try {
+        fs.mkdirSync(PARKED, { recursive: true });
+        const edge = process.env.LABIT_EDGE;
+        writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(action === 'archive' ? { archived: true } : {}), at: new Date().toISOString() }, null, 2));
+      } catch {}
+      console.log('[lab] parked from the page: start it again from the switcher (⌘K) in another lab, or run labit here');
+      answer(res, { ok: true });
+      setTimeout(bye, 200); // after the answer is out
       return;
     }
     // What the Lab panel lists: this lab's pages with their open comments. This computer only.
     if (pathname === '/_lab/pages') {
       if (!isLoopback(req)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
-      const openOn = (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length;
-      const list = (PROXY ? [] : pagesUnder(ROOT)).map((rel) => ({ url: origin + urlOf(rel), title: titleOf(path.join(ROOT, rel)), file: rel, key: keyFor(rel) }));
-      if (PROXY) list.push({ url: origin + '/', title: '', file: '', key: '/' });
-      // A dev server's pages: the ones with comments.
-      for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
-      return answer(res, {
-        name: path.basename(ROOT), root: ROOT, port: PORT, proxy: PROXY?.origin || null, mode, listening: session?.name || null,
-        pages: list.map(({ key, ...p }) => ({ ...p, path: key, open: openOn(key) })),
-      });
+      return answer(res, labInfo());
     }
     if (pathname.startsWith('/_lab/agent/')) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
@@ -1646,8 +1910,18 @@ server.on('error', (e) => {
   // A port given by the preview pane (PORT) is the one it opens: don't move off it.
   const fixed = !opts.port && process.env.PORT;
   if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EADDRINUSE' || fixed || PORT >= Number(opts.port || 4400) + 20) die(`[lab] could not start: ${e.message}`);
-  server.listen(++PORT, WIFI ? undefined : '127.0.0.1');
+  PORT = skipLabs(PORT + 1);
+  server.listen(PORT, WIFI ? undefined : '127.0.0.1');
 });
+// A port another lab holds is taken even when listening here would work: a lab on the wifi listens on every address
+// (IPv6 *), and the system still lets this one take 127.0.0.1 on the same port, so localhost reached one lab or the
+// other (18 Nov, :4481). Skip the ports in ~/.labit/servers.
+function skipLabs(port) {
+  if (!opts.port && process.env.PORT) return port; // the preview pane's port is the one it opens
+  const held = new Set(runningLabs().filter((l) => l.pid !== process.pid).map((l) => l.port));
+  while (held.has(port)) port++;
+  return port;
+}
 // A newer labit on npm: said once when the lab starts. Checked at most once a day (kept in ~/.labit/latest.json)
 // with a short timeout, never in CI or with LABIT_NO_UPDATE_CHECK=1. The request names only the package.
 async function newerVersion() {
@@ -1702,4 +1976,5 @@ const bye = () => {
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed
+PORT = skipLabs(PORT);
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');

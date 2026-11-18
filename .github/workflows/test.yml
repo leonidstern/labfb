@@ -28,6 +28,17 @@ jobs:
           node-version: 22
       - run: npm run deadcode
 
+  # Reuse: one drawer, one dimmed page, shared gestures, keyboard fit, animations and styles (ci/reuse.mjs). Something
+  # new is listed in ci/parts.json on purpose, in the same pull request.
+  reuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run reuse
+
   # The widget in real browsers: Safari's engine (WebKit) and Chrome's. Playwright is installed
   # only here (--no-save), so labit itself keeps zero dependencies.
   browser:
