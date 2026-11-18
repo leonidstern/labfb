@@ -911,6 +911,26 @@ setInterval(() => {
 // Read marks per name: a person on their phone and their Mac (same name) shares what's new and what's read. Kept in
 // .lab/reads.json as { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
 const READS = path.join(LAB, 'reads.json');
+// When each page was last opened (served with the widget), for labs & pages: .lab/opened.json as { page: ISO time },
+// written at most every few seconds.
+const OPENED = path.join(LAB, 'opened.json');
+const opened = (() => {
+  try {
+    return new Map(Object.entries(JSON.parse(fs.readFileSync(OPENED, 'utf8'))));
+  } catch {
+    return new Map();
+  }
+})();
+let openedTimer = null;
+const markOpened = (page) => {
+  opened.set(page, new Date().toISOString());
+  openedTimer ??= setTimeout(() => {
+    openedTimer = null;
+    try {
+      writeAtomic(OPENED, JSON.stringify(Object.fromEntries(opened)));
+    } catch {}
+  }, 3000);
+};
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
 // Side files (read marks, claims) are written whole through a .tmp, and one that can't be read is put aside like a
@@ -1238,11 +1258,13 @@ const flagsAttr = () => {
 // Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
 // of main (LABIT_EDGE, set by a script that builds one, e.g. "main + #89 #91").
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? ` · edge: ${process.env.LABIT_EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
-const widget = (page, admin, me = '') =>
-  `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
+const widget = (page, admin, me = '') => {
+  markOpened(page);
+  return `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
   `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${path.basename(ROOT).replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
+};
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
 // A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
 const inject = (html, tag) => {
@@ -1407,7 +1429,7 @@ const labInfo = () => {
     name: path.basename(ROOT), root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
     created: created(),
-    pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file) })),
+    pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file), opened: opened.get(key) || null })),
   };
 };
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
@@ -1624,7 +1646,10 @@ const handler = async (req, res) => {
       // Labs not open to the wifi (or on an older labit that doesn't say): named, so the phone knows they're there, but
       // their pages stay on this computer.
       const local = others.filter((l) => !l.wifi || l.unreachable).map((l) => ({ name: l.name, port: l.port }));
-      return answer(res, { labs: [forGuest(mine, false), ...others.filter((l) => l.wifi && !l.unreachable).map((l) => forGuest(l, true))], parked: [], guest: true, local });
+      // This computer itself, come in through its wifi address: still a guest (only localhost is trusted), but it's told
+      // where it gets every lab and the keys (Leo's Mac on 192.168.1.78, 18 Nov).
+      const self = wifiAddrs().includes(String(req.socket.remoteAddress || '').replace(/^::ffff:/, '')) ? `http://localhost:${PORT}${url.searchParams.get('page') || '/'}` : null;
+      return answer(res, { labs: [forGuest(mine, false), ...others.filter((l) => l.wifi && !l.unreachable).map((l) => forGuest(l, true))], parked: [], guest: true, local, self });
     }
     // A phone this lab let in goes to another lab on this computer: this lab asks that one for a one-time link (with
     // that lab's agent key, from its folder) for the same name and page, and sends the phone there. Only labs open to

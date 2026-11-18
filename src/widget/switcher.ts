@@ -2,7 +2,7 @@
 // each, to stop it; park a lab and start it again. A guest on a phone sees this lab's pages only. Part of the comment
 // widget (src/comments.js bundles it). Leo, 18 Nov (the lab-navigation page, option B).
 
-type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[] };
+type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[]; opened?: string | null };
 type Lab = { name: string; port: number; here: boolean; mode: string; listening: string | null; pages: Page[]; root?: string; unreachable?: boolean; started?: string; created?: string | null };
 type Parked = { name: string; port: number; root: string; archived?: boolean; at?: string };
 type Deps = {
@@ -22,13 +22,14 @@ let d: Deps;
 let box: HTMLElement;
 let input: HTMLInputElement;
 let list: HTMLElement;
-let data: { labs: Lab[]; parked: Parked[]; guest: boolean; local?: { name: string; port: number }[] } | null = null;
+let data: { labs: Lab[]; parked: Parked[]; guest: boolean; local?: { name: string; port: number }[]; self?: string | null } | null = null;
 let active = 0;
 let toCur = false; // the first list after opening starts on the page you're on, scrolled to it
 let armed = ''; // the park or archive button waiting for its second click: "action port"
 let showArchived = false;
 
 let panelEl: HTMLElement;
+let foot: HTMLElement;
 const switcherOpen = () => Boolean(box && !box.hidden);
 /** The open box, for the widget's sheets (null when closed). */
 export const switcherSheet = () => (switcherOpen() ? panelEl : null);
@@ -41,7 +42,7 @@ export function bindSwitcher(deps: Deps) {
   panelEl = panel;
   input = el('input', { type: 'search', placeholder: 'Go to a page or a lab', 'aria-label': 'Go to a page or a lab', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false' }) as HTMLInputElement;
   list = el('div', { class: 'sw-list', role: 'listbox' });
-  const foot = el('div', { class: 'sw-foot' }, '↑↓ choose · ↵ go · ⌘↵ new tab · ⌥S stop listening · ⌥P park · ⌥A archive · ⌥R start · esc close');
+  foot = el('div', { class: 'sw-foot' });
   panel.append(el('div', { class: 'handle' }), input, list, foot);
   box.append(panel);
   root.append(box);
@@ -128,7 +129,7 @@ export const preloadSwitcher = () => void load();
 
 async function load() {
   try {
-    data = await (await fetch(d.api, { cache: 'no-store' })).json();
+    data = await (await fetch(`${d.api}?page=${encodeURIComponent(d.page)}`, { cache: 'no-store' })).json();
   } catch {
     data = null;
   }
@@ -176,16 +177,16 @@ const ago = (iso?: string | null) => {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 };
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-/** A page's pins and last comment, in words (Leo 18 Nov: "make it all text"): "2 open · 1 closed · 10m ago". */
+/** A page's pins, always both numbers, and when it was last opened (Leo 18 Nov): "2 open · 0 closed · opened 3m ago". */
 const pinFacts = (open: number, done: number, when: string) =>
-  d.el('span', { class: 'sw-m' }, [open ? `${open} open` : '', done ? `${done} closed` : '', when].filter(Boolean).join(' · '));
+  d.el('span', { class: 'sw-m' }, [`${open} open`, `${done} closed`, when].filter(Boolean).join(' · '));
 /** The last comment's time as the rows show it: "just now", "4m ago", "Nov 3". */
 const since = (iso?: string | null) => {
   const a = ago(iso);
   return !a ? '' : a === 'now' ? 'just now' : /\d[mhd]$/.test(a) ? `${a} ago` : a;
 };
 const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort().pop() || '';
-const touched = (p: Page) => latest(p.last, p.edited);
+const touched = (p: Page) => latest(p.opened, p.last); // newest first: last opened or commented on
 const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)) || lab.started || '';
 // One order (Leo 18 Nov: no sorting): the lab you're in first, then the others, last written on first; pages likewise.
 const orderPages = (ps: Page[]) => [...ps].sort((a, b) => touched(b).localeCompare(touched(a)));
@@ -208,6 +209,13 @@ function draw() {
     return;
   }
   const local = !data.guest;
+  // The lab keys only where they work: a guest can go to pages, not stop, park or start labs (they did nothing, silently).
+  foot.textContent = `↑↓ choose · ↵ go · ⌘↵ new tab${local ? ' · ⌥S stop listening · ⌥P park · ⌥A archive · ⌥R start' : ''} · esc close`;
+  if (data.self) {
+    const note = el('div', { class: 'sw-none' }, 'This is your computer, opened through its wifi address, so it sees what a phone sees. ');
+    note.append(el('a', { href: data.self }, 'Open it on localhost'), ' for every lab and the lab keys.');
+    out.push(note);
+  }
   for (const lab of orderLabs(data.labs)) {
     const labHit = hit(q, lab.name, String(lab.port));
     const pages = orderPages(lab.pages.filter((p) => labHit || hit(q, p.title, p.path, p.file)));
@@ -277,7 +285,7 @@ function draw() {
       const here = lab.here && p.path === d.page;
       const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page' });
       // Open pins (filled dot) and closed (hollow), who commented, and the last comment's time.
-      const meta = pinFacts(p.open, p.done || 0, here ? 'you’re here' : since(p.last));
+      const meta = pinFacts(p.open, p.done || 0, here ? 'you’re here' : p.opened ? `opened ${since(p.opened)}` : 'never opened');
       // The time is the last comment's (Leo 18 Nov: file times were all the same after a copy); the file's is on hover.
       const tip = [p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
         p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
