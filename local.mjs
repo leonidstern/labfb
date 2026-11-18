@@ -105,7 +105,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
 const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'skill'];
-const { loadSettings, changedShortcuts, changedActions, savePersonal, saveFlag } = await import('./lib/settings.ts');
+const { loadSettings, changedShortcuts, changedActions, savePersonal } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
@@ -945,10 +945,14 @@ let PORT = Number(opts.port || process.env.PORT || 4400);
 const STARTED = new Date().toISOString(); // the switcher shows how long a lab has run
 // Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
 const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
+// It also says which session listened last (`listener`, the id its waits send), so the labit plugin's wake
+// (hooks/wake.ts) finds this lab from any folder: the session looks for the labs whose listener it is.
+let registeredListener = '';
 const register = () => {
   try {
     fs.mkdirSync(REGISTRY, { recursive: true });
-    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: new Date().toISOString() }, null, 2));
+    registeredListener = session?.id || '';
+    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: STARTED, ...(registeredListener ? { listener: registeredListener, listenedAt: new Date().toISOString() } : {}) }, null, 2));
   } catch {}
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
@@ -1401,7 +1405,7 @@ const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-k
 // The actions on selected words that differ from the defaults (labit.json / settings.json `actions`). Labels are yours, so
 // the attribute is escaped as the flags' is.
 const ACTIONS_ATTR = Object.keys(changedActions(SET.actions)).length ? ` data-actions='${JSON.stringify(changedActions(SET.actions)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'` : '';
-// What is being tried in this lab: every flag and its state, so the ⋯ menu can show them all and switch them.
+// What is being tried in this lab: every flag and its state (set in labit.json), for the widget to read.
 // The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
 // in one of them would end the attribute halfway. & and < go too, so the tag can't be talked out of being a tag.
 const flagsAttr = () => {
@@ -1708,20 +1712,6 @@ const handler = async (req, res) => {
       const tail = q.size ? `?${q}` : '';
       return answer(res, { name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) });
     }
-    // What is being tried in this lab: the ⋯ menu's switches. From this computer only -- a guest reads the page,
-    // they don't decide what labit is trying. The answer is written into the project's labit.json, so the agent sees
-    // the same thing, and every open page is told to come back for the new state.
-    if (pathname === '/_lab/flags') {
-      if (!isLoopback(req)) return res.writeHead(403).end('forbidden');
-      const { flag, on } = await sent(req);
-      if (!(flag in FLAGS)) return res.writeHead(400).end('no such flag');
-      const file = saveFlag(HERE, flag, Boolean(on));
-      SET.flags = { ...SET.flags, [flag]: Boolean(on) };
-      console.log(`[lab] trying ${flag}: ${on ? 'on' : 'off'} (${file})`);
-      version = { ...version, files: version.files + 1 }; // the pages come back with the new state in their tag
-      pagesChanged();
-      return answer(res, { flags: SET.flags, file });
-    }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.
     if (pathname === '/_lab/me') {
@@ -1781,6 +1771,7 @@ const handler = async (req, res) => {
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
+      if (session.id && session.id !== registeredListener) register(); // the registry says who listens, for the wake hook
       // "Claude", not "session 87f84735": a session with no name of its own is said by what it is.
       const me = sessionFrom(req);
       const named = me?.name && !/^session [0-9a-f]+$/i.test(me.name) && me.name !== me.agent;
