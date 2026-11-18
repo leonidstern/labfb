@@ -339,8 +339,9 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .mark .eye { fill: var(--_bg); }
 .listener .mark { margin: -2px 0 -1px -3px; }
 .listener .mark { fill: rgb(36, 160, 70); }
-.listener.idle .mark { fill: var(--_fg); }
-.listener.stale .mark { opacity: .4; }
+.listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
+.listener.stale .mark { fill: rgb(217, 139, 0); } /* reconnecting: amber */
+.listener.stale.idle .mark { fill: var(--_muted); }
 .mark :is(.e1, .e2, .eye) { transform-box: fill-box; transform-origin: 35% 100%; }
 .mark .eye { transform-origin: 50% 50%; }
 .listener.working .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
