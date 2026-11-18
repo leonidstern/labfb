@@ -185,10 +185,16 @@ const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)) || lab.starte
 const orderPages = (ps: Page[]) => [...ps].sort((a, b) => touched(b).localeCompare(touched(a)));
 const orderLabs = (labs: Lab[]) => [...labs].sort((a, b) => Number(b.here) - Number(a.here) || labTouched(b).localeCompare(labTouched(a)));
 
-// The lab's name goes to its home (/, its pages), as a page's row goes to the page (Leo 18 Nov: "no way to go" there).
+/** A lab as its folder, "~/projects/site" (Leo 18 Nov: "lab-nav :4481" confused); a guest, without the path, gets the name. */
+const where = (l: { name: string; root?: string }) => {
+  if (!l.root) return l.name;
+  const parts = l.root.replace(/^\/(?:Users|home)\/[^/]+(?=\/)/, '~').split('/');
+  return parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : parts.join('/'); // deep folders keep their last two
+};
+// The lab's folder goes to its home (/, its pages), as a page's row goes to the page (Leo 18 Nov: "no way to go" there).
 function home(lab: Lab) {
   const to = lab.here ? '/' : data?.guest ? `/_lab/hop?port=${lab.port}&to=%2F` : `http://localhost:${lab.port}/`;
-  const a = d.el('a', { class: 'sw-home', href: to, title: `${lab.name}: all its pages` }, lab.name);
+  const a = d.el('a', { class: 'sw-home', href: to, title: `${lab.root || lab.name}: all its pages, on localhost:${lab.port}` }, where(lab));
   a.addEventListener('click', (e) => e.stopPropagation());
   return a;
 }
@@ -226,8 +232,9 @@ function draw() {
     const agent = sum((p) => p.agent || 0);
     const people = [...new Map(lab.pages.flatMap((p) => p.people || []).map((n) => [n.toLowerCase(), n] as const)).values()]; // "Leo" and "leo" are one
     const last = latest(...lab.pages.map((p) => p.last));
-    left.append(home(lab), el('span', { class: 'sw-port' }, `:${lab.port}`));
+    left.append(home(lab));
     left.title = [
+      `localhost:${lab.port}`,
       status,
       open + done ? `${open} open, ${done} closed` : 'no pins yet',
       replies ? `${replies} replies${agent ? `, ${agent} from Claude` : ''}` : '',
@@ -300,7 +307,7 @@ function draw() {
     for (const l of away) {
       const r = el('div', { class: 'sw-lab parked' });
       const n = el('div', { class: 'sw-name' });
-      n.append(el('span', { class: 'sw-port' }, `${l.name} :${l.port}`)); // grey: nothing to tap here
+      n.append(el('span', { class: 'sw-port' }, l.name)); // grey: nothing to tap here
       r.append(n);
       out.push(r);
     }
@@ -312,8 +319,8 @@ function draw() {
     const archivedRow = (p: Parked) => {
       const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(p.port), 'data-kind': 'parked' });
       const t = el('span', { class: 'sw-t' });
-      t.append(el('b', {}, p.name), ` · ${p.port}`);
-      row.title = 'start it again (↵)';
+      t.append(el('b', {}, where(p)));
+      row.title = `start it again on localhost:${p.port} (↵)`;
       row.append(t, el('span', { class: 'sw-m' }, `archived ${ago(p.at)}`.trim()));
       row.addEventListener('click', () => start(p.port, row));
       return row;
