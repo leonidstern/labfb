@@ -92,12 +92,6 @@ async function dragWords(p, sel, text, shift = false) {
   return s;
 }
 
-// The bar's comment button adds the box; then `text` is typed into it.
-async function join(p, text) {
-  await p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot.querySelector('.p-bar [data-k=comment]').click());
-  await sleep(500);
-  await p.keyboard.type(text);
-}
 async function scene(browser, run) {
   PG = `/s${++scenes}`;
   fs.writeFileSync(path.join(DIR, `${PG.slice(1)}.html`), PAGE);
@@ -134,7 +128,7 @@ try {
         await sleep(700);
         const l = await look(p);
         check(eng, 'Shift-drag over words shows the actions bar, no area', l.bar && !l.zone && !l.draftPin, JSON.stringify(l));
-        await join(p, 'shifted');
+        await p.keyboard.type('shifted');
         await sleep(700);
         await p.keyboard.press('Enter');
         await sleep(700);
@@ -167,6 +161,26 @@ try {
         const inField = await p.evaluate(() => getComputedStyle(document.querySelector('#field')).cursor);
         await p.keyboard.up('Shift');
         check(eng, '…and over the page\'s own input its own cursor stays', inField !== 'crosshair' && inField !== 'none', inField);
+      });
+      await scene(browser, async (p) => {
+        await dragWords(p, '#t', 'ords to dra', true); // starts and ends inside words
+        await sleep(700);
+        await p.keyboard.type('snap');
+        await sleep(700);
+        await p.keyboard.press('Enter');
+        await sleep(700);
+        const c = (await comments()).find((x) => x.text === 'snap');
+        check(eng, 'a Shift-drag from inside a word to inside another takes both whole words', c?.anchor?.quote?.exact === 'words to drag', JSON.stringify(c?.anchor?.quote));
+      });
+      await scene(browser, async (p) => {
+        await dragWords(p, '#t', 'aragra', true); // inside "paragraph" only
+        await sleep(700);
+        await p.keyboard.type('inside');
+        await sleep(700);
+        await p.keyboard.press('Enter');
+        await sleep(700);
+        const c = (await comments()).find((x) => x.text === 'inside');
+        check(eng, '…a Shift-drag inside one word keeps exactly its letters', c?.anchor?.quote?.exact === 'aragra', JSON.stringify(c?.anchor?.quote));
       });
       await scene(browser, async (p) => {
         await dragTo(p, [700, 40], [900, 120]); // right of the column: nothing to select there
@@ -213,7 +227,7 @@ try {
         await sleep(900);
         const l = await look(p);
         check(eng, 'Shift + double-click on a word shows the actions bar (no box left from the first click)', l.bar && !l.box && !l.draftPin, JSON.stringify(l));
-        await join(p, 'word');
+        await p.keyboard.type('word');
         await sleep(700);
         await p.keyboard.press('Enter');
         await sleep(700);
