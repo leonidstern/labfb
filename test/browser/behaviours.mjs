@@ -59,7 +59,7 @@ const check = (eng, name, ok, detail = '') => {
 
 start();
 await up();
-for (const eng of ['webkit', 'chromium']) {
+for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   write('index.html', PAGE);
   write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
   const browser = await pw[eng].launch();
