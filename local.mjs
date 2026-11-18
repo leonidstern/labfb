@@ -12,6 +12,7 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
+import { pageIds } from './lib/ids.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
@@ -610,7 +611,8 @@ const agentText = async (page) => {
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   const file = fileFor(page);
   const seen = lookLine(page, file);
-  return file || seen ? local.replace(/^(page: .*)$/m, `$1${file ? `\nfile: ${file}` : ''}${seen ? `\nlooked: ${seen}` : ''}`) : local;
+  const unseen = unseenLine(page, file);
+  return file || seen ? local.replace(/^(page: .*)$/m, `$1${file ? `\nfile: ${file}` : ''}${seen ? `\nlooked: ${seen}` : ''}${unseen ? `\n${unseen}` : ''}`) : local;
 };
 // Who last looked at the page, and whether that was before or after the file's last save (what they saw may be older
 // than the agent's latest edit): `Leo 14:02 (before the last save)`.
@@ -621,6 +623,31 @@ const lookLine = (page, file) => {
     .slice(0, 3)
     .map((w) => `${w.name} ${new Date(w.at).toTimeString().slice(0, 5)}${saved ? ` (${w.at < saved ? 'before' : 'after'} the last save)` : ''}`)
     .join(', ');
+};
+
+// The ids in the page's file that a person who looked has not seen, so the agent can point at them: `unseen by Leo:
+// #v3, #pricing` (at most 5 each, a few people). Only for pages that are HTML files; none when everything was seen.
+const unseenLine = (page, file) => {
+  if (!/\.html?$/i.test(file || '')) return '';
+  let now;
+  try {
+    const full = path.join(ROOT, file);
+    if (fs.statSync(full).size > 2e6) return '';
+    now = pageIds(fs.readFileSync(full, 'utf8'));
+  } catch {
+    return '';
+  }
+  return Object.values(looked.get(page)?.who || {})
+    .sort((a, b) => b.at - a.at)
+    .slice(0, 3)
+    .map((w) => {
+      const ids = looked.get(page).snaps[w.snap]?.ids;
+      const had = new Set(ids?.map((n) => n[0]));
+      const fresh = ids ? now.filter((id) => !had.has(id)) : [];
+      return fresh.length ? `unseen by ${w.name}: ${fresh.slice(0, 5).map((id) => `#${id}`).join(', ')}${fresh.length > 5 ? ` (+${fresh.length - 5} more)` : ''}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
 };
 
 // lab: this run of the lab (a restart is a new one); widget: what the comment widget's script is, so open pages reload
@@ -1058,14 +1085,14 @@ const saver = (file, data, what) => {
   };
 };
 const saveReads = saver(READS, () => reads, 'read marks');
-// Since you looked: each person's last look at a page, so a phone and a Mac with the same name agree on what is new.
-// .lab/looked/<same file name as .lab/comments/>.json as
-//   { v: 1, page, file, fid, snaps: { id: { at, by, blocks: [text…] } }, who: { plain name: { name, snap, at } } }
-// A look is the page's blocks as text; its id is a hash of them, so two people who looked at the same words share one.
-// A snap nobody points to goes, except the newest few (the rounds: what the page said at each look); a name nobody
-// has touched for a month goes at start. The widget cuts each block at 2,000 characters before it sends.
+// New since you looked: each person's last look at a page (the ids on it, each with its label), so a phone and a Mac
+// with the same name agree on what is new. .lab/looked/<same file name as .lab/comments/>.json as
+//   { v: 1, page, file, fid, snaps: { id: { at, by, ids: [[id, label]…] } }, who: { plain name: { name, snap, at } } }
+// A snap's id is a hash of its ids, so two people who looked at the same page share one. A snap from before ids has
+// `blocks` (text) and no `ids`: the widget takes the page's ids as seen then. A snap nobody points to goes, except the
+// newest few (the rounds: what the page held at each look); a name nobody has touched for a month goes at start.
 const LOOKED = path.join(LAB, 'looked');
-const LOOKS = { blocks: 4000, body: 400 * 1024, names: 200, pages: 1000, keep: 5, days: 30 };
+const LOOKS = { ids: 4000, body: 400 * 1024, names: 200, pages: 1000, keep: 5, days: 30 };
 const looked = new Map();
 let lookedRev = 0;
 const pruneLooks = (rec) => {
@@ -1267,7 +1294,7 @@ setInterval(pagesChanged, Math.min(60000, TAB_TTL)).unref();
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
 async function threadsText(page, threads) {
   const text = await agentText(page);
-  const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file):/.test(l)).join('\n');
+  const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file|unseen by .*):/.test(l)).join('\n');
   // Lean: details an agent rarely needs (computed looks, colours, window size, the CSS path) stay in the full text at
   // /_lab/agent/<page>; the pin's words, element, text, section and file stay here.
   const RARE = /^(looks|colours|viewport|selector \(at comment time\)):/;
@@ -2041,7 +2068,7 @@ const handler = async (req, res) => {
       return answer(res, { ids });
     }
     // Last looks, by name and page (see LOOKED, above): GET ?name=&page= gives that person's last look and the rounds
-    // before it; &snap= one round's blocks. POST { name, page, blocks } makes now their last look. Open to any device the
+    // before it; &snap= one round's ids. POST { name, page, ids: [[id, label]…] } makes now their last look. Open to any device the
     // lab lets in, as the read marks are; the page must be one of this lab's.
     if (pathname === '/_lab/api/looked') {
       if (req.method === 'POST') {
@@ -2055,19 +2082,19 @@ const handler = async (req, res) => {
         }
         const name = plainName(b?.name);
         const page = String(b?.page || '').slice(0, 500);
-        if (!name || !page.startsWith('/') || !Array.isArray(b.blocks)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name, page and blocks needed');
-        if (b.blocks.length > LOOKS.blocks) return res.writeHead(413, { 'content-type': 'text/plain' }).end('too many blocks');
+        if (!name || !page.startsWith('/') || !Array.isArray(b.ids)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name, page and ids needed');
+        if (b.ids.length > LOOKS.ids) return res.writeHead(413, { 'content-type': 'text/plain' }).end('too many ids');
         // A page saved a moment ago may not be in the file list yet (the watcher is a beat behind): look again, at most every 2 s.
         if (!db.has(`lab:comments:${page}`) && !fileFor(page) && !(Date.now() - lookedIndexed > 2000 && ((lookedIndexed = Date.now()), (fileIndex = null), fileMemo.clear(), fileFor(page))))
           return res.writeHead(400, { 'content-type': 'text/plain' }).end('a page of this lab needed');
         if (!looked.has(page) && looked.size >= LOOKS.pages) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many pages');
         const rec = looked.get(page) || { snaps: bare(), who: bare() };
         if (!(name in rec.who) && Object.keys(rec.who).length >= LOOKS.names) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many names');
-        const blocks = b.blocks.map((t) => String(t).slice(0, 2100));
-        const id = createHash('sha1').update(JSON.stringify(blocks)).digest('hex').slice(0, 12);
+        const ids = b.ids.map((n) => (Array.isArray(n) ? [String(n[0]).slice(0, 200), String(n[1] ?? '').slice(0, 80)] : [String(n).slice(0, 200), '']));
+        const id = createHash('sha1').update(JSON.stringify(ids.map((n) => n[0]))).digest('hex').slice(0, 12);
         const at = Date.now();
         const shown = String(b.name).replace(/\s+/g, ' ').trim().slice(0, 60);
-        rec.snaps[id] ||= { at, by: shown, blocks };
+        rec.snaps[id] ||= { at, by: shown, ids };
         rec.who[name] = { name: shown, snap: id, at };
         pruneLooks(rec);
         looked.set(page, rec);
@@ -2082,10 +2109,10 @@ const handler = async (req, res) => {
       const rec = looked.get(url.searchParams.get('page') || '');
       const snap = url.searchParams.get('snap');
       const mine = rec?.who[plainName(url.searchParams.get('name'))];
-      if (snap) return answer(res, rec?.snaps[snap] ? { snap, at: rec.snaps[snap].at, blocks: rec.snaps[snap].blocks } : {});
+      if (snap) return answer(res, rec?.snaps[snap] ? { snap, at: rec.snaps[snap].at, ids: rec.snaps[snap].ids || null } : {});
       if (!rec || !mine || !rec.snaps[mine.snap]) return answer(res, {});
       const rounds = Object.entries(rec.snaps).sort((a, b) => b[1].at - a[1].at).map(([id, s]) => ({ snap: id, at: s.at, by: s.by }));
-      return answer(res, { snap: mine.snap, at: mine.at, blocks: rec.snaps[mine.snap].blocks, rounds });
+      return answer(res, { snap: mine.snap, at: mine.at, ids: rec.snaps[mine.snap].ids || null, rounds }); // null: a look from before ids
     }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);

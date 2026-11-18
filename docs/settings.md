@@ -100,7 +100,7 @@ trying. `labit settings` lists which are on and where that came from.
 | --- | --- |
 | `liveUrl` | a lab in front of a page that is already live, so you pin on what shipped |
 | `agentPins` | a pin the agent left wears labit's own mark, the one the bar shows while an agent listens |
-| `sinceLooked` | a badge by the listening pill and a mark in the margin by each block that changed since you last looked, with the old and new words one tap away |
+| `sinceLooked` | a "New · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second |
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.

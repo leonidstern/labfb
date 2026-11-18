@@ -239,22 +239,26 @@ if (cmd === 'serve') {
       const end = ss.at(-1);
       return [['scrolling makes no comment box', !ss.some((s) => s.float)], ['the page scrolled', end.sy - s0.sy > 100, `scrollY ${s0.sy} → ${end.sy}`], ['no text got selected', ss.every((s) => !s.sel)]];
     } },
-    // Since you looked: a paragraph is edited in the page's file (the lab patches the open page), a mark comes up in the
-    // margin, and a tap on it shows the old and new words in a card that fits the screen.
-    { name: 'tap-mark', say: async () => {
+    // New since you looked: a section with an id is added to the page's file (the lab patches the open page), the pill
+    // comes up by the bar, a tap on it opens the list as a small sheet that fits the screen, a tap on its item goes there.
+    { name: 'tap-new', say: async () => {
       const file = path.join(RUN, 'site', 'index.html');
-      fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('Paragraph 12. The quick brown fox', 'Paragraph 12. The slow grey fox'));
-      await sleep(3500); // the patch, then the second look a second later
-      const m = lines().at(-1).marks.find((x) => /chg/.test(x.c));
-      return m ? `tap ${fmt(dev(lines().at(-1), m.x + m.w / 2, m.y + m.h / 2))} (the amber mark in the margin, by paragraph 12)` : 'no mark came up (was the page opened before the edit?)';
+      fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('</body>', '<section id="v9"><h2>Version nine</h2><p>The agent added this.</p></section></body>'));
+      await sleep(3000); // the patch, then the check
+      const s = lines().at(-1);
+      return s.pill ? `tap ${fmt(dev(s, s.pill.x + s.pill.w / 2, s.pill.y + s.pill.h / 2))} (the "New · 1" pill above the bar)` : 'no pill came up (was the page opened before the edit?)';
     }, expect: (ss) => {
       const end = ss.at(-1);
-      const m = end.marks.find((x) => /chg/.test(x.c));
+      const sh = end.sheet;
       return [
-        ['a mark is 28px wide', Boolean(m) && m.w >= 28, m ? `${m.w}px` : 'no mark'],
-        ['a tap on it opens the card', Boolean(end.chgCard), JSON.stringify(end.chgCard)],
-        ['the card fits the screen width', Boolean(end.chgCard) && end.chgCard.x >= 0 && end.chgCard.x + end.chgCard.w <= end.iw, JSON.stringify(end.chgCard)],
+        ['the pill is big enough to hit', ss.some((s) => s.pill && s.pill.h >= 32)],
+        ['a tap on it opens the list with the new one', end.news === 1, `${end.news} items`],
+        ['the sheet fits the screen', Boolean(sh) && sh.x >= 0 && sh.x + sh.w <= end.iw && sh.y + sh.h <= end.ih, JSON.stringify(sh)],
       ];
+    } },
+    { name: 'go-new', say: (s) => (s.item ? `tap ${fmt(dev(s, s.item.x + s.item.w / 2, s.item.y + s.item.h / 2))} (the item in the sheet)` : 'no item on screen'), expect: (ss, s0) => {
+      const end = ss.at(-1);
+      return [['the sheet closes and the page goes to the section', !end.sheet && end.sy > s0.sy, `scrollY ${s0.sy} → ${end.sy}`], ['it drops off the list: no pill', !end.pill]];
     } },
   ];
   const fmt = (p) => (p ? `(${p.x}, ${p.y})` : '(not on screen)');

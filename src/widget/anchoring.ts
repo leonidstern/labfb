@@ -1,5 +1,6 @@
 // Where a pin points: the element, words, picture pixel, code line or video second under it, and how to find
 // that spot again when the page changes. Part of the comment widget (src/comments.js bundles it).
+import { GENERATED } from '../../lib/ids.ts';
 
 /** Words a pin quotes, with what comes before and after so they can be found again. */
 type Quote = {
@@ -79,10 +80,7 @@ export function bindAnchoring(deps: Deps) {
   ({ host, layer, el, store } = deps);
 }
 
-// Ids and classes a framework or build makes up (React's :r3: and «r3», Radix's radix-:r5:, svelte-1abc2de, CSS-module
-// _card_1x2y3, css-1abc2de): they change between builds and renders, so they say nothing about which element it is.
-// A Tailwind variant (hover:bg-x) has a colon too: it's a state, not identity either.
-const GENERATED = /[:«»]|^_r_\w+_$|[-_](?=[a-z0-9]*\d[a-z])[a-z0-9]{5,}$/i;
+// Ids and classes a framework or build makes up (lib/ids.ts) say nothing about which element it is.
 const generated = (v) => GENERATED.test(v || '');
 // Names a page gives an element for tests or for comments: the most lasting way to find it again.
 const NAMED = ['data-testid', 'data-lab', 'data-comment-target'];

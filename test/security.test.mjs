@@ -194,18 +194,18 @@ test('dot files, .lab/ and paths outside the folder are never served', async () 
 test('looked: over 400 KB is 413; another origin 403; "__proto__" is just a name', async () => {
   await up();
   const sent = (body, headers = {}) => raw('/_lab/api/looked', { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body), headers: { 'content-type': 'application/json', origin: `http://localhost:${PORT}`, ...headers } });
-  const small = { name: 'Leo', page: '/index', blocks: ['Hi'] };
+  const small = { name: 'Leo', page: '/index', ids: [['hi', 'Hi']] };
   assert.equal((await sent(small)).status, 200);
   assert.equal((await sent(small, { origin: 'https://evil.example' })).status, 403, 'another origin');
   assert.equal((await sent(small, { 'content-type': 'text/plain' })).status, 403, 'JSON only');
-  assert.equal((await sent({ ...small, blocks: ['x'.repeat(400 * 1024)] })).status, 413, 'a body over 400 KB');
+  assert.equal((await sent({ ...small, ids: [['x', 'x'.repeat(400 * 1024)]] })).status, 413, 'a body over 400 KB');
   assert.equal((await sent('{"name":"Leo"')).status, 400, 'not JSON');
-  assert.equal((await sent({ name: 'Leo', page: '/../../etc/passwd', blocks: [] })).status, 400, 'a path that is not a page of this lab');
+  assert.equal((await sent({ name: 'Leo', page: '/../../etc/passwd', ids: [] })).status, 400, 'a path that is not a page of this lab');
   assert.equal((await sent({ ...small, page: 'index' })).status, 400);
   // A name or a round id like __proto__ is a key and nothing else.
-  assert.equal((await sent({ ...small, name: '__proto__', blocks: ['proto'] })).status, 200);
+  assert.equal((await sent({ ...small, name: '__proto__', ids: [['__proto__', 'proto']] })).status, 200);
   const get = async (q) => JSON.parse((await raw(`/_lab/api/looked?${q}`)).text);
-  assert.deepEqual((await get('name=__proto__&page=/index')).blocks, ['proto']);
+  assert.deepEqual((await get('name=__proto__&page=/index')).ids, [['__proto__', 'proto']], 'an id called __proto__ is just an id');
   assert.deepEqual(await get('name=constructor&page=/index'), {}, 'nothing inherited');
   assert.deepEqual(await get('name=Leo&page=/index&snap=__proto__'), {});
   assert.deepEqual(await get('name=Leo&page=__proto__'), {});
@@ -317,11 +317,11 @@ test('looked: a guest needs a pass, and with one reads and writes like anybody t
   const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
   const cookie = r.cookie.split(';')[0];
   const asGuest = (headers, body) => wraw('/_lab/api/looked' + (body ? '' : '?name=Mira&page=/index'), { host: lan, method: body ? 'POST' : 'GET', body, headers: { origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json', ...headers } });
-  const look = JSON.stringify({ name: 'Mira', page: '/index', blocks: ['guest look'] });
+  const look = JSON.stringify({ name: 'Mira', page: '/index', ids: [['guest', 'guest look']] });
   assert.equal((await asGuest({}, look)).status, 403, 'no pass, no write');
   assert.equal((await asGuest({}, undefined)).status, 403, 'no pass, no read');
   assert.equal((await asGuest({ cookie }, look)).status, 200, 'with the pass');
-  assert.deepEqual(JSON.parse((await asGuest({ cookie }, undefined)).text).blocks, ['guest look']);
+  assert.deepEqual(JSON.parse((await asGuest({ cookie }, undefined)).text).ids, [['guest', 'guest look']]);
   assert.equal((await asGuest({ cookie, origin: 'https://evil.example' }, look)).status, 403, "and the pass doesn't open it to other sites");
 });
 

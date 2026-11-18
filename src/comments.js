@@ -1698,7 +1698,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
-    if (script?.dataset.live && flag('sinceLooked')) startChanges(); // what changed since you looked (local labs, where pages change under you)
+    if (script?.dataset.live && flag('sinceLooked')) startChanges(); // the ids added since you looked (local labs, where pages change under you)
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);

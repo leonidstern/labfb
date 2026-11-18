@@ -57,7 +57,7 @@ jobs:
       - run: node test/browser/shortcuts.mjs
       # Pins finding their spot again: reordered twins, their own box first, quoted words, made-up ids and classes.
       - run: node test/browser/anchoring.mjs
-      # Since you looked: the badge and margin marks for what changed under you, and what must never count as a change.
+      # New since you looked: the pill and list of the ids the agent added, what drops one off, two names, a phone's sheet, and what must never count.
       - run: node test/browser/changes.mjs
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
       - run: node bench/run.mjs
