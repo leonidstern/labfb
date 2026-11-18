@@ -35,9 +35,11 @@ export function placeBeside(node, left, top) {
   }
 }
 
-export function grab(pin, c) {
+// `now` gives the thread the pin shows now: the pin is kept across redraws (src/comments.js, render), so it can't hold one.
+export function grab(pin, now) {
   pin.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !pin.classList.contains('grab')) return;
+    const c = now();
     const r = pin.getBoundingClientRect();
     const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
     const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
