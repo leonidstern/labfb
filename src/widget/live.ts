@@ -1,10 +1,12 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { pillLine } from './list.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
 export function bindLive(w: unknown) {
   W = w;
 }
+const span = (t: string, className = '') => Object.assign(document.createElement('span'), { textContent: t, className });
 
 // Local mode (local.mjs sets data-live): one event stream for all of a lab's tabs (see startLive), so many tabs
 // don't use up the browser's connections. The page reloads when its files change, keeping the scroll position, and the
@@ -81,7 +83,7 @@ export function startLive() {
       '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
       '<circle class="eye" cx="31" cy="45" r="6.2"/></g></svg>';
     who.innerHTML = MARK + '<div class="lbl"></div>';
-    const lbl = who.querySelector('.lbl');
+    const lbl = who.querySelector('.lbl') as HTMLElement;
     who.hidden = true;
     W.root.querySelector('.left').prepend(who);
     W.root.querySelector('.left').append(soon);
@@ -111,11 +113,41 @@ export function startLive() {
     }
     let stream = null;
     let beat = 0;
+    // The pill's words, from the lab's state (mode, agent, session tag) and the agent's work on this page (list.ts
+    // pillLine): while it works on a pin it reads "Claude · drawing W1–W6 · 40 s ago · 2 waiting", and "· no update for
+    // 6 min · last: …" once that one went quiet. The line has a fixed width (styles.css .prog), so nothing beside it moves.
+    let pill = null;
+    const paintWho = () => {
+      if (!pill) return;
+      const { mode, agent, tag, away } = pill;
+      const { text, key, waiting } = mode === 'working' ? pillLine() : { text: '', key: '', waiting: 0 };
+      const more = waiting ? ` · ${waiting} waiting` : '';
+      const sig = [mode, agent, tag[0]?.textContent, text ? 'p' : more].join('|');
+      if (lbl.dataset.sig !== sig) {
+        lbl.dataset.sig = sig;
+        lbl.replaceChildren(...(mode === 'listening' ? [span('talking to'), agent, ...tag] : mode === 'working' ? (text ? [agent, span('', 'prog')] : [agent, span(`is working${more}`), ...tag]) : [span(away)]));
+      }
+      const prog = lbl.querySelector('.prog') as HTMLElement | null;
+      if (prog) {
+        const words = `· ${text}${more}`;
+        // Another line fades out and in (200 ms); the age ticking on just changes.
+        if (!prog.dataset.k || prog.dataset.k === key) Object.assign(prog, { textContent: words });
+        else {
+          prog.classList.add('out');
+          setTimeout(() => (prog.classList.remove('out'), (prog.textContent = words)), 200);
+        }
+        prog.dataset.k = key;
+      }
+      who.setAttribute('aria-label', who.textContent);
+    };
+    W.paintWho = paintWho;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
     // A dropped connection isn't "nobody listening": the badge keeps its last state, faded, and says reconnecting
     // (Leo, 18 Nov: the black rabbit came and went at random, from these).
     const showAway = (word) => {
-      lbl.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
+      pill = null; // the pill's own words are not painted over it until the next state
+      lbl.dataset.sig = '';
+      lbl.replaceChildren(span(word));
       who.setAttribute('aria-label', word);
       who.classList.add('stale');
       W.chatBtn.classList.add('stale');
@@ -429,14 +461,13 @@ export function startLive() {
         const here = !h || h.pages.includes(W.S.page) || (h.all && !h.except.includes(W.S.page));
         const mode = s && here ? v.mode || 'listening' : 'away';
         W.S.unheard = mode === 'away';
-        const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
         // "Codex is working (ooze)": the agent first, the session's name after it in brackets. With the model the
         // session said it runs on: "talking to Claude · Sonnet 5.5 (ooze)".
         const agent = s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
         const tag = s && s.name !== (s.agent || 'Claude') ? [span(`(${s.name})`)] : [];
-        if (mode === 'listening') lbl.replaceChildren(span('talking to'), agent, ...tag);
-        else if (mode === 'working') lbl.replaceChildren(agent, span('is working'), ...tag);
-        else lbl.replaceChildren(span(s && !here ? 'no agent on this page' : 'no agent listening'));
+        W.S.agent = s ? agent : '';
+        pill = { mode, agent, tag, away: s && !here ? 'no agent on this page' : 'no agent listening' };
+        paintWho();
         who.classList.remove('stale');
         W.chatBtn.classList.remove('stale');
         who.classList.toggle('idle', mode === 'away');

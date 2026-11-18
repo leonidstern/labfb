@@ -4,6 +4,12 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Never stuck: a pin tells you it is moving. `labit reply <id> --progress "…"` (CLI and MCP `reply` with `progress`) keeps one short line on the thread, the latest only, with its time: no message bubble, nothing marked done; an answer, a new message or resolving clears it. While an agent works, the connection pill reads "Claude · <line> · 40 s ago" in a box of one width, so nothing beside it moves; phones have no pill, so the line heads the open thread's sheet. Hovering a working pin's ring shows the same line.
+- Never stuck: the queue. The pill adds "· 2 waiting" for pins handed to the agent but not answered; a waiting pin's thread says "waiting · 1st in line" in its stamp row; the list shows the pins being worked on first, then those waiting in order.
+- Never stuck: the ring is the state. Sent: none. Picked up (handed over, nothing from the agent yet): a still pale green ring. Working (`--on-it` or a progress line): the turning green ring. Waiting in line: a still muted ring. No sign for 5 minutes: a still grey ring, and the pill says "no update for 6 min · last: …". The agent's question (`--question`): an amber ring. Done: none, the ✓ face as before. They crossfade over 300 ms. The thread's stamp shows the turning ring only while the agent works (picked up is the ✓✓ again).
+- Never stuck: the reminder an agent gets for a handed pin with no answer after 3 minutes now also covers one it said it is on (`--on-it`, or a progress line) and has shown no sign of since; each line says how long and its last progress line.
+- The skill and README tell agents to use `--progress` during long work.
+
 - The ⋯ menu no longer has a **trying** section of flag switches. Flags are set only in `labit.json` (`"flags": { "<flag>": true }`) or your own settings file, read when the lab starts; the lab's `POST /_lab/flags` is gone.
 - Quoting words: a drag that starts or ends inside a word takes the whole word, so a note is on "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
 - "Pin over controls": with it on, the pointer over the page's links, buttons and clickable cards is the pin, not their hand. The menu item shows how to do it once without the switch: (⌥ click).
