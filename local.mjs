@@ -36,13 +36,11 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labit pages [--all]
-      Write .lab/lab-pages.md here: this folder's labs and saved cloud pages as links, with open comment counts.
+      Write .lab/lab-pages.md here: this folder's labs as links, with open comment counts.
       --all lists every lab on this computer.
   labit settings
       Each setting, its value and where it came from: a flag or variable, labit.json in the project, your own
       ~/.config/labit/settings.json, or the default. See docs/settings.md.
-  labit add <url> [--name "title"]   ·   labit remove <url>
-      Save a cloud lab page (https://<lab domain>/<page>) for this folder, in .lab/links.json.
   labit mcp
       Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply, pin and wait, for this folder's lab.
       Claude Code: claude mcp add labit -- npx @leonidstern/labit@latest mcp
@@ -87,13 +85,15 @@ const die = (msg) => {
 };
 if (unknownFlags.length) die(`Unknown option ${unknownFlags[0]}. See: ${CMD} --help`);
 
-// The project this is run for (a session's folder): pages lists its labs and its saved cloud pages, not every lab.
+// The project this is run for (a session's folder): pages lists its labs, not every lab.
 const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
+// Cloud labs are parked (branch park/cloud-lab): `add` and `remove` saved their pages. Say so instead of serving a folder named add.
+if (['add', 'remove'].includes(pos[0])) die(`${CMD} ${pos[0]} saved cloud lab pages; cloud labs are parked for now. Labs are local: run ${CMD} in your project.`);
+const COMMANDS = ['preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -133,8 +133,8 @@ if (pos[0] === 'settings') {
   process.exit(SETTINGS.problems.length ? 1 : 0);
 }
 
-// The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
-if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
+// The commands that answer and exit (preview, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
+if (['preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }

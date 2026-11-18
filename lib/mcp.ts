@@ -69,9 +69,9 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       name: 'comments',
       title: 'Read pin comments',
       description:
-        "Open pin comments as plain text: this folder's local lab (all pages), or one cloud lab page when `url` is given. Each comment has its id, words, element, file, line, pixel or second.",
-      inputSchema: { type: 'object', properties: { url: { type: 'string', description: 'A cloud lab page, https://<lab domain>/<page>' }, dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' } }, additionalProperties: false },
-      annotations: { readOnlyHint: true, openWorldHint: true },
+        "Open pin comments as plain text: this folder's local lab (all pages). Each comment has its id, words, element, file, line, pixel or second.",
+      inputSchema: { type: 'object', properties: { dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' } }, additionalProperties: false },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     {
       name: 'reply',
@@ -138,19 +138,6 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     if (extra.length) return text(`Unknown argument ${extra[0]}. ${name} takes: ${Object.keys(props).join(', ') || 'nothing'}.`, true);
     if (limited()) return text('Too many calls in the last minute; wait a moment and try again.', true);
     if (name === 'comments') {
-      if (a.url !== undefined) {
-        let u: URL | undefined;
-        try {
-          u = new URL(String(a.url));
-        } catch {}
-        if (!u || !/^https?:$/.test(u.protocol)) return text(`Not a page address: ${a.url}`, true);
-        try {
-          const res = await fetch(`${u.origin}/_lab/agent${u.pathname}`, { signal: AbortSignal.timeout(10000) });
-          return text(await res.text(), !res.ok);
-        } catch (e) {
-          return text(`Could not read ${u.href}: ${(e as Error).message}`, true);
-        }
-      }
       const dir = project(a);
       const file = path.join(labAbove(dir) || dir, '.lab', 'comments.md');
       if (!fs.existsSync(file)) return text(`No lab in ${dir}. Start one there: ${CMD} (or pass \`dir\`, the project folder)`, true);

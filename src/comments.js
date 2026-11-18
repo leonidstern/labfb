@@ -342,7 +342,6 @@ import { holdWhileOpen } from './widget/hold.ts';
       const data = await res.json();
       S.comments = data.comments || [];
       S.isAdmin = Boolean(data.admin);
-      S.rev = data.rev;
       // A thread you were part-way through writing in opens again: the page may have reloaded under you
       // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.
       if (!S.loaded && !S.openId) {
@@ -390,20 +389,6 @@ import { holdWhileOpen } from './widget/hold.ts';
       return load();
     }
     shownAgain();
-  }
-  // On the web there is no live stream (local labs have one, see live.ts): an open page asks for its comments'
-  // revision every 10 s, a few bytes, and loads them again only when it moved, so someone else's reply or resolve
-  // shows within seconds. Not while the tab is hidden (it loads on coming back, below), and not from an API too old
-  // to say a revision.
-  if (!script?.dataset.live) {
-    setInterval(async () => {
-      if (document.hidden || !S.loaded || S.gone || S.rev === undefined) return;
-      try {
-        const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}&rev`, { headers: headers(), cache: 'no-store' });
-        const { rev } = res.ok ? await res.json() : {};
-        if (Number.isInteger(rev) && rev !== S.rev) load();
-      } catch {}
-    }, 10000);
   }
   function shownAgain() {
     if (!typed() && !S.grabbing) render();
