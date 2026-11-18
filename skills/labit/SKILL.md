@@ -16,7 +16,7 @@ If their words could mean "the existing one" or "a new one", use the existing on
 
 ## Local lab (local.mjs on this computer)
 
-Start it with `npx @leonidstern/labit@latest`, so the person gets the newest version. The other commands (`wait`, `reply`, `pages`…) can run as `npx @leonidstern/labit` (below `LAB`). From a clone of the repo, `node <clone>/local.mjs` works the same.
+Start it with `npx @leonidstern/labit@latest`, so the person gets the newest version. The other commands (`wait`, `reply`, `pages`…) take `@latest` too (below `LAB`): without it npx reuses whatever version its cache holds, so your side could run an older labit than the lab. From a clone of the repo, `node <clone>/local.mjs` works the same.
 
 **Reuse labs, one per project.** Every lab is a server: never start one for a topic or a try. First run `LAB list`. If a lab already serves the folder you're working in, use it: running `LAB` there again only prints its address. A page that belongs to no project (a try, a demo, options to pick from) is published, like an Artifact: `LAB publish <page.html> --name "<topic>"` (see Instead of an Artifact). Never make a new folder to start a lab in.
 

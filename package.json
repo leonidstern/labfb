@@ -18,6 +18,7 @@
   "scripts": {
     "build": "npx --yes -p esbuild@0.25.12 node scripts/build-widget.mjs --outfile=public/_lab/comments.js",
     "build:watch": "npm run build -- --watch",
+    "dev": "node scripts/dev.mjs",
     "build:cli": "npx --yes esbuild@0.25.12 local.mjs --bundle --splitting --format=esm --platform=node --target=node22 --outdir=dist --out-extension:.js=.mjs --log-level=warning",
     "prepack": "npm run build:cli",
     "typecheck": "node ci/metrics.mjs types",
