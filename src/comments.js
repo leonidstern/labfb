@@ -433,7 +433,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
   const setPinning = () => {
-    const placing = S.on && !S.cursorMode && !anyWriting();
+    const placing = S.on && !S.cursorMode && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
     document.documentElement.classList.toggle('lab-pinning', placing);
     // "Pin over controls" on: the page's own links, buttons and clickable cards show the pin too, not their hand: a click
     // there pins, so the pointer says so (Leo, 17 Nov: "still controls giving me hand").
