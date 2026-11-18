@@ -301,10 +301,12 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (out.status >= 300) die(`Could not resolve: ${out.text}`);
     }
     console.log(`${cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
-    // --wait: answer and listen again in one command (one round trip less per pin).
+    // --wait: answer and listen again in one command (one round trip less per pin). It listens where --page or
+    // --pages says, as wait does: `reply <id> --wait --page /x` used to listen on every page but /x's claim, so a
+    // session listening on one page stopped hearing it after its first answer (Leo, 18 Nov).
     if (opts.wait) {
       const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
-      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts) });
+      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true) });
       console.log(WAIT_SAID[out.status] ?? out.text);
       if (capped && out.status === 204)
         console.log(`\nThat wait was held to ${FOREGROUND_CAP} seconds: run the command in the background and add --bg for the full wait.`);
