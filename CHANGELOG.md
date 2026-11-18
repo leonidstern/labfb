@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Option-click on a pin resolves its thread without opening it (again opens it again), for whoever may resolve it.
+
 - `labit skill` prints the agent's instructions (the skill the plugin installs), and a lab's first lines point agents without the plugin to it. So an agent that is only told to run `npx @leonidstern/labit@latest` reads the skill and answers pins.
 - Closed pins show on the page by default, faded and small (50% opacity, 80% size; hover or open brings them back to full), so the open ones stand out; D (or **hide done** in the ⋯ menu) still hides them, and that choice is kept per browser. This undoes 0.6.2's solid done tick for resolved pins.
 - A pin whose spot is gone from the page is no longer a state of its own: it looks like a closed pin (same faded look) and says nothing about having moved. Nothing changes on disk or for the agent.
