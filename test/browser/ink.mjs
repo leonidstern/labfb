@@ -218,13 +218,13 @@ try {
     const sentInk = by('delta epsilon');
     check(eng, 'the band is the lower 44%, one per line', sentInk.lines.length >= 2 && sentInk.lines.every((l) => Math.abs(l.height / l.h - 0.44) < 0.03 && l.top / l.h > 0.5), sentInk.lines.map((l) => `${(l.top / l.h).toFixed(2)}/${(l.height / l.h).toFixed(2)}`).join(' '));
 
-    check(eng, 'sent yellow', sentInk.st === 'next' && (is(sentInk.lines[0].bg, '#f0b70a', 0.34) || is(sentInk.lines[0].bg, '#e8b21a', 0.3)), sentInk.lines[0].bg);
+    check(eng, 'sent: the pins\' green', sentInk.st === 'next' && (is(sentInk.lines[0].bg, '#24a046', 0.3) || is(sentInk.lines[0].bg, '#24a046', 0.45)), sentInk.lines[0].bg);
     const now = by('paragraph here');
-    check(eng, 'working blue, pulsing (no sweep)', now.st === 'now' && (is(now.lines[0].bg, '#3b78e7', 0.2) || is(now.lines[0].bg, '#6b9cff', 0.22)) && /lab-ink-pulse/.test(now.lines[0].anim || ''), JSON.stringify([now.lines[0].bg, now.lines[0].anim]));
+    check(eng, 'working: the working ring\'s green, pulsing (no sweep)', now.st === 'now' && (is(now.lines[0].bg, '#34c759', 0.3) || is(now.lines[0].bg, '#34c759', 0.4)) && /lab-ink-pulse/.test(now.lines[0].anim || ''), JSON.stringify([now.lines[0].bg, now.lines[0].anim]));
     const ask = by('second paragraph');
     check(eng, 'asks amber, breathing until read', ask.st === 'asks' && !ask.calm && (is(ask.lines[0].bg, '#e08a1a', 0.48) || is(ask.lines[0].bg, '#f0a040', 0.44)) && /breath/.test(ask.lines[0].anim), `${ask.lines[0].bg} ${ask.lines[0].anim}`);
     const keptInk = by('cell one');
-    check(eng, 'unread done is green, still', keptInk.st === 'kept' && (is(keptInk.lines[0].bg, '#1f9a5b', 0.28) || is(keptInk.lines[0].bg, '#45c486', 0.28)) && keptInk.lines[0].anim === 'none', `${keptInk.st} ${keptInk.lines[0].bg}`);
+    check(eng, 'unread done is green, still', keptInk.st === 'kept' && (is(keptInk.lines[0].bg, '#24a046', 0.28) || is(keptInk.lines[0].bg, '#34c759', 0.28)) && keptInk.lines[0].anim === 'none', `${keptInk.st} ${keptInk.lines[0].bg}`);
     const doneInk = by('cell two');
     const dl = doneInk.lines[0];
     check(eng, 'read done is a hairline at the foot, faint, there at once', doneInk.st === 'done' && Math.abs(dl.height - 2) < 0.5 && Math.abs(dl.top + dl.height - dl.h) < 1 && Math.abs(dl.opacity - 0.35) < 0.03, `${dl.top}/${dl.height}/${dl.h} opacity ${dl.opacity}`);
@@ -267,7 +267,7 @@ try {
     const selOn = await selDrawn(p, 'a', 'delta', 'pi', true);
     const selOff = await selDrawn(p, 'a', 'delta', 'pi', false);
     await p.evaluate((on) => document.documentElement.classList.toggle('lab-pinning', on), pinning);
-    check(eng, 'selecting while commenting draws the sent ink band on the words (light page)', selOn.st === 'next' && sameBand(selOn, sentNow) && is(selOn.lines[0].bg, '#f0b70a', 0.34), `${bandText(selOn)} vs ink ${bandText(sentNow)}`);
+    check(eng, 'selecting while commenting draws the sent ink band on the words (light page)', selOn.st === 'next' && sameBand(selOn, sentNow) && is(selOn.lines[0].bg, '#24a046', 0.3), `${bandText(selOn)} vs ink ${bandText(sentNow)}`);
     check(eng, 'the native selection paint is clear while commenting; the band goes with the selection', /rgba\(0, 0, 0, 0\)|transparent|\/ 0\)/.test(selOn.native) && selOn.after === 0, `${selOn.native}, ${selOn.after} left`);
     check(eng, 'off comment mode the page keeps its own selection, no band', is(selOff.native, '#0000ff', 1) && selOff.lines.length === 0, `${selOff.native}, ${selOff.lines.length} lines`);
     // A link inside inked words keeps its own click.
@@ -400,7 +400,7 @@ try {
       const [c3, q2] = await open(browser, L.base + '/', { colorScheme: 'dark' });
       const [onDark, onLight] = [await look(q), await look(q2)];
       const darkSel = await selDrawn(q, 'a', 'gamma', 'delta', true);
-      check(eng, 'selecting while commenting draws the sent ink band (dark page)', sameBand(darkSel, onDark.inks[0]) && is(darkSel.lines[0].bg, '#e8b21a', 0.3), `${bandText(darkSel)} vs ink ${onDark.inks[0] && bandText(onDark.inks[0])}`);
+      check(eng, 'selecting while commenting draws the sent ink band (dark page)', sameBand(darkSel, onDark.inks[0]) && is(darkSel.lines[0].bg, '#24a046', 0.45), `${bandText(darkSel)} vs ink ${onDark.inks[0] && bandText(onDark.inks[0])}`);
       check(eng, 'light or dark follows the page, not the computer', onDark.inks[0]?.dk === true && onLight.inks[0]?.dk === false, `dark page ${onDark.inks[0]?.dk}, light page ${onLight.inks[0]?.dk}`);
       await c2.close();
       await c3.close();
@@ -463,7 +463,7 @@ try {
       const green = (c) => is(c, '#34c759', 0.3);
       check(eng, 'Shift-drag: the band shows while dragging', during > 0, `${during} pieces`);
       check(eng, 'Shift-drag let go: no full-height green on the words (selection or quote)', !green(after.sel) && !green(after.quote), `selection ${after.sel}, quote ${after.quote}, quote set ${after.lit}`);
-      check(eng, 'Shift-drag let go: the words keep the low band in the ink look (the bar: sent yellow)', after.bands.length > 0 && after.bands.every((b) => Math.abs(b.height / b.h - 0.44) < 0.03) && after.bands.some((b) => b.st === 'next' && (is(b.bg, '#f0b70a', 0.34) || is(b.bg, '#e8b21a', 0.3))), JSON.stringify(after.bands));
+      check(eng, 'Shift-drag let go: the words keep the low band in the ink look (the bar: sent green)', after.bands.length > 0 && after.bands.every((b) => Math.abs(b.height / b.h - 0.44) < 0.03) && after.bands.some((b) => b.st === 'next' && (is(b.bg, '#24a046', 0.3) || is(b.bg, '#24a046', 0.45))), JSON.stringify(after.bands));
       check(eng, 'Shift-drag let go: one band on the words, not two stacked', after.bands.length === 1, `${after.bands.length} bands`);
       await c2.close();
     }
@@ -624,14 +624,14 @@ try {
       await sleep(250);
       const w = await look(q);
       const work = w.inks.find((i) => i.st === 'now');
-      check(eng, 'quietInk: working is a still tint, nothing moves', work.lines.every((l) => l.anim === 'none' && !/gradient/.test(l.img)) && (is(work.lines[0].bg, '#3b78e7', 0.2) || is(work.lines[0].bg, '#6b9cff', 0.22)), `${work.lines[0].anim} ${work.lines[0].img}`);
+      check(eng, 'quietInk: working is a still tint, nothing moves', work.lines.every((l) => l.anim === 'none' && !/gradient/.test(l.img)) && (is(work.lines[0].bg, '#34c759', 0.3) || is(work.lines[0].bg, '#34c759', 0.4)), `${work.lines[0].anim} ${work.lines[0].img}`);
       check(eng, 'quietInk: a note that arrives does not fill', w.inks.length === 5 && w.inks.every((i) => i.lines.every((l) => !l.fill)), `${w.inks.length} inks`);
       const asks = w.inks.find((i) => i.st === 'asks');
       check(eng, 'quietInk: asks still breathes', /breath/.test(asks.lines[0].anim), asks.lines[0].anim);
       const done = await q.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot; return getComputedStyle(r.querySelector('.ink[data-st=done] .ln'), '::before').transitionDuration; });
       check(eng, 'quietInk: the drain is at once', /^(0s,? ?)+$/.test(done), done);
       const sent = w.inks.find((i) => i.st === 'next');
-      check(eng, 'inkColors.sent recolours the band (one colour, strengths stay)', is(sent.lines[0].bg, '#ff0000', 0.34) || is(sent.lines[0].bg, '#ff0000', 0.3), sent.lines[0].bg);
+      check(eng, 'inkColors.sent recolours the band (one colour, strengths stay)', is(sent.lines[0].bg, '#ff0000', 0.3) || is(sent.lines[0].bg, '#ff0000', 0.45), sent.lines[0].bg);
       const other = w.inks.find((i) => i.st === 'asks');
       check(eng, 'inkColors: the other states keep theirs', is(other.lines[0].bg, '#e08a1a', 0.48) || is(other.lines[0].bg, '#f0a040', 0.44), other.lines[0].bg);
       void fresh;

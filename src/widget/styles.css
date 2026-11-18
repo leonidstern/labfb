@@ -229,16 +229,18 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
 .pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
 /* Ink on selected words instead of a pin (ink.ts): a band under the lower 44 % of each line, in the state's colour
-   (strengths and colours from the lab page "Ink, in depth"). Under the pins and cards, never in the pointer's way.
+   in the pins' colours (Leo, 19 Nov: sent is the pins' green, not yellow; strong enough to read on dark: 30 % on light
+   pages, 45 % on dark). Working is the working ring's green, pulsing; asks the amber; done drains to a green line.
+   Under the pins and cards, never in the pointer's way.
    Light or dark by the words' own colour (.dk: light words), not the computer's setting: a dark page on a light
    computer still gets the dark strengths. */
 .inks { pointer-events: none; }
-.ink { --_iy: var(--u-sent, #f0b70a); --_ib: var(--u-working, #3b78e7); --_ia: var(--u-asks, #e08a1a); --_ig: var(--u-done, #1f9a5b); --_i1: 34%; --_i2: 20%; --_ish: rgba(255,255,255,.55);
+.ink { --_iy: var(--u-sent, rgb(36, 160, 70)); --_ib: var(--u-working, rgb(52, 199, 89)); --_ia: var(--u-asks, #e08a1a); --_ig: var(--u-done, rgb(36, 160, 70)); --_i1: 30%; --_i2: 30%; --_i3: 48%; --_ish: rgba(255,255,255,.55);
        --k: var(--u-draft, #8e8a82); --al: 16%; }
-.ink.dk { --_iy: var(--u-sent, #e8b21a); --_ib: var(--u-working, #6b9cff); --_ia: var(--u-asks, #f0a040); --_ig: var(--u-done, #45c486); --_i1: 30%; --_i2: 22%; --_ish: rgba(255,255,255,.22); }
+.ink.dk { --_ia: var(--u-asks, #f0a040); --_ig: var(--u-done, rgb(52, 199, 89)); --_i1: 45%; --_i2: 40%; --_i3: 44%; --_ish: rgba(255,255,255,.22); }
 .ink[data-st=next] { --k: var(--_iy); --al: var(--_i1); }
 .ink[data-st=now] { --k: var(--_ib); --al: var(--_i2); }
-.ink[data-st=asks] { --k: var(--_ia); --al: calc(var(--_i1) + 14%); }
+.ink[data-st=asks] { --k: var(--_ia); --al: var(--_i3); }
 .ink[data-st=kept] { --k: var(--_ig); --al: 28%; }
 .ink[data-st=done] { --k: var(--_ig); --al: 40%; }
 .ink .ln { position: absolute; transform-origin: 0 50%; }

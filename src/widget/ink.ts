@@ -1,8 +1,8 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 //
 // Ink on words: a comment on selected words shows no pin. The words carry its state as low ink, a band under the lower
-// part of their line, one piece per line: grey while you write it, yellow once sent, blue and pulsing while the agent
-// works, amber and breathing when the agent answered and it's your turn (a ? when it asked you), and a green hairline
+// part of their line, one piece per line: grey while you write it, the pins' green once sent, green and pulsing while
+// the agent works, amber and breathing when the agent answered and it's your turn (a ? when it asked you), and a green hairline
 // once done (Leo, 18 Nov). Behind the flag
 // inkOnText (lib/flags.ts): with it off, selected words get a pin as before.
 // The page's own text is never wrapped or touched: the bands are drawn in the widget's layer over the words' line
@@ -154,7 +154,7 @@ function lay(d: Drawn, lines: Lines, fill: boolean, wait = 0) {
 }
 
 // The inks this render draws: [{ c, lines, pin }] for comments, [{ anchor, lines }] for the one being written. Kept
-// from one render to the next, so a state change eases (yellow to blue, the drain to a hairline) instead of a cut.
+// from one render to the next, so a state change eases (sent to working, the drain to a hairline) instead of a cut.
 // The comment's pin, made but not shown, still does what it did: a click on the words or their end is a click on it
 // (its thread opens, on phones through goTo), and its label is theirs.
 export function drawInks(items: { c?: any; anchor?: any; lines: Lines; pin?: HTMLElement }[]) {
@@ -283,7 +283,7 @@ export function startInk(data?: string) {
     const lines = W.flag('inkOnText') && html.classList.contains('lab-pinning') && range && !field && range.toString().trim() ? rangeLines(wholeWords(range.cloneRange())) : null; // whole words, as the quote will be
     if (html.classList.contains('lab-ink-sel') !== Boolean(lines)) html.classList.toggle('lab-ink-sel', Boolean(lines));
     show(selInk!, lines);
-    // The quoted words: a band in the draft's grey while writing, else the sent yellow. Words that carry an ink of
+    // The quoted words: a band in the draft's grey while writing, else the sent green. Words that carry an ink of
     // their own (the draft on selected words, an open note on words) already show it: nothing drawn over it.
     const flag = W.flag('inkOnText');
     if (html.classList.contains('lab-ink-on') !== flag) html.classList.toggle('lab-ink-on', flag);
