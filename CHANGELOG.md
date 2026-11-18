@@ -5,6 +5,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 ## Unreleased
 
 - Removed the parked list window and draft mode (both were off): their code, styles and the held-draft pins. The bar's New pill, J/K and show/hide done work as before.
+- A click outside an open comment closes it even with text typed in it; the words stay as a draft (Escape still discards them). Before, the box held on to the click and couldn't be closed that way.
 - The npm package no longer carries CHANGELOG.md (−28 KB packed); the changelog lives on GitHub and in each release's notes.
 
 - The go action is just another comment: it sends a comment that says "go" on the words or the spot, and the pin looks like any other (your initial, the ring while the agent works, the tick when done). The separate go pin design (a green "go" face) is gone.

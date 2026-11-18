@@ -129,6 +129,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
     text.style.height = 'auto';
     text.style.height = `${text.scrollHeight}px`;
+    text.style.overflowY = text.scrollHeight > 200 ? 'auto' : 'hidden'; // a scrollbar only once the box is at its tallest (max-height 200)
     if (glide) {
       const to = sendBtn.getBoundingClientRect();
       const timing = { duration: d.ms('base'), easing: d.ease() };
