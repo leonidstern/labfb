@@ -980,7 +980,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
-    S.checkChanges?.(); // hidden comments show no marks
+    S.checkChanges?.(); // hidden comments: no "New" pill
     if (S.on) showHint();
     S.draft = null;
     S.openId = null;

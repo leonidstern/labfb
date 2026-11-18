@@ -82,8 +82,8 @@ For the agent, from the project (any folder under it):
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
-page), archive/ (done threads with nothing new in 30 days), looked/ (each person's last look at a page), server.json
-(port, keys, session; owner-only), seen.
+page), archive/ (done threads with nothing new in 30 days), looked/ (last looks), server.json (port, keys, session;
+owner-only), seen.
 Delete .lab to start over.`;
 
 // ---------- arguments ----------
@@ -610,44 +610,29 @@ const agentText = async (page) => {
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   const file = fileFor(page);
-  const seen = lookLine(page, file);
-  const unseen = unseenLine(page, file);
-  return file || seen ? local.replace(/^(page: .*)$/m, `$1${file ? `\nfile: ${file}` : ''}${seen ? `\nlooked: ${seen}` : ''}${unseen ? `\n${unseen}` : ''}`) : local;
+  const lines = [file && `file: ${file}`, ...lookLines(page, file)].filter(Boolean);
+  return lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
 };
-// Who last looked at the page, and whether that was before or after the file's last save (what they saw may be older
-// than the agent's latest edit): `Leo 14:02 (before the last save)`.
-const lookLine = (page, file) => {
-  const saved = file ? (() => { try { return fs.statSync(path.join(ROOT, file)).mtimeMs; } catch { return 0; } })() : 0;
-  return Object.values(looked.get(page)?.who || {})
-    .sort((a, b) => b.at - a.at)
-    .slice(0, 3)
-    .map((w) => `${w.name} ${new Date(w.at).toTimeString().slice(0, 5)}${saved ? ` (${w.at < saved ? 'before' : 'after'} the last save)` : ''}`)
-    .join(', ');
-};
-
-// The ids in the page's file that a person who looked has not seen, so the agent can point at them: `unseen by Leo:
-// #v3, #pricing` (at most 5 each, a few people). Only for pages that are HTML files; none when everything was seen.
-const unseenLine = (page, file) => {
-  if (!/\.html?$/i.test(file || '')) return '';
-  let now;
+// Who last looked (the last three, newest first), and whether before or after the file's last save (what they saw
+// may be older than the agent's latest edit): `looked: Leo 14:02 (before the last save)`. Then, for an HTML file, the
+// ids in it each has not seen, so the agent can point at them: `unseen by Leo: #v3, #pricing` (at most 5 each).
+const lookLines = (page, file) => {
+  const rec = looked.get(page);
+  if (!rec) return [];
+  const who = Object.values(rec.who).sort((a, b) => b.at - a.at).slice(0, 3);
+  let st, now;
   try {
-    const full = path.join(ROOT, file);
-    if (fs.statSync(full).size > 2e6) return '';
-    now = pageIds(fs.readFileSync(full, 'utf8'));
-  } catch {
-    return '';
-  }
-  return Object.values(looked.get(page)?.who || {})
-    .sort((a, b) => b.at - a.at)
-    .slice(0, 3)
-    .map((w) => {
-      const ids = looked.get(page).snaps[w.snap]?.ids;
-      const had = new Set(ids?.map((n) => n[0]));
-      const fresh = ids ? now.filter((id) => !had.has(id)) : [];
-      return fresh.length ? `unseen by ${w.name}: ${fresh.slice(0, 5).map((id) => `#${id}`).join(', ')}${fresh.length > 5 ? ` (+${fresh.length - 5} more)` : ''}` : '';
-    })
-    .filter(Boolean)
-    .join('\n');
+    st = file && fs.statSync(path.join(ROOT, file));
+    if (st && /\.html?$/i.test(file) && st.size <= 2e6) now = pageIds(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+  } catch {}
+  const at = (w) => `${w.name} ${new Date(w.at).toTimeString().slice(0, 5)}${st ? ` (${w.at < st.mtimeMs ? 'before' : 'after'} the last save)` : ''}`;
+  const unseen = (w) => {
+    const ids = rec.snaps[w.snap]?.ids;
+    const had = new Set(ids?.map((n) => n[0]));
+    const fresh = ids && now ? now.filter((id) => !had.has(id)) : [];
+    return fresh.length && `unseen by ${w.name}: ${fresh.slice(0, 5).map((id) => `#${id}`).join(', ')}${fresh.length > 5 ? ` (+${fresh.length - 5} more)` : ''}`;
+  };
+  return [who.length && `looked: ${who.map(at).join(', ')}`, ...who.map(unseen)];
 };
 
 // lab: this run of the lab (a restart is a new one); widget: what the comment widget's script is, so open pages reload
@@ -1566,7 +1551,7 @@ const labPage = (title, body) =>
   `<body class=lab><main><a class="lab-brand" href="/">${markSvg(20)}labit</a>${body}</main></body>`;
 const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const notFound = (req, res, what) => {
-  if (!/text\/html/.test(req.headers.accept || '')) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+  if (!/text\/html/.test(req.headers.accept || '')) return plain(res, 404, 'not found');
   res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
   return res.end(labPage('labit · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));
 };
@@ -1630,6 +1615,8 @@ const listing = (res, dir, urlPath) => {
   );
 };
 
+// A short plain-text answer: an error's reason.
+const plain = (res, code, why, more) => res.writeHead(code, { 'content-type': 'text/plain', ...more }).end(why);
 // What a request sent (JSON), and a JSON answer (never kept by the browser).
 const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}');
 // The body of a request, or null when it is longer than `max` bytes (the rest is read and dropped, so the sender gets its answer).
@@ -1713,9 +1700,9 @@ const stopListening = () => {
 const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
-    if (!nearby(req) || !allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
+    if (!nearby(req) || !allowedHost(req.headers.host)) return plain(res, 403, 'unknown host');
     if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !(req.headers['content-type'] || '').startsWith('application/json')))
-      return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
+      return plain(res, 403, 'forbidden');
     const pathname = decodeURIComponent(url.pathname);
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
     if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '', url.searchParams.get('to') || '');
@@ -1725,7 +1712,7 @@ const handler = async (req, res) => {
     if (guest) res.setHeader('set-cookie', guestCookie(guest));
     if (PROXY && !pathname.startsWith('/_lab/')) return proxy.page(req, res, url);
     // .lab (comments, admin key), .git, .env and other dot files are never served.
-    if (pathname.split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+    if (pathname.split('/').some((s) => s.startsWith('.'))) return plain(res, 404, 'not found');
 
     // A background tab's light check: the same state the live stream sends, and the tab still counts as open.
     if (pathname === '/_lab/state' && req.method === 'GET') {
@@ -1947,7 +1934,7 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/hop' && req.method === 'GET') {
       const n = Number(url.searchParams.get('port'));
       const lab = runningLabs().find((l) => l.port === n && n !== PORT);
-      if (!lab) return res.writeHead(404, { 'content-type': 'text/plain' }).end('no such lab running');
+      if (!lab) return plain(res, 404, 'no such lab running');
       try {
         const srv = JSON.parse(fs.readFileSync(path.join(lab.root, '.lab/server.json'), 'utf8'));
         const r = await fetch(`http://localhost:${n}/_lab/invite`, {
@@ -1962,7 +1949,7 @@ const handler = async (req, res) => {
         const go = links.find((l) => new URL(l).hostname === host) || links[0];
         return res.writeHead(302, { location: go, 'cache-control': 'no-store' }).end();
       } catch {
-        return res.writeHead(502, { 'content-type': 'text/plain' }).end('that lab did not answer');
+        return plain(res, 502, 'that lab did not answer');
       }
     }
     // stop (listening), park, start: this computer only, with the lab's key (a web page elsewhere can't post here).
@@ -2025,7 +2012,7 @@ const handler = async (req, res) => {
     }
     // What the Lab panel lists: this lab's pages with their open comments. This computer only.
     if (pathname === '/_lab/pages') {
-      if (!isLoopback(req)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
+      if (!isLoopback(req)) return plain(res, 403, 'forbidden');
       return answer(res, labInfo());
     }
     if (pathname.startsWith('/_lab/agent/')) {
@@ -2043,15 +2030,15 @@ const handler = async (req, res) => {
         const b = await sent(req);
         const name = plainName(b.name);
         const page = String(b.page || '').slice(0, 500);
-        if (!name || !page || !db.has(`lab:comments:${page}`)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and a page with comments needed');
+        if (!name || !page || !db.has(`lab:comments:${page}`)) return plain(res, 400, 'name and a page with comments needed');
         // Any device may mark under any name: your phone and this Mac share "new" by name. (--wifi only lets in the local
         // network, so the worst a stranger there can do is clear someone's new marks.)
-        if (!(name in reads) && Object.keys(reads).length >= 200) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many names');
+        if (!(name in reads) && Object.keys(reads).length >= 200) return plain(res, 429, 'too many names');
         const onPage = db.get(`lab:comments:${page}`);
         // Only ids of comments that are on that page count, so the marks can't grow past the comments themselves.
         const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String))].filter((id) => onPage.has(id)).slice(0, 2000);
         const mine = (reads[name] ||= Object.create(null));
-        if (!(page in mine) && Object.keys(mine).length >= 500) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many pages');
+        if (!(page in mine) && Object.keys(mine).length >= 500) return plain(res, 429, 'too many pages');
         const had = new Set((mine[page] ||= []));
         const added = ids.filter((id) => !had.has(id));
         if (added.length) {
@@ -2073,23 +2060,23 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/api/looked') {
       if (req.method === 'POST') {
         const body = await sentWithin(req, LOOKS.body);
-        if (body === null) return res.writeHead(413, { 'content-type': 'text/plain', connection: 'close' }).end('too big');
+        if (body === null) return plain(res, 413, 'too big', { connection: 'close' });
         let b;
         try {
           b = JSON.parse(body || '{}');
         } catch {
-          return res.writeHead(400, { 'content-type': 'text/plain' }).end('not JSON');
+          return plain(res, 400, 'not JSON');
         }
         const name = plainName(b?.name);
         const page = String(b?.page || '').slice(0, 500);
-        if (!name || !page.startsWith('/') || !Array.isArray(b.ids)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name, page and ids needed');
-        if (b.ids.length > LOOKS.ids) return res.writeHead(413, { 'content-type': 'text/plain' }).end('too many ids');
+        if (!name || !page.startsWith('/') || !Array.isArray(b.ids)) return plain(res, 400, 'name, page and ids needed');
+        if (b.ids.length > LOOKS.ids) return plain(res, 413, 'too many ids');
         // A page saved a moment ago may not be in the file list yet (the watcher is a beat behind): look again, at most every 2 s.
         if (!db.has(`lab:comments:${page}`) && !fileFor(page) && !(Date.now() - lookedIndexed > 2000 && ((lookedIndexed = Date.now()), (fileIndex = null), fileMemo.clear(), fileFor(page))))
-          return res.writeHead(400, { 'content-type': 'text/plain' }).end('a page of this lab needed');
-        if (!looked.has(page) && looked.size >= LOOKS.pages) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many pages');
+          return plain(res, 400, 'a page of this lab needed');
+        if (!looked.has(page) && looked.size >= LOOKS.pages) return plain(res, 429, 'too many pages');
         const rec = looked.get(page) || { snaps: bare(), who: bare() };
-        if (!(name in rec.who) && Object.keys(rec.who).length >= LOOKS.names) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many names');
+        if (!(name in rec.who) && Object.keys(rec.who).length >= LOOKS.names) return plain(res, 429, 'too many names');
         const ids = b.ids.map((n) => (Array.isArray(n) ? [String(n[0]).slice(0, 200), String(n[1] ?? '').slice(0, 80)] : [String(n).slice(0, 200), '']));
         const id = createHash('sha1').update(JSON.stringify(ids.map((n) => n[0]))).digest('hex').slice(0, 12);
         const at = Date.now();
