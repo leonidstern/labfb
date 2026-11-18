@@ -187,7 +187,7 @@ test('a retried post with the same nonce gives back the first comment, not a sec
   assert.equal(all.filter((c) => c.text === 'sent twice by a retry').length, 1);
 });
 
-test('a reply in a thread the agent has gets only the new words; reply --wait answers and listens in one go', async () => {
+test('a reply in a thread the agent has comes with its thread, the new one marked; reply --wait answers and listens in one go', async () => {
   await up();
   const { comment } = await post({ page: '/index', name: 'Leo', text: 'make the heading bigger', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', looks: 'text 32px', viewport: '1000×800' } });
   const first = await run(['wait', '--timeout', '5']);
@@ -199,11 +199,19 @@ test('a reply in a thread the agent has gets only the new words; reply --wait an
   const out = (await waiting).out;
   assert.match(out, /^Replied on \/index\./m);
   assert.match(out, /^# New replies/m);
-  assert.match(out, new RegExp(`thread id ${comment.id} "make the heading bigger": Leo · .* · id \\w+: and make it blue`));
-  assert.doesNotMatch(out, /^## /m, 'not the whole thread again');
+  const thread = out.slice(out.indexOf(`## /index · thread id ${comment.id}`));
+  assert.ok(thread.length < out.length, 'the thread is there');
+  const msgs = thread.split('\n').filter((l) => /^- /.test(l));
+  assert.equal(msgs.length, 3, 'all three messages');
+  assert.match(msgs[0], new RegExp(`^- Leo · .* · opened · id ${comment.id}: make the heading bigger$`));
+  assert.match(msgs[1], /^- .* · on it · id \w+: On it$/, 'the agent\'s answer, with its state');
+  assert.match(msgs[2], /^- Leo · .* · id \w+: and make it blue {2}← new$/, 'the new one, marked');
+  assert.match(thread, /^ {2}element: <h1 id="t">$/m, 'with the spot');
+  assert.doesNotMatch(out, /^looks:|^ {2}looks:/m, 'rare details stay in the full text');
+  assert.doesNotMatch(out, /^# New comments/m, 'not handed over as a new comment');
 });
 
-test('a reply goes as one line only to the session that has its thread; another session gets the thread whole', async () => {
+test('a reply goes in the short thread form only to the session that has its thread; another session gets the thread whole', async () => {
   await up();
   const as = (id) => ({ env: { ...process.env, CLAUDE_CODE_SESSION_ID: id, CODEX_THREAD_ID: '', AMP_CURRENT_THREAD_ID: '' } });
   const { comment } = await post({ page: '/index', name: 'Leo', text: 'tighten the spacing under the title', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
@@ -221,8 +229,9 @@ test('a reply goes as one line only to the session that has its thread; another 
   await new Promise((r) => setTimeout(r, 600));
   await post({ page: '/index', name: 'Leo', text: 'and less on mobile', parent: comment.id });
   const b2 = (await again).out;
-  assert.match(b2, new RegExp(`thread id ${comment.id} ".*": Leo · .* · id \\w+: and less on mobile`), 'now it has the thread: one line');
-  assert.doesNotMatch(b2, /^## /m);
+  assert.match(b2, new RegExp(`^## /index · thread id ${comment.id}$`, 'm'), 'now it has the thread: the short form');
+  assert.match(b2, /^- Leo · .* · id \w+: a bit more$/m, 'earlier words, unmarked');
+  assert.match(b2, /^- Leo · .* · id \w+: and less on mobile {2}← new$/m);
   assert.doesNotMatch(b2, /^# New comments/m, 'no heading for comments when there are only replies');
   assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --on-it \| --question\] \[--wait\]$/m, 'then one short line');
   assert.doesNotMatch(b2, /Write answers short|run in /);
@@ -348,6 +357,103 @@ test('labit publish puts a page in the one pages lab, starts it once, and publis
     if (pid) process.kill(pid);
     await new Promise((r) => setTimeout(r, 300));
     fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// ---------- new since you looked: the last look (the ids on a page), kept in the lab by name ----------
+const look = (body) => fetch(B + '/_lab/api/looked', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) });
+const lookOf = (q) => fetch(`${B}/_lab/api/looked?${q}`).then((r) => r.json());
+
+test('a last look is kept by name and page', async () => {
+  await up();
+  const first = await look({ name: 'Leo ', page: '/index', ids: [['intro', 'Hello'], ['v1', 'World']] });
+  assert.equal(first.status, 200);
+  const { at } = await first.json();
+  assert.ok(at > Date.now() - 5000, "the lab's clock stamps it");
+  const mine = await lookOf('name=leo&page=/index');
+  assert.deepEqual(mine.ids, [['intro', 'Hello'], ['v1', 'World']], 'same name in any case or spacing, each id with its label');
+  assert.equal(mine.at, at);
+  assert.match(mine.snap, /^[0-9a-f]{12}$/);
+  assert.deepEqual(await lookOf('name=Mira&page=/index'), {}, 'another name has its own');
+  assert.deepEqual(await lookOf('name=Leo&page=/other'), {}, 'per page');
+  await look({ name: 'Leo', page: '/index', ids: [['intro', 'Hello'], ['v1', 'World'], ['v2', 'More']] });
+  const later = await lookOf('name=Leo&page=/index');
+  assert.deepEqual(later.ids, [['intro', 'Hello'], ['v1', 'World'], ['v2', 'More']]);
+  assert.equal(later.rounds.length, 2, 'both rounds are kept');
+  assert.deepEqual(await lookOf(`name=Leo&page=/index&snap=${mine.snap}`), { snap: mine.snap, at, ids: [['intro', 'Hello'], ['v1', 'World']] }, 'an earlier round by its id');
+  await look({ name: 'Mira', page: '/index', ids: [['intro', 'Hello'], ['v1', 'World']] });
+  assert.equal((await lookOf('name=Mira&page=/index')).snap, mine.snap, 'the same ids are one round');
+  assert.equal((await lookOf('name=Leo&page=/index')).snap, later.snap, "Mira's look leaves Leo's alone");
+  await new Promise((r) => setTimeout(r, 500)); // saved whole, a moment after the last change
+  const file = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/looked/index.json'), 'utf8'));
+  assert.deepEqual([file.v, file.page, Object.keys(file.who).sort()], [1, '/index', ['leo', 'mira']]);
+  assert.equal((await look({ page: '/index', ids: [] })).status, 400, 'no name, no look');
+  assert.equal((await look({ name: 'Leo', page: '/index', ids: 'x' })).status, 400);
+  assert.equal((await look({ name: 'Leo', page: '/index', blocks: ['an old widget'] })).status, 400, 'blocks of text are from before ids');
+  assert.equal((await look({ name: 'Leo', page: '/nope-not-a-page', ids: [] })).status, 400, 'a page of this lab only');
+  assert.equal((await look({ name: 'Leo', page: '/index', ids: new Array(4001).fill('x') })).status, 413, 'more than 4,000 ids');
+});
+
+test('a look bumps looked in the live state, so other tabs and devices check again', async () => {
+  await up();
+  const rev = async () => {
+    const ctl = new AbortController();
+    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+    const { value } = await res.body.getReader().read();
+    ctl.abort();
+    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).looked;
+  };
+  const before = await rev();
+  assert.equal(typeof before, 'number');
+  await look({ name: 'Leo', page: '/index', ids: [['rev', 'check']] });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(await rev(), before + 1);
+});
+
+test('a renamed page takes its looks along', async () => {
+  await up();
+  fs.writeFileSync(path.join(DIR, 'old.html'), '<!doctype html><h1>Old</h1>');
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal((await look({ name: 'Leo', page: '/old', ids: [['old', 'Old']] })).status, 200);
+  await new Promise((r) => setTimeout(r, 500)); // saved a moment later, with the page's file and what the disk knows it by
+  fs.renameSync(path.join(DIR, 'old.html'), path.join(DIR, 'fresh.html'));
+  let moved = {};
+  for (let i = 0; i < 30 && !moved.ids; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+    moved = await lookOf('name=Leo&page=/fresh');
+  }
+  assert.deepEqual(moved.ids, [['old', 'Old']]);
+  assert.deepEqual(await lookOf('name=Leo&page=/old'), {});
+  await new Promise((r) => setTimeout(r, 600));
+  assert.ok(!fs.existsSync(path.join(DIR, '.lab/looked/old.json')), 'the old file is gone');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/looked/fresh.json'), 'utf8')).page, '/fresh');
+});
+
+test('agent text says who looked, whether before or after the last save, and what ids they have not seen', async () => {
+  await up();
+  await look({ name: 'Leo', page: '/index', ids: [['t', 'Hello']] });
+  const hhmm = new Date().toTimeString().slice(0, 5);
+  const text = async () => (await (await fetch(B + '/_lab/agent/index')).text()).split('\n').filter((l) => /^(file|looked): |^unseen by Leo: /.test(l)); // Mira's look, made in an earlier test, has her own line
+  let lines = await text();
+  assert.equal(lines[0], 'file: index.html');
+  assert.match(lines[1], /^looked: Leo \d\d:\d\d \(after the last save\)/);
+  assert.ok(lines[1].includes(hhmm) || lines[1].includes(new Date(Date.now() - 60000).toTimeString().slice(0, 5)), lines[1]);
+  assert.equal(lines.length, 2, 'every id on the page was seen: no unseen line');
+  const later = new Date(Date.now() + 60000);
+  fs.utimesSync(path.join(DIR, 'index.html'), later, later); // the agent saved the file after that look
+  lines = await text();
+  assert.match(lines[1], /^looked: Leo \d\d:\d\d \(before the last save\)/);
+  // The agent adds sections: ids in the file that the look doesn't have, but not made-up ones, and not ones in scripts or comments.
+  const was = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  try {
+    fs.writeFileSync(path.join(DIR, 'index.html'), `${was}<section id="v3"><h2>Three</h2></section><div id="pricing"></div><div id=":r3:"></div><div id="0123456789abcdef0123"></div><!-- <p id="gone"> --><script>x='<p id="nope">'</script><p id="t">again</p>`);
+    assert.equal((await text())[2], 'unseen by Leo: #v3, #pricing');
+    fs.writeFileSync(path.join(DIR, 'index.html'), `${was}${[1, 2, 3, 4, 5, 6, 7].map((n) => `<p id="n${n}x"></p>`).join('')}`);
+    assert.equal((await text())[2], 'unseen by Leo: #n1x, #n2x, #n3x, #n4x, #n5x (+2 more)', 'at most 5');
+    await look({ name: 'Leo', page: '/index', ids: [['t', 'Hello'], ...[1, 2, 3, 4, 5, 6, 7].map((n) => [`n${n}x`, ''])] });
+    assert.equal((await text()).length, 2, 'seen ones are no longer said');
+  } finally {
+    fs.writeFileSync(path.join(DIR, 'index.html'), was);
   }
 });
 

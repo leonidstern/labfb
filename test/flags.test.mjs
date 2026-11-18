@@ -26,7 +26,7 @@ test('every flag is off until somebody says otherwise', () => {
   assert.equal(s.from.flags, 'default');
 });
 
-test("a flag in the project's file turns it on, and the others stay off", () => {
+test("a flag in the project's file turns it on, and the others stay off", { skip: !Object.keys(FLAGS).length && 'nothing is being tried' }, () => {
   const dir = tmp();
   const one = Object.keys(FLAGS)[0];
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { [one]: true } }));
@@ -46,11 +46,23 @@ test('a name nobody is trying is said out loud, not obeyed', () => {
   assert.deepEqual(flagsOn(s.values.flags), []);
 });
 
-test('a flag that is not true or false is ignored, with a word about it', () => {
+test('a flag that is not true or false is ignored, with a word about it', { skip: !Object.keys(FLAGS).length && 'nothing is being tried' }, () => {
   const dir = tmp();
   const one = Object.keys(FLAGS)[0];
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { [one]: 'yes' } }));
   const s = read(dir);
   assert.match(s.problems[0], /must be true or false/);
   assert.equal(s.values.flags[one], false);
+});
+
+test('sinceLooked is off until switched on, and the widget starts nothing without it', () => {
+  assert.equal(flagDefaults().sinceLooked, false);
+  assert.ok(FLAGS.sinceLooked.name && FLAGS.sinceLooked.since);
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sinceLooked: true } }));
+  assert.deepEqual(flagsOn(read(dir).values.flags), ['sinceLooked']);
+  // The widget's only way in: the pill, the kept looks and every request come from startChanges().
+  const widget = fs.readFileSync(new URL('../src/comments.js', import.meta.url), 'utf8');
+  assert.match(widget, /flag\('sinceLooked'\)\) startChanges\(\)/);
+  assert.equal(widget.match(/startChanges\(/g).length, 1, 'started in one place only');
 });

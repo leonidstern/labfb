@@ -7,11 +7,12 @@ concurrency:
   group: test-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  # Node 22 (the oldest labit supports) on every PR; 24 and 26 only on main, where they rarely differ.
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [22, 24, 26]
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '[22]' || '[22, 24, 26]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,20 +21,12 @@ jobs:
       - run: node --check local.mjs && node --check src/comments.js && node --check public/_lab/comments.js && node --check lib/comments-api.mjs
       - run: npm test
 
-  # Dead code: files nothing imports, and exports nothing outside their own file uses. Knip runs from npx,
-  # pinned, so labit keeps zero dependencies; knip.json lists the entry points.
-  dead-code:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm run deadcode
-
-  # Reuse: one drawer, one dimmed page, shared gestures, keyboard fit, animations and styles (ci/reuse.mjs). Something
-  # new is listed in ci/parts.json on purpose, in the same pull request.
-  reuse:
+  # Two quick checks in one job:
+  # - Dead code: files nothing imports, and exports nothing outside their own file uses. Knip runs from npx,
+  #   pinned, so labit keeps zero dependencies; knip.json lists the entry points.
+  # - Reuse: one drawer, one dimmed page, shared gestures, keyboard fit, animations and styles (ci/reuse.mjs).
+  #   Something new is listed in ci/parts.json on purpose, in the same pull request.
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +34,7 @@ jobs:
         with:
           node-version: 22
       - run: npm run reuse
+      - run: npm run deadcode
 
   # The widget in real browsers: Safari's engine (WebKit) and Chrome's. Playwright is installed
   # only here (--no-save), so labit itself keeps zero dependencies. Split by engine and by file
@@ -56,8 +50,9 @@ jobs:
           # Selected words: the chip, the dialog it grows into, slash actions, Escape, reload, saved files, right to left, reduced motion.
           - fluid
           # behaviours; the live connection; shortcuts from labit.json; pins finding their spot again;
-          # what a drag does (words, an area, a point, fields and links).
-          - behaviours connection shortcuts anchoring selection flags progress
+          # what a drag does (words, an area, a point, fields and links); new since you looked (the pill and list of the
+          # ids the agent added, what drops one off, two names, a phone's sheet, and what must never count).
+          - behaviours connection shortcuts anchoring selection flags progress changes
     name: browser (${{ matrix.engine }}, ${{ matrix.group == 'fluid' && 'fluid' || 'rest' }})
     # Playwright's own image has both browsers and their system libraries already in it. Installing them with
     # apt on each run took 30 s on a good day and 33 min on a bad one (#124, #127).
