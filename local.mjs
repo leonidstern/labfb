@@ -75,6 +75,8 @@ For the agent, from the project (any folder under it):
   labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --done says the ask is done (the
       thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
+  labit reply <id> --progress "what you're on now"
+      During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
@@ -1229,8 +1231,17 @@ async function unseen(scope = pages(), who = '') {
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
   const now = Date.now();
   const lastBy = (c, mine) => [c, ...commentsOf(c._page).filter((r) => r.parent === c.id)].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
+  // The same after an "on it" or a progress line (labit reply --on-it / --progress) with no sign since: the page greys such
+  // a pin after 5 minutes, and the agent hears of it after these 3. sign: [when it last showed a sign, its last progress line].
+  const signOf = (c) => {
+    const [person, agent] = [lastBy(c, false), lastBy(c, true)];
+    const [at, line] = [c.progress?.at || '', c.progress?.text];
+    if (person >= agent) return [[c.handedAt, at].sort().pop(), line];
+    return c.progress || commentsOf(c._page).some((r) => r.parent === c.id && r.session && r.intent === 'working' && r.createdAt === agent) ? [[agent, at].sort().pop(), line] : null;
+  };
   const missed = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
-    .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(now - Date.parse(handoff[c.id]?.[2]) < 600000))
+    .map((m) => ({ ...m, sign: signOf(m.c) }))
+    .filter(({ c, sign }) => sign && now - Date.parse(sign[0]) > REMIND_MS && !(now - Date.parse(handoff[c.id]?.[2]) < 600000))
     .filter(({ page, c }) => !fresh.some((f) => f.page === page && (f.c.id === c.id || f.c.parent === c.id)));
   if (!fresh.length && !missed.length) return null;
   const blocks = [];
@@ -1262,7 +1273,7 @@ async function unseen(scope = pages(), who = '') {
   }
   if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
   if (missed.length) {
-    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
+    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c, sign }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}" · no sign for ${Math.floor((now - Date.parse(sign[0])) / 60000)} min${sign[1] ? `, last: ${sign[1]}` : ''}`).join('\n')}`);
     for (const { c } of missed) (handoff[c.id] ||= ['', null])[2] = new Date(now).toISOString();
     saveHanded();
   }

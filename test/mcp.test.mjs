@@ -74,6 +74,22 @@ test('comments shows a pin, reply answers on it', async () => {
   assert.ok((all.comments || all).some((c) => c.parent === id && c.text === 'Done: red'));
 });
 
+test('reply with progress alone keeps a line on the thread (no message); with text or intent it is refused', async () => {
+  const id = await pin('draw the states');
+  const r = await ask('tools/call', { name: 'reply', arguments: { id, progress: 'drawing W1–W6 · 2 of 4' } });
+  assert.ok(!r.result.isError, r.result.content[0].text);
+  const all = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+  assert.equal(all.find((c) => c.id === id).progress.text, 'drawing W1–W6 · 2 of 4');
+  assert.ok(!all.some((c) => c.parent === id), 'no message');
+  for (const args of [{ text: 'x' }, { intent: 'done' }, { resolve: true }]) {
+    const bad = await ask('tools/call', { name: 'reply', arguments: { id, progress: 'x', ...args } });
+    assert.equal(bad.result.isError, true);
+    assert.match(bad.result.content[0].text, /progress/);
+  }
+  assert.equal((await ask('tools/call', { name: 'reply', arguments: { id, progress: ' ' } })).result.isError, true);
+  await ask('tools/call', { name: 'reply', arguments: { id, text: 'Done', resolve: true } }); // closed, so the next wait test hears only its own pin
+});
+
 test('pin leaves the agent\'s own pin on a spot', async () => {
   const r = await ask('tools/call', { name: 'pin', arguments: { selector: '#t', text: '- 1. a bigger title?', at: '0.2,0.4' } });
   assert.ok(!r.result.isError, r.result.content[0].text);
