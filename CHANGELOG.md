@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- License: from the next release labit is under [PolyForm Perimeter 1.0.0](LICENSE) instead of MIT. Use and change it freely, except to build a competing product. Versions already on npm (0.6.2 and earlier) keep MIT.
 - Phone links with two labs on one computer: each lab keeps its own pass (`lab_guest_<port>`), so joining a try lab no longer logs the phone out of the other, and a used link again takes that phone to its page instead of "used up".
 - Cloud labs are parked (kept whole on the `park/cloud-lab` branch); labit is the local lab only. Gone: `labit add` / `labit remove` and saved cloud pages in `list` and `pages`, the MCP `comments` tool's `url`, the skill's Cloud lab part, the Vercel deploy (`vercel.json`, `public/index.html`), and from the comments API and widget everything only a hosted lab used: invite links and per-person admin keys (`#lab-admin=`, `LAB_REVOKED`), the lab-host check (`LAB_HOST`, `data-host`, `data-enable`), page revisions and the 10 s check, and the Upstash store. The API moved from `api/` to `lib/comments-api.mjs` and talks to the lab's in-memory store directly.
 - With a dev server (`--proxy`), its reload waits while the chat, a thread, the list or a new comment is open, not only while words are typed, so an update no longer closes the chat under you. It comes in once you close it, as the lab's own reload already did.
