@@ -571,9 +571,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-row.on, .sw-row:hover { background: var(--_soft); }
 .sw-row .sw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sw-row .sw-m { color: var(--_muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-/* Open pins in the text colour, closed in green, as the pins themselves are. */
-.sw-m .sw-open { color: var(--_fg); font-weight: 600; }
-.sw-m .sw-done { color: rgb(36, 160, 70); font-weight: 600; }
 .sw-none { color: var(--_muted); font-size: 12px; padding: 4px 10px 6px; }
 .sw-group { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--_muted); padding: 12px 10px 0; margin-top: 6px; border-top: var(--_hair); }
 .sw-lab.parked { padding-top: 6px; border-top: 0; margin-top: 0; }
