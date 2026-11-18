@@ -591,7 +591,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-kb]) .sw-box { bottom: auto !important; max-height: none; animation: none; }
   .sw-box input { padding: 4px 20px 14px; }
   .sw-list { padding: 4px 10px 8px; touch-action: pan-y; }
-  .sw-row { padding: 11px 12px; font-size: 16px; }
+  /* The counts under the title, so a long title isn't cut to make room for them. */
+  .sw-row { padding: 9px 12px; font-size: 16px; }
+  .sw-row:not(.parked) { flex-direction: column; gap: 1px; }
+  .sw-row .sw-t { white-space: normal; }
   .sw-lab { align-items: center; }
   .sw-acts button { font-size: 13px; padding: 5px 9px; }
   .sw-acts { justify-content: flex-start; max-width: none; }
