@@ -108,7 +108,7 @@ async function scene(browser, run) {
 }
 
 try {
-  for (const eng of ['webkit', 'chromium']) {
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
     try {
       await scene(browser, async (p) => {
