@@ -69,13 +69,8 @@ button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius
 /* Closed: a resolved pin is a green ✓, faded and small, so the open ones stand out (closed pins show by default; D
    hides them). A pin whose spot is gone (.moved) is shown the same way: no state of its own (Leo, 17 Nov). */
 .pin.resolved { color: rgb(36, 160, 70); }
-/* Statuses. A go pin says "go": green in a green outline when placed, the turning stroke while the agent is on it,
-   and a white ✓ on green once it is done — a go is a pin like any other, and a done pin wears the tick. A comment
-   pin: your initial, the stroke, then a green tick. */
-button.pin.go { background: var(--_bg); color: rgb(36, 160, 70); font-size: 11px; font-weight: 600; letter-spacing: .006em;
-                box-shadow: inset 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
-button.pin.go.done { background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16); }
-button.pin.done:not(.go) { color: rgb(36, 160, 70); }
+/* Statuses. A pin: your initial, the stroke while the agent is on it, then a green tick. A "go" comment is a pin like any other. */
+button.pin.done { color: rgb(36, 160, 70); }
 .pin:is(.resolved, .moved) { opacity: .5; scale: .8; }
 button.pin:is(.resolved, .moved):is(:hover, .open) { opacity: 1; }
 .pin.grab { touch-action: none; }
