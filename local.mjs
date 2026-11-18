@@ -1352,7 +1352,10 @@ const listing = (res, dir, urlPath) => {
       `<header><h1>${esc(path.basename(dir))}</h1><p class="lede">${pages.length} page${pages.length === 1 ? '' : 's'}${open ? ` · ${open} open comment${open === 1 ? '' : 's'}` : ''} · newest first</p></header>` +
         (many ? `<input class="lab-filter" type="search" placeholder="Filter pages" aria-label="Filter pages" autocomplete="off">` : '') +
         `<ul class="lab-box lab-rows lab-pages">${li || '<li class="lab-muted" style="padding:8px 10px">No HTML pages here. Running a dev server? Start it, then run labit again.</li>'}</ul>` +
-        `<p class="lab-muted lab-hint">On a page, press <kbd>${SET.shortcuts.toggle}</kbd> to show comments, or hold <kbd>⌥</kbd> and click.</p>` +
+        `<p class="lab-muted lab-hint lab-keys">On a page, press <kbd>${SET.shortcuts.toggle}</kbd> to show comments, or hold <kbd>⌥</kbd> and click. <kbd>⌘K</kbd> goes to another lab.</p>` +
+        // A phone has no keys: what to do there instead (it said "press m", Leo's phone, 18 Nov).
+        `<p class="lab-muted lab-hint lab-touch">On a page, hold a spot to comment. ⋯ then "labs &amp; pages" goes to another lab.</p>` +
+        `<style>.lab-touch{display:none}@media (pointer:coarse){.lab-keys{display:none}.lab-touch{display:block}}</style>` +
         (many
           ? `<script>const f=document.querySelector('.lab-filter'),r=[...document.querySelectorAll('.lab-pages li')];f.addEventListener('input',()=>{const q=f.value.trim().toLowerCase();for(const l of r)l.hidden=!!q&&!l.textContent.toLowerCase().includes(q)});addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement!==f){e.preventDefault();f.focus()}})</script>`
           : ''),
@@ -1363,7 +1366,6 @@ const listing = (res, dir, urlPath) => {
 // What a request sent (JSON), and a JSON answer (never kept by the browser).
 const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}');
 const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
-// This lab's pages with their open comments, who listens, and which pages that covers (the switcher and `labit list`).
 // When this lab was made: its .lab folder's birth (the first run in this folder). Linux may not keep births: then its
 // oldest comment, else nothing.
 // Names once each, whatever their case ("Leo" and "leo" are one person).
@@ -1376,6 +1378,7 @@ const created = () => {
   const first = pages().flatMap((k) => commentsOf(k).map((c) => c.createdAt)).sort()[0];
   return first || null;
 };
+// This lab's pages with their open comments, who listens, and which pages that covers (the switcher and `labit list`).
 const labInfo = () => {
   // Per page: open and done pins, when the file last changed and when anyone last wrote on it (the switcher's dates).
   const tally = (key) => {
