@@ -54,7 +54,7 @@ const look = (p) =>
   });
 
 try {
-  for (const eng of ['webkit', 'chromium']) {
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
@@ -81,6 +81,32 @@ try {
       await p.keyboard.press('x');
       await sleep(600);
       check(eng, 'the new chat key (x) opens the chat', (await look(p)).chat);
+      // With the bar showing (words selected with Shift-drag), a key that is a shortcut elsewhere is a letter: the
+      // changed toggle key (h) starts the comment, it doesn't hide the comments.
+      await p.keyboard.press('Escape');
+      await sleep(300);
+      const word = await p.evaluate(() => {
+        const t = document.querySelector('p').firstChild;
+        const r = document.createRange();
+        r.setStart(t, 0);
+        r.setEnd(t, 4);
+        return r.getBoundingClientRect().toJSON();
+      });
+      const onBefore = (await look(p)).on;
+      await p.keyboard.down('Shift');
+      await p.mouse.move(word.left + 1, word.top + word.height / 2);
+      await p.mouse.down();
+      await p.mouse.move(word.right - 1, word.top + word.height / 2, { steps: 6 });
+      await p.mouse.up();
+      await p.keyboard.up('Shift');
+      await sleep(700);
+      await p.keyboard.press('h');
+      await sleep(900);
+      const typed = await p.evaluate(() => {
+        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+        return r?.querySelector('.fd textarea')?.value;
+      });
+      check(eng, 'with the bar showing, the changed toggle key (h) is a letter, not a shortcut', typed === 'h' && (await look(p)).on === onBefore, `${typed}`);
       await p.goto('about:blank');
       await ctx.close();
     } finally {

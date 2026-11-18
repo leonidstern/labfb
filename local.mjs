@@ -75,6 +75,8 @@ For the agent, from the project (any folder under it):
   labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --done says the ask is done (the
       thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
+  labit reply <id> --progress "what you're on now"
+      During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
@@ -103,7 +105,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
 const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'skill'];
-const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
+const { loadSettings, changedShortcuts, changedActions, savePersonal } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
@@ -138,6 +140,7 @@ if (pos[0] === 'settings') {
   const show = (k, v) =>
     k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
       : k === 'flags' ? (flagsOn(v).join(', ') || 'none on')
+      : k === 'actions' ? (Object.keys(changedActions(v)).length ? Object.entries(changedActions(v)).map(([a, l]) => `${a}: ${/** @type {any[]} */ (l).map((x) => x.label || x).join(' ') || '(none)'}`).join('; ') : 'the defaults')
       : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
   const src = (f) => f.split(' + ').map((x) => (x === SETTINGS.files.project ? 'labit.json' : x === SETTINGS.files.personal ? 'your settings' : x)).join(' + ');
@@ -942,10 +945,14 @@ let PORT = Number(opts.port || process.env.PORT || 4400);
 const STARTED = new Date().toISOString(); // the switcher shows how long a lab has run
 // Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
 const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
+// It also says which session listened last (`listener`, the id its waits send), so the labit plugin's wake
+// (hooks/wake.ts) finds this lab from any folder: the session looks for the labs whose listener it is.
+let registeredListener = '';
 const register = () => {
   try {
     fs.mkdirSync(REGISTRY, { recursive: true });
-    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: new Date().toISOString() }, null, 2));
+    registeredListener = session?.id || '';
+    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: STARTED, ...(registeredListener ? { listener: registeredListener, listenedAt: new Date().toISOString() } : {}) }, null, 2));
   } catch {}
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
@@ -1229,8 +1236,17 @@ async function unseen(scope = pages(), who = '') {
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
   const now = Date.now();
   const lastBy = (c, mine) => [c, ...commentsOf(c._page).filter((r) => r.parent === c.id)].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
+  // The same after an "on it" or a progress line (labit reply --on-it / --progress) with no sign since: the page greys such
+  // a pin after 5 minutes, and the agent hears of it after these 3. sign: [when it last showed a sign, its last progress line].
+  const signOf = (c) => {
+    const [person, agent] = [lastBy(c, false), lastBy(c, true)];
+    const [at, line] = [c.progress?.at || '', c.progress?.text];
+    if (person >= agent) return [[c.handedAt, at].sort().pop(), line];
+    return c.progress || commentsOf(c._page).some((r) => r.parent === c.id && r.session && r.intent === 'working' && r.createdAt === agent) ? [[agent, at].sort().pop(), line] : null;
+  };
   const missed = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).map((c) => ({ page, c: Object.assign(Object.create(c), { _page: page }) })))
-    .filter(({ c }) => now - Date.parse(c.handedAt) > REMIND_MS && lastBy(c, false) > lastBy(c, true) && !(now - Date.parse(handoff[c.id]?.[2]) < 600000))
+    .map((m) => ({ ...m, sign: signOf(m.c) }))
+    .filter(({ c, sign }) => sign && now - Date.parse(sign[0]) > REMIND_MS && !(now - Date.parse(handoff[c.id]?.[2]) < 600000))
     .filter(({ page, c }) => !fresh.some((f) => f.page === page && (f.c.id === c.id || f.c.parent === c.id)));
   if (!fresh.length && !missed.length) return null;
   const blocks = [];
@@ -1262,7 +1278,7 @@ async function unseen(scope = pages(), who = '') {
   }
   if (lines.length) blocks.push(`# New replies (whole threads: http://localhost:${PORT}/_lab/agent/<page>)\n${lines.join('\n')}`);
   if (missed.length) {
-    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}"`).join('\n')}`);
+    blocks.push(`# Still waiting for your answer (handed to you earlier)\n${missed.map(({ page, c, sign }) => `- ${page} · id ${c.id}${c.from === 'wifi guest' ? ' (wifi guest)' : ''} "${c.text.replace(/\s+/g, ' ').slice(0, 90)}" · no sign for ${Math.floor((now - Date.parse(sign[0])) / 60000)} min${sign[1] ? `, last: ${sign[1]}` : ''}`).join('\n')}`);
     for (const { c } of missed) (handoff[c.id] ||= ['', null])[2] = new Date(now).toISOString();
     saveHanded();
   }
@@ -1286,7 +1302,7 @@ async function unseen(scope = pages(), who = '') {
 // them with POST /_lab/ack. Without that within ACK_MS, or when the same session waits again first (it never saw
 // them: an MCP wait cancelled after the lab answered, a killed command), the marks are taken back and the pins go out
 // again. Before, a hand-off that never arrived left its pins "being worked on" for 3 minutes, then came back as
-// one line each, not the whole thread (Plannotator's "Delivered to" is the agent's own read, the same idea).
+// one line each, not the whole thread.
 const ACK_MS = Number(process.env.LAB_ACK_MS ?? 20000);
 const unacked = new Map(); // delivery id -> { who, back, timer }
 function takeBack(id) {
@@ -1386,7 +1402,10 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
-// What is being tried in this lab: every flag and its state, so the ⋯ menu can show them all and switch them.
+// The actions on selected words that differ from the defaults (labit.json / settings.json `actions`). Labels are yours, so
+// the attribute is escaped as the flags' is.
+const ACTIONS_ATTR = Object.keys(changedActions(SET.actions)).length ? ` data-actions='${JSON.stringify(changedActions(SET.actions)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'` : '';
+// What is being tried in this lab: every flag and its state (set in labit.json), for the widget to read.
 // The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
 // in one of them would end the attribute halfway. & and < go too, so the tag can't be talked out of being a tag.
 const flagsAttr = () => {
@@ -1400,7 +1419,7 @@ const widget = (page, admin, me = '') => {
   markOpened(page);
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${ACTIONS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -1412,6 +1431,15 @@ const inject = (html, tag) => {
   const inScript = at !== -1 && lower.lastIndexOf('<script', at) > lower.lastIndexOf('</script>', at);
   html = at === -1 || inScript ? html + tag : html.slice(0, at) + tag + html.slice(at);
   return holdFirst(html);
+};
+// A lab tab wears labit's mark, unless the page names its own icon or the folder has a favicon.ico: put in the page,
+// so the tab has it from the first paint, not once the widget has loaded and asked.
+// Behind a dev server the widget decides instead (src/widget/live.ts): only the dev server knows what it serves.
+const LAB_ICON = '<link rel="icon" href="/_lab/favicon.svg">';
+const withIcon = (html) => {
+  if (/<link\b[^>]*\brel=["']?(?:[^"'>]*\s)?icon[\s"'>/]/i.test(html) || fs.existsSync(path.join(ROOT, 'favicon.ico'))) return html;
+  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
 };
 // A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
 // where it sits: Chrome's location.reload is its own, and cannot be replaced, and by the time the widget loads the
@@ -1684,20 +1712,6 @@ const handler = async (req, res) => {
       const tail = q.size ? `?${q}` : '';
       return answer(res, { name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) });
     }
-    // What is being tried in this lab: the ⋯ menu's switches. From this computer only -- a guest reads the page,
-    // they don't decide what labit is trying. The answer is written into the project's labit.json, so the agent sees
-    // the same thing, and every open page is told to come back for the new state.
-    if (pathname === '/_lab/flags') {
-      if (!isLoopback(req)) return res.writeHead(403).end('forbidden');
-      const { flag, on } = await sent(req);
-      if (!(flag in FLAGS)) return res.writeHead(400).end('no such flag');
-      const file = saveFlag(HERE, flag, Boolean(on));
-      SET.flags = { ...SET.flags, [flag]: Boolean(on) };
-      console.log(`[lab] trying ${flag}: ${on ? 'on' : 'off'} (${file})`);
-      version = { ...version, files: version.files + 1 }; // the pages come back with the new state in their tag
-      pagesChanged();
-      return answer(res, { flags: SET.flags, file });
-    }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.
     if (pathname === '/_lab/me') {
@@ -1757,6 +1771,7 @@ const handler = async (req, res) => {
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
+      if (session.id && session.id !== registeredListener) register(); // the registry says who listens, for the wake hook
       // "Claude", not "session 87f84735": a session with no name of its own is said by what it is.
       const me = sessionFrom(req);
       const named = me?.name && !/^session [0-9a-f]+$/i.test(me.name) && me.name !== me.agent;
@@ -2022,6 +2037,8 @@ const handler = async (req, res) => {
     let file = path.join(base, pathname);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
+    // A browser asks for /favicon.ico on its own (for a tab, a bookmark, history): a folder without one gets labit's.
+    if (!fs.existsSync(file) && pathname === '/favicon.ico') return res.writeHead(302, { location: '/_lab/favicon.svg' }).end();
     if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
@@ -2033,7 +2050,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
+        inject(withIcon(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
     }
     sendFile(req, res, file);
   } catch (e) {

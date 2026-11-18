@@ -59,7 +59,7 @@ const check = (eng, name, ok, detail = '') => {
 
 start();
 await up();
-for (const eng of ['webkit', 'chromium']) {
+for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   write('index.html', PAGE);
   write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
   const browser = await pw[eng].launch();
@@ -153,6 +153,41 @@ for (const eng of ['webkit', 'chromium']) {
   await p.keyboard.press('Escape');
   await sleep(200);
 
+  // A Shift-drag from inside a word to inside another quotes both whole words; one inside a single word keeps its letters.
+  const quoteOf = async (id, from, to, text) => {
+    const at = await p.evaluate(([id, from, to]) => {
+      const t = document.getElementById(id).firstChild;
+      const r = document.createRange();
+      r.setStart(t, from);
+      r.setEnd(t, to);
+      const rs = r.getClientRects();
+      const a = rs[0], z = rs[rs.length - 1];
+      return { x1: a.left + 1, y: a.top + a.height / 2, x2: z.right - 1 };
+    }, [id, from, to]);
+    // A Shift-press on main stretches whatever selection is left from before (fixed with the fluid dialog): start clean.
+    await p.evaluate(() => getSelection().removeAllRanges());
+    await p.keyboard.down('Shift');
+    await p.mouse.move(at.x1, at.y);
+    await p.mouse.down();
+    await p.mouse.move(at.x2, at.y, { steps: 6 });
+    await p.mouse.up();
+    await p.keyboard.up('Shift');
+    await sleep(400);
+    await p.keyboard.type(text);
+    await p.keyboard.press('Enter');
+    await sleep(600);
+    const all = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+    return all.find((c) => c.text === text)?.anchor?.quote?.exact;
+  };
+  await p.evaluate(() => document.getElementById('p7').scrollIntoView({ block: 'center' }));
+  await sleep(300);
+  const whole = await quoteOf('p7', 2, 18, 'snap whole'); // "ragraph 7 with s"
+  check(eng, 'a Shift-drag from inside a word to inside another quotes both whole words', whole === 'paragraph 7 with some', whole);
+  const inside = await quoteOf('p9', 2, 6, 'snap inside'); // "ragr"
+  check(eng, '…a Shift-drag inside one word keeps its letters', inside === 'ragr', inside);
+  await p.keyboard.press('Escape');
+  await sleep(200);
+
   // Keys
   const chatOpen = () => shadow(() => { return !r.querySelector('.chatwin').hidden; });
   await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'с', code: 'KeyC', bubbles: true })));
@@ -215,6 +250,53 @@ for (const eng of ['webkit', 'chromium']) {
   await shadow(() => { r.querySelector('.over-btn').click(); });
   check(eng, 'pin over controls: the menu shows option-click while off, the pin shows over a control while on',
     overOff.hint.endsWith('click') && overOff.ctl && !overOff.over && !overOn.hint && overOn.over && /^(none|crosshair)$/.test(overOn.cursor), JSON.stringify([overOff, overOn]));
+
+  // A pin is one element for as long as its thread is on the page: opening, closing and pointing at it (and away) redraw
+  // the widget, but the pin and its running animation carry on, not start again (Leo, 18 Nov).
+  const work = await post({ page, name: 'leo', text: 'keep running', anchor: { kind: 'element', selector: '#p9', x: 0.5, y: 0.5, docX: 0.5, docY: 300, width: 1000, element: '<p id="p9">', text: 'paragraph 9 with some words', section: '' } });
+  execFileSync(process.execPath, [LAB, 'reply', work.comment.id, '--on-it', 'Looking'], { cwd: DIR, env, stdio: 'ignore' });
+  await sleep(1500);
+  // Its paragraph in the middle of the screen, so the pin is in view whatever the fonts' height (taller on Linux).
+  await p.evaluate(() => document.getElementById('p9').scrollIntoView({ block: 'center' }));
+  await sleep(200);
+  const mine = (tag) => shadow(() => {
+    const pin = [...r.querySelectorAll('.pin')].find((b) => (b.getAttribute('aria-label') || '').includes('agent working on it'));
+    if (!pin) return null;
+    if (a) pin.__tag = a;
+    const ring = pin.querySelector('.ring');
+    const turn = ring?.getAnimations({ subtree: true }).find((x) => x.animationName === 'lab-turn');
+    if (a) pin.__ring = ring;
+    const box = pin.getBoundingClientRect();
+    return { same: pin.__tag === 'T' && pin.__ring === ring, time: turn ? turn.currentTime : null, card: Boolean(r.querySelector('.card:not(.out)')), draft: Boolean(r.querySelector('.pin.draft')), x: box.left + 14, y: box.top + 14 };
+  }, tag);
+  const first = await mine('T');
+  check(eng, 'a working pin has its ring turning', Boolean(first) && first.time > 0 && first.y > 0 && first.y < (await p.evaluate(() => innerHeight)), JSON.stringify(first));
+  if (first) {
+    let last = first.time;
+    const steps = [
+      ['hover', false, async (at) => p.mouse.move(at.x, at.y)],
+      ['click (opens its thread)', true, async (at) => p.mouse.click(at.x, at.y)],
+      ['click again (closes it)', false, async (at) => p.mouse.click(at.x, at.y)],
+      ['leave', false, async () => p.mouse.move(700, 100)],
+      ['a click on the page, which opens a new comment box', false, async () => p.mouse.click(700, 150), true],
+      ['closing that box (Escape)', false, async () => p.keyboard.press('Escape')],
+      ['a second click on empty page space', false, async () => p.mouse.click(780, 330), true],
+      ['closing it with a click on the page', false, async () => p.mouse.click(700, 450)],
+      ['Escape with nothing open', false, async () => p.keyboard.press('Escape')],
+    ];
+    let at = first;
+    for (const [name, card, act, draft] of steps) {
+      await act(at);
+      await sleep(350);
+      const now = await mine(null);
+      const ok = Boolean(now) && now.same && now.card === card && (!draft || now.draft) && now.time > last + 200;
+      check(eng, `a pin keeps its element and its ring's animation across: ${name}`, ok, now ? `same ${now.same}, ring ${Math.round(last)} → ${Math.round(now.time)} ms` : 'pin gone');
+      if (!now) break;
+      last = now.time;
+      at = now;
+    }
+  }
+  await post({ page, action: 'delete', id: work.comment.id });
 
   // A save the page has nothing to do with leaves it alone; one it may fetch reloads it; a lab restart doesn't.
   // (A page with its own <script> is not used here: such a page never patches in place, it reloads on every HTML
