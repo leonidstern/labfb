@@ -71,7 +71,7 @@ const post = (text) =>
   }).then((r) => r.json());
 
 try {
-  for (const eng of ['webkit', 'chromium']) {
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
     try {
       // ---- one tab: its stream through the background, front, a stall and leaving ----
