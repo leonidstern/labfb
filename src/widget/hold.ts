@@ -2,7 +2,7 @@
 // puts a small holder at the top of every page it serves from a dev server (local.mjs, HOLD): it wraps WebSocket and
 // keeps a reload message waiting while words sit unsent or a sheet (the chat, a thread, the list, a new comment) is
 // open, the same rule the lab's own reload follows (live.ts, busy). This is the widget's side of it.
-// Where there is no holder (a folder of files, the cloud), nothing waits — the words are still kept (composer.ts).
+// Where there is no holder (a folder of files), nothing waits — the words are still kept (composer.ts).
 
 type Holder = { writing: number; held: unknown[]; flush: () => void };
 const holder = (): Holder | null => (window as unknown as { __lab?: Holder }).__lab || null;

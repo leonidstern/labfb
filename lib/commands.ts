@@ -46,60 +46,38 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   }
 
     const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
-  // Cloud lab pages saved with `labit add`, kept with the project in .lab/links.json.
-  const LINKS = path.join(HERE, '.lab', 'links.json');
-  // A damaged file is put aside (links.json.broken-<time>), as the lab does with its comment files, not read as empty
-  // and then written over by the next add.
-  const savedLinks = () => {
-    let text;
-    try {
-      text = fs.readFileSync(LINKS, 'utf8');
-    } catch {
-      return [];
+  // `labit publish <page.html | folder>`: like publishing an Artifact (Leo 18 Nov: "process is similar to artifacts, can
+  // you do it like this"). The page goes into the one pages lab (pagesFolder), named for its topic; that lab starts if
+  // it isn't running; the link is printed. Publishing again replaces it, same link. No folder or lab of its own.
+  if (pos[0] === 'publish') {
+    const src = pos[1] && path.resolve(pos[1]);
+    if (!src || !fs.existsSync(src)) die(`Usage: ${CMD} publish <page.html | folder> [--name "topic"]`);
+    const { loadSettings } = await import('./settings.ts');
+    const home = String(loadSettings(HERE, {}).values.pagesFolder || '~/lab-pages').replace(/^~(?=$|\/)/, os.homedir());
+    fs.mkdirSync(home, { recursive: true });
+    const root = fs.realpathSync(home);
+    const dir = fs.statSync(src).isDirectory();
+    const topic = typeof opts.name === 'string' ? opts.name : path.basename(src).replace(/\.html?$/i, '');
+    const slug = topic.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
+    if (!dir && !/\.html?$/i.test(src)) die(`${src}: give an .html file, or a folder of pages`);
+    const dest = path.join(root, dir ? slug : `${slug}.html`);
+    if (path.resolve(src) !== dest) {
+      fs.rmSync(dest, { recursive: true, force: true });
+      fs.cpSync(src, dest, { recursive: true });
     }
-    try {
-      const list = JSON.parse(text);
-      if (Array.isArray(list)) return list;
-    } catch {}
-    const aside = `${LINKS}.broken-${Date.now()}`;
-    fs.renameSync(LINKS, aside);
-    console.error(`[lab] .lab/links.json was damaged; moved it to ${path.basename(aside)}`);
-    return [];
-  };
-  // A cloud page's open comments, from its plain-text agent view (`open: N`).
-  const cloudOpen = async (url) => {
-    try {
-      const u = new URL(url);
-      const text = await (await fetch(`${u.origin}/_lab/agent${u.pathname}`, { signal: AbortSignal.timeout(3000) })).text();
-      return Number(text.match(/^open: (\d+)/m)?.[1] || 0);
-    } catch {
-      return 0;
-    }
-  };
-
-  if (pos[0] === 'add' || pos[0] === 'remove') {
-    const raw = pos[1] || die(`Give the page's address: ${CMD} ${pos[0]} https://<lab domain>/<page>`);
-    let url;
-    try {
-      url = new URL(raw);
-    } catch {}
-    if (!url || !/^https?:$/.test(url.protocol)) die(`Not a page address: ${raw}`);
-    const key = url.origin + url.pathname.replace(/\/$/, '');
-    let list = savedLinks().filter((l) => l.url !== key);
-    let title = opts.name || '';
-    if (pos[0] === 'add') {
-      if (!title) {
-        try {
-          const html = await (await fetch(key, { signal: AbortSignal.timeout(5000) })).text();
-          title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1].trim() || '';
-        } catch {}
+    let lab = runningLabs().find((l) => l.root === root);
+    if (!lab) {
+      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, detached: true, stdio: 'ignore' }).unref();
+      for (let i = 0; i < 100 && !lab; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        lab = runningLabs().find((l) => l.root === root);
       }
-      list.push({ url: key, title });
+      if (!lab) die(`The pages lab didn't start. Run it yourself: ${CMD} ${root}`);
     }
-    fs.mkdirSync(path.dirname(LINKS), { recursive: true });
-    fs.writeFileSync(LINKS + '.tmp', JSON.stringify(list, null, 2) + '\n'); // whole or not at all
-    fs.renameSync(LINKS + '.tmp', LINKS);
-    console.log(pos[0] === 'add' ? `Saved ${key}${title ? ` (${title})` : ''}. It shows in \`${CMD} pages\` and \`${CMD} list\`.` : `Removed ${key}.`);
+    const key = keyFor(path.relative(root, dir ? path.join(dest, 'index.html') : dest)); // "/topic", or "/topic/index"
+    console.log(`http://localhost:${lab.port}${key.replace(/\/index$/, '/')}`);
+    console.log(`In the pages lab (${root.replace(os.homedir(), '~')}). Publish again to update it, same link.`);
+    console.log(`Listen for its pins: cd ${root} && ${CMD} wait --bg --pages ${key}`);
     process.exit(0);
   }
 
@@ -151,8 +129,6 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       } catch {}
       console.log(`${lab.name}  http://localhost:${lab.port}  ${lab.root}${lab.proxy ? ` (on ${lab.proxy})` : ''}${pages}`);
     }
-    const links = savedLinks();
-    if (links.length) console.log(`\nCloud pages saved for ${HERE}:\n${links.map((l) => `${l.title || l.url}  ${l.url}`).join('\n')}`);
     process.exit(0);
   }
 
@@ -171,14 +147,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       } catch {}
     }
     labs.sort((a, b) => a.name.localeCompare(b.name));
-    // Groups: each local lab, then saved cloud pages by domain. Names only when there's more than one group.
+    // One group per local lab. Names only when there's more than one.
     const groups = labs.map((lab) => ({ name: lab.name, pages: lab.pages }));
-    const byHost = new Map();
-    for (const link of savedLinks()) {
-      const host = new URL(link.url).host;
-      byHost.set(host, [...(byHost.get(host) || []), { url: link.url, title: link.title, path: new URL(link.url).pathname, open: await cloudOpen(link.url) }]);
-    }
-    for (const [host, pages] of byHost) groups.push({ name: host, pages });
     const lines = [];
     for (const group of groups) {
       if (groups.length > 1) lines.push(`**${group.name}**`, '');
@@ -190,7 +160,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
     const out = path.join(HERE, '.lab', 'lab-pages.md');
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, (lines.join('\n').trim() || (opts.all ? 'No labs running, and no saved cloud pages.' : 'No labs for this folder, and no saved cloud pages. `pages --all` lists every lab on this computer.')) + '\n');
+    fs.writeFileSync(out, (lines.join('\n').trim() || (opts.all ? 'No labs running.' : 'No labs for this folder. `pages --all` lists every lab on this computer.')) + '\n');
     console.log(out);
     process.exit(0);
   }

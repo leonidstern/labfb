@@ -1,19 +1,16 @@
-// Shared by local.mjs and bench/serve.mjs: the comments API without Upstash, and plain file serving.
+// Shared by local.mjs and bench/serve.mjs: the comments API on an in-memory store, and plain file serving.
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 
-/** The local store: Upstash's keys, each a hash (Map) or a counter / string. */
+/** The in-memory store: keys, each a hash (Map) or a counter / string. */
 type Db = Map<string, any>;
 type Handler = (req: Request) => Promise<Response>;
 
-// api/lab-comments.mjs talks to Upstash over REST. This answers the same commands from `db`, a Map of hashes,
-// and returns the API module. Call it before anything else uses fetch for that URL.
-// The module is named here as it is, so the built server (dist/) carries it and the package needn't ship api/ as well.
+// The comments API (lib/comments-api.mjs) keeps each page's comments as a hash in `db`, a Map of hashes and
+// counters / strings, through these commands. Returns the API module.
 export async function apiOn(db: Db): Promise<any> {
-  process.env.KV_REST_API_URL = 'http://lab.store';
-  process.env.KV_REST_API_TOKEN = 'local';
   // The key the lab sends with who wrote a comment (x-lab-stamp), so the API saves it in the same write.
   process.env.LAB_STAMP_KEY ||= (await import('node:crypto')).randomBytes(16).toString('hex');
   const hash = (k: string): Map<string, string> => db.get(k) ?? (db.set(k, new Map()), db.get(k));
@@ -25,7 +22,7 @@ export async function apiOn(db: Db): Promise<any> {
     HLEN: (k) => db.get(k)?.size ?? 0,
     INCR: (k) => { const v = (db.get(k) || 0) + 1; db.set(k, v); return v; },
     EXPIRE: () => 1,
-    // The one script the API sends (its SWAP): set the field only if it still holds what was read.
+    // Set the field only if it still holds what was read (the API's SWAP).
     EVAL: (_script, _keys, k, f, was, next) => (db.get(k)?.get(f) === was ? (db.get(k).set(f, next), 1) : 0),
     GET: (k) => (['string', 'number'].includes(typeof db.get(k)) ? String(db.get(k)) : null),
     SET: (k, v, ex, sec) => {
@@ -34,18 +31,15 @@ export async function apiOn(db: Db): Promise<any> {
       return 'OK';
     },
   };
-  const realFetch = globalThis.fetch;
-  const store = ((apiOn as any).store = { calls: 0 });
-  globalThis.fetch = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    if (!String(url).startsWith('http://lab.store')) return realFetch(url, init);
-    store.calls++;
-    const one = ([name, ...args]: [string, ...unknown[]]) => (cmds[name] ? { result: cmds[name](...args) } : { error: `ERR unknown ${name}` });
-    // Upstash /pipeline: a list of commands, one result each.
-    if (new URL(String(url)).pathname === '/pipeline') return Response.json(JSON.parse(String(init?.body)).map(one));
-    const out = one(JSON.parse(String(init?.body)));
-    return Response.json(out, { status: out.error ? 400 : 200 });
+  const one = ([name, ...args]: [string, ...unknown[]]) => {
+    if (!cmds[name]) throw new Error(`unknown command ${name}`);
+    return cmds[name](...args);
   };
-  return import('../api/lab-comments.mjs');
+  const run = async (...command: [string, ...unknown[]]) => one(command);
+  run.all = async (...commands: ([string, ...unknown[]] | false)[]) => commands.filter((c): c is [string, ...unknown[]] => Boolean(c)).map(one);
+  const api = await import('./comments-api.mjs');
+  api.useStore(run);
+  return api;
 }
 
 // Runs a Node request through a Web-style handler (the API's GET / POST).

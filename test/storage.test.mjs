@@ -268,15 +268,3 @@ test('reads.json and claims.json: a damaged one is put aside, not read as empty 
   await lab.stop();
 });
 
-test('links.json: labit add writes it whole, and a damaged one is put aside', async () => {
-  const dir = folder();
-  fs.mkdirSync(path.join(dir, '.lab'));
-  const links = path.join(dir, '.lab/links.json');
-  fs.writeFileSync(links, '[{"url":"https://lab.example/a"');
-  const add = await new Promise((r) => execFile(process.execPath, [LAB, 'add', 'https://lab.example/b', '--name', 'B'], { cwd: dir }, (err, out, errOut) => r({ code: err?.code ?? 0, out: out + errOut })));
-  assert.equal(add.code, 0, add.out);
-  assert.match(add.out, /links\.json was damaged; moved it to links\.json\.broken-/);
-  assert.deepEqual(readJson(links), [{ url: 'https://lab.example/b', title: 'B' }]);
-  const aside = fs.readdirSync(path.join(dir, '.lab')).find((n) => n.startsWith('links.json.broken-'));
-  assert.equal(fs.readFileSync(path.join(dir, '.lab', aside), 'utf8'), '[{"url":"https://lab.example/a"');
-});

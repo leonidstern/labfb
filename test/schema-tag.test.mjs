@@ -7,7 +7,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { VERSION } from '../api/_schema.mjs';
+import { VERSION } from '../lib/schema.mjs';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-schema-'));

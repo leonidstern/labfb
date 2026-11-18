@@ -355,7 +355,7 @@ export function startLive() {
       {
         // A new widget script: this page needs it, so it reloads (when it's safe, as always).
         if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) return reload();
-        // Comments stored in a new shape (api/_schema.mjs VERSION): this page reads them with the widget that knows it.
+        // Comments stored in a new shape (lib/schema.mjs VERSION): this page reads them with the widget that knows it.
         if (v.schema && W.script.dataset.schema && String(v.schema) !== W.script.dataset.schema) return reload();
         // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
         // and patched (only if its file changed does anything move), and the comments are loaded again.

@@ -13,7 +13,7 @@ import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
-import { slim, upgrade, VERSION as SCHEMA } from './api/_schema.mjs';
+import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -41,13 +41,11 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labit pages [--all]
-      Write .lab/lab-pages.md here: this folder's labs and saved cloud pages as links, with open comment counts.
+      Write .lab/lab-pages.md here: this folder's labs as links, with open comment counts.
       --all lists every lab on this computer.
   labit settings
       Each setting, its value and where it came from: a flag or variable, labit.json in the project, your own
       ~/.config/labit/settings.json, or the default. See docs/settings.md.
-  labit add <url> [--name "title"]   ·   labit remove <url>
-      Save a cloud lab page (https://<lab domain>/<page>) for this folder, in .lab/links.json.
   labit mcp
       Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply, pin and wait, for this folder's lab.
       Claude Code: claude mcp add labit -- npx @leonidstern/labit@latest mcp
@@ -92,13 +90,13 @@ const die = (msg) => {
 };
 if (unknownFlags.length) die(`Unknown option ${unknownFlags[0]}. See: ${CMD} --help`);
 
-// The project this is run for (a session's folder): pages lists its labs and its saved cloud pages, not every lab.
+// The project this is run for (a session's folder): pages lists its labs, not every lab.
 const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['publish', 'preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
+const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -138,8 +136,8 @@ if (pos[0] === 'settings') {
   process.exit(SETTINGS.problems.length ? 1 : 0);
 }
 
-// The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
-if (['publish', 'preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
+// The commands that answer and exit (publish, preview, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
+if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -345,7 +343,6 @@ const TOKEN = (() => {
 // computer holds TOKEN (data-admin, for resolving, moving and deleting); a script on a page can read that, so it is not
 // enough to listen as the agent, take its pins or speak as it (wait, invite, a reply marked as the agent's).
 const AGENT_KEY = randomBytes(16).toString('hex');
-process.env.LAB_HOST = 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
 const writeAtomic = (file, text, mode) => {
@@ -361,7 +358,7 @@ const storeName = (page) => {
   return (safe.length > 180 ? `${safe.slice(0, 140)}~${createHash('sha1').update(page).digest('hex').slice(0, 12)}` : safe) + '.json';
 };
 // A page's file, made from the comments as they are held: each one is already a JSON string, so nothing is parsed again.
-// A page left with no comments has no file. v is the file's shape (api/_schema.mjs); a file without one is 0.
+// A page left with no comments has no file. v is the file's shape (lib/schema.mjs); a file without one is 0.
 const savePage = (page, dir = STORE) => {
   const h = db.get(`lab:comments:${page}`);
   const file = path.join(dir, storeName(page));
@@ -410,7 +407,7 @@ if (migrate) {
     }
   }
 }
-// Each comment comes up to the current shape as it loads (api/_schema.mjs), whatever version its file was written in.
+// Each comment comes up to the current shape as it loads (lib/schema.mjs), whatever version its file was written in.
 const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(upgrade(c, handoff))]))]));
 saved = null;
 if (migrate) {
@@ -424,10 +421,6 @@ if (migrate) {
   console.log(`[lab] comments are now kept one file per page in .lab/comments/ (the old file is .lab/comments.json.bak)`);
 }
 fs.mkdirSync(STORE, { recursive: true });
-// The hosted lab allows 60 new comments an hour from one address (a guard against spam on the open web). A local lab
-// only lets in this computer and the home network, where one phone reviewing a page can pass that in an evening
-// (15 Nov): 600 here, unless LAB_COMMENTS_PER_HOUR says otherwise.
-process.env.LAB_COMMENTS_PER_HOUR ||= '600';
 const api = await apiOn(db);
 const commentsOf = (page) => [...(db.get(`lab:comments:${page}`)?.values() ?? [])].map((v) => JSON.parse(v)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 const pages = () => [...db.keys()].filter((k) => k.startsWith('lab:comments:') && db.get(k).size).map((k) => k.slice('lab:comments:'.length));
@@ -574,7 +567,7 @@ const sourceFor = (page) => {
 let origin = '';
 const agentText = async (page) => {
   const res = await api.GET(new Request(`http://localhost/api?format=text&page=${encodeURIComponent(page)}`, { headers: { host: 'localhost' } }));
-  const text = (await res.text()).replaceAll('https://localhost', origin);
+  const text = (await res.text()).replaceAll('http://localhost', origin);
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   return fileFor(page) ? local.replace(/^(page: .*)$/m, `$1\nfile: ${fileFor(page)}`) : local;
@@ -1350,7 +1343,7 @@ const flagsAttr = () => {
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? ` · edge: ${process.env.LABIT_EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
 const widget = (page, admin, me = '') => {
   markOpened(page);
-  return `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
+  return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
   `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
