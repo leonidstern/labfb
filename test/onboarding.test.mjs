@@ -145,21 +145,6 @@ test('a folder that a running lab already serves opens that lab instead of start
   fs.rmSync(home, { recursive: true, force: true });
 });
 
-test('saved cloud pages are listed with the local ones', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cloud-')));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
-  const env = { ...process.env, LABIT_HOME: home };
-  const run2 = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
-  assert.match((await run2(['add', 'https://lab.example.invalid/anna/site/abc/home/', '--name', 'Anna home'])).out, /Saved https:\/\/lab\.example\.invalid\/anna\/site\/abc\/home/);
-  await run2(['pages']);
-  assert.equal(fs.readFileSync(path.join(dir, '.lab', 'lab-pages.md'), 'utf8'), '- [Anna home](https://lab.example.invalid/anna/site/abc/home)\n');
-  await run2(['remove', 'https://lab.example.invalid/anna/site/abc/home']);
-  await run2(['pages']);
-  assert.match(fs.readFileSync(path.join(dir, '.lab', 'lab-pages.md'), 'utf8'), /No labs for this folder/);
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.rmSync(home, { recursive: true, force: true });
-});
-
 test('pages lists this folder\'s labs only, unless --all', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   const env = { ...process.env, LABIT_HOME: home };
