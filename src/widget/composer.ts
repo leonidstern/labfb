@@ -5,6 +5,9 @@ type Deps = {
   el: (tag: string, attrs?: Record<string, string>, text?: string) => HTMLElement;
   store: { get: (k: string) => string; set: (k: string, v: string) => void };
   root: ShadowRoot;
+  /** A motion token in ms, and a motion curve (anchoring.ts). */
+  ms: (token: 'quick' | 'base' | 'slow', times?: number) => number;
+  ease: (curve?: '' | 'out' | 'in' | 'settle' | 'pop') => string;
   refreshPinCursor: () => void;
   syncReads: () => void;
   rememberMe: (name: string) => void;
@@ -128,7 +131,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     text.style.height = `${text.scrollHeight}px`;
     if (glide) {
       const to = sendBtn.getBoundingClientRect();
-      const timing = { duration: 220, easing: 'cubic-bezier(.2, .7, .3, 1)' };
+      const timing = { duration: d.ms('base'), easing: d.ease() };
       sendBtn.animate([{ transform: `translate(${from.arrow.left - to.left}px, ${from.arrow.top - to.top}px)` }, { transform: 'none' }], timing);
       box.style.overflow = 'hidden';
       box.animate([{ height: `${from.height}px` }, { height: `${box.getBoundingClientRect().height}px` }], timing).onfinish = () => (box.style.overflow = '');
