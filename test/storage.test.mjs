@@ -268,3 +268,39 @@ test('reads.json and claims.json: a damaged one is put aside, not read as empty 
   await lab.stop();
 });
 
+test('looked files: a damaged one is put aside; old snaps and names are pruned', async () => {
+  const dir = folder();
+  fs.mkdirSync(path.join(dir, '.lab/looked'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.lab/looked/broken.json'), '{"v":1,"page":"/broken","snaps":{"a":');
+  const day = 864e5;
+  const snap = (age) => ({ at: Date.now() - age * day, by: 'Leo', ids: [[`taken-${age}`, `taken ${age} days ago`]] });
+  // Seven snaps; Leo points at a 20-day-old one, Old (silent for 40 days) at a 45-day-old one.
+  const snaps = Object.fromEntries([1, 2, 3, 4, 5, 6, 20, 45].map((age) => [`s${age}`, snap(age)]));
+  const who = { leo: { name: 'Leo', snap: 's20', at: Date.now() - 20 * day }, old: { name: 'Old', snap: 's45', at: Date.now() - 40 * day } };
+  fs.writeFileSync(path.join(dir, '.lab/looked/p.json'), JSON.stringify({ v: 1, page: '/p', snaps, who }));
+  // A look from before ids (blocks of text) is kept as it is and served with ids: null, so the widget takes the page's ids as seen.
+  fs.writeFileSync(path.join(dir, '.lab/looked/legacy.json'), JSON.stringify({ v: 1, page: '/legacy', snaps: { old: { at: Date.now() - day, by: 'Leo', blocks: ['Old words'] } }, who: { leo: { name: 'Leo', snap: 'old', at: Date.now() - day } } }));
+  const lab = await start(dir);
+  const names = () => fs.readdirSync(path.join(dir, '.lab/looked'));
+  assert.ok(names().some((n) => n.startsWith('broken.json.broken-')), names().join(' '));
+  assert.equal(fs.readFileSync(path.join(dir, '.lab/looked', names().find((n) => n.startsWith('broken.json.broken-'))), 'utf8'), '{"v":1,"page":"/broken","snaps":{"a":', 'kept as it was');
+  const get = (q) => fetch(`${lab.B}/_lab/api/looked?${q}`).then((r) => r.json());
+  const legacy = await get('name=Leo&page=/legacy');
+  assert.deepEqual([legacy.snap, legacy.ids], ['old', null], 'an old look: no ids');
+  assert.deepEqual(await get('name=Old&page=/p'), {}, 'a name nobody touched for 30 days is gone');
+  const mine = await get('name=Leo&page=/p');
+  assert.deepEqual(mine.ids, [['taken-20', 'taken 20 days ago']], 'one still in use stays, however old');
+  // The newest 5 stay as rounds, and the one Leo points at: six in all; the 45-day-old one nobody points to goes.
+  assert.deepEqual(mine.rounds.map((r) => r.snap).sort(), ['s1', 's2', 's20', 's3', 's4', 's5'].sort());
+  assert.deepEqual(await get('name=Leo&page=/p&snap=s45'), {}, 'a pruned round is not served');
+  // A look through the API is saved whole, in a file named as the page's comments are.
+  const c = (await lab.post({ page: '/index', name: 'Leo', text: 'x', anchor })).comment;
+  assert.ok(c);
+  const res = await fetch(lab.B + '/_lab/api/looked', { method: 'POST', headers: { 'content-type': 'application/json', origin: lab.B }, body: JSON.stringify({ name: 'Leo', page: '/index', ids: [['hi', 'Hi']] }) });
+  assert.equal(res.status, 200);
+  await until(() => fs.existsSync(path.join(dir, '.lab/looked/index.json')), 'the look saved');
+  const saved = readJson(path.join(dir, '.lab/looked/index.json'));
+  assert.deepEqual([saved.v, saved.page, Object.keys(saved.who), Object.values(saved.snaps)[0].ids], [1, '/index', ['leo'], [['hi', 'Hi']]]);
+  assert.ok(!names().some((n) => n.endsWith('.tmp')), 'no half-written file left');
+  await lab.stop();
+});

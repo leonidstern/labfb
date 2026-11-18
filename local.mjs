@@ -12,6 +12,7 @@ import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
+import { pageIds } from './lib/ids.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
@@ -83,7 +84,8 @@ For the agent, from the project (any folder under it):
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
-page), archive/ (done threads with nothing new in 30 days), server.json (port, keys, session; owner-only), seen.
+page), archive/ (done threads with nothing new in 30 days), looked/ (last looks), server.json (port, keys, session;
+owner-only), seen.
 Delete .lab to start over.`;
 
 // ---------- arguments ----------
@@ -537,7 +539,7 @@ const fidOf = (rel) => {
 };
 function rehome() {
   let byFid = null;
-  for (const page of PROXY ? [] : pages()) {
+  for (const page of PROXY ? [] : new Set([...pages(), ...looked.keys()])) {
     const [was, fid] = homes.get(page) || [];
     const rel = fileIndex.get(page);
     if (rel) {
@@ -545,18 +547,28 @@ function rehome() {
       if (now === fid && rel === was) continue;
       homes.set(page, [rel, now]);
       unsaved.add(page);
+      if (looked.has(page)) saveLooks(page);
       continue;
     }
     byFid ||= new Map([...fileIndex].map(([key, f]) => [fidOf(f), key]));
     const to = fid && byFid.get(fid);
     if (!to) continue;
-    const there = db.get(`lab:comments:${to}`) ?? new Map();
-    for (const [id, c] of db.get(`lab:comments:${page}`)) there.set(id, c);
-    db.set(`lab:comments:${to}`, there);
-    db.delete(`lab:comments:${page}`);
+    if (db.has(`lab:comments:${page}`)) {
+      const there = db.get(`lab:comments:${to}`) ?? new Map();
+      for (const [id, c] of db.get(`lab:comments:${page}`)) there.set(id, c);
+      db.set(`lab:comments:${to}`, there);
+      db.delete(`lab:comments:${page}`);
+    }
     homes.delete(page);
     homes.set(to, [fileIndex.get(to), fid]);
     for (const mine of Object.values(reads)) if (mine[page]) mine[to] = [...(mine[to] || []), ...mine[page]];
+    // The looks go with the page, in a file named for the new page.
+    if (looked.has(page)) {
+      if (!looked.has(to)) looked.set(to, looked.get(page));
+      looked.delete(page);
+      fs.rmSync(lookFile(page), { force: true });
+      saveLooks(to);
+    }
     console.log(`[lab] ${was} is now ${fileIndex.get(to)}: its comments went with it`);
     for (const p of [page, to]) persist(p).catch((e) => console.error('[lab] could not save comments:', e.message));
     broadcast();
@@ -600,7 +612,30 @@ const agentText = async (page) => {
   const text = (await res.text()).replaceAll('http://localhost', origin);
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
-  return fileFor(page) ? local.replace(/^(page: .*)$/m, `$1\nfile: ${fileFor(page)}`) : local;
+  const file = fileFor(page);
+  const lines = [file && `file: ${file}`, ...lookLines(page, file)].filter(Boolean);
+  return lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
+};
+// Who last looked (the last three, newest first), and whether before or after the file's last save (what they saw
+// may be older than the agent's latest edit): `looked: Leo 14:02 (before the last save)`. Then, for an HTML file, the
+// ids in it each has not seen, so the agent can point at them: `unseen by Leo: #v3, #pricing` (at most 5 each).
+const lookLines = (page, file) => {
+  const rec = looked.get(page);
+  if (!rec) return [];
+  const who = Object.values(rec.who).sort((a, b) => b.at - a.at).slice(0, 3);
+  let st, now;
+  try {
+    st = file && fs.statSync(path.join(ROOT, file));
+    if (st && /\.html?$/i.test(file) && st.size <= 2e6) now = pageIds(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+  } catch {}
+  const at = (w) => `${w.name} ${new Date(w.at).toTimeString().slice(0, 5)}${st ? ` (${w.at < st.mtimeMs ? 'before' : 'after'} the last save)` : ''}`;
+  const unseen = (w) => {
+    const ids = rec.snaps[w.snap]?.ids;
+    const had = new Set(ids?.map((n) => n[0]));
+    const fresh = ids && now ? now.filter((id) => !had.has(id)) : [];
+    return fresh.length && `unseen by ${w.name}: ${fresh.slice(0, 5).map((id) => `#${id}`).join(', ')}${fresh.length > 5 ? ` (+${fresh.length - 5} more)` : ''}`;
+  };
+  return [who.length && `looked: ${who.map(at).join(', ')}`, ...who.map(unseen)];
 };
 
 // lab: this run of the lab (a restart is a new one); widget: what the comment widget's script is, so open pages reload
@@ -1042,6 +1077,52 @@ const saver = (file, data, what) => {
   };
 };
 const saveReads = saver(READS, () => reads, 'read marks');
+// New since you looked: each person's last look at a page (the ids on it, each with its label), so a phone and a Mac
+// with the same name agree on what is new. .lab/looked/<same file name as .lab/comments/>.json as
+//   { v: 1, page, file, fid, snaps: { id: { at, by, ids: [[id, label]…] } }, who: { plain name: { name, snap, at } } }
+// A snap's id is a hash of its ids, so two people who looked at the same page share one. A snap from before ids has
+// `blocks` (text) and no `ids`: the widget takes the page's ids as seen then. A snap nobody points to goes, except the
+// newest few (the rounds: what the page held at each look); a name nobody has touched for a month goes at start.
+const LOOKED = path.join(LAB, 'looked');
+const LOOKS = { ids: 4000, body: 400 * 1024, names: 200, pages: 1000, keep: 5, days: 30 };
+const looked = new Map();
+let lookedRev = 0;
+const pruneLooks = (rec) => {
+  for (const [name, w] of Object.entries(rec.who)) if (Date.now() - w.at > LOOKS.days * 864e5) delete rec.who[name];
+  const used = new Set(Object.values(rec.who).map((w) => w.snap));
+  const newest = new Set(Object.entries(rec.snaps).sort((a, b) => b[1].at - a[1].at).slice(0, LOOKS.keep).map(([id]) => id));
+  for (const id of Object.keys(rec.snaps)) if (!used.has(id) && !newest.has(id)) delete rec.snaps[id];
+};
+if (fs.existsSync(LOOKED)) {
+  for (const name of fs.readdirSync(LOOKED)) {
+    if (!name.endsWith('.json')) continue; // half-written .tmp files and damaged ones put aside
+    const file = path.join(LOOKED, name);
+    const f = readSide(file, `looked/${name}`);
+    if (!f) continue;
+    if (f.v !== 1 || typeof f.page !== 'string' || !f.page.startsWith('/') || !f.snaps || typeof f.snaps !== 'object' || !f.who || typeof f.who !== 'object') {
+      putAside(file, `looked/${name}`);
+      continue;
+    }
+    const rec = { snaps: bare(f.snaps), who: bare(f.who) };
+    pruneLooks(rec);
+    looked.set(f.page, rec);
+    if (typeof f.file === 'string' && /^[\d.]+$/.test(f.fid) && !homes.has(f.page)) homes.set(f.page, [f.file, f.fid]);
+  }
+}
+fs.mkdirSync(LOOKED, { recursive: true });
+const lookFile = (page) => path.join(LOOKED, storeName(page));
+const lookSavers = new Map();
+const saveLooks = (page) => {
+  if (!lookSavers.has(page))
+    lookSavers.set(page, saver(lookFile(page), () => {
+      const home = homes.get(page);
+      return { v: 1, page, ...(home && { file: home[0], fid: home[1] }), ...looked.get(page) };
+    }, 'looks'));
+  lookSavers.get(page)();
+};
+/** @type {any} */
+let lookedBroadcast = 0;
+let lookedIndexed = 0;
 // The hand-off marks (see handoff, above): the file's own win over what old comment files still said, and the marks of
 // comments that are gone (deleted, archived) go as it is saved.
 const HANDED = path.join(LAB, 'handed.json');
@@ -1052,7 +1133,7 @@ const saveHanded = saver(HANDED, () => {
 }, 'hand-off marks');
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, labit: VERSION, reads: readsRev, mode, heard: heard(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, labit: VERSION, reads: readsRev, looked: lookedRev, mode, heard: heard(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1081,7 +1162,8 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
       fileIndex = null;
       fileMemo.clear();
       indexStale = false;
-      if (pages().length) fileFor(pages()[0]); // listed again at once, so a renamed page's comments go with it now
+      const known = pages()[0] ?? [...looked.keys()][0];
+      if (known) fileFor(known); // listed again at once, so a renamed page's comments and looks go with it now
     }
     const hotOnly = !otherSaved.size && hotSaved.size > 0;
     const hot = [...hotSaved].slice(0, 50).map(([p, kind]) => ({ path: p, kind }));
@@ -1204,7 +1286,7 @@ setInterval(pagesChanged, Math.min(60000, TAB_TTL)).unref();
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
 async function threadsText(page, threads) {
   const text = await agentText(page);
-  const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file):/.test(l)).join('\n');
+  const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file|unseen by .*):/.test(l)).join('\n');
   // Lean: details an agent rarely needs (computed looks, colours, window size, the CSS path) stay in the full text at
   // /_lab/agent/<page>; the pin's words, element, text, section and file stay here.
   const RARE = /^(looks|colours|viewport|selector \(at comment time\)):/;
@@ -1448,7 +1530,7 @@ const flagsAttr = () => {
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? ` · edge: ${process.env.LABIT_EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
 const widget = (page, admin, me = '') => {
   markOpened(page);
-  return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
+  return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
   `${KEYS_ATTR}${ACTIONS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
@@ -1528,7 +1610,7 @@ const labPage = (title, body) =>
   `<body class=lab><main><a class="lab-brand" href="/">${markSvg(20)}labit</a>${body}</main></body>`;
 const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const notFound = (req, res, what) => {
-  if (!/text\/html/.test(req.headers.accept || '')) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+  if (!/text\/html/.test(req.headers.accept || '')) return plain(res, 404, 'not found');
   res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
   return res.end(labPage('labit · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));
 };
@@ -1592,8 +1674,20 @@ const listing = (res, dir, urlPath) => {
   );
 };
 
+// A short plain-text answer: an error's reason.
+const plain = (res, code, why, more) => res.writeHead(code, { 'content-type': 'text/plain', ...more }).end(why);
 // What a request sent (JSON), and a JSON answer (never kept by the browser).
 const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}');
+// The body of a request, or null when it is longer than `max` bytes (the rest is read and dropped, so the sender gets its answer).
+const sentWithin = async (req, max) => {
+  const parts = [];
+  let n = 0;
+  for await (const chunk of req) {
+    n += chunk.length;
+    if (n <= max) parts.push(chunk);
+  }
+  return n > max ? null : Buffer.concat(parts).toString();
+};
 const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
 // When this lab was made: its .lab folder's birth (the first run in this folder). Linux may not keep births: then its
 // oldest comment, else nothing.
@@ -1665,9 +1759,9 @@ const stopListening = () => {
 const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
-    if (!nearby(req) || !allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
+    if (!nearby(req) || !allowedHost(req.headers.host)) return plain(res, 403, 'unknown host');
     if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !(req.headers['content-type'] || '').startsWith('application/json')))
-      return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
+      return plain(res, 403, 'forbidden');
     const pathname = decodeURIComponent(url.pathname);
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
     if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '', url.searchParams.get('to') || '');
@@ -1677,7 +1771,7 @@ const handler = async (req, res) => {
     if (guest) res.setHeader('set-cookie', guestCookie(guest));
     if (PROXY && !pathname.startsWith('/_lab/')) return proxy.page(req, res, url);
     // .lab (comments, admin key), .git, .env and other dot files are never served.
-    if (pathname.split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+    if (pathname.split('/').some((s) => s.startsWith('.'))) return plain(res, 404, 'not found');
 
     // A background tab's light check: the same state the live stream sends, and the tab still counts as open.
     if (pathname === '/_lab/state' && req.method === 'GET') {
@@ -1886,7 +1980,7 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/hop' && req.method === 'GET') {
       const n = Number(url.searchParams.get('port'));
       const lab = runningLabs().find((l) => l.port === n && n !== PORT);
-      if (!lab) return res.writeHead(404, { 'content-type': 'text/plain' }).end('no such lab running');
+      if (!lab) return plain(res, 404, 'no such lab running');
       try {
         const srv = JSON.parse(fs.readFileSync(path.join(lab.root, '.lab/server.json'), 'utf8'));
         const r = await fetch(`http://localhost:${n}/_lab/invite`, {
@@ -1901,7 +1995,7 @@ const handler = async (req, res) => {
         const go = links.find((l) => new URL(l).hostname === host) || links[0];
         return res.writeHead(302, { location: go, 'cache-control': 'no-store' }).end();
       } catch {
-        return res.writeHead(502, { 'content-type': 'text/plain' }).end('that lab did not answer');
+        return plain(res, 502, 'that lab did not answer');
       }
     }
     // stop (listening), park, start: this computer only, with the lab's key (a web page elsewhere can't post here).
@@ -1964,7 +2058,7 @@ const handler = async (req, res) => {
     }
     // What the Lab panel lists: this lab's pages with their open comments. This computer only.
     if (pathname === '/_lab/pages') {
-      if (!isLoopback(req)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
+      if (!isLoopback(req)) return plain(res, 403, 'forbidden');
       return answer(res, labInfo());
     }
     if (pathname.startsWith('/_lab/agent/')) {
@@ -1982,15 +2076,15 @@ const handler = async (req, res) => {
         const b = await sent(req);
         const name = plainName(b.name);
         const page = String(b.page || '').slice(0, 500);
-        if (!name || !page || !db.has(`lab:comments:${page}`)) return res.writeHead(400, { 'content-type': 'text/plain' }).end('name and a page with comments needed');
+        if (!name || !page || !db.has(`lab:comments:${page}`)) return plain(res, 400, 'name and a page with comments needed');
         // Any device may mark under any name: your phone and this Mac share "new" by name. (--wifi only lets in the local
         // network, so the worst a stranger there can do is clear someone's new marks.)
-        if (!(name in reads) && Object.keys(reads).length >= 200) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many names');
+        if (!(name in reads) && Object.keys(reads).length >= 200) return plain(res, 429, 'too many names');
         const onPage = db.get(`lab:comments:${page}`);
         // Only ids of comments that are on that page count, so the marks can't grow past the comments themselves.
         const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String))].filter((id) => onPage.has(id)).slice(0, 2000);
         const mine = (reads[name] ||= Object.create(null));
-        if (!(page in mine) && Object.keys(mine).length >= 500) return res.writeHead(429, { 'content-type': 'text/plain' }).end('too many pages');
+        if (!(page in mine) && Object.keys(mine).length >= 500) return plain(res, 429, 'too many pages');
         const had = new Set((mine[page] ||= []));
         const added = ids.filter((id) => !had.has(id));
         if (added.length) {
@@ -2005,6 +2099,53 @@ const handler = async (req, res) => {
       const name = plainName(url.searchParams.get('name'));
       const ids = (name && reads[name]?.[url.searchParams.get('page') || '']) || [];
       return answer(res, { ids });
+    }
+    // Last looks, by name and page (see LOOKED, above): GET ?name=&page= gives that person's last look and the rounds
+    // before it; &snap= one round's ids. POST { name, page, ids: [[id, label]…] } makes now their last look. Open to any device the
+    // lab lets in, as the read marks are; the page must be one of this lab's.
+    if (pathname === '/_lab/api/looked') {
+      if (req.method === 'POST') {
+        const body = await sentWithin(req, LOOKS.body);
+        if (body === null) return plain(res, 413, 'too big', { connection: 'close' });
+        let b;
+        try {
+          b = JSON.parse(body || '{}');
+        } catch {
+          return plain(res, 400, 'not JSON');
+        }
+        const name = plainName(b?.name);
+        const page = String(b?.page || '').slice(0, 500);
+        if (!name || !page.startsWith('/') || !Array.isArray(b.ids)) return plain(res, 400, 'name, page and ids needed');
+        if (b.ids.length > LOOKS.ids) return plain(res, 413, 'too many ids');
+        // A page saved a moment ago may not be in the file list yet (the watcher is a beat behind): look again, at most every 2 s.
+        if (!db.has(`lab:comments:${page}`) && !fileFor(page) && !(Date.now() - lookedIndexed > 2000 && ((lookedIndexed = Date.now()), (fileIndex = null), fileMemo.clear(), fileFor(page))))
+          return plain(res, 400, 'a page of this lab needed');
+        if (!looked.has(page) && looked.size >= LOOKS.pages) return plain(res, 429, 'too many pages');
+        const rec = looked.get(page) || { snaps: bare(), who: bare() };
+        if (!(name in rec.who) && Object.keys(rec.who).length >= LOOKS.names) return plain(res, 429, 'too many names');
+        const ids = b.ids.map((n) => (Array.isArray(n) ? [String(n[0]).slice(0, 200), String(n[1] ?? '').slice(0, 80)] : [String(n).slice(0, 200), '']));
+        const id = createHash('sha1').update(JSON.stringify(ids.map((n) => n[0]))).digest('hex').slice(0, 12);
+        const at = Date.now();
+        const shown = String(b.name).replace(/\s+/g, ' ').trim().slice(0, 60);
+        rec.snaps[id] ||= { at, by: shown, ids };
+        rec.who[name] = { name: shown, snap: id, at };
+        pruneLooks(rec);
+        looked.set(page, rec);
+        const rel = fileFor(page);
+        if (rel && !homes.has(page)) homes.set(page, [rel, fidOf(rel)]); // so a renamed page takes its looks along
+        lookedRev++;
+        saveLooks(page);
+        // One broadcast per moment: every open tab of that name checks again.
+        if (!lookedBroadcast) lookedBroadcast = setTimeout(() => ((lookedBroadcast = 0), broadcast()), 100);
+        return answer(res, { at });
+      }
+      const rec = looked.get(url.searchParams.get('page') || '');
+      const snap = url.searchParams.get('snap');
+      const mine = rec?.who[plainName(url.searchParams.get('name'))];
+      if (snap) return answer(res, rec?.snaps[snap] ? { snap, at: rec.snaps[snap].at, ids: rec.snaps[snap].ids || null } : {});
+      if (!rec || !mine || !rec.snaps[mine.snap]) return answer(res, {});
+      const rounds = Object.entries(rec.snaps).sort((a, b) => b[1].at - a[1].at).map(([id, s]) => ({ snap: id, at: s.at, by: s.by }));
+      return answer(res, { snap: mine.snap, at: mine.at, ids: rec.snaps[mine.snap].ids || null, rounds }); // null: a look from before ids
     }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);
