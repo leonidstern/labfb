@@ -4,6 +4,10 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Pins move less: hover 1.03, no movement on press, and the open pin gets only its green edge (no lift), so clicking away doesn't shift it. The send and bar buttons don't move on press.
+
+- A pin stays the same element across redraws: clicking it, closing it, pointing away or clicking the page no longer restarts its ring, pop or face change. Reading a new reply no longer plays the face change, and the change is quieter.
+
 - Phones: a sent comment's card slides down whole, like any sheet, and its new pin pops in with one green ring. It used to shrink and fly into the pin, which squeezed the card, and the pin was already there while it flew (its pop-in had been dropped by a later change).
 
 - Option-click on a pin resolves its thread without opening it (again opens it again), for whoever may resolve it.
