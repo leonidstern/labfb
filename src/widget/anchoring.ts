@@ -80,6 +80,17 @@ export function bindAnchoring(deps: Deps) {
   ({ host, layer, el, store } = deps);
 }
 
+// A motion token (--_t-quick, -base, -slow, -loop, -hold, styles.css) in milliseconds, times `times`: for a timer or a
+// Web Animation, which can't read a var(). It is 0 under reduced motion, as the CSS durations are (hold excepted).
+export function ms(token: 'instant' | 'quick' | 'base' | 'slow' | 'loop' | 'hold', times = 1): number {
+  const v = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(getComputedStyle(host).getPropertyValue(`--_t-${token}`));
+  return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) * times : 0;
+}
+
+// A motion curve (--_ease, -out, -in, -settle, -pop) for a Web Animation's `easing`, which can't read a var() either.
+export const ease = (curve: '' | 'out' | 'in' | 'settle' | 'pop' = ''): string =>
+  getComputedStyle(host).getPropertyValue(`--_ease${curve && `-${curve}`}`).trim() || 'linear';
+
 // Ids and classes a framework or build makes up (lib/ids.ts) say nothing about which element it is.
 const generated = (v) => GENERATED.test(v || '');
 // Names a page gives an element for tests or for comments: the most lasting way to find it again.
@@ -984,7 +995,7 @@ export function goToBlock(e: Element) {
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   scrollTo({ top: Math.max(0, r.top + scrollY - 24), behavior: still ? 'auto' : 'smooth' });
   const ring = '2px solid rgb(52, 199, 89)';
-  e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: 2000 });
+  e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: ms('hold', 2) });
 }
 export const drafting = () => DRAFT_MODE && store.get('lab-hold') === '1';
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that
