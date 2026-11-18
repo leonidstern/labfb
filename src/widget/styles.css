@@ -601,3 +601,31 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .sw-lab { align-items: center; }
   .sw-foot { display: none; }
 }
+
+/* Since you looked (changes.ts): a badge by the listener pill, a mark in the margin by each changed block. */
+.chgs { position: absolute; top: 0; left: 0; width: 0; height: 0; }
+.chg-mark { position: absolute; width: 10px; margin: 0; padding: 0; border: 0; background: none; cursor: pointer; }
+.chg-mark::before { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 3px; border-radius: 2px; background: var(--_c); }
+.chg-mark:hover::before, .chg-mark.open::before { left: 2px; width: 5px; }
+.chg-mark.add { --_c: rgb(36, 160, 70); }
+.chg-mark.chg { --_c: rgb(230, 150, 20); }
+.chg-mark.rm { --_c: rgb(220, 60, 50); }
+.chg-mark.rm::before { top: 4px; bottom: auto; height: 3px; width: 10px; left: 0; }
+.chg-card { position: absolute; width: 320px; max-width: calc(100vw - 16px); padding: 10px 12px; border-radius: var(--_radius); background: var(--_bg); color: var(--_fg);
+            box-shadow: var(--_shadow); font-size: 13px; line-height: 1.45; }
+.chg-head { color: var(--_muted); font-size: 12px; margin-bottom: 4px; }
+.chg-body .del { color: rgb(200, 50, 40); text-decoration: line-through; background: rgba(220, 60, 50, .1); }
+.chg-body .ins { color: rgb(30, 135, 60); background: rgba(36, 160, 70, .12); }
+.since { display: inline-flex; align-items: center; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
+.since button { font: inherit; border: 0; background: none; color: var(--_fg); cursor: pointer; padding: 9px 10px; }
+.since .since-count { display: inline-flex; gap: 6px; padding-left: 14px; }
+.since .since-lbl { color: var(--_muted); }
+.since b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.since b.add { color: rgb(36, 160, 70); }
+.since b.chg { color: rgb(210, 135, 15); }
+.since b.rm { color: rgb(220, 60, 50); }
+.since .since-btn { color: var(--_muted); border-left: var(--_hair); }
+.since .since-btn:last-child { padding-right: 14px; }
+.since button:hover { color: var(--_fg); }
+
+.chg-body .ins { margin-left: 2px; }

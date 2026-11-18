@@ -31,6 +31,7 @@ import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
+import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 
@@ -111,6 +112,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     get vv() { return vv; },
   };
   bindLive(W);
+  bindChanges(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
@@ -1538,6 +1540,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     S.openId = null;
     render();
     load();
+    setTimeout(() => S.checkChanges?.(), 400);
   };
   for (const m of ['pushState', 'replaceState']) {
     const original = history[m];
@@ -1694,6 +1697,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
+    if (script?.dataset.live) startChanges(); // what changed since you looked (local labs, where pages change under you)
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
