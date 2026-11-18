@@ -42,3 +42,81 @@ test('answering a reply by its id says which message it answers; answering the p
   assert.equal(all.find((c) => c.text === 'Under the menu.').to, where.id);
   assert.equal(all.find((c) => c.text === 'Changed the menu.').to, undefined);
 });
+
+// A question with choices (labit reply --choice … --recommend …): stored on the reply, the person's pick comes back as
+// a reply that says which choice (picked), and the agent text shows both.
+test('a reply with choices is a question; the pick is stored and shown to the agent', async () => {
+  const pin = await post({ name: 'leo', text: 'sharper?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } });
+  const first = await cli('wait', '--timeout', '5');
+  assert.match(first.out, /sharper\?/);
+  // Refused, with nothing saved: one choice, a recommend out of range, a choice with --done or --resolve.
+  for (const bad of [['--choice', 'Hey'], ['--choice', 'Hey', '--choice', 'Hello', '--recommend', 'D'], ['--choice', 'Hey', '--choice', 'Hello', '--done'], ['--choice', 'Hey', '--choice', 'Hello', '--resolve'], ['--recommend', 'A']]) {
+    const r = await cli('reply', pin.id, 'Which one?', ...bad);
+    assert.notEqual(r.code, 0, bad.join(' '));
+  }
+  assert.equal((await thread()).filter((c) => c.parent === pin.id).length, 0);
+  // A choice may start with a dash.
+  const asked = await cli('reply', pin.id, 'Which one?', '--choice', 'Hey', '--choice', '-Hello there', '--choice', 'Howdy', '--recommend', 'b');
+  assert.equal(asked.code, 0, asked.out);
+  assert.match(asked.out, /A\) Hey {2}B\) -Hello there {2}C\) Howdy {2}\(your pick: B\)/);
+  const ask = (await thread()).find((c) => c.text === 'Which one?');
+  assert.deepEqual(ask.choices, ['Hey', '-Hello there', 'Howdy']);
+  assert.equal(ask.recommend, 1);
+  assert.equal(ask.intent, 'question');
+  assert.equal(ask.v, 2); // nothing to upgrade: the fields are only added
+  // A person can't put choices on their own reply; a pick out of range is just words.
+  const odd = await post({ name: 'leo', text: 'Picked Z', parent: ask.id, to: ask.id, picked: 7, choices: ['x', 'y'] });
+  assert.equal(odd.picked, undefined);
+  assert.equal(odd.choices, undefined);
+  const pick = await post({ name: 'leo', text: 'Picked B: -Hello there', parent: ask.id, to: ask.id, picked: 1 });
+  assert.deepEqual(pick.picked, { of: ask.id, n: 1 });
+  assert.equal(pick.parent, pin.id); // in the thread, quoting the question
+  assert.equal(pick.to, ask.id);
+  const text = await (await fetch(`${B}/_lab/agent/bar`)).text();
+  assert.match(text, /^ {2}B\) -Hello there \(your pick\)$/m);
+  assert.match(text, /^ {2}picked: B\) -Hello there \(leo\)$/m);
+  const next = await cli('wait', '--timeout', '5');
+  assert.match(next.out, /Picked B: -Hello there/);
+});
+
+// What the page couldn't show as rows is refused (exit 1 from reply, 400 from the server), and nothing is saved.
+test('seven, empty and 301-character choices are refused', async () => {
+  const pin = await post({ name: 'leo', text: 'which word?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } });
+  const before = (await thread()).length;
+  const seven = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const long = 'x'.repeat(301);
+  for (const bad of [seven, ['a', ''], ['a', '  '], ['a', long]]) {
+    const r = await cli('reply', pin.id, 'Which?', ...bad.flatMap((c) => ['--choice', c]));
+    assert.notEqual(r.code, 0, bad.join('|').slice(0, 30));
+  }
+  // The server says no on its own too: someone who talks to it directly (the agent's header) gets a 400, not a cut list.
+  const agent = (body) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent }, body: JSON.stringify({ page: '/bar', name: 'Claude', text: 'Which?', parent: pin.id, ...body }) });
+  for (const body of [{ choices: seven }, { choices: ['a'] }, { choices: ['a', ''] }, { choices: ['a', long] }, { choices: ['a', 'b'], recommend: 2 }, { choices: ['a', 'b'], recommend: 'B' }, { choices: ['a', 'b'], recommend: -1 }, { recommend: 0 }]) {
+    assert.equal((await agent(body)).status, 400, JSON.stringify(body).slice(0, 60));
+  }
+  assert.equal((await thread()).length, before, 'nothing saved');
+  assert.equal((await agent({ choices: ['a', 'b', 'c', 'd', 'e', 'f'], recommend: 5 })).status, 201); // six, the last one its pick: fine
+});
+
+// Picking twice (another device, a changed mind): the agent reads the latest pick, and wait says which question each answers.
+test('a second pick: the agent reads the latest', async () => {
+  const pin = await post({ name: 'leo', text: 'which tone?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } });
+  const sent = await cli('reply', pin.id, 'Which tone?', '--choice', 'Hi', '--choice', 'Hello');
+  assert.equal(sent.code, 0, sent.out);
+  const ask = (await thread()).find((c) => c.text === 'Which tone?');
+  await cli('wait', '--timeout', '5'); // the question and what came before are read; only the picks are new
+  const one = await post({ name: 'leo', text: 'Picked A: Hi', parent: ask.id, to: ask.id, picked: 0 });
+  await new Promise((r) => setTimeout(r, 15)); // the latest is by time
+  const two = await post({ name: 'leo', text: 'Picked B: Hello', parent: ask.id, to: ask.id, picked: 1 });
+  assert.equal(one.picked.n, 0);
+  assert.equal(two.picked.n, 1);
+  const text = await (await fetch(`${B}/_lab/agent/bar`)).text();
+  assert.match(text, /^ {2}picked: B\) Hello \(leo\)$/m);
+  assert.doesNotMatch(text, /picked: A\)/);
+  // A pick of "keep the words as they are".
+  const none = await post({ name: 'leo', text: 'Keep as is: none of these.', parent: ask.id, to: ask.id, picked: -1 });
+  assert.equal(none.picked.n, -1);
+  assert.match(await (await fetch(`${B}/_lab/agent/bar`)).text(), /^ {2}picked: none, keep the words as they are \(leo\)$/m);
+  const w = await cli('wait', '--timeout', '5');
+  assert.match(w.out, new RegExp(`Picked B: Hello.*\\(their pick on your question id ${ask.id}\\)`));
+});
