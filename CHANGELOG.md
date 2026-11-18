@@ -5,6 +5,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 ## Unreleased
 
 - Agents read a pin's or chat message's whole thread before answering, and don't guess from the page, URL or #section what it asks (`wait`, the plugin's wake turn and the skill say so).
+- The npm package no longer carries CHANGELOG.md (−28 KB packed); the changelog lives on GitHub and in each release's notes.
 
 - The go action is just another comment: it sends a comment that says "go" on the words or the spot, and the pin looks like any other (your initial, the ring while the agent works, the tick when done). The separate go pin design (a green "go" face) is gone.
 - `labit reply <id> "question" --choice "A" --choice "B" [--recommend B]` (also the MCP `reply` tool's `choices` and `recommend`): the agent asks with 2 to 6 choices and its own pick. The thread card shows the question with no bubble, then the versions as a plain list (a tick on the one picked, the agent's own at first; no letters, no tags), then one Keep, always there and always reading Keep, which sends the pick; it comes back in the next `wait` as `Picked B: …` with the question's id. No keys on the card: tap, Keep; Esc closes. On phones the question is a half-height sheet with 44 pt rows. Version stays 2: `choices` and `recommend` (the agent's) and `picked` (the person's) are only added fields, and an older lab or widget shows them as plain messages.
