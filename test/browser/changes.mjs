@@ -62,13 +62,19 @@ const post = (body, who = {}) => fetch(`${B}/_lab/api/comments`, { method: 'POST
 try {
   for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
+    const ME = `leo-${eng}`; // each engine is somebody of its own: the lab keeps what it saw
+    write('index.html', page());
     // Reduced motion for the whole run: the jump is instant, so a step is read the moment it is made.
     const context = (extra = {}) => browser.newContext({ viewport: { width: 1100, height: 700 }, reducedMotion: 'reduce', ...extra });
-    const open = async (ctx, file = '/') => {
+    const open = async (ctx, file = '/', name = ME, before = () => {}, look = true) => {
       const p = await ctx.newPage();
-      await p.addInitScript(() => localStorage.getItem('lab-name') || localStorage.setItem('lab-name', 'leo'));
+      if (name) await p.addInitScript((n) => localStorage.getItem('lab-name') || localStorage.setItem('lab-name', n), name);
+      await before(p);
       await p.goto(B + file);
-      await sleep(1300); // the first look is taken 400 ms after the load
+      // The widget starts, and takes the first look 400 ms after the load (a cold browser takes its time).
+      await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 15000 });
+      if (look) await p.waitForFunction(() => localStorage.getItem('lab-looked:' + document.querySelector('script[data-page]').dataset.page), null, { timeout: 15000 }).catch(() => {});
+      await sleep(400);
       const shadow = (fn, arg) => p.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
       const badge = () => shadow(() => { const b = r.querySelector('.since'); return b && !b.hidden ? b.textContent.replace(/\s+/g, ' ').trim() : ''; });
       const marks = () => shadow(() => { return [...r.querySelectorAll('.chg-mark')].map((m) => m.className.replace('chg-mark ', '').replace(' open', '')); });
@@ -148,7 +154,7 @@ try {
     await shadow(() => { r.querySelector('.chg-head.note').click(); });
     await sleep(300);
     check(eng, 'a tap on the note opens its thread', await shadow(() => { return Boolean(r.querySelector('.card') || r.querySelector('.thread') || r.querySelector('.sheet')); }));
-    await post({ page: '/index', action: 'delete', id: made.comment.id });
+    await post({ page: '/index', action: 'delete', id: made.comment.id }, { 'x-lab-agent': '1' });
     await own.close();
 
     // ---- a clock and a counter are not changes; the real edit beside them is ----
@@ -187,11 +193,79 @@ try {
     check(eng, 'a light page, a dark OS: the light set', (await colour(Lt)) === 'rgb(224, 138, 26)' || (await colour(Lt)) === 'rgb(31, 154, 91)', await colour(Lt));
     await ctx5.close();
 
+    // ---- the last look lives in the lab, under your name ----
+    const lookOf = async (name, file) => (await (await fetch(`${B}/_lab/api/looked?name=${name}&page=/${file}`)).json()).blocks;
+    write('sync.html', page());
+    const mac = await open(await context(), '/sync');
+    const phone = await open(await context({ viewport: { width: 390, height: 800 } }), '/sync');
+    const mira = await open(await context(), '/sync', `mira-${eng}`);
+    const nobody = await open(await context(), '/sync', '');
+    const posted = [];
+    nobody.p.on('request', (r) => r.method() === 'POST' && /\/_lab\/api\/looked/.test(r.url()) && posted.push(r.url()));
+    check(eng, 'the first look reaches the lab, under the name', (await lookOf(ME, 'sync'))?.length >= 5);
+    write('sync.html', page({ b: 'The second block talks about cost and a lower price.', c: false }));
+    await until(async () => /~1/.test(await mac.badge()) && /~1/.test(await phone.badge()) && /~1/.test(await mira.badge()) && /~1/.test(await nobody.badge()), 8000);
+    check(eng, 'same name in a second browser: the same marks', (await phone.marks()).join() === (await mac.marks()).join() && (await mac.marks()).join() === 'chg,rm', `${await mac.marks()} · ${await phone.marks()}`);
+    check(eng, 'at 390px the label goes and the card is as wide as the screen leaves', await (async () => {
+      await phone.click('.chg-mark.chg');
+      return phone.shadow(() => { const c = r.querySelector('.chg-card').getBoundingClientRect(); return !getComputedStyle(r.querySelector('.since-lbl')).display.includes('inline') && c.left >= 0 && c.right <= innerWidth; });
+    })());
+    await mac.shadow(() => { [...r.querySelectorAll('.since-btn')].find((b) => /seen/.test(b.textContent)).click(); });
+    check(eng, 'seen on one clears the other within a second or two', await until(async () => (await phone.badge()) === '' && (await phone.marks()).length === 0, 3000), await phone.badge());
+    check(eng, "another name keeps its marks: Leo's seen leaves Mira's", (await mira.marks()).length === 2 && /~1/.test(await mira.badge()));
+    await phone.p.reload();
+    await sleep(2500);
+    check(eng, 'seen on the Mac stays clear on the phone after a reload', (await phone.badge()) === '');
+    await nobody.shadow(() => { [...r.querySelectorAll('.since-btn')].find((b) => /seen/.test(b.textContent)).click(); });
+    await sleep(500);
+    check(eng, 'no name: the look stays in the browser, nothing is sent', (await nobody.badge()) === '' && posted.length === 0 && (await lookOf('', 'sync')) === undefined);
+
+    // The lab refuses the browser's requests for a while (down): seen holds, and is sent with the next check.
+    write('late.html', page());
+    const late = await context();
+    const L2 = await open(late, '/late');
+    await late.route('**/_lab/api/looked**', (r) => r.abort());
+    write('late.html', page({ b: 'The second block talks about cost and a lower price.', c: false }));
+    await until(async () => /~1/.test(await L2.badge()), 6000);
+    await L2.shadow(() => { [...r.querySelectorAll('.since-btn')].find((b) => /seen/.test(b.textContent)).click(); });
+    await sleep(300);
+    const held = await L2.p.evaluate(() => JSON.parse(localStorage.getItem('lab-looked:/late')));
+    check(eng, 'lab down: seen holds, and waits to be sent', (await L2.badge()) === '' && held.dirty === 1 && (await lookOf(ME, 'late')).length === 7, `${held.dirty} ${(await lookOf(ME, 'late')).length}`);
+    await late.unroute('**/_lab/api/looked**');
+    write('late.html', page({ b: 'The second block talks about cost and a lower price.', c: false, a: 'The first block talks about speed and caching today.' }));
+    await sleep(3000);
+    const sent = await lookOf(ME, 'late');
+    check(eng, 'and goes to the lab with the next check, once', sent.length === 6 && !(await L2.p.evaluate(() => JSON.parse(localStorage.getItem('lab-looked:/late')).dirty)) && /~1/.test(await L2.badge()), `${sent.length} blocks in the lab, dirty ${await L2.p.evaluate(() => JSON.parse(localStorage.getItem('lab-looked:/late')).dirty)}, badge ${await L2.badge()}`);
+    await late.close();
+
+    // The first build kept a plain list in lab-looked:<page>: it goes up when the lab has nothing, and the lab's copy wins when it has one.
+    write('old.html', page());
+    const oldList = ['Plan', 'The first block talks about speed and caching.', 'The second block talks about cost and price.', 'The third block will go away soon.', 'More', 'Hidden words inside.', 'The last block stays as it is.'];
+    const ctx7 = await context();
+    const posts = [];
+    const O = await open(ctx7, '/old', ME, async (pg) => {
+      await pg.addInitScript((l) => localStorage.getItem('lab-looked:/old') || localStorage.setItem('lab-looked:/old', JSON.stringify(l)), oldList);
+      pg.on('response', (r) => r.request().method() === 'POST' && /\/_lab\/api\/looked/.test(r.url()) && posts.push(r.status()));
+    });
+    await sleep(1500);
+    const cached = await O.p.evaluate(() => JSON.parse(localStorage.getItem('lab-looked:/old')));
+    check(eng, 'an old array is uploaded once, and becomes { at, files, blocks }', (await lookOf(ME, 'old'))?.join() === oldList.join() && posts.join() === '200' && cached.at > 0 && Array.isArray(cached.blocks), `posts ${posts}`);
+    await O.p.reload();
+    await sleep(2000);
+    check(eng, 'and not again', posts.length === 1, `posts ${posts}`);
+    const ctx8 = await context();
+    const O2 = await open(ctx8, '/old', ME, (pg) => pg.addInitScript(() => localStorage.setItem('lab-looked:/old', JSON.stringify(['Stale', 'list']))));
+    await sleep(1800);
+    check(eng, 'an old array loses to a look the lab has: no marks from it, nothing sent over it', (await O2.badge()) === '' && (await lookOf(ME, 'old')).length === oldList.length);
+    await ctx7.close();
+    await ctx8.close();
+    for (const c of [mac, phone, mira, nobody]) await c.p.context().close();
+
     // ---- the flag off: no badge, nothing kept ----
     await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ flag: 'sinceLooked', on: false }) });
     const ctx6 = await context();
     write('flagoff.html', page());
-    const F = await open(ctx6, '/flagoff');
+    const F = await open(ctx6, '/flagoff', ME, () => {}, false);
     const asked = [];
     F.p.on('request', (r) => /\/_lab\/api\/looked/.test(r.url()) && asked.push(r.url()));
     write('flagoff.html', page({ b: 'The second block talks about nothing.' }));

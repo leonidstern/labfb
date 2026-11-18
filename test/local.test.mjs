@@ -314,3 +314,86 @@ test('labit publish puts a page in the one pages lab, starts it once, and publis
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+// ---------- since you looked: the last look, kept in the lab by name ----------
+const look = (body) => fetch(B + '/_lab/api/looked', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) });
+const lookOf = (q) => fetch(`${B}/_lab/api/looked?${q}`).then((r) => r.json());
+
+test('a last look is kept by name and page', async () => {
+  await up();
+  const first = await look({ name: 'Leo ', page: '/index', blocks: ['Hello', 'World'] });
+  assert.equal(first.status, 200);
+  const { at } = await first.json();
+  assert.ok(at > Date.now() - 5000, "the lab's clock stamps it");
+  const mine = await lookOf('name=leo&page=/index');
+  assert.deepEqual(mine.blocks, ['Hello', 'World'], 'same name in any case or spacing');
+  assert.equal(mine.at, at);
+  assert.match(mine.snap, /^[0-9a-f]{12}$/);
+  assert.deepEqual(await lookOf('name=Mira&page=/index'), {}, 'another name has its own');
+  assert.deepEqual(await lookOf('name=Leo&page=/other'), {}, 'per page');
+  await look({ name: 'Leo', page: '/index', blocks: ['Hello', 'World', 'More'] });
+  const later = await lookOf('name=Leo&page=/index');
+  assert.deepEqual(later.blocks, ['Hello', 'World', 'More']);
+  assert.equal(later.rounds.length, 2, 'both rounds are kept');
+  assert.deepEqual(await lookOf(`name=Leo&page=/index&snap=${mine.snap}`), { snap: mine.snap, at, blocks: ['Hello', 'World'] }, 'an earlier round by its id');
+  await look({ name: 'Mira', page: '/index', blocks: ['Hello', 'World'] });
+  assert.equal((await lookOf('name=Mira&page=/index')).snap, mine.snap, 'the same words are one round');
+  assert.equal((await lookOf('name=Leo&page=/index')).snap, later.snap, "Mira's look leaves Leo's alone");
+  await new Promise((r) => setTimeout(r, 500)); // saved whole, a moment after the last change
+  const file = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/looked/index.json'), 'utf8'));
+  assert.deepEqual([file.v, file.page, Object.keys(file.who).sort()], [1, '/index', ['leo', 'mira']]);
+  assert.equal((await look({ page: '/index', blocks: [] })).status, 400, 'no name, no look');
+  assert.equal((await look({ name: 'Leo', page: '/index', blocks: 'x' })).status, 400);
+  assert.equal((await look({ name: 'Leo', page: '/nope-not-a-page', blocks: [] })).status, 400, 'a page of this lab only');
+  assert.equal((await look({ name: 'Leo', page: '/index', blocks: new Array(4001).fill('x') })).status, 413, 'more than 4,000 blocks');
+});
+
+test('a look bumps looked in the live state, so other tabs and devices check again', async () => {
+  await up();
+  const rev = async () => {
+    const ctl = new AbortController();
+    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+    const { value } = await res.body.getReader().read();
+    ctl.abort();
+    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).looked;
+  };
+  const before = await rev();
+  assert.equal(typeof before, 'number');
+  await look({ name: 'Leo', page: '/index', blocks: ['rev check'] });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(await rev(), before + 1);
+});
+
+test('a renamed page takes its looks along', async () => {
+  await up();
+  fs.writeFileSync(path.join(DIR, 'old.html'), '<!doctype html><h1>Old</h1>');
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal((await look({ name: 'Leo', page: '/old', blocks: ['Old'] })).status, 200);
+  await new Promise((r) => setTimeout(r, 500)); // saved a moment later, with the page's file and what the disk knows it by
+  fs.renameSync(path.join(DIR, 'old.html'), path.join(DIR, 'fresh.html'));
+  let moved = {};
+  for (let i = 0; i < 30 && !moved.blocks; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+    moved = await lookOf('name=Leo&page=/fresh');
+  }
+  assert.deepEqual(moved.blocks, ['Old']);
+  assert.deepEqual(await lookOf('name=Leo&page=/old'), {});
+  await new Promise((r) => setTimeout(r, 600));
+  assert.ok(!fs.existsSync(path.join(DIR, '.lab/looked/old.json')), 'the old file is gone');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/looked/fresh.json'), 'utf8')).page, '/fresh');
+});
+
+test('agent text says who looked, and whether before or after the last save', async () => {
+  await up();
+  await look({ name: 'Leo', page: '/index', blocks: ['agent text'] });
+  const hhmm = new Date().toTimeString().slice(0, 5);
+  const text = async () => (await (await fetch(B + '/_lab/agent/index')).text()).split('\n').filter((l) => /^(file|looked): /.test(l));
+  let lines = await text();
+  assert.equal(lines[0], 'file: index.html');
+  assert.match(lines[1], /^looked: Leo \d\d:\d\d \(after the last save\)/);
+  assert.ok(lines[1].includes(hhmm) || lines[1].includes(new Date(Date.now() - 60000).toTimeString().slice(0, 5)), lines[1]);
+  const later = new Date(Date.now() + 60000);
+  fs.utimesSync(path.join(DIR, 'index.html'), later, later); // the agent saved the file after that look
+  lines = await text();
+  assert.match(lines[1], /^looked: Leo \d\d:\d\d \(before the last save\)/);
+});
