@@ -279,10 +279,10 @@ try {
         await barUp(p);
         await inRoot(p, (r) => [...r.querySelectorAll('.p-bar button')].pop().click());
         await untilSent('go');
-        await untilRoot(p, (r) => r.querySelectorAll('button.pin.go').length === 1, null, 1500);
+        await untilRoot(p, (r) => r.querySelectorAll('button.pin').length === 1, null, 1500);
         await noFd(p, 1500);
-        const pinned = await inRoot(p, (r) => r.querySelectorAll('button.pin.go').length);
-        check(eng, 'go on the bar sends a go pin on the words at once', Boolean(await sent('go')) && (await sent('go')).anchor?.quote?.exact === 'kilo lima' && pinned === 1 && (await fd(p)) === null, `${pinned} ${JSON.stringify(await sent('go'))}`);
+        const pinned = await inRoot(p, (r) => r.querySelectorAll('button.pin').length);
+        check(eng, 'go on the bar sends a comment saying go on the words at once', Boolean(await sent('go')) && (await sent('go')).anchor?.quote?.exact === 'kilo lima' && pinned === 1 && (await fd(p)) === null, `${pinned} ${JSON.stringify(await sent('go'))}`);
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'golf hotel');
