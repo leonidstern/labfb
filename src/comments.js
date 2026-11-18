@@ -1,6 +1,6 @@
 /*!
  * lab comments: click anywhere on a lab page to pin a comment. No login, just a name.
- * https://github.com/leonidstern/labit · PolyForm Perimeter 1.0.0
+ * https://github.com/leonidstern/labit · PolyForm Small Business 1.0.0
  * The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
  * link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
  * Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
