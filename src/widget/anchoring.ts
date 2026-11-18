@@ -1044,12 +1044,20 @@ export const readable = (text) => {
     return node;
   });
 };
+/** A range's boxes on screen now, line by line. */
+export const rectsOf = (range?: Range | null) => [...(range?.getClientRects() || [])].filter((r) => r.width > 0);
+/** The quoted words' boxes on screen now (none when the words can't be found). */
+export const quoteRects = (anchor) => rectsOf(quoteRange(anchor));
 const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
 export const markQuote = (anchor) => {
   if (!canMark) return;
   const range = anchor && quoteRange(anchor);
-  if (range) CSS.highlights.set('lab-quote', new Highlight(range));
-  else CSS.highlights.delete('lab-quote');
+  if (!range) return CSS.highlights.delete('lab-quote');
+  // WebKit paints no highlight set while the text can't be selected (comments on, Shift up: lab-pinning in
+  // comments.js), and keeps one set while it can: the page's text is selectable for the frame the words are lit in.
+  document.documentElement.classList.add('lab-lit');
+  CSS.highlights.set('lab-quote', new Highlight(range));
+  requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('lab-lit')));
 };
 
 // The area's outline: round dots with room between them (CSS dotted borders can't space their dots).

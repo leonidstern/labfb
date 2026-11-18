@@ -19,6 +19,8 @@ import {
   nameLine,
   pageEnd,
   position,
+  quoteRects,
+  rectsOf,
   readable,
   short,
   zoneAnchor,
@@ -33,6 +35,7 @@ import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/t
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
+import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fluidOpen, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -115,6 +118,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   bindChat(W);
   bindThread(W);
   bindSheets(W);
+  bindFluid(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
@@ -422,11 +426,13 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     ptr.classList.toggle('go', v); // the drawn pointer turns at once, without waiting for the mouse to move
     recheck();
   };
-  function begin(anchor) {
+  // fluid: words that were selected; their box is the one element that grew out of the bar (fluid.ts). act: the bar's
+  // button that was pressed (rewrite, cut, go: run once the dialog's row is there).
+  function begin(anchor, fluid = false, act = '') {
     const name = store.get('lab-name').trim();
     // Go with no name yet (a guest's first): the card asks only the name; the go is implied (Leo, 16 Nov).
     if (!S.goMode || !name) {
-      S.draft = { anchor, go: S.goMode };
+      S.draft = { anchor, go: S.goMode, fluid: fluid && !S.goMode, act };
       keepSpot(anchor);
       return render();
     }
@@ -788,7 +794,8 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
         S.sheetKey = key;
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
-      markQuote(quoted);
+      fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
+      markQuote(quoted || (fluidState() === 'bar' && S.offer));
       S.shown = now;
       S.posted = null;
     };
@@ -913,47 +920,68 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       }
     });
 
-    if (S.draft) {
-      const { anchor } = S.draft;
+    // Selected words (fluid.ts): on a computer the box is the one element the bar is, drawn once per draft
+    // so a redraw leaves it and its words alone, with no draft pin (the dialog sits at the words; the pin pops in as it
+    // goes out).
+    const inDlg = S.draft && fluidHas(S.draft);
+    const rects = S.draft?.fluid && !inDlg && quoteRects(S.draft.anchor);
+    const fluid = Boolean(rects?.length); // words not found: the plain box
+    if (inDlg) quoted = S.draft.anchor; // the words stay lit while it is open
+    else if (S.draft) {
+      const draft = S.draft;
+      const { anchor } = draft;
       const { left, top, zone } = position(anchor);
       drawZone(zone, 'draft');
       quoted = zone ? null : anchor; // an area lights no single word
-      const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
-      layer.append(pin);
-      const float = el('div', { class: `float${anim}` });
-      float.append(
-        el('div', { class: 'handle' }),
-        composer({
-          placeholder: S.draft.go ? 'go' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
-          empty: S.draft.go ? 'go' : '',
-          nameFirst: Boolean(S.draft.go),
-          autofocus: true,
-          draftKey: `lab-typing:${S.page}:new`,
-          onSubmit: async (name, text) => {
-            if (drafting()) {
-              store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
-              S.draft = null;
-            keepSpot(null);
-              return render();
-            }
-            const { comment, edit } = await send({ name, text, anchor });
-            if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
-            S.comments.push(comment);
-            markSeen([comment]);
+      if (!fluid) {
+        const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
+        pin.style.left = `${left}px`;
+        pin.style.top = `${top}px`;
+        layer.append(pin);
+      }
+      const float = el('div', { class: `float${draft.fluid ? '' : anim}` });
+      const box = composer({
+        placeholder: draft.go ? 'go' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
+        empty: draft.go ? 'go' : '',
+        nameFirst: Boolean(draft.go),
+        autofocus: true,
+        draftKey: `lab-typing:${S.page}:new`,
+        onSubmit: async (name, said) => {
+          // rewrite: the box held the words to change; what goes is the change.
+          const exact = anchor.quote?.exact || '';
+          const text = draft.mode === 'rewrite' && exact && said !== exact ? `Rewrite “${exact}” → “${said}”` : said;
+          if (drafting()) {
+            store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
+            if (fluid) fluidDrop();
             S.draft = null;
             keepSpot(null);
-            S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
-            S.posted = comment.id;
-            holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
-            render();
-          },
-        }),
-      );
+            return render();
+          }
+          const { comment, edit } = await send({ name, text, anchor });
+          if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
+          S.comments.push(comment);
+          markSeen([comment]);
+          S.draft = null;
+          keepSpot(null);
+          S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
+          S.posted = comment.id;
+          if (fluid) fluidDrop(); // goes out as a card does, as the pin pops in
+          holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
+          render();
+        },
+      });
+      float.append(el('div', { class: 'handle' }));
+      const row = draft.fluid ? quickRow(draft, box) : null;
+      if (row?.children.length) float.append(row);
+      const act = draft.act;
+      draft.act = '';
+      if (act) queueMicrotask(() => /** @type {HTMLElement | null} */ (float.querySelector(`[data-k="${CSS.escape(act)}"]`))?.click()); // the bar's rewrite, cut or go
+      float.append(box);
       swipeDown(float, () => ((S.draft = null), keepSpot(null), render()));
-      if (zone) placeCard(float, left + 14, zone.top + zone.height);
+      if (fluid) fluidOpen(float, draft, rects);
+      else if (zone) placeCard(float, left + 14, zone.top + zone.height);
       else placeBeside(float, left, top);
+      if (draft.fluid && !fluid) fluidDrop(); // words that can't be found again: the plain box, the bar lets go
     }
     done();
   }
@@ -1096,6 +1124,9 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
     const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
+    // A letter typed while the bar shows starts the comment with it (F4); Escape lets the bar and its words go.
+    // Not while typing in a field of the page or the widget (the chat), nor in another widget.
+    if (!typing(e) && !inOtherWidget && fluidKey(e)) return void (S.draft || dropOffer());
     if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
@@ -1205,19 +1236,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
   }
-  document.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (e.altKey) return; // Option presses are taken earlier (see optionPress)
-      // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-      if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      if (e.composedPath().includes(host)) return;
-      if (!e.altKey && control(e.target)) return;
-      if (e.target instanceof Element && e.target.closest(OFF)) return;
-      S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
-    },
-    true,
-  );
+  document.addEventListener('pointerdown', (e) => !e.altKey && startDrag(e), true); // Option presses are taken earlier (see optionPress)
   document.addEventListener(
     'pointermove',
     (e) => {
@@ -1312,7 +1331,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   document.addEventListener('click', (e) => onPageClick(e));
 
   // Phones. A tap only reads (it closes what's open); holding a finger still for half a second pins, anywhere, links
-  // and buttons too (the phone's Option-click). Text selected the phone's way gets a "Comment" chip that pins on it.
+  // and buttons too (the phone's Option-click). Text selected the phone's way gets the actions bar that pins on it.
   S.lastTouch = 0;
   S.pinnedByHold = false; // a hold just made a pin: the lift that ends it puts the cursor in its box (phones open the keyboard only then)
   const selChip = /** @type {HTMLElement} */ (root.querySelector('.sel-chip'));
@@ -1419,6 +1438,25 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   document.addEventListener('pointercancel', () => (stopPress(), pressing(false)), true);
   addEventListener('scroll', stopPress, { passive: true, capture: true });
   document.addEventListener('contextmenu', (e) => (S.press || S.afterDrag) && e.preventDefault(), true);
+  // Selecting words, and what it did before the one fluid element (fluid.ts) — all of it kept:
+  //  1. Computers: Shift + drag (or Shift + double or triple click) selects words; a plain drag marks an area wherever it
+  //     starts, a click pins, and the page's text can't be selected without Shift (it shows the text cursor, html.lab-shift).
+  //     Letting go shows the actions bar at the words' end (no chip first, Leo 18 Nov); clicking comment, Tab or
+  //     Enter, or just typing (F4) adds the box; rewrite, cut and go go as they do in the box. In go mode (2) letting go still sends a go on the words at once.
+  //  2. Phones: words selected the phone's way get a "Comment" chip (selChip); a tap pins on them: as before, no bar yet.
+  //  3. Phones: holding a finger still pins (hold-to-comment): untouched, it never makes a selection.
+  //  4. The anchor: pinned on the last selected letter, quoting exactly the words with a few either side (below).
+  //  5. Draft mode (held drafts): a comment on words sent in draft mode waits with the other drafts, as before.
+  //  6. keepSpot: the spot and the typed words are kept while writing, so a reload gives them back (as a plain box).
+  //  7. Keys (KEYS): all as before, except while the bar shows, when a letter is the comment's first letter; Escape
+  //     lets the bar go; a click elsewhere only lets it go (as with an open comment).
+  //  8. The hint's words ("shift-drag to quote words", phones "hold to comment"): unchanged.
+  // S.offer: the words the bar is offering a comment on (computers), set as it shows.
+  const dropOffer = () => {
+    S.offer = null;
+    fluidDrop();
+    markQuote(null);
+  };
   S.selRect = null;
   document.addEventListener('selectionchange', () => {
     const sel = getSelection?.();
@@ -1432,13 +1470,23 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     selChip.style.left = `${Math.min(Math.max(S.selRect.left + S.selRect.width / 2, 60), innerWidth - 60)}px`;
     selChip.style.top = `${below ? S.selRect.bottom + 10 : Math.max(S.selRect.top - 46, 8)}px`;
   });
-  // A comment on the words selected: pinned at their start, quoting exactly them (a few words either side to find them
+  // The words selected, as an anchor: pinned at their end, quoting exactly them (a few words either side to find them
   // again), not just the word under the pin.
-  const commentOnSelection = () => {
+  const selectionAnchor = () => {
     const sel = getSelection?.();
-    const range = sel?.rangeCount && sel.getRangeAt(0);
-    const exact = String(sel || '').replace(/\s+/g, ' ').trim();
-    if (!range || !exact || host.contains(range.commonAncestorContainer)) return false;
+    const range = sel?.rangeCount && sel.getRangeAt(0).cloneRange(); // a copy: moving the selection's own range would take the cursor from a box being typed in
+    if (!range || host.contains(range.commonAncestorContainer)) return;
+    // A double-click takes the word's space with it (Chrome): the quote, and the words each side of it, are read from
+    // the words alone, or the quote would not be found again.
+    /** @param {Node} node @param {number} i @param {number} step */
+    const trim = (node, i, step) => {
+      while (node.nodeType === 3 && /\s/.test(/** @type {Text} */ (node).data[step < 0 ? i - 1 : i] ?? 'x')) i += step;
+      return i;
+    };
+    range.setEnd(range.endContainer, trim(range.endContainer, range.endOffset, -1));
+    range.setStart(range.startContainer, trim(range.startContainer, range.startOffset, 1));
+    const exact = String(range).replace(/\s+/g, ' ').trim();
+    if (!exact) return;
     // The pin sits on the last selected letter (where the selection ended), when that's in the same element as its
     // first; a selection over several items keeps it on the first, so the pin finds its place again.
     const rects = range.getClientRects();
@@ -1465,22 +1513,89 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
     };
     sel.removeAllRanges();
-    selChip.hidden = true;
+    return anchor;
+  };
+  // Phones (the bar's comment) and go mode: straight to the comment (or the go) on the words.
+  const commentOnSelection = () => {
+    const anchor = selectionAnchor();
+    if (!anchor) return;
     showAgain();
     S.openId = null;
     begin(anchor);
-    return true;
   };
+  // Computers, a drag over words let go: the actions bar, at the words' end; the box joins it (with the letter typed, if any).
   selChip.addEventListener('click', (e) => {
     e.stopPropagation();
     if (S.selRect) commentOnSelection();
   });
-  // Computers: Shift + drag selects words (a plain drag marks an area); letting go opens a comment on them.
+  const offerSelection = () => {
+    if (S.goMode && store.get('lab-name').trim()) return commentOnSelection(); // go mode: a go on the words at once
+    const sel = getSelection?.();
+    const live = sel?.rangeCount ? rectsOf(sel.getRangeAt(0)) : []; // read before the anchor lets the selection go
+    const got = selectionAnchor();
+    if (!got) return; // a double-click's first mouse-up asks again, after the second one took the selection: keep that offer
+    S.offer = got;
+    if (S.draft) {
+      // an empty box a click, or the first click of a double-click, opened gives way
+      S.draft = null;
+      keepSpot(null);
+      render();
+    }
+    markQuote(got); // the words stay lit while the bar shows (the page's own selection is let go)
+    const found = quoteRects(got);
+    // Words that can't be found again (they run over several paragraphs): the bar sits by the selection as it was.
+    fluidBar(found.length ? found : live, (first = '', act = '') => {
+      const anchor = S.offer;
+      S.offer = null;
+      if (!anchor) return;
+      if (first) store.set(`lab-typing:${S.page}:new`, first);
+      showAgain();
+      S.openId = null;
+      begin(anchor, true, act);
+    }, got.quote.exact.length);
+  };
+  // The actions row of a comment on selected words (the box is the comment, already picked, so no button for it): rewrite (the
+  // words go in the box to be edited, sent as old → new), cut and go (sent at once, nothing to type: go is a go pin on the
+  // words, the text "go" as in go mode). Picking rewrite again goes back to the plain comment. Sent ones go through the box's own
+  // send, so a missing name is asked for there, a lab that can't be reached keeps them, and draft mode holds them. Long quotes (the first 300 characters are kept) have no cut or rewrite: the
+  // words said aren't all there; nor do words the page no longer has (the row is dimmed then).
+  const quickRow = (draft, box) => {
+    const row = el('div', { class: 'quick' });
+    const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
+    const exact = draft.anchor.quote?.exact || '';
+    const fill = (v) => ((field.value = v), field.dispatchEvent(new Event('input')));
+    let filled = ''; // what an action put in the box, which picking it again (or another) takes out again
+    for (const k of acts(exact.length, false)) {
+      const b = actButton(k, draft.mode === k);
+      b.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box
+      b.addEventListener('click', () => {
+        const was = draft.mode;
+        if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
+        const now = was === k ? undefined : k; // picked again: back to the comment
+        const sends = k === 'cut' || k === 'go';
+        if (filled && field.value === filled) fill('');
+        filled = '';
+        draft.mode = sends ? k : now;
+        keepSpot(draft.anchor);
+        if (sends) {
+          fill(k === 'cut' ? `Cut: “${exact}”` : 'go');
+          return /** @type {HTMLElement} */ (box.querySelector('.send')).click();
+        }
+        for (const x of row.children) x.classList.toggle('on', x === b && Boolean(now));
+        if (now) fill((filled = exact));
+        field.focus({ preventScroll: true }); // the cursor at the end: a value set puts it there
+      });
+      row.append(b);
+    }
+    return row;
+  };
+  // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go offers them a comment (the bar).
   document.addEventListener('mouseup', (e) => {
-    if (S.on && !S.cursorMode && !S.draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host)) setTimeout(commentOnSelection, 0);
+    if (S.on && !S.cursorMode && e.shiftKey && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
+    if (fluidState() === 'bar' && !e.shiftKey) return dropOffer(); // the first click elsewhere only lets the bar go
     if (S.draft || S.openId) {
       if ([...root.querySelectorAll('textarea')].some((t) => t.value.trim())) return; // typed text stays; Escape discards it
       S.draft = null;
@@ -1620,6 +1735,8 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       `@layer lab-pointer { html.lab-pinning:not(.lab-shift, .lab-ctl) body, html.lab-pinning:not(.lab-shift, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
       // With the drawn pointer the system one hides over plain parts of the page (not in the top layer, which is above it).
       `html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
+      // Holding Shift (drag to quote words): the text cursor over the page's content, back to the pin when it's let go.
+      `html.lab-pinning.lab-shift:not(.lab-dragging) body *${plain}:not(img, svg, video, canvas) { cursor: text; } ` +
       // The pointer is inherited, so places that aren't commented on name theirs: editable text a text cursor, a part
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
       `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
@@ -1631,7 +1748,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.
-  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   // Letting go of Shift keeps text selectable a moment longer, so a selection made with it isn't dropped before its
   // comment opens.
   /** @type {any} */
@@ -1646,7 +1763,9 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // A press without Shift is never a selection: drop the Shift state at once, not 400 ms later (a click right after typing
   // a capital letter, or after a screenshot shortcut, used to select the page's text).
   addEventListener('pointerdown', (e) => {
-    if (e.shiftKey) return shiftKey(e);
+    // A Shift press on the page starts new words: the caret a box of the widget leaves (at the widget, the page's end)
+    // stretched the selection from there instead, and the next quote after a comment came to nothing.
+    if (e.shiftKey) return S.on && !typing(e) && getSelection()?.removeAllRanges(), shiftKey(e);
     clearTimeout(S.shiftOff);
     document.documentElement.classList.remove('lab-shift');
   }, true);
