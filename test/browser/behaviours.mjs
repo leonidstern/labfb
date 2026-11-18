@@ -206,19 +206,21 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.keyboard.press('1');
   check(eng, 'there is no go mode: 2 does nothing, 3 is cursor (a click pins nothing)', !goLeft && /\(?1\/3\)?$/.test(keys) && !pinnedIn3, keys);
 
-  // A go pin is a pin like any other: resolved, it wears the tick rather than saying "go" for ever.
+  // A "go" comment is a pin like any other: your initial, and the tick once resolved.
   const admin = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
   const post = (body) =>
     fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': admin, 'x-lab-agent': '1' }, body: JSON.stringify(body) }).then((r) => r.json());
   const page = await p.evaluate(() => document.querySelector('script[src*="comments.js"]').dataset.page);
   const placed = await post({ page, name: 'leo', text: 'go', anchor: { kind: 'element', selector: '#p3', x: 0.5, y: 0.5, element: '<p>', text: 'paragraph 3 with some words', section: '' } });
   await sleep(1200);
-  const goFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
-  if (!placed.comment) throw new Error(`could not place the go pin: ${JSON.stringify(placed)}`);
+  const ticks = () => shadow(() => { return [...r.querySelectorAll('.pin')].filter((n) => n.textContent.trim() === '✓').length; });
+  const goFace = await ticks();
+  const goClass = await shadow(() => { return r.querySelectorAll('.pin.go').length; });
+  if (!placed.comment) throw new Error(`could not place the go comment: ${JSON.stringify(placed)}`);
   await post({ page, action: 'resolve', id: placed.comment.id });
   await sleep(1500);
-  const doneFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
-  check(eng, 'a go pin says go, and wears the tick once it is done', goFace === 'go' && doneFace === '✓', `${goFace} → ${doneFace}`);
+  const doneFace = await ticks();
+  check(eng, 'a go comment is an ordinary pin (no go look), and wears the tick once it is done', !goClass && doneFace === goFace + 1, `${goClass} go-looks; ticks ${goFace} → ${doneFace}`);
   await post({ page, action: 'delete', id: placed.comment.id });
   // Option-click on a pin resolves its thread without opening it; again opens it again
   const elsewhere = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'from elsewhere');
