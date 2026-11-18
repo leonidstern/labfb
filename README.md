@@ -25,6 +25,8 @@ It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, an
 /plugin install labit@leonidstern
 ```
 
+The plugin also wakes Claude for pins it missed: if you comment while it is busy building, or its `wait` lapsed, the pin comes in as its next turn the moment the current one ends, from any folder.
+
 **Any other agent:** tell it to run these in your project.
 
 ```sh

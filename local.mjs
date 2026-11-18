@@ -942,10 +942,14 @@ let PORT = Number(opts.port || process.env.PORT || 4400);
 const STARTED = new Date().toISOString(); // the switcher shows how long a lab has run
 // Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
 const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
+// It also says which session listened last (`listener`, the id its waits send), so the labit plugin's wake
+// (hooks/wake.ts) finds this lab from any folder: the session looks for the labs whose listener it is.
+let registeredListener = '';
 const register = () => {
   try {
     fs.mkdirSync(REGISTRY, { recursive: true });
-    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: new Date().toISOString() }, null, 2));
+    registeredListener = session?.id || '';
+    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: STARTED, ...(registeredListener ? { listener: registeredListener, listenedAt: new Date().toISOString() } : {}) }, null, 2));
   } catch {}
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
@@ -1757,6 +1761,7 @@ const handler = async (req, res) => {
         old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
+      if (session.id && session.id !== registeredListener) register(); // the registry says who listens, for the wake hook
       // "Claude", not "session 87f84735": a session with no name of its own is said by what it is.
       const me = sessionFrom(req);
       const named = me?.name && !/^session [0-9a-f]+$/i.test(me.name) && me.name !== me.agent;
