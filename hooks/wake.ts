@@ -15,6 +15,10 @@ type Pending = { fresh: number; pages: string[]; key: string; listening: boolean
 let busy = false; // a main-loop turn is running
 let told = ''; // the set of pins this session was last woken for
 let timer: { cancel: () => void } | null = null;
+// When the last wake was submitted, until its turn starts. A wake the person cancels (Escape takes it out of the
+// queue) never starts a turn: after SUBMIT_MS it counts as not delivered, and the same pins may wake the session again.
+let submittedAt = 0;
+const SUBMIT_MS = 15000;
 
 // The lab's address and the agent's key, from .lab/server.json in the session's folder or one above it.
 async function findLab($: any): Promise<{ port: number; key: string } | null> {
@@ -32,6 +36,11 @@ async function findLab($: any): Promise<{ port: number; key: string } | null> {
 
 async function look($: any): Promise<void> {
   if (busy) return;
+  if (submittedAt) {
+    if ((await $.clock.now()) - submittedAt < SUBMIT_MS) return;
+    submittedAt = 0;
+    told = '';
+  }
   const lab = await findLab($);
   if (!lab) return;
   let p: Pending;
@@ -44,10 +53,10 @@ async function look($: any): Promise<void> {
   } catch {
     return; // no lab running there
   }
-  if (!p.fresh || p.listening || p.key === told || busy) return;
+  if (!p.fresh || p.listening || p.key === told || busy || submittedAt) return;
   if (!p.last || p.last !== (await $.session.id())) return; // another session's lab, or one this session never listened on
   told = p.key;
-  busy = true; // the turn starts once submitted; don't submit twice meanwhile
+  submittedAt = await $.clock.now(); // its turn starts once the session is idle; don't submit twice meanwhile
   const n = p.fresh === 1 ? 'A new pin' : `${p.fresh} new pins`;
   void $.prompt.submit({
     text:
@@ -59,7 +68,10 @@ async function look($: any): Promise<void> {
 
 export const register: Register = (on) => {
   on('turn.start', ($, e, next) => {
-    if (e.agentId === undefined) busy = true;
+    if (e.agentId === undefined) {
+      busy = true;
+      submittedAt = 0;
+    }
     return next(e);
   });
   on('turn.complete', ($, e, next) => {

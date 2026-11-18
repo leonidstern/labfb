@@ -51,3 +51,15 @@ test('another session is never woken', async ($, on) => {
   await clock.advance(8000);
   expect(w.sent.length).toBe(0);
 });
+
+test('a wake taken out of the queue (Escape) never started a turn: it wakes again later', async ($, on) => {
+  const clock = mock.clock(on);
+  const w = world(on, { fresh: 1, pages: ['/a'], key: 'k1' });
+  await $.session.start({ cwd: '/p/sub', surface: 'terminal', isInteractive: true } as any);
+  await clock.advance(4000);
+  expect(w.sent.length).toBe(1);
+  await clock.advance(8000); // no turn started yet: no second wake
+  expect(w.sent.length).toBe(1);
+  await clock.advance(12000); // well past 15 s with no turn: the first counts as not delivered
+  expect(w.sent.length).toBe(2);
+});
