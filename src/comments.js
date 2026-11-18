@@ -299,7 +299,9 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const headers = () => ({ 'content-type': 'application/json', ...(adminToken ? { 'x-lab-admin': adminToken } : {}) });
 
   S.loaded = false;
-  const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
+  // A box has the cursor (not a pin: a pin now stays the same element across redraws, so in Chrome, where a clicked
+  // button keeps focus, a clicked pin held every later redraw back).
+  const typed = () => /^(textarea|input)$/.test(root.activeElement?.localName || '') || Boolean(/** @type {HTMLElement | null} */ (root.activeElement)?.isContentEditable) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}`, { headers: headers(), cache: 'no-store' });
