@@ -733,7 +733,11 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   S.faces = new Map(); // each pin's last drawn state, so a change can ease in
   // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
   S.dropDrag = null;
+  // What each pin on the layer was drawn from, so a redraw can keep the pin itself and only update it.
+  /** @type {WeakMap<Element, any>} */
+  const pinData = new WeakMap();
   function render() {
+    const dragged = S.grabbing;
     S.grabbing = false; // a pin being dragged is replaced: its drag ends here
     S.dropDrag?.();
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
@@ -746,13 +750,22 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
-    layer.replaceChildren();
+    // A pin that is still there stays the same element, updated in place, so what runs on it (the agent's ring, a pop, a
+    // swap, a hover or open transition) carries on instead of starting again (Leo, 18 Nov: clicking or leaving a pin
+    // "reloads" its animation). Everything else on the layer (cards, outlines, drafts) is drawn anew, as before; a pin
+    // that was being dragged is drawn anew too.
+    const old = dragged ? new Map() : new Map(pinsById);
+    const keep = new Set(old.values());
+    for (const n of Array.from(layer.children)) if (!keep.has(n)) n.remove();
     pinsById.clear();
+    const next = []; // what the layer holds when this is drawn, in order
+    const add = (n) => (n && next.push(n), n);
     const now = S.on ? S.draft || S.openId : null;
     const appear = now !== S.shown;
     const anim = appear ? ' in' : '';
     let quoted = null;
     const done = () => {
+      patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       if (S.closeFast && !now && prev) {
         S.closeFast = false;
         prev.inert = true;
@@ -783,6 +796,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
       markQuote(quoted);
+      S.quoted = quoted;
       S.shown = now;
       S.posted = null;
     };
@@ -816,6 +830,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       p.style.left = `${left}px`;
       p.style.top = `${top}px`;
       layer.append(p);
+      next.push(p);
     }
 
     list.forEach((c) => {
@@ -823,56 +838,100 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
-      if (S.openId === c.id) drawZone(zone, `saved${anim}`); // a drawn area shows its outline while open
+      if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
       const [state] = workState(c); // placed (sent), now (the agent is on it) or done
-      const pin = el(
-        'button',
-        {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? (coarse ? ' arrive' : ' in') : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
-          type: 'button',
-          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`,
-          // Its state in words too (the ring, the tick and the new dot are only seen).
-          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}`,
-        },
-        // Done wins over every face: a go that has been answered or resolved is a pin like any other,
-        // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
-        state === 'done' || c.resolved ? '✓' : /^go$/i.test(c.text.trim()) ? 'go' : flag('agentPins') && byAgent(c) ? agentMark() : initial(c.name),
-      );
+      const isGo = /^go$/i.test(c.text.trim());
+      const born = !old.has(c.id);
+      const pin = old.get(c.id) || el('button', { type: 'button' });
+      const info = pinData.get(pin) || {};
+      pinData.set(pin, Object.assign(info, { c, zone, hot: info.hot }));
+      // Its state as classes and words (the ring, the tick and the new dot are only seen). Set one by one: the
+      // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
+      for (const [cls, on] of Object.entries({
+        go: isGo, resolved: c.resolved, done: state === 'done', working: state === 'now', new: news.length, moved,
+        grab: movable, open: S.openId === c.id, dragging: false,
+      })) pin.classList.toggle(cls, Boolean(on));
+      pin.classList.add('pin');
+      if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
+      pin.title = `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`;
+      pin.setAttribute('aria-label', `${isGo ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}`);
+      // Done wins over every face: a go that has been answered or resolved is a pin like any other,
+      // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
+      const mark = state !== 'done' && !c.resolved && !isGo && flag('agentPins') && byAgent(c);
+      const key = state === 'done' || c.resolved ? '✓' : isGo ? 'go' : mark ? '\0mark' : initial(c.name);
+      if (info.face !== key) {
+        const node = mark ? agentMark() : document.createTextNode(key);
+        if (info.node) info.node.replaceWith(node);
+        else pin.prepend(node);
+        Object.assign(info, { face: key, node });
+      }
       // Its face changed since the last drawing (the agent took it, it's done, something new in it): it eases into the
       // new one and the ring fades in or out, instead of a cut (see .swap in styles.css).
       const face = `${state}${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}`;
       const was = S.faces.get(c.id);
       S.faces.set(c.id, face);
       const changed = was !== undefined && was !== face && !still.matches;
-      if (changed) pin.classList.add('swap');
-      if (state === 'now') pin.append(el('i', { class: `ring${changed && !was.startsWith('now') ? ' come' : ''}`, 'aria-hidden': 'true' }));
-      else if (changed && was.startsWith('now')) pin.append(el('i', { class: 'ring gone', 'aria-hidden': 'true' }));
-      if (coarse) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
+      if (changed) {
+        pin.classList.remove('swap');
+        void pin.offsetWidth; // so it plays again if it played before
+        pin.classList.add('swap');
+      }
+      // The ring stays while the agent is on it (it keeps turning); it fades out when the agent is done.
+      let ring = /** @type {HTMLElement | null} */ (pin.querySelector(':scope > .ring'));
+      if (ring?.classList.contains('gone') && state === 'now') ring = (ring.remove(), null);
+      if (state === 'now') {
+        if (!ring) pin.append(el('i', { class: `ring${changed && !was.startsWith('now') ? ' come' : ''}`, 'aria-hidden': 'true' }));
+      } else if (ring && !ring.classList.contains('gone')) {
+        if (changed && was.startsWith('now')) {
+          const r = ring;
+          r.classList.add('gone');
+          r.addEventListener('animationend', () => r.remove(), { once: true });
+        } else ring.remove();
+      } else if (!ring && changed && was.startsWith('now')) {
+        pin.append(el('i', { class: 'ring gone', 'aria-hidden': 'true' }));
+      }
+      if (coarse && !pin.querySelector(':scope > .hit')) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
-      if (movable) grab(pin, c);
-      // Hovering a pin shows what it's on, as an open one does: a drawn area its outline, selected words their highlight.
-      if (!coarse && zone && S.openId !== c.id) {
-        let shown = null;
-        pin.addEventListener('pointerenter', () => (shown = drawZone(zone, 'saved')));
-        pin.addEventListener('pointerleave', () => (shown?.remove(), (shown = null)));
-      } else if (!coarse && c.anchor?.quote && !zone) {
-        pin.addEventListener('pointerenter', () => markQuote(c.anchor));
-        pin.addEventListener('pointerleave', () => markQuote(quoted));
+      if (born) {
+        // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
+        grab(pin, () => pinData.get(pin).c);
+        // Hovering a pin shows what it's on, as an open one does: a drawn area its outline, selected words their highlight.
+        pin.addEventListener('pointerenter', () => {
+          const d = pinData.get(pin);
+          d.hot = true;
+          if (coarse || S.openId === d.c.id) return;
+          if (d.zone) d.shown = drawZone(d.zone, 'saved');
+          else if (d.c.anchor?.quote) markQuote(d.c.anchor);
+        });
+        pin.addEventListener('pointerleave', () => {
+          const d = pinData.get(pin);
+          d.hot = false;
+          d.shown?.remove();
+          d.shown = null;
+          if (!d.zone && d.c.anchor?.quote) markQuote(S.quoted);
+        });
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const c = pinData.get(pin).c;
+          if (pin.dataset.dragged) return;
+          if (e.altKey && mayResolve(c)) return toggleResolved(c);
+          // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
+          if (coarse && S.openId !== c.id) return goTo(c);
+          S.openId = S.openId === c.id ? null : c.id;
+          S.draft = null;
+          render();
+        });
       }
-      pin.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (pin.dataset.dragged) return;
-        if (e.altKey && mayResolve(c)) return toggleResolved(c);
-        // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
-        if (coarse && S.openId !== c.id) return goTo(c);
-        S.openId = S.openId === c.id ? null : c.id;
-        S.draft = null;
-        render();
-      });
-      layer.append(pin);
+      // Pointing at it while the page is redrawn: what it shows for being pointed at is drawn again with it.
+      info.shown = null;
+      if (info.hot && !coarse && S.openId !== c.id) {
+        if (zone) info.shown = add(drawZone(zone, 'saved'));
+        else if (c.anchor?.quote && !quoted) quoted = c.anchor;
+      }
+      next.push(pin);
       pinsById.set(c.id, pin);
       if (S.openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
@@ -884,6 +943,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
         if (appear && !S.stepping) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         S.stepping = S.keepKeys = false;
+        next.push(card);
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
@@ -910,12 +970,13 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     if (S.draft) {
       const { anchor } = S.draft;
       const { left, top, zone } = position(anchor);
-      drawZone(zone, 'draft');
+      add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
       const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
       layer.append(pin);
+      next.push(pin);
       const float = el('div', { class: `float${anim}` });
       float.append(
         el('div', { class: 'handle' }),
@@ -946,6 +1007,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
         }),
       );
       swipeDown(float, () => ((S.draft = null), keepSpot(null), render()));
+      next.push(float);
       if (zone) placeCard(float, left + 14, zone.top + zone.height);
       else placeBeside(float, left, top);
     }

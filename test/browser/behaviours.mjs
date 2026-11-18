@@ -200,6 +200,52 @@ for (const eng of ['webkit', 'chromium']) {
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'reopen', id: afterOne?.id }) });
   await sleep(700);
 
+  // A pin is one element for as long as its thread is on the page: opening, closing and pointing at it (and away) redraw
+  // the widget, but the pin and its running animation carry on, not start again (Leo, 18 Nov).
+  const work = await post({ page, name: 'leo', text: 'keep running', anchor: { kind: 'element', selector: '#p9', x: 0.5, y: 0.5, docX: 0.5, docY: 300, width: 1000, element: '<p id="p9">', text: 'paragraph 9 with some words', section: '' } });
+  execFileSync(process.execPath, [LAB, 'reply', work.comment.id, '--on-it', 'Looking'], { cwd: DIR, env, stdio: 'ignore' });
+  await sleep(1500);
+  await p.evaluate(() => scrollTo(0, 0));
+  await sleep(200);
+  const mine = (tag) => shadow(() => {
+    const pin = [...r.querySelectorAll('.pin.working')].find((b) => b.getAttribute('aria-label').includes('keep running') || b.title.includes('leo'));
+    if (!pin) return null;
+    if (a) pin.__tag = a;
+    const ring = pin.querySelector('.ring');
+    const turn = ring?.getAnimations({ subtree: true }).find((x) => x.animationName === 'lab-turn');
+    if (a) pin.__ring = ring;
+    const box = pin.getBoundingClientRect();
+    return { same: pin.__tag === 'T' && pin.__ring === ring, time: turn ? turn.currentTime : null, card: Boolean(r.querySelector('.card:not(.out)')), draft: Boolean(r.querySelector('.pin.draft')), x: box.left + 14, y: box.top + 14 };
+  }, tag);
+  const first = await mine('T');
+  check(eng, 'a working pin has its ring turning', Boolean(first) && first.time > 0 && first.y > 0 && first.y < 650, JSON.stringify(first));
+  if (first) {
+    let last = first.time;
+    const steps = [
+      ['hover', false, async (at) => p.mouse.move(at.x, at.y)],
+      ['click (opens its thread)', true, async (at) => p.mouse.click(at.x, at.y)],
+      ['click again (closes it)', false, async (at) => p.mouse.click(at.x, at.y)],
+      ['leave', false, async () => p.mouse.move(700, 100)],
+      ['a click on the page, which opens a new comment box', false, async () => p.mouse.click(700, 150), true],
+      ['closing that box (Escape)', false, async () => p.keyboard.press('Escape')],
+      ['a second click on empty page space', false, async () => p.mouse.click(780, 330), true],
+      ['closing it with a click on the page', false, async () => p.mouse.click(700, 450)],
+      ['Escape with nothing open', false, async () => p.keyboard.press('Escape')],
+    ];
+    let at = first;
+    for (const [name, card, act, draft] of steps) {
+      await act(at);
+      await sleep(350);
+      const now = await mine(null);
+      const ok = Boolean(now) && now.same && now.card === card && (!draft || now.draft) && now.time > last + 200;
+      check(eng, `a pin keeps its element and its ring's animation across: ${name}`, ok, now ? `same ${now.same}, ring ${Math.round(last)} → ${Math.round(now.time)} ms` : 'pin gone');
+      if (!now) break;
+      last = now.time;
+      at = now;
+    }
+  }
+  await post({ page, action: 'delete', id: work.comment.id });
+
   // A script change reloads; a lab restart doesn't
   // (a reload waits while you've just pressed a key or clicked: give it a moment)
   write('app.js', 'console.log(1)');
