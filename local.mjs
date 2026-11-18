@@ -1173,8 +1173,10 @@ const rulesOnce = () => {
 // Who a wait is: the session's id, or its name for an agent with no id. Each comment handed over is marked with it
 // (handoff[id][1]), so a reply goes as one line only to the session that already has its thread.
 const whoOf = (s) => s?.id || s?.name || '';
+// What people wrote that no wait has been handed yet.
+const freshIn = (scope) => scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
 async function unseen(scope = pages(), who = '') {
-  const fresh = scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
+  const fresh = freshIn(scope);
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
   // words come back (as one line each, at most every 10 minutes), so a pin an agent missed isn't left spinning.
   const now = Date.now();
@@ -1221,14 +1223,15 @@ async function unseen(scope = pages(), who = '') {
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const full = !(now - toldAt.get(who) < 1800000);
+  const rules = rulesOnce();
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${blocks.join('\n\n')}` +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
-    (full ? `\n${WRITE_SHORT}` : '') + rulesOnce();
+    (full ? `\n${WRITE_SHORT}` : '') + (rules || '');
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = given.map(({ page, c }) => [page, c.id, stamp(c)]);
-  return { text, marks, handed, full };
+  return { text, marks, handed, full, rules: Boolean(rules) };
 }
 // Hand-offs the agent hasn't said it got yet (a wait that asked with ack: true). The marks go on at once, so no other
 // wait takes the same pins and the page shows them being worked on; the agent's `wait` (or MCP server) says it printed
@@ -1254,7 +1257,7 @@ function confirmed(id) {
   return true;
 }
 // Hand the new comments to a wait; each is marked as handed over only once it is written to it.
-function deliver(res, got, who = '', ack = false) {
+function deliver(res, got, who = '', ack = false, key = '') {
   // What the marks were, to put back if the agent never confirms.
   const ids = [...new Set([...got.marks.map(([, id]) => id), ...got.handed.map(([, id]) => id)])];
   const before = ids.map((id) => [id, handoff[id] ? [...handoff[id]] : undefined]);
@@ -1264,13 +1267,18 @@ function deliver(res, got, who = '', ack = false) {
   if (delivery)
     unacked.set(delivery, {
       who,
+      key,
       timer: setTimeout(() => takeBack(delivery), ACK_MS).unref(),
       back: () => {
+        // Only marks still as this hand-off left them: a pin moved since and handed to another wait stays theirs.
+        const theirs = new Set(before.filter(([id]) => JSON.stringify(handoff[id]) !== JSON.stringify(wrote[id])).map(([id]) => id));
         for (const [id, was] of before) {
+          if (theirs.has(id)) continue;
           if (was) handoff[id] = was;
           else delete handoff[id];
         }
-        for (const [page, id, was] of handedBefore) setComment(page, id, { handedAt: was });
+        if (got.rules) rulesSent.delete(who); // the rules went with it, so they go again
+        for (const [page, id, was] of handedBefore) if (!theirs.has(id)) setComment(page, id, { handedAt: was });
         saveHanded();
         for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
         if (got.full) toldAt.delete(who);
@@ -1280,11 +1288,13 @@ function deliver(res, got, who = '', ack = false) {
     });
   if (got.full) toldAt.set(who, Date.now());
   for (const [, id, at] of got.marks) handoff[id] = [at, who];
+  const wrote = {}; // what this hand-off set, filled in below
   const at = new Date().toISOString();
   for (const [page, id] of got.handed) {
     (handoff[id] ||= ['', who])[1] = who; // the thread: this session has it now
     setComment(page, id, { handedAt: at });
   }
+  for (const id of ids) wrote[id] = handoff[id] ? [...handoff[id]] : undefined;
   saveHanded();
   for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
   setMode(waiters.length ? 'listening' : 'working'); // another session still waits: the lab is still listening
@@ -1308,7 +1318,7 @@ async function wakeNow() {
     waitEnded = Date.now();
     clearTimeout(w.timer);
     remember(w);
-    deliver(w.res, got, w.who, w.ack);
+    deliver(w.res, got, w.who, w.ack, w.key);
   }
 }
 
@@ -1649,6 +1659,24 @@ const handler = async (req, res) => {
       pagesChanged();
       return res.writeHead(204).end();
     }
+    // A look without taking anything (the labit plugin, hooks/wake.ts, asks every few seconds while its Claude Code
+    // session is idle): pins nobody has been handed, whether a wait is open for them, and which session listened last,
+    // so only that session is woken, with a new turn, once it stopped listening.
+    if (pathname === '/_lab/pending' && req.method === 'GET') {
+      if (!isAgent(req)) return res.writeHead(403).end('forbidden');
+      const fresh = freshIn(pages().filter((p) => !claimed().has(p)));
+      const ids = fresh.map(({ c }) => c.id).sort();
+      return answer(res, {
+        fresh: ids.length,
+        pages: [...new Set(fresh.map(({ page }) => page))],
+        key: createHash('sha1').update(ids.join(',')).digest('hex').slice(0, 12),
+        listening: waiters.length > 0,
+        last: session?.id || '',
+        dir: ROOT,
+        cmd: CMD,
+        url: `http://localhost:${PORT}`,
+      });
+    }
     // The agent's wait printed a hand-off (see unacked): it is the agent's now.
     if (pathname === '/_lab/ack' && req.method === 'POST') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
@@ -1670,13 +1698,13 @@ const handler = async (req, res) => {
       session = sessionFrom(req);
       const w = { res, pages: want, key, who: whoOf(session), ack: ack === true };
       // The same session waiting again before it said it got the last hand-off never saw it: those pins go out again.
-      for (const [id, d] of unacked) if (d.who === w.who) takeBack(id);
+      for (const [id, d] of unacked) if (d.who === w.who && d.key === key) takeBack(id);
       claim(want);
       const got = await unseen(scopeOf(w), w.who);
       recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
       if (got?.text) {
         remember(w);
-        return deliver(res, got, w.who, w.ack);
+        return deliver(res, got, w.who, w.ack, key);
       }
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;

@@ -211,12 +211,13 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
         ),
       );
 
-    // The same words sent again by the same session within about two minutes (the agent ran reply again because it
-    // never saw the first one's answer) carry the same nonce, so the lab gives back the first comment instead of a
-    // second one, as it does for the browser's retries. The browser's nonce is random; the agent's command is a new
-    // process each time, so its nonce comes from what it sends.
+    // The same words sent again by the same session to the same thing (the agent ran reply again because it never saw
+    // the first one's answer) carry the same nonce, so the lab gives back the first comment instead of a second one,
+    // as it does for the browser's retries (kept 15 minutes). The browser's nonce is random; the agent's command is a
+    // new process each time, so its nonce comes from what it sends and what it answers: a reply names the thread's
+    // latest message from a person, so "Done." after the person wrote again is a new answer, not a retry.
     const nonceOf = (...parts: unknown[]) =>
-      createHash('sha256').update(JSON.stringify([session.id || session.name, ...parts, Math.floor(Date.now() / 120000)])).digest('hex').slice(0, 32);
+      createHash('sha256').update(JSON.stringify([session.id || session.name, ...parts])).digest('hex').slice(0, 32);
 
     // A link for a phone on the same wifi: one use, ten minutes. Claude hands it over in chat; the lab must be --wifi.
     // `invite <name>` says who is coming, so their phone starts out named; with none, your own name goes along.
@@ -339,7 +340,11 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (intent instanceof Error) die(intent.message);
       const who = process.env.LAB_AGENT_NAME || session.agent;
       const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
-      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}) });
+      const said = Object.values(((data as Record<string, object>)[hit.page] || {}) as Record<string, { id: string; parent?: string; session?: unknown; createdAt: string }>)
+        .filter((c) => (c.id === hit.id || c.parent === hit.id) && !c.session)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .pop()?.id;
+      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, said, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}) });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
     }
     if (cmd === 'resolve' || opts.resolve) {
