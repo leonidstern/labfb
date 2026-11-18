@@ -39,15 +39,23 @@ const page = ({ b = 'The second block talks about cost and price.', c = true, en
   `<details id="d"><summary>More</summary><p id="hid">Hidden words inside.</p></details><p id="z">The last block stays as it is.</p>${end}${script}</body>`;
 write('labit.json', JSON.stringify({ port: PORT, flags: { sinceLooked: true } }));
 write('index.html', page());
+// A second lab with the flag left at its default (off): the flag is set in labit.json when a lab starts, nowhere else.
+const OFF_DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-since-off-')));
+const OFF_PORT = PORT + 300;
+const OFF = `http://localhost:${OFF_PORT}`;
+fs.writeFileSync(path.join(OFF_DIR, 'labit.json'), JSON.stringify({ port: OFF_PORT }));
+fs.writeFileSync(path.join(OFF_DIR, 'flagoff.html'), page());
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
+const offServer = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: OFF_DIR, env });
+for (const base of [B, OFF])
+  for (let i = 0; i < 80; i++) {
+    try {
+      await fetch(base + '/');
+      break;
+    } catch {
+      await sleep(100);
+    }
   }
-}
 let failed = 0;
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
@@ -67,11 +75,11 @@ try {
     const ME = `leo-${eng}`; // each engine is somebody of its own: the lab keeps what it saw
     // Reduced motion for the whole run: a jump is instant, so a step is read the moment it is made.
     const context = (extra = {}) => browser.newContext({ viewport: { width: 1100, height: 700 }, reducedMotion: 'reduce', ...extra });
-    const open = async (ctx, file = '/', name = ME, before = () => {}, look = true) => {
+    const open = async (ctx, file = '/', name = ME, before = () => {}, look = true, base = B) => {
       const p = await ctx.newPage();
       if (name) await p.addInitScript((n) => localStorage.getItem('lab-name') || localStorage.setItem('lab-name', n), name);
       await before(p);
-      await p.goto(B + file);
+      await p.goto(base + file);
       // The widget starts, and takes the first look 400 ms after the load (a cold browser takes its time).
       await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 15000 });
       if (look) await p.waitForFunction(() => localStorage.getItem('lab-looked:' + document.querySelector('script[data-page]').dataset.page), null, { timeout: 15000 }).catch(() => {});
@@ -266,23 +274,23 @@ try {
     check(eng, "the first build's plain list reads the same way", (await O2.pill()) === '');
     await ctx8.close();
 
-    // ---- the flag off: no pill, nothing kept ----
-    await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ flag: 'sinceLooked', on: false }) });
+    // ---- the flag off (the other lab, no sinceLooked in its labit.json): no pill, nothing kept ----
     const ctx6 = await context();
-    write('flagoff.html', page());
-    const F = await open(ctx6, '/flagoff', ME, () => {}, false);
+    fs.writeFileSync(path.join(OFF_DIR, 'flagoff.html'), page());
+    const F = await open(ctx6, '/flagoff', ME, () => {}, false, OFF);
     const asked = [];
     F.p.on('request', (r) => /\/_lab\/api\/looked/.test(r.url()) && asked.push(r.url()));
-    write('flagoff.html', page({ end: sec('v1', 'Version one') }));
+    fs.writeFileSync(path.join(OFF_DIR, 'flagoff.html'), page({ end: sec('v1', 'Version one') }));
     await sleep(3000);
     check(eng, 'sinceLooked off: no pill, nothing kept, no requests', (await F.pill()) === '' && (await F.p.evaluate(() => localStorage.getItem('lab-looked:/flagoff'))) === null && asked.length === 0);
     await ctx6.close();
-    await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ flag: 'sinceLooked', on: true }) });
     await browser.close();
   }
 } finally {
   server.kill();
+  offServer.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
+  fs.rmSync(OFF_DIR, { recursive: true, force: true });
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);
