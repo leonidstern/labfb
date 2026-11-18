@@ -27,7 +27,7 @@ import {
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
@@ -40,6 +40,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const S = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
+    paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
     get $() { return $; },
     get DRAFT_MODE() { return DRAFT_MODE; },
     get LIST_WINDOW() { return LIST_WINDOW; },
@@ -208,7 +209,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     <div class="layer"></div>
     <button class="sel-chip" type="button" hidden>Comment</button>
     <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
-    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
+    <div class="list" hidden><div class="agentline" hidden></div><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -273,7 +274,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
   bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
-  bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), workState: (c) => workState(c) });
+  bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -365,6 +366,23 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       drawList(); // the bar's counts and the tab's "(3)" keep up even while a box has the cursor (a tab left in the background)
     }
   }
+
+  // While the agent works on something, every 10 s: the ages in the pill, the sheets' lines and the tooltips move on, and a
+  // pin that has gone 5 minutes without a sign turns grey (a pin changing state is drawn again, as with any change).
+  const BUSY = new Set(['now', 'got', 'wait', 'stale']);
+  setInterval(() => {
+    if (document.hidden || !S.on) return;
+    S.line = null;
+    const now = lineUp();
+    if (![...now.values()].some((e) => BUSY.has(e.s))) return;
+    if ([...now].some(([id, e]) => pinsById.has(id) && S.rings.get(id) !== e.s)) return shownAgain();
+    W.paintWho?.();
+    paintLines();
+    for (const [id, pin] of pinsById) {
+      const tip = pin.querySelector('.tip');
+      if (tip) tip.textContent = lineOf(now.get(id));
+    }
+  }, 10000);
 
   // Go mode (V): every new spot (a click, a drawn area, selected words, a hold on phones) is posted at once as "go",
   // approving what it's on, with no box to type in. In draft mode go pins wait with the other drafts.
@@ -567,7 +585,12 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     threads()
       .filter((c) => c.anchor?.kind !== 'page')
       .filter((c) => (S.filter === 'new' ? unread(c).length : S.filter === 'open' ? !c.resolved : S.filter === 'resolved' ? c.resolved : mine(c)))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      .sort((a, b) => rank(a) - rank(b) || a.createdAt.localeCompare(b.createdAt));
+  // The list: the ones the agent works on first, then those waiting, in their order in line, then the rest.
+  const rank = (c) => {
+    const e = lineUp().get(c.id);
+    return e?.s === 'now' || e?.s === 'stale' ? 0 : e?.s === 'got' ? 1 : e?.s === 'wait' ? 1 + e.n : 1e6;
+  };
   const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;
@@ -737,9 +760,13 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const still = matchMedia('(prefers-reduced-motion: reduce)');
   const pinsById = new Map(); // the pins on the layer now, by thread id, for movePins()
   S.faces = new Map(); // each pin's last drawn state, so a change can ease in
+  S.rings = new Map(); // and its state with the agent, for the ring
+  const RINGS = { now: '', got: ' got', wait: ' wait', stale: ' stale', asks: ' asks' }; // the ring each state wears (none: sent, done)
+  const SAY = { now: 'agent working on it', got: 'picked up by the agent', wait: 'waiting', stale: 'no update from the agent', asks: 'agent asked a question' };
   // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
   S.dropDrag = null;
   function render() {
+    S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
     S.grabbing = false; // a pin being dragged is replaced: its drag ends here
     S.dropDrag?.();
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
@@ -832,15 +859,17 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       if (S.openId === c.id) drawZone(zone, `saved${anim}`); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
-      const [state] = workState(c); // placed (sent), now (the agent is on it) or done
+      const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
+      const state = sg.s;
+      const tip = coarse || (state !== 'now' && state !== 'stale') ? '' : lineOf(sg); // hovering a working ring says what it is doing
       const pin = el(
         'button',
         {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? (coarse ? ' arrive' : ' in') : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
+          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? (coarse ? ' arrive' : ' in') : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
           type: 'button',
-          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`,
+          ...(tip ? {} : { title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}` }),
           // Its state in words too (the ring, the tick and the new dot are only seen).
-          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}`,
+          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`,
         },
         // Done wins over every face: a go that has been answered or resolved is a pin like any other,
         // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
@@ -853,8 +882,19 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       S.faces.set(c.id, face);
       const changed = was !== undefined && was !== face && !still.matches;
       if (changed) pin.classList.add('swap');
-      if (state === 'now') pin.append(el('i', { class: `ring${changed && !was.startsWith('now') ? ' come' : ''}`, 'aria-hidden': 'true' }));
-      else if (changed && was.startsWith('now')) pin.append(el('i', { class: 'ring gone', 'aria-hidden': 'true' }));
+      // The ring is the state (src/widget/styles.css): turning green while it works, still pale green when picked up, muted
+      // while it waits in line, grey when it went quiet, amber when it asks. Moving between them crossfades; none to one fades in.
+      const before = S.rings.get(c.id);
+      S.rings.set(c.id, state);
+      const ring = (/** @type {string | null} */ st, extra = '') => el('i', { class: `ring${RINGS[st] ?? ''}${extra}`, 'aria-hidden': 'true' });
+      const shifted = changed && before !== state;
+      if (state in RINGS) {
+        const r = ring(shifted && before in RINGS ? before : state, shifted && !(before in RINGS) ? (state === 'now' ? ' come' : ' off') : '');
+        pin.append(r);
+        if (shifted && before in RINGS) requestAnimationFrame(() => requestAnimationFrame(() => (r.className = ring(state).className)));
+        else if (shifted && state !== 'now') requestAnimationFrame(() => requestAnimationFrame(() => r.classList.remove('off')));
+      } else if (shifted && before in RINGS) pin.append(ring(before, ' gone'));
+      if (tip) pin.append(el('span', { class: 'tip', 'aria-hidden': 'true' }, tip));
       if (coarse) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;

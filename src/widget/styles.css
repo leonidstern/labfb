@@ -8,12 +8,12 @@
   --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_edge: var(--lab-edge, #c7c7cc); --_muted: var(--lab-muted, rgba(0,0,0,.50));
   --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
   --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
-  --_ease: cubic-bezier(.2, .8, .2, 1); }
+  --_ease: cubic-bezier(.2, .8, .2, 1); --_amber: #e08a1a; }
 @media (prefers-color-scheme: dark) {
   :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
           --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
           --_soft: var(--lab-soft, rgba(255,255,255,.05)); --_hover: var(--lab-hover, rgba(255,255,255,.10)); --_line: var(--lab-line, rgba(255,255,255,.15)); --_edge: var(--lab-edge, #48484a); --_muted: var(--lab-muted, rgba(255,255,255,.50));
-          --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
+          --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); --_amber: #f0a040; }
 }
 * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
     font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: -.011em;
@@ -82,6 +82,24 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 /* The agent takes it: the green arc draws itself in while it turns (lab C2, Leo 16 Nov; --lab-arc is registered on the page). */
 .pin .ring.come::before { animation: lab-draw .4s ease-out, lab-turn 1.2s linear infinite; }
 @keyframes lab-draw { from { --lab-arc: 0%; } }
+/* The ring is the agent's state (never stuck): the turning arc is working; every other state is a still ring in one colour
+   that crossfades in over 300 ms: picked up pale green, waiting in line muted, no sign for 5 min grey, a question amber.
+   Sent and done wear none. The turning arc stops (paused) once it has faded out. */
+.ring { --rc: transparent; }
+.ring::after { content: ''; position: absolute; inset: 0; opacity: 0; background: var(--rc); transition: opacity .3s ease; }
+.ring::before { transition: opacity .3s ease; }
+.ring:is(.got, .wait, .stale, .asks)::before { opacity: 0; animation-play-state: paused; }
+.ring:is(.got, .wait, .stale, .asks)::after { opacity: 1; }
+.ring.got { --rc: rgba(52, 199, 89, .35); }
+.ring.wait { --rc: color-mix(in srgb, var(--_muted) 45%, transparent); }
+.ring.stale { --rc: var(--_muted); }
+.ring.asks { --rc: var(--_amber); }
+.pin .ring.off { opacity: 0; }
+/* Hovering a working pin shows what it is doing (a phone has no hover: its sheet's head says it). */
+.pin .tip { position: absolute; left: -4px; bottom: calc(100% + 10px); width: max-content; max-width: 240px; padding: 6px 9px; border-radius: var(--_r-s);
+            background: var(--_bg); color: var(--_muted); box-shadow: var(--_shadow); font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 1.35;
+            text-align: left; white-space: normal; pointer-events: none; opacity: 0; transform: translateY(2px); transition: opacity .12s ease-out, transform .12s ease-out; z-index: 6; }
+.pin:hover .tip { opacity: 1; transform: none; }
 /* The drawn pointer: your pin, following the mouse (it moves without a transition; only its look eases). */
 .ptr { position: fixed; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px 14px 14px 2px; corner-shape: round;
        background: var(--_bg); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 2px 6px rgba(0,0,0,.18);
@@ -281,6 +299,11 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
    listens. A dropped connection keeps the last state, faded, instead of looking like nobody. Only transforms move, on three small shapes, so nothing else
    on the layer is redrawn (the old dot's ping was kept to transform and opacity for the same reason). */
 .listener .lbl { display: contents; }
+/* While the agent works on a pin the pill carries its line, in a box of one width whatever it says, so nothing beside it moves. */
+.listener .prog { display: inline-block; width: min(380px, 40vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity .2s ease; }
+.listener .prog.out { opacity: 0; }
+/* Phones: the same words head a sheet (the open thread's, the list's). */
+.agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
 .mark .eye { fill: var(--_bg); }
 .listener .mark { margin: -2px 0 -1px -3px; }
