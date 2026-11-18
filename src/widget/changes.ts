@@ -5,8 +5,9 @@
 // compared with that. A badge by the listening pill says how much changed, a mark in the margin sits by each block
 // that was added (green), changed (amber) or removed (a red tick where it was), and a tap on a mark shows the old
 // and new words. "seen" makes now the new "last looked". A first visit just remembers the page.
-// The last look sits in localStorage (`lab-looked:<page>`) as { at, files, blocks }, so each browser has its own.
-// Flag: sinceLooked (lib/flags.ts).
+// The last look is kept per person in the lab (/_lab/api/looked, by the name you gave), so your Mac and your phone
+// agree, and in localStorage (`lab-looked:<page>`, { at, files, blocks }) as a cache that works with the lab down.
+// Without a name it stays in the browser. Flag: sinceLooked (lib/flags.ts).
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -28,7 +29,8 @@ function words(e: Element) {
 
 const LABEL = { add: 'new', chg: 'changed', rm: 'removed' };
 type Mark = { kind: 'add' | 'chg' | 'rm'; el: Element | null; after?: Element | null; old?: string; now?: string };
-type Look = { at: number; files: string; blocks: string[] };
+// dirty: made here and not yet in the lab.
+type Look = { at: number; files: string; blocks: string[]; dirty?: 1 };
 
 // Every block in order: the innermost ones only (a <li> holding a <p> counts as its <p>), with some text. Hidden ones
 // stay in (a closed <details>, a collapsed menu): opening one must not read as new words; only the laid-out ones get a mark.
@@ -166,11 +168,49 @@ export function startChanges() {
       return null;
     }
   };
-  // Now is your last look.
-  const remember = () => {
-    const s = JSON.stringify({ at: Date.now(), files: saves(), blocks: blocks().map(words) });
+  const write = (look: Look) => {
+    const s = JSON.stringify(look);
     W.store.set(key(), s);
     full = W.store.get(key()) !== s;
+  };
+
+  // The lab keeps each person's last look, by name: your phone and your Mac agree. The lab's clock stamps it (a phone's
+  // can be minutes off), so a look made here waits as `dirty` until the lab has it, and wins over the lab's copy.
+  const api = () => W.script.dataset.live.replace(/live$/, 'api/looked');
+  const who = () => W.store.get('lab-name').trim();
+  let pushing = false;
+  let synced = '';
+  const push = async () => {
+    const look = read();
+    const name = who();
+    // A very large page stays in this browser: the lab keeps at most 4,000 blocks and 400 KB of a look.
+    if (!look || !name || pushing || look.blocks.length > 4000 || JSON.stringify(look.blocks).length > 4e5) return;
+    pushing = true;
+    try {
+      const res = await fetch(api(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, page: W.S.page, blocks: look.blocks }) });
+      if (res.ok && read()?.at === look.at) write({ ...look, at: (await res.json()).at, dirty: undefined });
+    } catch {} // the lab is down: it goes with the next check
+    pushing = false;
+  };
+  // Whichever is newer wins: the lab's copy comes in, or ours goes up. A browser's old plain list (at 0) goes up
+  // when the lab has nothing, and gives way to the lab's copy when it has one.
+  const sync = async () => {
+    const name = who();
+    const page = W.S.page;
+    if (!name) return;
+    try {
+      const r = await (await fetch(`${api()}?name=${encodeURIComponent(name)}&page=${encodeURIComponent(page)}`, { cache: 'no-store' })).json();
+      if (page !== W.S.page) return;
+      const mine = read();
+      if (r.blocks && !mine?.dirty && (!mine || mine.at < r.at)) write({ at: r.at, files: '', blocks: r.blocks });
+      else if (mine && (!r.blocks || mine.dirty || mine.at > r.at)) await push();
+      synced = `${page}|${name}`;
+    } catch {}
+  };
+  // Now is your last look.
+  const remember = () => {
+    write({ at: Date.now(), files: saves(), blocks: blocks().map(words), dirty: 1 });
+    push();
   };
 
   // The margin a mark sits in: left of the block, or of its list for a list item (its bullet sits outside it).
@@ -287,11 +327,14 @@ export function startChanges() {
     drawBadge();
   };
 
-  const check = () => {
+  const check = async () => {
     const run = ++gen;
     clearTimeout(timer);
-    const was = read();
     if (!document.body || !W.S.on || full) return show([]); // comments hidden: no badge, no marks; the last look stays
+    // The first look here may not be your first: the lab may know one from another device (or have nothing of ours yet).
+    if (who() && (synced !== `${W.S.page}|${who()}` || read()?.dirty)) await sync();
+    const was = read();
+    if (run !== gen) return;
     if (!was) return remember(); // first visit: nothing to compare yet
     if (was.files === saves()) return show([]); // no file was saved since your look: whatever moves on the page is the page's own
     // Words that change by themselves (a clock, a counter) are not an edit: the page is read twice, a second apart, and
@@ -306,6 +349,7 @@ export function startChanges() {
     }, 1000);
   };
   W.S.checkChanges = check;
+  W.S.syncLooked = () => sync().then(check); // another device made a look
   // After the page's own scripts and fonts have settled, so their first paint doesn't count as a change.
   const first = () => setTimeout(check, 400);
   if (document.readyState === 'complete') first();

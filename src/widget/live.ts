@@ -124,6 +124,7 @@ export function startLive() {
     };
     let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
     let readsAt = null;
+    let lookedAt = null;
     let hotAt = null;
     // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
@@ -423,6 +424,11 @@ export function startLive() {
         if (v.reads !== readsAt) {
           readsAt = v.reads;
           W.syncReads();
+        }
+        // a last look made on another device with your name
+        if (v.looked !== lookedAt) {
+          lookedAt = v.looked;
+          W.S.syncLooked?.();
         }
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
