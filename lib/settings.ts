@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
+const SHORTCUTS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
 // The actions row on selected words ("words") and, once the regular dialog has one, on a spot ("spot"). The comment itself is
 // always there, first and unlisted; the list holds the built-in rewrite, cut and go, and your own: { label, send, ask? }.
 const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go'];
