@@ -35,7 +35,6 @@ npx @leonidstern/labit pin <selector> "1. …"   # its own pin on a spot: sugges
 
 Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
 
-Everything merged to main, before it is released: `npx @leonidstern/labit@next`.
 
 **Fewer permission prompts (Claude Code):** copy [examples/claude-settings.json](examples/claude-settings.json) to `.claude/settings.json` in your project (or merge its `permissions` into yours). labit's commands and MCP tools then run without asking; `--wifi` and `invite`, which let another device in, still ask. Claude Code reads a project's allow rules only once you've opened the folder in it and trusted it.
 
