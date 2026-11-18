@@ -6,6 +6,7 @@ const world = (on: any, pending: Record<string, unknown>, me = 'S1', more: { cwd
   const sent: string[] = [];
   const asked: number[] = [];
   const looked = { n: 0 };
+  const posts: any[] = [];
   const files: Record<string, string> = { '/p/.lab/server.json': JSON.stringify({ port: 4400, agent: 'k' }), ...more.files };
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }));
   on('session.cwd', () => ({ value: more.cwd || '/p/sub' }));
@@ -20,6 +21,10 @@ const world = (on: any, pending: Record<string, unknown>, me = 'S1', more: { cwd
     return { value: Object.keys(files).filter((f) => f.startsWith(dir) && !f.slice(dir.length).includes('/')).map((f) => ({ name: f.slice(dir.length), kind: 'file', size: 1, mtimeMs: 0, isLink: false })) };
   });
   on('http.fetch', (_: any, e: any) => {
+    if ((e.init?.method || e.method) === 'POST') {
+      posts.push(JSON.parse(e.init?.body ?? e.body));
+      return { value: { status: 204, ok: true, headers: {}, text: '' } };
+    }
     looked.n++;
     const port = Number(/:(\d+)\//.exec(typeof e === 'string' ? e : e.url)?.[1]);
     asked.push(port);
@@ -31,7 +36,7 @@ const world = (on: any, pending: Record<string, unknown>, me = 'S1', more: { cwd
   });
   on('turn.start', (_: any, e: any) => ({ turnId: e.turnId }));
   on('turn.complete', (_: any, e: any) => ({ text: e.answer }));
-  return { sent, looked, asked };
+  return { sent, looked, asked, posts };
 };
 const turnStart = ($: any, turnId = 't1') => $.turn.start({ text: 'go', turnId });
 const turnEnd = ($: any, turnId = 't1') => $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId, reason: 'answer' });
@@ -176,4 +181,23 @@ test('a registry lab where the lab itself says another session listened last is 
   await clock.advance(12000);
   expect([...new Set(w.asked)]).toEqual([4400]);
   expect(w.sent.length).toBe(0);
+});
+
+test('tool calls put a progress line on the pins being worked on, once a minute each', async ($, on) => {
+  const clock = mock.clock(on);
+  const w = world(on, { working: [{ page: '/a', id: 'c1' }], last: 'S1' });
+  on('tool.call', () => ({ result: {} }));
+  await $.session.start({ cwd: '/p/sub', surface: 'terminal', isInteractive: true } as any);
+  await $.tool.call({ tool: 'Edit', file_path: '/p/src/comments.js', old_string: 'a', new_string: 'b' } as any);
+  await clock.advance(1000);
+  expect(w.posts.length).toBe(1);
+  expect(w.posts[0]).toEqual({ page: '/a', action: 'progress', id: 'c1', text: 'editing comments.js' });
+  await $.tool.call({ tool: 'Bash', command: 'npm test' } as any).catch(() => {});
+  await clock.advance(1000);
+  expect(w.posts.length).toBe(1); // within the minute: no second line
+  await clock.advance(60000);
+  await $.tool.call({ tool: 'Bash', command: 'npm test' } as any).catch(() => {});
+  await clock.advance(1000);
+  expect(w.posts.length).toBe(2);
+  expect(w.posts[1].text).toBe('running npm test');
 });
