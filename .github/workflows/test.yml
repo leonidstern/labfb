@@ -57,7 +57,7 @@ jobs:
           - fluid
           # behaviours; the live connection; shortcuts from labit.json; pins finding their spot again;
           # what a drag does (words, an area, a point, fields and links).
-          - behaviours connection shortcuts anchoring selection
+          - behaviours connection shortcuts anchoring selection flags progress
     name: browser (${{ matrix.engine }}, ${{ matrix.group == 'fluid' && 'fluid' || 'rest' }})
     # Playwright's own image has both browsers and their system libraries already in it. Installing them with
     # apt on each run took 30 s on a good day and 33 min on a bad one (#124, #127).

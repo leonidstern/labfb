@@ -28,6 +28,8 @@ export const goTo = (c, keys = false) => {
 
 export function drawList() {
   const all = W.threads();
+  W.paintWho?.(); // the pill's words and a phone sheet's line follow the agent's work
+  paintLines();
   W.listBtn.hidden = !W.S.on || (!W.coarse && !all.length && !W.held().length); // on phones it carries the agent's light
   W.goBtn.hidden = !W.S.on;
   if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, 'go'), W.el('kbd', { 'aria-hidden': 'true' }, [W.KEYS.comment, W.KEYS.go, W.KEYS.pointer].join('/')));
@@ -84,14 +86,18 @@ export function drawList() {
   if (W.S.filter === 'work') return W.listEl.querySelector('.items').replaceChildren(...workItems());
   const items = W.listed().map((c) => {
     const b = W.el('button', { class: `it${W.S.openId === c.id ? ' cur' : ''}`, type: 'button' });
-    b.append(document.createTextNode(`${c.resolved ? '✓' : W.numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(W.onWhat(c) ? [W.el('span', {}, `on ${W.onWhat(c)} `)] : []), W.el('span', {}, `· ${c.name}${!c.resolved && W.isDone(c) ? ' · ✅ done' : ''}`), ...(W.unread(c).length ? [' ', W.el('span', { class: 'tag' }, `${W.unread(c).length} new`)] : []));
+    b.append(document.createTextNode(`${c.resolved ? '✓' : W.numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(W.onWhat(c) ? [W.el('span', {}, `on ${W.onWhat(c)} `)] : []), W.el('span', {}, `· ${c.name}${!c.resolved && W.isDone(c) ? ' · ✅ done' : ''}${sayOf(lineUp().get(c.id))}`), ...(W.unread(c).length ? [' ', W.el('span', { class: 'tag' }, `${W.unread(c).length} new`)] : []));
     b.addEventListener('click', () => goTo(c));
     return b;
   });
   W.listEl.querySelector('.items').replaceChildren(...(items.length ? items : [W.el('div', { class: 'none' }, 'nothing here')]));
 }
 
-// A thread's state for the agent: ['now' | 'next' | 'done' | null, since when].
+const SAYS = { now: 'working', stale: 'no update', got: 'picked up' };
+const sayOf = (e) => (e?.s === 'wait' ? ` · waiting · ${ord(e.n)} in line` : SAYS[e?.s] ? ` · ${SAYS[e.s]}` : '');
+// A thread's state for the agent: ['now' | 'got' | 'asks' | 'next' | 'done' | null, since when]. now: it said it is on it
+// (--on-it) or gave a progress line; got: handed to it, nothing from it yet; asks: it asked a question (--question) and
+// waits for the person; next: sent, not handed yet. "since" is its latest sign.
 export const workState = (c) => {
   const thread = [c, ...W.repliesOf(c.id)];
   const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || '';
@@ -101,10 +107,66 @@ export const workState = (c) => {
   // of an answer that doesn't say).
   const said = answered && answer.intent;
   if (c.resolved || said === 'done') return ['done', answered ? answer.createdAt : c.createdAt];
-  if (said === 'working') return ['now', answer.createdAt];
-  if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['now', c.handedAt];
+  if (said === 'question') return ['asks', answer.createdAt];
+  if (said === 'working' || c.progress) return ['now', [said === 'working' && answer.createdAt, c.progress?.at].filter(Boolean).sort().at(-1)];
+  if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['got', c.handedAt];
   return answered ? [null, ''] : ['next', lastPerson];
 };
+
+// Where each thread stands with the agent: { s, n, at, line }. s is workState's, but with now → stale when it has shown
+// no sign for 5 minutes (a picked-up one too), and the pins handed over while another is being worked on → wait, n their
+// place in line (1st, 2nd…). With none being worked on, the oldest picked-up one is "got" and the rest wait behind it.
+const STALE_MS = 300000;
+function build() {
+  const out = new Map();
+  const live = [];
+  const pend = [];
+  for (const c of W.threads()) {
+    const [s, at] = workState(c);
+    const e = { s, n: 0, at, line: c.progress?.text || '', c };
+    out.set(c.id, e);
+    if (s === 'now') live.push(e);
+    else if (s === 'got') pend.push(e);
+  }
+  pend.sort((a, b) => a.at.localeCompare(b.at) || a.c.createdAt.localeCompare(b.c.createdAt));
+  pend.forEach((e, i) => {
+    if (live.length || i) Object.assign(e, { s: 'wait', n: i + (live.length ? 1 : 0) });
+  });
+  for (const e of [...live, ...pend]) if (e.s !== 'wait' && Date.now() - Date.parse(e.at) > STALE_MS) e.s = 'stale';
+  return out;
+}
+// Kept until the next drawing (or the 10 s tick) sets W.S.line to null: stamps and pins ask for it many times a drawing.
+export const lineUp = () => (W.S.line ||= build());
+// "just now", "40 s ago", "3 min ago", and the bare "3 min" for "no update for 3 min".
+const mins = (at) => {
+  const m = Math.floor((Date.now() - Date.parse(at)) / 60000);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h`;
+};
+const age = (at) => {
+  const s = (Date.now() - Date.parse(at)) / 1000;
+  return s < 10 ? 'just now' : s < 60 ? `${Math.floor(s / 10) * 10} s ago` : `${mins(at)} ago`;
+};
+export const ord = (n) => n + (['th', 'st', 'nd', 'rd'][((n % 100) - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+// The line for one thread as it stands: its progress and age, or "no update for 6 min · last: …" once it has gone quiet.
+export const lineOf = (e) => (e.s === 'stale' ? `no update for ${mins(e.at)}${e.line ? ` · last: ${e.line}` : ''}` : e.line ? `${e.line} · ${age(e.at)}` : '');
+// What the pill and a phone's sheet say about the agent's work: the line of the thread it signed most recently (it reads
+// "no update for…" when even that one went quiet), how many wait, and a key that changes when the line is another (the
+// pill fades then, not for the age ticking on). text is '' when there is no line to show.
+export function pillLine() {
+  const all = [...lineUp().values()];
+  const top = all.filter((e) => e.s === 'now' || e.s === 'stale').sort((a, b) => b.at.localeCompare(a.at))[0];
+  return { text: top ? lineOf(top) : '', key: top ? `${top.c.id}${top.s}${top.line}` : '', waiting: all.filter((e) => e.s === 'wait').length };
+}
+// Phones have no pill: the same words head the sheet (a thread's, the list's), "Claude · drawing W1–W6 · 40 s ago · 2 waiting".
+export const lineWords = () => {
+  const { text, waiting } = pillLine();
+  const words = [text, waiting && `${waiting} waiting`].filter(Boolean).join(' · ');
+  return words && `${W.S.agent || 'Claude'} · ${words}`;
+};
+export function paintLines() {
+  const words = lineWords();
+  for (const n of W.root.querySelectorAll('.agentline')) Object.assign(n, { hidden: !words, textContent: words });
+}
 
 function workItems() {
   const today = new Date().toDateString();
@@ -113,7 +175,7 @@ function workItems() {
   const done = [];
   for (const c of W.S.comments.filter((x) => !x.parent)) {
     const [state, at] = workState(c);
-    if (state === 'now') now.push([c, at]);
+    if (state === 'now' || state === 'got') now.push([c, at]);
     else if (state === 'next') next.push([c, at]);
     else if (state === 'done' && new Date(at).toDateString() === today) done.push([c, at]);
   }

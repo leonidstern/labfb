@@ -29,7 +29,7 @@ import {
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
@@ -43,6 +43,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const S = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
+    paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
     get $() { return $; },
     get DRAFT_MODE() { return DRAFT_MODE; },
     get LIST_WINDOW() { return LIST_WINDOW; },
@@ -176,9 +177,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   if (ME && !store.get('lab-name')) store.set('lab-name', ME);
   // Where to tell the lab a new name, so the next lab on this computer starts out knowing it.
   const MEAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'me') : '';
-  // What this lab is trying (lib/flags.ts): flag -> on. The ⋯ menu lists them; only this computer may switch one.
+  // What this lab is trying (lib/flags.ts): flag -> on. Set in labit.json's `flags`, never from the page.
   const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
-  const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
   const flag = (name) => FLAGS[name]?.on === true;
   let meSent = ME;
   const rememberMe = (name) => {
@@ -224,7 +224,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <div class="scrim"></div>
     <div class="layer"></div>
     <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
-    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
+    <div class="list" hidden><div class="agentline" hidden></div><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -289,7 +289,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
   bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
-  bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), workState: (c) => workState(c) });
+  bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -315,7 +315,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const headers = () => ({ 'content-type': 'application/json', ...(adminToken ? { 'x-lab-admin': adminToken } : {}) });
 
   S.loaded = false;
-  const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
+  // A box has the cursor (not a pin: a pin now stays the same element across redraws, so in Chrome, where a clicked
+  // button keeps focus, a clicked pin held every later redraw back).
+  const typed = () => /^(textarea|input)$/.test(root.activeElement?.localName || '') || Boolean(/** @type {HTMLElement | null} */ (root.activeElement)?.isContentEditable) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}`, { headers: headers(), cache: 'no-store' });
@@ -381,6 +383,23 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       drawList(); // the bar's counts and the tab's "(3)" keep up even while a box has the cursor (a tab left in the background)
     }
   }
+
+  // While the agent works on something, every 10 s: the ages in the pill, the sheets' lines and the tooltips move on, and a
+  // pin that has gone 5 minutes without a sign turns grey (a pin changing state is drawn again, as with any change).
+  const BUSY = new Set(['now', 'got', 'wait', 'stale']);
+  setInterval(() => {
+    if (document.hidden || !S.on) return;
+    S.line = null;
+    const now = lineUp();
+    if (![...now.values()].some((e) => BUSY.has(e.s))) return;
+    if ([...now].some(([id, e]) => pinsById.has(id) && S.rings.get(id) !== e.s)) return shownAgain();
+    W.paintWho?.();
+    paintLines();
+    for (const [id, pin] of pinsById) {
+      const tip = pin.querySelector('.tip');
+      if (tip) tip.textContent = lineOf(now.get(id));
+    }
+  }, 10000);
 
   // Go mode (V): every new spot (a click, a drawn area, selected words, a hold on phones) is posted at once as "go",
   // approving what it's on, with no box to type in. In draft mode go pins wait with the other drafts.
@@ -585,7 +604,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     threads()
       .filter((c) => c.anchor?.kind !== 'page')
       .filter((c) => (S.filter === 'new' ? unread(c).length : S.filter === 'open' ? !c.resolved : S.filter === 'resolved' ? c.resolved : mine(c)))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      .sort((a, b) => rank(a) - rank(b) || a.createdAt.localeCompare(b.createdAt));
+  // The list: the ones the agent works on first, then those waiting, in their order in line, then the rest.
+  const rank = (c) => {
+    const e = lineUp().get(c.id);
+    return e?.s === 'now' || e?.s === 'stale' ? 0 : e?.s === 'got' ? 1 : e?.s === 'wait' ? 1 + e.n : 1e6;
+  };
   const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;
@@ -600,32 +624,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const w = el('span', { class: 'kw' });
     w.append(before, el('span', { class: 'mn', 'aria-hidden': 'true' }, `(${key})`), after);
     return w;
-  };
-  // What this lab is trying, at the foot of the ⋯ menu: one switch a flag, under a heading of their own. Only this
-  // computer sees them — a guest reads the page, they don't decide what labit is trying — and switching one writes it
-  // into the project's labit.json, so the agent sees the same thing.
-  let tryingMade = null;
-  const tryingBits = () => {
-    if (tryingMade) return tryingMade; // the bar is placed again and again; these are made once
-    const names = Object.keys(FLAGS);
-    if (!names.length || !adminToken || !FLAGSAPI) return (tryingMade = []);
-    const head = el('div', { class: 'trying-head' }, 'trying');
-    const rows = names.map((name) => {
-      // el() takes one child, so the box and the words are appended.
-      const b = el('button', { class: 'trying', type: 'button', role: 'switch', 'aria-checked': String(flag(name)) });
-      b.append(el('span', { class: 'box', 'aria-hidden': 'true' }, flag(name) ? '☑' : '☐'), FLAGS[name].name);
-      b.addEventListener('click', async () => {
-        const on = !flag(name);
-        FLAGS[name].on = on; // the page is about to come back with the new tag; this keeps the tick honest meanwhile
-        b.setAttribute('aria-checked', String(on));
-        b.querySelector('.box').textContent = on ? '☑' : '☐';
-        try {
-          await fetch(FLAGSAPI, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: name, on }) });
-        } catch {}
-      });
-      return b;
-    });
-    return (tryingMade = [head, ...rows]);
   };
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
@@ -645,7 +643,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     });
   }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
@@ -755,9 +753,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const still = matchMedia('(prefers-reduced-motion: reduce)');
   const pinsById = new Map(); // the pins on the layer now, by thread id, for movePins()
   S.faces = new Map(); // each pin's last drawn state, so a change can ease in
+  S.rings = new Map(); // and its state with the agent, for the ring
+  const RINGS = { now: '', got: ' got', wait: ' wait', stale: ' stale', asks: ' asks' }; // the ring each state wears (none: sent, done)
+  const SAY = { now: 'agent working on it', got: 'picked up by the agent', wait: 'waiting', stale: 'no update from the agent', asks: 'agent asked a question' };
   // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
   S.dropDrag = null;
+  // What each pin on the layer was drawn from, so a redraw can keep the pin itself and only update it.
+  /** @type {WeakMap<Element, any>} */
+  const pinData = new WeakMap();
   function render() {
+    const dragged = S.grabbing;
+    S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
     S.grabbing = false; // a pin being dragged is replaced: its drag ends here
     S.dropDrag?.();
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
@@ -770,13 +776,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
-    layer.replaceChildren();
+    // A pin that is still there stays the same element, updated in place, so what runs on it (the agent's ring, a pop, a
+    // swap, a hover or open transition) carries on instead of starting again (Leo, 18 Nov: clicking or leaving a pin
+    // "reloads" its animation). Everything else on the layer (cards, outlines, drafts) is drawn anew, as before; a pin
+    // that was being dragged is drawn anew too.
+    const old = dragged ? new Map() : new Map(pinsById);
+    const keep = new Set(old.values());
+    for (const n of Array.from(layer.children)) if (!keep.has(n)) n.remove();
     pinsById.clear();
+    const next = []; // what the layer holds when this is drawn, in order
+    const add = (n) => (n && next.push(n), n);
     const now = S.on ? S.draft || S.openId : null;
     const appear = now !== S.shown;
     const anim = appear ? ' in' : '';
     let quoted = null;
     const done = () => {
+      patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       if (S.closeFast && !now && prev) {
         S.closeFast = false;
         prev.inert = true;
@@ -808,6 +823,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
       fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
       markQuote(quoted || (fluidState() === 'bar' && S.offer));
+      S.quoted = quoted;
       S.shown = now;
       S.posted = null;
     };
@@ -841,6 +857,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       p.style.left = `${left}px`;
       p.style.top = `${top}px`;
       layer.append(p);
+      next.push(p);
     }
 
     list.forEach((c) => {
@@ -848,56 +865,122 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
-      if (S.openId === c.id) drawZone(zone, `saved${anim}`); // a drawn area shows its outline while open
+      if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
-      const [state] = workState(c); // placed (sent), now (the agent is on it) or done
-      const pin = el(
-        'button',
-        {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? (coarse ? ' arrive' : ' in') : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
-          type: 'button',
-          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`,
-          // Its state in words too (the ring, the tick and the new dot are only seen).
-          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}`,
-        },
-        // Done wins over every face: a go that has been answered or resolved is a pin like any other,
-        // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
-        state === 'done' || c.resolved ? '✓' : /^go$/i.test(c.text.trim()) ? 'go' : flag('agentPins') && byAgent(c) ? agentMark() : initial(c.name),
-      );
+      const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
+      const state = sg.s;
+      const tip = coarse || (state !== 'now' && state !== 'stale') ? '' : lineOf(sg); // hovering a working ring says what it is doing
+      const isGo = /^go$/i.test(c.text.trim());
+      const born = !old.has(c.id);
+      const pin = old.get(c.id) || el('button', { type: 'button' });
+      const info = pinData.get(pin) || {};
+      pinData.set(pin, Object.assign(info, { c, zone, hot: info.hot }));
+      // Its state as classes and words (the ring, the tick and the new dot are only seen). Set one by one: the
+      // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
+      for (const [cls, on] of Object.entries({
+        go: isGo, resolved: c.resolved, done: state === 'done', new: news.length, moved,
+        grab: movable, open: S.openId === c.id, dragging: false,
+      })) pin.classList.toggle(cls, Boolean(on));
+      pin.classList.add('pin');
+      if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
+      if (tip) pin.removeAttribute('title');
+      else pin.title = `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`;
+      pin.setAttribute('aria-label', `${isGo ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
+      // Done wins over every face: a go that has been answered or resolved is a pin like any other,
+      // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
+      const mark = state !== 'done' && !c.resolved && !isGo && flag('agentPins') && byAgent(c);
+      const key = state === 'done' || c.resolved ? '✓' : isGo ? 'go' : mark ? '\0mark' : initial(c.name);
+      if (info.face !== key) {
+        const node = mark ? agentMark() : document.createTextNode(key);
+        if (info.node) info.node.replaceWith(node);
+        else pin.prepend(node);
+        Object.assign(info, { face: key, node });
+      }
       // Its face changed since the last drawing (the agent took it, it's done, something new in it): it eases into the
       // new one and the ring fades in or out, instead of a cut (see .swap in styles.css).
-      const face = `${state}${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}`;
+      // A new reply read (the dot goes) is no change of face: it doesn't play (Leo, 18 Nov: closing one made it jump).
+      const face = `${state}${c.resolved ? ' resolved' : ''}`;
       const was = S.faces.get(c.id);
       S.faces.set(c.id, face);
       const changed = was !== undefined && was !== face && !still.matches;
-      if (changed) pin.classList.add('swap');
-      if (state === 'now') pin.append(el('i', { class: `ring${changed && !was.startsWith('now') ? ' come' : ''}`, 'aria-hidden': 'true' }));
-      else if (changed && was.startsWith('now')) pin.append(el('i', { class: 'ring gone', 'aria-hidden': 'true' }));
-      if (coarse) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
+      if (changed) {
+        pin.classList.remove('swap');
+        void pin.offsetWidth; // so it plays again if it played before
+        pin.classList.add('swap');
+      }
+      // The ring is the state (src/widget/styles.css): turning green while it works, still pale green when picked up, muted
+      // while it waits in line, grey when it went quiet, amber when it asks. Moving between them crossfades; none to one fades in.
+      // The pin is kept across redraws, so is its ring: one that stays in its state keeps turning, uninterrupted.
+      const before = S.rings.get(c.id);
+      S.rings.set(c.id, state);
+      const ring = (/** @type {string | null} */ st, extra = '') => el('i', { class: `ring${RINGS[st] ?? ''}${extra}`, 'aria-hidden': 'true' });
+      const shifted = changed && before !== state;
+      let r = /** @type {HTMLElement | null} */ (pin.querySelector(':scope > .ring:not(.gone)'));
+      if (state in RINGS) {
+        pin.querySelector(':scope > .ring.gone')?.remove();
+        const to = ring(state).className;
+        if (!r) {
+          r = ring(state, shifted ? (state === 'now' ? ' come' : ' off') : '');
+          pin.append(r);
+          const nr = r;
+          if (shifted && state !== 'now') requestAnimationFrame(() => requestAnimationFrame(() => nr.classList.remove('off')));
+        } else if (r.className !== to && !r.classList.contains('come')) {
+          const nr = r;
+          if (shifted) requestAnimationFrame(() => requestAnimationFrame(() => (nr.className = to)));
+          else nr.className = to;
+        } else if (r.classList.contains('come') && r.className !== `${to} come`) r.className = to;
+      } else if (r) {
+        if (shifted) {
+          const gone = r;
+          gone.classList.add('gone');
+          gone.addEventListener('animationend', () => gone.remove(), { once: true });
+        } else r.remove();
+      }
+      const oldTip = pin.querySelector(':scope > .tip');
+      if (!tip) oldTip?.remove();
+      else if (oldTip) { if (oldTip.textContent !== tip) oldTip.textContent = tip; }
+      else pin.append(el('span', { class: 'tip', 'aria-hidden': 'true' }, tip));
+      if (coarse && !pin.querySelector(':scope > .hit')) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
-      if (movable) grab(pin, c);
-      // Hovering a pin shows what it's on, as an open one does: a drawn area its outline, selected words their highlight.
-      if (!coarse && zone && S.openId !== c.id) {
-        let shown = null;
-        pin.addEventListener('pointerenter', () => (shown = drawZone(zone, 'saved')));
-        pin.addEventListener('pointerleave', () => (shown?.remove(), (shown = null)));
-      } else if (!coarse && c.anchor?.quote && !zone) {
-        pin.addEventListener('pointerenter', () => markQuote(c.anchor));
-        pin.addEventListener('pointerleave', () => markQuote(quoted));
+      if (born) {
+        // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
+        grab(pin, () => pinData.get(pin).c);
+        // Hovering a pin shows what it's on, as an open one does: a drawn area its outline, selected words their highlight.
+        pin.addEventListener('pointerenter', () => {
+          const d = pinData.get(pin);
+          d.hot = true;
+          if (coarse || S.openId === d.c.id) return;
+          if (d.zone) d.shown = drawZone(d.zone, 'saved');
+          else if (d.c.anchor?.quote) markQuote(d.c.anchor);
+        });
+        pin.addEventListener('pointerleave', () => {
+          const d = pinData.get(pin);
+          d.hot = false;
+          d.shown?.remove();
+          d.shown = null;
+          if (!d.zone && d.c.anchor?.quote) markQuote(S.quoted || (fluidState() === 'bar' && S.offer));
+        });
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const c = pinData.get(pin).c;
+          if (pin.dataset.dragged) return;
+          if (e.altKey && mayResolve(c)) return toggleResolved(c);
+          // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
+          if (coarse && S.openId !== c.id) return goTo(c);
+          S.openId = S.openId === c.id ? null : c.id;
+          S.draft = null;
+          render();
+        });
       }
-      pin.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (pin.dataset.dragged) return;
-        if (e.altKey && mayResolve(c)) return toggleResolved(c);
-        // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
-        if (coarse && S.openId !== c.id) return goTo(c);
-        S.openId = S.openId === c.id ? null : c.id;
-        S.draft = null;
-        render();
-      });
-      layer.append(pin);
+      // Pointing at it while the page is redrawn: what it shows for being pointed at is drawn again with it.
+      info.shown = null;
+      if (info.hot && !coarse && S.openId !== c.id) {
+        if (zone) info.shown = add(drawZone(zone, 'saved'));
+        else if (c.anchor?.quote && !quoted) quoted = c.anchor;
+      }
+      next.push(pin);
       pinsById.set(c.id, pin);
       if (S.openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
@@ -909,6 +992,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (appear && !S.stepping) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         S.stepping = S.keepKeys = false;
+        next.push(card);
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
@@ -944,13 +1028,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       const draft = S.draft;
       const { anchor } = draft;
       const { left, top, zone } = position(anchor);
-      drawZone(zone, 'draft');
+      add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
       if (!fluid) {
         const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
         layer.append(pin);
+        next.push(pin);
       }
       const float = el('div', { class: `float${draft.fluid ? '' : anim}` });
       const box = composer({
@@ -992,9 +1077,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (act) queueMicrotask(() => /** @type {HTMLElement | null} */ (float.querySelector(`[data-k="${CSS.escape(act)}"]`))?.click()); // the bar's rewrite, cut or go
       float.append(box);
       swipeDown(float, () => ((S.draft = null), keepSpot(null), render()));
-      if (fluid) fluidOpen(float, draft, rects, draft.back);
-      else if (zone) placeCard(float, left + 14, zone.top + zone.height);
-      else placeBeside(float, left, top);
+      if (fluid) fluidOpen(float, draft, rects, draft.back); // the float lives in the bar's dialog, not on the layer
+      else {
+        next.push(float);
+        if (zone) placeCard(float, left + 14, zone.top + zone.height);
+        else placeBeside(float, left, top);
+      }
       // Phones: the sheet the bar grows into. Computers whose words can't be found again: the plain box, the bar lets go.
       if (draft.fluid && !fluid) (sheetMode.matches ? fluidSheet : fluidDrop)(float);
       draft.back = false;

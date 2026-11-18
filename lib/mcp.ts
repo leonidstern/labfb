@@ -63,7 +63,7 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       });
     });
   // The command line's own hint ("Answer each: … reply …") becomes the tools to use here.
-  const forTools = (t: string) => t.replace(/^Answer each: .*$/m, 'Answer each with the `reply` tool (id, text, intent: done when it is done, question when you need the person), then call `wait` again.');
+  const forTools = (t: string) => t.replace(/^Answer each: .*$/m, 'Answer each with the `reply` tool (id, text, intent: done when it is done, question when you need the person), then call `wait` again. While you work on a long one, `reply` with `progress` alone (one short line) keeps the person informed.');
   const text = (t: string, isError = false): ToolResult => ({ content: [{ type: 'text', text: forTools(t).trim() || '(nothing)' }], ...(isError ? { isError } : {}) });
   const tools = [
     {
@@ -77,7 +77,7 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     {
       name: 'reply',
       title: 'Answer on a pin',
-      description: `Answer on a pin in the local lab, by the id \`comments\` shows. intent says what the answer is: done (the thread closes), working (you're on it) or question (you need the person). resolve: true closes the thread. ${WRITE_SHORT}`,
+      description: `Answer on a pin in the local lab, by the id \`comments\` shows. intent says what the answer is: done (the thread closes), working (you're on it) or question (you need the person). resolve: true closes the thread. progress: instead of an answer, one short line on what you're doing now (the page shows it by your name, the latest replaces the last; no message, no text, intent or resolve with it). ${WRITE_SHORT}`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -85,9 +85,10 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
           text: { type: 'string', description: 'What you did, e.g. "The title is red"' },
           intent: { type: 'string', enum: ['done', 'working', 'question'], description: 'done: the ask is done; working: you are on it; question: you need the person' },
           resolve: { type: 'boolean', description: 'Close the thread' },
+          progress: { type: 'string', description: 'A short line on what you are doing now, e.g. "drawing W1–W6 · 2 of 4". Alone: no text, intent or resolve' },
           dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' },
         },
-        required: ['id', 'text'],
+        required: ['id'],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -146,6 +147,13 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     }
     if (name === 'reply') {
       if (typeof a.id !== 'string' || !a.id.trim()) return text('`id` is required: the comment id that `comments` shows.', true);
+      if (a.progress !== undefined) {
+        if (typeof a.progress !== 'string' || !a.progress.trim()) return text('`progress` must be a short line: what you are doing now.', true);
+        if (a.text !== undefined || a.intent !== undefined || a.resolve !== undefined) return text('`progress` goes alone: no `text`, `intent` or `resolve` with it (those are an answer, which clears it).', true);
+        if (a.dir !== undefined && typeof a.dir !== 'string') return text('`dir` must be a folder path.', true);
+        const r = await run(['reply', a.id, '--progress', a.progress.replace(/^[-\s]+/, '')], 30000, project(a));
+        return text(r.text, !r.ok);
+      }
       if (typeof a.text !== 'string' || !a.text.trim()) return text('`text` is required: what you did.', true);
       if (a.resolve !== undefined && typeof a.resolve !== 'boolean') return text('`resolve` must be true or false.', true);
       const flag = { done: '--done', working: '--on-it', question: '--question' }[a.intent];

@@ -25,11 +25,14 @@ It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, an
 /plugin install labit@leonidstern
 ```
 
+The plugin also wakes Claude for pins it missed: if you comment while it is busy building, or its `wait` lapsed, the pin comes in as its next turn the moment the current one ends, from any folder.
+
 **Any other agent:** tell it to run these in your project.
 
 ```sh
 npx @leonidstern/labit@latest wait                    # ends with your next comment
 npx @leonidstern/labit@latest reply <id> --done "…"   # answers on the pin and closes it
+npx @leonidstern/labit@latest reply <id> --progress "…"  # during long work: one line next to its name, replaced by the next
 npx @leonidstern/labit@latest pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered
 ```
 
