@@ -22,6 +22,7 @@
     "prepack": "npm run build:cli",
     "typecheck": "node ci/metrics.mjs types",
     "deadcode": "npx --yes knip@5.66.0 --include files,exports,types --no-progress",
+    "reuse": "node ci/reuse.mjs",
     "test": "node --import ./test/setup.mjs --test test/*.test.mjs"
   },
   "engines": {
@@ -33,8 +34,7 @@
     "review",
     "claude",
     "agent",
-    "astro",
-    "vercel"
+    "astro"
   ],
   "repository": {
     "type": "git",

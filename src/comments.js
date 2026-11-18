@@ -1,13 +1,9 @@
 /*!
- * lab comments: anyone with the link clicks anywhere on a lab page to pin a comment. No login, just a name.
+ * lab comments: click anywhere on a lab page to pin a comment. No login, just a name.
  * https://github.com/leonidstern/labit · PolyForm Perimeter 1.0.0
- * Comments are off by default; the bar button or c turns them on (remembered per browser). When on, click anywhere that isn't a link or control to pin one (alt/option-click pins on those too). c (or the bar button) hides
- * and shows them; esc or a click outside closes an open comment. Dragging (mouse/pen) marks an area instead of a point.
- * Include on a page served through your lab domain:
- *   <script src="https://lab.example.com/_lab/comments.js" defer></script>
- * The layer only turns on when the page is opened on the host the script is loaded from (or data-host),
- * so the deployment's own address and local dev stay clean. data-enable="always" turns it on everywhere.
- * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
+ * The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
+ * link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
+ * Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
  */
 import styles from './widget/styles.css';
 import {
@@ -36,6 +32,7 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
+import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -138,12 +135,10 @@ import { holdWhileOpen } from './widget/hold.ts';
     const i = word.indexOf(key);
     return i >= 0 ? keyWord(word.slice(0, i), key, word.slice(i + 1)) : keyWord(`${word} `, key, '');
   };
-  const labHost = script?.dataset.host || (script?.src ? new URL(script.src, location.href).hostname : location.hostname);
-  const enabled = location.hostname === labHost || script?.dataset.enable === 'always';
-  if (!enabled || /** @type {any} */ (window).__labComments) return;
+  if (/** @type {any} */ (window).__labComments) return;
   /** @type {any} */ (window).__labComments = true;
 
-  const API = script?.dataset.api || '/_lab/api/comments';
+  const API = '/_lab/api/comments';
   const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
   S.page = pageNow();
   const store = {
@@ -179,20 +174,8 @@ import { holdWhileOpen } from './widget/hold.ts';
     fetch(MEAPI, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {});
   };
 
-  // Admin keys are kept per lab (name.scope.sig), so one browser can hold links for /anna and /mira at once.
-  // The owner token has no scope and works everywhere.
-  const scopeOf = (key) => (key.split('.').length === 3 ? key.split('.')[1] : '');
-  // Admin links carry the key after # (never sent to the server, so it stays out of the member site's logs); ?lab-admin= still works.
-  const adminParam = new URLSearchParams(location.hash.slice(1)).get('lab-admin') || new URLSearchParams(location.search).get('lab-admin');
-  if (adminParam) {
-    const scope = scopeOf(adminParam);
-    store.set(scope ? `lab-admin:${scope}` : 'lab-admin', adminParam);
-    const url = new URL(location.href);
-    url.searchParams.delete('lab-admin');
-    if (/lab-admin=/.test(url.hash)) url.hash = '';
-    history.replaceState(null, '', url);
-  }
-  const adminToken = script?.dataset.admin || store.get(`lab-admin:${S.page.split('/')[1] || ''}`) || store.get('lab-admin:*') || store.get('lab-admin');
+  // The lab hands this computer's browser its admin key; a guest's page has none.
+  const adminToken = script?.dataset.admin || '';
 
   S.comments = [];
   S.isAdmin = false;
@@ -316,33 +299,15 @@ import { holdWhileOpen } from './widget/hold.ts';
   // ---------- data ----------
   const headers = () => ({ 'content-type': 'application/json', ...(adminToken ? { 'x-lab-admin': adminToken } : {}) });
 
-  // The API answers 404 anywhere but on the lab host. A script loaded with a relative src can't tell the
-  // lab host from the deployment's own address, so the first answer decides: no API here, no layer.
-  S.gone = false;
   S.loaded = false;
-  S.retried = false;
   const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}`, { headers: headers(), cache: 'no-store' });
-      if (res.status === 404 && !S.loaded && script?.dataset.enable !== 'always') {
-        if (!S.retried) {
-          S.retried = true;
-          setTimeout(load, 1500);
-          return;
-        }
-        S.gone = true;
-        S.on = false;
-        document.documentElement.classList.remove('lab-pinning');
-        host.remove();
-        fonts.remove();
-        return;
-      }
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       S.comments = data.comments || [];
       S.isAdmin = Boolean(data.admin);
-      S.rev = data.rev;
       // A thread you were part-way through writing in opens again: the page may have reloaded under you
       // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.
       if (!S.loaded && !S.openId) {
@@ -390,20 +355,6 @@ import { holdWhileOpen } from './widget/hold.ts';
       return load();
     }
     shownAgain();
-  }
-  // On the web there is no live stream (local labs have one, see live.ts): an open page asks for its comments'
-  // revision every 10 s, a few bytes, and loads them again only when it moved, so someone else's reply or resolve
-  // shows within seconds. Not while the tab is hidden (it loads on coming back, below), and not from an API too old
-  // to say a revision.
-  if (!script?.dataset.live) {
-    setInterval(async () => {
-      if (document.hidden || !S.loaded || S.gone || S.rev === undefined) return;
-      try {
-        const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}&rev`, { headers: headers(), cache: 'no-store' });
-        const { rev } = res.ok ? await res.json() : {};
-        if (Number.isInteger(rev) && rev !== S.rev) load();
-      } catch {}
-    }, 10000);
   }
   function shownAgain() {
     if (!typed() && !S.grabbing) render();
@@ -637,9 +588,25 @@ import { holdWhileOpen } from './widget/hold.ts';
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
+  // Labs & pages (⌘K, src/widget/switcher.ts): local labs only. The menu opens with which lab this is, then the item.
+  const LABS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'labs') : '';
+  const labHead = LABS ? el('div', { class: 'lab-head' }, `${script?.dataset.labName || 'lab'} · ${location.port || '80'}`) : null;
+  const labsBtn = LABS ? el('button', { type: 'button', class: 'labs-btn' }) : null;
+  if (labsBtn) {
+    labsBtn.append('labs & pages', el('kbd', { 'aria-hidden': 'true' }, navigator.platform.startsWith('Mac') ? '⌘K' : 'ctrl K'));
+    // The menu closes without taking the focus back to ⋯ (its own click handler would, after the box opened, and on a
+    // phone that blurred the search and bounced the keyboard).
+    labsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setMenu(false);
+      openSwitcher();
+    });
+  }
   function placeBar() {
-    const inMenu = S.on ? [doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
-    for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
+    // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
+    // the version line.
+    if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
     moreBtn.hidden = !S.on;
@@ -811,7 +778,8 @@ import { holdWhileOpen } from './widget/hold.ts';
       el('kbd', { 'aria-hidden': 'true' }, KEYS.toggle),
     );
     toggleBtn.classList.toggle('secondary', S.on);
-    host.toggleAttribute('data-sheet', Boolean(S.on && (S.draft || S.openId || S.listOpen || S.chatOpen))); // phones: the sheet has the screen's bottom
+    host.toggleAttribute('data-labs', Boolean(!coarse && S.labsOpen)); // the page dims behind labs & pages (the widget's .scrim)
+    host.toggleAttribute('data-sheet', Boolean((coarse && S.labsOpen) || (S.on && (S.draft || S.openId || S.listOpen || S.chatOpen)))); // phones: the sheet has the screen's bottom
     if (coarse && appear && now) { // a sheet opening slides in once its first frame is drawn (see data-opening in styles.css)
       host.setAttribute('data-opening', '');
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
@@ -934,7 +902,7 @@ import { holdWhileOpen } from './widget/hold.ts';
       float.append(
         el('div', { class: 'handle' }),
         composer({
-          placeholder: S.draft.go ? 'go' : 'add a comment',
+          placeholder: S.draft.go ? 'go' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
           empty: S.draft.go ? 'go' : '',
           nameFirst: Boolean(S.draft.go),
           autofocus: true,
@@ -995,6 +963,7 @@ import { holdWhileOpen } from './widget/hold.ts';
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
   function setMenu(open, refocus = false) {
+    if (open && LABS) preloadSwitcher();
     moreMenu.hidden = !open;
     moreBtn.setAttribute('aria-expanded', String(open));
     if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
@@ -1131,19 +1100,20 @@ import { holdWhileOpen } from './widget/hold.ts';
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
-    if (S.gone) return;
     const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
     if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
       return;
     }
-    // Control-D goes to the next new comment from anywhere, the reply box too (plain D types a letter there); Shift: back.
     if (S.on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || '') || (!/^[a-z]$/i.test(e.key || '') && e.code === 'KeyZ')) && !typing(e) && !inOtherWidget && placed.length) {
       e.preventDefault();
       return void undoLast();
     }
-    if (S.on && e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyD' && !(typing(e) && !e.composedPath().includes(host))) {
+    // ⌥W (Leo 18 Nov: w does nothing in a text box) or Control-D goes to the next new comment from the widget's text boxes
+    // too, where a plain W types a letter; Shift: back. By the key's place: Option turns W into ∑ on a Mac.
+    const nextKey = (e.altKey && !e.ctrlKey && e.code === 'KeyW') || (e.ctrlKey && !e.altKey && e.code === 'KeyD');
+    if (S.on && nextKey && !e.metaKey && !(typing(e) && !e.composedPath().includes(host))) {
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
@@ -1355,8 +1325,9 @@ import { holdWhileOpen } from './widget/hold.ts';
   const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
   /** @returns {HTMLElement | null} */
-  const openSheet = () => root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
+  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
   const closeAll = () => {
+    if (S.labsOpen) return closeSwitcher(); // labs & pages sits over the others: only it goes
     S.draft = null;
     S.openId = null;
     S.listOpen = false;
@@ -1561,7 +1532,6 @@ import { holdWhileOpen } from './widget/hold.ts';
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
   const navigated = () => {
-    if (S.gone) return;
     if (!host.isConnected && document.body) document.body.append(host);
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
@@ -1733,4 +1703,16 @@ import { holdWhileOpen } from './widget/hold.ts';
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
   startLive();
+  if (LABS) bindSwitcher({
+      root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
+        setMenu(false);
+        if (coarse) S.listOpen = S.chatOpen = false; // one sheet at a time on a phone
+      },
+      // Phones: labs & pages is a sheet like the list and the chat (see openSheet); a computer keeps its box over the page.
+      sheet: (open) => {
+        S.labsOpen = open;
+        render();
+      },
+      swipe: swipeDown,
+    });
 })();
