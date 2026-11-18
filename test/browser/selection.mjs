@@ -154,7 +154,7 @@ try {
         const s = await span(p, '#t', 'drag across');
         const x = s.first.left + 20;
         const y = s.first.top + s.first.height / 2;
-        const IBEAM = 'data:image/svg+xml'; // the drawn I-beam with the green pin tip, falling back to text
+        const IBEAM = 'data:image/svg+xml'; // the drawn I-beam with a low ink band at its foot (C3), falling back to text
         const cursor = () => p.evaluate(([x, y]) => ({ shift: document.documentElement.classList.contains('lab-shift-cur'), selectable: document.documentElement.classList.contains('lab-shift'), cursor: getComputedStyle(document.elementFromPoint(x, y)).cursor }), [x, y]);
         await p.mouse.move(x - 5, y);
         await p.mouse.move(x, y);
@@ -164,7 +164,7 @@ try {
         await p.keyboard.down('Shift');
         await until(p, ([x, y]) => document.documentElement.classList.contains('lab-shift-cur') && getComputedStyle(document.elementFromPoint(x, y)).cursor.includes('data:image/svg+xml'), [x, y], 400);
         const on = await cursor();
-        check(eng, 'Shift held over words: the drawn I-beam with the pin tip (text as fallback)', on.shift && on.cursor.includes(IBEAM) && on.cursor.includes('%2324a046') && /,\s*text$/.test(on.cursor), JSON.stringify(on));
+        check(eng, 'Shift held over words: the drawn I-beam with the ink band at its foot, no pin tip (text as fallback)', on.shift && on.cursor.includes(IBEAM) && on.cursor.includes('%23f0b70a') && !on.cursor.includes('%2324a046') && /,\s*text$/.test(on.cursor), JSON.stringify(on));
         await p.keyboard.up('Shift');
         const quick = await cursor(); // no waiting: the cursor follows the key at once, the text stays selectable a moment longer
         check(eng, '…right after Shift is let go the cursor is no longer the I-beam (text still selectable for the selection)', !quick.shift && !quick.cursor.includes(IBEAM) && quick.selectable, JSON.stringify(quick));
