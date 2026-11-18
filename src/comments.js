@@ -654,7 +654,9 @@ import { bindSwitcher, openSwitcher, preloadSwitcher } from './widget/switcher.t
   }
   function placeBar() {
     const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
-    for (const b of inMenu) if (b.parentNode !== moreMenu) moreMenu.append(b);
+    // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
+    // the version line.
+    if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
     moreBtn.hidden = !S.on;

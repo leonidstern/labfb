@@ -892,6 +892,7 @@ const setMode = (m) => {
   broadcast();
 };
 let PORT = Number(opts.port || process.env.PORT || 4400);
+const STARTED = new Date().toISOString(); // the switcher shows how long a lab has run
 // Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
 const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
 const register = () => {
@@ -1364,14 +1365,28 @@ const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}')
 const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
 // This lab's pages with their open comments, who listens, and which pages that covers (the switcher and `labit list`).
 const labInfo = () => {
-  const openOn = (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length;
+  // Per page: open and done pins, when the file last changed and when anyone last wrote on it (the switcher's dates).
+  const tally = (key) => {
+    const all = commentsOf(key);
+    const roots = all.filter((c) => !c.parent);
+    const last = all.flatMap((c) => [c.createdAt, c.resolvedAt]).filter(Boolean).sort().pop() || null;
+    return { open: roots.filter((c) => !c.resolved).length, done: roots.filter((c) => c.resolved).length, last };
+  };
+  const edited = (file) => {
+    try {
+      return file ? new Date(fs.statSync(path.join(ROOT, file)).mtimeMs).toISOString() : null;
+    } catch {
+      return null;
+    }
+  };
   const list = (PROXY ? [] : pagesUnder(ROOT)).map((rel) => ({ url: origin + urlOf(rel), title: titleOf(path.join(ROOT, rel)), file: rel, key: keyFor(rel) }));
   if (PROXY) list.push({ url: origin + '/', title: '', file: '', key: '/' });
   // A dev server's pages: the ones with comments.
   for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
   return {
     name: path.basename(ROOT), root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
-    pages: list.map(({ key, ...p }) => ({ ...p, path: key, open: openOn(key) })),
+    started: STARTED,
+    pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file) })),
   };
 };
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
@@ -1626,7 +1641,17 @@ const handler = async (req, res) => {
         console.log(`[lab] started ${p.name} again on ${n}`);
         return answer(res, { ok: true });
       }
-      if (!['stop', 'park'].includes(action)) return res.writeHead(400).end('action: stop, park or start');
+      // Archive: a parked lab moves out of the way, under "archived" (folded), to start or bring back later. A running
+      // one is parked first, as archived. Unarchive brings it back to "parked".
+      const parkedFile = path.join(PARKED, `${n}.json`);
+      if ((action === 'archive' || action === 'unarchive') && !runningLabs().some((l) => l.port === n)) {
+        const p = parkedLabs().find((x) => x.port === n);
+        if (!p) return res.writeHead(404).end('not parked');
+        writeAtomic(parkedFile, JSON.stringify({ ...p, archived: action === 'archive', at: new Date().toISOString() }, null, 2));
+        return answer(res, { ok: true });
+      }
+      if (action === 'unarchive') return res.writeHead(409).end('running, not archived');
+      if (!['stop', 'park', 'archive'].includes(action)) return res.writeHead(400).end('action: stop, park, archive, unarchive or start');
       if (n !== PORT) {
         // Another lab: it does it itself, asked with its own key (from its folder, on this same computer).
         const lab = runningLabs().find((l) => l.port === n);
@@ -1644,7 +1669,7 @@ const handler = async (req, res) => {
       try {
         fs.mkdirSync(PARKED, { recursive: true });
         const edge = process.env.LABIT_EDGE;
-        writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: path.basename(ROOT), argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), at: new Date().toISOString() }, null, 2));
+        writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: path.basename(ROOT), argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(action === 'archive' ? { archived: true } : {}), at: new Date().toISOString() }, null, 2));
       } catch {}
       console.log('[lab] parked from the page: start it again from the switcher (⌘K) in another lab, or run labit here');
       answer(res, { ok: true });
