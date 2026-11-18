@@ -170,18 +170,18 @@ const ago = (iso?: string | null) => {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 };
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-/** A page's pins, always both numbers, and when it was last opened (Leo 18 Nov): "2 open · 0 closed · opened 3m ago". */
+/** A page's pins, always both numbers, and its last activity (Leo 18 Nov): "2 open · 0 closed · active 3m ago". */
 const pinFacts = (open: number, done: number, when: string) =>
   d.el('span', { class: 'sw-m' }, [`${open} open`, `${done} closed`, when].filter(Boolean).join(' · '));
-/** The last comment's time as the rows show it: "just now", "4m ago", "Nov 3". */
+/** A time as the rows show it: "just now", "4m ago", "Nov 3". */
 const since = (iso?: string | null) => {
   const a = ago(iso);
   return !a ? '' : a === 'now' ? 'just now' : /\d[mhd]$/.test(a) ? `${a} ago` : a;
 };
 const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort().pop() || '';
-const touched = (p: Page) => latest(p.opened, p.last); // newest first: last opened or commented on
+const touched = (p: Page) => p.last || ''; // newest first: the last comment, reply or close, as the rows show
 const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)) || lab.started || '';
-// One order (Leo 18 Nov: no sorting): the lab you're in first, then the others, last written on first; pages likewise.
+// One order (Leo 18 Nov: no sorting): the lab you're in first, then the others, last active first; pages likewise.
 const orderPages = (ps: Page[]) => [...ps].sort((a, b) => touched(b).localeCompare(touched(a)));
 const orderLabs = (labs: Lab[]) => [...labs].sort((a, b) => Number(b.here) - Number(a.here) || labTouched(b).localeCompare(labTouched(a)));
 
@@ -274,10 +274,10 @@ function draw() {
     for (const p of pages) {
       const here = lab.here && p.path === d.page;
       const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page' });
-      // Open and closed pins, and when the page was last opened.
-      const meta = pinFacts(p.open, p.done || 0, here ? 'you’re here' : p.opened ? `opened ${since(p.opened)}` : 'never opened');
-      // The time is the last comment's (Leo 18 Nov: file times were all the same after a copy); the file's is on hover.
-      const tip = [p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
+      // Open and closed pins, and the last activity: a comment, a reply or a close (Leo 18 Nov: "like last activity").
+      const meta = pinFacts(p.open, p.done || 0, p.last ? `active ${since(p.last)}` : 'no comments yet');
+      // When it was last opened, and the file's time, are on hover.
+      const tip = [p.opened ? `opened ${new Date(p.opened).toLocaleString()}` : 'never opened', p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
         p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
       if (tip) meta.title = tip;
       // The title, and the page's path beside it (Leo 18 Nov: "Getting around your labs" didn't say it was /lab-navigation).
