@@ -370,7 +370,8 @@ function gapTop(anchor, node, rect) {
   for (let i = 0; i <= kids.length; i++) {
     const [above, below] = [is(kids[i - 1], anchor.gapAbove), is(kids[i], anchor.gapBelow)];
     if (!above && !below) continue;
-    const lo = above ? (kids[i - 1]?.getBoundingClientRect().bottom ?? rect.top) : kids[i].getBoundingClientRect().top - 16;
+    // Past the last block (its neighbour above is gone, none below): the box's end, not a block that isn't there.
+    const lo = above ? (kids[i - 1]?.getBoundingClientRect().bottom ?? rect.top) : (kids[i]?.getBoundingClientRect().top ?? rect.bottom) - 16;
     const hi = below ? (kids[i]?.getBoundingClientRect().top ?? rect.bottom) : lo + 16;
     const top = Math.min(Math.max(put, lo), Math.max(lo, hi));
     const far = Math.abs(top - put) + (above && below ? 0 : 1e6); // both neighbours beat one

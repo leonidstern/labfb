@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- A pin between two blocks whose block above is gone (the section was deleted) no longer crashes the widget: it sits at the end of the box instead. Before, one such pin stopped the bar from drawing on its page.
 - License: from the next release labit is under [PolyForm Perimeter 1.0.0](LICENSE) instead of MIT. Use and change it freely, except to build a competing product. Versions already on npm (0.6.2 and earlier) keep MIT.
 - Phone links with two labs on one computer: each lab keeps its own pass (`lab_guest_<port>`), so joining a try lab no longer logs the phone out of the other, and a used link again takes that phone to its page instead of "used up".
 - Hosted labs sync: each page's comments have a revision (`lab:rev:<page>` in Redis, counted up by every comment, reply, resolve, move and delete). An open page asks for it every 10 s (`GET ?page=…&rev`, a few bytes) and reloads the comments only when it moved, so someone else's reply shows within seconds instead of on your next visit. Hidden tabs don't ask; local labs keep their live stream.
