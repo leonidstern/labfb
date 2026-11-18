@@ -40,12 +40,14 @@ const ARROW = '<i class="arr" aria-hidden="true"></i>';
 // One field that grows: a pill while empty, a box with a divider and the name row once you type.
 // empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a go pin from someone with no name
 // yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
-export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false, draftKey = '' }: {
+// opened: the box is open from the start (selected words' dialog and sheet: "comment preopened", Leo 18 Nov).
+export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false, opened = false, draftKey = '' }: {
   placeholder: string;
   onSubmit: (name: string, text: string) => Promise<unknown>;
   autofocus?: boolean;
   empty?: string;
   nameFirst?: boolean;
+  opened?: boolean;
   /** Where to keep what is typed but not sent, so a page that reloads under you (a dev server rebuilding,
    *  a crash, a tab closed by mistake) does not take the words with it. Empty: not kept. */
   draftKey?: string;
@@ -111,7 +113,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   }
 
   const sync = () => {
-    const open = nameFirst || text.value.length > 0 || root.activeElement === name || !!error.textContent;
+    const open = nameFirst || opened || text.value.length > 0 || root.activeElement === name || !!error.textContent;
     // Opening moves the arrow from the text row to the name row: slide it there while the box grows, no jump.
     const glide = open !== box.classList.contains('open') && !store.get('lab-name') && box.isConnected && !matchMedia('(prefers-reduced-motion: reduce)').matches;
     const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
@@ -192,13 +194,16 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   };
   text.addEventListener('input', sync);
   text.addEventListener('input', keepDraft);
-  // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept.
-  new MutationObserver(() => {
+  // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept. The widget's own
+  // tree is watched too: a box let go inside it (Escape) changes nothing on the page, and its hold stayed until
+  // something there did, keeping the page's text selectable without Shift.
+  const gone = new MutationObserver(() => {
     if (wrap.isConnected) return;
     writing.delete(text);
     holdReloads(writing.size);
     d?.whileWriting?.();
-  }).observe(document.documentElement, { childList: true, subtree: true });
+  });
+  for (const n of [document.documentElement, root]) gone.observe(n, { childList: true, subtree: true });
   name.addEventListener('input', sync);
   name.addEventListener('blur', () => setTimeout(sync, 0));
   text.addEventListener('keydown', onKey);

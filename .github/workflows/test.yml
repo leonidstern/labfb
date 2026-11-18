@@ -57,9 +57,9 @@ jobs:
       - run: node test/browser/shortcuts.mjs
       # Pins finding their spot again: reordered twins, their own box first, quoted words, made-up ids and classes.
       - run: node test/browser/anchoring.mjs
-      # Selected words: the actions bar, the dialog, Escape, concentric corners, card motion, reduced motion.
+      # Selected words: the chip, the dialog it grows into, slash actions, Escape, reload, saved files, right to left, reduced motion.
       - run: node test/browser/fluid.mjs
-      # What a drag does: words (Shift: the bar), empty space (an area), a click (a point), a double-click, fields and links.
+      # What a drag does: words (the chip, no Shift), empty space (an area), a click (a point), a double-click, fields and links.
       - run: node test/browser/selection.mjs
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
       - run: node bench/run.mjs

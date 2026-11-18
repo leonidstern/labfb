@@ -83,6 +83,7 @@ const fd = (p) =>
       anims: e.getAnimations().length,
       text: e.querySelector('textarea')?.value ?? null,
       cut: Boolean(e.querySelector('[data-k=cut]')), rewrite: Boolean(e.querySelector('[data-k=rewrite]')),
+      lit: e.querySelector('.quick .hl')?.textContent || '',
     };
   });
 // The comment card's motion (animation, length, curve, fill) read off a probe .card with the class, next to what the
@@ -113,12 +114,6 @@ const concentric = (p, outer, inner, sides = ['left', 'top', 'right', 'bottom'])
     });
     return { n: parts.length, bad: parts.filter((x) => !x.ok), sample: parts[0] };
   }, [outer, inner, sides]);
-// The bar's comment button: adds the box (with the cursor in it); then `text` is typed into it.
-const join = async (p, text = '') => {
-  await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
-  await sleep(500);
-  if (text) await p.keyboard.type(text);
-};
 const draftPin = (p) => inRoot(p, (r) => r.querySelectorAll('.pin.draft').length);
 // Where words are on screen: the boxes of the nth place `text` is found in the element.
 const span = (p, sel, text, nth = 0) =>
@@ -190,6 +185,47 @@ try {
         const c = await fd(p);
         check(eng, 'a click on comment adds the box, with the cursor in it', Boolean(c?.dlg) && c.text === '' && (await inRoot(p, (r) => r.activeElement?.localName === 'textarea')), JSON.stringify(c));
       });
+      // Comment preopened (Leo, 18 Nov): the dialog and the sheet open as a comment (the row has rewrite · cut · go, no pill for comment) with the box open; computers have the cursor in it
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.type('x');
+        await sleep(800);
+        const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.p-dlg .quick .on')].map((b) => b.dataset.k), others: [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.dataset.k).join(' '), open: r.querySelector('.p-dlg .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
+        check(eng, 'typing opens the dialog as a comment (no button for it), the box open and the cursor in it; rewrite, cut, go one tap away', st.on.length === 0 && st.open && st.focus === 'textarea' && st.others === 'rewrite cut go', JSON.stringify(st));
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
+        await sleep(800);
+        const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.p-dlg .quick .on')].map((b) => b.dataset.k), open: r.querySelector('.p-dlg .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
+        check(eng, 'comment on the bar opens it the same way', st.on.length === 0 && st.open && st.focus === 'textarea', JSON.stringify(st));
+      });
+      await scene(eng, browser, { viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true }, async (p) => {
+        await p.evaluate(() => {
+          const w = document.createTreeWalker(document.querySelector('#a'), NodeFilter.SHOW_TEXT);
+          const n = w.nextNode();
+          const r = document.createRange();
+          r.setStart(n, 0);
+          r.setEnd(n, 11);
+          getSelection().removeAllRanges();
+          getSelection().addRange(r);
+        });
+        await sleep(1200);
+        await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
+        await sleep(1200);
+        const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.float:not(.p-dlg *) .quick .on')].map((b) => b.dataset.k), open: r.querySelector('.float:not(.p-dlg *) .box')?.classList.contains('open'), focus: r.activeElement?.localName || null, n: r.querySelectorAll('.float:not(.p-dlg *) .quick button').length }));
+        check(eng, 'phones: the sheet opens as a comment with the box open, no keyboard until it is tapped', st.on.length === 0 && st.open && st.focus !== 'textarea' && st.n === 3, JSON.stringify(st));
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.press('Enter');
+        await sleep(800);
+        const c = await fd(p);
+        check(eng, 'Enter adds the box, empty', Boolean(c?.dlg) && c.text === '', JSON.stringify(c));
+      });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
         await sleep(700);
@@ -228,16 +264,144 @@ try {
         check(eng, 'on the window\'s last line the bar goes above the words', Boolean(c?.bar) && c.y + c.h <= s.first.top, JSON.stringify([c, s.first]));
       });
       await scene(eng, browser, {}, async (p) => {
+        await p.evaluate(() => (document.querySelector('#box').scrollTop = 80)); // the phrase near the box's top: a drag near its bottom edge scrolls it in Chrome
+        await sleep(100);
+        await drag(p, '#in', 'target phrase');
+        await sleep(700);
+        const was = await fd(p);
+        await p.evaluate(() => (document.querySelector('#box').scrollTop = 100));
+        await sleep(600);
+        const now = await fd(p);
+        check(eng, 'the bar follows its words in a scrolling box', Boolean(was && now) && near(was.y - now.y, 20, 2), `${was?.y} → ${now?.y}`);
+      });
+
+      // The box joins: a typed letter, Tab, Space, keys that are not ours
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.type('q');
+        await sleep(800);
+        const c = await fd(p);
+        check(eng, 'a typed letter adds the box, and is its first', Boolean(c?.dlg) && c.text === 'q' && c.cut && (await draftPin(p)) === 0, JSON.stringify(c));
+        await p.keyboard.type('uick');
+        check(eng, '…and the next keys go into the box', (await fd(p)).text === 'quick');
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.press('Tab');
+        await sleep(800);
+        const c = await fd(p);
+        check(eng, 'Tab adds the box empty, with the cursor in it', Boolean(c?.dlg) && c.text === '' && (await inRoot(p, (r) => r.activeElement?.localName === 'textarea')));
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.press('Space');
+        await sleep(500);
+        const c = await fd(p);
+        check(eng, 'Space scrolls the page and leaves the bar', Boolean(c?.bar) && (await p.evaluate(() => scrollY)) > 0);
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.press('Meta+j');
+        await p.keyboard.press('Alt+j');
+        await p.keyboard.press('Control+j');
+        await p.focus('#field');
+        await p.keyboard.type('page');
+        await sleep(500);
+        const c = await fd(p);
+        check(eng, 'Cmd, Alt and Ctrl keys and the page\'s input leave the bar alone', Boolean(c?.bar) && (await p.inputValue('#field')) === 'page');
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.evaluate(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Process', keyCode: 229, bubbles: true, composed: true, cancelable: true })));
+        await sleep(800);
+        const c = await fd(p);
+        check(eng, 'a composing key adds the box and inserts nothing', Boolean(c?.dlg) && c.text === '');
+      });
+
+      // Slash actions
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.type('/c');
+        await sleep(800);
+        const c = await fd(p);
+        check(eng, 'a typed / lights the action it names', c?.lit === 'cut', c?.lit);
+        await p.keyboard.press('Enter');
+        await sleep(600);
+        check(eng, '/c + Enter sends Cut', Boolean(await sent('Cut: “delta echo”')), JSON.stringify((await comments()).map((x) => x.text)));
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'golf hotel');
+        await sleep(700);
+        await p.keyboard.type('/r');
+        await sleep(800);
+        await p.keyboard.press('Enter');
+        await sleep(300);
+        const c = await fd(p);
+        check(eng, '/r + Enter puts the words in the box to change', c?.text === 'golf hotel', c?.text);
+        await p.keyboard.press('ControlOrMeta+a');
+        await p.keyboard.type('golf hostel');
+        await p.keyboard.press('Enter');
+        await sleep(600);
+        check(eng, '…and sends Rewrite old → new', Boolean(await sent('Rewrite “golf hotel” → “golf hostel”')));
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'india juliet');
+        await sleep(700);
+        await p.keyboard.type('/etc');
+        await sleep(800);
+        await p.keyboard.press('Enter');
+        await sleep(600);
+        check(eng, '/etc + Enter sends plain text', Boolean(await sent('/etc')), JSON.stringify([await fd(p), (await comments()).map((x) => x.text)]));
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'kilo lima');
+        await sleep(700);
+        await p.keyboard.type('/g');
+        await sleep(800);
+        await p.keyboard.press('Enter');
+        await sleep(600);
+        check(eng, '/g + Enter sends go', Boolean(await sent('go')));
+      });
+
+      // Escape
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.type('/c');
+        await sleep(800);
+        await p.keyboard.press('Escape');
+        await sleep(200);
+        const slash = await fd(p);
+        check(eng, 'Esc clears slash mode, the dialog stays', Boolean(slash?.dlg) && slash.text === '', JSON.stringify(slash));
+        await p.keyboard.type('words I will drop');
+        await p.keyboard.press('Escape');
+        await sleep(500);
+        check(eng, 'Esc again closes it: nothing sent, no kept words, no kept spot', (await fd(p)) === null && !(await typed(p)) && !(await spot(p)) && !(await sent('words I will drop')), `${await typed(p)} ${await spot(p)}`);
+        await p.reload();
+        await sleep(1200);
+        check(eng, '…and a reload gives nothing back', (await fd(p)) === null && (await draftPin(p)) === 0);
+      });
+      await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
         await sleep(100);
         const arrive = await motion(p, "r.querySelector('.fd')", 'in');
         check(eng, 'the bar arrives with the comment card\'s motion (same animation, length and curve)', arrive.card.startsWith('lab-in ') && arrive.mine === arrive.card, JSON.stringify(arrive));
-        await join(p, 'x'); // the box joins: the dialog comes in as a card does
+        await p.keyboard.type('x'); // the box joins: the bar goes out as a card does, the dialog comes in as one does
         await sleep(30);
         const dlg = await motion(p, "r.querySelector('.fd:not(.out)')", 'in');
         check(eng, 'the dialog comes in with the card\'s motion', dlg.card.startsWith('lab-in ') && dlg.mine === dlg.card, JSON.stringify(dlg));
+        const gone = await motion(p, "r.querySelector('.fd.out')", 'out');
+        check(eng, '…and the bar goes out with the card\'s', gone.card.startsWith('lab-out ') && gone.mine === gone.card, JSON.stringify(gone));
         const geo = await fd(p);
         check(eng, '…the dialog is the box at once: no growing, nothing animating but the arrival', Boolean(geo?.dlg) && geo.cls.includes('in') && !geo.cls.includes('grow'), JSON.stringify(geo));
+        await sleep(400);
+        check(eng, '…and the bar\'s copy is gone', (await inRoot(p, (r) => r.querySelectorAll('.fd').length)) === 1);
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
@@ -256,16 +420,36 @@ try {
         await sleep(700);
         const bar = await concentric(p, '.fd:not(.out)', '.p-bar button');
         check(eng, 'the bar\'s buttons are concentric with its corners (radius + gap = outer radius)', bar.n === 4 && bar.bad.length === 0, JSON.stringify(bar));
-        await join(p, 'x');
+        await p.keyboard.type('x');
         await sleep(600);
         const dlg = await concentric(p, '.fd:not(.out)', '.p-dlg .quick button, .p-dlg .box');
         check(eng, '…and so are the dialog\'s buttons and its box', dlg.n === 4 && dlg.bad.length === 0, JSON.stringify(dlg));
       });
+      // …phones (a touch viewport: bigger corners): the bar, and the sheet the box opens in
+      await scene(eng, browser, { viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true }, async (p) => {
+        await p.evaluate(() => {
+          const w = document.createTreeWalker(document.querySelector('#a'), NodeFilter.SHOW_TEXT);
+          const n = w.nextNode();
+          const r = document.createRange();
+          r.setStart(n, 0);
+          r.setEnd(n, 11);
+          getSelection().removeAllRanges();
+          getSelection().addRange(r);
+        });
+        await sleep(1200);
+        const bar = await concentric(p, '.fd:not(.out)', '.p-bar button');
+        check(eng, 'phones: the bar\'s buttons are concentric with its corners', bar.n === 4 && bar.bad.length === 0 && bar.sample.R > 18, JSON.stringify(bar));
+        await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
+        await sleep(1200);
+        const sheet = await concentric(p, '.float:not(.out, .p-dlg *)', '.float:not(.p-dlg *) > .quick button:first-child, .float:not(.p-dlg *) > .composer .box', ['left', 'right']);
+        check(eng, '…and the sheet\'s first button and box (12 px in from its corners)', sheet.n === 2 && sheet.bad.length === 0 && sheet.sample.R > 24, JSON.stringify(sheet));
+      });
+
       // Picking an action shows it on; picking it again goes back to the plain comment
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
         await sleep(700);
-        await join(p, 'x');
+        await p.keyboard.type('x');
         await sleep(800);
         const st = () => inRoot(p, (r) => ({ on: [...r.querySelectorAll('.p-dlg .quick .on')].map((b) => b.dataset.k).join(), text: r.querySelector('.p-dlg textarea').value }));
         await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=rewrite]').click());
@@ -281,7 +465,7 @@ try {
         const s = await span(p, '#a', 'delta echo');
         await drag(p, '#a', 'delta echo');
         await sleep(700);
-        await join(p, 'nice');
+        await p.keyboard.type('nice');
         await sleep(800);
         const open = await fd(p);
         await p.keyboard.press('Enter');
@@ -296,7 +480,7 @@ try {
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
         await sleep(700);
-        await join(p, 'first');
+        await p.keyboard.type('first');
         await sleep(800);
         await p.keyboard.press('Enter');
         await sleep(200);
@@ -306,7 +490,50 @@ try {
         check(eng, 'selecting while the dialog goes shows the new bar', Boolean(c?.bar) && c.opacity > 0.9, JSON.stringify(c));
       });
 
-      // Comments hidden: the bar goes; the dialog goes too
+      // Reload and saved files
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.type('half a thought');
+        await sleep(800);
+        await p.reload();
+        await sleep(1400);
+        const c = await fd(p);
+        check(eng, 'a reload mid-typing brings the dialog back, with its words and no pin', Boolean(c?.dlg) && c.text === 'half a thought' && (await draftPin(p)) === 0, JSON.stringify(c));
+        check(eng, '…without moving (nothing animates)', Boolean(c) && c.anims === 0);
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.type('moves');
+        await sleep(800);
+        const before = await fd(p);
+        // Moved without a change of layout: the page keeps its scroll place for a paragraph added above, so the words would stay.
+        save(PAGE.replace('<p id="a">', '<p id="a" style="position:relative;left:60px;top:40px">'));
+        await sleep(2000);
+        const after = await fd(p);
+        const s = await span(p, '#a', 'delta echo');
+        check(eng, 'an HTML save moves the dialog with its words, text and focus kept', Boolean(after?.dlg) && after.y > before.y + 30 && after.x > before.x + 40 && near(after.y, s.last.bottom + 8, 4) && after.text === 'moves' && (await inRoot(p, (r) => r.activeElement?.localName === 'textarea')), JSON.stringify([before, after, s.last]));
+      });
+      await scene(eng, browser, {}, async (p) => {
+        await drag(p, '#a', 'delta echo');
+        await sleep(700);
+        await p.keyboard.type('still here');
+        await sleep(800);
+        save(PAGE.replace(/<p id="a">.*?<\/p>/, '<p id="a">Nothing of the old words is left.</p>'));
+        await sleep(3000);
+        const c = await fd(p);
+        check(eng, 'words gone: the dialog stays with its text, cut and rewrite are off', Boolean(c?.dlg) && c.text === 'still here' && c.cls.includes('gone'), JSON.stringify(c));
+        await inRoot(p, (r) => r.querySelector('[data-k=cut]').click());
+        await sleep(300);
+        check(eng, '…a click on cut sends nothing', !(await comments()).some((x) => /^Cut: /.test(x.text) && /delta/.test(x.text)) && (await fd(p))?.text === 'still here');
+        await p.keyboard.press('Enter');
+        await sleep(900);
+        const c2 = (await comments()).find((x) => x.text === 'still here');
+        check(eng, '…sending posts a pin, with no landing', Boolean(c2) && (await fd(p)) === null);
+      });
+
+      // Comments hidden: the bar goes; a dialog with words lets go of the screen and comes back with them
       await scene(eng, browser, {}, async (p) => {
         const toggle = (re) => inRoot(p, (r, src) => [...r.querySelectorAll('button')].find((b) => new RegExp(src).test(b.textContent || ''))?.click(), re);
         await drag(p, '#a', 'delta echo');
@@ -318,26 +545,40 @@ try {
         await sleep(300);
         await drag(p, '#a', 'delta echo');
         await sleep(700);
-        await join(p, 'kept');
+        await p.keyboard.type('kept');
         await sleep(800);
         await toggle('hide comments');
         await sleep(500);
-        check(eng, '…and so does a dialog with words', (await fd(p)) === null);
+        check(eng, '…and a dialog with words hides too', (await fd(p)) === null);
+        await toggle('^comments');
+        await sleep(900);
+        const c = await fd(p);
+        check(eng, '…and comes back with its words when comments are shown', Boolean(c?.dlg) && c.text === 'kept', JSON.stringify(c));
       });
 
       // Where the words are
       await scene(eng, browser, {}, async (p) => {
         const s = await drag(p, '#same2', 'exact words', { nth: 0 });
         await sleep(700);
-        await join(p, 'x');
+        await p.keyboard.type('x');
         await sleep(800);
         const c = await fd(p);
         check(eng, 'repeated words: the dialog sits on the second', Boolean(c?.dlg) && near(c.y, s.last.bottom + 8, 4), JSON.stringify([c, s.last]));
       });
       await scene(eng, browser, {}, async (p) => {
+        const s = await drag(p, '#he', 'בעברית לבדיקה');
+        await sleep(700);
+        const c = await fd(p);
+        check(eng, 'right-to-left: the bar is at the left end of the words', Boolean(c?.bar) && near(c.x + c.w, s.last.left - 4, 4), JSON.stringify([c, s.last]));
+        await p.keyboard.type('x');
+        await sleep(800);
+        const d = await fd(p);
+        check(eng, '…and the dialog is mirrored', Boolean(d?.dlg) && near(d.x + d.w, s.last.left + 70, 6), JSON.stringify([d, s.last]));
+      });
+      await scene(eng, browser, {}, async (p) => {
         await drag(p, '#long', LONG.slice(0, 340));
         await sleep(700);
-        await join(p, 'x');
+        await p.keyboard.type('x');
         await sleep(800);
         const c = await fd(p);
         check(eng, 'over 300 characters: no cut, no rewrite', Boolean(c?.dlg) && !c.cut && !c.rewrite, JSON.stringify(c));
@@ -355,7 +596,7 @@ try {
         await sleep(700);
         const c = await fd(p);
         check(eng, 'words over two paragraphs: the bar shows', Boolean(c?.bar), JSON.stringify(c));
-        await join(p, 'across');
+        await p.keyboard.type('across');
         await sleep(900);
         // Found again, the box is the dialog; words that can't be found again get the plain box (a pin, the box under it).
         const box = await inRoot(p, (r) => r.querySelector('.float textarea')?.value);
@@ -371,7 +612,7 @@ try {
         await sleep(80); // the bar is made right after the mouse is let go
         const c = await fd(p);
         check(eng, 'reduced motion: the bar is there at once, nothing animates', Boolean(c?.bar) && c.anims === 0 && near(c.x, s.last.right + 4) && c.opacity === 1, JSON.stringify(c));
-        await join(p, 'x');
+        await p.keyboard.type('x');
         await sleep(60);
         const d = await fd(p);
         check(eng, '…and so is the dialog', Boolean(d?.dlg) && d.anims === 0 && d.opacity === 1, JSON.stringify(d));

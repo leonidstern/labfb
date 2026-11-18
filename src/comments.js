@@ -35,7 +35,7 @@ import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/t
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
-import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fluidOpen, fluidState, fluidSync } from './widget/fluid.ts';
+import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -102,6 +102,7 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     get script() { return script; },
     get send() { return send; },
     get sendBtn() { return sendBtn; },
+    get sheetMode() { return sheetMode; },
     get showDoneBtn() { return showDoneBtn; },
     get stampOf() { return stampOf; },
     get stamped() { return stamped; },
@@ -192,10 +193,14 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
   // An unsent comment is kept whole — the words (composer.ts) and the spot they were pinned to — so a page that
   // reloads under you, a dev server rebuilding it most of all, gives both back instead of eating them.
   const spotKey = () => `lab-spot:${S.page}`;
-  const keepSpot = (anchor) => store.set(spotKey(), anchor ? JSON.stringify(anchor) : '');
-  const keptSpot = () => {
+  // Kept with it: whether it is on selected words (the dialog, not the plain box) and the action picked. An older
+  // spot, the bare anchor, comes back as a plain box.
+  const keepSpot = (anchor, d) => store.set(spotKey(), anchor ? JSON.stringify({ anchor, fluid: d?.fluid || undefined, mode: d?.mode }) : '');
+  // The unsent comment kept (words and spot), as a draft that comes back with no motion; none when nothing was typed.
+  const keptDraft = () => {
     try {
-      return JSON.parse(store.get(spotKey()) || 'null');
+      const k = JSON.parse(store.get(spotKey()) || 'null');
+      return k && store.get(`lab-typing:${S.page}:new`) ? { ...(k.anchor ? k : { anchor: k }), back: true } : null;
     } catch {
       return null;
     }
@@ -210,7 +215,6 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     <style>${styles}</style>
     <div class="scrim"></div>
     <div class="layer"></div>
-    <button class="sel-chip" type="button" hidden>Comment</button>
     <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
     <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
@@ -317,7 +321,7 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
         const half = S.comments.find((c) => !c.parent && store.get(`lab-typing:${S.page}:${c.id}`));
         if (half) S.openId = half.id;
         // A comment that was being written but never sent: its words and its spot both come back.
-        else if (!S.draft && store.get(`lab-typing:${S.page}:new`) && keptSpot()) S.draft = { anchor: keptSpot() };
+        else if (!S.draft) S.draft = keptDraft();
       }
       S.loaded = true;
       setTimeout(found, 3000);
@@ -433,7 +437,7 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     // Go with no name yet (a guest's first): the card asks only the name; the go is implied (Leo, 16 Nov).
     if (!S.goMode || !name) {
       S.draft = { anchor, go: S.goMode, fluid: fluid && !S.goMode, act };
-      keepSpot(anchor);
+      keepSpot(anchor, S.draft);
       return render();
     }
     const text = 'go';
@@ -922,12 +926,13 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
 
     // Selected words (fluid.ts): on a computer the box is the one element the bar is, drawn once per draft
     // so a redraw leaves it and its words alone, with no draft pin (the dialog sits at the words; the pin pops in as it
-    // goes out).
-    const inDlg = S.draft && fluidHas(S.draft);
-    const rects = S.draft?.fluid && !inDlg && quoteRects(S.draft.anchor);
+    // goes out). Phones: the usual sheet, which the bar grows into, with no keyboard until the box is tapped.
+    const rects = S.draft?.fluid && !sheetMode.matches && quoteRects(S.draft.anchor);
     const fluid = Boolean(rects?.length); // words not found: the plain box
-    if (inDlg) quoted = S.draft.anchor; // the words stay lit while it is open
-    else if (S.draft) {
+    if (S.draft && fluidHas(S.draft)) {
+      quoted = S.draft.anchor; // the words stay lit while it is open
+      if (rects) fluidFollow(rects); // and it stays with them (a saved file moved them); gone, it stays, cut and rewrite off
+    } else if (S.draft) {
       const draft = S.draft;
       const { anchor } = draft;
       const { left, top, zone } = position(anchor);
@@ -941,10 +946,11 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
       }
       const float = el('div', { class: `float${draft.fluid ? '' : anim}` });
       const box = composer({
-        placeholder: draft.go ? 'go' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
+        placeholder: draft.go ? 'go' : draft.fluid && !coarse ? 'add a comment · / for actions' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
         empty: draft.go ? 'go' : '',
         nameFirst: Boolean(draft.go),
-        autofocus: true,
+        opened: Boolean(draft.fluid), // selected words: the comment is already picked and its box open (rewrite, cut, go one tap away)
+        autofocus: !(draft.fluid && coarse),
         draftKey: `lab-typing:${S.page}:new`,
         onSubmit: async (name, said) => {
           // rewrite: the box held the words to change; what goes is the change.
@@ -978,10 +984,12 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
       if (act) queueMicrotask(() => /** @type {HTMLElement | null} */ (float.querySelector(`[data-k="${CSS.escape(act)}"]`))?.click()); // the bar's rewrite, cut or go
       float.append(box);
       swipeDown(float, () => ((S.draft = null), keepSpot(null), render()));
-      if (fluid) fluidOpen(float, draft, rects);
+      if (fluid) fluidOpen(float, draft, rects, draft.back);
       else if (zone) placeCard(float, left + 14, zone.top + zone.height);
       else placeBeside(float, left, top);
-      if (draft.fluid && !fluid) fluidDrop(); // words that can't be found again: the plain box, the bar lets go
+      // Phones: the sheet the bar grows into. Computers whose words can't be found again: the plain box, the bar lets go.
+      if (draft.fluid && !fluid) (sheetMode.matches ? fluidSheet : fluidDrop)(float);
+      draft.back = false;
     }
     done();
   }
@@ -993,6 +1001,8 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
   // The open thread's card. New replies (Claude's too) are added to it in place, so the reply box keeps focus.
   S.openCard = null;
   const coarse = matchMedia('(pointer: coarse)').matches;
+  // Where sheets take the screen's bottom (styles.css): a new comment on selected words grows into the sheet there.
+  const sheetMode = matchMedia('(pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px)');
 
   // ---------- events ----------
   const showHint = () => {
@@ -1007,7 +1017,7 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
     if (S.on) showHint();
-    S.draft = null;
+    S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
     render();
   };
@@ -1170,6 +1180,12 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     }
     // Escape closes the top one: a thread or new comment first, then the chat, then the list (typed chat text stays).
     if (e.key === 'Escape' && (S.draft || S.openId)) {
+      // A new comment let go with Escape takes its words and its spot with it (a reload would give a box back that was
+      // closed on purpose); a click elsewhere only closes an empty one, and the words wait.
+      if (S.draft) {
+        store.set(`lab-typing:${S.page}:new`, '');
+        keepSpot(null);
+      }
       S.draft = null;
       S.openId = null;
       render();
@@ -1334,7 +1350,6 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
   // and buttons too (the phone's Option-click). Text selected the phone's way gets the actions bar that pins on it.
   S.lastTouch = 0;
   S.pinnedByHold = false; // a hold just made a pin: the lift that ends it puts the cursor in its box (phones open the keyboard only then)
-  const selChip = /** @type {HTMLElement} */ (root.querySelector('.sel-chip'));
   const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
   /** @returns {HTMLElement | null} */
@@ -1443,7 +1458,9 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
   //     starts, a click pins, and the page's text can't be selected without Shift (it shows the text cursor, html.lab-shift).
   //     Letting go shows the actions bar at the words' end (no chip first, Leo 18 Nov); clicking comment, Tab or
   //     Enter, or just typing (F4) adds the box; rewrite, cut and go go as they do in the box. In go mode (2) letting go still sends a go on the words at once.
-  //  2. Phones: words selected the phone's way get a "Comment" chip (selChip); a tap pins on them: as before, no bar yet.
+  //  2. Phones: words selected the phone's way got a "Comment" chip (selChip); a tap pinned on them. Kept: the bar is
+  //     the fluid element, below the words' end, gone with the selection; comment grows it into the usual bottom sheet
+  //     (sheets.ts: fromTap / revealDraft / leave all as before), with no keyboard until the box is tapped.
   //  3. Phones: holding a finger still pins (hold-to-comment): untouched, it never makes a selection.
   //  4. The anchor: pinned on the last selected letter, quoting exactly the words with a few either side (below).
   //  5. Draft mode (held drafts): a comment on words sent in draft mode waits with the other drafts, as before.
@@ -1457,18 +1474,15 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     fluidDrop();
     markQuote(null);
   };
-  S.selRect = null;
   document.addEventListener('selectionchange', () => {
     const sel = getSelection?.();
     const range = sel?.rangeCount && sel.getRangeAt(0);
     const text = String(sel || '').trim();
     const inside = range && host.contains(range.commonAncestorContainer);
-    S.selRect = coarse && S.on && !S.draft && text && range && !inside ? range.getClientRects()[0] || range.getBoundingClientRect() : null;
-    selChip.hidden = !S.selRect;
-    if (!S.selRect) return;
-    const below = S.selRect.bottom + 52 < innerHeight;
-    selChip.style.left = `${Math.min(Math.max(S.selRect.left + S.selRect.width / 2, 60), innerWidth - 60)}px`;
-    selChip.style.top = `${below ? S.selRect.bottom + 10 : Math.max(S.selRect.top - 46, 8)}px`;
+    clearTimeout(S.selWait);
+    if (!(coarse && S.on && !S.draft && text && range && !inside)) return coarse && fluidState() === 'bar' && fluidDrop(); // gone with the selection
+    // The handles change it many times a second as they are dragged: the bar comes once the selection is still.
+    S.selWait = setTimeout(() => fluidBar(rectsOf(range), (first, act) => (first && store.set(`lab-typing:${S.page}:new`, first), commentOnSelection(act)), text.length), 250);
   });
   // The words selected, as an anchor: pinned at their end, quoting exactly them (a few words either side to find them
   // again), not just the word under the pin.
@@ -1485,6 +1499,18 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     };
     range.setEnd(range.endContainer, trim(range.endContainer, range.endOffset, -1));
     range.setStart(range.startContainer, trim(range.startContainer, range.startOffset, 1));
+    // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
+    // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
+    /** @param {Node} node @param {number} i @param {number} step */
+    const grow = (node, i, step) => {
+      const d = node.nodeType === 3 ? /** @type {Text} */ (node).data : '';
+      while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
+      return i;
+    };
+    if (/\s/.test(String(range).trim())) {
+      range.setStart(range.startContainer, grow(range.startContainer, range.startOffset, -1));
+      range.setEnd(range.endContainer, grow(range.endContainer, range.endOffset, 1));
+    }
     const exact = String(range).replace(/\s+/g, ' ').trim();
     if (!exact) return;
     // The pin sits on the last selected letter (where the selection ended), when that's in the same element as its
@@ -1516,18 +1542,14 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     return anchor;
   };
   // Phones (the bar's comment) and go mode: straight to the comment (or the go) on the words.
-  const commentOnSelection = () => {
+  const commentOnSelection = (act = '') => {
     const anchor = selectionAnchor();
     if (!anchor) return;
     showAgain();
     S.openId = null;
-    begin(anchor);
+    begin(anchor, true, act);
   };
   // Computers, a drag over words let go: the actions bar, at the words' end; the box joins it (with the letter typed, if any).
-  selChip.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (S.selRect) commentOnSelection();
-  });
   const offerSelection = () => {
     if (S.goMode && store.get('lab-name').trim()) return commentOnSelection(); // go mode: a go on the words at once
     const sel = getSelection?.();
@@ -1557,7 +1579,9 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
   // The actions row of a comment on selected words (the box is the comment, already picked, so no button for it): rewrite (the
   // words go in the box to be edited, sent as old → new), cut and go (sent at once, nothing to type: go is a go pin on the
   // words, the text "go" as in go mode). Picking rewrite again goes back to the plain comment. Sent ones go through the box's own
-  // send, so a missing name is asked for there, a lab that can't be reached keeps them, and draft mode holds them. Long quotes (the first 300 characters are kept) have no cut or rewrite: the
+  // send, so a missing name is asked for there, a lab that can't be reached keeps them, and draft mode holds them. Typing /
+  // first names an action by the start of its label (/c cut, /r rewrite, /g go): it lights up, Enter runs it; with no
+  // match Enter sends what was typed, as it is. Long quotes (the first 300 characters are kept) have no cut or rewrite: the
   // words said aren't all there; nor do words the page no longer has (the row is dimmed then).
   const quickRow = (draft, box) => {
     const row = el('div', { class: 'quick' });
@@ -1565,8 +1589,9 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
     const exact = draft.anchor.quote?.exact || '';
     const fill = (v) => ((field.value = v), field.dispatchEvent(new Event('input')));
     let filled = ''; // what an action put in the box, which picking it again (or another) takes out again
+    const by = {};
     for (const k of acts(exact.length, false)) {
-      const b = actButton(k, draft.mode === k);
+      const b = (by[k] = actButton(k, draft.mode === k));
       b.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box
       b.addEventListener('click', () => {
         const was = draft.mode;
@@ -1576,7 +1601,7 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
         if (filled && field.value === filled) fill('');
         filled = '';
         draft.mode = sends ? k : now;
-        keepSpot(draft.anchor);
+        keepSpot(draft.anchor, draft);
         if (sends) {
           fill(k === 'cut' ? `Cut: “${exact}”` : 'go');
           return /** @type {HTMLElement} */ (box.querySelector('.send')).click();
@@ -1587,6 +1612,25 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
       });
       row.append(b);
     }
+    const named = () => {
+      const word = /^\/(\S*)$/.exec(field.value)?.[1].toLowerCase();
+      return word ? by[Object.keys(by).find((k) => k.toLowerCase().startsWith(word))] : undefined;
+    };
+    const light = () => {
+      const hit = named();
+      for (const x of Object.values(by)) x.classList.toggle('hl', x === hit);
+    };
+    field.addEventListener('input', light);
+    light(); // a box back after a reload may hold a / already
+    box.addEventListener('keydown', (e) => {
+      if (e.target !== field || e.isComposing) return;
+      const slash = /^\/\S*$/.test(field.value);
+      if (e.key === 'Escape' && slash) fill('');
+      else if (e.key === 'Enter' && !e.shiftKey && slash && named()) named().click();
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
     return row;
   };
   // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go offers them a comment (the bar).
@@ -1630,13 +1674,15 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidHas, fluidKey, fl
   const reflow = () => {
     cancelAnimationFrame(S.frame);
     S.frame = requestAnimationFrame(() => {
+      if (fluidState() === 'bar' && S.offer) fluidBar(quoteRects(S.offer)); // the bar follows its words
+      if (fluidState() === 'dlg' && S.draft) fluidFollow(quoteRects(S.draft.anchor)); // so does the open dialog
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (S.draft || root.activeElement || S.grabbing) return;
       movePins();
     });
   };
   addEventListener('resize', reflow);
-  addEventListener('scroll', (e) => e.target !== document && !host.contains(/** @type {Node} */ (e.target)) && reflow(), { capture: true, passive: true });
+  addEventListener('scroll', (e) => (e.target !== document || fluidFixed()) && !host.contains(/** @type {Node} */ (e.target)) && reflow(), { capture: true, passive: true }); // the page's own scroll moves only what is held to the screen
 
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
