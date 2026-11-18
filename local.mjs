@@ -98,13 +98,12 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
 const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
-COMMANDS.push('new'); // labit new <name> (below): its own line, so other commands can join the list beside it
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
   proxy: opts.proxy !== undefined ? String(opts.proxy) : undefined,
-  folder: pos[0] && !COMMANDS.includes(pos[0]) ? pos[0] : undefined,
+  folder: pos[0] && !COMMANDS.includes(pos[0]) && pos[0] !== 'new' ? pos[0] : undefined, // `labit new <name>` (below) is a command, not a folder
   open: opts['no-open'] ? false : undefined,
   wifi: opts.wifi ? true : undefined,
   model: typeof opts.model === 'string' ? opts.model : undefined,
