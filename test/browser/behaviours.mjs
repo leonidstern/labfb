@@ -181,7 +181,7 @@ for (const eng of ['webkit', 'chromium']) {
   };
   await p.evaluate(() => document.getElementById('p7').scrollIntoView({ block: 'center' }));
   await sleep(300);
-  const whole = await quoteOf('p7', 2, 17, 'snap whole'); // "ragraph 7 with s"
+  const whole = await quoteOf('p7', 2, 18, 'snap whole'); // "ragraph 7 with s"
   check(eng, 'a Shift-drag from inside a word to inside another quotes both whole words', whole === 'paragraph 7 with some', whole);
   const inside = await quoteOf('p9', 2, 6, 'snap inside'); // "ragr"
   check(eng, '…a Shift-drag inside one word keeps its letters', inside === 'ragr', inside);
