@@ -43,7 +43,7 @@ export function bindSwitcher(deps: Deps) {
   box = el('div', { class: 'switch', hidden: '', role: 'dialog', 'aria-label': 'labs and pages' });
   const scrim = el('div', { class: 'sw-scrim' });
   const panel = el('div', { class: 'sw-box' });
-  input = el('input', { type: 'search', placeholder: 'Go to a page or a lab', 'aria-label': 'Go to a page or a lab', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
+  input = el('input', { type: 'search', placeholder: 'Go to a page or a lab', 'aria-label': 'Go to a page or a lab', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false' }) as HTMLInputElement;
   list = el('div', { class: 'sw-list', role: 'listbox' });
   sorter = el('div', { class: 'sw-sort', role: 'group', 'aria-label': 'sort' });
   const foot = el('div', { class: 'sw-foot' }, '↑↓ choose · ↵ go · ⌘↵ new tab · ⌥O sort · ⌥S stop listening · ⌥P park · ⌥A archive · ⌥R start · esc close');
@@ -159,6 +159,7 @@ async function load() {
 
 function setSort(s: Sort) {
   sort = s;
+  toCur = true; // back to the page you're on, wherever the new order puts it
   try {
     localStorage.setItem('lab-switch-sort', s);
   } catch {}
@@ -191,7 +192,7 @@ const say = (lab: Lab) => {
   if (lab.mode === 'working') return [`${lab.listening || 'Claude'} working`, 'work'];
   return [`nobody listening${open ? ` · ${open} open` : ''}`, open ? 'warn' : ''];
 };
-const hit = (q: string, ...words: string[]) => !q || words.some((w) => w.toLowerCase().includes(q));
+const hit = (q: string, ...words: string[]) => !q || words.some((w) => (w || '').toLowerCase().includes(q));
 const short = (lab: Lab, p: Page) => p.title || p.path;
 /** "now", "5m", "3h", "2d", or a date for anything older than a week. */
 const ago = (iso?: string | null) => {
@@ -326,7 +327,11 @@ function draw() {
       const right = el('span', { class: 'sw-m2' });
       right.append(m, flip);
       row.append(t, right);
-      row.addEventListener('click', () => start(p.port, row));
+      row.addEventListener('click', (e) => {
+        // The archive/unarchive chip sits inside the row: its click mustn't also start the lab.
+        if (e.composedPath().some((n) => n instanceof HTMLElement && n.classList.contains('sw-mini'))) return;
+        start(p.port, row);
+      });
       return row;
     };
     const parked = order(all.filter((p) => !p.archived));
