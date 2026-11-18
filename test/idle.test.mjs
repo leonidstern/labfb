@@ -60,3 +60,20 @@ test('a page open on it: the lab stays', async () => {
   live.destroy();
   lab.kill();
 });
+
+test('started again after parking: the session that listened last is its listener again', async () => {
+  const { dir, home, port, exited } = start(1500);
+  await up(port);
+  const key = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).agent;
+  const sess = { id: 'sess-park', name: 'park test', agent: 'Claude', kind: 'claude' };
+  await fetch(`http://localhost:${port}/_lab/wait`, { method: 'POST', headers: { 'content-type': 'application/json', origin: `http://localhost:${port}`, 'x-lab-admin': key, 'x-lab-agent': '1', 'x-lab-session': encodeURIComponent(JSON.stringify(sess)) }, body: JSON.stringify({ timeout: 0.2 }) });
+  await Promise.race([exited, sleep(10000)]);
+  const parked = JSON.parse(fs.readFileSync(path.join(home, 'parked', `${port}.json`), 'utf8'));
+  assert.equal(parked.session?.id, 'sess-park', 'the parked record keeps who listened');
+  const again = spawn(process.execPath, parked.argv, { cwd: dir, env: { ...process.env, LABIT_HOME: home, LABIT_IDLE_MS: '0' } });
+  kids.push(again);
+  await up(port);
+  await sleep(300);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(home, 'servers', `${port}.json`), 'utf8')).listener, 'sess-park');
+  assert.ok(!fs.existsSync(path.join(home, 'parked', `${port}.json`)), 'no longer parked once running');
+});

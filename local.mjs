@@ -2050,7 +2050,7 @@ const handler = async (req, res) => {
         if (runningLabs().some((l) => l.port === n)) return res.writeHead(409).end('already running');
         const env = { ...process.env, LABIT_EXIT_WITH_PARENT: '', ...(p.edge ? { LABIT_EDGE: p.edge } : {}) }; // a lab started again outlives the one that started it
         spawn(process.execPath, [...p.execArgv, ...p.argv.filter((a) => a !== '--no-open'), '--no-open'], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
-        fs.rmSync(path.join(PARKED, `${n}.json`), { force: true });
+        // The lab takes its parked record itself once it runs (and with it the session that listened last).
         console.log(`[lab] started ${p.name} again on ${n}`);
         return answer(res, { ok: true });
       }
@@ -2316,6 +2316,15 @@ server.on('listening', async () => {
   origin = `http://localhost:${PORT}`;
   saveServer();
   writeAtomic(LOCK, JSON.stringify({ pid: process.pid, at: Date.now(), port: PORT }), 0o600); // a lab starting next asks this port
+  // Started again after it parked (⌘K, or labit in its folder): the session that listened last is its listener again,
+  // so that session's wake (the labit plugin) finds this lab and the next pin reaches it, from any folder.
+  try {
+    const was = JSON.parse(fs.readFileSync(path.join(PARKED, `${PORT}.json`), 'utf8'));
+    if (was.root === ROOT) {
+      if (!session && was.session?.id) session = was.session;
+      fs.rmSync(path.join(PARKED, `${PORT}.json`), { force: true });
+    }
+  } catch {}
   register();
   await persist();
   console.log(`[lab] ${origin}  ·  labit ${VERSION}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
@@ -2338,7 +2347,7 @@ const park = (archived = false, why = '') => {
   try {
     fs.mkdirSync(PARKED, { recursive: true });
     const edge = process.env.LABIT_EDGE;
-    writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(archived ? { archived: true } : {}), ...(why ? { why } : {}), at: new Date().toISOString() }, null, 2));
+    writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(archived ? { archived: true } : {}), ...(why ? { why } : {}), ...(session ? { session } : {}), at: new Date().toISOString() }, null, 2));
   } catch {}
 };
 // A lab nobody uses parks itself after an hour (LABIT_IDLE_MS; 0 keeps it running): no page open on it, no agent
