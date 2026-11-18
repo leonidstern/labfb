@@ -1,8 +1,8 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 //
-// "New since you looked": when the agent adds parts to a page (a section, a version, a card: anything with an id), you
+// "Added since you looked": when the agent adds parts to a page (a section, a version, a card: anything with an id), you
 // don't hunt for them. The ids on the page are kept as you last looked at them, each with its label (its heading, or its
-// first words); on load and on every hot update the page is compared with that. A "New · 3" pill by the listening pill
+// first words); on load and on every hot update the page is compared with that. A "Added · 3" pill by the listening pill
 // opens a short list of the ids that weren't there, each a link that goes there (as a #id link in a message does).
 // One drops off the list when you go to it, or when it has been in view for a second.
 // Ids a framework makes up, and the widget's own, don't count. A first visit just remembers the page.
@@ -166,7 +166,7 @@ export function startChanges() {
   const draw = () => {
     badge.hidden = !news.length;
     if (badge.hidden) setOpen(false);
-    count.textContent = `New · ${news.length}`;
+    count.textContent = `Added · ${news.length}`;
     const k = news.map((n) => n[0]).join('\n');
     if (k === shown) return;
     shown = k;
@@ -216,6 +216,17 @@ export function startChanges() {
   const first = () => setTimeout(check, 400);
   if (document.readyState === 'complete') first();
   else addEventListener('load', first, { once: true });
+  // The Added key (a, a setting): the first press opens the list, each press after goes to the one at the cursor (it drops off, the next takes the cursor).
+  addEventListener('lab-added', () => {
+    if (!news.length) return;
+    if (!open) {
+      setOpen(true);
+      (rows.firstElementChild as HTMLElement | null)?.focus({ preventScroll: true });
+      return;
+    }
+    const at = [...rows.children].find((r) => r === W.root.activeElement) || rows.firstElementChild;
+    go(at!.getAttribute('href')!.slice(1));
+  });
   addEventListener('lab-goto', (e) => see([(e as CustomEvent).detail]));
   addEventListener('hashchange', () => see([location.hash.slice(1)])); // (opened at a #id: it is in view, and a second later seen)
   addEventListener('click', () => setOpen(false));
