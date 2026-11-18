@@ -36,7 +36,7 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
-import { bindSwitcher, openSwitcher } from './widget/switcher.ts';
+import { bindSwitcher, openSwitcher, preloadSwitcher } from './widget/switcher.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -644,7 +644,13 @@ import { bindSwitcher, openSwitcher } from './widget/switcher.ts';
   const labsBtn = LABS ? el('button', { type: 'button', class: 'labs-btn' }) : null;
   if (labsBtn) {
     labsBtn.append('labs & pages', el('kbd', { 'aria-hidden': 'true' }, navigator.platform.startsWith('Mac') ? '⌘K' : 'ctrl K'));
-    labsBtn.addEventListener('click', () => setTimeout(openSwitcher, 0)); // after the menu closes
+    // The menu closes without taking the focus back to ⋯ (its own click handler would, after the box opened, and on a
+    // phone that blurred the search and bounced the keyboard).
+    labsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setMenu(false);
+      openSwitcher();
+    });
   }
   function placeBar() {
     const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
@@ -1004,6 +1010,7 @@ import { bindSwitcher, openSwitcher } from './widget/switcher.ts';
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
   function setMenu(open, refocus = false) {
+    if (open && LABS) preloadSwitcher();
     moreMenu.hidden = !open;
     moreBtn.setAttribute('aria-expanded', String(open));
     if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });

@@ -1370,7 +1370,7 @@ const labInfo = () => {
   // A dev server's pages: the ones with comments.
   for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
   return {
-    name: path.basename(ROOT), root: ROOT, port: PORT, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
+    name: path.basename(ROOT), root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     pages: list.map(({ key, ...p }) => ({ ...p, path: key, open: openOn(key) })),
   };
 };
@@ -1565,7 +1565,6 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/labs' && req.method === 'GET') {
       const here = isLoopback(req);
       const mine = { ...labInfo(), here: true };
-      if (!here) return answer(res, { labs: [{ name: mine.name, port: PORT, here: true, mode: mine.mode, listening: mine.listening, pages: mine.pages.map(({ url, ...p }) => ({ ...p, url: new URL(url).pathname })) }], parked: [], guest: true });
       const others = await Promise.all(
         runningLabs()
           .filter((l) => l.port !== PORT)
@@ -1578,7 +1577,39 @@ const handler = async (req, res) => {
             }
           }),
       );
-      return answer(res, { labs: [mine, ...others.sort((a, b) => a.name.localeCompare(b.name))], parked: parkedLabs().filter((p) => !runningLabs().some((l) => l.port === p.port)), guest: false });
+      others.sort((a, b) => a.name.localeCompare(b.name));
+      if (here) return answer(res, { labs: [mine, ...others], parked: parkedLabs().filter((p) => !runningLabs().some((l) => l.port === p.port)), guest: false });
+      // A guest (a phone this lab let in): this lab's pages, and the other labs open to the wifi, whose pages go
+      // through /_lab/hop: this lab vouches for the phone there (Leo, 18 Nov). No folders, no labs only this computer sees.
+      const forGuest = (lab, hop) => ({
+        name: lab.name, port: lab.port, here: lab.here, mode: lab.mode, listening: lab.listening,
+        pages: lab.pages.map(({ url, root, file, ...p }) => ({ ...p, url: hop ? `/_lab/hop?port=${lab.port}&to=${encodeURIComponent(p.path)}` : new URL(url).pathname })),
+      });
+      return answer(res, { labs: [forGuest(mine, false), ...others.filter((l) => l.wifi && !l.unreachable).map((l) => forGuest(l, true))], parked: [], guest: true });
+    }
+    // A phone this lab let in goes to another lab on this computer: this lab asks that one for a one-time link (with
+    // that lab's agent key, from its folder) for the same name and page, and sends the phone there. Only labs open to
+    // the wifi; the phone gets that lab's own pass, as if it had been invited.
+    if (pathname === '/_lab/hop' && req.method === 'GET') {
+      const n = Number(url.searchParams.get('port'));
+      const lab = runningLabs().find((l) => l.port === n && n !== PORT);
+      if (!lab) return res.writeHead(404, { 'content-type': 'text/plain' }).end('no such lab running');
+      try {
+        const srv = JSON.parse(fs.readFileSync(path.join(lab.root, '.lab/server.json'), 'utf8'));
+        const r = await fetch(`http://localhost:${n}/_lab/invite`, {
+          method: 'POST', signal: AbortSignal.timeout(3000),
+          headers: { 'content-type': 'application/json', 'x-lab-admin': srv.agent || srv.token, 'x-lab-agent': '1', origin: `http://localhost:${n}` },
+          body: JSON.stringify({ name: nameFor(req) || '', page: url.searchParams.get('to') || '/' }),
+        });
+        if (!r.ok) return res.writeHead(r.status, { 'content-type': 'text/plain' }).end(await r.text());
+        const { links } = await r.json();
+        // The same address the phone used here (the Mac's .local name or its wifi address), on the other lab's port.
+        const host = String(req.headers.host || '').replace(/:\d+$/, '');
+        const go = links.find((l) => new URL(l).hostname === host) || links[0];
+        return res.writeHead(302, { location: go, 'cache-control': 'no-store' }).end();
+      } catch {
+        return res.writeHead(502, { 'content-type': 'text/plain' }).end('that lab did not answer');
+      }
     }
     // stop (listening), park, start: this computer only, with the lab's key (a web page elsewhere can't post here).
     if (pathname === '/_lab/labs' && req.method === 'POST') {

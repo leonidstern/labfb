@@ -582,4 +582,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .sw-acts { justify-content: flex-start; max-width: none; }
   .sw-acts button { font-size: 14px; padding: 7px 10px; }
   .sw-foot { display: none; }
+  /* As the comment sheets do: the page behind isn't dimmed (a tap there still closes it), and with the keyboard up
+     the sheet fills what's left above it, from the visible top, instead of riding Safari's scroll in steps. */
+  .sw-scrim { background: transparent; }
+  :host([data-kb]) .sw-box { top: calc(var(--lab-top, 0px) + 8px); bottom: auto; height: calc(var(--lab-vh, 100dvh) - 16px); max-height: none; animation: none; }
 }

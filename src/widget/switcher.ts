@@ -71,17 +71,23 @@ export function bindSwitcher(deps: Deps) {
 export function openSwitcher() {
   d.beforeOpen();
   box.hidden = false;
+  document.documentElement.classList.add('lab-sheet'); // phones: the page holds still behind it (no scroll under the keyboard)
   input.value = '';
   active = 0;
   armed = '';
   draw();
-  input.focus({ preventScroll: true });
+  // A phone: no keyboard until you tap the search (it pushed the sheet up and down as it opened, Leo 18 Nov).
+  if (!matchMedia('(pointer: coarse)').matches) input.focus({ preventScroll: true });
   void load();
 }
 
 function closeSwitcher() {
   box.hidden = true;
+  if (!d.root.host.hasAttribute('data-sheet')) document.documentElement.classList.remove('lab-sheet');
 }
+
+/** Ask for the labs ahead, as the ⋯ menu opens, so the box opens with its list. */
+export const preloadSwitcher = () => void load();
 
 async function load() {
   try {
@@ -173,7 +179,7 @@ function draw() {
     }
     if (!pages.length) out.push(el('div', { class: 'sw-none' }, lab.unreachable ? 'this lab isn’t answering' : 'no pages yet'));
   }
-  if (data.guest) out.push(el('div', { class: 'sw-none' }, 'Other labs on that computer need their own link: ask Claude for one.'));
+  if (data.guest && data.labs.length < 2) out.push(el('div', { class: 'sw-none' }, 'Other labs on that computer are open to this computer only.'));
   const parked = data.parked.filter((p) => hit(q, p.name, String(p.port)));
   if (local && parked.length) {
     out.push(el('div', { class: 'sw-group' }, 'parked'));
