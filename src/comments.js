@@ -176,9 +176,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   if (ME && !store.get('lab-name')) store.set('lab-name', ME);
   // Where to tell the lab a new name, so the next lab on this computer starts out knowing it.
   const MEAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'me') : '';
-  // What this lab is trying (lib/flags.ts): flag -> on. The ⋯ menu lists them; only this computer may switch one.
+  // What this lab is trying (lib/flags.ts): flag -> on. Set in labit.json's `flags`, never from the page.
   const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
-  const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
   const flag = (name) => FLAGS[name]?.on === true;
   let meSent = ME;
   const rememberMe = (name) => {
@@ -601,32 +600,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     w.append(before, el('span', { class: 'mn', 'aria-hidden': 'true' }, `(${key})`), after);
     return w;
   };
-  // What this lab is trying, at the foot of the ⋯ menu: one switch a flag, under a heading of their own. Only this
-  // computer sees them — a guest reads the page, they don't decide what labit is trying — and switching one writes it
-  // into the project's labit.json, so the agent sees the same thing.
-  let tryingMade = null;
-  const tryingBits = () => {
-    if (tryingMade) return tryingMade; // the bar is placed again and again; these are made once
-    const names = Object.keys(FLAGS);
-    if (!names.length || !adminToken || !FLAGSAPI) return (tryingMade = []);
-    const head = el('div', { class: 'trying-head' }, 'trying');
-    const rows = names.map((name) => {
-      // el() takes one child, so the box and the words are appended.
-      const b = el('button', { class: 'trying', type: 'button', role: 'switch', 'aria-checked': String(flag(name)) });
-      b.append(el('span', { class: 'box', 'aria-hidden': 'true' }, flag(name) ? '☑' : '☐'), FLAGS[name].name);
-      b.addEventListener('click', async () => {
-        const on = !flag(name);
-        FLAGS[name].on = on; // the page is about to come back with the new tag; this keeps the tick honest meanwhile
-        b.setAttribute('aria-checked', String(on));
-        b.querySelector('.box').textContent = on ? '☑' : '☐';
-        try {
-          await fetch(FLAGSAPI, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: name, on }) });
-        } catch {}
-      });
-      return b;
-    });
-    return (tryingMade = [head, ...rows]);
-  };
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
@@ -645,7 +618,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     });
   }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
