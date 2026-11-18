@@ -182,8 +182,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Where to tell the lab a new name, so the next lab on this computer starts out knowing it.
   const MEAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'me') : '';
   // What this lab is trying (lib/flags.ts): flag -> on. Set in labit.json's `flags`, never from the page.
-  const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
-  const flag = (name) => FLAGS[name]?.on === true;
   let meSent = ME;
   const rememberMe = (name) => {
     if (!MEAPI || !name || name === meSent) return;
@@ -728,7 +726,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Pins show who left them: the first letter of the name.
   const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
   // A pin the agent left wears labit's own mark — the same one the bar shows while an agent listens — instead of a
-  // letter, so you can tell at a glance across a page who asked (flag: agentPins).
+  // letter, so you can tell at a glance across a page who asked.
   const agentMark = () => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 64 64');
@@ -893,7 +891,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       pin.setAttribute('aria-label', `${isGo ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
       // Done wins over every face: a go that has been answered or resolved is a pin like any other,
       // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
-      const mark = state !== 'done' && !c.resolved && !isGo && flag('agentPins') && byAgent(c);
+      const mark = state !== 'done' && !c.resolved && !isGo && byAgent(c);
       const key = state === 'done' || c.resolved ? '✓' : isGo ? 'go' : mark ? '\0mark' : initial(c.name);
       if (info.face !== key) {
         const node = mark ? agentMark() : document.createTextNode(key);
