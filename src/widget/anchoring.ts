@@ -529,7 +529,9 @@ function sameKind(node, tag) {
   return !classes.length || classes.some((c) => node.classList.contains(c));
 }
 
-export function anchorAt(clientX, clientY) {
+// words: the point is on the word under it (kind text, its quote: the words a Shift-drag quotes). A click or an area is
+// only a point, never a quote, so nothing is highlighted (Leo 18 Nov: "pin pointing on word highlighting word").
+export function anchorAt(clientX, clientY, words = false) {
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
@@ -633,7 +635,7 @@ export function anchorAt(clientX, clientY) {
       anchor.nh = Math.round(r.height);
     }
   } else {
-    const quote = quoteAt(clientX, clientY, shadowRoots);
+    const quote = words ? quoteAt(clientX, clientY, shadowRoots) : null;
     if (quote) {
       anchor.kind = 'text';
       anchor.quote = quote;
