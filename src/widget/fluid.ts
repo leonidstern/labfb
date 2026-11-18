@@ -24,10 +24,13 @@ let dlg: HTMLElement;
 let pick: (text?: string, act?: string) => void = () => {};
 
 export const fluidState = () => F.state;
+// An action: a built-in name (rewrite, cut, go) or one of your own (labit.json `actions`).
+type Act = string | { label: string; send: string; ask?: boolean };
+export const actName = (a: Act) => (typeof a === 'string' ? a : a.label);
 /** The actions: the bar has comment first, which opens the box; the dialog's row has only the others (the box is the
  *  comment). Long quotes (300 characters are kept) have no cut or rewrite. */
-export const acts = (quote: number, bar = true) => [...(bar ? ['comment'] : []), ...(quote < 300 ? ['rewrite', 'cut'] : []), 'go'];
-export const actButton = (k: string, on: boolean) => W.el('button', { type: 'button', 'data-k': k, class: on ? 'on' : '' }, k);
+export const acts = (quote: number, bar = true): Act[] => [...(bar ? ['comment'] : []), ...(W.actions as Act[]).filter((a) => quote < 300 || !/^(rewrite|cut)$/.test(actName(a)))];
+export const actButton = (a: Act, on: boolean) => W.el('button', { type: 'button', 'data-k': actName(a), class: on ? 'on' : '' }, actName(a));
 /** The dialog already holds this draft (a redraw leaves it, and the words typed in it, alone). */
 export const fluidHas = (draft: unknown) => F.draft === draft && /^(dlg|grow)$/.test(F.state);
 

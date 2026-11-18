@@ -35,7 +35,7 @@ import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/t
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
-import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
+import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -84,6 +84,7 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
     get markSeen() { return markSeen; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
+    get actions() { return ACTIONS.words; },
     get newNext() { return newNext; },
     get newPrev() { return newPrev; },
     get numberOf() { return numberOf; },
@@ -126,6 +127,13 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
   const KEYS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
+  } catch {}
+  // The actions on selected words, beside the comment itself (labit.json or your settings.json `actions`, passed as
+  // data-actions; docs/settings.md): the built-in rewrite, cut and go, and your own { label, send, ask }. `spot` is for
+  // the regular dialog's row, which it doesn't have yet.
+  const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go'] };
+  try {
+    Object.assign(ACTIONS, JSON.parse(script?.dataset.actions || '{}'));
   } catch {}
   // The key pressed, as the settings name it: a digit by its place (Shift or AZERTY don't matter), a letter as typed
   // when it's Latin (QWERTZ and AZERTY move letters), else by its place (Cyrillic and other layouts).
@@ -1455,7 +1463,7 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
   document.addEventListener('contextmenu', (e) => (S.press || S.afterDrag) && e.preventDefault(), true);
   // Selecting words, and what it did before the one fluid element (fluid.ts) — all of it kept:
   //  1. Computers: Shift + drag (or Shift + double or triple click) selects words; a plain drag marks an area wherever it
-  //     starts, a click pins, and the page's text can't be selected without Shift (it shows the text cursor, html.lab-shift).
+  //     starts, a click pins, and the page's text can't be selected without Shift (it shows the I-beam cursor, html.lab-shift-cur).
   //     Letting go shows the actions bar at the words' end (no chip first, Leo 18 Nov); clicking comment, Tab or
   //     Enter, or just typing (F4) adds the box; rewrite, cut and go go as they do in the box. In go mode (2) letting go still sends a go on the words at once.
   //  2. Phones: words selected the phone's way got a "Comment" chip (selChip); a tap pinned on them. Kept: the bar is
@@ -1578,7 +1586,8 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
   };
   // The actions row of a comment on selected words (the box is the comment, already picked, so no button for it): rewrite (the
   // words go in the box to be edited, sent as old → new), cut and go (sent at once, nothing to type: go is a go pin on the
-  // words, the text "go" as in go mode). Picking rewrite again goes back to the plain comment. Sent ones go through the box's own
+  // words, the text "go" as in go mode) and your own (labit.json `actions`): sent at once as their text, or with `ask` put in
+  // the box to finish. Picking the one that is on again goes back to the plain comment. Sent ones go through the box's own
   // send, so a missing name is asked for there, a lab that can't be reached keeps them, and draft mode holds them. Typing /
   // first names an action by the start of its label (/c cut, /r rewrite, /g go): it lights up, Enter runs it; with no
   // match Enter sends what was typed, as it is. Long quotes (the first 300 characters are kept) have no cut or rewrite: the
@@ -1590,24 +1599,27 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
     const fill = (v) => ((field.value = v), field.dispatchEvent(new Event('input')));
     let filled = ''; // what an action put in the box, which picking it again (or another) takes out again
     const by = {};
-    for (const k of acts(exact.length, false)) {
-      const b = (by[k] = actButton(k, draft.mode === k));
+    for (const a of acts(exact.length, false)) {
+      const k = actName(a);
+      const own = typeof a === 'string' ? null : a;
+      const b = (by[k] = actButton(a, draft.mode === k));
       b.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box
       b.addEventListener('click', () => {
         const was = draft.mode;
         if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
         const now = was === k ? undefined : k; // picked again: back to the comment
-        const sends = k === 'cut' || k === 'go';
+        const sends = k === 'cut' || k === 'go' || (own && !own.ask);
         if (filled && field.value === filled) fill('');
         filled = '';
         draft.mode = sends ? k : now;
         keepSpot(draft.anchor, draft);
         if (sends) {
-          fill(k === 'cut' ? `Cut: “${exact}”` : 'go');
+          const typed = /^\/\S*$/.test(field.value) ? '' : field.value.trim(); // a / naming this action is not text to add
+          fill(k === 'cut' ? `Cut: “${exact}”` : k === 'go' ? 'go' : `${own?.send}${typed ? ` ${typed}` : ''}`);
           return /** @type {HTMLElement} */ (box.querySelector('.send')).click();
         }
         for (const x of row.children) x.classList.toggle('on', x === b && Boolean(now));
-        if (now) fill((filled = exact));
+        if (now) fill((filled = k === 'rewrite' ? exact : own?.send || ''));
         field.focus({ preventScroll: true }); // the cursor at the end: a value set puts it there
       });
       row.append(b);
@@ -1778,11 +1790,11 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
     const plain = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
     const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
     pinCursorStyle.textContent =
-      `@layer lab-pointer { html.lab-pinning:not(.lab-shift, .lab-ctl) body, html.lab-pinning:not(.lab-shift, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
+      `@layer lab-pointer { html.lab-pinning:not(.lab-shift-cur, .lab-ctl) body, html.lab-pinning:not(.lab-shift-cur, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
       // With the drawn pointer the system one hides over plain parts of the page (not in the top layer, which is above it).
-      `html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
-      // Holding Shift (drag to quote words): the text cursor over the page's content, back to the pin when it's let go.
-      `html.lab-pinning.lab-shift:not(.lab-dragging) body *${plain}:not(img, svg, video, canvas) { cursor: text; } ` +
+      `html.lab-drawn.lab-pinning:not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
+      // Holding Shift (drag to quote words): an I-beam with a small green comment-pin tip (C4, Leo 18 Nov; text where a cursor image isn't drawn) over the page's content, back to the pin when it's let go.
+      `html.lab-pinning.lab-shift-cur:not(.lab-dragging) body *${plain}:not(img, svg, video, canvas) { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='24'%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='white' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='%23141414' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3Cpath d='M16 10V6a4.5 4.5 0 0 1 4.5-4.5a4.5 4.5 0 0 1 4.5 4.5a4.5 4.5 0 0 1-4.5 4.5Z' fill='%2324a046' stroke='white' stroke-width='1.2'/%3E%3C/svg%3E") 12 12, text; } ` +
       // The pointer is inherited, so places that aren't commented on name theirs: editable text a text cursor, a part
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
       `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
@@ -1799,13 +1811,32 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
   // comment opens.
   /** @type {any} */
   S.shiftOff = 0;
+  // The Shift cursor (lab-shift-cur) follows the key exactly, with no such wait: let go of Shift and the pin pointer is back
+  // at once (Leo, 18 Nov). Browsers repaint a still pointer's cursor only when the page under it changes, so the element
+  // under it gets a same-frame style flip.
+  const shiftCur = (on) => {
+    const de = document.documentElement;
+    if (de.classList.contains('lab-shift-cur') === on) return;
+    de.classList.toggle('lab-shift-cur', on);
+    const t = S.mouse && document.elementFromPoint(S.mouse.x, S.mouse.y);
+    if (t instanceof HTMLElement) {
+      const was = t.style.cursor;
+      t.style.cursor = 'default';
+      void t.offsetWidth;
+      t.style.cursor = was;
+    }
+    recheck();
+  };
   const shiftKey = (e) => {
     clearTimeout(S.shiftOff);
+    shiftCur(e.shiftKey);
     if (e.shiftKey) document.documentElement.classList.add('lab-shift');
     else S.shiftOff = setTimeout(() => (document.documentElement.classList.remove('lab-shift'), recheck()), 400);
   };
   addEventListener('keydown', shiftKey, true);
   addEventListener('keyup', shiftKey, true);
+  addEventListener('pointermove', (e) => shiftCur(e.shiftKey), { capture: true, passive: true }); // Shift pressed or let go while another window had focus
+  document.addEventListener('visibilitychange', () => shiftCur(false));
   // A press without Shift is never a selection: drop the Shift state at once, not 400 ms later (a click right after typing
   // a capital letter, or after a screenshot shortcut, used to select the page's text).
   addEventListener('pointerdown', (e) => {
@@ -1814,8 +1845,9 @@ import { acts, actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollo
     if (e.shiftKey) return S.on && !typing(e) && getSelection()?.removeAllRanges(), shiftKey(e);
     clearTimeout(S.shiftOff);
     document.documentElement.classList.remove('lab-shift');
+    shiftCur(false);
   }, true);
-  addEventListener('blur', () => document.documentElement.classList.remove('lab-shift'));
+  addEventListener('blur', () => (document.documentElement.classList.remove('lab-shift'), shiftCur(false)));
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
