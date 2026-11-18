@@ -116,7 +116,7 @@ export const workState = (c) => {
 // Where each thread stands with the agent: { s, n, at, line }. s is workState's, but with now → stale when it has shown
 // no sign for 5 minutes (a picked-up one too), and the pins handed over while another is being worked on → wait, n their
 // place in line (1st, 2nd…). With none being worked on, the oldest picked-up one is "got" and the rest wait behind it.
-export const STALE_MS = 300000;
+const STALE_MS = 300000;
 function build() {
   const out = new Map();
   const live = [];
@@ -142,7 +142,7 @@ const mins = (at) => {
   const m = Math.floor((Date.now() - Date.parse(at)) / 60000);
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h`;
 };
-export const age = (at) => {
+const age = (at) => {
   const s = (Date.now() - Date.parse(at)) / 1000;
   return s < 10 ? 'just now' : s < 60 ? `${Math.floor(s / 10) * 10} s ago` : `${mins(at)} ago`;
 };
