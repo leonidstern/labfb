@@ -45,7 +45,7 @@ Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
 - You name yourself once. The name is kept for this computer in `~/.config/labit/settings.json`, so every later lab starts out knowing you — browsers keep it per port, labs don't. `labit invite [name]` carries a name to a phone the same way. `--page /path` makes the link open that page. Opening a used or old link again on a phone that's already in just takes you there, and a phone that keeps using the lab stays in.
 - Settings (port, your dev server, keys, how long the lab waits…): `labit.json` in the project and `~/.config/labit/settings.json` for you. `labit settings` shows them all; [docs/settings.md](docs/settings.md) explains each.
 - Comments stay in `.lab/` in your project. Add it to `.gitignore`.
-- `1` comment, `2` go (every click approves what it's on), `3` pointer (clicks are the page's own).
+- `1` comment, `3` pointer (clicks are the page's own).
 - No dependencies, Node 22+. `--help` lists everything else.
 
 Shared labs on a domain (comments from people you send a link to) come later.
