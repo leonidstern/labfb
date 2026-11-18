@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The ⋯ menu no longer has a **trying** section of flag switches. Flags are set only in `labit.json` (`"flags": { "<flag>": true }`) or your own settings file, read when the lab starts; the lab's `POST /_lab/flags` is gone.
 - "Pin over controls": with it on, the pointer over the page's links, buttons and clickable cards is the pin, not their hand. The menu item shows how to do it once without the switch: (⌥ click).
 - Phones: a sent comment's card slides down whole, like any sheet, and its new pin pops in with one green ring. It used to shrink and fly into the pin, which squeezed the card, and the pin was already there while it flew (its pop-in had been dropped by a later change).
 

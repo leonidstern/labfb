@@ -55,6 +55,8 @@ jobs:
       - run: node test/browser/connection.mjs
       # Shortcuts from labit.json: the new keys work, the old ones don't, the bar shows them.
       - run: node test/browser/shortcuts.mjs
+      # Flags only from labit.json: no switches in the ⋯ menu, and a flag in the file still turns its feature on.
+      - run: node test/browser/flags.mjs
       # Pins finding their spot again: reordered twins, their own box first, quoted words, made-up ids and classes.
       - run: node test/browser/anchoring.mjs
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.

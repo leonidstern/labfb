@@ -103,7 +103,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
 const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'skill'];
-const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
+const { loadSettings, changedShortcuts, savePersonal } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
@@ -1386,7 +1386,7 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
-// What is being tried in this lab: every flag and its state, so the ⋯ menu can show them all and switch them.
+// What is being tried in this lab: every flag and its state (set in labit.json), for the widget to read.
 // The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
 // in one of them would end the attribute halfway. & and < go too, so the tag can't be talked out of being a tag.
 const flagsAttr = () => {
@@ -1683,20 +1683,6 @@ const handler = async (req, res) => {
       if (body.page) q.set('to', landing('/' + String(body.page).replace(/^\/+/, '')));
       const tail = q.size ? `?${q}` : '';
       return answer(res, { name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) });
-    }
-    // What is being tried in this lab: the ⋯ menu's switches. From this computer only -- a guest reads the page,
-    // they don't decide what labit is trying. The answer is written into the project's labit.json, so the agent sees
-    // the same thing, and every open page is told to come back for the new state.
-    if (pathname === '/_lab/flags') {
-      if (!isLoopback(req)) return res.writeHead(403).end('forbidden');
-      const { flag, on } = await sent(req);
-      if (!(flag in FLAGS)) return res.writeHead(400).end('no such flag');
-      const file = saveFlag(HERE, flag, Boolean(on));
-      SET.flags = { ...SET.flags, [flag]: Boolean(on) };
-      console.log(`[lab] trying ${flag}: ${on ? 'on' : 'off'} (${file})`);
-      version = { ...version, files: version.files + 1 }; // the pages come back with the new state in their tag
-      pagesChanged();
-      return answer(res, { flags: SET.flags, file });
     }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.

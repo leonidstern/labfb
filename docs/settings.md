@@ -91,10 +91,10 @@ it is simply labit — or dropped, and the code goes with it. Nothing is in labi
 { "flags": { "liveUrl": true } }
 ```
 
-You don't have to edit a file: open the ⋯ menu in the lab's bar and there is a **trying** heading at the foot of it
-with a switch for each. A switch writes the project's `labit.json`, so your agent is looking at the same thing you
-are. Only this computer sees those switches — a guest on your wifi reads the page, they don't decide what labit is
-trying. `labit settings` lists which are on and where that came from.
+Put it in the project's `labit.json` (or in your own `~/.config/labit/settings.json`, for every lab you run) and
+start the lab again: flags are read when the lab starts. The page has no switches for them, so the file is the one
+place a flag is set and your agent sees the same thing you do. `labit settings` lists which are on and where that
+came from.
 
 | Flag | What it is |
 | --- | --- |

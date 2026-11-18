@@ -28,7 +28,7 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags'; def: unknown; o
   // topic, instead of starting a lab of their own (Leo 18 Nov: "def reuse it, why we have so much").
   pagesFolder: { type: 'string', def: '~/lab-pages', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
-  // What is being tried here (lib/flags.ts). Off unless a file or the ⋯ menu turns one on.
+  // What is being tried here (lib/flags.ts). Off unless labit.json (or your settings) turns one on.
   flags: { type: 'flags', def: flagDefaults() },
 };
 // The environment variables that set a setting (as before), and how their values read.
@@ -161,23 +161,6 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
 export const changedShortcuts = (keys: Record<string, string>) => Object.fromEntries(Object.entries(keys).filter(([a, k]) => SHORTCUTS[a as keyof typeof SHORTCUTS] !== k));
 
 /** Sets one setting in your own file, keeping the rest. */
-/** Turn a flag on or off in the project's labit.json, making the file if there is none. Returns the file. */
-export function saveFlag(here: string, flag: string, on: boolean): string {
-  const file = projectFile(here) || path.join(path.resolve(here), 'labit.json');
-  let data: Record<string, unknown> = {};
-  try {
-    data = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {}
-  const flags = (data.flags && typeof data.flags === 'object' && !Array.isArray(data.flags) ? data.flags : {}) as Record<string, unknown>;
-  // A flag back at its default leaves no trace in the file: off is the absence of a flag, not a line saying so.
-  if (on) flags[flag] = true;
-  else delete flags[flag];
-  if (Object.keys(flags).length) data.flags = flags;
-  else delete data.flags;
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
-  return file;
-}
-
 export function savePersonal(key: string, value: unknown) {
   const file = personalFile();
   let data: Record<string, unknown> = {};
