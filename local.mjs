@@ -35,6 +35,9 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
       --name gives the lab its topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder; it's
       kept in .lab/name, so later starts keep it.
+  labit publish <page.html | folder> [--name "topic"]
+      Show a page the way an Artifact is shown: it goes into your one pages lab (pagesFolder, ~/lab-pages), which
+      starts if it isn't running, and the page's link is printed. Publish it again to update it, at the same link.
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labit pages [--all]
@@ -95,7 +98,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
+const COMMANDS = ['publish', 'preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -136,7 +139,7 @@ if (pos[0] === 'settings') {
 }
 
 // The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
-if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
+if (['publish', 'preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
