@@ -211,7 +211,7 @@ function draw() {
   const shelved: { lab: Lab; p: Page }[] = []; // archived pages, listed under "archived" at the bottom
   const live: { lab: Lab; p: Page }[] = [];
   for (const lab of data.labs) {
-    const labHit = hit(q, lab.name, String(lab.port));
+    const labHit = hit(q, lab.name, String(lab.port), where(lab), lab.root || ''); // the grey label it shows, and its folder
     for (const p of lab.pages) if (labHit || hit(q, p.title, p.path, p.file)) (p.archived ? shelved : live).push({ lab, p });
   }
   live.sort((a, b) => touched(b.p).localeCompare(touched(a.p)));
@@ -244,14 +244,14 @@ function draw() {
     out.push(el('div', { class: 'sw-none' }, 'They open here once they run the newest labit with --wifi.'));
   }
   if (local) {
-    const all = data.parked.filter((p) => hit(q, p.name, String(p.port)));
+    const all = data.parked.filter((p) => hit(q, p.name, String(p.port), where(p), p.root));
     // Every saved lab that isn't running (archived, or parked by an older build) folds away under "archived".
     const archivedRow = (p: Parked) => {
       const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(p.port), 'data-kind': 'parked' });
       const t = el('span', { class: 'sw-t' });
       t.append(el('b', {}, where(p)));
       row.title = `start it again on localhost:${p.port} (↵)`;
-      row.append(t, el('span', { class: 'sw-m' }, `archived ${ago(p.at)}`.trim()));
+      row.append(t, el('span', { class: 'sw-m' }, `archived ${since(p.at)}`.trim()));
       row.addEventListener('click', () => start(p.port, row));
       return row;
     };
@@ -260,7 +260,7 @@ function draw() {
       const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(lab.port), 'data-kind': 'archived-page', 'data-page': p.path });
       const t = el('span', { class: 'sw-t' }, short(lab, p));
       if (p.title) t.append(el('span', { class: 'sw-path' }, ` ${p.path}`));
-      row.append(t, el('span', { class: 'sw-m' }, `${where(lab)} · archived ${ago(p.archived)}`.trim()));
+      row.append(t, el('span', { class: 'sw-m' }, `${where(lab)} · archived ${since(p.archived)}`.trim()));
       goes(row, lab, p);
       return row;
     };
@@ -281,7 +281,8 @@ function draw() {
       if (open) out.push(...shelved.map(shelvedRow), ...archived.map(archivedRow));
     }
   }
-  if (!out.length) out.push(el('div', { class: 'sw-none' }, 'nothing matches'));
+  // Says so when a search finds no page, even under the phone's note (it used to leave an empty sheet).
+  if (!out.length || (q && !out.some((e) => e.classList.contains('sw-row')))) out.push(el('div', { class: 'sw-none' }, 'nothing matches'));
   const kept = list.scrollTop; // a redraw (the fold, a reload of the list) keeps where you were
   list.replaceChildren(...out);
   list.scrollTop = kept;

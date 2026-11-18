@@ -565,7 +565,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   border-radius: var(--_r-s); font-size: 14px; color: var(--_fg); }
 .sw-row.on, .sw-row:hover { background: var(--_soft); }
 .sw-row .sw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sw-row .sw-m { color: var(--_muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sw-row .sw-m { color: var(--_muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums;
+  flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; } /* a long lab name gives way to the title */
 .sw-none { color: var(--_muted); font-size: 12px; padding: 4px 10px 6px; }
 .sw-group { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--_muted); padding: 12px 10px 0; margin-top: 6px; border-top: var(--_hair); }
 .sw-lab.parked { padding-top: 6px; border-top: 0; margin-top: 0; }
