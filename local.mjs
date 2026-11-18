@@ -1866,7 +1866,17 @@ const handler = async (req, res) => {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
       const fresh = freshIn(pages().filter((p) => !claimed().has(p)));
       const ids = fresh.map(({ c }) => c.id).sort();
+      // The threads handed to the agent and being worked on (no answer since the person's last words, or only "on it"):
+      // the plugin's hook keeps a progress line on them while its session (helpers too) runs tools.
+      const working = pages().flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).flatMap((c) => {
+        const msgs = commentsOf(page).filter((r) => r.parent === c.id);
+        const lastAt = (mine) => [c, ...msgs].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
+        const reply = msgs.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).pop();
+        const answered = reply && reply.createdAt > lastAt(false);
+        return !answered || reply.intent === 'working' ? [{ page, id: c.id }] : [];
+      }));
       return answer(res, {
+        working,
         fresh: ids.length,
         pages: [...new Set(fresh.map(({ page }) => page))],
         key: createHash('sha1').update(ids.join(',')).digest('hex').slice(0, 12),
