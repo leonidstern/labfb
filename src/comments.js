@@ -1829,6 +1829,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     shiftCur(false);
   }, true);
   addEventListener('blur', () => (document.documentElement.classList.remove('lab-shift'), shiftCur(false)));
+  // The same, for engines that start a selection before restyling after the press (Linux WebKit kept one now and then):
+  // in comment mode, a selection on the page starts only with Shift; fields and the widget select as always.
+  addEventListener('selectstart', (e) => {
+    const de = document.documentElement;
+    const t = /** @type {Element | null} */ (e.target instanceof Element ? e.target : /** @type {Node} */ (e.target)?.parentElement ?? null);
+    if (de.classList.contains('lab-pinning') && !de.classList.contains('lab-shift') && !t?.closest('input, textarea, select, [contenteditable], [data-lab-comments]')) e.preventDefault();
+  }, true);
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
