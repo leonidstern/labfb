@@ -210,7 +210,7 @@ function draw() {
   }
   const local = !data.guest;
   // The lab keys only where they work: a guest can go to pages, not stop, park or start labs (they did nothing, silently).
-  foot.textContent = `↑↓ choose · ↵ go · ⌘↵ new tab${local ? ' · ⌥S stop listening · ⌥P park · ⌥A archive · ⌥R start' : ''} · esc close`;
+  foot.textContent = `↑↓ choose · ↵ go · ⌘↵ new tab${local ? ' · ⌥S stop listening · ⌥P stop lab · ⌥A archive · ⌥R start' : ''} · esc close`;
   if (data.self) {
     const note = el('div', { class: 'sw-none' }, 'This is your computer, opened through its wifi address, so it sees what a phone sees. ');
     note.append(el('a', { href: data.self }, 'Open it on localhost'), ' for every lab and the lab keys.');
@@ -265,7 +265,7 @@ function draw() {
         }, 'copies one line to paste to your agent');
       const twice = (action: 'park' | 'archive', label: string, title: string) => {
         const key = `${action} ${lab.port}`;
-        const b = btn(armed === key ? (lab.here ? `${action}: this page closes` : `${action}: sure?`) : label, () => {
+        const b = btn(armed === key ? (lab.here ? `${label}: this page closes` : `${label}: sure?`) : label, () => {
           if (armed !== key) {
             armed = key;
             draw();
@@ -276,7 +276,8 @@ function draw() {
         }, title);
         if (armed === key) b.classList.add('armed');
       };
-      twice('park', 'park', 'stop this lab; it waits under "parked" to start again (⌥P)');
+      // "stop lab", not "park" (Leo 18 Nov: "what park means"); it waits under "stopped" to start again.
+      twice('park', 'stop lab', 'stop this lab’s server; it stays listed under "stopped", ↵ starts it again (⌥P)');
       twice('archive', 'archive', 'stop this lab and fold it away under "archived" (⌥A)');
       head.append(acts);
     }
@@ -323,7 +324,7 @@ function draw() {
       const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(p.port), 'data-kind': 'parked', ...(p.archived ? { 'data-archived': '1' } : {}) });
       const t = el('span', { class: 'sw-t' });
       t.append(el('b', {}, p.name), ` · ${p.port}`);
-      const m = el('span', { class: 'sw-m' }, `${p.archived ? 'archived' : 'parked'} ${ago(p.at)}`.trim());
+      const m = el('span', { class: 'sw-m' }, `${p.archived ? 'archived' : 'stopped'} ${ago(p.at)}`.trim());
       const flip = el('span', { class: 'sw-mini', role: 'button', title: p.archived ? 'back to parked (⌥A)' : 'fold away under archived (⌥A)' }, p.archived ? 'unarchive' : 'archive');
       flip.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -342,7 +343,7 @@ function draw() {
     };
     const parked = order(all.filter((p) => !p.archived));
     const archived = order(all.filter((p) => p.archived));
-    if (parked.length) out.push(el('div', { class: 'sw-group' }, 'parked · ↵ starts'), ...parked.map(parkedRow));
+    if (parked.length) out.push(el('div', { class: 'sw-group' }, 'stopped · ↵ starts'), ...parked.map(parkedRow));
     if (archived.length) {
       const open = showArchived || Boolean(q);
       const g = el('button', { type: 'button', class: 'sw-group sw-fold', 'aria-expanded': String(open) }, `${open ? '▾' : '▸'} archived · ${archived.length}`);
