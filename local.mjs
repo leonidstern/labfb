@@ -35,6 +35,9 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
       --name gives the lab its topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder; it's
       kept in .lab/name, so later starts keep it.
+  labit publish <page.html | folder> [--name "topic"]
+      Show a page the way an Artifact is shown: it goes into your one pages lab (pagesFolder, ~/lab-pages), which
+      starts if it isn't running, and the page's link is printed. Publish it again to update it, at the same link.
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labit pages [--all]
@@ -95,7 +98,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
+const COMMANDS = ['publish', 'preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings'];
 const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -136,7 +139,7 @@ if (pos[0] === 'settings') {
 }
 
 // The commands that answer and exit (preview, add, remove, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
-if (['preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
+if (['publish', 'preview', 'add', 'remove', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -945,6 +948,21 @@ const markOpened = (page) => {
     } catch {}
   }, 3000);
 };
+// Pages archived in labs & pages (Leo 18 Nov: "it should archive pages… or pages and folders"): .lab/archived.json as
+// { page: ISO time }. The file stays; the page folds away under "archived" in the box until it's brought back.
+const ARCHIVED = path.join(LAB, 'archived.json');
+const archivedPages = (() => {
+  try {
+    return new Map(Object.entries(JSON.parse(fs.readFileSync(ARCHIVED, 'utf8'))));
+  } catch {
+    return new Map();
+  }
+})();
+const archivePage = (page, on) => {
+  if (on) archivedPages.set(page, new Date().toISOString());
+  else archivedPages.delete(page);
+  writeAtomic(ARCHIVED, JSON.stringify(Object.fromEntries(archivedPages)));
+};
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
 // Side files (read marks, claims) are written whole through a .tmp, and one that can't be read is put aside like a
@@ -1443,7 +1461,7 @@ const labInfo = () => {
     name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
     created: created(),
-    pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file), opened: opened.get(key) || null })),
+    pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file), opened: opened.get(key) || null, archived: archivedPages.get(key) || null })),
   };
 };
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
@@ -1692,8 +1710,16 @@ const handler = async (req, res) => {
     // stop (listening), park, start: this computer only, with the lab's key (a web page elsewhere can't post here).
     if (pathname === '/_lab/labs' && req.method === 'POST') {
       if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
-      const { action, port } = await sent(req);
+      const { action, port, page } = await sent(req);
       const n = Number(port);
+      // A page of a lab, archived or brought back: that lab keeps the list (another lab is asked, with its key).
+      if (action === 'archive-page' || action === 'unarchive-page') {
+        if (typeof page !== 'string' || !page.startsWith('/')) return res.writeHead(400).end('page: /path');
+        if (n === PORT) {
+          archivePage(page, action === 'archive-page');
+          return answer(res, { ok: true });
+        }
+      }
       if (action === 'start') {
         const p = parkedLabs().find((x) => x.port === n);
         if (!p) return res.writeHead(404).end('not parked');
@@ -1714,14 +1740,14 @@ const handler = async (req, res) => {
         return answer(res, { ok: true });
       }
       if (action === 'unarchive') return res.writeHead(409).end('running, not archived');
-      if (!['stop', 'park', 'archive'].includes(action)) return res.writeHead(400).end('action: stop, park, archive, unarchive or start');
+      if (!['stop', 'park', 'archive', 'archive-page', 'unarchive-page'].includes(action)) return res.writeHead(400).end('action: stop, park, archive, unarchive, start, archive-page or unarchive-page');
       if (n !== PORT) {
         // Another lab: it does it itself, asked with its own key (from its folder, on this same computer).
         const lab = runningLabs().find((l) => l.port === n);
         if (!lab) return res.writeHead(404).end('no lab on that port');
         try {
           const key = JSON.parse(fs.readFileSync(path.join(lab.root, '.lab/server.json'), 'utf8')).token;
-          const r = await fetch(`http://localhost:${n}/_lab/labs`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': key }, body: JSON.stringify({ action, port: n }), signal: AbortSignal.timeout(3000) });
+          const r = await fetch(`http://localhost:${n}/_lab/labs`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': key }, body: JSON.stringify({ action, port: n, page }), signal: AbortSignal.timeout(3000) });
           return res.writeHead(r.status, { 'content-type': 'application/json' }).end(await r.text());
         } catch {
           return res.writeHead(502).end('that lab did not answer');
@@ -1891,8 +1917,18 @@ server.on('error', (e) => {
   // A port given by the preview pane (PORT) is the one it opens: don't move off it.
   const fixed = !opts.port && process.env.PORT;
   if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EADDRINUSE' || fixed || PORT >= Number(opts.port || 4400) + 20) die(`[lab] could not start: ${e.message}`);
-  server.listen(++PORT, WIFI ? undefined : '127.0.0.1');
+  PORT = skipLabs(PORT + 1);
+  server.listen(PORT, WIFI ? undefined : '127.0.0.1');
 });
+// A port another lab holds is taken even when listening here would work: a lab on the wifi listens on every address
+// (IPv6 *), and the system still lets this one take 127.0.0.1 on the same port, so localhost reached one lab or the
+// other (18 Nov, :4481). Skip the ports in ~/.labit/servers.
+function skipLabs(port) {
+  if (!opts.port && process.env.PORT) return port; // the preview pane's port is the one it opens
+  const held = new Set(runningLabs().filter((l) => l.pid !== process.pid).map((l) => l.port));
+  while (held.has(port)) port++;
+  return port;
+}
 // A newer labit on npm: said once when the lab starts. Checked at most once a day (kept in ~/.labit/latest.json)
 // with a short timeout, never in CI or with LABIT_NO_UPDATE_CHECK=1. The request names only the package.
 async function newerVersion() {
@@ -1947,4 +1983,5 @@ const bye = () => {
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed
+PORT = skipLabs(PORT);
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');

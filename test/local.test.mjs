@@ -274,3 +274,43 @@ test('labit --name gives the lab its topic, and later starts keep it', async () 
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('a page can be archived and brought back (labs & pages), in .lab/archived.json; the file stays', async () => {
+  for (let i = 0; i < 50 && !fs.existsSync(path.join(DIR, '.lab/server.json')); i++) await new Promise((r) => setTimeout(r, 100));
+  const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  const post = (body) => fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ port: Number(PORT), ...body }) });
+  const page = async () => (await (await fetch(B + '/_lab/pages')).json()).pages.find((p) => p.path === '/index');
+  assert.equal((await post({ action: 'archive-page', page: '/index' })).status, 200);
+  assert.ok((await page()).archived, 'archived, with when');
+  assert.ok(fs.existsSync(path.join(DIR, 'index.html')), 'the file stays');
+  assert.equal((await post({ action: 'archive-page', page: 'index' })).status, 400, 'a page is a /path');
+  assert.equal((await post({ action: 'unarchive-page', page: '/index' })).status, 200);
+  assert.equal((await page()).archived, null);
+  assert.equal((await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'archive-page', port: Number(PORT), page: '/index' }) })).status, 403, 'needs the key');
+});
+
+test('labit publish puts a page in the one pages lab, starts it once, and publishing again keeps the link', async () => {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-pub-')));
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), LABIT_HOME: path.join(home, '.labit'), LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
+  const port = 4940 + Math.floor(Math.random() * 9);
+  fs.mkdirSync(path.join(home, '.config/labit'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.config/labit/settings.json'), JSON.stringify({ port }));
+  fs.writeFileSync(path.join(home, 'Heading options.html'), '<!doctype html><title>Heading options</title><h1>one</h1>');
+  const publish = () => new Promise((r) => execFile(process.execPath, [LAB, 'publish', 'Heading options.html'], { cwd: home, env }, (err, out) => r(String(out).split('\n')[0])));
+  let pid;
+  try {
+    const link = await publish();
+    assert.match(link, /^http:\/\/localhost:\d+\/heading-options$/);
+    pid = JSON.parse(fs.readFileSync(path.join(home, '.labit/servers', fs.readdirSync(path.join(home, '.labit/servers'))[0]), 'utf8')).pid;
+    assert.match(await (await fetch(link)).text(), /<h1>one<\/h1>/);
+    fs.writeFileSync(path.join(home, 'Heading options.html'), '<!doctype html><title>Heading options</title><h1>two</h1>');
+    assert.equal(await publish(), link, 'same link');
+    assert.match(await (await fetch(link)).text(), /<h1>two<\/h1>/, 'updated');
+    assert.equal(fs.readdirSync(path.join(home, '.labit/servers')).length, 1, 'one lab');
+    assert.ok(fs.existsSync(path.join(home, 'lab-pages/heading-options.html')));
+  } finally {
+    if (pid) process.kill(pid);
+    await new Promise((r) => setTimeout(r, 300));
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

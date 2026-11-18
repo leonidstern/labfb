@@ -1,6 +1,8 @@
 // The commands that answer and exit: preview, add / remove, list, pages (the labs on this computer) and the agent's
 // wait, reply, resolve, pin, invite. Loaded by local.mjs only for these, so starting a lab never reads it.
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { FOREGROUND_CAP, listenPages, replyIntent, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
@@ -97,6 +99,41 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     fs.writeFileSync(LINKS + '.tmp', JSON.stringify(list, null, 2) + '\n'); // whole or not at all
     fs.renameSync(LINKS + '.tmp', LINKS);
     console.log(pos[0] === 'add' ? `Saved ${key}${title ? ` (${title})` : ''}. It shows in \`${CMD} pages\` and \`${CMD} list\`.` : `Removed ${key}.`);
+    process.exit(0);
+  }
+
+  // `labit publish <page.html | folder>`: like publishing an Artifact (Leo 18 Nov: "process is similar to artifacts, can
+  // you do it like this"). The page goes into the one pages lab (pagesFolder), named for its topic; that lab starts if
+  // it isn't running; the link is printed. Publishing again replaces it, same link. No folder or lab of its own.
+  if (pos[0] === 'publish') {
+    const src = pos[1] && path.resolve(pos[1]);
+    if (!src || !fs.existsSync(src)) die(`Usage: ${CMD} publish <page.html | folder> [--name "topic"]`);
+    const { loadSettings } = await import('./settings.ts');
+    const home = String(loadSettings(HERE, {}).values.pagesFolder || '~/lab-pages').replace(/^~(?=$|\/)/, os.homedir());
+    fs.mkdirSync(home, { recursive: true });
+    const root = fs.realpathSync(home);
+    const dir = fs.statSync(src).isDirectory();
+    const topic = typeof opts.name === 'string' ? opts.name : path.basename(src).replace(/\.html?$/i, '');
+    const slug = topic.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
+    if (!dir && !/\.html?$/i.test(src)) die(`${src}: give an .html file, or a folder of pages`);
+    const dest = path.join(root, dir ? slug : `${slug}.html`);
+    if (path.resolve(src) !== dest) {
+      fs.rmSync(dest, { recursive: true, force: true });
+      fs.cpSync(src, dest, { recursive: true });
+    }
+    let lab = runningLabs().find((l) => l.root === root);
+    if (!lab) {
+      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, detached: true, stdio: 'ignore' }).unref();
+      for (let i = 0; i < 100 && !lab; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        lab = runningLabs().find((l) => l.root === root);
+      }
+      if (!lab) die(`The pages lab didn't start. Run it yourself: ${CMD} ${root}`);
+    }
+    const key = keyFor(path.relative(root, dir ? path.join(dest, 'index.html') : dest)); // "/topic", or "/topic/index"
+    console.log(`http://localhost:${lab.port}${key.replace(/\/index$/, '/')}`);
+    console.log(`In the pages lab (${root.replace(os.homedir(), '~')}). Publish again to update it, same link.`);
+    console.log(`Listen for its pins: cd ${root} && ${CMD} wait --bg --pages ${key}`);
     process.exit(0);
   }
 
