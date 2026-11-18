@@ -2079,11 +2079,7 @@ const handler = async (req, res) => {
       }
       stopListening();
       if (action === 'stop') return answer(res, { ok: true });
-      try {
-        fs.mkdirSync(PARKED, { recursive: true });
-        const edge = process.env.LABIT_EDGE;
-        writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(action === 'archive' ? { archived: true } : {}), at: new Date().toISOString() }, null, 2));
-      } catch {}
+      park(action === 'archive');
       console.log('[lab] parked from the page: start it again from the switcher (⌘K) in another lab, or run labit here');
       answer(res, { ok: true });
       setTimeout(bye, 200); // after the answer is out
@@ -2336,6 +2332,28 @@ server.on('listening', async () => {
     console.log(`[lab] no HTML pages in ${ROOT} — nothing to comment on yet. Name the folder that has them (${CMD} dist), or start your dev server and run this again.`);
   if (!opts['no-open']) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [origin + start], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
 });
+// Parked: a record of how it was started (in ~/.labit/parked), so the switcher (⌘K) in another lab, or labit run in
+// its folder again, starts it the same way.
+const park = (archived = false, why = '') => {
+  try {
+    fs.mkdirSync(PARKED, { recursive: true });
+    const edge = process.env.LABIT_EDGE;
+    writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(archived ? { archived: true } : {}), ...(why ? { why } : {}), at: new Date().toISOString() }, null, 2));
+  } catch {}
+};
+// A lab nobody uses parks itself after an hour (LABIT_IDLE_MS; 0 keeps it running): no page open on it, no agent
+// waiting, none working on its pins. Before, labs from old sessions ran for days, 35 at once (Leo, 18 Nov).
+const IDLE_MS = Number(process.env.LABIT_IDLE_MS ?? 3600000);
+let usedAt = Date.now();
+if (IDLE_MS > 0)
+  setInterval(() => {
+    if (clients.size || waiters.length || mode === 'working') usedAt = Date.now();
+    else if (Date.now() - usedAt >= IDLE_MS) {
+      park(false, 'idle');
+      console.log(`[lab] nobody used this lab for ${Math.round(IDLE_MS / 60000)} min: parked. Start it again from the switcher (⌘K) in another lab, or run labit here`);
+      bye();
+    }
+  }, Math.min(60000, Math.max(1000, IDLE_MS / 4))).unref();
 const bye = () => {
   try {
     if (JSON.parse(fs.readFileSync(SERVER, 'utf8')).pid === process.pid) fs.rmSync(SERVER);
