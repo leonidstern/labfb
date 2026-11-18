@@ -1055,12 +1055,27 @@ export const readable = (text) => {
     return node;
   });
 };
+/** A range's boxes on screen now, line by line, with how its words sit: reading right to left (their end is then the
+ *  left edge), or in a fixed or sticky part of the page (what is placed by them is held to the screen too). */
+export const rectsOf = (range?: Range | null) => {
+  let n = range ? (range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement) : null;
+  const rtl = n ? getComputedStyle(n).direction === 'rtl' : false;
+  let fixed = false;
+  for (; n && !fixed; n = n.parentElement) fixed = /^(fixed|sticky)$/.test(getComputedStyle(n).position);
+  return Object.assign([...(range?.getClientRects() || [])].filter((r) => r.width > 0), { rtl, fixed });
+};
+/** The quoted words' boxes on screen now (none when the words can't be found). */
+export const quoteRects = (anchor) => rectsOf(quoteRange(anchor));
 const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
 export const markQuote = (anchor) => {
   if (!canMark) return;
   const range = anchor && quoteRange(anchor);
-  if (range) CSS.highlights.set('lab-quote', new Highlight(range));
-  else CSS.highlights.delete('lab-quote');
+  if (!range) return CSS.highlights.delete('lab-quote');
+  // WebKit paints no highlight set while the text can't be selected (comments on, Shift up: lab-pinning in
+  // comments.js), and keeps one set while it can: the page's text is selectable for the frame the words are lit in.
+  document.documentElement.classList.add('lab-lit');
+  CSS.highlights.set('lab-quote', new Highlight(range));
+  requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('lab-lit')));
 };
 
 // The area's outline: round dots with room between them (CSS dotted borders can't space their dots).

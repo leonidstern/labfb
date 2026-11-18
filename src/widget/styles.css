@@ -117,8 +117,8 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 /* A long thread scrolls inside the card, which keeps one size; the step buttons and the reply box stay put. */
 .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; }
 .card > .foot { flex: none; }
-.card.in, .float.in { animation: lab-in var(--_t-base) var(--_ease); }
-.card.out, .float.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; }
+.card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
+.card.out, .float.out, .fd.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; }
 .item { display: grid; row-gap: 3px; }
 .item + .item { margin-top: 14px; }
 .msg.item { display: block; } .msg.item + .msg.item { margin-top: 0; }
@@ -521,8 +521,34 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 }
 /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
 .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
-.sel-chip { position: fixed; transform: translateX(-50%); border: 0; border-radius: var(--_radius); padding: 8px 14px; background: var(--_fg);
-            color: var(--_bg); font: 500 14px/1 var(--_font, inherit); box-shadow: var(--_shadow); z-index: 4; }
+/* Selected words' one element (fluid.ts): the actions bar and the dialog that replaces it. It comes and goes as a comment
+   card does (.in / .out, above); a copy of the bar goes out as the dialog comes in. */
+.fd { position: absolute; z-index: 4; overflow: hidden; background: var(--_bg); border-radius: var(--_radius);
+      box-shadow: var(--_shadow); }
+.pane { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; transition: opacity .16s; }
+.pane.on { opacity: 1; pointer-events: auto; transition: opacity .22s .2s; }
+.settled .p-dlg { position: relative; }
+.fd .p-bar { width: max-content; margin: 0; padding: 6px; }
+.p-dlg { padding: 8px; }
+.fd .float { position: static; width: auto; max-width: none; --_box-bg: var(--_soft); --_box-edge: none; }
+.quick { display: flex; gap: 4px; margin: 0 0 6px; }
+.quick button { border: 0; border-radius: var(--_r-s); padding: 5px 8px; background: var(--_soft); font-size: 12px; letter-spacing: 0; cursor: pointer; }
+.quick button:hover { background: var(--_hover); }
+.quick button.on { background: var(--_fg); color: var(--_bg); font-weight: 600; }
+.quick button.hl { box-shadow: 0 0 0 1.5px var(--_fg); } /* the action a typed / names: Enter runs it */
+/* Corners inside corners (Leo, 18 Nov): an inner radius is the outer one less the gap between them, so they run
+   concentric: the bar's buttons sit 6 px in, the dialog's quick buttons and box 8 px in. */
+.p-bar button { border-radius: max(0px, calc(var(--_radius) - 6px)); }
+.fd .p-dlg .quick button, .fd .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
+.fd.gone .quick [data-k=rewrite], .fd.gone .quick [data-k=cut] { opacity: .4; pointer-events: none; } /* its words are gone: cut and rewrite have nothing to act on */
+.fd.still .pane { transition: none; } /* back after a reload: nothing moves */
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
+  .fd .p-bar { gap: 8px; }
+  .p-bar button { min-height: 44px; padding: 0 14px; font-size: 14px; letter-spacing: -.011em; }
+  .float > .quick { flex: none; gap: 8px; margin: 0; padding: 2px 12px 10px; }
+  .float > .quick button { min-height: 36px; padding: 0 12px; font-size: 14px; letter-spacing: -.011em; }
+  .float > .quick button, .float > .composer .box { border-radius: max(0px, calc(var(--_card-r) - 12px)); } /* the sheet's corners (--_card-r), the box and buttons 12 px in */
+}
 /* Phones: the listening label is the mark on the "chat" button (dark and blinking now and then: listening,
    green with twitching ears: working, grey: nobody), the bar goes back to the bottom, and the send button is big
    enough for a thumb. */
