@@ -61,7 +61,7 @@ async function lab(n) {
   return { B, cli, post, comments, stop: () => (server.kill(), fs.rmSync(dir, { recursive: true, force: true })) };
 }
 
-for (const [n, eng] of ['webkit', 'chromium'].entries()) {
+for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').entries()) {
   const L = await lab(n);
   const browser = await pw[eng].launch();
   try {
