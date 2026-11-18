@@ -31,7 +31,7 @@ import {
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
@@ -63,6 +63,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get composer() { return composer; },
     get contentEnd() { return contentEnd; },
     get doneBtn() { return doneBtn; },
+    get movedBtn() { return movedBtn; },
     get drafting() { return drafting; },
     get drawList() { return drawList; },
     get el() { return el; },
@@ -240,6 +241,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
+      <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
       <button class="secondary go-btn" type="button" hidden title="1 comment · 3 pointer: clicks are the page's own">mode</button>
       <button class="toggle" type="button"></button>
@@ -264,6 +266,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const newPrev = $('.new-prev');
   const showDoneBtn = $('.show-done');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
+  const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
   const overBtn = $('.over-btn');
   // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
   // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
@@ -499,6 +502,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }
   // Option-click on a pin: its thread is resolved, or opened again, without opening its card (Leo, 17 Nov). For whoever
   // may resolve it, as in the card: this computer, and whoever started the thread (its key is kept in their browser).
+  const autoShut = new Set();
   const mayResolve = (c) => S.isAdmin || Boolean(store.get(`lab-edit:${c.id}`));
   function toggleResolved(c) {
     const ownKey = store.get(`lab-edit:${c.id}`);
@@ -615,7 +619,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     });
   }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
@@ -837,6 +841,15 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
+      // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
+      // new spot (drag) or close. The agent finishing one closes it.
+      if (moved) {
+        if (!c.resolved && !autoShut.has(c.id) && workState(c)[0] === 'done' && mayResolve(c)) {
+          autoShut.add(c.id);
+          send({ action: 'resolve', id: c.id, edit: store.get(`lab-edit:${c.id}`) || undefined }).then(({ comment }) => (Object.assign(c, comment), render()), () => {});
+        }
+        if (S.openId !== c.id) return;
+      }
       if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
@@ -1117,6 +1130,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
   newPrev.addEventListener('click', () => stepNew(-1));
   doneBtn.addEventListener('click', () => showDoneBtn.click());
+  movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
   overBtn.addEventListener('click', () => setOver(!S.overControls));
   showDoneBtn.addEventListener('click', () => {
     S.showDone = !S.showDone;
@@ -1731,14 +1745,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   const movePins = () => {
-    const list = threads().filter((c) => c.anchor?.kind !== 'page');
-    if (!S.on || S.openId || list.length !== pinsById.size) return render();
-    const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
-    if (places.some(([pin]) => !pin)) return render();
-    for (const [pin, { left, top, moved }] of places) {
+    if (!S.on || S.openId) return render();
+    const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {})]).filter(([, at]) => !at.moved);
+    if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
+    for (const [pin, { left, top }] of places) {
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
-      pin.classList.toggle('moved', Boolean(moved));
     }
   };
   S.frame = 0;

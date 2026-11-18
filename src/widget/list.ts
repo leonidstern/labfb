@@ -54,6 +54,9 @@ export function drawList() {
     W.listBtn.disabled = !freshAll;
     W.listBtn.classList.toggle('quiet', !freshAll);
     const doneCount = all.filter((c) => !W.isPage(c) && (c.resolved || workState(c)[0] === 'done') && !W.unread(c).length).length;
+    const gone = movedPins();
+    W.movedBtn.hidden = !W.S.on || !gone.length;
+    W.movedBtn.textContent = `moved · ${gone.length}`;
     W.doneBtn.hidden = !W.S.on;
     W.doneBtn.disabled = !doneCount && !W.S.showDone;
     W.doneBtn.classList.toggle('quiet', W.doneBtn.disabled);
@@ -210,4 +213,11 @@ export const stepNew = (dir) => {
     : ((after < 0 ? fresh.length : after) - 1 + fresh.length) % fresh.length;
   W.S.chatOpen = false; // N new from the chat: the chat closes and the new comment opens
   goTo(fresh[next], !W.coarse); // the reply box takes the cursor (not on phones: no keyboard popping up)
+};
+
+// Open pins whose spot is gone from the page: off the page, listed in the ⋯ menu as "moved · N".
+const movedPins = () => W.threads().filter((c) => !W.isPage(c) && !c.resolved && W.position(c.anchor || {}).moved);
+export const stepMoved = () => {
+  const all = movedPins();
+  if (all.length) goTo(all[(all.findIndex((c) => c.id === W.S.openId) + 1) % all.length]);
 };

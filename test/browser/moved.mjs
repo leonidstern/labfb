@@ -1,0 +1,106 @@
+// Pins whose spot is gone from the page, in real browsers (WebKit and Chrome's engine): off the page, counted in the ⋯
+// menu ("moved · N"), opened from there to drop on a new spot or close, and closed on their own when the agent is done.
+// Not part of `npm test`; CI runs it in the `browser` job.
+// Run: node test/browser/moved.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawn, execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const pw = (() => {
+  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
+    try {
+      return require(require.resolve('playwright', paths && { paths }));
+    } catch {}
+  }
+  console.log('playwright is not installed: skipped');
+  process.exit(0);
+})();
+
+const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
+const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-moved-'));
+const PORT = 7940 + Math.floor(Math.random() * 30);
+const B = `http://localhost:${PORT}`;
+fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>m</title><h1 id="t">Moved</h1><p id="a" style="margin:40px 0">A paragraph to drop a pin on.</p><p id="b">Another one.</p>');
+fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
+const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+for (let i = 0; i < 80; i++) {
+  try {
+    await fetch(B + '/');
+    break;
+  } catch {
+    await sleep(100);
+  }
+}
+let failed = 0;
+const check = (eng, name, ok, detail = '') => {
+  if (!ok) failed++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
+};
+const post = async (body) => (await (await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', ...body }) })).json()).comment;
+const gone = (text) => post({ text, anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 300, width: 1000, element: '<p id="nope">' } });
+const list = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+
+try {
+  const keep = await post({ text: 'stays', anchor: { selector: '#a', x: 0.1, y: 0.5, docX: 0.1, docY: 60, width: 1000, element: '<p id="a">' } });
+  const lost = await gone('lost one');
+  const done = await gone('lost and done');
+  await post({ parent: done.id, text: 'and more' });
+  execFileSync(process.execPath, [LAB, 'reply', done.id, 'Done: it is fixed'], { cwd: DIR, env: { ...env, PORT: String(PORT) }, stdio: 'pipe' });
+
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+    const browser = await pw[eng].launch();
+    try {
+      const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+      await ctx.addInitScript(() => {
+        localStorage.setItem('lab-name', 'leo');
+        localStorage.setItem('lab-on', '1');
+      });
+      const p = await ctx.newPage();
+      await p.goto(B + '/');
+      await sleep(1800);
+      const shadow = (fn, arg) => p.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
+      const state = () => shadow(() => { return { pins: r.querySelectorAll('button.pin').length, moved: r.querySelector('.moved-btn').textContent, shown: !r.querySelector('.moved-btn').hidden }; });
+      let s = await state();
+      check(eng, 'a pin whose spot is gone is not drawn on the page', s.pins === 1, JSON.stringify(s));
+      check(eng, 'the ⋯ menu counts it', s.shown && s.moved === 'moved · 1', JSON.stringify(s));
+      const c = (await list()).find((x) => x.id === done.id);
+      check(eng, 'the agent finishing it closed it on its own', c.resolved === true, String(c.resolved));
+
+      // Open it from the menu: it shows, on the left edge, and drops on a new spot by dragging.
+      await shadow(() => { r.querySelector('.more').click(); r.querySelector('.moved-btn').click(); return new Promise((res) => setTimeout(res, 500)); });
+      const at = await shadow(() => { const b = r.querySelector('button.pin.moved'); if (!b) return null; const q = b.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; });
+      check(eng, 'opened from the menu it shows on the page', Boolean(at), JSON.stringify(at));
+      const target = await p.locator('#b').boundingBox();
+      await p.mouse.move(at[0], at[1]);
+      await p.mouse.down();
+      await p.mouse.move(at[0] + 30, at[1] + 10, { steps: 4 });
+      await p.mouse.move(target.x + 40, target.y + target.height / 2, { steps: 8 });
+      await p.mouse.up();
+      await sleep(900);
+      const moved = (await list()).find((x) => x.id === lost.id);
+      check(eng, 'dropping it saves a new spot', moved.anchor.selector !== '#nope' && Boolean(moved.movedAt), moved.anchor.selector);
+      await p.keyboard.press('Escape');
+      await sleep(300);
+      s = await state();
+      check(eng, 'after the drop it is back on the page and the count is gone', s.pins === 2 && !s.shown, JSON.stringify(s));
+      await p.goto('about:blank');
+      await ctx.close();
+      // Back as it was for the next engine.
+      await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'move', id: lost.id, anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 300, width: 1000, element: '<p id="nope">' } }) });
+    } finally {
+      await browser.close();
+    }
+  }
+  void keep;
+} finally {
+  server.kill();
+  fs.rmSync(DIR, { recursive: true, force: true });
+}
+console.log(failed ? `${failed} failed` : 'all passed');
+process.exit(failed ? 1 : 0);
