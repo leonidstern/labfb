@@ -65,14 +65,21 @@ export function bindSwitcher(deps: Deps) {
       e.preventDefault();
       rows[active]?.dispatchEvent(new MouseEvent('click', { metaKey: e.metaKey || e.ctrlKey }));
     } else if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyA') {
-      // ⌥A archives the chosen page, or brings an archived one back; read by key position (Option turns the letter into
-      // another character on a Mac). A whole lab is archived with its button.
+      // ⌥A archives the chosen page, or brings an archived one back; ⇧⌥A archives the page's whole lab, asking first
+      // (the lab stops). Read by key position: Option turns the letter into another character on a Mac.
       e.preventDefault();
       if (data?.guest) return;
       const row = rows[active];
       const port = Number(row?.dataset.port);
       if (!row || !port || !row.dataset.page) return;
-      void act(row.dataset.kind === 'archived-page' ? 'unarchive-page' : 'archive-page', port, row.dataset.page);
+      if (!e.shiftKey) return void act(row.dataset.kind === 'archived-page' ? 'unarchive-page' : 'archive-page', port, row.dataset.page);
+      if (row.dataset.kind !== 'page') return;
+      if (armed !== `archive ${port}`) {
+        armed = `archive ${port}`;
+        return draw();
+      }
+      armed = '';
+      void act('archive', port);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -143,14 +150,6 @@ async function act(action: 'archive' | 'start' | 'archive-page' | 'unarchive-pag
   if (action === 'start') setTimeout(load, 4000);
 }
 
-const say = (lab: Lab) => {
-  const open = lab.pages.reduce((n, p) => n + p.open, 0);
-  // Who listens, in words, for the lab's hover (Leo 18 Nov: an agent session's own name confused).
-  if (lab.unreachable) return ['not answering'];
-  if (lab.mode === 'listening') return ['Claude listening'];
-  if (lab.mode === 'working') return ['Claude working'];
-  return [`no agent listening${open ? `, ${open} open pins waiting` : ''}`];
-};
 const hit = (q: string, ...words: string[]) => !q || words.some((w) => (w || '').toLowerCase().includes(q));
 const short = (lab: Lab, p: Page) => p.title || p.path;
 /** "now", "5m", "3h", "2d", or a date for anything older than a week. */
@@ -164,7 +163,6 @@ const ago = (iso?: string | null) => {
   if (s < 7 * 86400) return `${Math.floor(s / 86400)}d`;
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 };
-const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 /** A time as the rows show it: "just now", "4m ago", "Nov 3". */
 const since = (iso?: string | null) => {
   const a = ago(iso);
@@ -174,10 +172,6 @@ const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort()
 // A page's last activity: a comment, reply or close, or someone opening it (Leo 18 Nov: "show last activity, don't show
 // comments count, sort it by last activity"). The rows show it and are ordered by it, newest first.
 const touched = (p: Page) => latest(p.last, p.opened);
-const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)); // a lab nobody used goes last (a restart isn't activity)
-// One order (Leo 18 Nov: no sorting): last active first, labs and their pages alike.
-const orderPages = (ps: Page[]) => [...ps].sort((a, b) => touched(b).localeCompare(touched(a)));
-const orderLabs = (labs: Lab[]) => [...labs].sort((a, b) => labTouched(b).localeCompare(labTouched(a)));
 
 /** A lab as its topic (labit --name "Lab navigation"), else its folder, "~/projects/site" (Leo 18 Nov: "lab-nav :4481"
  *  confused). A guest, without the path, gets the name. */
@@ -186,13 +180,6 @@ const where = (l: { name: string; root?: string }) => {
   const parts = l.root.replace(/^\/(?:Users|home)\/[^/]+(?=\/)/, '~').split('/');
   return parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : parts.join('/'); // deep folders keep their last two
 };
-// The lab's folder goes to its home (/, its pages), as a page's row goes to the page (Leo 18 Nov: "no way to go" there).
-function home(lab: Lab) {
-  const to = lab.here ? '/' : data?.guest ? `/_lab/hop?port=${lab.port}&to=%2F` : `http://localhost:${lab.port}/`;
-  const a = d.el('a', { class: 'sw-home', href: to, title: `${lab.root || lab.name}: all its pages, on localhost:${lab.port}` }, where(lab));
-  a.addEventListener('click', (e) => e.stopPropagation());
-  return a;
-}
 
 // A page row goes to its page (⌘-click: a new tab).
 function goes(row: HTMLElement, lab: Lab, p: Page) {
@@ -213,95 +200,35 @@ function draw() {
   }
   const local = !data.guest;
   // Lean (Leo 18 Nov: "make this lean"); the lab keys only where they work, a guest can't archive labs.
-  foot.textContent = `↵ go · ⌘↵ new tab${local ? ' · ⌥A archive' : ''}`;
+  foot.textContent = `↵ go · ⌘↵ new tab${local ? ' · ⌥A archive · ⇧⌥A archive its lab' : ''}`;
   if (data.self) {
     const note = el('div', { class: 'sw-none' }, 'This is your computer, opened through its wifi address, so it sees what a phone sees. ');
     note.append(el('a', { href: data.self }, 'Open it on localhost'), ' for every lab and the lab keys.');
     out.push(note);
   }
+  // One list of pages, last active first, from every lab (Leo 18 Nov: "why do we need folders once again?"): a lab is
+  // only the folder a page lives in, so it's named in grey on the row, not a heading over it.
   const shelved: { lab: Lab; p: Page }[] = []; // archived pages, listed under "archived" at the bottom
-  for (const lab of orderLabs(data.labs)) {
+  const live: { lab: Lab; p: Page }[] = [];
+  for (const lab of data.labs) {
     const labHit = hit(q, lab.name, String(lab.port));
-    const found = lab.pages.filter((p) => labHit || hit(q, p.title, p.path, p.file));
-    for (const p of found) if (p.archived) shelved.push({ lab, p });
-    const pages = orderPages(found.filter((p) => !p.archived));
-    if (q && !pages.length && !labHit) continue;
-    // The lab: its name and port, who listens, its pins, and what you can do about it (this computer only).
-    const head = el('div', { class: 'sw-lab' });
-    const [status] = say(lab);
-    const left = el('div', { class: 'sw-name' });
-    // Just the lab's name, a heading over its pages (Leo 18 Nov: "focus on pages"); the lab's totals, who listens, when
-    // it was made and how long it has run are on hover.
-    const sum = (f: (p: Page) => number) => lab.pages.reduce((n, p) => n + f(p), 0);
-    const open = sum((p) => p.open);
-    const done = sum((p) => p.done || 0);
-    const replies = sum((p) => p.replies || 0);
-    const agent = sum((p) => p.agent || 0);
-    const people = [...new Map(lab.pages.flatMap((p) => p.people || []).map((n) => [n.toLowerCase(), n] as const)).values()]; // "Leo" and "leo" are one
-    const last = latest(...lab.pages.map((p) => p.last));
-    left.append(home(lab));
-    left.title = [
-      `localhost:${lab.port}`,
-      status,
-      open + done ? `${open} open, ${done} closed` : 'no pins yet',
-      replies ? `${replies} replies${agent ? `, ${agent} from Claude` : ''}` : '',
-      people.length ? `by ${people.join(', ')}` : '',
-      last ? `last comment ${new Date(last).toLocaleString()}` : '',
-      lab.created ? `created ${day(lab.created)}` : '',
-      lab.started ? `running since ${new Date(lab.started).toLocaleString()}` : '',
-      lab.listening ? `agent session: ${lab.listening}` : '',
-    ].filter(Boolean).join('\n');
-    head.append(left);
-    if (local) {
-      const acts = el('div', { class: 'sw-acts' });
-      const btn = (label: string, fn: () => void, title = '') => {
-        const b = el('button', { type: 'button', ...(title ? { title } : {}) }, label);
-        b.addEventListener('click', (e) => {
-          e.stopPropagation();
-          fn();
-        });
-        acts.append(b);
-        return b;
-      };
-      // No "stop listening" of its own: archiving stops it (Leo 18 Nov: "remove stop listening too, put it in archive").
-      if (lab.mode === 'away')
-        btn('get Claude listening', () => {
-          const line = `Listen for pins on http://localhost:${lab.port}${lab.here ? d.page : '/'} with labit wait${lab.here ? ` --page ${d.page}` : ''}`;
-          navigator.clipboard?.writeText(line).catch(() => {});
-          (acts.querySelector('button') as HTMLElement).textContent = 'copied: paste it to Claude';
-        }, 'copies one line to paste to your agent');
-      // Archive asks twice; there's no "park" any more (Leo 18 Nov: "remove parked").
-      const key = `archive ${lab.port}`;
-      const b = btn(armed === key ? (lab.here ? 'archive: this page closes' : 'archive: sure?') : 'archive', () => {
-        if (armed !== key) {
-          armed = key;
-          draw();
-          return keepKeys();
-        }
-        armed = '';
-        void act('archive', lab.port);
-      }, 'stop Claude listening and this lab, and fold it away under "archived"; ↵ starts it again (⌥A)');
-      if (armed === key) b.classList.add('armed');
-      head.append(acts);
-    }
-    out.push(head);
-    for (const p of pages) {
-      const here = lab.here && p.path === d.page;
-      const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page', 'data-page': p.path });
-      // Only its last activity, "5m ago" (Leo 18 Nov: "show last activity, don't show comments count").
-      const meta = el('span', { class: 'sw-m' }, since(touched(p)));
-      // When it was last opened, and the file's time, are on hover.
-      const tip = [p.opened ? `opened ${new Date(p.opened).toLocaleString()}` : 'never opened', p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
-        p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
-      if (tip) meta.title = tip;
-      // The title, and the page's path beside it (Leo 18 Nov: "Getting around your labs" didn't say it was /lab-navigation).
-      const t = el('span', { class: 'sw-t' }, short(lab, p));
-      if (p.title) t.append(el('span', { class: 'sw-path' }, ` ${p.path}`));
-      row.append(t, meta);
-      goes(row, lab, p);
-      out.push(row);
-    }
-    if (!pages.length) out.push(el('div', { class: 'sw-none' }, lab.unreachable ? 'this lab isn’t answering' : lab.pages.length ? 'its pages are archived' : 'no pages yet'));
+    for (const p of lab.pages) if (labHit || hit(q, p.title, p.path, p.file)) (p.archived ? shelved : live).push({ lab, p });
+  }
+  live.sort((a, b) => touched(b.p).localeCompare(touched(a.p)));
+  for (const { lab, p } of live) {
+    const here = lab.here && p.path === d.page;
+    const key = `archive ${lab.port}`;
+    const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}${armed === key ? ' armed' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page', 'data-page': p.path });
+    // The page's last activity, "5m ago", after its lab's name (Leo 18 Nov: "show last activity, don't show comments count").
+    const when = since(touched(p));
+    const meta = el('span', { class: 'sw-m' }, armed === key ? `${where(lab)}: archive the whole lab? ⇧⌥A again` : [where(lab), when].filter(Boolean).join(' · '));
+    meta.title = [`${lab.root || lab.name} · localhost:${lab.port}`, p.opened ? `opened ${new Date(p.opened).toLocaleString()}` : 'never opened', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : ''].filter(Boolean).join('\n');
+    // The title, and the page's path beside it (Leo 18 Nov: "Getting around your labs" didn't say it was /lab-navigation).
+    const t = el('span', { class: 'sw-t' }, short(lab, p));
+    if (p.title) t.append(el('span', { class: 'sw-path' }, ` ${p.path}`));
+    row.append(t, meta);
+    goes(row, lab, p);
+    out.push(row);
   }
   // A phone: the labs it can't open (not on the wifi, or an older labit), named so none seems missing (Leo 18 Nov).
   const away = (data.local || []).filter((l) => hit(q, l.name, String(l.port)));
