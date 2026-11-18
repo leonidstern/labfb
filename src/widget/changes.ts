@@ -4,7 +4,7 @@
 // don't hunt for them. The ids on the page are kept as you last looked at them, each with its label (its heading, or its
 // first words); on load and on every hot update the page is compared with that. A "New · 3" pill by the listening pill
 // opens a short list of the ids that weren't there, each a link that goes there (as a #id link in a message does).
-// One drops off the list when you go to it, or when it has been in view for a second; "seen ✓" clears them all.
+// One drops off the list when you go to it, or when it has been in view for a second.
 // Ids a framework makes up, and the widget's own, don't count. A first visit just remembers the page.
 // The last look is kept per person in the lab (/_lab/api/looked, by the name you gave), so your Mac and your phone
 // agree, and in localStorage (`lab-looked:<page>`, { at, files, ids }) as a cache that works with the lab down.
@@ -48,12 +48,7 @@ export function startChanges() {
   };
   const count = el('button', { type: 'button', class: 'since-count', 'aria-expanded': 'false' });
   const rows = el('div', { class: 'news' });
-  const button = (text: string, onclick: () => void) => {
-    const b = el('button', { type: 'button' }, text);
-    b.onclick = onclick;
-    return b;
-  };
-  const panel = el('div', { class: 'since-panel' }, rows, el('div', { class: 'since-foot' }, button('seen ✓', () => (remember(), show([]))), button('hide', () => ((away = new Set(news.map((n) => n[0]))), draw()))));
+  const panel = el('div', { class: 'since-panel' }, rows);
   panel.hidden = true;
   const badge = el('div', { class: 'since', role: 'status' }, count, panel);
   badge.hidden = true;
@@ -61,7 +56,6 @@ export function startChanges() {
   W.root.querySelector('.left').append(badge);
   let news: Item[] = []; // on the page now, not seen yet
   let shown = ''; // the ids the list was drawn for
-  let away = new Set<string>(); // hidden: the pill stays away until something else is new
   let open = false;
   let gen = 0;
   let full = false; // the browser's store has no room: no look can be kept, so nothing is compared
@@ -170,7 +164,7 @@ export function startChanges() {
     count.setAttribute('aria-expanded', String(open));
   };
   const draw = () => {
-    badge.hidden = !news.some((n) => !away.has(n[0]));
+    badge.hidden = !news.length;
     if (badge.hidden) setOpen(false);
     count.textContent = `New · ${news.length}`;
     const k = news.map((n) => n[0]).join('\n');

@@ -1,6 +1,6 @@
 // "New since you looked" in real browsers (WebKit and Chrome's engine): the "New · N" pill and its list of the ids the
-// agent added to a page, each a link that goes there; what drops an id off the list (going to it, a second in view,
-// "seen ✓"); two names, two devices, a phone's sheet, the lab being down; and what must never count (a changed
+// agent added to a page, each a link that goes there; what drops an id off the list (going to it, a second in view);
+// no buttons under the list; two names, two devices, a phone's sheet, the lab being down; and what must never count (a changed
 // text, a removed id, an id a framework makes up, ids a page's own script makes). Not part of `npm test`; CI runs it
 // in the `browser` job.
 // Run: node test/browser/changes.mjs   (needs the playwright package; NODE_PATH can point at a node_modules that has it).
@@ -91,12 +91,20 @@ try {
       const listOpen = () => shadow(() => { return !r.querySelector('.since-panel').hidden; });
       const click = (sel) => shadow(() => { r.querySelector(a).click(); }, sel);
       const stored = () => p.evaluate(() => JSON.parse(localStorage.getItem('lab-looked:' + document.querySelector('script[data-page]').dataset.page)));
-      return { p, shadow, pill, rows, listOpen, click, stored };
+      // Goes to every item on the list, one after another (the list stays open on a wide screen): all of them seen.
+      const seeAll = async () => {
+        if (!(await listOpen())) await click('.since-count');
+        for (let i = 0; i < 20 && (await shadow(() => { return r.querySelectorAll('.news-item').length; })); i++) {
+          await click('.news-item');
+          await sleep(150);
+        }
+      };
+      return { p, shadow, pill, rows, listOpen, click, stored, seeAll };
     };
     write('index.html', page());
     const own = await context();
     const L = await open(own);
-    const { p, shadow, pill, rows, listOpen, click, stored } = L;
+    const { p, shadow, pill, rows, listOpen, click, stored, seeAll } = L;
 
     // ---- first visit, then the agent adds a section ----
     check(eng, 'first visit: no pill', (await pill()) === '');
@@ -110,6 +118,7 @@ try {
     check(eng, 'it lists the new one by its heading and its #id, as a link', list.length === 1 && list[0].label === 'Version one' && list[0].id === '#v1' && list[0].href === '#v1', JSON.stringify(list));
     check(eng, 'opening the list puts the keyboard on its first item', await shadow(() => { return r.activeElement?.classList.contains('news-item'); }));
     check(eng, 'none of the old marks: nothing in the margin, no card', (await shadow(() => { return r.querySelectorAll('.chg-mark, .chg-card, .chgs').length; })) === 0);
+    check(eng, 'no buttons under the list (no "seen ✓", no "hide"): only its links', (await shadow(() => { return r.querySelectorAll('.since-panel button, .since-foot').length; })) === 0);
 
     // ---- going to it ----
     const y0 = await p.evaluate(() => Math.round(scrollY));
@@ -164,14 +173,12 @@ try {
     const long = (await rows())[0];
     check(eng, 'no heading: the label is its first words, 60 characters at most', long && long.id === '#notes' && long.label.length === 60 && long.label.endsWith('…') && /^The first words of this block/.test(long.label), JSON.stringify(long));
 
-    // ---- hide, seen ----
-    await shadow(() => { [...r.querySelectorAll('.since-foot button')].find((b) => /hide/.test(b.textContent)).click(); });
-    check(eng, 'hide puts the pill away', (await pill()) === '');
+    // ---- going to each one clears the list ----
+    await p.keyboard.press('Escape');
     write('index.html', page({ c: false, end: sec('v1', 'Version one') + sec('v2', 'Version two') + sec('v3', 'Version three') + '<p id="notes">notes</p>' + sec('v4', 'Version four') }));
-    check(eng, 'something else new brings it back, with both', await until(async () => (await pill()) === 'New · 2'), await pill());
-    await click('.since-count');
-    await shadow(() => { [...r.querySelectorAll('.since-foot button')].find((b) => /seen/.test(b.textContent)).click(); });
-    check(eng, 'seen ✓ clears the pill and the list', (await pill()) === '' && !(await listOpen()) && (await rows()).length === 0);
+    check(eng, 'something else new joins the list', await until(async () => (await pill()) === 'New · 2'), await pill());
+    await seeAll();
+    check(eng, 'going to each one clears the pill and the list', (await pill()) === '' && (await rows()).length === 0, await pill());
     await p.reload();
     await sleep(2800);
     check(eng, 'seen stays clear after a reload', (await pill()) === '');
@@ -228,16 +235,14 @@ try {
     await sleep(400);
     check(eng, 'a tap on an item on the phone closes the sheet, goes there, and drops it', (!sheet.coarse || !(await phone.listOpen())) && (await phone.pill()) === 'New · 1' && (await phone.p.evaluate(() => scrollY)) > 1000, `${await phone.pill()} coarse ${sheet.coarse}`);
     check(eng, "seen on the phone reaches the Mac with the same name, within a second or two; Mira's list is her own", (await until(async () => (await mac.pill()) === 'New · 1', 4000)) && (await mira.pill()) === 'New · 2', `${await mac.pill()} · ${await mira.pill()}`);
-    await mac.click('.since-count');
-    await mac.shadow(() => { [...r.querySelectorAll('.since-foot button')].find((b) => /seen/.test(b.textContent)).click(); });
+    await mac.seeAll();
     check(eng, 'seen on one clears the other', await until(async () => (await phone.pill()) === '', 3000), await phone.pill());
     check(eng, "another name keeps its list: Leo's seen leaves Mira's", (await mira.pill()) === 'New · 2' && (await mira.rows()).length === 2);
     check(eng, 'and the agent text now says only Mira has unseen ids', (await agentLine()).length === 1 && (await agentLine())[0].startsWith(`unseen by mira-${eng}`), (await agentLine()).join(' | '));
     await phone.p.reload();
     await sleep(2500);
     check(eng, 'seen on the Mac stays clear on the phone after a reload', (await phone.pill()) === '');
-    await nobody.click('.since-count');
-    await nobody.shadow(() => { [...r.querySelectorAll('.since-foot button')].find((b) => /seen/.test(b.textContent)).click(); });
+    await nobody.seeAll();
     await sleep(500);
     check(eng, 'no name: the look stays in the browser, nothing is sent', (await nobody.pill()) === '' && posted.length === 0 && (await lookOf('', 'sync')) === undefined);
     for (const c of [mac, phone, mira, nobody]) await c.p.context().close();
@@ -249,8 +254,7 @@ try {
     await late.route('**/_lab/api/looked**', (r) => r.abort());
     write('down.html', page({ end: sec('v1', 'Version one') }));
     await until(async () => (await L2.pill()) === 'New · 1', 6000);
-    await L2.click('.since-count');
-    await L2.shadow(() => { [...r.querySelectorAll('.since-foot button')].find((b) => /seen/.test(b.textContent)).click(); });
+    await L2.seeAll();
     await sleep(300);
     const held = await L2.stored();
     check(eng, 'lab down: seen holds, and waits to be sent', (await L2.pill()) === '' && held.dirty === 1 && (await lookOf(ME, 'down')).length === 6, `${held.dirty} ${(await lookOf(ME, 'down')).length}`);
