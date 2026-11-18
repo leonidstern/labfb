@@ -1320,7 +1320,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const draftHasText = () => Boolean(S.draft) && [.../** @type {NodeListOf<HTMLTextAreaElement>} */ (root.querySelectorAll('.float textarea'))].some((t) => t.value.trim());
   function startDrag(e) {
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
     if (e.composedPath().includes(host)) return;
     if (!e.altKey && control(e.target)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -1712,11 +1712,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go offers them a comment (the bar).
   document.addEventListener('mouseup', (e) => {
-    if (S.on && !S.cursorMode && e.shiftKey && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
+    if (S.on && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
-    if (fluidState() === 'bar' && !e.shiftKey) return dropOffer(); // the first click elsewhere only lets the bar go
+    if (fluidState() === 'bar' && !(e.shiftKey && !S.shiftUp)) return dropOffer(); // the first click elsewhere only lets the bar go
     if (S.draft || S.openId) {
       // Typed text doesn't keep it open (Leo, 18 Nov): the click closes it and the words stay as a draft (the box saves them as
       // they are typed, and the spot is kept, so it comes back); Escape discards them.
@@ -1725,7 +1725,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       render();
       return;
     }
-    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
     if (S.lastTouch && Date.now() - S.lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || S.ctlClick) return;
@@ -1892,7 +1892,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
     recheck();
   };
+  // Shift's own key events are the truth for "is Shift held": right after a Shift keyup, Linux WebKit can still send the
+  // next press with shiftKey set, which kept text selectable for a plain click (a CI-only flake). Shift pressed in
+  // another window (no keydown seen here) still counts, as shiftUp stays false.
+  S.shiftUp = false;
   const shiftKey = (e) => {
+    if (e.key === 'Shift') S.shiftUp = e.type === 'keyup';
     clearTimeout(S.shiftOff);
     shiftCur(e.shiftKey);
     if (e.shiftKey) document.documentElement.classList.add('lab-shift');
@@ -1900,19 +1905,19 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   addEventListener('keydown', shiftKey, true);
   addEventListener('keyup', shiftKey, true);
-  addEventListener('pointermove', (e) => shiftCur(e.shiftKey), { capture: true, passive: true }); // Shift pressed or let go while another window had focus
+  addEventListener('pointermove', (e) => shiftCur(e.shiftKey && !S.shiftUp), { capture: true, passive: true }); // Shift pressed or let go while another window had focus
   document.addEventListener('visibilitychange', () => shiftCur(false));
   // A press without Shift is never a selection: drop the Shift state at once, not 400 ms later (a click right after typing
   // a capital letter, or after a screenshot shortcut, used to select the page's text).
   addEventListener('pointerdown', (e) => {
     // A Shift press on the page starts new words: the caret a box of the widget leaves (at the widget, the page's end)
     // stretched the selection from there instead, and the next quote after a comment came to nothing.
-    if (e.shiftKey) return S.on && !typing(e) && getSelection()?.removeAllRanges(), shiftKey(e);
+    if (e.shiftKey && !S.shiftUp) return S.on && !typing(e) && getSelection()?.removeAllRanges(), shiftKey(e);
     clearTimeout(S.shiftOff);
     document.documentElement.classList.remove('lab-shift');
     shiftCur(false);
   }, true);
-  addEventListener('blur', () => (document.documentElement.classList.remove('lab-shift'), shiftCur(false)));
+  addEventListener('blur', () => ((S.shiftUp = false), document.documentElement.classList.remove('lab-shift'), shiftCur(false)));
   // The same, for engines that start a selection before restyling after the press (Linux WebKit kept one now and then):
   // in comment mode, a selection on the page starts only with Shift; fields and the widget select as always.
   addEventListener('selectstart', (e) => {
