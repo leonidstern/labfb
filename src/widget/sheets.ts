@@ -16,7 +16,8 @@ const grabArea = (t) => Boolean(t.closest?.('.handle, .tabs'));
 const scrollerIn = (e, node) =>
   e.composedPath().find((n) => n instanceof HTMLElement && node.contains(n) && (n.localName === 'textarea' || /auto|scroll/.test(getComputedStyle(n).overflowY)));
 
-const SPRING = 'cubic-bezier(.32,.72,0,1)';
+// How long a sheet's transition takes to be over, with a frame or two of slack, before its inline style is cleared.
+const settled = () => W.ms('slow') + W.ms('quick') / 3;
 
 const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin'];
 
@@ -53,8 +54,8 @@ export function holdKeyboard() {
 // the squeezed card read badly.
 // Returns how long it takes; let go of it with letGo().
 export function leave(node: HTMLElement, ms = 0, sent = false) {
-  const dur = sent ? 240 : ms || 200;
-  const ease = ms ? 'linear' : 'cubic-bezier(.4, 0, .9, .4)';
+  const dur = ms || W.ms('base');
+  const ease = ms ? 'linear' : 'var(--_ease-in)';
   let moved = 0; // a finger may have it part way down already
   try { moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0; } catch {}
   const r = node.getBoundingClientRect();
@@ -76,20 +77,20 @@ export function leave(node: HTMLElement, ms = 0, sent = false) {
   if (p) fromTap(node, { x: p.left + p.width / 2, y: p.top + p.height / 2 });
   void node.offsetHeight;
   const down = () => {
-    node.style.setProperty('transition', `transform ${dur}ms ${sent ? 'cubic-bezier(.4, 0, 1, 1)' : ease}`, 'important');
+    node.style.setProperty('transition', `transform ${dur}ms var(--_ease-in)`, 'important');
     node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, 'important');
   };
   // After a send, from the next frame: drawing the sent pin took ~100 ms, which ate the start of the move (iOS 27 simulator).
   if (sent) requestAnimationFrame(() => requestAnimationFrame(down));
   else if (ms) down();
   else {
-    node.style.setProperty('transition', `transform ${dur}ms ${ease}, opacity ${dur}ms ease-in`, 'important');
+    node.style.setProperty('transition', `transform ${dur}ms ${ease}, opacity ${dur}ms var(--_ease-in)`, 'important');
     node.style.setProperty('transform', `translateY(${moved}px) scale(.3)`, 'important');
     node.style.setProperty('opacity', '0', 'important');
   }
   W.scrim.style.transition = `opacity ${dur}ms ${ease}`;
   W.scrim.style.opacity = '0';
-  return sent ? dur + 40 : dur; // after a send it starts a frame or two late (see down)
+  return sent ? dur + W.ms('quick') / 3 : dur; // after a send it starts a frame or two late (see down)
 }
 export function letGo(node: HTMLElement) {
   for (const k of HELD) node.style.removeProperty(k);
@@ -101,7 +102,7 @@ export function letGo(node: HTMLElement) {
 export function slideAway(node, close, ms = 0) {
   if (!W.coarse || !node || W.still.matches) return close();
   const dur = leave(node, ms);
-  W.bar.style.transition = `transform ${dur}ms cubic-bezier(.2, .6, .4, 1), opacity ${dur}ms`;
+  W.bar.style.transition = `transform ${dur}ms var(--_ease), opacity ${dur}ms var(--_ease-out)`;
   W.host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
   setTimeout(() => {
     close();
@@ -272,12 +273,12 @@ export function swipeDown(node, close, grows = false) {
     if (e.timeStamp - last.at > 80) v = 0; // held still before letting go
     const h = node.offsetHeight || innerHeight;
     const settle = () => {
-      node.style.transition = `transform 380ms ${SPRING}, height 380ms ${SPRING}`;
-      W.scrim.style.transition = 'opacity 300ms';
+      node.style.transition = 'transform var(--_t-slow) var(--_ease-settle), height var(--_t-slow) var(--_ease-settle)';
+      W.scrim.style.transition = 'opacity var(--_t-slow) var(--_ease-out)';
       node.style.transform = W.scrim.style.opacity = '';
       W.bar.style.transition = '';
       W.host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
-      setTimeout(() => (node.style.transition = W.scrim.style.transition = ''), 400);
+      setTimeout(() => (node.style.transition = W.scrim.style.transition = ''), settled());
     };
     if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), node.classList.contains('card') && (W.S.cardFull = true), settle();
     if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove('full'), node.classList.contains('card') && (W.S.cardFull = false), settle();
@@ -287,13 +288,13 @@ export function swipeDown(node, close, grows = false) {
     const rest = dy + Math.max(0, v) * 499;
     W.S.dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} → ${v > -0.1 && rest > h / 2 ? 'close' : 'stay'}`);
     // Off the screen's bottom at the finger's speed (it leaves at a steady pace, see leave).
-    if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(320, Math.max(140, (innerHeight - node.getBoundingClientRect().top) / Math.max(v, 1.2))));
-    node.style.transition = `transform 380ms ${SPRING}`;
-    W.scrim.style.transition = 'opacity 300ms';
+    if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(W.ms('slow'), Math.max(W.ms('quick'), (innerHeight - node.getBoundingClientRect().top) / Math.max(v, 1.2))));
+    node.style.transition = 'transform var(--_t-slow) var(--_ease-settle)';
+    W.scrim.style.transition = 'opacity var(--_t-slow) var(--_ease-out)';
     node.style.transform = W.scrim.style.opacity = '';
     W.bar.style.transition = '';
     W.host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
-    setTimeout(() => (node.style.transition = W.scrim.style.transition = ''), 400);
+    setTimeout(() => (node.style.transition = W.scrim.style.transition = ''), settled());
   };
   node.addEventListener('touchend', end);
   W.scrim.addEventListener('touchend', end);
@@ -369,10 +370,10 @@ export function startSheets() {
         // its new place before it jumped back to slide (the flicker a ?kbdebug run on Leo's iPhone showed, 15 Nov).
         open.style.transform = `translateY(${fit.top - at}px)`;
         void open.offsetHeight;
-        open.style.transition = `transform 340ms ${SPRING}`;
+        open.style.transition = 'transform var(--_t-slow) var(--_ease-settle)';
         open.style.transform = '';
         clearTimeout(fit.done);
-        fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ''), 360);
+        fit.done = setTimeout(() => !open.style.transform && (open.style.transition = ''), settled());
       }
       Object.assign(fit, { vh, kbUp: kb > 60 }, open?.offsetHeight ? { sheet: open, top: at } : { sheet: null }); // a hidden one has no place yet
       if (kb > 60) W.S.kbSeen = kb; // the keyboard's height, for revealDraft before the next one comes up

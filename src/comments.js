@@ -15,7 +15,9 @@ import {
   foundAt,
   goToBlock,
   inPage,
+  ease,
   markQuote,
+  ms,
   nameLine,
   pageEnd,
   position,
@@ -82,7 +84,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get listed() { return listed; },
     get load() { return load; },
     get loadChanges() { return loadChanges; },
+    get ease() { return ease; },
     get markSeen() { return markSeen; },
+    get ms() { return ms; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
     get actions() { return ACTIONS.words; },
@@ -288,7 +292,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   bindAnchoring({ host, layer, el, store });
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
+  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
@@ -798,7 +802,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         layer.append(prev);
         const gone = () => prev.remove();
         if (still.matches || !prev.animate) gone();
-        else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'ease-out', fill: 'forwards' }).finished.then(gone, gone);
+        else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms('quick'), easing: ease('out'), fill: 'forwards' }).finished.then(gone, gone);
       } else if (coarse && !now && S.shown && prev && !still.matches && !prev.style.transform) { // phones slide the sheet away; computers close at once, like the chat // not when it already slid away (phones)
         prev.classList.remove('in');
         prev.classList.add('out');
@@ -806,13 +810,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         layer.append(prev);
         // It shrinks back with the keyboard going (sheets.ts); after a send it slides down and the new pin pops in.
         const newPin = S.posted && pinsById.get(S.posted);
-        if (newPin) newPin.style.animationDelay = '130ms'; // as the card goes (lab option 5)
+        if (newPin) newPin.style.animationDelay = 'var(--_t-quick)'; // as the card goes (lab option 5)
         const dur = leave(prev, 0, Boolean(newPin));
         setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
       }
       // Phones: a new comment's sheet has gone (dropped, swiped away; a sent one waits for its card above): the page goes
       // back where it was (sheets.ts).
-      if (coarse && prev?.classList.contains('float') && !prev.classList.contains('out') && !root.querySelector('.float:not(.out)')) setTimeout(backFromReveal, 320);
+      if (coarse && prev?.classList.contains('float') && !prev.classList.contains('out') && !root.querySelector('.float:not(.out)')) setTimeout(backFromReveal, ms('slow'));
       // Phones: a sheet that opens grows out of what was tapped (sheets.ts).
       if (coarse) {
         const sheet = /** @type {HTMLElement | null} */ (root.querySelector('.card:not(.out), .float:not(.out)')) || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
@@ -1249,7 +1253,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
-      if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 260 });
+      if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
       return stepNew(e.shiftKey ? -1 : 1);
     }
     // 1 comment, 2 go, 3 pointer: like picking a tool (the keys are settings).
@@ -1463,7 +1467,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const closeOrNudge = () => {
     const node = openSheet();
     if (![...root.querySelectorAll('textarea')].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
-    node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: 260, easing: 'ease-out' });
+    node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease('out') });
   };
   // A tap on the dimmed page closes the sheet; a pull on it moves the sheet with the finger (see swipeDown), and the
   // click that ends such a pull isn't a tap.
