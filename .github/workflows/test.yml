@@ -57,7 +57,14 @@ jobs:
       - run: node test/browser/shortcuts.mjs
       # Pins finding their spot again: reordered twins, their own box first, quoted words, made-up ids and classes.
       - run: node test/browser/anchoring.mjs
+<<<<<<< HEAD
       # Never stuck: the progress line in the pill and on the pin, the queue, and a ring colour for every state.
       - run: node test/browser/progress.mjs
+=======
+      # Selected words: the chip, the dialog it grows into, slash actions, Escape, reload, saved files, right to left, reduced motion.
+      - run: node test/browser/fluid.mjs
+      # What a drag does: words (the chip, no Shift), empty space (an area), a click (a point), a double-click, fields and links.
+      - run: node test/browser/selection.mjs
+>>>>>>> origin/main
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
       - run: node bench/run.mjs
