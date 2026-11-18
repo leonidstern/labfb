@@ -80,6 +80,23 @@ test('wait hears a new comment, reply answers it, the text file has both', async
   assert.ok(all.some((c) => c.parent === comment.id && /title is red/.test(c.text)), 'reply stored under the comment');
 });
 
+test('a Cut and a Rewrite on quoted words reach wait whole, quotes and arrow included', async () => {
+  await up();
+  const quote = { exact: 'the “quoted” words', prefix: 'read ', suffix: ' here' };
+  const anchor = { kind: 'text', selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', quote };
+  const waiting = run(['wait', '--timeout', '10']);
+  await new Promise((r) => setTimeout(r, 400));
+  const cut = 'Cut: “the “quoted” words”';
+  const rewrite = 'Rewrite “the “quoted” words” → “some other words”';
+  await post({ page: '/index', name: 'Leo', text: cut, anchor });
+  await post({ page: '/index', name: 'Leo', text: rewrite, anchor });
+  const heard = (await waiting).out;
+  assert.ok(heard.includes(cut), 'wait hears the cut whole');
+  const text = await (await fetch(B + '/_lab/agent/index')).text();
+  assert.ok(text.includes(cut), 'the cut is in the agent text whole');
+  assert.ok(text.includes(rewrite), 'the rewrite, with its arrow, is in the agent text whole');
+});
+
 test('pin leaves the agent\'s own pin on a spot, with its session; a bad one is refused', async () => {
   await up();
   const made = await run(['pin', 'h1', '1. a bigger title?', '--page', '/index.html']);
