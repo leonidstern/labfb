@@ -277,7 +277,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
   - The quick model's changes ride along with the next pins the session gets, for a glance (they never wake it by themselves).
   - Every quick decision is a line in `.lab/quick.jsonl` (done, pass, put back; why; files; lines; seconds).
   - 👍 keep / 👎 put back on a quick fix (this computer): 👎 restores the files if nobody changed them since, and hands the pin to the agent marked as rejected.
-- Sharper pins, from a frontend fix benchmark against Agentation:
+- Sharper pins, from a frontend fix benchmark:
   - Every element on a React dev build now gets its own JSX file and line ("written at") and the component that rendered it, not only a component's outermost element (it was 3 of 24 pins in the benchmark).
   - The "looks" line names only CSS variables that are colours: a radius or spacing variable no longer names a text colour (it did on 12 of 24 pins).
   - Behind a dev server, the app's index.html shell isn't given as a page's file; the route's source is, spelled as on disk (src/pages/Orders.jsx).

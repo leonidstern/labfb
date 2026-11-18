@@ -1287,7 +1287,7 @@ async function unseen(scope = pages(), who = '') {
 // them with POST /_lab/ack. Without that within ACK_MS, or when the same session waits again first (it never saw
 // them: an MCP wait cancelled after the lab answered, a killed command), the marks are taken back and the pins go out
 // again. Before, a hand-off that never arrived left its pins "being worked on" for 3 minutes, then came back as
-// one line each, not the whole thread (Plannotator's "Delivered to" is the agent's own read, the same idea).
+// one line each, not the whole thread.
 const ACK_MS = Number(process.env.LAB_ACK_MS ?? 20000);
 const unacked = new Map(); // delivery id -> { who, back, timer }
 function takeBack(id) {
