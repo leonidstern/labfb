@@ -272,6 +272,8 @@ function draw() {
       const g = el('button', { type: 'button', class: 'sw-group sw-fold', 'aria-expanded': String(open) }, `${open ? '▾' : '▸'} archived · ${count}`);
       g.addEventListener('click', () => {
         showArchived = !showArchived;
+        // Opening it chooses its first row, so the list scrolls down to what opened, not back to the top (Leo 18 Nov).
+        if (showArchived) active = list.querySelectorAll('.sw-row').length;
         draw();
         keepKeys();
       });
@@ -280,7 +282,9 @@ function draw() {
     }
   }
   if (!out.length) out.push(el('div', { class: 'sw-none' }, 'nothing matches'));
+  const kept = list.scrollTop; // a redraw (the fold, a reload of the list) keeps where you were
   list.replaceChildren(...out);
+  list.scrollTop = kept;
   const rows = [...list.querySelectorAll<HTMLElement>('.sw-row')];
   if (toCur && rows.length) {
     active = Math.max(0, rows.findIndex((r) => r.classList.contains('cur')));
