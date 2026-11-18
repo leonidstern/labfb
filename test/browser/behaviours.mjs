@@ -255,7 +255,8 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   const work = await post({ page, name: 'leo', text: 'keep running', anchor: { kind: 'element', selector: '#p9', x: 0.5, y: 0.5, docX: 0.5, docY: 300, width: 1000, element: '<p id="p9">', text: 'paragraph 9 with some words', section: '' } });
   execFileSync(process.execPath, [LAB, 'reply', work.comment.id, '--on-it', 'Looking'], { cwd: DIR, env, stdio: 'ignore' });
   await sleep(1500);
-  await p.evaluate(() => scrollTo(0, 0));
+  // Its paragraph in the middle of the screen, so the pin is in view whatever the fonts' height (taller on Linux).
+  await p.evaluate(() => document.getElementById('p9').scrollIntoView({ block: 'center' }));
   await sleep(200);
   const mine = (tag) => shadow(() => {
     const pin = [...r.querySelectorAll('.pin.working')].find((b) => b.getAttribute('aria-label').includes('keep running') || b.title.includes('leo'));
@@ -268,7 +269,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     return { same: pin.__tag === 'T' && pin.__ring === ring, time: turn ? turn.currentTime : null, card: Boolean(r.querySelector('.card:not(.out)')), draft: Boolean(r.querySelector('.pin.draft')), x: box.left + 14, y: box.top + 14 };
   }, tag);
   const first = await mine('T');
-  check(eng, 'a working pin has its ring turning', Boolean(first) && first.time > 0 && first.y > 0 && first.y < 650, JSON.stringify(first));
+  check(eng, 'a working pin has its ring turning', Boolean(first) && first.time > 0 && first.y > 0 && first.y < (await p.evaluate(() => innerHeight)), JSON.stringify(first));
   if (first) {
     let last = first.time;
     const steps = [
