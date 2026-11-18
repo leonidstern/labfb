@@ -4,9 +4,10 @@
 //
 // Each flag: the key as it is written in labit.json, one line saying what it is, and when it was first offered.
 
-// Nothing is being tried right now: agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was
-// dropped before it had code.
-export const FLAGS: Record<string, { name: string; since: string }> = {};
+// agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
+export const FLAGS: Record<string, { name: string; since: string }> = {
+  sinceLooked: { name: 'a "New" pill: what was added since you looked', since: '0.6.3' },
+};
 
 /** Every flag, off. */
 export const flagDefaults = (): Record<string, boolean> =>

@@ -97,8 +97,11 @@ start the lab again: flags are read when the lab starts. The page has no switche
 place a flag is set and your agent sees the same thing you do. `labit settings` lists which are on and where that
 came from.
 
-Nothing is being tried at the moment. `agentPins` was kept, so a pin the agent left always wears labit's mark;
-`liveUrl` was dropped for now.
+| Flag | What it is |
+| --- | --- |
+| `sinceLooked` | a "New · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
+
+`agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.
