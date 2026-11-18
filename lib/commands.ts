@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FOREGROUND_CAP, listenPages, replyIntent, waitSeconds, type Opts } from './args.ts';
+import { FOREGROUND_CAP, letter, listenPages, replyChoices, replyIntent, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
 import { keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
@@ -332,16 +332,25 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (out.status >= 300) die(`Could not note progress: ${out.text}`);
     } else if (cmd === 'reply') {
       if (!words.length) die(`Reply text is missing: ${CMD} reply <id> "what you did"`);
-      const intent = replyIntent(opts);
+      let intent = replyIntent(opts);
       if (intent instanceof Error) die(intent.message);
+      // A question with choices (--choice "…" --choice "…" [--recommend B]): the person picks one on the page, and the
+      // pick comes back in a wait as their reply ("Picked B: …"). It is a question, whatever else it says.
+      const choices = replyChoices(opts);
+      if (choices instanceof Error) return die(choices.message);
+      const asked = choices;
+      if (asked && intent && intent !== 'question') die(`A reply with --choice is a question; leave out --${intent === 'working' ? 'on-it' : intent}.`);
+      if (asked && opts.resolve) die('A reply with --choice waits for the person to pick; leave out --resolve.');
+      if (asked) intent = 'question';
       const who = process.env.LAB_AGENT_NAME || session.agent;
       const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
       const said = Object.values(((data as Record<string, object>)[hit.page] || {}) as Record<string, { id: string; parent?: string; session?: unknown; createdAt: string }>)
         .filter((c) => (c.id === hit.id || c.parent === hit.id) && !c.session)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .pop()?.id;
-      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, said, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}) });
+      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, said, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}), ...asked });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
+      if (asked) console.log(`Asked with ${asked.choices.map((c, i) => `${letter(i)}) ${c}`).join('  ')}${asked.recommend !== undefined ? `  (your pick: ${letter(asked.recommend)})` : ''}. The pick comes back in your next wait.`);
     }
     if (cmd === 'resolve' || opts.resolve) {
       const out = await call('/_lab/api/comments', { page: hit.page, action: 'resolve', id: hit.id });

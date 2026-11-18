@@ -75,7 +75,7 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | `lab-rise` (`.fresh`) | opacity, transform | base | standard | a message arriving |
 | `lab-fly` (`.send.sent .arr`) | transform, opacity | slow | standard | the arrow leaving and coming back |
 | `lab-twitch` | transform | 2 × loop | ease-in-out, infinite | the listening mark's ears |
-| `.gp` | background, color | base | out | the go pin's glyph in the bar |
+| `.gp` | background, color | base | out | the pin's glyph in the bar |
 | `.bar` | transform; opacity | slow; base | settle; out | the bar coming back as a sheet goes |
 | `[data-sheet] .bar` | transform; opacity | base; base (delay quick / 3) | in; out | the bar stepping down |
 | `.chatwin, .card` | height | slow | settle | a comment pulling up to full height |

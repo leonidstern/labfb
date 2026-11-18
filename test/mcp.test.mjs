@@ -112,6 +112,30 @@ test('wait returns the next pin', async () => {
   assert.doesNotMatch(w.result.content[0].text, /Answer each: /);
 });
 
+test('reply with choices asks; one choice is a tool error', async () => {
+  const id = await pin('which word?');
+  const list = await ask('tools/list');
+  const props = list.result.tools.find((t) => t.name === 'reply').inputSchema.properties;
+  assert.equal(props.choices.minItems, 2);
+  assert.equal(props.choices.maxItems, 6);
+  const one = await ask('tools/call', { name: 'reply', arguments: { id, text: 'Which?', choices: ['only'] } });
+  assert.equal(one.result.isError, true);
+  assert.match(one.result.content[0].text, /at least two choices/);
+  const nine = await ask('tools/call', { name: 'reply', arguments: { id, text: 'Which?', choices: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] } });
+  assert.equal(nine.result.isError, true);
+  const odd = await ask('tools/call', { name: 'reply', arguments: { id, text: 'Which?', choices: ['a', 'b'], recommend: 'D' } });
+  assert.equal(odd.result.isError, true);
+  assert.match(odd.result.content[0].text, /--recommend/);
+  assert.ok(!(await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.some((c) => c.parent === id), 'nothing saved by the refused ones');
+  // A choice that starts with a dash is a choice, and the pick is the agent's own.
+  const r = await ask('tools/call', { name: 'reply', arguments: { id, text: 'Which?', choices: ['-20% off', 'twenty off'], recommend: 'b' } });
+  assert.ok(!r.result.isError, r.result.content[0].text);
+  assert.match(r.result.content[0].text, /Asked with A\) -20% off {2}B\) twenty off {2}\(your pick: B\)/);
+  const saved = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.parent === id && c.choices);
+  assert.deepEqual([saved.choices, saved.recommend, saved.intent], [['-20% off', 'twenty off'], 1, 'question']);
+  await ask('tools/call', { name: 'wait', arguments: { seconds: 1 } }); // the pin is read: the next tests wait for new ones
+});
+
 const modern = (params = {}) => ({ ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientInfo': { name: 'test', version: '1' }, 'io.modelcontextprotocol/clientCapabilities': {} } });
 
 test('a modern client: server/discover, then tools with resultType', async () => {

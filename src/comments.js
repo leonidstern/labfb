@@ -33,7 +33,7 @@ import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
-import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
+import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
 import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
@@ -407,7 +407,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
   }, 10000);
 
-  // Pointer (3): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
+  // Pointer (key 1 switches to it and back): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
   // Option-click still pins. 1 comment leaves it.
   S.cursorMode = store.get('lab-cursor') === '1';
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
@@ -495,7 +495,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
     if (S.openId === id) S.openId = null;
     render();
-    say(`took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
+    say(`took back a pin · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
   }
   // Option-click on a pin: its thread is resolved, or opened again, without opening its card (Leo, 17 Nov). For whoever
   // may resolve it, as in the card: this computer, and whoever started the thread (its key is kept in their browser).
@@ -746,6 +746,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // …or, read at its newest, stays at its newest, so an answer that just came in is in view (as the chat follows new
     // messages; Leo, 17 Nov: "message scrolled up" on a phone).
     const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
+    // Stepping a question's rows with the keys when it is drawn again (a reply or a pick came in): the keys keep working.
+    const prevRows = Boolean(prev && root.activeElement?.closest?.('.choices') && prev.contains(root.activeElement));
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
     // A pin that is still there stays the same element, updated in place, so what runs on it (the agent's ring, a pop, a
@@ -843,7 +845,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
       const state = sg.s;
       const tip = coarse || (state !== 'now' && state !== 'stale') ? '' : lineOf(sg); // hovering a working ring says what it is doing
-      const isGo = /^go$/i.test(c.text.trim());
       const born = !old.has(c.id);
       const pin = old.get(c.id) || el('button', { type: 'button' });
       const info = pinData.get(pin) || {};
@@ -851,18 +852,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // Its state as classes and words (the ring, the tick and the new dot are only seen). Set one by one: the
       // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
       for (const [cls, on] of Object.entries({
-        go: isGo, resolved: c.resolved, done: state === 'done', new: news.length, moved,
+        resolved: c.resolved, done: state === 'done', new: news.length, moved,
         grab: movable, open: S.openId === c.id, dragging: false,
       })) pin.classList.toggle(cls, Boolean(on));
       pin.classList.add('pin');
       if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
       if (tip) pin.removeAttribute('title');
       else pin.title = `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`;
-      pin.setAttribute('aria-label', `${isGo ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
-      // Done wins over every face: a go that has been answered or resolved is a pin like any other,
-      // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
-      const mark = state !== 'done' && !c.resolved && !isGo && byAgent(c);
-      const key = state === 'done' || c.resolved ? '✓' : isGo ? 'go' : mark ? '\0mark' : initial(c.name);
+      pin.setAttribute('aria-label', `comment${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
+      // Done wins over every face: a pin that has been answered or resolved wears the tick.
+      const mark = state !== 'done' && !c.resolved && byAgent(c);
+      const key = state === 'done' || c.resolved ? '✓' : mark ? '\0mark' : initial(c.name);
       if (info.face !== key) {
         const node = mark ? agentMark() : document.createTextNode(key);
         if (info.node) info.node.replaceWith(node);
@@ -966,6 +966,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         S.stepping = S.keepKeys = false;
         next.push(card);
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
+        if (!appear && prevRows) {
+          const rows = card.querySelector('.choices[role="listbox"]');
+          /** @type {HTMLElement | null} */ (rows?.querySelector('.choice.on') || rows?.querySelector('.choice') || rows)?.focus({ preventScroll: true });
+        }
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
         if (!appear && prevScroll != null) {
@@ -977,7 +981,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           // message in view, as the chat opens (Leo, 15 Nov: no scroll you can see; the sheet's height is fixed now, so
           // nothing grows after it's set).
           const body = card.querySelector('.body');
-          const first = coarse ? null : body.querySelector('.fresh, .newline');
+          // An open question: at the question and its rows, not below them (thread.ts).
+          const asks = openAsk(c) ? [...body.querySelectorAll('.msg.asks')].pop() : null;
+          const first = asks || (coarse ? null : body.querySelector('.fresh, .newline'));
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
         }
         if (coarse && S.cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
@@ -1644,8 +1650,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }, got.quote.exact.length);
   };
   // The actions row of a comment on selected words (the box is the comment, already picked, so no button for it): rewrite (the
-  // words go in the box to be edited, sent as old → new), cut and go (sent at once, nothing to type: go is a go pin on the
-  // words, the text "go" as in go mode) and your own (labit.json `actions`): sent at once as their text, or with `ask` put in
+  // words go in the box to be edited, sent as old → new), cut and go (sent at once, nothing to type: go is an ordinary comment on the
+  // words that says "go") and your own (labit.json `actions`): sent at once as their text, or with `ask` put in
   // the box to finish. Picking the one that is on again goes back to the plain comment. Sent ones go through the box's own
   // send, so a missing name is asked for there, a lab that can't be reached keeps them, and draft mode holds them. Typing /
   // first names an action by the start of its label (/c cut, /r rewrite, /g go): it lights up, Enter runs it; with no

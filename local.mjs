@@ -78,6 +78,9 @@ For the agent, from the project (any folder under it):
       thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
   labit reply <id> --progress "what you're on now"
       During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
+  labit reply <id> "question" --choice "A words" --choice "B words" [--choice …] [--recommend B]
+      Ask with 2 to 6 choices: the person picks one on the page and the pick comes back in your next wait as
+      "Picked B: …". --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
@@ -1312,7 +1315,9 @@ function threadText(page, root, replies, fresh, spot, when) {
   if (from) out.push(`- … ${from} earlier message${from === 1 ? '' : 's'} (whole thread: http://localhost:${PORT}/_lab/agent${page})`);
   for (const r of replies.slice(from)) {
     const state = r.session ? STATE[r.intent] : '';
-    out.push(`- ${who(r)} · ${when(r)}${state ? ` · ${state}` : ''} · id ${r.id}: ${body(r.text)}${fresh.has(r.id) ? '  ← new' : ''}`);
+    // A pick on a question with choices says which question it answers (the words already say which choice).
+    const pick = r.picked ? ` (their pick on your question id ${r.picked.of})` : '';
+    out.push(`- ${who(r)} · ${when(r)}${state ? ` · ${state}` : ''} · id ${r.id}: ${body(r.text)}${pick}${fresh.has(r.id) ? '  ← new' : ''}`);
   }
   return out.join('\n');
 }
@@ -1866,7 +1871,17 @@ const handler = async (req, res) => {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
       const fresh = freshIn(pages().filter((p) => !claimed().has(p)));
       const ids = fresh.map(({ c }) => c.id).sort();
+      // The threads handed to the agent and being worked on (no answer since the person's last words, or only "on it"):
+      // the plugin's hook keeps a progress line on them while its session (helpers too) runs tools.
+      const working = pages().flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).flatMap((c) => {
+        const msgs = commentsOf(page).filter((r) => r.parent === c.id);
+        const lastAt = (mine) => [c, ...msgs].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
+        const reply = msgs.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).pop();
+        const answered = reply && reply.createdAt > lastAt(false);
+        return !answered || reply.intent === 'working' ? [{ page, id: c.id }] : [];
+      }));
       return answer(res, {
+        working,
         fresh: ids.length,
         pages: [...new Set(fresh.map(({ page }) => page))],
         key: createHash('sha1').update(ids.join(',')).digest('hex').slice(0, 12),

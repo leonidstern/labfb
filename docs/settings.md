@@ -115,8 +115,8 @@ the box, which is already a comment; its row has the actions only, since the box
 { "actions": { "words": ["rewrite", "cut", "go"], "spot": ["go"] } }
 ```
 
-- **Built in:** `rewrite` puts the words in the box to edit (sent as old → new), `cut` sends `Cut: “…”` at once, `go` sends a go
-  pin on the words at once, nothing to type.
+- **Built in:** `rewrite` puts the words in the box to edit (sent as old → new), `cut` sends `Cut: “…”` at once, `go` sends a comment that says "go"
+  on the words at once, nothing to type.
 - **Your own:** `{ "label": "tighter", "send": "Tighter: less space" }` sends that text on the words at once, with whatever you
   typed after it. Add `"ask": true` and it puts the text in the box first so you can finish it.
 - **Order** is the order shown. `comment` is always there first, so it isn't listed (listed anyway, it is ignored). Up to 5
