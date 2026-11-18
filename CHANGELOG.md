@@ -8,6 +8,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Agents read a pin's or chat message's whole thread before answering, and don't guess from the page, URL or #section what it asks (`wait`, the plugin's wake turn and the skill say so).
 - Removed the parked list window and draft mode (both were off): their code, styles and the held-draft pins. The bar's New pill, J/K and show/hide done work as before.
 - What `wait` hands an agent (and the skill) now says: work that takes more than a minute (a build, a restart, a PR) gets `reply <id> --on-it` on each pin first, then the work. A batch worked through without a word looked lost: picked up, then nothing for 13 minutes.
+- Two sessions waiting on the same pages are told: the one whose wait the other ended reads that it should leave those pages to that session, and the newcomer's first pins come with a heads-up naming the other. Before, they took turns ending each other's wait in silence, and a pin could go to the one about to stop.
 - A click outside an open comment closes it even with text typed in it; the words stay as a draft (Escape still discards them). Before, the box held on to the click and couldn't be closed that way.
 - The npm package no longer carries CHANGELOG.md (−28 KB packed); the changelog lives on GitHub and in each release's notes.
 
