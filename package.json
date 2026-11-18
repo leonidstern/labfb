@@ -43,7 +43,7 @@
   "homepage": "https://github.com/leonidstern/labit#readme",
   "bugs": "https://github.com/leonidstern/labit/issues",
   "author": "leonidstern (https://github.com/LeonidStern)",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "publishConfig": {
     "access": "public"
   }
