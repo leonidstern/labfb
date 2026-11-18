@@ -103,7 +103,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
 const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'skill'];
-const { loadSettings, changedShortcuts, savePersonal, saveFlag } = await import('./lib/settings.ts');
+const { loadSettings, changedShortcuts, changedActions, savePersonal, saveFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
@@ -138,6 +138,7 @@ if (pos[0] === 'settings') {
   const show = (k, v) =>
     k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
       : k === 'flags' ? (flagsOn(v).join(', ') || 'none on')
+      : k === 'actions' ? (Object.keys(changedActions(v)).length ? Object.entries(changedActions(v)).map(([a, l]) => `${a}: ${/** @type {any[]} */ (l).map((x) => x.label || x).join(' ') || '(none)'}`).join('; ') : 'the defaults')
       : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
   const src = (f) => f.split(' + ').map((x) => (x === SETTINGS.files.project ? 'labit.json' : x === SETTINGS.files.personal ? 'your settings' : x)).join(' + ');
@@ -1317,7 +1318,7 @@ async function unseen(scope = pages(), who = '') {
 // them with POST /_lab/ack. Without that within ACK_MS, or when the same session waits again first (it never saw
 // them: an MCP wait cancelled after the lab answered, a killed command), the marks are taken back and the pins go out
 // again. Before, a hand-off that never arrived left its pins "being worked on" for 3 minutes, then came back as
-// one line each, not the whole thread (Plannotator's "Delivered to" is the agent's own read, the same idea).
+// one line each, not the whole thread.
 const ACK_MS = Number(process.env.LAB_ACK_MS ?? 20000);
 const unacked = new Map(); // delivery id -> { who, back, timer }
 function takeBack(id) {
@@ -1417,6 +1418,9 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
+// The actions on selected words that differ from the defaults (labit.json / settings.json `actions`). Labels are yours, so
+// the attribute is escaped as the flags' is.
+const ACTIONS_ATTR = Object.keys(changedActions(SET.actions)).length ? ` data-actions='${JSON.stringify(changedActions(SET.actions)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'` : '';
 // What is being tried in this lab: every flag and its state, so the ⋯ menu can show them all and switch them.
 // The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
 // in one of them would end the attribute halfway. & and < go too, so the tag can't be talked out of being a tag.
@@ -1431,7 +1435,7 @@ const widget = (page, admin, me = '') => {
   markOpened(page);
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${ACTIONS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -1443,6 +1447,15 @@ const inject = (html, tag) => {
   const inScript = at !== -1 && lower.lastIndexOf('<script', at) > lower.lastIndexOf('</script>', at);
   html = at === -1 || inScript ? html + tag : html.slice(0, at) + tag + html.slice(at);
   return holdFirst(html);
+};
+// A lab tab wears labit's mark, unless the page names its own icon or the folder has a favicon.ico: put in the page,
+// so the tab has it from the first paint, not once the widget has loaded and asked.
+// Behind a dev server the widget decides instead (src/widget/live.ts): only the dev server knows what it serves.
+const LAB_ICON = '<link rel="icon" href="/_lab/favicon.svg">';
+const withIcon = (html) => {
+  if (/<link\b[^>]*\brel=["']?(?:[^"'>]*\s)?icon[\s"'>/]/i.test(html) || fs.existsSync(path.join(ROOT, 'favicon.ico'))) return html;
+  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
 };
 // A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
 // where it sits: Chrome's location.reload is its own, and cannot be replaced, and by the time the widget loads the
@@ -2053,6 +2066,8 @@ const handler = async (req, res) => {
     let file = path.join(base, pathname);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
+    // A browser asks for /favicon.ico on its own (for a tab, a bookmark, history): a folder without one gets labit's.
+    if (!fs.existsSync(file) && pathname === '/favicon.ico') return res.writeHead(302, { location: '/_lab/favicon.svg' }).end();
     if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
@@ -2064,7 +2079,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(fs.readFileSync(file, 'utf8'), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
+        inject(withIcon(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
     }
     sendFile(req, res, file);
   } catch (e) {

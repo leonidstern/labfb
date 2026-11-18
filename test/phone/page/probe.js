@@ -28,7 +28,7 @@
       pins: visible('.pin').map((p) => ({ ...r(p), c: p.className })),
       float: r(visible('.float')[0]), card: r(visible('.card')[0]), chat: r(visible('.chatwin')[0]),
       scrimOn: (() => { const s = sr?.querySelector('.scrim'); return Boolean(s && getComputedStyle(s).display !== 'none' && +getComputedStyle(s).opacity > 0); })(),
-      chip: r(visible('.sel-chip')[0]), chatBtn: r(visible('.chat-btn')[0]), toggle: r(visible('.toggle')[0]),
+      bar: r(visible('.fd .p-bar.on')[0]), chatBtn: r(visible('.chat-btn')[0]), toggle: r(visible('.toggle')[0]),
       // The quoted words are lit (CSS highlight) on text that can't be selected: Safari then paints whole blocks green.
       quoteOnUnselectable: (() => { const h = window.CSS?.highlights?.get('lab-quote'); if (!h?.size) return null; const r = [...h][0]; const e = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement; const cs = e && getComputedStyle(e); return Boolean(cs && (cs.webkitUserSelect || cs.userSelect) === 'none'); })(),
       t, ...extra,
