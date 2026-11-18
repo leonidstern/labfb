@@ -165,9 +165,13 @@ const ago = (iso?: string | null) => {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 };
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-/** A page's pins, always both numbers, and its last activity (Leo 18 Nov): "2 open · 0 closed · active 3m ago". */
-const pinFacts = (open: number, done: number, when: string) =>
-  d.el('span', { class: 'sw-m' }, [`${open} open`, `${done} closed`, when].filter(Boolean).join(' · '));
+/** A page's pins as two numbers in the pins' own colours, open then closed (green), and its last activity, if any
+ *  (Leo 18 Nov: "just numbers with colors"): "2 5 · active 3m ago". */
+const pinFacts = (open: number, done: number, when: string) => {
+  const m = d.el('span', { class: 'sw-m', title: `${open} open, ${done} closed` });
+  m.append(d.el('b', { class: 'sw-open' }, String(open)), ' ', d.el('b', { class: 'sw-done' }, String(done)), when ? ` · ${when}` : '');
+  return m;
+};
 /** A time as the rows show it: "just now", "4m ago", "Nov 3". */
 const since = (iso?: string | null) => {
   const a = ago(iso);
@@ -199,19 +203,9 @@ function home(lab: Lab) {
 function goes(row: HTMLElement, lab: Lab, p: Page) {
   const url = lab.here ? new URL(p.url, location.href).pathname : p.url;
   row.addEventListener('click', (e: MouseEvent) => {
-    if ((e.target as HTMLElement).closest?.('.sw-x')) return; // its archive word acts instead
     if (e.metaKey || e.ctrlKey) window.open(lab.here ? location.origin + url : url, '_blank');
     else location.href = url;
   });
-}
-// The word a page row shows while it's chosen or under the mouse: archive it, or bring it back.
-function shelf(row: HTMLElement, label: string, title: string, fn: () => void) {
-  const x = d.el('span', { class: 'sw-x', title }, label);
-  x.addEventListener('click', (e) => {
-    e.stopPropagation();
-    fn();
-  });
-  return x;
 }
 
 function draw() {
@@ -300,7 +294,7 @@ function draw() {
       const here = lab.here && p.path === d.page;
       const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page', 'data-page': p.path });
       // Open and closed pins, and the last activity: a comment, a reply or a close (Leo 18 Nov: "like last activity").
-      const meta = pinFacts(p.open, p.done || 0, p.last ? `active ${since(p.last)}` : 'no comments yet');
+      const meta = pinFacts(p.open, p.done || 0, p.last ? `active ${since(p.last)}` : '');
       // When it was last opened, and the file's time, are on hover.
       const tip = [p.opened ? `opened ${new Date(p.opened).toLocaleString()}` : 'never opened', p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
         p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
@@ -309,7 +303,6 @@ function draw() {
       const t = el('span', { class: 'sw-t' }, short(lab, p));
       if (p.title) t.append(el('span', { class: 'sw-path' }, ` ${p.path}`));
       row.append(t, meta);
-      if (local) row.append(shelf(row, 'archive', 'fold this page away under "archived"; its file stays (⌥A)', () => act('archive-page', lab.port, p.path)));
       goes(row, lab, p);
       out.push(row);
     }
@@ -340,13 +333,12 @@ function draw() {
       row.addEventListener('click', () => start(p.port, row));
       return row;
     };
-    // An archived page: ↵ still opens it; "bring back" (⌥A) puts it back in its lab.
+    // An archived page: ↵ still opens it; ⌥A puts it back in its lab.
     const shelvedRow = ({ lab, p }: { lab: Lab; p: Page }) => {
       const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(lab.port), 'data-kind': 'archived-page', 'data-page': p.path });
       const t = el('span', { class: 'sw-t' }, short(lab, p));
       if (p.title) t.append(el('span', { class: 'sw-path' }, ` ${p.path}`));
       row.append(t, el('span', { class: 'sw-m' }, `${where(lab)} · archived ${ago(p.archived)}`.trim()));
-      row.append(shelf(row, 'bring back', 'back in its lab’s list (⌥A)', () => act('unarchive-page', lab.port, p.path)));
       goes(row, lab, p);
       return row;
     };
