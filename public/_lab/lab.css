@@ -50,7 +50,7 @@
   --lab-t-instant: 0ms;  /* no motion: the state changes at once */
   --lab-t-quick: 120ms;  /* a hover, a fade, a press: small and local */
   --lab-t-base: 200ms;   /* something appears, moves a little, or a box changes size */
-  --lab-t-slow: 360ms;   /* a sheet, a flight, a pin changing face: the biggest movement */
+  --lab-t-slow: 300ms;   /* a sheet, a flight, a pin changing face: the biggest movement */
   --lab-t-loop: 1200ms;  /* one turn of something that goes on */
   --lab-t-hold: 1000ms;  /* how long a highlight stays (a wait, kept with reduced motion) */
   --lab-ease: cubic-bezier(.2, .8, .2, 1);            /* standard */

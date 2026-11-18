@@ -14,7 +14,7 @@
   --_t-instant: var(--lab-t-instant, 0ms);   /* no motion: the state changes at once */
   --_t-quick: var(--lab-t-quick, 120ms);     /* a hover, a fade, a press: small and local */
   --_t-base: var(--lab-t-base, 200ms);       /* something appears, moves a little, or a box changes size */
-  --_t-slow: var(--lab-t-slow, 360ms);       /* a sheet, a flight, a pin changing face: the biggest movement */
+  --_t-slow: var(--lab-t-slow, 300ms);       /* a sheet, a flight, a pin changing face: the biggest movement */
   --_t-loop: var(--lab-t-loop, 1200ms);      /* one turn of something that goes on (the agent's ring) */
   --_twitch: calc(var(--_t-loop) * 2) ease-in-out infinite; /* the listening mark's ears: a twitch, then a long rest (two loops) */
   --_fade: var(--_t-quick) var(--_ease-out); --_fade-base: var(--_t-base) var(--_ease-out); /* the two fades (lab-fade): duration and curve together */

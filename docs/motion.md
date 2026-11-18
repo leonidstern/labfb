@@ -14,7 +14,7 @@ Code that needs a number (a timer, a Web Animation, which can't read a `var()`) 
 | `--_t-instant` (`--lab-t-instant`) | 0 ms | no motion: the state changes at once (reserved; nothing needs it yet) |
 | `--_t-quick` (`--lab-t-quick`) | 120 ms | a hover, a colour, a small fade, a press: small and local |
 | `--_t-base` (`--lab-t-base`) | 200 ms | something appears or moves a little: a card, a message, a fade-in, a box changing size |
-| `--_t-slow` (`--lab-t-slow`) | 360 ms | the biggest movements: a sheet, a card flying into its pin, a pin changing face |
+| `--_t-slow` (`--lab-t-slow`) | 300 ms | the biggest movements: a sheet, a pin changing face |
 | `--_t-loop` (`--lab-t-loop`) | 1200 ms | one turn of something that goes on: the agent's ring |
 | `--_t-hold` (`--lab-t-hold`) | 1000 ms | how long a highlight stays. A wait, not a movement: kept with reduced motion |
 | `--_ease` (`--lab-ease`) | cubic-bezier(.2, .8, .2, 1) | standard: quick start, soft landing (it was already there) |
@@ -38,15 +38,15 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 
 | Where | Value | Why |
 | --- | --- | --- |
-| `.pin.arrive` (a new pin pops in as the sent card lands) | 1.25 × slow = 450 ms | the overshoot needs a little longer than the flight (360 ms); lab B2 |
-| the pin's start delay (`comments.js`) | 1.25 × base = 250 ms | it pops in as the card arrives |
-| `lab-halo` (one faint halo on a new comment's pin) | 2.5 × slow = 900 ms | a slow breath out, longer than any movement |
+| `.pin.arrive` (phones: a new pin pops in as the sent card slides down) | 1.25 × slow = 375 ms | the overshoot needs a little longer than a movement; lab option 5 |
+| the pin's start delay (`comments.js`) | quick = 120 ms | it pops in as the card goes |
+| `lab-halo` (one faint halo on a new comment's pin; the green ring on a sent pin) | 2.5 × slow = 750 ms | a slow breath out, longer than any movement |
 | `lab-twitch` (the listening mark's ears) | 2 × loop = 2.4 s, second ear 1.5 × quick = 180 ms later | a twitch, then a long rest; the two ears not in step |
 | the bar's fade when a sheet opens | delay quick / 3 = 40 ms | the sheet starts first |
 | a transition's clean-up timer (`sheets.ts`, `settled()`) | slow + quick / 3 = 400 ms | the transition and a frame or two |
 | the outline on a block named in a message (`goToBlock`) | 2 × hold = 2 s | you need time to find it |
 | the sheet carried away by a swipe | its speed, between quick and slow | it follows the finger |
-| the flight into the pin is over (`leave`) | slow + quick = 480 ms | a flight starts a frame or two late |
+| the sent card has slid away (`leave`) | base + quick / 3 = 240 ms | after a send it starts a frame or two late |
 | waiting for the page to go back after a sheet (`backFromReveal`) | slow | the sheet has gone |
 
 ## Every motion (after)
@@ -55,7 +55,8 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | --- | --- | --- | --- | --- |
 | `.pin` | transform, box-shadow, opacity | quick | standard, standard, out | a pin growing as you point at it |
 | `lab-pin` (`.pin.in`) | transform | base | standard | a pin appearing with the card |
-| `lab-arrive` (`.pin.arrive`) | opacity, transform | 1.25 × slow | pop | phones: the new pin pops in as the card lands |
+| `lab-arrive` (`.pin.arrive`) | opacity, transform | 1.25 × slow (delay quick) | pop | phones: the new pin pops in as the sent card goes |
+| `lab-halo` (`button.pin.arrive::before`) | box-shadow (`--_halo` green) | 2.5 × slow (delay as the pin) | out | phones: one green ring leaves the sent pin |
 | `lab-swap` (`.pin.swap`) | transform, opacity | slow | pop | a pin's face changed (taken, done, replied) |
 | `lab-gone` (`.ring.gone`) | opacity | slow | in | the agent's ring fading out |
 | `lab-halo` | box-shadow | 2.5 × slow | standard | one faint halo from a new comment's pin |
@@ -79,7 +80,7 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | `[data-sheet] .bar` | transform; opacity | base; base (delay quick / 3) | in; out | the bar stepping down |
 | `.chatwin, .card` | height | slow | settle | a comment pulling up to full height |
 | `lab-card-in` | transform, opacity | slow | standard | phones: a sheet grows out of what was tapped |
-| `leave()` (sheets.ts) | transform, opacity | base (tap) / slow (flight) / by speed (swipe) | in / settle / linear | the sheet leaving |
+| `leave()` (sheets.ts) | transform, opacity | base (tap, send) / by speed (swipe) | in / linear | the sheet leaving: shrinks into its pin after a tap, slides down whole after a send |
 | `slideAway()` (sheets.ts) | the bar | as `leave` | standard; out | the bar coming up as the sheet goes |
 | drag release (sheets.ts) | transform, height; scrim opacity | slow | settle; out | a sheet springing back |
 | keyboard fit (sheets.ts) | transform | slow | settle | the sheet moving over the keyboard |
@@ -95,8 +96,8 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 ## What changed (old → new)
 
 Durations were about 25 different values between 0.12 s and 0.9 s. Quick and base are as the owner asked; slow is
-**360 ms, not 400**: the biggest movements already clustered at 340, 360 and 380 ms (the sheets), so 400 would have
-slowed all of them, and the 300 and 320 ms ones move up to 360.
+**300 ms** (was 360, Leo 18 Nov): Material 3 keeps whole panels at 300–400 ms and iOS defaults to about 250 ms, so the
+biggest movements sit at the short end of that range; the old 340–380 ms sheets get a little quicker.
 
 | Where | Old | New |
 | --- | --- | --- |
@@ -110,25 +111,26 @@ slowed all of them, and the 300 and 320 ms ones move up to 360.
 | `lab-in` | 180 ms | 200 ms |
 | `lab-pin` | 260 ms | 200 ms |
 | `lab-rise`, `.gp` colour | 200 ms | 200 ms (same) |
-| `lab-gone` | 300 ms | 360 ms |
-| `lab-fly` | 320 ms | 360 ms |
-| `lab-swap` | 360 ms, curve .3, .7, .4, 1.25 | 360 ms, pop curve (.34, 1.56, .64, 1): a little more overshoot |
-| `lab-draw` | 400 ms | 360 ms |
-| `lab-arrive` | 460 ms | 450 ms |
-| `lab-halo` | 900 ms, curve .2, .7, .3, 1 | 900 ms, standard curve |
-| `lab-card-in` | 300 ms, curve .2, .9, .25, 1 | 360 ms, standard curve |
-| `.bar` (transform / opacity) | 340 ms / 200 ms | 360 ms / 200 ms |
+| `lab-gone` | 300 ms | 300 ms |
+| `lab-fly` | 320 ms | 300 ms |
+| `lab-swap` | 360 ms, curve .3, .7, .4, 1.25 | 300 ms, pop curve (.34, 1.56, .64, 1): a little more overshoot |
+| `lab-draw` | 400 ms | 300 ms |
+| `lab-arrive` | 460 ms, delay 130 ms | 375 ms, delay 120 ms |
+| sent pin's green ring (`lab-halo`) | 700 ms, ease-out | 750 ms, out |
+| `lab-halo` | 900 ms, curve .2, .7, .3, 1 | 750 ms, standard curve |
+| `lab-card-in` | 300 ms, curve .2, .9, .25, 1 | 300 ms, standard curve |
+| `.bar` (transform / opacity) | 340 ms / 200 ms | 300 ms / 200 ms |
 | `[data-sheet] .bar` | 240 ms, curve .4, 0, 1, 1; opacity 200 ms, delay 40 ms | 200 ms, in curve; opacity 200 ms, delay 40 ms |
-| `.chatwin, .card` height | 380 ms | 360 ms |
+| `.chatwin, .card` height | 380 ms | 300 ms |
 | `leave()` shrink | 200 ms, curve .4, 0, .9, .4 | 200 ms, in curve (.4, 0, 1, 1) |
-| `leave()` flight | 360 ms (timer 480) | 360 ms (timer 480) |
-| swipe away: limits | 140 to 320 ms | 120 to 360 ms |
+| `leave()` after a send (slides down) | 240 ms, curve .4, 0, 1, 1 (timer 280) | 200 ms, in curve (timer 240) |
+| swipe away: limits | 140 to 320 ms | 120 to 300 ms |
 | `slideAway` bar | curve .2, .6, .4, 1; opacity linear | standard; opacity out |
-| sheet spring back (transform/height) | 380 ms | 360 ms |
-| sheet spring back (dimmed page) | 300 ms, ease | 360 ms, out |
-| keyboard fit | 340 ms (timer 360) | 360 ms (timer 400) |
+| sheet spring back (transform/height) | 380 ms | 300 ms |
+| sheet spring back (dimmed page) | 300 ms, ease | 300 ms, out |
+| keyboard fit | 340 ms (timer 360) | 300 ms (timer 400) |
 | timers clearing a spring (`setTimeout`) | 400 ms | 400 ms (slow + quick / 3) |
-| wait before the page goes back after a sheet | 320 ms | 360 ms |
+| wait before the page goes back after a sheet | 320 ms | 300 ms |
 | composer glide | 220 ms, curve .2, .7, .3, 1 | 200 ms, standard |
 | `closeFast` fade | 120 ms, ease-out | 120 ms, out (same) |
 | shake and nudge | 260 ms | 200 ms |
