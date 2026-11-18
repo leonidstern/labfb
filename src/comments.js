@@ -975,6 +975,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         // A question with choices on quoted words: by its quote, in the margin or under it (thread.ts). Drawn again after
         // the pick, it stays where it was instead of jumping back under its pin.
         if (!zone && (openAsk(c) || (!appear && prev?.matches('.margin, .under')))) placeAsk(card, c);
+        if (card.tie) next.push(card.tie); // its line to the words (trial.ts), kept by the layer's redraw
         if (!appear && prevRows) {
           const rows = card.querySelector('.choices[role="listbox"]');
           /** @type {HTMLElement | null} */ (rows?.querySelector('.choice.on') || rows?.querySelector('.choice') || rows)?.focus({ preventScroll: true });

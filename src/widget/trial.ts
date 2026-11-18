@@ -196,6 +196,7 @@ export function placeAsk(card, c): boolean {
   card.style.transformOrigin = '0 14px';
   const tie = W.el('div', { class: 'tie', 'aria-hidden': 'true' });
   W.layer.append(tie);
+  card.tie = tie; // the layer's redraw keeps it (comments.js puts it in the layer's list beside the card)
   // Drawn from the paragraph's right edge to the card, at the words' last line (they change length as rows are tried).
   card.retie = () => {
     const r = tried?.lit || quoteRangeOf(c.anchor);
