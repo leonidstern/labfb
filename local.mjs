@@ -872,9 +872,19 @@ const toldAt = new Map();
 // yet), or away (no wait, or nothing from it for two minutes after it got comments).
 let mode = 'away';
 let awayTimer;
+// A wait that runs out (no pins in its time) is usually followed by the next one within seconds: the page keeps
+// saying "listening" for this long (LAB_BETWEEN_MS, 45 s) instead of flashing "no agent" in between. A cancelled
+// wait, a closed page or an agent that quits still shows away at once.
+const BETWEEN_MS = Number(process.env.LAB_BETWEEN_MS ?? 45000);
+let betweenTimer;
+// The pages of waits that just ended (handed pins over, or ran out): still heard while their session works on the
+// pins or comes back to wait, until the page says away.
+let recent = [];
 const setMode = (m) => {
   mode = m;
   clearTimeout(awayTimer);
+  clearTimeout(betweenTimer);
+  if (m === 'away') recent = [];
   if (m === 'working') awayTimer = setTimeout(() => setMode('away'), 600000); // ten minutes without a sign of Claude
   saveServer();
   broadcast();
@@ -950,7 +960,7 @@ const saveHanded = saver(HANDED, () => {
 }, 'hand-off marks');
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, reads: readsRev, mode, heard: heard(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1030,6 +1040,18 @@ const claimed = () => {
   return new Set([...claims].filter(([, at]) => now - at < CLAIM_MS).map(([p]) => p));
 };
 const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed().has(p)));
+// Which pages a comment is heard on right now, for the page to say so: a wait for every page hears all of them but
+// the ones another session has claimed; a wait with --page hears its own. Without this, a lab with one listener on
+// /a told every other page "talking to Claude" while their pins went nowhere (Leo, 18 Nov).
+const heard = () => {
+  const open = [...waiters, ...recent];
+  const named = new Set(open.flatMap((w) => w.pages || []));
+  const all = open.some((w) => !w.pages);
+  return { all, pages: [...named], except: all ? [...claimed()].filter((p) => !named.has(p)) : [] };
+};
+const remember = (w) => {
+  recent = [...recent.filter((r) => r.key !== w.key), { key: w.key, pages: w.pages }];
+};
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
 // ends after an hour of no page. A browser's tabs of this lab share one stream (the widget passes it on), held under
 // the id of the tab that opened it; when that tab goes, another opens the stream under its own. A tab counts while
@@ -1182,6 +1204,7 @@ async function wakeNow() {
     waiters = waiters.filter((x) => x !== w);
     waitEnded = Date.now();
     clearTimeout(w.timer);
+    remember(w);
     deliver(w.res, got, w.who);
   }
 }
@@ -1470,13 +1493,21 @@ const handler = async (req, res) => {
       const w = { res, pages: want, key, who: whoOf(session) };
       claim(want);
       const got = await unseen(scopeOf(w), w.who);
-      if (got?.text) return deliver(res, got, w.who);
+      recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
+      if (got?.text) {
+        remember(w);
+        return deliver(res, got, w.who);
+      }
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;
         waiters = waiters.filter((x) => x !== w);
         waitEnded = Date.now();
         res.writeHead(204).end();
-        if (!waiters.length) setMode('away');
+        if (waiters.length) return broadcast();
+        remember(w);
+        clearTimeout(betweenTimer);
+        betweenTimer = setTimeout(() => !waiters.length && mode === 'listening' && setMode('away'), BETWEEN_MS);
+        broadcast();
       }, Math.min(Number(timeout) || 1500, 7000) * 1000);
       if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
       waiters.push(w);
@@ -1490,6 +1521,7 @@ const handler = async (req, res) => {
         waitEnded = Date.now();
         clearTimeout(w.timer);
         if (!waiters.length) setMode('away');
+        else broadcast();
       });
       return;
     }

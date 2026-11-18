@@ -934,7 +934,7 @@ import { holdWhileOpen } from './widget/hold.ts';
       float.append(
         el('div', { class: 'handle' }),
         composer({
-          placeholder: S.draft.go ? 'go' : 'add a comment',
+          placeholder: S.draft.go ? 'go' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
           empty: S.draft.go ? 'go' : '',
           nameFirst: Boolean(S.draft.go),
           autofocus: true,

@@ -17,7 +17,7 @@ const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 fs.writeFileSync(path.join(DIR, 'other.html'), '<!doctype html><title>o</title><h1 id="o">Other</h1>');
 // A 1 s grace once every page is closed, and pins 300 ms apart go over together. A tab with neither a stream nor a check-in is gone after 3 s here (90 s in a real lab).
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LAB_TAB_TTL: '3', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LAB_TAB_TTL: '3', LAB_BETWEEN_MS: '800', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
 const procs = new Set();
 after(() => {
@@ -157,6 +157,39 @@ test('a wait that times out ends quietly and the pages say no agent is listening
   const { out } = await w.done;
   assert.doesNotMatch(out, /page was closed|another session/);
   await until(() => modeOf(p) === 'away', 3000, 'away after the timeout');
+  p.close();
+});
+
+test('right after a wait runs out the pages still say listening, for the next wait to come (LAB_BETWEEN_MS)', async () => {
+  await drain();
+  const p = await live('bt-1');
+  const w = wait([], 1);
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  await w.done;
+  await sleep(300);
+  assert.equal(modeOf(p), 'listening', 'still listening inside the grace');
+  const again = wait();
+  await sleep(1000); // past the grace: the new wait keeps it listening
+  assert.equal(modeOf(p), 'listening');
+  again.kill();
+  await again.done;
+  await until(() => modeOf(p) === 'away', 3000, 'away once cancelled');
+  p.close();
+});
+
+test('pages say which of them are heard: a wait with --pages hears its own, not the others', async () => {
+  await drain();
+  const p = await live('hd-1');
+  await until(() => modeOf(p) === 'away', 3000, 'away before the test');
+  const mine = wait(['--pages', 'other']);
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  assert.deepEqual(p.last().heard, { all: false, pages: ['/other'], except: [] });
+  const plain = wait();
+  await until(() => p.last().heard?.all === true, 4000, 'a plain wait hears every page');
+  assert.ok(!p.last().heard.except.includes('/index'), 'index is heard');
+  plain.kill();
+  mine.kill();
+  await Promise.all([plain.done, mine.done]);
   p.close();
 });
 
