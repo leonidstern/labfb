@@ -302,7 +302,7 @@ function draw() {
     for (const l of away) {
       const r = el('div', { class: 'sw-lab parked' });
       const n = el('div', { class: 'sw-name' });
-      n.append(el('b', {}, l.name), el('span', { class: 'sw-port' }, `:${l.port}`));
+      n.append(el('span', { class: 'sw-port' }, `${l.name} :${l.port}`)); // grey: nothing to tap here
       r.append(n);
       out.push(r);
     }
