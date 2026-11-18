@@ -186,7 +186,7 @@ async function scene(eng, browser, opts, run) {
 }
 
 try {
-  for (const eng of ['webkit', 'chromium']) {
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
     try {
       // The bar

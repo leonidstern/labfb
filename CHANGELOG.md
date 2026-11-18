@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Quoting words: a drag that starts or ends inside a word takes the whole word, so a note is on "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
 - A reply in a thread the agent already has comes with its thread (`wait`, CLI and MCP): the opening comment with its spot, then every message in order with name, time and state (on it / done / question), the new ones marked `← new`. A long thread shows the opening comment and its last 8 messages (and every new one) with a line for how many are left out; words stay whole. Before, it was the new words and the thread's first 70 characters, and an agent answered one thread with another's context.
 - "Pin over controls": with it on, the pointer over the page's links, buttons and clickable cards is the pin, not their hand. The menu item shows how to do it once without the switch: (⌥ click).
 - Phones: a sent comment's card slides down whole, like any sheet, and its new pin pops in with one green ring. It used to shrink and fly into the pin, which squeezed the card, and the pin was already there while it flew (its pop-in had been dropped by a later change).
