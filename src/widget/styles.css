@@ -389,7 +389,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
   /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
      panning the page can't push it up and nothing of the page shows above or below it. */
-  :host([data-kb]) :is(.card, .list:not([hidden])) { top: var(--lab-top, 0px) !important; bottom: auto !important;
+  :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: var(--lab-top, 0px) !important; bottom: auto !important;
     height: var(--lab-vh, 100dvh) !important; max-height: none !important; border-radius: 0; }
   /* A new comment stays small, just above the keyboard, with the page (dimmed) above it: you see what you comment on. */
   :host([data-kb]) .float { top: auto !important; bottom: var(--lab-kb, 0px) !important; height: auto !important; border-radius: var(--_radius) var(--_radius) 0 0; }
@@ -448,10 +448,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
           font-size: 15px; letter-spacing: -.016em; z-index: 3; }
   /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
-  .chatwin { height: var(--_sheet-max); transition: height .38s cubic-bezier(.32, .72, 0, 1); }
+  .chatwin { height: var(--_sheet-max); }
+  .chatwin, .card { transition: height .38s cubic-bezier(.32, .72, 0, 1); } /* a comment pulls up to full height as the chat does */
   /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
   .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
-  .card { transition: height .38s cubic-bezier(.32, .72, 0, 1); } /* a comment pulls up to full height as the chat does */
   /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
   .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
                 background: var(--_bg); }
@@ -465,10 +465,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card > .body { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
   /* …and fade out behind the box (iOS's scroll edge): from 4 px above its top to 12% at its bottom (Leo, 15 Nov:
      "behind input bottom", "a bit more", "less, it's just black", then "more, darker there"). */
-  .chatwin .msgs { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
-                           mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
-  .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
-                          mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
+  .chatwin .msgs, .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
+                                          mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
   .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
   :host { --_box-bg: color-mix(in srgb, var(--_bg) 72%, transparent);
           --_box-edge: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
@@ -520,16 +518,16 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
    closes it). A tapped sheet grows out of what you tapped (--lab-from, set in render) and shrinks back into it. */
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
   :host { --_gap: 8px; --_card-r: 30px; }
-  .card, .float, .list { left: var(--_gap) !important; right: var(--_gap); bottom: var(--_gap) !important; border-radius: var(--_card-r) !important;
+  .card, .float, .list, .sw-box { left: var(--_gap) !important; right: var(--_gap); bottom: var(--_gap) !important; border-radius: var(--_card-r) !important;
     background: var(--_bg);
     box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px rgba(0, 0, 0, .18); transform-origin: var(--lab-from, 50% 100%); }
   .list .tabs { border-radius: var(--_card-r) var(--_card-r) 0 0; }
   .card::after, .float::after, .list::after { content: none; }
-  :host([data-kb]) :is(.card, .list:not([hidden])) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
+  :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
   :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
   .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px - var(--_gap) + var(--_kb)); }
   .scrim { background: transparent; }
-  .card.in, .float.in, .list:not([hidden]) { animation: lab-card-in .3s cubic-bezier(.2, .9, .25, 1); }
+  .card.in, .float.in, .list:not([hidden]), .sw-box { animation: lab-card-in .3s cubic-bezier(.2, .9, .25, 1); }
 }
 @keyframes lab-card-in { from { transform: scale(.3); opacity: 0; } 40% { opacity: 1; } }
 /* Feedback on an agent's answer (src/widget/thread.ts): the button under the answer, the bar over the reply box while
@@ -545,8 +543,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Labs & pages (⌘K, src/widget/switcher.ts): a box over the page on a computer, a card sheet on a phone. The ⋯ menu
    opens with which lab this is. */
 .more-menu .lab-head { margin: 2px 10px 4px; padding-bottom: 6px; border-bottom: var(--_hair); font-size: 12px; font-weight: 600; color: var(--_fg); }
-.switch { position: fixed; inset: 0; z-index: 3; }
-.sw-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .18); }
+.switch { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+.sw-box { pointer-events: auto; }
+/* The page behind dims with the widget's own .scrim (a click there closes it, as it closes a sheet). */
+:host([data-labs]) .scrim { display: block; background: rgba(0, 0, 0, .18); }
 .sw-box { position: absolute; left: 50%; top: 12vh; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); max-height: 70vh;
   display: flex; flex-direction: column; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade .12s ease-out; }
 .sw-box input { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 14px 16px 12px; font-size: 16px; color: var(--_fg); border-bottom: var(--_hair); }
@@ -556,6 +556,24 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-lab + .sw-lab, .sw-row + .sw-lab, .sw-none + .sw-lab { margin-top: 6px; border-top: var(--_hair); }
 .sw-name { font-size: 12px; color: var(--_muted); min-width: 0; }
 .sw-name b { color: var(--_fg); font-weight: 600; font-size: 13px; }
+.sw-facts { display: block; font-size: 12px; margin-top: 1px; color: var(--_muted); font-variant-numeric: tabular-nums; }
+.sw-bar { display: inline-flex; width: 48px; height: 5px; border-radius: 3px; overflow: hidden; margin-right: 6px; vertical-align: 1px; background: var(--_soft); }
+.sw-bar i { display: block; min-width: 0; }
+.sw-bar .o { background: var(--_fg); } .sw-bar .c { background: color-mix(in srgb, var(--_fg) 22%, transparent); }
+.sw-m { display: inline-flex; align-items: center; gap: 8px; }
+.sw-dot { display: inline-flex; align-items: center; gap: 4px; }
+.sw-m > * { font-size: inherit; color: var(--_muted); }
+.sw-dot { font-variant-numeric: tabular-nums; }
+.sw-dot::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 999px; }
+.sw-dot.o { color: var(--_fg); } .sw-dot.o::before { background: var(--_fg); }
+.sw-dot.c::before { box-shadow: inset 0 0 0 1.5px var(--_muted); }
+.sw-row.cur .sw-when { color: rgb(36, 160, 70); }
+.sw-faces { display: inline-flex; align-items: center; vertical-align: middle; margin-right: 2px; }
+.sw-faces i { font-style: normal; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; line-height: 1; font-weight: 600;
+  background: var(--_soft); color: var(--_fg); box-shadow: 0 0 0 1.5px var(--_bg); }
+.sw-faces i + i { margin-left: -4px; }
+.sw-faces i.more { width: auto; background: none; box-shadow: none; margin-left: 3px; font-weight: 500; color: var(--_muted); }
+.sw-facts { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sw-st { display: block; font-size: 12px; margin-top: 1px; color: var(--_muted); }
 .sw-st.ok { color: rgb(36, 160, 70); } .sw-st.work { color: rgb(36, 160, 70); } .sw-st.warn { color: var(--_fg); font-weight: 500; }
 .sw-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; flex-shrink: 0; max-width: 60%; }
@@ -567,7 +585,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-row.on, .sw-row:hover { background: var(--_soft); }
 .sw-row .sw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sw-row .sw-m { color: var(--_muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.sw-row.cur .sw-m { color: rgb(36, 160, 70); }
 .sw-none { color: var(--_muted); font-size: 12px; padding: 4px 10px 6px; }
 .sw-group { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--_muted); padding: 12px 10px 0; margin-top: 6px; border-top: var(--_hair); }
 .sw-lab.parked { padding-top: 6px; border-top: 0; margin-top: 0; }
@@ -583,11 +600,16 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-mini:hover { background: var(--_hover); color: var(--_fg); }
 .sw-fold { display: block; width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-bottom: 0; cursor: pointer; font-family: inherit; padding-bottom: 6px; }
 .sw-foot { font-size: 11px; color: var(--_muted); padding: 7px 14px 9px; border-top: var(--_hair); }
+/* Phones: labs & pages is one of the widget's sheets, the comment and chat drawer (sheets.ts): the shared dimmed page
+   (.scrim, via data-sheet), the handle, the swipe down, the keyboard fit (data-kb) and the card look all come from the
+   .card / .list rules above, so it looks and moves as they do (Leo 18 Nov: "our comment or chat drawer"). */
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
-  .sw-box { top: auto; left: 8px; right: 8px; bottom: 8px; transform: none; width: auto; max-height: 75dvh; border-radius: 30px; padding-bottom: 6px;
-    animation: lab-card-in .3s cubic-bezier(.2, .9, .25, 1); }
-  .sw-box input { padding: 18px 20px 14px; }
-  .sw-list { padding: 4px 10px 8px; }
+  /* Its look, place and keyboard fit are the .card / .list rules' (the sheets' block below lists .sw-box with them). */
+  .sw-box { position: fixed; top: auto; transform: none; width: auto; max-height: var(--_sheet-max); padding: 8px 0 calc(6px + var(--_safe));
+    font-size: 15px; letter-spacing: -.016em; }
+  :host([data-kb]) .sw-box { bottom: auto !important; max-height: none; animation: none; }
+  .sw-box input { padding: 4px 20px 14px; }
+  .sw-list { padding: 4px 10px 8px; touch-action: pan-y; }
   .sw-row { padding: 11px 12px; font-size: 16px; }
   .sw-lab { flex-direction: column; gap: 6px; }
   .sw-acts { justify-content: flex-start; max-width: none; }
@@ -596,8 +618,4 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .sw-sort { padding: 8px 16px; }
   .sw-sort button { font-size: 14px; padding: 6px 10px; }
   .sw-mini { font-size: 14px; padding: 5px 9px; }
-  /* As the comment sheets do: the page behind isn't dimmed (a tap there still closes it), and with the keyboard up
-     the sheet fills what's left above it, from the visible top, instead of riding Safari's scroll in steps. */
-  .sw-scrim { background: transparent; }
-  :host([data-kb]) .sw-box { top: calc(var(--lab-top, 0px) + 8px); bottom: auto; height: calc(var(--lab-vh, 100dvh) - 16px); max-height: none; animation: none; }
 }

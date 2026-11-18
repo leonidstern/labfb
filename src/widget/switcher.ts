@@ -2,8 +2,8 @@
 // each, to stop it; park a lab and start it again. A guest on a phone sees this lab's pages only. Part of the comment
 // widget (src/comments.js bundles it). Leo, 18 Nov (the lab-navigation page, option B).
 
-type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null };
-type Lab = { name: string; port: number; here: boolean; mode: string; listening: string | null; pages: Page[]; root?: string; unreachable?: boolean; started?: string };
+type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[] };
+type Lab = { name: string; port: number; here: boolean; mode: string; listening: string | null; pages: Page[]; root?: string; unreachable?: boolean; started?: string; created?: string | null };
 type Parked = { name: string; port: number; root: string; archived?: boolean; at?: string };
 type Sort = 'recent' | 'name' | 'pins';
 const SORTS: Sort[] = ['recent', 'name', 'pins'];
@@ -14,6 +14,10 @@ type Deps = {
   admin: string; // this computer's key ('' for a guest)
   page: string; // this page's key
   beforeOpen: () => void; // closes the ⋯ menu and anything else in the way
+  // Phones: the box is one of the widget's own sheets (the comment and chat drawer, sheets.ts): the shared dimmed page,
+  // the handle, the swipe down, the keyboard fit and back closing all come from there. sheet(open) tells the widget.
+  sheet: (open: boolean) => void;
+  swipe: (node: HTMLElement, close: () => void) => void;
 };
 
 let d: Deps;
@@ -35,39 +39,25 @@ let sort: Sort = (() => {
 })();
 let sorter: HTMLElement;
 
+let panelEl: HTMLElement;
 const switcherOpen = () => Boolean(box && !box.hidden);
+/** The open box, for the widget's sheets (null when closed). */
+export const switcherSheet = () => (switcherOpen() ? panelEl : null);
 
 export function bindSwitcher(deps: Deps) {
   d = deps;
   const { el, root } = d;
   box = el('div', { class: 'switch', hidden: '', role: 'dialog', 'aria-label': 'labs and pages' });
-  const scrim = el('div', { class: 'sw-scrim' });
   const panel = el('div', { class: 'sw-box' });
+  panelEl = panel;
   input = el('input', { type: 'search', placeholder: 'Go to a page or a lab', 'aria-label': 'Go to a page or a lab', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false' }) as HTMLInputElement;
   list = el('div', { class: 'sw-list', role: 'listbox' });
   sorter = el('div', { class: 'sw-sort', role: 'group', 'aria-label': 'sort' });
   const foot = el('div', { class: 'sw-foot' }, '↑↓ choose · ↵ go · ⌘↵ new tab · ⌥O sort · ⌥S stop listening · ⌥P park · ⌥A archive · ⌥R start · esc close');
-  panel.append(input, sorter, list, foot);
-  box.append(scrim, panel);
+  panel.append(el('div', { class: 'handle' }), input, sorter, list, foot);
+  box.append(panel);
   root.append(box);
-  scrim.addEventListener('click', () => closeSwitcher());
-  // Phones: with the keyboard up, the sheet takes what the keyboard leaves of the screen, read from the visual
-  // viewport (Safari scrolls the layout under it, so fixed bottoms land behind the keyboard). Without: back to its CSS.
-  const vv = window.visualViewport;
-  const fit = () => {
-    if (!vv || box.hidden || !matchMedia('(pointer: coarse)').matches) return;
-    const up = innerHeight - vv.height > 120;
-    Object.assign(panel.style, up ? { top: `${Math.round(vv.offsetTop + 8)}px`, bottom: 'auto', height: `${Math.round(vv.height - 16)}px`, maxHeight: 'none' } : { top: '', bottom: '', height: '', maxHeight: '' });
-  };
-  vv?.addEventListener('resize', fit);
-  vv?.addEventListener('scroll', fit);
-  // A swipe down from the top of the list closes it, as the other sheets do.
-  let y0 = -1;
-  panel.addEventListener('touchstart', (e) => (y0 = list.scrollTop <= 0 ? e.touches[0].clientY : -1), { passive: true });
-  panel.addEventListener('touchend', (e) => {
-    if (y0 >= 0 && e.changedTouches[0].clientY - y0 > 90) closeSwitcher();
-    y0 = -1;
-  }, { passive: true });
+  d.swipe(panel, () => closeSwitcher());
   input.addEventListener('input', () => {
     active = 0;
     draw();
@@ -128,7 +118,7 @@ export function bindSwitcher(deps: Deps) {
 export function openSwitcher() {
   d.beforeOpen();
   box.hidden = false;
-  document.documentElement.classList.add('lab-sheet'); // phones: the page holds still behind it (no scroll under the keyboard)
+  d.sheet(true);
   input.value = '';
   active = 0;
   toCur = true;
@@ -140,9 +130,10 @@ export function openSwitcher() {
   void load();
 }
 
-function closeSwitcher() {
+export function closeSwitcher() {
+  if (box.hidden) return;
   box.hidden = true;
-  if (!d.root.host.hasAttribute('data-sheet')) document.documentElement.classList.remove('lab-sheet');
+  d.sheet(false);
 }
 
 /** Ask for the labs ahead, as the ⋯ menu opens, so the box opens with its list. */
@@ -188,9 +179,9 @@ async function act(action: 'stop' | 'park' | 'archive' | 'unarchive' | 'start', 
 const say = (lab: Lab) => {
   const open = lab.pages.reduce((n, p) => n + p.open, 0);
   if (lab.unreachable) return ['not answering', 'warn'];
-  if (lab.mode === 'listening') return [`${lab.listening || 'Claude'} listening`, 'ok'];
-  if (lab.mode === 'working') return [`${lab.listening || 'Claude'} working`, 'work'];
-  return [`nobody listening${open ? ` · ${open} open` : ''}`, open ? 'warn' : ''];
+  if (lab.mode === 'listening') return ['Claude listening for pins', 'ok']; // the session's own name is on hover (Leo 18 Nov: "nav-switcher listening" confused)
+  if (lab.mode === 'working') return ['Claude working on pins', 'work'];
+  return ['nobody listening', open ? 'warn' : '']; // the pins are on the line above
 };
 const hit = (q: string, ...words: string[]) => !q || words.some((w) => (w || '').toLowerCase().includes(q));
 const short = (lab: Lab, p: Page) => p.title || p.path;
@@ -204,6 +195,14 @@ const ago = (iso?: string | null) => {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   if (s < 7 * 86400) return `${Math.floor(s / 86400)}d`;
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+};
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+/** Who commented: up to three initials in circles, the rest as +N; the names on hover. */
+const faces = (names: string[]) => {
+  const box = d.el('span', { class: 'sw-faces', title: names.join(', ') });
+  for (const n of names.slice(0, 3)) box.append(d.el('i', {}, (n.trim()[0] || '?').toUpperCase()));
+  if (names.length > 3) box.append(d.el('i', { class: 'more' }, `+${names.length - 3}`));
+  return box;
 };
 const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort().pop() || '';
 const touched = (p: Page) => latest(p.last, p.edited);
@@ -250,13 +249,27 @@ function draw() {
     const head = el('div', { class: 'sw-lab' });
     const [status, tone] = say(lab);
     const left = el('div', { class: 'sw-name' });
-    const done = lab.pages.reduce((n, p) => n + (p.done || 0), 0);
-    const up = ago(lab.started);
-    left.append(
-      el('b', {}, lab.name),
-      ` · ${lab.port}${lab.here ? ' · this lab' : ''}${up ? ` · up ${up === 'now' ? 'just now' : up}` : ''}${done ? ` · ${done} done` : ''}`,
-      el('span', { class: `sw-st ${tone}` }, status),
-    );
+    // What the lab keeps, at a glance: its pins open against closed (a bar), the replies and how many came from an
+    // agent, who commented, when it was made and last written on; how long it has run is on hover.
+    const sum = (f: (p: Page) => number) => lab.pages.reduce((n, p) => n + f(p), 0);
+    const open = sum((p) => p.open);
+    const done = sum((p) => p.done || 0);
+    const replies = sum((p) => p.replies || 0);
+    const agent = sum((p) => p.agent || 0);
+    const people = [...new Set(lab.pages.flatMap((p) => p.people || []))];
+    const last = latest(...lab.pages.map((p) => p.last));
+    const pinsLine = el('span', { class: 'sw-facts' });
+    if (open + done) {
+      const bar = el('span', { class: 'sw-bar', title: `${open} open, ${done} closed` });
+      bar.append(el('i', { class: 'o', style: `flex:${open}` }), el('i', { class: 'c', style: `flex:${done}` }));
+      pinsLine.append(bar, `${open} open · ${done} closed${replies ? ` · ${replies} ${replies === 1 ? 'reply' : 'replies'}${agent ? `, ${agent} from Claude` : ''}` : ''}`);
+    } else pinsLine.append('no pins yet');
+    const when = [lab.created ? `created ${day(lab.created)}` : '', last ? `last comment ${ago(last) === 'now' ? 'just now' : `${ago(last)} ago`}` : ''].filter(Boolean).join(' · ');
+    const whoLine = el('span', { class: 'sw-facts' });
+    if (people.length) whoLine.append(faces(people), ' ');
+    whoLine.append(when);
+    left.append(el('b', {}, lab.name), ` · ${lab.port}${lab.here ? ' · this lab' : ''}`, pinsLine, whoLine, el('span', { class: `sw-st ${tone}`, ...(lab.listening ? { title: `the agent's session: ${lab.listening}` } : {}) }, status));
+    if (lab.started) left.title = `running since ${new Date(lab.started).toLocaleString()}`;
     head.append(left);
     if (local) {
       const acts = el('div', { class: 'sw-acts' });
@@ -297,9 +310,18 @@ function draw() {
     for (const p of pages) {
       const here = lab.here && p.path === d.page;
       const row = el('button', { type: 'button', class: `sw-row${here ? ' cur' : ''}`, role: 'option', 'data-port': String(lab.port), 'data-kind': 'page' });
-      const meta = [p.open ? `${p.open} open` : '', p.done ? `${p.done} done` : '', here ? 'you’re here' : ago(touched(p))].filter(Boolean).join(' · ');
-      const when = touched(p);
-      row.append(el('span', { class: 'sw-t' }, short(lab, p)), el('span', { class: 'sw-m', ...(when ? { title: new Date(when).toLocaleString() } : {}) }, meta));
+      // Open pins (filled dot) and closed (hollow), who commented, and the last comment's time.
+      const meta = el('span', { class: 'sw-m' });
+      if (p.open) meta.append(el('span', { class: 'sw-dot o', title: `${p.open} open` }, String(p.open)));
+      if (p.done) meta.append(el('span', { class: 'sw-dot c', title: `${p.done} closed` }, String(p.done)));
+      if (p.people?.length) meta.append(faces(p.people));
+      const t = here ? 'you’re here' : p.last ? ago(p.last) : '';
+      if (t) meta.append(el('span', { class: 'sw-when' }, t));
+      // The time is the last comment's (Leo 18 Nov: file times were all the same after a copy); the file's is on hover.
+      const tip = [p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
+        p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
+      if (tip) meta.title = tip;
+      row.append(el('span', { class: 'sw-t' }, short(lab, p)), meta);
       const url = lab.here ? new URL(p.url, location.href).pathname : p.url;
       row.addEventListener('click', (e: MouseEvent) => {
         if (e.metaKey || e.ctrlKey) window.open(lab.here ? location.origin + url : url, '_blank');

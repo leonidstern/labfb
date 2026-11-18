@@ -1364,13 +1364,28 @@ const listing = (res, dir, urlPath) => {
 const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}');
 const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
 // This lab's pages with their open comments, who listens, and which pages that covers (the switcher and `labit list`).
+// When this lab was made: its .lab folder's birth (the first run in this folder). Linux may not keep births: then its
+// oldest comment, else nothing.
+const created = () => {
+  try {
+    const t = fs.statSync(LAB).birthtimeMs;
+    if (t > 0) return new Date(t).toISOString();
+  } catch {}
+  const first = pages().flatMap((k) => commentsOf(k).map((c) => c.createdAt)).sort()[0];
+  return first || null;
+};
 const labInfo = () => {
   // Per page: open and done pins, when the file last changed and when anyone last wrote on it (the switcher's dates).
   const tally = (key) => {
     const all = commentsOf(key);
     const roots = all.filter((c) => !c.parent);
     const last = all.flatMap((c) => [c.createdAt, c.resolvedAt]).filter(Boolean).sort().pop() || null;
-    return { open: roots.filter((c) => !c.resolved).length, done: roots.filter((c) => c.resolved).length, last };
+    const replies = all.filter((c) => c.parent);
+    return {
+      open: roots.filter((c) => !c.resolved).length, done: roots.filter((c) => c.resolved).length, last,
+      first: roots[0]?.createdAt || null, replies: replies.length, agent: replies.filter((c) => c.session).length,
+      people: [...new Set(all.filter((c) => !c.session && c.name).map((c) => String(c.name)))].slice(0, 8),
+    };
   };
   const edited = (file) => {
     try {
@@ -1386,6 +1401,7 @@ const labInfo = () => {
   return {
     name: path.basename(ROOT), root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
+    created: created(),
     pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file) })),
   };
 };

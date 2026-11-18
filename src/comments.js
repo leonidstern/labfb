@@ -36,7 +36,7 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
 import { holdWhileOpen } from './widget/hold.ts';
-import { bindSwitcher, openSwitcher, preloadSwitcher } from './widget/switcher.ts';
+import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -828,7 +828,8 @@ import { bindSwitcher, openSwitcher, preloadSwitcher } from './widget/switcher.t
       el('kbd', { 'aria-hidden': 'true' }, KEYS.toggle),
     );
     toggleBtn.classList.toggle('secondary', S.on);
-    host.toggleAttribute('data-sheet', Boolean(S.on && (S.draft || S.openId || S.listOpen || S.chatOpen))); // phones: the sheet has the screen's bottom
+    host.toggleAttribute('data-labs', Boolean(!coarse && S.labsOpen)); // the page dims behind labs & pages (the widget's .scrim)
+    host.toggleAttribute('data-sheet', Boolean((coarse && S.labsOpen) || (S.on && (S.draft || S.openId || S.listOpen || S.chatOpen)))); // phones: the sheet has the screen's bottom
     if (coarse && appear && now) { // a sheet opening slides in once its first frame is drawn (see data-opening in styles.css)
       host.setAttribute('data-opening', '');
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
@@ -1373,8 +1374,9 @@ import { bindSwitcher, openSwitcher, preloadSwitcher } from './widget/switcher.t
   const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
   /** @returns {HTMLElement | null} */
-  const openSheet = () => root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
+  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
   const closeAll = () => {
+    if (S.labsOpen) return closeSwitcher(); // labs & pages sits over the others: only it goes
     S.draft = null;
     S.openId = null;
     S.listOpen = false;
@@ -1751,5 +1753,16 @@ import { bindSwitcher, openSwitcher, preloadSwitcher } from './widget/switcher.t
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
   startLive();
-  if (LABS) bindSwitcher({ root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => setMenu(false) });
+  if (LABS) bindSwitcher({
+      root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
+        setMenu(false);
+        if (coarse) S.listOpen = S.chatOpen = false; // one sheet at a time on a phone
+      },
+      // Phones: labs & pages is a sheet like the list and the chat (see openSheet); a computer keeps its box over the page.
+      sheet: (open) => {
+        S.labsOpen = open;
+        render();
+      },
+      swipe: swipeDown,
+    });
 })();
