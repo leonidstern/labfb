@@ -2031,7 +2031,7 @@ const handler = async (req, res) => {
         const p = parkedLabs().find((x) => x.port === n);
         if (!p) return res.writeHead(404).end('not parked');
         if (runningLabs().some((l) => l.port === n)) return res.writeHead(409).end('already running');
-        const env = { ...process.env, ...(p.edge ? { LABIT_EDGE: p.edge } : {}) };
+        const env = { ...process.env, LABIT_EXIT_WITH_PARENT: '', ...(p.edge ? { LABIT_EDGE: p.edge } : {}) }; // a lab started again outlives the one that started it
         spawn(process.execPath, [...p.execArgv, ...p.argv.filter((a) => a !== '--no-open'), '--no-open'], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
         fs.rmSync(path.join(PARKED, `${n}.json`), { force: true });
         console.log(`[lab] started ${p.name} again on ${n}`);
@@ -2328,6 +2328,12 @@ const bye = () => {
   } catch {}
   process.exit(0);
 };
+// A lab a test run started (LABIT_EXIT_WITH_PARENT=1, set by test/setup.mjs and the browser tests) ends with that run:
+// a run that failed or was cancelled before its own cleanup left its lab running for days (18 Nov: dozens of them).
+if (process.env.LABIT_EXIT_WITH_PARENT === '1') {
+  const parent = process.ppid;
+  setInterval(() => process.ppid !== parent && bye(), 1000).unref();
+}
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed

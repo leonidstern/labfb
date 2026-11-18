@@ -24,7 +24,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 let DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-'));
 const PORT = String(5500 + Math.floor(Math.random() * 300));
 let B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const LONG = 'This is a very long paragraph meant to be selected whole, it keeps going and going with plenty of words so that the selection runs over several lines of the window, and then it goes on a little more for good measure, with yet more words to be sure that it is over three hundred characters long, until finally it ends.';
 const PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>fluid</title>
 <style>body{margin:30px;max-width:520px;font:18px/1.6 Georgia,serif} #box{height:96px;overflow:auto;border:1px solid #999} #field{width:200px}</style>
