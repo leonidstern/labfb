@@ -174,7 +174,7 @@ const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort()
 // A page's last activity: a comment, reply or close, or someone opening it (Leo 18 Nov: "show last activity, don't show
 // comments count, sort it by last activity"). The rows show it and are ordered by it, newest first.
 const touched = (p: Page) => latest(p.last, p.opened);
-const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)) || lab.started || '';
+const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)); // a lab nobody used goes last (a restart isn't activity)
 // One order (Leo 18 Nov: no sorting): last active first, labs and their pages alike.
 const orderPages = (ps: Page[]) => [...ps].sort((a, b) => touched(b).localeCompare(touched(a)));
 const orderLabs = (labs: Lab[]) => [...labs].sort((a, b) => labTouched(b).localeCompare(labTouched(a)));
