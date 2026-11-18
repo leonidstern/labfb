@@ -145,17 +145,6 @@ test('a folder that a running lab already serves opens that lab instead of start
   fs.rmSync(home, { recursive: true, force: true });
 });
 
-test('add and remove (cloud lab pages) are parked: they say so instead of serving a folder', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cloud-')));
-  for (const cmd of ['add', 'remove']) {
-    const r = await new Promise((resolve) => execFile(process.execPath, [LAB, cmd, 'https://lab.example.invalid/a'], { cwd: dir }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
-    assert.equal(r.code, 1, cmd);
-    assert.match(r.out, /cloud labs are parked/, cmd);
-  }
-  assert.ok(!fs.existsSync(path.join(dir, '.lab', 'links.json')), 'nothing saved');
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
 test('pages lists this folder\'s labs only, unless --all', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   const env = { ...process.env, LABIT_HOME: home };
