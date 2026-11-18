@@ -151,7 +151,7 @@ test('a retried post with the same nonce gives back the first comment, not a sec
   assert.equal(all.filter((c) => c.text === 'sent twice by a retry').length, 1);
 });
 
-test('a reply in a thread the agent has gets only the new words; reply --wait answers and listens in one go', async () => {
+test('a reply in a thread the agent has comes with its thread, the new one marked; reply --wait answers and listens in one go', async () => {
   await up();
   const { comment } = await post({ page: '/index', name: 'Leo', text: 'make the heading bigger', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', looks: 'text 32px', viewport: '1000×800' } });
   const first = await run(['wait', '--timeout', '5']);
@@ -163,11 +163,19 @@ test('a reply in a thread the agent has gets only the new words; reply --wait an
   const out = (await waiting).out;
   assert.match(out, /^Replied on \/index\./m);
   assert.match(out, /^# New replies/m);
-  assert.match(out, new RegExp(`thread id ${comment.id} "make the heading bigger": Leo · .* · id \\w+: and make it blue`));
-  assert.doesNotMatch(out, /^## /m, 'not the whole thread again');
+  const thread = out.slice(out.indexOf(`## /index · thread id ${comment.id}`));
+  assert.ok(thread.length < out.length, 'the thread is there');
+  const msgs = thread.split('\n').filter((l) => /^- /.test(l));
+  assert.equal(msgs.length, 3, 'all three messages');
+  assert.match(msgs[0], new RegExp(`^- Leo · .* · opened · id ${comment.id}: make the heading bigger$`));
+  assert.match(msgs[1], /^- .* · on it · id \w+: On it$/, 'the agent\'s answer, with its state');
+  assert.match(msgs[2], /^- Leo · .* · id \w+: and make it blue {2}← new$/, 'the new one, marked');
+  assert.match(thread, /^ {2}element: <h1 id="t">$/m, 'with the spot');
+  assert.doesNotMatch(out, /^looks:|^ {2}looks:/m, 'rare details stay in the full text');
+  assert.doesNotMatch(out, /^# New comments/m, 'not handed over as a new comment');
 });
 
-test('a reply goes as one line only to the session that has its thread; another session gets the thread whole', async () => {
+test('a reply goes in the short thread form only to the session that has its thread; another session gets the thread whole', async () => {
   await up();
   const as = (id) => ({ env: { ...process.env, CLAUDE_CODE_SESSION_ID: id, CODEX_THREAD_ID: '', AMP_CURRENT_THREAD_ID: '' } });
   const { comment } = await post({ page: '/index', name: 'Leo', text: 'tighten the spacing under the title', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
@@ -185,8 +193,9 @@ test('a reply goes as one line only to the session that has its thread; another 
   await new Promise((r) => setTimeout(r, 600));
   await post({ page: '/index', name: 'Leo', text: 'and less on mobile', parent: comment.id });
   const b2 = (await again).out;
-  assert.match(b2, new RegExp(`thread id ${comment.id} ".*": Leo · .* · id \\w+: and less on mobile`), 'now it has the thread: one line');
-  assert.doesNotMatch(b2, /^## /m);
+  assert.match(b2, new RegExp(`^## /index · thread id ${comment.id}$`, 'm'), 'now it has the thread: the short form');
+  assert.match(b2, /^- Leo · .* · id \w+: a bit more$/m, 'earlier words, unmarked');
+  assert.match(b2, /^- Leo · .* · id \w+: and less on mobile {2}← new$/m);
   assert.doesNotMatch(b2, /^# New comments/m, 'no heading for comments when there are only replies');
   assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --on-it \| --question\] \[--wait\]$/m, 'then one short line');
   assert.doesNotMatch(b2, /Write answers short|run in /);
