@@ -1,6 +1,6 @@
 <h1><picture><source media="(prefers-color-scheme: dark)" srcset="docs/labit-mark-dark.svg"><img src="docs/labit-mark-light.svg" alt="" width="34" height="34" align="top"></picture> labit</h1>
 
-[![npm](https://img.shields.io/npm/v/@leonidstern/labit)](https://www.npmjs.com/package/@leonidstern/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![license: PolyForm Perimeter](https://img.shields.io/badge/license-PolyForm%20Perimeter-black)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@leonidstern/labit)](https://www.npmjs.com/package/@leonidstern/labit) [![test](https://github.com/leonidstern/labit/actions/workflows/test.yml/badge.svg)](https://github.com/leonidstern/labit/actions/workflows/test.yml) [![license: PolyForm Small Business](https://img.shields.io/badge/license-PolyForm%20Small%20Business-black)](LICENSE)
 
 **Review is the new build.** Pin comments on your pages. Your coding agent reads them, changes the code, and answers on the pin.
 
@@ -14,7 +14,7 @@ In your project:
 npx @leonidstern/labit@latest
 ```
 
-It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, and opens the page with comments on top. Click to comment, drag to mark an area. `M` hides the comments.
+It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, and opens the page with comments on top. Click to comment, drag to mark an area, Shift-drag to quote words. `M` hides the comments.
 
 ## Let your agent answer
 
@@ -54,6 +54,6 @@ Shared labs on a domain (comments from people you send a link to) come later.
 
 ## License
 
-[PolyForm Perimeter 1.0.0](LICENSE). You can use labit, change it, and ship it inside your own work, for free and for any purpose, except to offer a product that competes with labit. That makes labit source-available, not OSI open source. Versions already on npm (0.6.2 and earlier) stay under MIT.
+[PolyForm Small Business 1.0.0](LICENSE). labit is free for people and companies with fewer than 100 people and under $1M in yearly revenue: use it, change it and ship it inside your own work. Larger companies need a paid license from the author. That makes labit source-available, not OSI open source. Versions already on npm (0.6.2 and earlier) stay under MIT.
 
 Made by [leonidstern](https://github.com/LeonidStern) · [OOZE](https://ooze.design)

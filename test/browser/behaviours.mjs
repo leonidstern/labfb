@@ -153,6 +153,41 @@ for (const eng of ['webkit', 'chromium']) {
   await p.keyboard.press('Escape');
   await sleep(200);
 
+  // A Shift-drag from inside a word to inside another quotes both whole words; one inside a single word keeps its letters.
+  const quoteOf = async (id, from, to, text) => {
+    const at = await p.evaluate(([id, from, to]) => {
+      const t = document.getElementById(id).firstChild;
+      const r = document.createRange();
+      r.setStart(t, from);
+      r.setEnd(t, to);
+      const rs = r.getClientRects();
+      const a = rs[0], z = rs[rs.length - 1];
+      return { x1: a.left + 1, y: a.top + a.height / 2, x2: z.right - 1 };
+    }, [id, from, to]);
+    // A Shift-press on main stretches whatever selection is left from before (fixed with the fluid dialog): start clean.
+    await p.evaluate(() => getSelection().removeAllRanges());
+    await p.keyboard.down('Shift');
+    await p.mouse.move(at.x1, at.y);
+    await p.mouse.down();
+    await p.mouse.move(at.x2, at.y, { steps: 6 });
+    await p.mouse.up();
+    await p.keyboard.up('Shift');
+    await sleep(400);
+    await p.keyboard.type(text);
+    await p.keyboard.press('Enter');
+    await sleep(600);
+    const all = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
+    return all.find((c) => c.text === text)?.anchor?.quote?.exact;
+  };
+  await p.evaluate(() => document.getElementById('p7').scrollIntoView({ block: 'center' }));
+  await sleep(300);
+  const whole = await quoteOf('p7', 2, 18, 'snap whole'); // "ragraph 7 with s"
+  check(eng, 'a Shift-drag from inside a word to inside another quotes both whole words', whole === 'paragraph 7 with some', whole);
+  const inside = await quoteOf('p9', 2, 6, 'snap inside'); // "ragr"
+  check(eng, '…a Shift-drag inside one word keeps its letters', inside === 'ragr', inside);
+  await p.keyboard.press('Escape');
+  await sleep(200);
+
   // Keys
   const chatOpen = () => shadow(() => { return !r.querySelector('.chatwin').hidden; });
   await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'с', code: 'KeyC', bubbles: true })));

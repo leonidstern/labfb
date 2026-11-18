@@ -45,6 +45,25 @@ test('pages get the comment layer', async () => {
   assert.match(html, /Hello/);
 });
 
+test('a lab tab wears labit\'s icon unless the page or the folder has its own', async () => {
+  await up();
+  assert.match((await (await fetch(B + '/')).text()).slice(0, 200), /<link rel="icon" href="\/_lab\/favicon\.svg">/);
+  fs.writeFileSync(path.join(DIR, 'own-icon.html'), '<!doctype html><head><link rel="shortcut icon" href="/mine.png"><title>o</title></head><p>x');
+  assert.doesNotMatch(await (await fetch(B + '/own-icon')).text(), /_lab\/favicon/);
+  const ico = await fetch(B + '/favicon.ico', { redirect: 'manual' });
+  assert.equal(ico.status, 302);
+  assert.equal(ico.headers.get('location'), '/_lab/favicon.svg');
+  assert.match((await fetch(B + '/_lab/favicon.svg')).headers.get('content-type') || '', /image\/svg/);
+  fs.writeFileSync(path.join(DIR, 'favicon.ico'), 'x');
+  try {
+    assert.doesNotMatch(await (await fetch(B + '/')).text(), /_lab\/favicon/);
+    assert.equal((await fetch(B + '/favicon.ico', { redirect: 'manual' })).status, 200);
+  } finally {
+    fs.rmSync(path.join(DIR, 'favicon.ico'));
+    fs.rmSync(path.join(DIR, 'own-icon.html'));
+  }
+});
+
 test('wait hears a new comment, reply answers it, the text file has both', async () => {
   await up();
   const waiting = run(['wait', '--timeout', '10']);
@@ -59,6 +78,23 @@ test('wait hears a new comment, reply answers it, the text file has both', async
   const list = await (await fetch(B + '/_lab/api/comments?page=/index')).json();
   const all = list.comments || list;
   assert.ok(all.some((c) => c.parent === comment.id && /title is red/.test(c.text)), 'reply stored under the comment');
+});
+
+test('a Cut and a Rewrite on quoted words reach wait whole, quotes and arrow included', async () => {
+  await up();
+  const quote = { exact: 'the “quoted” words', prefix: 'read ', suffix: ' here' };
+  const anchor = { kind: 'text', selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', quote };
+  const waiting = run(['wait', '--timeout', '10']);
+  await new Promise((r) => setTimeout(r, 400));
+  const cut = 'Cut: “the “quoted” words”';
+  const rewrite = 'Rewrite “the “quoted” words” → “some other words”';
+  await post({ page: '/index', name: 'Leo', text: cut, anchor });
+  await post({ page: '/index', name: 'Leo', text: rewrite, anchor });
+  const heard = (await waiting).out;
+  assert.ok(heard.includes(cut), 'wait hears the cut whole');
+  const text = await (await fetch(B + '/_lab/agent/index')).text();
+  assert.ok(text.includes(cut), 'the cut is in the agent text whole');
+  assert.ok(text.includes(rewrite), 'the rewrite, with its arrow, is in the agent text whole');
 });
 
 test('pin leaves the agent\'s own pin on a spot, with its session; a bad one is refused', async () => {
