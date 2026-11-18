@@ -59,15 +59,18 @@ jobs:
           # what a drag does (words, an area, a point, fields and links).
           - behaviours connection shortcuts anchoring selection
     name: browser (${{ matrix.engine }}, ${{ matrix.group == 'fluid' && 'fluid' || 'rest' }})
+    # Playwright's own image has both browsers and their system libraries already in it. Installing them with
+    # apt on each run took 30 s on a good day and 33 min on a bad one (#124, #127).
+    container: mcr.microsoft.com/playwright:v1.65.1-noble
     env:
       ENGINES: ${{ matrix.engine }}
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
-      - run: npx playwright install --with-deps ${{ matrix.engine }}
       - name: Run ${{ matrix.group }}
         run: for t in ${{ matrix.group }}; do echo "::group::$t"; node test/browser/$t.mjs; echo "::endgroup::"; done
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
