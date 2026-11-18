@@ -22,8 +22,13 @@ const pw = (() => {
   }
 })();
 
-const SRC = fileURLToPath(new URL('../../src/widget/anchoring.ts', import.meta.url));
-const OUT = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-anchoring-')), 'anchoring.js');
+const WIDGET = fileURLToPath(new URL('../../src/widget/', import.meta.url));
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-anchoring-'));
+const OUT = path.join(TMP, 'anchoring.js');
+// The anchoring module with the part that tries a question's choices in the page (trial.ts), in one bundle: they share
+// the module's state, as they do in the widget.
+const SRC = path.join(TMP, 'entry.ts');
+fs.writeFileSync(SRC, `export * from ${JSON.stringify(WIDGET + 'anchoring.ts')};\nexport { bindTrial, tryRow, untry } from ${JSON.stringify(WIDGET + 'trial.ts')};\n`);
 execFileSync('npx', ['--yes', 'esbuild@0.25.12', SRC, '--bundle', '--format=iife', '--global-name=A', `--outfile=${OUT}`, '--log-level=warning']);
 const BUNDLE = fs.readFileSync(OUT, 'utf8');
 
@@ -43,6 +48,7 @@ const open = async (ctx, body) => {
     document.documentElement.append(host);
     const el = (tag) => document.createElement(tag);
     A.bindAnchoring({ host, layer: host, el, store: { get: () => '', set: () => {} } });
+    A.bindTrial({ host });
     // The middle of a word on the page, in window pixels.
     window.wordAt = (word, root = document.body) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -252,13 +258,35 @@ try {
       check(eng, 'once saved, it has nothing more to say', r.healed === null, JSON.stringify(r.healed));
       check(eng, 'a pin that is lost saves nothing', r.lost === null, JSON.stringify(r.lost));
       await p.close();
+      // 11. A question's choice tried in the sentence (trial.ts) moves no pin: the other pins stay on their words, the
+      // page is as it was after, and the quoted words are found again (the words' places are read again, not remembered).
+      p = await open(ctx, '<p id="up">Above the claim.</p><p id="claim">labit puts the <a href="#x">full guide</a> on the page, not in chat. And a second sentence.</p><p id="low">A word after: special.</p>');
+      r = await p.evaluate(() => {
+        const at = (w) => { const m = wordAt(w); return A.anchorAt(m.x, m.y); };
+        const quote = at('guide');
+        quote.quote = { exact: 'the full guide on the page', prefix: 'labit puts ', suffix: ', not in chat' };
+        const pins = { up: at('Above'), low: at('special') };
+        const where = () => Object.fromEntries(Object.entries({ ...pins, quote }).map(([k, a]) => [k, A.position(a)]));
+        const html = document.body.innerHTML;
+        const before = where();
+        A.tryRow({ id: 'c', anchor: quote }, { id: 'q' }, 0, 'this short guide on the page, which is a longer way to say it and wraps the line', {});
+        const during = where();
+        const tried = document.getElementById('claim').textContent;
+        const lowWord = wordAt('special');
+        A.untry();
+        return { before, during, after: where(), same: document.body.innerHTML === html, tried, lowWord, low: A.position(pins.low) };
+      });
+      const rounded = (o) => JSON.stringify(Object.entries(o).map(([k, v]) => [k, Math.round(v.left), Math.round(v.top), Boolean(v.moved)]));
+      check(eng, 'a try moves no pin: the pin above stays, the one below follows its word', /this short guide/.test(r.tried) && rounded({ up: r.before.up }) === rounded({ up: r.during.up }) && !r.during.low.moved && r.during.low.top >= r.lowWord.top - 2 && r.during.low.top <= r.lowWord.bottom + 2 && r.during.low.top > r.before.low.top, JSON.stringify([r.before.low, r.during.low, r.lowWord]));
+      check(eng, 'after the try everything is as it was: the page, every pin, the quote found again', r.same && rounded(r.before) === rounded(r.after) && !r.after.quote.moved, JSON.stringify([r.same, rounded(r.before), rounded(r.after)]));
+      await p.close();
       await ctx.close();
     } finally {
       await browser.close();
     }
   }
 } finally {
-  fs.rmSync(path.dirname(OUT), { recursive: true, force: true });
+  fs.rmSync(TMP, { recursive: true, force: true });
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

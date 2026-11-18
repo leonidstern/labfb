@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FOREGROUND_CAP, letter, listenPages, replyChoices, replyIntent, waitSeconds, type Opts } from './args.ts';
+import { choiceSpills, FOREGROUND_CAP, letter, listenPages, replyChoices, replyIntent, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
 import { keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
@@ -350,6 +350,10 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
         .pop()?.id;
       const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, said, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}), ...asked });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
+      // The page tries each choice in place of the quoted words: a choice that reaches past them is said here.
+      if (asked) for (const note of choiceSpills(data[hit.page]?.[hit.id]?.anchor?.quote, asked.choices)) console.log(`Note: ${note}`);
+      // A note on no words (a spot or an element) has nothing to put them in: the choices show as rows, nothing is tried.
+      if (asked && !data[hit.page]?.[hit.id]?.anchor?.quote?.exact) console.log('Note: this note has no quoted words, so the choices show as rows and nothing is tried in the page.');
       if (asked) console.log(`Asked with ${asked.choices.map((c, i) => `${letter(i)}) ${c}`).join('  ')}${asked.recommend !== undefined ? `  (your pick: ${letter(asked.recommend)})` : ''}. The pick comes back in your next wait.`);
     }
     if (cmd === 'resolve' || opts.resolve) {

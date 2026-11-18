@@ -28,6 +28,7 @@
       pins: visible('.pin').map((p) => ({ ...r(p), c: p.className })),
       pill: r(visible('.since-count')[0]), sheet: r(visible('.since-panel')[0]), item: r(visible('.news-item')[0]), news: visible('.news-item').length, // new since you looked: the pill, its sheet and the list
       float: r(visible('.float')[0]), card: r(visible('.card')[0]), chat: r(visible('.chatwin')[0]),
+      rows: visible('.choice').map(r), keep: r(visible('.keep')[0]), // a question's choices and its Keep button
       scrimOn: (() => { const s = sr?.querySelector('.scrim'); return Boolean(s && getComputedStyle(s).display !== 'none' && +getComputedStyle(s).opacity > 0); })(),
       bar: r(visible('.fd .p-bar.on')[0]), chatBtn: r(visible('.chat-btn')[0]), toggle: r(visible('.toggle')[0]),
       // The quoted words are lit (CSS highlight) on text that can't be selected: Safari then paints whole blocks green.

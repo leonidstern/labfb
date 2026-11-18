@@ -86,7 +86,7 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
           intent: { type: 'string', enum: ['done', 'working', 'question'], description: 'done: the ask is done; working: you are on it; question: you need the person' },
           resolve: { type: 'boolean', description: 'Close the thread' },
           progress: { type: 'string', description: 'A short line on what you are doing now, e.g. "drawing W1–W6 · 2 of 4". Alone: no text, intent or resolve' },
-          choices: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 6, description: 'Ask with choices (text is the question): the person picks one on the page; the pick comes back in wait as "Picked B: …"' },
+          choices: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 6, description: 'Ask with choices (text is the question): the person picks one on the page, on quoted words after trying each in the sentence; the pick comes back in wait as "Picked B: …"' },
           recommend: { type: 'string', description: 'With choices: the letter of your own pick (A, B…)' },
           dir: { type: 'string', description: 'The project folder, if the server started somewhere else (default: the client\'s root or the folder it started in)' },
         },

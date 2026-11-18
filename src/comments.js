@@ -34,6 +34,7 @@ import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, l
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
+import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive } from './widget/live.ts';
 import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
@@ -736,6 +737,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   function render() {
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
+    // A question's choice tried in the page (thread.ts): the page's own words are back before anything is read or drawn;
+    // the same card drawn again tries the same row again.
+    pauseTry(S.on ? S.openId : null);
     S.grabbing = false; // a pin being dragged is replaced: its drag ends here
     S.dropDrag?.();
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
@@ -796,7 +800,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
       fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
-      markQuote(quoted || (fluidState() === 'bar' && S.offer));
+      if (!isTrying()) markQuote(quoted || (fluidState() === 'bar' && S.offer)); // a tried choice wears the green itself
       S.quoted = quoted;
       S.shown = now;
       S.posted = null;
@@ -932,7 +936,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           d.hot = false;
           d.shown?.remove();
           d.shown = null;
-          if (!d.zone && d.c.anchor?.quote) markQuote(S.quoted || (fluidState() === 'bar' && S.offer));
+          if (d.zone || !d.c.anchor?.quote) return;
+          if (isTrying()) relight(); // a tried choice: its green back
+          else markQuote(S.quoted || (fluidState() === 'bar' && S.offer));
         });
         pin.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -966,6 +972,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         S.stepping = S.keepKeys = false;
         next.push(card);
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
+        // A question with choices on quoted words: by its quote, in the margin or under it (thread.ts). Drawn again after
+        // the pick, it stays where it was instead of jumping back under its pin.
+        if (!zone && (openAsk(c) || (!appear && prev?.matches('.margin, .under')))) placeAsk(card, c);
         if (!appear && prevRows) {
           const rows = card.querySelector('.choices[role="listbox"]');
           /** @type {HTMLElement | null} */ (rows?.querySelector('.choice.on') || rows?.querySelector('.choice') || rows)?.focus({ preventScroll: true });
@@ -1754,11 +1763,16 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (fluidState() === 'bar' && S.offer) fluidBar(quoteRects(S.offer)); // the bar follows its words
       if (fluidState() === 'dlg' && S.draft) fluidFollow(quoteRects(S.draft.anchor)); // so does the open dialog
       // Keep an open composer's text: only re-place when nothing is being typed.
-      if (S.draft || root.activeElement || S.grabbing) return;
+      if (S.draft || root.activeElement || S.grabbing || isTrying()) return; // words tried in place: the pins stay put
       movePins();
     });
   };
   addEventListener('resize', reflow);
+  // A question's card in the margin (thread.ts) that no longer fits a narrower window goes back where cards go.
+  addEventListener('resize', () => {
+    const card = layer.querySelector('.card.margin');
+    if (card && card.getBoundingClientRect().right > document.documentElement.clientWidth - 12) requestAnimationFrame(render);
+  });
   addEventListener('scroll', (e) => (e.target !== document || fluidFixed()) && !host.contains(/** @type {Node} */ (e.target)) && reflow(), { capture: true, passive: true }); // the page's own scroll moves only what is held to the screen
 
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
