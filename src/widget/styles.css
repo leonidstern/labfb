@@ -558,11 +558,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-name { display: flex; align-items: center; gap: 0 6px; font-size: 12px; color: var(--_muted); min-width: 0; white-space: nowrap; }
 .sw-name .sw-m { margin-left: 6px; font-size: 12px; }
 .sw-port { font-size: 12px; color: var(--_muted); }
-/* Who's listening, as the badge says it: green listening, green with a pulse working, the text colour nobody. */
-.sw-live { flex: none; width: 8px; height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--_fg) 25%, transparent); }
-.sw-live.ok, .sw-live.work { background: rgb(36, 160, 70); }
-.sw-live.work { animation: lab-ready 1.6s ease-in-out infinite; }
-.sw-live.warn { background: var(--_fg); }
+.sw-live { font-size: 12px; color: var(--_muted); } .sw-live.ok { color: rgb(36, 160, 70); } .sw-live.warn { color: var(--_fg); font-weight: 500; }
+.sw-home { color: var(--_fg); font-weight: 600; font-size: 13px; text-decoration: none; border-radius: var(--_r-s); }
+.sw-home:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sw-row .sw-t .sw-path { font-size: 12px; color: var(--_muted); }
 .sw-name b { color: var(--_fg); font-weight: 600; font-size: 13px; }
 .sw-m { display: inline-flex; align-items: center; gap: 8px; }
 .sw-dot { display: inline-flex; align-items: center; gap: 4px; }
@@ -589,11 +588,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-none { color: var(--_muted); font-size: 12px; padding: 4px 10px 6px; }
 .sw-group { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--_muted); padding: 12px 10px 0; margin-top: 6px; border-top: var(--_hair); }
 .sw-lab.parked { padding-top: 6px; border-top: 0; margin-top: 0; }
-.sw-sort { display: flex; align-items: center; gap: 4px; padding: 6px 12px; border-bottom: var(--_hair); font-size: 11px; color: var(--_muted); }
-.sw-sort span { margin-right: 4px; font-size: 11px; }
-.sw-sort button { border: 0; background: none; color: var(--_muted); font-size: 12px; padding: 3px 8px; border-radius: var(--_r-s); cursor: pointer; }
-.sw-sort button:hover { background: var(--_hover); }
-.sw-sort button.on { background: var(--_soft); color: var(--_fg); font-weight: 500; }
 .sw-row.parked .sw-t { font-size: 12px; color: var(--_muted); }
 .sw-row.parked .sw-t b { color: var(--_fg); font-weight: 600; font-size: 13px; }
 .sw-m2 { display: flex; align-items: center; gap: 8px; }
@@ -616,7 +610,5 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .sw-acts { justify-content: flex-start; max-width: none; }
   .sw-acts button { font-size: 14px; padding: 7px 10px; }
   .sw-foot { display: none; }
-  .sw-sort { padding: 8px 16px; }
-  .sw-sort button { font-size: 14px; padding: 6px 10px; }
-  .sw-mini { font-size: 14px; padding: 5px 9px; }
+      .sw-mini { font-size: 14px; padding: 5px 9px; }
 }

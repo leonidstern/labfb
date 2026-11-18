@@ -5,8 +5,6 @@
 type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[] };
 type Lab = { name: string; port: number; here: boolean; mode: string; listening: string | null; pages: Page[]; root?: string; unreachable?: boolean; started?: string; created?: string | null };
 type Parked = { name: string; port: number; root: string; archived?: boolean; at?: string };
-type Sort = 'recent' | 'name' | 'pins';
-const SORTS: Sort[] = ['recent', 'name', 'pins'];
 type Deps = {
   root: ShadowRoot;
   el: (tag: string, attrs?: Record<string, string>, text?: string | Node) => HTMLElement;
@@ -29,15 +27,6 @@ let active = 0;
 let toCur = false; // the first list after opening starts on the page you're on, scrolled to it
 let armed = ''; // the park or archive button waiting for its second click: "action port"
 let showArchived = false;
-let sort: Sort = (() => {
-  try {
-    const v = localStorage.getItem('lab-switch-sort') as Sort;
-    return SORTS.includes(v) ? v : 'recent';
-  } catch {
-    return 'recent';
-  }
-})();
-let sorter: HTMLElement;
 
 let panelEl: HTMLElement;
 const switcherOpen = () => Boolean(box && !box.hidden);
@@ -52,9 +41,8 @@ export function bindSwitcher(deps: Deps) {
   panelEl = panel;
   input = el('input', { type: 'search', placeholder: 'Go to a page or a lab', 'aria-label': 'Go to a page or a lab', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false' }) as HTMLInputElement;
   list = el('div', { class: 'sw-list', role: 'listbox' });
-  sorter = el('div', { class: 'sw-sort', role: 'group', 'aria-label': 'sort' });
-  const foot = el('div', { class: 'sw-foot' }, '↑↓ choose · ↵ go · ⌘↵ new tab · ⌥O sort · ⌥S stop listening · ⌥P park · ⌥A archive · ⌥R start · esc close');
-  panel.append(el('div', { class: 'handle' }), input, sorter, list, foot);
+  const foot = el('div', { class: 'sw-foot' }, '↑↓ choose · ↵ go · ⌘↵ new tab · ⌥S stop listening · ⌥P park · ⌥A archive · ⌥R start · esc close');
+  panel.append(el('div', { class: 'handle' }), input, list, foot);
   box.append(panel);
   root.append(box);
   d.swipe(panel, () => closeSwitcher());
@@ -62,7 +50,7 @@ export function bindSwitcher(deps: Deps) {
     active = 0;
     draw();
   });
-  // Keys anywhere in the box (after a click on a sort or fold button too); Enter only from the search, so a focused
+  // Keys anywhere in the box (after a click on a fold button too); Enter only from the search, so a focused
   // button still does its own thing.
   panel.addEventListener('keydown', (e) => {
     const rows = [...list.querySelectorAll<HTMLElement>('.sw-row')];
@@ -75,10 +63,9 @@ export function bindSwitcher(deps: Deps) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       rows[active]?.dispatchEvent(new MouseEvent('click', { metaKey: e.metaKey || e.ctrlKey }));
-    } else if (e.altKey && !e.metaKey && !e.ctrlKey && /^Key[OSPAR]$/.test(e.code)) {
+    } else if (e.altKey && !e.metaKey && !e.ctrlKey && /^Key[SPAR]$/.test(e.code)) {
       // Option + a letter, read by key position (Option turns the letter into another character on a Mac).
       e.preventDefault();
-      if (e.code === 'KeyO') return setSort(SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length]);
       if (data?.guest) return;
       const row = rows[active];
       const port = Number(row?.dataset.port);
@@ -148,15 +135,6 @@ async function load() {
   if (switcherOpen()) draw();
 }
 
-function setSort(s: Sort) {
-  sort = s;
-  toCur = true; // back to the page you're on, wherever the new order puts it
-  try {
-    localStorage.setItem('lab-switch-sort', s);
-  } catch {}
-  draw();
-  keepKeys();
-}
 // A click on a button that draw() then replaces leaves focus nowhere; back to the search, so the keys keep working.
 const keepKeys = () => {
   if (!matchMedia('(pointer: coarse)').matches) input.focus({ preventScroll: true });
@@ -178,10 +156,12 @@ async function act(action: 'stop' | 'park' | 'archive' | 'unarchive' | 'start', 
 
 const say = (lab: Lab) => {
   const open = lab.pages.reduce((n, p) => n + p.open, 0);
+  // A word in the lab's line, the badge's colours: green listening or working, dark when pins wait for nobody. The
+  // agent's session name is on hover (Leo 18 Nov: "nav-switcher listening" confused).
   if (lab.unreachable) return ['not answering', 'warn'];
-  if (lab.mode === 'listening') return ['Claude listening for pins', 'ok']; // the session's own name is on hover (Leo 18 Nov: "nav-switcher listening" confused)
-  if (lab.mode === 'working') return ['Claude working on pins', 'work'];
-  return ['nobody listening', open ? 'warn' : '']; // the pins are on the line above
+  if (lab.mode === 'listening') return ['listening', 'ok'];
+  if (lab.mode === 'working') return ['working', 'ok'];
+  return ['no agent', open ? 'warn' : ''];
 };
 const hit = (q: string, ...words: string[]) => !q || words.some((w) => (w || '').toLowerCase().includes(q));
 const short = (lab: Lab, p: Page) => p.title || p.path;
@@ -221,35 +201,22 @@ const since = (iso?: string | null) => {
 const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort().pop() || '';
 const touched = (p: Page) => latest(p.last, p.edited);
 const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)) || lab.started || '';
-const pins = (p: Page) => p.open + (p.done || 0);
-const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-const orderPages = (ps: Page[], lab: Lab) =>
-  [...ps].sort((a, b) =>
-    sort === 'name' ? byName(short(lab, a), short(lab, b)) : sort === 'pins' ? b.open - a.open || pins(b) - pins(a) || touched(b).localeCompare(touched(a)) : touched(b).localeCompare(touched(a)),
-  );
-// The lab you're in stays first; the rest follow the sort.
-const orderLabs = (labs: Lab[]) =>
-  [...labs].sort((a, b) =>
-    Number(b.here) - Number(a.here) ||
-    (sort === 'name'
-      ? byName(a.name, b.name)
-      : sort === 'pins'
-        ? b.pages.reduce((n, p) => n + p.open, 0) - a.pages.reduce((n, p) => n + p.open, 0) || labTouched(b).localeCompare(labTouched(a))
-        : labTouched(b).localeCompare(labTouched(a))),
-  );
+// One order (Leo 18 Nov: no sorting): the lab you're in first, then the others, last written on first; pages likewise.
+const orderPages = (ps: Page[]) => [...ps].sort((a, b) => touched(b).localeCompare(touched(a)));
+const orderLabs = (labs: Lab[]) => [...labs].sort((a, b) => Number(b.here) - Number(a.here) || labTouched(b).localeCompare(labTouched(a)));
+
+// The lab's name goes to its home (/, its pages), as a page's row goes to the page (Leo 18 Nov: "no way to go" there).
+function home(lab: Lab) {
+  const to = lab.here ? '/' : data?.guest ? `/_lab/hop?port=${lab.port}&to=%2F` : `http://localhost:${lab.port}/`;
+  const a = d.el('a', { class: 'sw-home', href: to, title: `${lab.name}: all its pages` }, lab.name);
+  a.addEventListener('click', (e) => e.stopPropagation());
+  return a;
+}
 
 function draw() {
   const { el } = d;
   const q = input.value.trim().toLowerCase();
   const out: HTMLElement[] = [];
-  sorter.replaceChildren(
-    el('span', {}, 'sort'),
-    ...SORTS.map((s) => {
-      const b = el('button', { type: 'button', 'aria-pressed': String(s === sort), ...(s === sort ? { class: 'on' } : {}) }, s === 'pins' ? 'open pins' : s);
-      b.addEventListener('click', () => setSort(s));
-      return b;
-    }),
-  );
   if (!data) {
     list.replaceChildren(el('div', { class: 'sw-none' }, 'loading…'));
     return;
@@ -257,7 +224,7 @@ function draw() {
   const local = !data.guest;
   for (const lab of orderLabs(data.labs)) {
     const labHit = hit(q, lab.name, String(lab.port));
-    const pages = orderPages(lab.pages.filter((p) => labHit || hit(q, p.title, p.path, p.file)), lab);
+    const pages = orderPages(lab.pages.filter((p) => labHit || hit(q, p.title, p.path, p.file)));
     if (q && !pages.length && !labHit) continue;
     // The lab: its name and port, who listens, its pins, and what you can do about it (this computer only).
     const head = el('div', { class: 'sw-lab' });
@@ -274,9 +241,9 @@ function draw() {
     const people = [...new Set(lab.pages.flatMap((p) => p.people || []))];
     const last = latest(...lab.pages.map((p) => p.last));
     left.append(
-      el('span', { class: `sw-live ${tone}`, 'aria-label': status }),
-      el('b', {}, lab.name),
-      el('span', { class: 'sw-port' }, ` ${lab.port}${lab.here ? ' · here' : ''}`),
+      home(lab),
+      el('span', { class: 'sw-port' }, ` ${lab.port}${lab.here ? ' · here' : ''} ·`),
+      el('span', { class: `sw-live ${tone}` }, status),
       pinFacts(open, done, people, since(last)),
     );
     left.title = [
@@ -335,7 +302,10 @@ function draw() {
       const tip = [p.first ? `first pin ${new Date(p.first).toLocaleString()}` : '', p.last ? `last comment ${new Date(p.last).toLocaleString()}` : '',
         p.replies ? `${p.replies} replies${p.agent ? `, ${p.agent} from Claude` : ''}` : '', p.people?.length ? `by ${p.people.join(', ')}` : '', p.edited ? `file changed ${new Date(p.edited).toLocaleString()}` : ''].filter(Boolean).join('\n');
       if (tip) meta.title = tip;
-      row.append(el('span', { class: 'sw-t' }, short(lab, p)), meta);
+      // The title, and the page's path beside it (Leo 18 Nov: "Getting around your labs" didn't say it was /lab-navigation).
+      const t = el('span', { class: 'sw-t' }, short(lab, p));
+      if (p.title) t.append(el('span', { class: 'sw-path' }, ` ${p.path}`));
+      row.append(t, meta);
       const url = lab.here ? new URL(p.url, location.href).pathname : p.url;
       row.addEventListener('click', (e: MouseEvent) => {
         if (e.metaKey || e.ctrlKey) window.open(lab.here ? location.origin + url : url, '_blank');
@@ -348,7 +318,7 @@ function draw() {
   if (data.guest && data.labs.length < 2) out.push(el('div', { class: 'sw-none' }, 'Other labs on that computer are open to this computer only.'));
   if (local) {
     const all = data.parked.filter((p) => hit(q, p.name, String(p.port)));
-    const order = (ps: Parked[]) => [...ps].sort((a, b) => (sort === 'name' ? byName(a.name, b.name) : String(b.at || '').localeCompare(String(a.at || ''))));
+    const order = (ps: Parked[]) => [...ps].sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
     const parkedRow = (p: Parked) => {
       const row = el('button', { type: 'button', class: 'sw-row parked', role: 'option', 'data-port': String(p.port), 'data-kind': 'parked', ...(p.archived ? { 'data-archived': '1' } : {}) });
       const t = el('span', { class: 'sw-t' });
