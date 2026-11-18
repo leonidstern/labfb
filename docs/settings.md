@@ -128,5 +128,4 @@ on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat
 
 - **Per run, flags only:** `--new`, `--all`, `--pages`, `--timeout`, `--resolve`, `--done`, `--on-it`, `--question`, `--wait`, `--page`, `--dir`.
 - **Set by agents:** `LAB_AGENT`, `LAB_AGENT_NAME`, `LAB_SESSION_NAME` and the agents' own session ids.
-- **Secrets for cloud labs:** keep tokens in environment variables, never in a file you commit.
 - **For tests:** `LABIT_HOME`, `LAB_TAB_TTL`.
