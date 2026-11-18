@@ -230,6 +230,15 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await untilShadow(p, (r) => [...r.querySelectorAll('.pin')].filter((n) => n.textContent.trim() === '✓').length > 0, null, 1500);
   const doneFace = await ticks();
   check(eng, 'a go comment is an ordinary pin (no go look), and wears the tick once it is done', !goClass && doneFace === goFace + 1, `${goClass} go-looks; ticks ${goFace} → ${doneFace}`);
+  // A done pin is as big as an open one, only faded (once its face change has played).
+  await untilShadow(p, (r) => { const d = [...r.querySelectorAll('button.pin.resolved')]; return d.length > 0 && d.every((b) => b.getAnimations({ subtree: true }).every((a) => a.playState !== 'running')); }, null, 1500);
+  const sizes = await shadow(() => {
+    const w = (b) => b && Math.round(b.getBoundingClientRect().width * 10) / 10;
+    const pins = [...r.querySelectorAll('button.pin')];
+    const done = pins.find((b) => b.classList.contains('resolved'));
+    return { done: w(done), open: w(pins.find((b) => !b.classList.contains('resolved') && !b.classList.contains('moved'))), fade: done && getComputedStyle(done).opacity };
+  });
+  check(eng, 'a done pin is the same size as an open one, only faded', sizes.done > 0 && sizes.done === sizes.open && Number(sizes.fade) < 1, JSON.stringify(sizes));
   await post({ page, action: 'delete', id: placed.comment.id });
   // Option-click on a pin resolves its thread without opening it; again opens it again
   const elsewhere = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'from elsewhere');
