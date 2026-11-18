@@ -16,6 +16,7 @@ const PORT = String(8600 + Math.floor(Math.random() * 200)); // clear of the oth
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 fs.writeFileSync(path.join(DIR, 'other.html'), '<!doctype html><title>o</title><h1 id="o">Other</h1>');
+fs.writeFileSync(path.join(DIR, 'third.html'), '<!doctype html><title>3</title><h1 id="h">Third</h1>'); // its own session's page: a claim on it leaves the others alone
 // A 1 s grace once every page is closed, and pins 300 ms apart go over together. A tab with neither a stream nor a check-in is gone after 3 s here (90 s in a real lab).
 const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LAB_TAB_TTL: '3', LAB_BETWEEN_MS: '800', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
@@ -174,6 +175,23 @@ test('right after a wait runs out the pages still say listening, for the next wa
   again.kill();
   await again.done;
   await until(() => modeOf(p) === 'away', 3000, 'away once cancelled');
+  p.close();
+});
+
+test('two sessions on one lab: when one gets its pins, the other is still listening', async () => {
+  await drain();
+  const p = await live('two-s');
+  await until(() => modeOf(p) === 'away', 3000, 'away before the test');
+  const other = wait(['--pages', 'other']);
+  const idx = wait(['--pages', 'third']);
+  await until(() => modeOf(p) === 'listening', 4000, 'listening');
+  await post('for the third session', '/third');
+  const { out } = await idx.done;
+  assert.match(out, /for the third session/);
+  await sleep(300);
+  assert.equal(modeOf(p), 'listening', 'the /other wait is still open: not working, not away');
+  other.kill();
+  await other.done;
   p.close();
 });
 

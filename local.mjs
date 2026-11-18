@@ -885,7 +885,9 @@ const setMode = (m) => {
   clearTimeout(awayTimer);
   clearTimeout(betweenTimer);
   if (m === 'away') recent = [];
-  if (m === 'working') awayTimer = setTimeout(() => setMode('away'), 600000); // ten minutes without a sign of Claude
+  // Ten minutes without a sign of Claude: away, unless another wait is still open (two sessions on one lab: one
+  // working on its pins must not turn the other's pages away, Leo 18 Nov).
+  if (m === 'working') awayTimer = setTimeout(() => setMode(waiters.length ? 'listening' : 'away'), 600000);
   saveServer();
   broadcast();
 };
@@ -1184,7 +1186,7 @@ function deliver(res, got, who = '') {
   }
   saveHanded();
   for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
-  setMode('working');
+  setMode(waiters.length ? 'listening' : 'working'); // another session still waits: the lab is still listening
 }
 // A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made one after another go
 // over together, in one round trip, instead of one wake-up each.
