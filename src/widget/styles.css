@@ -268,8 +268,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
        background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; text-decoration: none; white-space: nowrap; }
 .listener span { color: var(--_muted); }
-/* The mark says the state, three ways (Leo, 18 Nov: black only when nobody listens): green while an agent listens
-   (its dot blinks now and then), green with twitching ears while one works on pins (Leo: no third colour), black and still when nobody
+/* The mark says the state, three ways (Leo, 18 Nov: black only when nobody listens): plain green while an agent is
+   connected and listening, green with twitching ears while one works on pins (Leo: no third colour), black and still when nobody
    listens. A dropped connection keeps the last state, faded, instead of looking like nobody. Only transforms move, on three small shapes, so nothing else
    on the layer is redrawn (the old dot's ping was kept to transform and opacity for the same reason). */
 .listener .lbl { display: contents; }
@@ -281,7 +281,6 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .listener.stale .mark { opacity: .4; }
 .mark :is(.e1, .e2, .eye) { transform-box: fill-box; transform-origin: 35% 100%; }
 .mark .eye { transform-origin: 50% 50%; }
-.listener:not(.idle, .working, .stale) .mark .eye { animation: lab-blink 3.2s ease-in-out infinite; }
 .listener.working .mark :is(.e1, .e2) { animation: lab-twitch 2.4s ease-in-out infinite; }
 .listener.working .mark .e2 { animation-delay: .18s; }
 @keyframes lab-blink { 0%, 88%, 100% { transform: scaleY(1); } 92%, 96% { transform: scaleY(.08); } }
@@ -509,7 +508,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chat-btn[data-agent=listening] .mark { fill: rgb(36, 160, 70); }
   .chat-btn[data-agent=away] .mark { fill: var(--_fg); }
   .chat-btn.stale .mark { opacity: .4; }
-  .chat-btn[data-agent=listening] .mark .eye { animation: lab-blink 3.2s ease-in-out infinite; }
   .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch 2.4s ease-in-out infinite; }
   .chat-btn[data-agent=working] .mark .e2 { animation-delay: .18s; }
   .send { width: 36px; height: 36px; }
