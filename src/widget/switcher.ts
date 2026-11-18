@@ -185,9 +185,10 @@ const labTouched = (lab: Lab) => latest(...lab.pages.map(touched)) || lab.starte
 const orderPages = (ps: Page[]) => [...ps].sort((a, b) => touched(b).localeCompare(touched(a)));
 const orderLabs = (labs: Lab[]) => [...labs].sort((a, b) => Number(b.here) - Number(a.here) || labTouched(b).localeCompare(labTouched(a)));
 
-/** A lab as its folder, "~/projects/site" (Leo 18 Nov: "lab-nav :4481" confused); a guest, without the path, gets the name. */
+/** A lab as its topic (labit --name "Lab navigation"), else its folder, "~/projects/site" (Leo 18 Nov: "lab-nav :4481"
+ *  confused). A guest, without the path, gets the name. */
 const where = (l: { name: string; root?: string }) => {
-  if (!l.root) return l.name;
+  if (!l.root || l.name !== l.root.split('/').pop()) return l.name;
   const parts = l.root.replace(/^\/(?:Users|home)\/[^/]+(?=\/)/, '~').split('/');
   return parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : parts.join('/'); // deep folders keep their last two
 };

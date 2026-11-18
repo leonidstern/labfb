@@ -244,3 +244,33 @@ test('one lab per folder: two started at once make one; a dead lock or a silent 
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('labit --name gives the lab its topic, and later starts keep it', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-name-')));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
+  const port = 4870 + Math.floor(Math.random() * 60);
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
+  const run = async (...more) => {
+    const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), ...more], { cwd: dir, env });
+    p.out = '';
+    p.stdout.on('data', (d) => (p.out += d));
+    p.stderr.on('data', (d) => (p.out += d));
+    const done = new Promise((r) => p.on('exit', r));
+    try {
+      for (let i = 0; i < 100 && !/\[lab\] http:\/\/localhost/.test(p.out); i++) await new Promise((r) => setTimeout(r, 100));
+      return (await (await fetch(`http://localhost:${port}/_lab/pages`)).json()).name;
+    } finally {
+      p.kill('SIGTERM');
+      await done;
+    }
+  };
+  try {
+    assert.equal(await run(), path.basename(dir), 'no topic: the folder');
+    assert.equal(await run('--name', 'Lab navigation'), 'Lab navigation');
+    assert.equal(await run(), 'Lab navigation', 'kept in .lab/name');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

@@ -25,7 +25,7 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf
 const HELP = `labit ${VERSION}: comment on local pages, your agent (Claude, Codex, Cursor…) answers on the pins.
 Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 
-  labit [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
+  labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
       Run it in your project. If the project has a dev server (Astro, Next, Vite…) running, comments go on top
       of it: it finds the server run from this folder, even with other projects' servers running. Give
       --proxy <port> to pick one yourself. A folder of HTML files is served as it is at http://localhost:4400
@@ -33,6 +33,8 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       --wifi lets phones and laptops on the same wifi comment too (as guests). Each one needs a one-time link
       (labit invite), so finding the port isn't enough. The pages still travel in the clear over the wifi.
       A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
+      --name gives the lab its topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder; it's
+      kept in .lab/name, so later starts keep it.
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labit pages [--all]
@@ -242,6 +244,18 @@ const ARCHIVE = path.join(LAB, 'archive'); // done threads a month old, one file
 const SERVER = path.join(LAB, 'server.json');
 const SEEN = path.join(LAB, 'seen');
 fs.mkdirSync(LAB, { recursive: true });
+// The lab's name: its topic, given when it starts (labit --name "Lab navigation", Leo 18 Nov: "named as topic on starting
+// lab"), kept in .lab/name so a restart keeps it. Without one, the folder's name. (wait/add use --name for themselves.)
+const NAME_FILE = path.join(LAB, 'name');
+const SERVES = !COMMANDS.includes(pos[0]);
+if (SERVES && typeof opts.name === 'string' && opts.name.trim()) fs.writeFileSync(NAME_FILE, opts.name.trim().slice(0, 80) + '\n');
+const LAB_NAME = (() => {
+  try {
+    return fs.readFileSync(NAME_FILE, 'utf8').trim() || path.basename(ROOT);
+  } catch {
+    return path.basename(ROOT);
+  }
+})();
 
 // One server per folder: two would overwrite each other's comments.
 const alreadyHere = (running) => {
@@ -898,7 +912,7 @@ const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
 const register = () => {
   try {
     fs.mkdirSync(REGISTRY, { recursive: true });
-    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: path.basename(ROOT), proxy: PROXY?.origin || null, startedAt: new Date().toISOString() }, null, 2));
+    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, startedAt: new Date().toISOString() }, null, 2));
   } catch {}
 };
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
@@ -1262,7 +1276,7 @@ const widget = (page, admin, me = '') => {
   markOpened(page);
   return `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${path.basename(ROOT).replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -1426,7 +1440,7 @@ const labInfo = () => {
   // A dev server's pages: the ones with comments. Pages without a file (moved or deleted) keep their pins but aren't offered: going there would find nothing.
   if (PROXY) for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
   return {
-    name: path.basename(ROOT), root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
+    name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
     created: created(),
     pages: list.map(({ key, ...p }) => ({ ...p, path: key, ...tally(key), edited: edited(p.file), opened: opened.get(key) || null })),
@@ -1718,7 +1732,7 @@ const handler = async (req, res) => {
       try {
         fs.mkdirSync(PARKED, { recursive: true });
         const edge = process.env.LABIT_EDGE;
-        writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: path.basename(ROOT), argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(action === 'archive' ? { archived: true } : {}), at: new Date().toISOString() }, null, 2));
+        writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(action === 'archive' ? { archived: true } : {}), at: new Date().toISOString() }, null, 2));
       } catch {}
       console.log('[lab] parked from the page: start it again from the switcher (⌘K) in another lab, or run labit here');
       answer(res, { ok: true });
