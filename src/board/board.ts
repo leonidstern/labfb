@@ -13,7 +13,7 @@ type Card = { f: Frame; box: HTMLElement; inner: HTMLElement; frame?: HTMLIFrame
 
 const script = document.currentScript as HTMLScriptElement;
 const name = script.dataset.name || '';
-let of = new URLSearchParams(location.search).get('of') || ''; // the page this board is about: Esc on an empty board goes back to it
+let of = new URLSearchParams(location.search).get('of') || ''; // the page this board is about (only the lab's unsaved default board of that page needs it)
 const coarse = matchMedia('(pointer: coarse)').matches;
 const CAP = coarse ? 3 : 8; // frames alive at once
 const AT_ONCE = coarse ? 1 : 2; // frames loading at once
@@ -321,7 +321,7 @@ function leave() {
   done.hidden = true;
   if (!c) return;
   c.box.classList.remove('in');
-  // The keys stay with the frame's document until focus is moved back: M, ⇧B and Esc would go to the wrong one.
+  // The keys stay with the frame's document until focus is moved back: M and Esc would go to the wrong one.
   (c.frame?.contentWindow as unknown as { __labSpot?: { clear?: () => void } } | null | undefined)?.__labSpot?.clear?.();
   c.frame?.blur();
   window.focus();
@@ -436,10 +436,6 @@ addEventListener('gesturechange', (e) => {
 
 // ---------- keys (after the widget's own: an Esc it used is not ours) ----------
 const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(n.tagName) || n.hasAttribute('data-lab-comments')));
-// Back to the page this board is about; the page puts its scroll back from the key ⇧B left (the one a reload uses).
-const back = () => {
-  if (of) location.href = of;
-};
 // The next (1) or previous (-1) frame in board order, the camera on it.
 const step = (by: number) => {
   if (!cards.length) return;
