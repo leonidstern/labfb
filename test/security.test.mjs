@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import { createHmac } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { apiOn } from '../lib/dev.ts';
@@ -116,6 +117,16 @@ test('a pin found again on a changed page saves where it is now, and does not co
   const { comment } = await (await call({ page, action: 'move', id: a.comment.id, found: true, anchor: { selector: 'div:nth-of-type(3)', docX: 0.2, docY: 180, eh: 44, text: 'other' }, edit: a.edit })).json();
   assert.deepEqual(comment.anchor, { ...a.comment.anchor, selector: 'div:nth-of-type(3)', docY: 180, eh: 44 }, 'only the path and the place on the page');
   assert.equal(comment.movedAt, undefined);
+});
+
+test('quote.selected and quote.tail are kept, other quote fields dropped', async () => {
+  const quote = { exact: 'some selected words', prefix: 'before ', suffix: ' after', selected: true, tail: 'and the last words of a long one', evil: '<script>' };
+  const { comment } = await (await call({ page: '/anna/site/ink', name: 'Ann', text: 'on words', anchor: { selector: 'p', kind: 'text', quote } }, { ip: '10.1.5.1' })).json();
+  assert.deepEqual(comment.anchor.quote, { exact: 'some selected words', prefix: 'before ', suffix: ' after', selected: true, tail: 'and the last words of a long one' });
+  const post = async (q, ip) => (await (await call({ page: '/anna/site/ink', name: 'Ann', text: 'x', anchor: { selector: 'p', kind: 'text', quote: q } }, { ip })).json()).comment.anchor.quote;
+  assert.equal((await post({ exact: 'word', selected: 'yes' }, '10.1.5.2')).selected, undefined, 'only true counts');
+  assert.equal((await post({ exact: 'word', tail: 'tail without a selection' }, '10.1.5.3')).tail, undefined, 'a tail goes with a selection');
+  assert.equal((await post({ exact: 'a b', selected: true, tail: 'x'.repeat(100) }, '10.1.5.4')).tail.length, 40, 'at most 40 characters');
 });
 
 test('a page full of open threads refuses people, not admins; done threads leave room', async () => {
@@ -297,17 +308,37 @@ test("the key a page carries (data-admin) is not the agent's: it can't listen, i
   assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: as(agent) })).status, 204, 'the agent listens');
 });
 
-test("whoever started a thread may resolve and reopen it with its key, not delete it or touch another", async () => {
+test("whoever started a thread may resolve and reopen it with its key, take back a fresh unanswered one, not touch another", async () => {
   const mine = await pin('/anna/site/own');
   const other = await pin('/anna/site/own');
   const page = '/anna/site/own';
   assert.ok(mine.edit, 'the starter gets a key');
   assert.equal((await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).status, 200);
   assert.equal((await call({ page, action: 'reopen', id: mine.comment.id, edit: mine.edit })).status, 200);
-  assert.equal((await call({ page, action: 'delete', id: mine.comment.id, edit: mine.edit })).status, 403, 'delete stays admin-only');
   assert.equal((await call({ page, action: 'resolve', id: other.comment.id, edit: mine.edit })).status, 403, "another thread's key");
   const r = await (await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).json();
   assert.equal(r.comment.resolvedBy, 'author');
+  // Delete: only the starter's undo, a fresh pin nobody answered; with a reply in it, it stays admin-only.
+  assert.equal((await call({ page, action: 'delete', id: other.comment.id, edit: mine.edit })).status, 403, "another thread's key can't delete");
+  assert.equal((await call({ page, name: 'Bo', text: 'seen', parent: other.comment.id })).status, 201);
+  assert.equal((await call({ page, action: 'delete', id: other.comment.id, edit: other.edit })).status, 403, 'answered: delete stays admin-only');
+  assert.equal((await call({ page, action: 'delete', id: mine.comment.id, edit: mine.edit })).status, 200, 'a fresh pin is taken back with its key');
+});
+
+test("the starter's take-back (delete with its key) ends after TAKE_BACK_MS, and never reaches a reply", async () => {
+  const page = '/anna/site/late';
+  const old = await pin(page);
+  const stored = db.get(`lab:comments:${page}`);
+  // Made 16 s ago (TAKE_BACK_MS is 15 s): backdated in the store.
+  const it = JSON.parse(stored.get(old.comment.id));
+  stored.set(old.comment.id, JSON.stringify({ ...it, createdAt: new Date(Date.now() - 16000).toISOString() }));
+  assert.equal((await call({ page, action: 'delete', id: old.comment.id, edit: old.edit })).status, 403, 'too late to take back');
+  // A reply's own key (the lab hands none, but one signed the same way) still can't delete it.
+  const fresh = await pin(page);
+  const reply = (await (await call({ page, name: 'Ann', text: 'and this', parent: fresh.comment.id }, { ip: '10.6.0.1' })).json()).comment;
+  const replyKey = createHmac('sha256', OWNER).update(`lab-edit:${page}:${reply.id}`).digest('base64url').slice(0, 24);
+  assert.equal((await call({ page, action: 'delete', id: reply.id, edit: replyKey })).status, 403, "a reply can't be taken back");
+  assert.equal((await call({ page, action: 'delete', id: reply.id }, { 'x-lab-admin': OWNER })).status, 200, 'an admin still deletes it');
 });
 
 // ---------- a guest's one-time link (--wifi) ----------
