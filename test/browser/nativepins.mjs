@@ -100,6 +100,24 @@ try {
       await sleep(600);
       const can = await p.evaluate(() => ({ anchor: CSS.supports('anchor-name: --a'), visibility: CSS.supports('position-visibility: anchors-visible') }));
       check(eng, 'the browser has anchor positioning and position-visibility', can.anchor && can.visibility, JSON.stringify(can));
+      // Does it really hide a pin whose spot a box cuts off? (Safari takes the property but doesn't, pinhold.ts:
+      // there the pin in the box is placed by the script.) The same probe as the widget's.
+      const hides = await p.evaluate(() => {
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:hidden;opacity:0;pointer-events:none;z-index:2147483647';
+        box.append(Object.assign(document.createElement('div'), { style: 'margin-top:40px;height:4px;anchor-name:--t-probe' }));
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--t-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) - 40px)';
+        document.body.append(box, probe);
+        return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => {
+          const r = probe.getBoundingClientRect();
+          const seen = document.elementFromPoint(1, 1) === probe;
+          box.remove();
+          probe.remove();
+          res(Math.abs(r.left) < 1 && Math.abs(r.top) < 1 && !seen);
+        })));
+      });
+      console.log(`info ${eng.padEnd(8)} hides a pin its box cuts off: ${hides}`);
       // Pins put the usual way: a click and Enter; words by Shift + double-click.
       let n = 0;
       const send = async (text) => {
@@ -145,7 +163,7 @@ try {
       await settle(p);
       const names = PINS.map(([name]) => name).filter((k) => k !== 'own'); // own is put last, below
       const rest = await where(p);
-      check(eng, 'five pins and a drawing, all held by the browser', names.every((k) => rest[k]?.held && rest[k]?.shown), JSON.stringify(rest));
+      check(eng, hides ? 'five pins and a drawing, all held by the browser' : 'four pins and a drawing held; the one in the box placed by the script', names.every((k) => rest[k]?.shown && rest[k]?.held === (k !== 'inbox' || hides)), JSON.stringify(rest));
       // A scroll measures nothing: no element or words are measured by the widget while the box and the page scroll.
       await p.evaluate(() => {
         window.labMeasured = 0;
@@ -160,7 +178,7 @@ try {
       const boxed = await where(p);
       check(eng, 'the box scrolls: every pin stays on its spot', same(rest, boxed, names).length === 0, JSON.stringify({ rest: rest.inbox, now: boxed.inbox }));
       check(eng, '…the pin in the box moved with it', Math.abs(boxed.inbox.y - rest.inbox.y - 70) <= 1, `${rest.inbox.y} → ${boxed.inbox.y}`);
-      check(eng, '…and the widget measured nothing for it', measured === 0, `${measured} measurements`);
+      if (hides) check(eng, '…and the widget measured nothing for it', measured === 0, `${measured} measurements`);
       await p.evaluate(() => scrollTo(0, 220));
       await settle(p);
       const paged = await where(p);

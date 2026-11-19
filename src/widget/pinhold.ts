@@ -13,13 +13,52 @@
 // So does a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
 // dialog, popover or full screen (the top layer is laid out after the pin, so it can't be its anchor). An element whose
 // anchor attribute a live patch took away parks its pins off screen (anchor()'s fallback) until they are placed again.
+// Safari takes position-visibility but doesn't hide a pin whose spot a box cuts off (asked once, hidesClipped): there a
+// pin inside a box that clips is placed by the script, which hides it; the others are held all the same.
 let sheet: HTMLStyleElement | null = null;
 const names = new WeakMap<Element, string>(); // an element's anchor name, kept while it lives
 const rules = new Map<HTMLElement, string>(); // a held pin and its rule
 let count = 0;
 let dirty = false;
 let able: boolean | null = null;
-const can = () => (able ??= typeof CSS !== 'undefined' && CSS.supports('anchor-name: --a') && CSS.supports('position-visibility: anchors-visible'));
+let hides = false; // until the probe says so, a pin inside a box that clips is the script's
+let again = () => {}; // places the pins again (comments.js): once the probe has answered yes
+/** What places the pins again when the browser turns out to hide clipped ones. */
+export const bindPinHold = (redraw: () => void) => (again = redraw);
+const can = () => {
+  if (able === null) {
+    able = typeof CSS !== 'undefined' && CSS.supports('anchor-name: --a') && CSS.supports('position-visibility: anchors-visible');
+    if (able) hidesClipped();
+  }
+  return able;
+};
+// Whether the browser really hides a fixed element whose anchor a box cuts off: a 4 px probe at the screen's corner,
+// unseen and let through, tied to an anchor scrolled out of a 4 px box. The browser decides at its next rendering
+// update, so it is read two frames on: not found at that point, it is hidden.
+function hidesClipped() {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:hidden;opacity:0;pointer-events:none;z-index:2147483647';
+  box.append(Object.assign(document.createElement('div'), { style: 'margin-top:40px;height:4px;anchor-name:--lab-probe' }));
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--lab-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) - 40px)';
+  document.body.append(box, probe);
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const r = probe.getBoundingClientRect();
+      const seen = document.elementFromPoint(1, 1) === probe;
+      box.remove();
+      probe.remove();
+      hides = Math.abs(r.left) < 1 && Math.abs(r.top) < 1 && !seen;
+      if (hides) again();
+    }),
+  );
+}
+// A box between the element and the page that cuts what overflows it.
+const clips = (node: Element) => {
+  for (let el = node.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement)
+    if (getComputedStyle(el).overflow !== 'visible') return true;
+  return false;
+};
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
 const inTopLayer = (node: Element) => {
   try {
@@ -39,7 +78,7 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
   let name = names.get(node);
   if (!name) names.set(node, (name = `lab${(++count).toString(36)}`));
   const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
-  if ((own && own !== 'none' && own !== `--${name}`) || inTopLayer(node)) {
+  if ((own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || (!hides && clips(node))) {
     letPin(pin);
     return false;
   }
