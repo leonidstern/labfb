@@ -4,7 +4,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Fixed: with a chat, a thread or a draft open, a save that needs a reload (a script, a JSON file) made the page wait for it ("update waiting") and, until then, drop everything else the lab sent: the agent's answer didn't show in the open chat, read marks and the listening pill stood still. The reload still waits; the rest keeps coming.
 - Phones: a comment made by holding the page always gets the cursor and the keyboard. The box used to focus itself during the hold, which Safari could do without a keyboard; now the finger's lift focuses it, once.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.
 - Pause sits beside what moves, not in the bar: each video and each animated element on the page gets a small pause / play just past its top right corner, over the page (nothing shifts), that stops or starts only that one. It shows with the comments and hides with them (M). **P** still pauses everything, or plays what was paused. The bar's pause button is gone.
@@ -14,6 +13,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - The npm package is 122 KB packed, down from 133: the command line is one minified file (`dist/local.mjs`), and `dist/` is cleaned before each build, so chunks from an older build no longer ship. Nothing changes in how labit runs. A dead second copy of the `publish` code is gone.
 - A long comment's scrollbar sits at the box's right edge. With your name already set the box keeps one row (text, name, arrow); once the words scroll, the name and arrow drop to a row of their own so the scrollbar is no longer left of them.
 - Holding Shift over words (to quote them) shows the drawn I-beam with a low ink band at its foot, in place of the I-beam with a green pin tip.
+- Fixed: with a chat, a thread or a draft open, a save that needs a reload (a script, a JSON file) made the page wait for it ("update waiting") and, until then, drop everything else the lab sent: the agent's answer didn't show in the open chat, read marks and the listening pill stood still. The reload still waits; the rest keeps coming.
 - One key for the mode: `1` (or a click on the switch) toggles between comment and pointer: once for the pointer, again for the comment. The switch reads "(1)" and the hint "1 comment / pointer". Key `3` and the `pointer` shortcut are gone; a `pointer` key left in a settings file is ignored without a message.
 - The listening pill drops the session name: "talking to Claude · Opus 5.5", not "… (labit for writing)". The name is in the pill's tooltip, and still in the labs & pages list.
 - On computers a comment on a spot or an area is one card like the dialog on words: the page's colour, the card's shadow, and the box (and its actions row, where there is one) 8 px in, its corners concentric with the card's.
