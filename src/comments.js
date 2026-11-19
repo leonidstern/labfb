@@ -1905,14 +1905,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         list.append(foot);
         menu.append(list);
       }
-      // The height eases from the line's to the list's (and back) in 180 ms, none with reduced motion; the sheet sits on
+      // The height eases from the line's to the list's (and back) over --_t-base, none with reduced motion; the sheet sits on
       // the bottom on a phone, so it grows upward, and the page under it never moves.
       let anim = null;
-      const ease = (from, to, then) => {
+      const fit = (from, to, then) => {
         anim?.cancel();
         anim = null;
         if (still.matches || !from || !to || from === to) return void then?.();
-        anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 180, easing: 'cubic-bezier(.2, 0, 0, 1)' });
+        anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ms('base'), easing: ease('out') });
         anim.onfinish = () => ((anim = null), then?.());
       };
       let lineH = 0; // the line's height when it grew, to fold back to
@@ -1921,13 +1921,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         dots.setAttribute('aria-expanded', String(open));
         if (!open) {
           const shut = () => ((menu.hidden = true), (row.hidden = false));
-          return now ? shut() : ease(menu.offsetHeight, lineH, shut);
+          return now ? shut() : fit(menu.offsetHeight, lineH, shut);
         }
         lineH = row.offsetHeight;
         fill();
         row.hidden = true;
         menu.hidden = false;
-        if (!now) ease(lineH, menu.offsetHeight);
+        if (!now) fit(lineH, menu.offsetHeight);
       };
       quiet(dots).addEventListener('click', () => {
         const now = dots.dataset.still === '1';
