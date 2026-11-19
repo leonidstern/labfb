@@ -54,6 +54,9 @@ type Anchor = {
   time?: number;
   /** The page's videos and animations were paused when this was written. */
   paused?: boolean;
+  /** A data-lab-action button's words, and whether the agent confirms before doing it (flag actions). */
+  act?: string;
+  confirm?: boolean;
   /** Then: the moment showing, in ms. */
   atMs?: number;
   /** The page's motion ran at ¼ speed. */

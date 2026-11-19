@@ -39,6 +39,7 @@ import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { bindEdit, editKey } from './widget/edit.ts';
 import { selectMode } from './widget/select.ts';
+import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
@@ -672,6 +673,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (started.has(name) || !script?.dataset.live || !host.isConnected) return;
     started.add(name);
     if (name === 'sectionBar' && flag('sectionBar')) startSections(); // the section bar: what is new or updated on the page since you read it
+    if (name === 'actions' && flag('actions')) bindActions(W); // data-lab-action buttons leave a pin the agent acts on
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
   S.syncFlags = (on, reload) => {

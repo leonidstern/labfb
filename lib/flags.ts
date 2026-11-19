@@ -9,6 +9,7 @@
 export const FLAGS: Record<string, { name: string; since: string }> = {
   editText: { name: 'edit words in place (E), saved into the source file', since: '0.6.3' },
   board: { name: 'boards: pages side by side as frames, options an agent draws as variants', since: '0.6.3' },
+  actions: { name: 'action buttons on a page: a tap leaves a pin the agent acts on', since: '0.6.3' },
   sectionBar: { name: 'a section bar at the top: each section, what is new or updated since you read it', since: '0.6.3' },
 };
 
