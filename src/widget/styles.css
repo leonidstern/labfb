@@ -184,6 +184,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* The new comment box on a computer floats over the page: the page's colour, the pins' 1 px edge in the text colour
    (it shows on white and black pages alike) and a soft shadow. */
 .float { --_box-bg: var(--_bg); --_box-edge: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
+/* A comment on a spot or an area looks as the dialog on words does: one card, the buttons and box in it (Leo, 18 Nov). */
+@media (pointer: fine) { .float { --_box-bg: var(--_soft); --_box-edge: none; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); padding: 8px; } }
 /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
 /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
@@ -538,7 +540,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .settled .p-dlg { position: relative; }
 .fd .p-bar { width: max-content; margin: 0; padding: 6px; }
 .p-dlg { padding: 8px; }
-.fd .float { position: static; width: auto; max-width: none; --_box-bg: var(--_soft); --_box-edge: none; }
+.fd .float { position: static; width: auto; max-width: none; --_box-bg: var(--_soft); --_box-edge: none; background: none; border-radius: 0; box-shadow: none; padding: 0; }
 .quick { display: flex; gap: 4px; margin: 0 0 6px; }
 .quick button { border: 0; border-radius: var(--_r-s); padding: 5px 8px; background: var(--_soft); font-size: 12px; letter-spacing: 0; cursor: pointer; }
 .quick button:hover { background: var(--_hover); }
@@ -547,7 +549,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Corners inside corners (Leo, 18 Nov): an inner radius is the outer one less the gap between them, so they run
    concentric: the bar's buttons sit 6 px in, the dialog's quick buttons and box 8 px in. */
 .p-bar button { border-radius: max(0px, calc(var(--_radius) - 6px)); }
-.fd .p-dlg .quick button, .fd .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
+.fd .p-dlg .quick button, .fd .box, .float .quick button, .float .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
 .fd.gone .quick [data-k=rewrite], .fd.gone .quick [data-k=cut] { opacity: .4; pointer-events: none; } /* its words are gone: cut and rewrite have nothing to act on */
 .fd.still .pane { transition: none; } /* back after a reload: nothing moves */
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
