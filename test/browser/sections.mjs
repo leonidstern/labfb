@@ -42,6 +42,7 @@ write('index.html', page());
 write('plain.html', page({ body: '<p>Only words.</p>' }));
 write('sticky.html', page({ head: 'h1{display:none}header{position:sticky;top:0;height:60px;background:#eee;z-index:5}', body: '<header>Site</header>' + sec('a', 'Alpha') + sec('b', 'Beta') }));
 write('zoomed.html', page().replace('initial-scale=1', 'initial-scale=2.5'));
+write('tight.html', page({ head: 'h1{margin:0}' }));
 write('many.html', page({ body: Array.from({ length: 14 }, (_, i) => sec(`m${i}`, `Section number ${i}`)).join('') }));
 fs.writeFileSync(path.join(OFF_DIR, 'labit.json'), JSON.stringify({ port: PORT + 200 }));
 write('index.html', page(), OFF_DIR);
@@ -160,6 +161,11 @@ try {
     const S = await open(await context(), '/sticky');
     const gap = await S.shadow(() => { return r.querySelector('.sbar').getBoundingClientRect().top; });
     check(eng, "under the page's own sticky bar", gap >= 59, String(gap));
+    // The bar keeps its own room: at the top, the page's first line starts under it (Leo, 19 Nov: "tab bar overlaying
+    // first heading on mobile").
+    const T = await open(await context(), '/tight');
+    const tight = await T.shadow(() => { return { bar: r.querySelector('.sbar').getBoundingClientRect().bottom, h1: document.querySelector('h1').getBoundingClientRect().top, y: scrollY }; });
+    check(eng, 'at the top, the first heading starts under the bar', tight.y === 0 && tight.h1 >= tight.bar, JSON.stringify(tight));
     const N = await open(await context(), '/plain');
     check(eng, 'no sections, no bar', (await N.chips()).length === 0 && (await N.shadow(() => { return r.querySelector('.sbar')?.hidden !== false; })));
     const F = await open(await context(), '/', 'leo-off', OFF);
