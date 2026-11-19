@@ -47,7 +47,7 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 :host([data-zoom]) .ui { display: block; position: fixed; left: 0; top: 0; width: var(--lab-zw); height: var(--lab-zh); z-index: 3;
   transform: translate(var(--lab-zx), var(--lab-zy)) scale(var(--lab-zk)); transform-origin: 0 0; pointer-events: none; }
 @layer zoom { :host([data-zoom]) .ui > * { pointer-events: auto; } } /* a layer: loses to their own pointer-events rules */
-.pin, .motion, .motion-slow { box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16); }
+.pin, .motion-ctl { box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16); }
 .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
        background: var(--_bg); border: 0;
        display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12px; font-weight: 500;
@@ -232,14 +232,6 @@ button.btn.danger, button.btn.danger:hover { color: var(--_red); }
 .error { color: var(--_red); font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }
-/* Pause / play beside a video or a moving thing on the page (comments.js): a small key in the pin's look, over the page. */
-.motion, .motion-slow { position: absolute; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--_r-s); cursor: pointer;
-          background: var(--_bg); color: var(--_fg); transition: transform var(--_t-quick) var(--_ease); }
-.motion:hover, .motion-slow:hover { transform: scale(1.03); }
-.motion[hidden], .motion-slow[hidden] { display: none; }
-.motion-slow { font: 600 11px/1 system-ui, sans-serif; }
-.motion-slow[aria-pressed="true"] { background: var(--_fg); color: var(--_bg); }
-.motion svg { width: 12px; height: 12px; fill: currentColor; }
 .bar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
 .bar button { border: 0; cursor: pointer; color: var(--_fg); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center;
               letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--_t-quick) var(--_ease-out); }
@@ -339,7 +331,8 @@ button.btn.danger, button.btn.danger:hover { color: var(--_red); }
    13 −.006, 15 −.016, 17 −.025). Uppercase labels and the ✓✓ overlap keep their own. */
 /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
 kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; padding: 0 1px; text-align: center; background: none;
-      color: var(--_muted) !important; opacity: .45; transition: opacity var(--_t-quick) var(--_ease-out); }
+      color: var(--_muted) !important; opacity: .45; }
+kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar:hover kbd { opacity: .75; }
 .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
 .bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1) reads like (c)hat and ne(w) */
@@ -382,6 +375,30 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
 /* A pin left by the agent: labit's mark in place of a letter. */
 .pin .agentmark { width: 60%; height: 60%; display: block; }
 .more-menu kbd { margin: 0; }
+/* Motion (comments.js): pause / play · ¼ · the moment in ms, in the moving thing's top right corner, over the page
+   (nothing moves). Computers: while ⌥ is held over it; a paused one keeps only its ▶. Phones: quiet, while in view. */
+.motion-ctl { position: absolute; transform: translateX(-100%); display: flex; align-items: center; gap: 1px; padding: 2px;
+  background: var(--_bg); color: var(--_fg); border-radius: var(--_r-s);
+  opacity: 0; pointer-events: none; z-index: 5; }
+.motion-ctl.on { opacity: 1; pointer-events: auto; }
+.motion-ctl.quiet > * { opacity: .72; } /* phones: shown all the time, so quieter, but the page doesn't show through */
+.motion-ctl button { width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--_r-s);
+  background: transparent; color: inherit; cursor: pointer; font: 600 11px/1 system-ui, sans-serif; }
+.motion-ctl button:hover { background: var(--_hover); }
+.motion-ctl button[aria-pressed="true"] { background: var(--_fg); color: var(--_bg); }
+.motion-ctl svg { width: 11px; height: 11px; fill: currentColor; }
+.motion-ms { padding: 0 6px 0 4px; font-size: 11px; color: var(--_muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+             min-width: 9ch; text-align: right; } /* steady width: the ms ticking up never slides the pause away from the pointer */
+.motion-ms:empty, .motion-ctl.mini .motion-slow, .motion-ctl.mini .motion-ms { display: none; }
+/* A pin's moment (pause, comment): a small quiet chip above the box or the thread, there from the start (no jump). */
+.moment { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; width: max-content; max-width: 100%; margin: 0 0 6px;
+          padding: 2px 8px 2px 6px; border: 0; border-radius: var(--_r-s); background: var(--_soft); color: var(--_muted);
+          font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moment svg { width: 9px; height: 9px; fill: currentColor; flex: none; }
+button.moment { cursor: pointer; }
+.float > .moment { background: var(--_bg); box-shadow: 0 0 0 1px var(--_edge); } /* over the page, above the box */
+button.moment:hover { color: var(--_fg); }
+@media (pointer: coarse) { .motion-ctl button { width: 30px; height: 30px; } }
 /* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
 .more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
   color: var(--_muted); user-select: text; overflow-wrap: anywhere; }
