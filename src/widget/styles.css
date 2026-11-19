@@ -655,7 +655,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar .sb-chip[data-st="new"] .sb-t { background-color: color-mix(in srgb, var(--_green) 30%, transparent); }
 .sbar .sb-chip[data-st="updated"] .sb-t { background-color: color-mix(in srgb, var(--_green) 15%, transparent); }
 .sbar .sb-more[data-st="1"] { color: var(--_green); }
-@media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
+@media (pointer: coarse) { :host([data-sheet]) :is(.sbar, .selbar) { visibility: hidden; } } /* the select bar steps out of the chat, a thread or the comment sheet too (Leo, 19 Nov: "states overlaying chat") */
 .sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
