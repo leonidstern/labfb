@@ -200,7 +200,9 @@ try {
       await q.goto(B + '/');
       await waitFor(() => inRoot(q, (r) => Boolean(r.querySelector('.chat-btn .mark'))), 4000);
       await sleep(1600);
-      await q.locator('.chat-btn').tap({ timeout: 3000 }).catch((e) => console.log(`  (tap: ${e.message.split('\n')[0]})`));
+      // The button's own click, in the page: Playwright's tap waits for the button to be free of whatever sits over it (the
+      // "hold to comment" hint, in the first seconds on an iPhone), and timed out there; what is tested is the badge.
+      await inRoot(q, (r) => r.querySelector('.chat-btn').click());
       await waitFor(() => inRoot(q, (r) => r.querySelector('.chatwin')?.hidden === false), 2000);
       save();
       await waitFor(async () => (await badge(q))?.shown, 4000);
