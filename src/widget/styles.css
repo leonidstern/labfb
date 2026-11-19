@@ -85,6 +85,17 @@ button.pin.done { color: var(--_green-fg); }
 button.pin:is(.resolved, .moved):is(:hover, .open) { opacity: 1; }
 .pin.grab { touch-action: none; }
 button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
+/* A drawing (hold D and drag, draw.ts) is its own pin: its lines over its area, no marker. Only the lines take the click
+   (a wider see-through copy of them). Done or resolved, it fades like a pin. */
+.ink { position: absolute; overflow: visible; pointer-events: none; }
+.ink path { fill: none; stroke: var(--lab-ink, var(--_red)); stroke-width: 3px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.ink path.hit { stroke: transparent; stroke-width: 16px; pointer-events: stroke; cursor: pointer; }
+.ink.live { left: 0; top: 0; width: 1px; height: 1px; }
+button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; background: none; box-shadow: none; outline: 0; color: transparent; pointer-events: none; transform: none; scale: none; }
+.pin.ink > :not(svg), button.pin.ink::before, .pin.ink::after { display: none; }
+.pin.ink.done { opacity: .5; }
+.pin.ink:is(:hover, .open) { opacity: 1; }
+.pin.ink:is(:hover, .open) path:not(.hit) { stroke-width: 4px; }
 .zone { position: absolute; background: none;
         border-radius: var(--_radius); pointer-events: none; }
 .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
