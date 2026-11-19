@@ -2,7 +2,8 @@
 // a while, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). The changelog says
 // which. Nothing is in the product because it was built.
 //
-// Each flag: the key as it is written in labit.json, one line saying what it is, and when it was first offered.
+// Each flag: the key as it is written in labit.json, the one line the ⋯ menu's experiments list shows, and when it was
+// first offered.
 
 // sinceLooked (an "Added" pill) was replaced by sectionBar. agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
 export const FLAGS: Record<string, { name: string; since: string }> = {

@@ -1,6 +1,8 @@
 // Labs & pages (⌘K, or the ⋯ menu): every lab running on this computer and its pages, to go to one; who listens on
 // each; archive a lab (which stops its listening) and start it again. A guest on a phone sees this lab's pages only. Part of the comment
-// widget (src/comments.js bundles it). Leo, 18 Nov (the lab-navigation page, option B).
+// widget, built as its own file (public/_lab/switcher.js, scripts/build-widget.mjs) that src/comments.js loads the
+// first time it is asked for (⌘K, or as the ⋯ menu opens). Leo, 18 Nov (the lab-navigation page, option B).
+import css from './switcher.css';
 
 type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[]; opened?: string | null; archived?: string | null };
 type Lab = { name: string; port: number; here: boolean; mode: string; listening: string | null; pages: Page[]; root?: string; unreachable?: boolean; started?: string; created?: string | null };
@@ -37,6 +39,7 @@ export const switcherSheet = () => (switcherOpen() ? panelEl : null);
 export function bindSwitcher(deps: Deps) {
   d = deps;
   const { el, root } = d;
+  root.append(el('style', {}, css)); // its styles come with it, after the widget's own
   box = el('div', { class: 'switch', hidden: '', role: 'dialog', 'aria-label': 'labs and pages' });
   const panel = el('div', { class: 'sw-box' });
   panelEl = panel;
@@ -85,15 +88,6 @@ export function bindSwitcher(deps: Deps) {
       e.stopPropagation();
       closeSwitcher();
     }
-  });
-  // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link").
-  document.addEventListener('keydown', (e) => {
-    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || (e.key || '').toLowerCase() !== 'k') return;
-    const typing = e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)) && n.getRootNode() !== root);
-    if (typing) return;
-    e.preventDefault();
-    if (switcherOpen()) closeSwitcher();
-    else openSwitcher();
   });
 }
 
