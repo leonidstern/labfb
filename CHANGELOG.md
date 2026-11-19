@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The listening mark's colours: green while an agent listens or works, amber while the page reconnects to the lab (it was faded green), muted grey when no agent listens (it was black). Its tooltip names the state first (Listening, Working, Away), then the resume command.
 - Done pins are as big as open ones, only faded (50%). Before, a done pin also shrank to 80% (64% on phones); a pin whose spot is gone still does.
 - While a new comment is open the page shows its own pointer, empty or not (it used to switch only once you typed, so an empty box still showed the pin cursor).
 - Agents read a pin's or chat message's whole thread before answering, and don't guess from the page, URL or #section what it asks (`wait`, the plugin's wake turn and the skill say so).

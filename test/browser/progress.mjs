@@ -85,6 +85,11 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     const ids = [await L.post('make it red', '#a'), await L.post('and bigger', '#b'), await L.post('and blue', '#c')];
     await until(async () => (await pins()).length === 3);
     check(eng, 'sent pins wear no ring', (await pins()).every(([ring]) => ring === ''), JSON.stringify(await pins()));
+    // The listening mark: grey when no agent listens (not black), and its tooltip names the state.
+    const mark = () => shadow(() => { const w = r.querySelector('.listener'); return { title: w?.title || '', fill: w?.querySelector('.mark') ? getComputedStyle(w.querySelector('.mark')).fill : '' }; });
+    await until(async () => /^Away/.test((await mark()).title));
+    const away = await mark();
+    check(eng, 'away: a grey mark and the tooltip says Away', /^Away/.test(away.title) && /rgba\(/.test(away.fill), JSON.stringify(away));
 
     // The agent takes all three: the oldest is picked up (pale green, still), the others wait in line (muted, still).
     const heard = await L.cli('wait', '--timeout', '5');
@@ -92,6 +97,7 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     await ringsAre(['ring got', 'ring wait', 'ring wait']);
     check(eng, 'picked up: a still pale green ring; the rest wait with a still muted ring', (await ringOf(0)) === 'ring got' && (await ringOf(1)) === 'ring wait' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill counts those waiting', await pillIs(/is working · 2 waiting/), await pill());
+    check(eng, 'working: a green mark and the tooltip says Working', /^Working/.test((await mark()).title) && (await mark()).fill === 'rgb(36, 160, 70)', JSON.stringify(await mark()));
     await shadow(() => { [...r.querySelectorAll('button.pin')][1].click(); });
     await until(() => shadow(() => { return !!r.querySelector('.card .stamp'); }));
     const stamp = () => shadow(() => { return r.querySelector('.card .msg.mine .stamp .tm')?.textContent || ''; });

@@ -486,7 +486,9 @@ export function startLive() {
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
         // How to get one listening again: what to say to the agent, for this page.
-        who.title = mode === 'away' ? `To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : s?.resume || '';
+        // The mark's colour says the state; the tooltip names it (Leo, 18 Nov).
+        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
+        who.title = mode === 'away' ? `${state} To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : [state, s?.resume].filter(Boolean).join('\n');
         who.hidden = false;
       }
     }
