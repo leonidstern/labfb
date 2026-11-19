@@ -51,7 +51,10 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
     `[data-lab-anchor="${name}"]{anchor-name:--${name}}` +
     `[data-lab-comments]::part(${part}){position:fixed!important;position-anchor:--${name};position-visibility:anchors-visible;` +
     `left:calc(anchor(left, -10000px) + ${px(left - scrollX - r.left)})!important;top:calc(anchor(top, -10000px) + ${px(top - scrollY - r.top)})!important}`;
-  if (rules.get(pin) !== rule) (rules.set(pin, rule), (dirty = true));
+  if (rules.get(pin) !== rule) {
+    rules.set(pin, rule);
+    dirty = true;
+  }
   return true;
 }
 
@@ -68,7 +71,11 @@ export const heldPin = (pin?: HTMLElement) => Boolean(pin && rules.has(pin));
 
 /** Writes the rules once the pins are drawn; pins gone from the page let go of theirs. */
 export function flushPins() {
-  for (const pin of rules.keys()) if (!pin.isConnected) (rules.delete(pin), (dirty = true));
+  for (const pin of rules.keys()) {
+    if (pin.isConnected) continue;
+    rules.delete(pin);
+    dirty = true;
+  }
   if (!dirty) return;
   dirty = false;
   if (!sheet) sheet = Object.assign(document.createElement('style'), { id: 'lab-pinhold' });
