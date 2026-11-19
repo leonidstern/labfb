@@ -660,6 +660,17 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar { position: fixed; left: 0; right: 0; top: var(--lab-top, 0px); z-index: 3; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
         background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
 .sbar[hidden] { display: none; }
+/* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
+.sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.sb-wrap .sb-nav { flex: 1; }
+.sb-wrap[data-l="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
+.sb-wrap[data-r="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+.sb-wrap[data-l="1"][data-r="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
+.sb-edge { position: absolute; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: #0a84ff; opacity: 0; transition: opacity var(--_t-fast, .15s); pointer-events: none; }
+.sb-edge.l { left: 2px; }
+.sb-edge.r { right: 2px; }
+.sb-edge[data-st="1"] { opacity: .8; }
+
 .sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
 .sb-nav::-webkit-scrollbar { display: none; }

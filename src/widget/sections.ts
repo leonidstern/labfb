@@ -68,7 +68,22 @@ export function startSections() {
   const more = el('button', { class: 'sb-more', type: 'button', 'aria-expanded': 'false', 'aria-label': 'more sections' }, '…');
   const menu = el('div', { class: 'sb-menu' });
   const bar = el('div', { class: 'sbar' });
-  bar.append(title, nav, more, menu);
+  // A phone's line scrolls: its edges fade where there is more, and a dot sits at an edge when something new or updated
+  // is past it (Leo, 19 Nov: "show somehow, super light, that there is new on scroll left or right").
+  const edgeL = el('i', { class: 'sb-edge l', 'aria-hidden': 'true' });
+  const edgeR = el('i', { class: 'sb-edge r', 'aria-hidden': 'true' });
+  const wrap = el('div', { class: 'sb-wrap' });
+  wrap.append(nav, edgeL, edgeR);
+  bar.append(title, wrap, more, menu);
+  const edges = () => {
+    const l = nav.scrollLeft, r = l + nav.clientWidth, any = nav.scrollWidth > nav.clientWidth + 1;
+    wrap.dataset.l = any && l > 1 ? '1' : '';
+    wrap.dataset.r = any && r < nav.scrollWidth - 1 ? '1' : '';
+    const past = (side: 'l' | 'r') => chips().some((c) => !c.hidden && c.dataset.st && (side === 'l' ? c.offsetLeft + c.offsetWidth <= l + 4 : c.offsetLeft >= r - 4));
+    edgeL.dataset.st = any && past('l') ? '1' : '';
+    edgeR.dataset.st = any && past('r') ? '1' : '';
+  };
+  nav.addEventListener('scroll', () => requestAnimationFrame(edges), { passive: true });
   bar.hidden = true;
   menu.hidden = more.hidden = true;
   W.root.querySelector('.ui').append(bar);
@@ -197,6 +212,7 @@ export function startSections() {
       else c.removeAttribute('aria-current');
     }
     more.dataset.st = [...menu.children].some((c) => (c as HTMLElement).dataset.st) ? '1' : '';
+    edges();
   };
   const place = () => {
     // Under the page's own bar when it has a fixed or sticky one at the top.
