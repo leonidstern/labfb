@@ -1,4 +1,5 @@
-// Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+// Part of the comment widget, built as its own file (public/_lab/changes.js, scripts/build-widget.mjs) that
+// src/comments.js loads only with the flag on. Uses the widget's own parts through W, handed over when it starts.
 //
 // "Added since you looked": when the agent adds parts to a page (a section, a version, a card: anything with an id), you
 // don't hunt for them. The ids on the page are kept as you last looked at them, each with its label (its heading, or its
@@ -10,12 +11,10 @@
 // agree, and in localStorage (`lab-looked:<page>`, { at, files, ids }) as a cache that works with the lab down.
 // Without a name it stays in the browser. Flag: sinceLooked (lib/flags.ts).
 import { noisy } from '../../lib/ids.ts';
+import css from './changes.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
-export function bindChanges(w: unknown) {
-  W = w;
-}
 
 type Item = [id: string, label: string];
 // dirty: made here and not yet in the lab.
@@ -38,7 +37,9 @@ function items(): Item[] {
   }
   return out;
 }
-export function startChanges() {
+export function startChanges(w: unknown) {
+  W = w;
+  W.root.append(W.el('style', {}, css)); // its styles come with it, after the widget's own
   const key = () => `lab-looked:${W.S.page}`;
   // W.el takes one text or node; this one takes any number of nodes.
   const el = (tag: string, attrs: Record<string, string>, ...kids: Array<Node | string>) => {

@@ -657,11 +657,15 @@ const lookLines = (page, file) => {
   return [who.length && `looked: ${who.map(at).join(', ')}`, ...who.map(unseen)];
 };
 
-// lab: this run of the lab (a restart is a new one); widget: what the comment widget's script is, so open pages reload
-// only when it changed and otherwise just catch up after a restart.
+// lab: this run of the lab (a restart is a new one); widget: what the comment widget's script is, with the parts it
+// loads later (public/_lab/*.js, scripts/build-widget.mjs), so open pages reload only when one changed and otherwise
+// just catch up after a restart.
 const widgetRev = () => {
   try {
-    return createHash('sha1').update(fs.readFileSync(path.join(REPO, 'public/_lab/comments.js'))).digest('hex').slice(0, 10);
+    const dir = path.join(REPO, 'public/_lab');
+    const hash = createHash('sha1').update(fs.readFileSync(path.join(dir, 'comments.js')));
+    for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.js') && f !== 'comments.js').sort()) hash.update(f).update(fs.readFileSync(path.join(dir, f)));
+    return hash.digest('hex').slice(0, 10);
   } catch {
     return '';
   }
