@@ -158,7 +158,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     await p.keyboard.press('Escape');
     await until(p, () => document.documentElement.classList.contains('lab-pinning'), null, 600);
   }
-  check(eng, 'comment mode is back before the selection check', await p.evaluate(() => document.documentElement.classList.contains('lab-pinning')), JSON.stringify(await p.evaluate(() => [...document.documentElement.classList].join(' '))));
+  check(eng, 'comment mode is back before the selection check', await p.evaluate(() => document.documentElement.classList.contains('lab-pinning')), JSON.stringify(await p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot; return { html: [...document.documentElement.classList].join(' '), go: r?.querySelector('.go-btn')?.className, boxes: [...(r?.querySelectorAll('.float, .card') || [])].map((n) => n.className), text: [...(r?.querySelectorAll('textarea') || [])].map((t) => t.value), on: localStorage.getItem('lab-on') }; })));
   // What the press saw, so a failure says why (Linux WebKit only, now and then).
   await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { const c = document.documentElement.classList; const us = (n) => getComputedStyle(n).webkitUserSelect + '/' + getComputedStyle(n).userSelect; window.__press ??= { shift: e.shiftKey, labShift: c.contains('lab-shift'), pinning: c.contains('lab-pinning'), lit: c.contains('lab-lit'), us: us(document.getElementById('p5')) }; }, { capture: true, once: true }); window.__ss = []; addEventListener('selectstart', (e) => window.__ss.push(e.defaultPrevented ? 'blocked' : 'allowed'), true); });
   await p.keyboard.down('Shift');
