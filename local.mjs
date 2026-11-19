@@ -112,7 +112,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
 const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'skill'];
-const { loadSettings, changedShortcuts, changedActions, savePersonal } = await import('./lib/settings.ts');
+const { loadSettings, changedShortcuts, changedActions, savePersonal, savePersonalFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
@@ -146,7 +146,7 @@ if (pos[0] === 'settings') {
   const changed = changedShortcuts(SET.shortcuts);
   const show = (k, v) =>
     k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
-      : k === 'flags' ? (flagsOn(v).join(', ') || 'none on')
+      : k === 'flags' ? (flagsOn(v).map((f) => `${f} (${SETTINGS.flagFrom[f] === 'project' ? 'labit.json' : 'yours'})`).join(', ') || 'none on')
       : k === 'actions' ? (Object.keys(changedActions(v)).length ? Object.entries(changedActions(v)).map(([a, l]) => `${a}: ${/** @type {any[]} */ (l).map((x) => x.label || x).join(' ') || '(none)'}`).join('; ') : 'the defaults')
       : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
@@ -1138,7 +1138,7 @@ const saveHanded = saver(HANDED, () => {
 }, 'hand-off marks');
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, labit: VERSION, reads: readsRev, looked: lookedRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, labit: VERSION, flags: flagsOn(SET.flags), reads: readsRev, looked: lookedRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1574,11 +1574,12 @@ const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-k
 // The actions on selected words that differ from the defaults (labit.json / settings.json `actions`). Labels are yours, so
 // the attribute is escaped as the flags' is.
 const ACTIONS_ATTR = Object.keys(changedActions(SET.actions)).length ? ` data-actions='${JSON.stringify(changedActions(SET.actions)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'` : '';
-// What is being tried in this lab: every flag and its state (set in labit.json), for the widget to read.
+// What is being tried in this lab: every flag, its state, and whether the project's labit.json sets it (then the ⋯
+// menu's Experiments list shows it read-only: the project wins over your own settings).
 // The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
 // in one of them would end the attribute halfway. & and < go too, so the tag can't be talked out of being a tag.
 const flagsAttr = () => {
-  const json = JSON.stringify(Object.fromEntries(Object.entries(FLAGS).map(([k, f]) => [k, { name: f.name, on: SET.flags[k] === true }])));
+  const json = JSON.stringify(Object.fromEntries(Object.entries(FLAGS).map(([k, f]) => [k, { name: f.name, on: SET.flags[k] === true, ...(SETTINGS.flagFrom[k] === 'project' ? { project: true } : {}) }])));
   return ` data-flags='${json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
 };
 // Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
@@ -1892,6 +1893,27 @@ const handler = async (req, res) => {
       if (body.page) q.set('to', landing('/' + String(body.page).replace(/^\/+/, '')));
       const tail = q.size ? `?${q}` : '';
       return answer(res, { name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) });
+    }
+    // The ⋯ menu's Experiments list: a flag turned on or off by the person at this computer (with the lab's key), saved
+    // in their own settings file so it holds in every lab they run. A flag the project's labit.json sets is the
+    // project's: refused here. Every open page hears the new state on the live stream and starts or stops the feature.
+    if (pathname === '/_lab/flags' && req.method === 'POST') {
+      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
+      const { flag, on } = await sent(req);
+      if (typeof flag !== 'string' || !Object.hasOwn(FLAGS, flag) || typeof on !== 'boolean') return res.writeHead(400).end('flag: one of ' + Object.keys(FLAGS).join(', ') + '; on: true or false');
+      if (SETTINGS.flagFrom[flag] === 'project') return res.writeHead(409).end(`${flag} is set by the project's labit.json`);
+      let file;
+      try {
+        file = savePersonalFlag(flag, on);
+      } catch (e) {
+        return res.writeHead(500).end(`could not save it: ${e.message}`);
+      }
+      SET.flags = { ...SET.flags, [flag]: on };
+      if (on) SETTINGS.flagFrom[flag] = 'personal';
+      else delete SETTINGS.flagFrom[flag];
+      console.log(`[lab] experiment ${flag}: ${on ? 'on' : 'off'} (${file.replace(os.homedir(), '~')})`);
+      broadcast();
+      return answer(res, { flags: flagsOn(SET.flags) });
     }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.

@@ -173,9 +173,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   if (ME && !store.get('lab-name')) store.set('lab-name', ME);
   // Where to tell the lab a new name, so the next lab on this computer starts out knowing it.
   const MEAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'me') : '';
-  // What this lab is trying (lib/flags.ts): flag -> on. Set in labit.json's `flags`, never from the page.
+  // What this lab is trying (lib/flags.ts): flag -> { name, on, project }. The ⋯ menu's Experiments list switches them
+  // (this computer only, saved in your own settings); one the project's labit.json sets is shown there, not switched.
   const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
   const flag = (name) => FLAGS[name]?.on === true;
+  const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
   let meSent = ME;
   const rememberMe = (name) => {
     if (!MEAPI || !name || name === meSent) return;
@@ -584,11 +586,82 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       openSwitcher();
     });
   }
+  // Experiments (lib/flags.ts) in the ⋯ menu: "experiments" with how many are on; a click turns the menu into the list,
+  // a switch a flag with its one line, and a back row at its head. A switch saves in your own settings (every lab you
+  // run) and applies at once: the lab tells every open page, which starts what came on and reloads for what went off.
+  // A flag the project's labit.json sets wins over yours: shown, not switched. A guest sees the switches, greyed.
+  const flagNames = Object.keys(FLAGS);
+  const mayFlag = Boolean(adminToken && FLAGSAPI);
+  let expOpen = false;
+  const expBtn = flagNames.length && script?.dataset.live ? el('button', { type: 'button', class: 'exp-btn', 'aria-haspopup': 'true' }) : null;
+  const expBack = el('button', { type: 'button', class: 'exp-back' }, '‹ experiments');
+  const expNote = el('div', { class: 'exp-note' }, 'only the computer running the lab switches these');
+  const expRows = flagNames.map((name) => {
+    const b = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', class: 'exp', role: 'switch', 'data-flag': name }));
+    const words = el('span', { class: 'exp-words' }, FLAGS[name].name);
+    if (FLAGS[name].project) words.append(el('span', { class: 'exp-why' }, "set by the project's labit.json"));
+    b.append(words, el('span', { class: 'exp-sw', 'aria-hidden': 'true' }));
+    b.disabled = !mayFlag || Boolean(FLAGS[name].project);
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation(); // the menu stays open: one pick doesn't close it here
+      if (b.disabled) return;
+      const on = !flag(name);
+      b.setAttribute('aria-checked', String(on)); // at once; FLAGS follows the lab's answer
+      try {
+        const r = await fetch(FLAGSAPI, { method: 'POST', headers: headers(), body: JSON.stringify({ flag: name, on }) });
+        if (!r.ok) throw new Error(await r.text());
+        S.syncFlags((await r.json()).flags, () => location.reload());
+      } catch {
+        drawExperiments();
+        say("couldn't switch it: is the lab running?");
+      }
+    });
+    return b;
+  });
+  function drawExperiments() {
+    if (!expBtn) return;
+    const n = flagNames.filter(flag).length;
+    expBtn.replaceChildren('experiments', el('span', { class: `exp-cnt${n ? '' : ' zero'}` }, String(n)));
+    expBtn.setAttribute('aria-label', `experiments, ${n} on`);
+    for (const b of expRows) b.setAttribute('aria-checked', String(flag(b.dataset.flag)));
+  }
+  drawExperiments();
+  const showExperiments = (open) => {
+    expOpen = open;
+    placeBar();
+    (open ? expRows.find((b) => !b.disabled) || expBack : expBtn)?.focus({ preventScroll: true });
+  };
+  expBtn?.addEventListener('click', (e) => (e.stopPropagation(), showExperiments(true)));
+  expBack.addEventListener('click', (e) => (e.stopPropagation(), showExperiments(false)));
+  // A flag's feature, started once and only in a local lab, where pages change under you. One that goes off can't be
+  // taken back out of a running page: the page reloads (when it's safe) and comes back without it.
+  const started = new Set();
+  const startFlag = (name) => {
+    if (started.has(name) || !script?.dataset.live || !host.isConnected) return;
+    started.add(name);
+    if (name === 'sinceLooked') startChanges(); // the ids added since you looked
+  };
+  // The lab's word on which flags are on (live stream, or the answer to a switch here).
+  S.syncFlags = (on, reload) => {
+    let gone = false;
+    for (const [name, f] of Object.entries(FLAGS)) {
+      const now = on.includes(name);
+      if (f.on === now) continue;
+      f.on = now;
+      if (now) startFlag(name);
+      else if (started.has(name)) gone = true;
+    }
+    drawExperiments();
+    if (gone) reload();
+  };
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = !S.on ? []
+      : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
+      : [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
-    if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
+    // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
+    if (S.on && (inMenu.some((b, i) => moreMenu.children[i] !== b) || moreMenu.children.length !== inMenu.length)) moreMenu.replaceChildren(...inMenu);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
     moreBtn.hidden = !S.on;
@@ -1064,6 +1137,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (open && LABS) preloadSwitcher();
     moreMenu.hidden = !open;
     moreBtn.setAttribute('aria-expanded', String(open));
+    if (!open && expOpen) {
+      expOpen = false; // it opens on its first page again
+      placeBar();
+    }
     if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
     else if (refocus) moreBtn.focus({ preventScroll: true });
   }
@@ -1923,7 +2000,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
-    if (script?.dataset.live && flag('sinceLooked')) startChanges(); // the ids added since you looked (local labs, where pages change under you)
+    for (const name of flagNames) if (flag(name)) startFlag(name);
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);

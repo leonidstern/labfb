@@ -78,12 +78,12 @@ Your `~/.config/labit/settings.json`:
 | `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
 | `actions` | below | | The buttons in the comment dialog: on words you select, and on a spot or an area. | both |
-| `flags` | everything off | | What this lab is trying: `{ "<flag>": true }`. See **Trying things** below. | either |
+| `flags` | everything off | the ⋯ menu's **experiments** | What this lab is trying: `{ "<flag>": true }`. See **Experiments** below. | both |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
 project you clone can't rename you or open your lab to the network); "both" from either, the project's first.
 
-## Trying things
+## Experiments
 
 A new instrument arrives as a flag: off unless you turn it on, tried in a real lab, then kept — the flag goes away and
 it is simply labit — or dropped, and the code goes with it. Nothing is in labit because it was built.
@@ -92,10 +92,16 @@ it is simply labit — or dropped, and the code goes with it. Nothing is in labi
 { "flags": { "<flag>": true } }
 ```
 
-Put it in the project's `labit.json` (or in your own `~/.config/labit/settings.json`, for every lab you run) and
-start the lab again: flags are read when the lab starts. The page has no switches for them, so the file is the one
-place a flag is set and your agent sees the same thing you do. `labit settings` lists which are on and where that
-came from.
+The easy way is the page: open the ⋯ menu and pick **experiments** (the number beside it is how many are on). The
+menu turns into the list, one switch a flag with its one line; **‹ experiments** at its head goes back. A switch
+applies at once, with no restart: every open page of the lab starts what came on, and reloads for what went off. It is
+saved in your own `~/.config/labit/settings.json`, so it holds in every lab you run. Phones get the same list, bigger
+to tap. Only the computer running the lab can switch them: a guest on your wifi sees the switches greyed out.
+
+Or write it in a file: the project's `labit.json` for everyone on the project, or your own settings file. A file you
+edit by hand is read when the lab starts. A flag the project's `labit.json` sets wins over yours, on or off: the menu
+shows that switch greyed, with "set by the project's labit.json" under it. `labit settings` lists which are on and
+whose each is: `flags  sinceLooked (yours)`.
 
 | Flag | What it is |
 | --- | --- |
