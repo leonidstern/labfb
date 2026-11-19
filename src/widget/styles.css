@@ -693,6 +693,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar { position: fixed; left: 0; right: 0; top: var(--lab-top, 0px); z-index: 3; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
         background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
 .sbar[hidden] { display: none; }
+/* A computer: only as wide as its sections (no page name), centred; when they do not fit, the line scrolls sideways (Leo, 19 Nov:
+   "can it be on desktop fit to content pls with swipe scroll"). Its lower corners round off where it ends. */
+.sbar { width: fit-content; max-width: calc(100% - 24px); margin-inline: auto; border-radius: 0 0 var(--_r-s) var(--_r-s); box-shadow: 0 0 0 .5px var(--_line); }
 /* Floating over a page it does not push (a proxied app, an app shell, a page with its own top bar): away while the page
    scrolls down, back on the way up (sections.ts, rule 3). Never in a print (rule 6). */
 .sbar { transition: opacity var(--_t-quick), transform var(--_t-quick) var(--_ease); }
@@ -776,19 +779,16 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-edge { position: absolute; top: 0; bottom: 0; width: 32px; opacity: 0; transition: opacity var(--_t-slow); pointer-events: none; }
 /* No dot either: the green ink on the name is the whole status (Leo, 19 Nov: "no pin icons"). */
 .sb-dot { display: none !important; }
-.sb-more[data-st="1"]::before { display: none; }
-.sb-more[data-st="1"] { color: rgb(36, 160, 70); } /* something new folded into "…": the dots go green */
 .sb-edge.l { left: 0; background: linear-gradient(90deg, rgba(52, 199, 89, .24), transparent); }
 .sb-edge.r { right: 0; background: linear-gradient(270deg, rgba(52, 199, 89, .24), transparent); }
 .sb-edge[data-st="1"] { opacity: 1; pointer-events: auto; cursor: pointer; width: 44px; } /* green: a tap slides to what is new */
 
-.sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-.sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
+.sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
 .sb-nav::-webkit-scrollbar { display: none; }
-.sb-chip, .sb-more { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
+.sb-chip { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
 .sb-chip[hidden] { display: none; }
-.sb-chip:hover, .sb-more:hover { background: none; color: var(--_fg); } /* hover and tap: the text darkens, no grey box (Leo, 19 Nov) */
-.sb-chip, .sb-more { -webkit-tap-highlight-color: transparent; }
+.sb-chip:hover { background: none; color: var(--_fg); } /* hover and tap: the text darkens, no grey box (Leo, 19 Nov) */
+.sb-chip { -webkit-tap-highlight-color: transparent; }
 .sb-chip[aria-current] { background: none; color: var(--_fg); } /* the one you are in: dark text, no fill (Leo, 19 Nov) */
 .sb-chip[aria-current] .sb-t { color: var(--_fg); }
 /* A status that goes (you read it) folds away over a moment instead of vanishing, so the chips after it glide left
@@ -815,13 +815,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-w.off { max-width: 0; margin-left: -6px; opacity: 0; }
 /* No status word on the chips (Leo, 19 Nov): the dot and the green ink say it; the word stays for screen readers. */
 .sb-w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.sb-menu { position: absolute; right: 8px; top: calc(100% + 4px); display: flex; flex-direction: column; align-items: stretch; max-height: min(60vh, 360px); overflow: auto; padding: 4px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); }
-.sb-menu[hidden] { display: none; }
-.sb-menu .sb-chip { text-align: left; }
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
-  .sbar { height: 44px; padding: 0 8px; }
-  .sb-title, .sb-more { display: none; }
-  .sb-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sbar { height: 44px; padding: 0 8px; width: auto; max-width: none; margin-inline: 0; border-radius: 0; box-shadow: 0 .5px 0 var(--_line); }
+  .sb-nav { -webkit-overflow-scrolling: touch; }
   .sb-chip { padding: 9px 12px; }
   /* A sheet that fills the screen (keyboard up) leaves the bar clear. */
   :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }

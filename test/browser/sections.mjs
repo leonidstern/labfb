@@ -1,7 +1,7 @@
 // The section bar in real browsers (WebKit and Chrome's engine): the page's sections along the top, the current one filled,
 // "new" and "updated" marked, what reads one (about 3 s in it, scrolling on, a tap), what is kept per person in the lab
 // (two devices, two names, the lab's own store and not the looks), the page's own sticky bar, a phone's sideways line above a
-// sheet's dimmed page, a computer's "…", and no bar with no sections or no flag. Not part of `npm test`; CI runs it in the
+// sheet's dimmed page, a computer's bar as wide as its tabs that scrolls sideways under the wheel, and no bar with no sections or no flag. Not part of `npm test`; CI runs it in the
 // `browser` job.
 // Run: node test/browser/sections.mjs   (needs the playwright package; NODE_PATH can point at a node_modules that has it).
 // ENGINES=webkit,chromium picks the engines (both by default).
@@ -119,7 +119,7 @@ try {
 
     // ---- the first visit: everything is read ----
     check(eng, 'first visit: a bar with four sections, none marked', (await states()) === 'Speed: Cost: Risk: Next steps:', await states());
-    check(eng, 'the page title is on the left', await shadow(() => { return r.querySelector('.sb-title').textContent === 'Plan'; }));
+    check(eng, 'no page name in the bar', await shadow(() => { return !r.querySelector('.sb-title') && !r.querySelector('.sbar').textContent.includes('Plan'); }));
     check(eng, 'the lone h1 is the title, not a section', !(await chips()).some((c) => c.t === 'Plan'));
 
     // ---- a page written anew (80 % or more new or updated at once): read, no name lights up ----
@@ -246,15 +246,32 @@ try {
     await sleep(900);
     check(eng, 'and comes back with them', (await chips()).length >= 5);
 
-    // ---- a computer folds what does not fit into "…" ----
+    // ---- a computer: the bar as wide as its tabs; too many scroll sideways under a swipe or the wheel ----
+    const fit = await shadow(() => { const b = r.querySelector('.sbar').getBoundingClientRect(); const n = r.querySelector('.sb-nav'); const cs = [...n.querySelectorAll('.sb-chip')].map((c) => c.getBoundingClientRect()); return { w: b.width, l: b.left, r: innerWidth - b.right, fits: n.scrollWidth <= n.clientWidth, span: cs[cs.length - 1].right - cs[0].left }; });
+    check(eng, 'computer: the bar is as wide as its tabs, centred', fit.fits && fit.w < 700 && Math.abs(fit.l - fit.r) <= 1 && fit.w - fit.span < 40, JSON.stringify(fit));
     const W2 = await open(await context({ viewport: { width: 700, height: 600 } }), '/many');
-    const fold = await W2.shadow(() => { const m = r.querySelector('.sb-more'); return { shown: !m.hidden, hidden: [...r.querySelectorAll('.sb-nav .sb-chip')].filter((c) => c.hidden).length, menu: r.querySelectorAll('.sb-menu .sb-chip').length }; });
-    check(eng, 'overflow folds into "…"', fold.shown && fold.hidden > 0 && fold.menu === fold.hidden, JSON.stringify(fold));
-    await W2.shadow(() => { r.querySelector('.sb-more').click(); });
-    check(eng, '"…" opens the rest, and a tap on one goes there', await W2.shadow(() => { return !r.querySelector('.sb-menu').hidden; }));
-    await W2.shadow(() => { r.querySelector('.sb-menu .sb-chip:last-child').click(); });
-    await sleep(700);
-    check(eng, 'it went to that section', (await W2.p.evaluate(() => scrollY)) > 5000);
+    const wide = await W2.shadow(() => { const n = r.querySelector('.sb-nav'); return { over: n.scrollWidth > n.clientWidth, hidden: [...n.querySelectorAll('.sb-chip')].filter((c) => c.hidden).length, more: Boolean(r.querySelector('.sb-more')), bar: r.querySelector('.sbar').getBoundingClientRect().width }; });
+    check(eng, 'computer: too many tabs scroll sideways, none folded away', wide.over && !wide.hidden && !wide.more && wide.bar <= 700 - 24 + 1, JSON.stringify(wide));
+    const navBox = await W2.shadow(() => { const b = r.querySelector('.sb-nav').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+    const navLeft = () => W2.shadow(() => { return r.querySelector('.sb-nav').scrollLeft; });
+    await W2.p.mouse.move(navBox.x, navBox.y);
+    await W2.p.mouse.wheel(0, 120);
+    await sleep(400);
+    const afterY = { left: await navLeft(), page: await W2.p.evaluate(() => scrollY) };
+    check(eng, 'computer: the wheel over the bar moves it sideways, not the page', afterY.left > 50 && afterY.page === 0, JSON.stringify(afterY));
+    await W2.p.mouse.wheel(150, 0);
+    await sleep(400);
+    const afterX = { left: await navLeft(), page: await W2.p.evaluate(() => scrollX + scrollY) };
+    check(eng, 'computer: a sideways swipe moves it on, the page stays', afterX.left > afterY.left + 50 && afterX.page === 0, JSON.stringify(afterX));
+    await W2.p.mouse.move(350, 400);
+    await W2.p.mouse.wheel(0, 300);
+    await sleep(400);
+    check(eng, 'computer: off the bar the wheel scrolls the page', (await W2.p.evaluate(() => scrollY)) > 100);
+    await W2.shadow(() => { [...r.querySelectorAll('.sb-nav .sb-chip')].pop().click(); });
+    await sleep(900);
+    check(eng, 'a tap on the last tab goes there', (await W2.p.evaluate(() => scrollY)) > 5000);
+    const inView = await W2.shadow(() => { const n = r.querySelector('.sb-nav'); const c = n.querySelector('.sb-chip[aria-current]'); if (!c) return 'none'; const cb = c.getBoundingClientRect(), nb = n.getBoundingClientRect(); return cb.left >= nb.left - 1 && cb.right <= nb.right + 1; });
+    check(eng, 'computer: the current tab is kept in view', inView === true, String(inView));
 
     // ---- a phone: one sideways line, above the dimmed page of a sheet, the sheet never over it ----
     const ph = await context({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
@@ -263,8 +280,8 @@ try {
     write('many.html', page({ body: Array.from({ length: 14 }, (_, i) => sec(`m${i}`, `Section number ${i}`, i === 11 ? 'Changed.' : undefined)).join('') + sec('fresh', 'Fresh') }));
     await until(async () => (await P.states()).includes('Section number 11:updated'));
     await sleep(600);
-    const line = await P.shadow(() => { const n = r.querySelector('.sb-nav'); const b = r.querySelector('.sbar').getBoundingClientRect(); return { sideways: n.scrollWidth > n.clientWidth, left: n.scrollLeft, title: getComputedStyle(r.querySelector('.sb-title')).display, more: getComputedStyle(r.querySelector('.sb-more')).display, h: b.height, top: b.top }; });
-    check(eng, 'phone: one line that scrolls sideways, no title, no "…"', line.sideways && line.title === 'none' && line.more === 'none', JSON.stringify(line));
+    const line = await P.shadow(() => { const n = r.querySelector('.sb-nav'); const b = r.querySelector('.sbar').getBoundingClientRect(); return { sideways: n.scrollWidth > n.clientWidth, left: n.scrollLeft, title: Boolean(r.querySelector('.sb-title')), w: b.width, vw: innerWidth, h: b.height, top: b.top }; });
+    check(eng, 'phone: one full-width line that scrolls sideways, no title', line.sideways && !line.title && line.w === line.vw, JSON.stringify(line));
     check(eng, 'phone: opened at the first updated section', line.left > 100, JSON.stringify(line));
     check(eng, 'phone: the bar is a tap target', line.h >= 40, String(line.h));
     const sy = await P.p.evaluate(() => scrollY);

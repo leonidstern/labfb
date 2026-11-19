@@ -15,7 +15,9 @@
 // down. A mark is a section's key (its id, or its heading's words) and a hash of its text.
 // The bar only ever scrolls itself sideways (nav.scrollTo): never scrollIntoView, which dragged the whole page to the top.
 // Phones: one line that scrolls sideways, opening at the first section with a status, above the sheets' dimmed page.
-// A computer: the page's title on the left, and what does not fit folds into "…". Flag: sectionBar (lib/flags.ts).
+// A computer: only the sections, no page name (Leo, 19 Nov: "dont show name of the page"), in a bar only as wide as they
+// are (centred); when they do not fit, the line scrolls sideways as a phone's does: a two-finger swipe, or the wheel turned
+// over it (Leo, 19 Nov: "can it be on desktop fit to content pls with swipe scroll"). Flag: sectionBar (lib/flags.ts).
 // Where it shows (Leo, 19 Nov, the six rules in labit-md-research canvas-proposals #bar-edges):
 //   1. by itself only on a lab page: served from the lab's folder (not behind --proxy) and linking /_lab/lab.css;
 //   2. <meta name="lab-sections" content="on|off">, or data-lab-sections on <html> or <body>, says so for one page;
@@ -83,18 +85,15 @@ function collect(): Sec[] {
 
 export function startSections() {
   const el = W.el as (tag: string, attrs?: Record<string, string>, text?: string) => HTMLElement;
-  const title = el('span', { class: 'sb-title' });
   const nav = el('nav', { class: 'sb-nav', 'aria-label': 'sections' });
-  const more = el('button', { class: 'sb-more', type: 'button', 'aria-expanded': 'false', 'aria-label': 'more sections' }, '…');
-  const menu = el('div', { class: 'sb-menu' });
   const bar = el('div', { class: 'sbar' });
-  // A phone's line scrolls: its edges fade where there is more, and a dot sits at an edge when something new or updated
+  // The line scrolls: its edges fade where there is more, and a dot sits at an edge when something new or updated
   // is past it (Leo, 19 Nov: "show somehow, super light, that there is new on scroll left or right").
   const edgeL = el('i', { class: 'sb-edge l', 'aria-hidden': 'true' });
   const edgeR = el('i', { class: 'sb-edge r', 'aria-hidden': 'true' });
   const wrap = el('div', { class: 'sb-wrap' });
   wrap.append(nav, edgeL, edgeR);
-  bar.append(title, wrap, more, menu);
+  bar.append(wrap);
   const edges = () => {
     const l = nav.scrollLeft, r = l + nav.clientWidth, any = nav.scrollWidth > nav.clientWidth + 1;
     wrap.dataset.l = any && l > 1 ? '1' : '';
@@ -104,6 +103,16 @@ export function startSections() {
     edgeR.dataset.st = any && past('r') ? '1' : '';
   };
   nav.addEventListener('scroll', () => requestAnimationFrame(edges), { passive: true });
+  // A computer's wheel over the line: a sideways swipe scrolls it natively (overscroll-behavior keeps it from the page and
+  // from the browser's back swipe); an up/down turn of the wheel or a vertical swipe moves it sideways too, and the page
+  // stays put. A line that fits leaves the wheel to the page.
+  wrap.addEventListener('wheel', (e) => {
+    if (nav.scrollWidth <= nav.clientWidth + 1 || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || e.ctrlKey) return;
+    e.preventDefault();
+    const d = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? nav.clientWidth : 1);
+    // A mouse's notch (a big step) glides; a trackpad's stream of small ones follows the fingers.
+    nav.scrollBy({ left: d, behavior: Math.abs(d) >= 40 && !still() ? 'smooth' : 'instant' });
+  }, { passive: false });
   // A tap on a green edge slides the line to the nearest new or updated chip past it and goes to that section (Leo,
   // 19 Nov: "clicking on green in tabs should scroll to new").
   for (const [edge, side] of [[edgeL, 'l'], [edgeR, 'r']] as const) edge.addEventListener('click', () => {
@@ -116,7 +125,6 @@ export function startSections() {
     c.click(); // and the page goes there, as a tap on that chip does (Leo: "also scroll to new as well")
   });
   bar.hidden = true;
-  menu.hidden = more.hidden = true;
   W.root.querySelector('.ui').append(bar);
   bar.addEventListener('click', (e) => e.stopPropagation()); // not a click on the page: no comment starts, nothing closes
 
@@ -240,8 +248,6 @@ export function startSections() {
     b.append(el('i', { class: 'sb-dot' }), el('span', { class: 'sb-t' }, s.label), el('span', { class: 'sb-w' }));
     b.onclick = () => {
       read(s);
-      menu.hidden = true;
-      more.setAttribute('aria-expanded', 'false');
       // An unread pin in it: that pin opens (and the page goes to it, in this section), as "new" in the bottom bar does.
       const pin = unreadIn(s)[0];
       if (pin) {
@@ -259,29 +265,8 @@ export function startSections() {
     if (!c || (nav.scrollWidth <= nav.clientWidth)) return;
     if (always || c.offsetLeft < nav.scrollLeft || c.offsetLeft + c.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: Math.max(0, c.offsetLeft - 12), behavior: still() || performance.now() - born < 1500 ? 'auto' : 'smooth' });
   };
-  // Folds what does not fit into "…" (a computer; a phone's line scrolls).
-  const fold = () => {
-    const wide = !W.coarse;
-    const all = chips();
-    all.forEach((c) => (c.hidden = false));
-    menu.replaceChildren();
-    more.hidden = true;
-    if (!wide || nav.scrollWidth <= nav.clientWidth) return;
-    more.hidden = false;
-    const room = nav.clientWidth - more.offsetWidth - 8;
-    let used = 0;
-    const out: Sec[] = [];
-    all.forEach((c) => {
-      used += c.offsetWidth + 2;
-      c.hidden = used > room;
-      if (c.hidden) out.push(secs.find((s) => s.key === c.dataset.s)!);
-    });
-    menu.append(...out.map((s) => chip(s)));
-    paint();
-  };
   const paint = () => {
-    title.textContent = words(document.title).replace(/^\(\d+\) /, ''); // not the tab's "(2)" for new comments: no numbers in the bar
-    for (const c of [...chips(), ...menu.querySelectorAll<HTMLElement>('.sb-chip')]) {
+    for (const c of chips()) {
       const s = secs.find((x) => x.key === c.dataset.s)!;
       const st = shows(s);
       c.dataset.st = st;
@@ -291,7 +276,6 @@ export function startSections() {
       if (s.key === current) c.setAttribute('aria-current', 'true');
       else c.removeAttribute('aria-current');
     }
-    more.dataset.st = [...menu.children].some((c) => (c as HTMLElement).dataset.st) ? '1' : '';
     edges();
   };
   // The page's own bar at the top, fixed or sticky, that the bar sits under: its bottom, and whether there is one (then the
@@ -402,8 +386,6 @@ export function startSections() {
     if (sig !== shown) {
       shown = sig;
       nav.replaceChildren(...secs.map(chip));
-      paint();
-      fold();
     }
     paint();
     place();
@@ -448,16 +430,10 @@ export function startSections() {
     const y = t.scrollTop, d = y - (lastTop.get(t) ?? y);
     lastTop.set(t, y);
     if (y < 8 || d < -6) bar.removeAttribute('data-away');
-    else if (d > 6 && menu.hidden) bar.setAttribute('data-away', '');
+    else if (d > 6) bar.setAttribute('data-away', '');
   };
   addEventListener('scroll', (e) => (away(e), onScroll()), { passive: true, capture: true });
-  addEventListener('resize', () => (W.coarse ? place() : (fold(), place())));
-  more.onclick = (e) => {
-    e.stopPropagation();
-    menu.hidden = !menu.hidden;
-    more.setAttribute('aria-expanded', String(!menu.hidden));
-  };
-  addEventListener('click', () => ((menu.hidden = true), more.setAttribute('aria-expanded', 'false')));
+  addEventListener('resize', () => (place(), edges()));
   document.addEventListener('visibilitychange', () => document.hidden && clearTimeout(readTimer));
 
   // ---- the page now against what was read ----
