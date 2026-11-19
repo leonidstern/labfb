@@ -47,8 +47,28 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
+  const state = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
+  // Debug only (a page, e.g. a test, sets window.__labDebug before this loads): a change to what the page shows that no
+  // render() follows within two frames goes into window.__labMissed, with where it was made. From the first render on;
+  // a change left unredrawn on purpose says so with quiet(key). Otherwise S is the plain object and this costs nothing.
+  const win = /** @type {any} */ (window);
+  /** @type {Map<string | symbol, Error> | null} */
+  let unseen = null;
+  const quiet = (/** @type {string} */ k) => unseen?.delete(k);
   /** @type {any} */
-  const S = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
+  const S = !win.__labDebug
+    ? state
+    : new Proxy(state, {
+        set(o, k, v) {
+          o[k] = v;
+          if (unseen && !unseen.has(k) && /^(openId|draft|chatOpen|comments|on|showDone|page|seen|cursorMode|isAdmin)$/.test(String(k))) {
+            const e = Error(String(k));
+            unseen.set(k, e);
+            requestAnimationFrame(() => requestAnimationFrame(() => unseen?.get(k) === e && unseen.delete(k) && (win.__labMissed ||= []).push(e.stack)));
+          }
+          return true;
+        },
+      });
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
@@ -414,6 +434,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // Someone is in a box: the open thread gets its new replies in place, the chat its new messages (its box is left
     // alone); everything else shows on the next render.
     else {
+      quiet('comments'); // drawn on the next render, not under the cursor
       if (S.openCard?.isConnected) S.openCard.sync();
       if (S.chatOpen) drawChat();
       drawList(); // the bar's counts and the tab's "(3)" keep up even while a box has the cursor (a tab left in the background)
@@ -472,6 +493,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   const setCursor = (v) => {
     S.cursorMode = v;
+    quiet('cursorMode'); // the button and the pointer change; nothing is redrawn
     if (!S.board) store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
     goFace();
@@ -838,6 +860,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   /** @type {WeakMap<Element, any>} */
   const pinData = new WeakMap();
   function render() {
+    if (win.__labDebug) unseen = new Map();
     if (S.selDraft && S.draft !== S.selDraft) pick(null, false); // the picked block's box closed: the block is let go
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
