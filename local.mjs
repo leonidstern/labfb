@@ -2224,6 +2224,44 @@ const handler = async (req, res) => {
       const rounds = Object.entries(rec.snaps).sort((a, b) => b[1].at - a[1].at).map(([id, s]) => ({ snap: id, at: s.at, by: s.by }));
       return answer(res, { snap: mine.snap, at: mine.at, ids: rec.snaps[mine.snap].ids || null, rounds }); // null: a look from before ids
     }
+    // Editing words in place (flag editText): this computer with the admin key only. Never a guest, never the agent's key.
+    if (pathname === '/_lab/api/edit' && SET.flags.editText === true) {
+      const edits = await import('./lib/edit.ts');
+      if (req.method === 'GET') return answer(res, { edits: edits.edits(LAB).filter((e) => e.page === url.searchParams.get('page')) });
+      if (req.method !== 'POST') return plain(res, 405, 'post');
+      if (!isLoopback(req)) return answer(res, { ok: false, why: "guests can't write files" });
+      if (!keyOk(req)) return res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, why: 'not allowed' }));
+      let b = null;
+      try {
+        b = JSON.parse((await sentWithin(req, 20000)) || 'null');
+      } catch {}
+      if (!b || typeof b !== 'object') return plain(res, 400, 'bad request');
+      const page = String(b.page || '').slice(0, 300);
+      const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+      const out = b.undo
+        ? edits.undo(ROOT, LAB, str(b.undo, 40))
+        : edits.edit(ROOT, LAB, page, { was: str(b.was, 600), now: str(b.now, 600), prefix: str(b.prefix, 80), suffix: str(b.suffix, 80), file: str(b.file, 300), line: Number.isInteger(b.line) ? b.line : undefined, pageFile: fileFor(page) || undefined }, b.dry === true);
+      if (out.ok && !b.dry) {
+        // Pins on those words follow them: only their quote changes, never what was written on the pin.
+        const from = b.undo ? out.edit.now : out.edit.was, to = b.undo ? out.edit.was : out.edit.now;
+        const held = db.get(`lab:comments:${out.edit.page}`);
+        let moved = false;
+        for (const [id, v] of held ?? []) {
+          const c = JSON.parse(v);
+          const q = c.anchor?.quote;
+          if (!q || !q.exact.includes(from)) continue;
+          q.exact = q.exact.replace(from, to);
+          held.set(id, JSON.stringify(c));
+          moved = true;
+        }
+        if (moved) {
+          pageChanged(out.edit.page);
+          persist(out.edit.page).catch((e) => console.error('[lab] could not save comments:', e.message));
+          broadcast();
+        }
+      }
+      return answer(res, out);
+    }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);
       // The widget's list (GET ?page=/x and nothing else) is sent as kept while that page hasn't changed. Kept apart for
