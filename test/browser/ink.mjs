@@ -266,7 +266,10 @@ try {
     check(eng, 'unread done is a green band', st(v, 'cell one') === 'kept' && low(keptBand) && green(keptBand), say(keptBand));
     const doneBand = await band(p, await gap(p, 'c2', 'cell'));
     const hair = await rules(p, 'c2', '::highlight(lab-ink-done)');
-    check(eng, 'read done is a hairline at the foot, faint, with "show done" off too', st(v, 'cell two') === 'done' && hair.thick === '2px' && doneBand.rows > 0 && doneBand.rows <= 3 && doneBand.from > 0.6, `${JSON.stringify(hair)} ${say(doneBand)}`);
+    // Safari's engine takes an underline's place from the words, not from the highlight, so no line can sit under
+    // them there: done is a faint band. Chrome's draws the hairline at the foot.
+    if (eng === 'webkit') check(eng, 'read done is a faint band (no hairline can be put under the words here), with "show done" off too', st(v, 'cell two') === 'done' && Math.abs(alpha(hair.color) - 0.08) < 0.02 && low(doneBand) && doneBand.rgb[0] > sentBand.rgb[0] + 20, `${JSON.stringify(hair)} ${say(doneBand)}`);
+    else check(eng, 'read done is a hairline at the foot, faint, with "show done" off too', st(v, 'cell two') === 'done' && hair.thick === '2px' && doneBand.rows > 0 && doneBand.rows <= 3 && doneBand.from > 0.6, `${JSON.stringify(hair)} ${say(doneBand)}`);
 
     // ---- A word in a link keeps its seam out of the band
     {

@@ -55,16 +55,21 @@ export function inkCss() {
     'html.lab-ink-on{text-decoration-skip-ink:none}html.lab-ink-dk{--lab-ink-k:1.5}' +
     '@property --lab-ink-a{syntax:"<number>";inherits:true;initial-value:1}' +
     'html.lab-ink-live{animation:lab-ink-pulse 1.8s ease-in-out infinite}@keyframes lab-ink-pulse{50%{--lab-ink-a:.35}}' +
-    on('draft', band + green('#24a046', 30)) + // being written: as it was while selecting, nothing changes on letting go (Leo, 19 Nov)
+    // Being written and being selected are one rule: nothing changes on letting go (Leo, 19 Nov).
+    `::highlight(lab-ink-draft),::highlight(lab-ink-sel){${band}${green('#24a046', 30)}}` +
     on('next', band + green('#24a046', 30)) +
     on('now', band + green('#34c759', 30, '*var(--lab-ink-a)')) +
     on('asks', band + mix('#e08a1a', 'calc(32% + 16%*var(--lab-ink-a))')) +
     on('rest', band + mix('#e08a1a', '48%')) +
     on('kept', band + green('#24a046', 28)) +
     on('done', `text-decoration-line:underline;text-decoration-thickness:2px;${green('#24a046', 14)}`) +
+    // Safari takes an underline's offset from the words themselves, never from the highlight (as it does "don't skip
+    // the letters"): there the page's text carries the offset, links and other underlined words keep their own
+    // (a note across a link has its band lower on the link), and a done note is a faint band, since no line can be
+    // put under the words. Only Safari knows the font named here; Chrome reads the offset from the highlight.
+    `@supports (font:-apple-system-body){html.lab-ink-on{text-underline-offset:-.28em}:where(html.lab-ink-on) :where(a,u,ins,abbr){text-underline-offset:auto}${on('done', `text-decoration-thickness:.5em;${green('#24a046', 8)}`)}}` +
     // Words being selected for a comment (Shift-drag) wear the sent ink's band from the first letter, on whole words,
     // as the quote will be; the page's own selection paint is clear meanwhile, whatever the page says (drawSelection).
-    on('sel', band + green('#24a046', 30)) +
     'html.lab-ink-sel ::selection{background-color:transparent!important;color:inherit!important}' +
     // The quoted words of an open comment or a hovered pin are a fainter green, and so are inked words under the
     // pointer, over their band.
