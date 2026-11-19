@@ -33,7 +33,6 @@ import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, s
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
-import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
@@ -112,13 +111,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get vv() { return vv; },
   };
   bindLive(W);
-  bindChanges(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
   bindSheets(W);
   bindFluid(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
+  // Parts loaded only when they are used: each is its own file beside this script (scripts/build-widget.mjs), its
+  // styles with it. Asked for once; a module that can't load leaves the rest of the widget as it is.
+  const parts = {};
+  /** @param {string} name */
+  const part = (name) => (parts[name] ??= import(new URL(`${name}.js`, script?.src || location.href).href));
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
   const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a' };
@@ -1223,7 +1226,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (k === 'pause') return pauseBtn.click();
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'added') return dispatchEvent(new CustomEvent('lab-added')); // the Added list (changes.ts, flag sinceLooked)
+      if (k === 'added') return void S.added?.then(() => dispatchEvent(new CustomEvent('lab-added'))); // the Added list (changes.ts, flag sinceLooked), once it is loaded
       if (k === 'done') return toggleDone();
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
@@ -1902,7 +1905,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
-    if (script?.dataset.live && flag('sinceLooked')) startChanges(); // the ids added since you looked (local labs, where pages change under you)
+    // The ids added since you looked (local labs, where pages change under you): its own file, loaded only with the flag on.
+    if (script?.dataset.live && flag('sinceLooked')) S.added = part('changes').then((m) => m.startChanges(W)).catch(() => {});
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);

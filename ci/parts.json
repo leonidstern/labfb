@@ -2,7 +2,8 @@
   "$comment": "The widget's shared parts (checked by ci/reuse.mjs). Something new (a module, an animation) is listed here on purpose, with what it is, in the same pull request, so it's a choice made in review and not a copy that slipped in. Before adding one, look for the part that already does it.",
   "modules": {
     "anchoring.ts": "where a pin sits on the page and how it finds its spot again",
-    "changes.ts": "since you looked (flag sinceLooked): the \"Added · N\" pill and its list of the ids added since your last look",
+    "changes.ts": "since you looked (flag sinceLooked): the \"Added · N\" pill and its list of the ids added since your last look; built as its own file (public/_lab/changes.js), loaded only with the flag on",
+    "changes.css": "the styles of changes.ts, which brings them with it",
     "chat.ts": "the chat sheet",
     "composer.ts": "the text box for a comment or a reply, and its send button",
     "fluid.ts": "selected words: the actions bar and the comment dialog that grows out of it and lands on the words (the dialog is the thread card's box; on phones the bottom sheet)",
