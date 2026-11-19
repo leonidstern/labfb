@@ -42,7 +42,7 @@ let bar: HTMLElement | null = null;
 const drawBar = () => {
   if (!W?.coarse) return;
   if (!bar) {
-    bar = W.el('div', { class: 'selbar', role: 'toolbar', 'aria-label': 'picked block' });
+    bar = W.el('div', { class: 'selbar quick', role: 'toolbar', 'aria-label': 'picked block' });
     const b = (name: string, act: () => void) => {
       const x = W.el('button', { type: 'button', 'data-a': name }, name);
       x.addEventListener('click', (e: Event) => (e.stopPropagation(), act()));
@@ -70,7 +70,9 @@ export const redrawSelectBar = () => drawBar();
 export const hold = () => holdEditing(Boolean(T.on || W.S.editing));
 /** Pick a block (or none). */
 export function pick(el: HTMLElement | null) {
+  T.pick?.removeAttribute('data-lab-picked');
   T.pick = el;
+  el?.setAttribute('data-lab-picked', ''); // a green ring as well as the ink, so a phone shows what is picked (Leo, 19 Nov)
   ink('lab-pick', W.S.editing ? null : el);
   hold();
   drawBar();
@@ -89,7 +91,7 @@ export const selectOn = () => T.on;
 export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.close) {
   W = w;
   [T.open, T.close] = [open, close];
-  W.fonts.textContent += '::highlight(lab-pick) { background-color: rgba(120, 120, 128, .22); color: inherit; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }' +
+  W.fonts.textContent += '::highlight(lab-pick) { background-color: rgba(52, 199, 89, .18); color: inherit; } [data-lab-picked] { outline: 2px solid rgb(52, 199, 89); outline-offset: 3px; border-radius: 3px; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }' +
     // In select mode a long tap picks a block, so the page's own text selection and iOS's menu stay off; the block
     // being edited keeps both (Leo, 19 Nov: a long tap called two menus, iOS's and ours).
     ' html.lab-editing body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } html.lab-editing [data-lab-editing], html.lab-editing [data-lab-editing] * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }';

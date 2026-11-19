@@ -663,13 +663,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
 @media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
-/* Select on a phone (select.ts): edit · pin · done for the picked block, above the widget's bar. */
-.selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 3; display: flex; gap: 2px; padding: 4px;
-          background: var(--_fg); border-radius: var(--_radius); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
+/* Select on a phone (select.ts): edit · pin · done for the picked block, as the comment box's action pills (.quick),
+   on a card above the widget's bar (Leo, 19 Nov: "select pills don't look good"). */
+.selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 3; margin: 0; padding: 8px; gap: 8px;
+          background: var(--_bg); border-radius: var(--_radius); box-shadow: 0 0 0 .5px rgba(20, 20, 20, .14), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .1); }
 .selbar[hidden] { display: none; }
-.selbar button { font: inherit; font-size: 15px; border: 0; background: none; color: var(--_bg); padding: 10px 16px; border-radius: calc(var(--_radius) - 4px); -webkit-tap-highlight-color: transparent; }
-.selbar button:disabled { opacity: .4; }
-.selbar button:active:not(:disabled) { background: rgba(127, 127, 127, .3); }
+.selbar button { font: inherit; font-size: 15px; padding: 9px 16px; color: var(--_fg); border-radius: max(0px, calc(var(--_radius) - 8px)); -webkit-tap-highlight-color: transparent; }
+.selbar button:disabled { opacity: .35; }
 
 /* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
