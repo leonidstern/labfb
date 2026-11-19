@@ -5,6 +5,7 @@
   --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
   --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
   /* Washes of black (white in dark mode), four steps: soft, hover, line, muted, as lab.css. */
+  --_green: rgb(52, 199, 89); --_green-fg: rgb(36, 160, 70); /* labit's green: pins and dots, and the text-sized form of it (the listening mark) */
   --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_edge: var(--lab-edge, #c7c7cc); --_muted: var(--lab-muted, rgba(0,0,0,.50));
   --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
   --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
@@ -34,13 +35,20 @@
 * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
     font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: -.011em;
     font-feature-settings: var(--lab-font-features, normal); font-synthesis: none; font-optical-sizing: auto;
-    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
     caret-color: var(--_accent); -webkit-tap-highlight-color: transparent; }
 ::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
 button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
+.ui { display: contents; }
+/* Pinch-zoomed (sheets.ts zoomFit): the bar, chat and list are laid out on the unzoomed screen as always, then drawn
+   1/zoom as big where the screen shows now. Only what's on it takes taps; the page between stays the page's. */
+:host([data-zoom]) .ui { display: block; position: fixed; left: 0; top: 0; width: var(--lab-zw); height: var(--lab-zh); z-index: 3;
+  transform: translate(var(--lab-zx), var(--lab-zy)) scale(var(--lab-zk)); transform-origin: 0 0; pointer-events: none; }
+@layer zoom { :host([data-zoom]) .ui > * { pointer-events: auto; } } /* a layer: loses to their own pointer-events rules */
+.pin, .motion, .motion-slow { box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16); }
 .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
-       background: var(--_bg); border: 0; box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
+       background: var(--_bg); border: 0;
        display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12px; font-weight: 500;
        font-variant-numeric: tabular-nums; letter-spacing: 0; transform-origin: 0 100%;
        transition: transform var(--_t-quick) var(--_ease), opacity var(--_t-quick) var(--_ease-out); } /* the green edge comes at once: eased, it flickered on a click (Leo, 18 Nov) */
@@ -71,7 +79,8 @@ button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius
 .pin.resolved { color: rgb(36, 160, 70); }
 /* Statuses. A pin: your initial, the stroke while the agent is on it, then a green tick. A "go" comment is a pin like any other. */
 button.pin.done { color: rgb(36, 160, 70); }
-.pin:is(.resolved, .moved) { opacity: .5; scale: .8; }
+.pin:is(.resolved, .moved) { opacity: .5; } /* a done pin is as big as an open one, only faded (Leo, 18 Nov) */
+.pin.moved:not(.resolved) { scale: .8; }
 button.pin:is(.resolved, .moved):is(:hover, .open) { opacity: 1; }
 .pin.grab { touch-action: none; }
 button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
@@ -79,17 +88,15 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
         border-radius: var(--_radius); pointer-events: none; }
 .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--lab-radius, 12px); ry: var(--lab-radius, 12px); }
-/* Green dots, the same green as quoted words, with no dark ring under them. */
-.zone rect.ring { display: none; }
+/* Green dots, the same green as quoted words. */
 .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
 .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade var(--_fade); }
 /* The agent is on it: a green stroke runs round the pin's own teardrop outline. The ring (a still 2 px teardrop mask)
    holds a conic gradient that turns by transform, so the screen turns it without redrawing: 30 such pins cost ~1 ms
    a second, against ~125 ms when the gradient's angle itself was animated. */
 .pin .ring { position: absolute; inset: -4px; border-radius: 18px 18px 18px 6px; padding: 2px; overflow: hidden; pointer-events: none;
-             -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
              mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
-.ring::before { content: ''; position: absolute; inset: -50%; will-change: transform;
+.ring::before { content: ''; position: absolute; inset: -50%; will-change: transform; transition: opacity var(--_t-slow) var(--_ease-out);
                 background: conic-gradient(rgb(52, 199, 89) 0 var(--lab-arc, 66%), rgba(52, 199, 89, .22) var(--lab-arc, 66%) 100%); animation: lab-turn var(--_t-loop) linear infinite; }
 @keyframes lab-turn { to { transform: rotate(360deg); } }
 /* The agent takes it: the green arc draws itself in while it turns (lab C2, Leo 16 Nov; --lab-arc is registered on the page). */
@@ -100,7 +107,6 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
    Sent and done wear none. The turning arc stops (paused) once it has faded out. */
 .ring { --rc: transparent; }
 .ring::after { content: ''; position: absolute; inset: 0; opacity: 0; background: var(--rc); transition: opacity var(--_t-slow) var(--_ease-out); }
-.ring::before { transition: opacity var(--_t-slow) var(--_ease-out); }
 .ring:is(.got, .wait, .stale, .asks)::before { opacity: 0; animation-play-state: paused; }
 .ring:is(.got, .wait, .stale, .asks)::after { opacity: 1; }
 .ring.got { --rc: rgba(52, 199, 89, .35); }
@@ -122,7 +128,6 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .ptr span { grid-area: 1 / 1; font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 1; transition: opacity var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease-out); }
 .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                   background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
-.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
 .card { position: absolute; width: 320px; max-width: calc(100vw - 24px); background: var(--_bg); border-radius: var(--_radius);
         box-shadow: var(--_shadow); padding: 12px 14px 14px; transform-origin: 14px 0; z-index: 1;
         display: flex; flex-direction: column; max-height: min(460px, 62vh); }
@@ -140,7 +145,7 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .choices { display: grid; gap: 8px; margin: 8px 0 2px; }
 .choices .rows { display: grid; gap: 2px; }
 button.choice { display: flex; align-items: baseline; gap: 8px; width: 100%; margin: 0; padding: 7px 8px; border: 0; border-radius: var(--_r-s);
-                background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background .12s; }
+                background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background var(--_t-quick); }
 button.choice::before { content: ''; flex: none; width: 14px; text-align: center; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--_fg); }
 button.choice.on::before { content: '✓'; }
 button.choice:hover:not(:disabled) { background: var(--_soft); }
@@ -154,25 +159,16 @@ button.choice.picked::before { content: '✓'; color: rgb(36, 160, 70); }
 .choice .nw { flex: none; margin-left: -8px; white-space: pre; } /* " · now" right after the words, not a flex gap away */
 .choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); }
 button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding: 6px 12px; background: var(--_accent); color: var(--_accent-fg);
-              font-size: 12.5px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity .12s; }
+              font-size: 12.5px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_t-quick); }
 button.keep:hover:not(:disabled) { opacity: .9; }
 button.keep:disabled { opacity: .4; cursor: default; }
 .card.margin { width: 280px; }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .fd.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; }
-.item { display: grid; row-gap: 3px; }
-.item + .item { margin-top: 14px; }
-.msg.item { display: block; } .msg.item + .msg.item { margin-top: 0; }
-.meta { display: flex; align-items: baseline; gap: .5em; font-size: 12px; color: var(--_muted); margin: 0;
-        white-space: nowrap; letter-spacing: 0; font-variant-numeric: tabular-nums; }
-.meta b { font-weight: 500; font-size: 13px; letter-spacing: -.006em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.meta .dot { flex: none; align-self: center; margin: 0; }
-.meta .ago { white-space: nowrap; }
-.text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
 .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
 /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
-.card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 12px; letter-spacing: 0; }
+.card .row:not(.nav) { justify-content: flex-end; gap: 10px; }
 button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
              letter-spacing: 0; border-radius: var(--_r-s); transition: color var(--_t-quick) var(--_ease-out); }
 button.btn:hover { color: var(--_fg); }
@@ -189,6 +185,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* The new comment box on a computer floats over the page: the page's colour, the pins' 1 px edge in the text colour
    (it shows on white and black pages alike) and a soft shadow. */
 .float { --_box-bg: var(--_bg); --_box-edge: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
+/* A comment on a spot or an area looks as the dialog on words does: one card, the buttons and box in it (Leo, 18 Nov). */
+@media (pointer: fine) { .float { --_box-bg: var(--_soft); --_box-edge: none; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); padding: 8px; } }
 /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
 /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
@@ -196,18 +194,18 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
                 min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
-.who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: -.006em; }
+.who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; }
 .who * { font-size: 13px; letter-spacing: -.006em; }
 .who span { color: var(--_muted); }
 .who input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; outline: none; color: var(--_muted); text-overflow: ellipsis; }
 .who input:focus { color: var(--_fg); }
-.box.open .line { display: block; animation: lab-fade var(--_fade); }
+.box.open:not(.one) .line { display: block; animation: lab-fade var(--_fade); }
 .box.open .who { display: flex; animation: lab-fade var(--_fade); }
 /* One line once your name is known: text, a quiet "as <name>" (still editable) and the arrow, side by side.
    The text grows upward; the name and arrow stay on its last line. Only a first comment, with no name yet, opens
    the second row to ask for it. */
 .box.one, .box.one.open { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "text who send"; align-items: end; row-gap: 0; padding: 7px 7px 7px 14px; }
-.box.one .line { display: none !important; }
+.box.one.tall { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "text text" "who send"; row-gap: 8px; align-items: end; } /* scrolling text: the scrollbar at the box's right edge */
 .box.one .who { align-self: end; line-height: 20px; padding-bottom: 2px; max-width: 40%; } /* the text's last line box, so they share a line */
 .box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
 .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
@@ -223,49 +221,28 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }
-.bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
-.bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
-              box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
-              letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease); }
-.bar button:active { transform: none; }
+/* Pause / play beside a video or a moving thing on the page (comments.js): a small key in the pin's look, over the page. */
+.motion, .motion-slow { position: absolute; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--_r-s); cursor: pointer;
+          background: var(--_bg); color: var(--_fg); transition: transform var(--_t-quick) var(--_ease); }
+.motion:hover, .motion-slow:hover { transform: scale(1.03); }
+.motion[hidden], .motion-slow[hidden] { display: none; }
+.motion-slow { font: 600 11px/1 system-ui, sans-serif; }
+.motion-slow[aria-pressed="true"] { background: var(--_fg); color: var(--_bg); }
+.motion svg { width: 12px; height: 12px; fill: currentColor; }
+.bar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
+.bar button { border: 0; cursor: pointer; color: var(--_fg); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center;
+              letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--_t-quick) var(--_ease-out); }
 /* The list and the chat: a header, a part that scrolls, and (the chat) a box at the bottom that doesn't. */
 .list { position: fixed; right: 16px; bottom: 66px; width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: hidden;
         display: flex; flex-direction: column; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; }
 .list .tabs { display: flex; flex-wrap: wrap; gap: 2px; flex: none; padding: 12px 8px 6px; }
-.list .items, .msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.list .items { padding: 0 6px 6px; }
-.list .tabs button { border: 0; border-radius: var(--_r-s); padding: 4px 8px; white-space: nowrap; background: none; color: var(--_muted); cursor: pointer; font: inherit; }
-.list .tabs button.on { background: var(--_fg); color: var(--_bg); }
-.list .tabs .hold { margin-left: auto; }
-.list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: var(--_r-s); cursor: pointer; font: inherit; }
-.list .it:hover, .list .it.cur { background: var(--_hover); }
-.list .it { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line per pin; the rest is in its thread */
-.list .it span, .list .none { color: var(--_muted); }
-.list .it .tag { display: inline-block; padding: 0 7px; border-radius: var(--_r-s); background: var(--_accent); color: var(--_accent-fg);
-                 font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
-.list .none { padding: 8px; }
+.msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.list .none { padding: 8px; color: var(--_muted); }
 /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
-@supports not (scrollbar-width: thin) {
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--_fg) 24%, transparent); border-radius: 999px; }
-}
-.list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
-.pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
-/* Close: a round, quiet button with a drawn cross (not the ✕ character), darker on hover. */
-.list .tabs .show-done { color: var(--_muted); }
 .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
-.list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
-                 font-size: 0; color: var(--_muted); background: transparent; }
-/* The cross is drawn with CSS: two thin bars, no picture. */
-.list .tabs .x::before, .list .tabs .x::after { content: ''; grid-area: 1 / 1; width: 12px; height: 1.6px; border-radius: 1px; background: currentColor; transform: rotate(45deg); }
-.list .tabs .x::after { transform: rotate(-45deg); }
-.list .tabs .x:hover { color: var(--_fg); } /* hover: the cross darkens, nothing drawn behind it */
-.list .tabs .x:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; }
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
 .chatwin .replying { flex: none; }
-.chatwin .tabs b { padding: 4px 8px; font-weight: 600; margin-right: auto; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
 /* Something just sent eases in; the arrow flies off and comes back. */
@@ -299,8 +276,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
 .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .tm { opacity: .55; }
 .msg .stamp .tm { font-size: inherit; line-height: inherit; color: inherit; } /* every element gets 14 px by default: the time keeps the stamp's 10 */
-.msg :is(.stamp, .stamp-room) .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
-                    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
+.msg :is(.stamp, .stamp-room) .ring { position: relative; display: inline-block; width: 9px; height: 9px; border-radius: 50%; overflow: hidden;
                     mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
 .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
 /* One slot for the mark, whatever it is (✓, ✓✓, the turning ring, the green ✓): 12 px wide after a 4 px gap, so the
@@ -312,11 +288,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
 .bar button * { color: inherit; font-weight: inherit; }
 .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
-.bar button.secondary { color: var(--_muted); }
-.bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
-.bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; letter-spacing: -.016em; line-height: 1; color: var(--_fg); }
-.bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
-.bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
+.bar button.secondary { color: var(--_muted); } /* words stay grey; the count says what is new */
+.bar .list-btn, .bar .done-btn { justify-content: center; }
 .newline { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0; font-weight: 500; color: var(--_muted); }
 .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
 /* The left side: who's listening, then copy link; the right side is the bar. */
@@ -329,7 +302,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .soon:hover { color: var(--_fg); }
 .soon[hidden] { display: none; }
 .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
-       background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; text-decoration: none; white-space: nowrap; }
+       background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; text-decoration: none; white-space: nowrap; cursor: default; }
 .listener span { color: var(--_muted); }
 /* The mark says the state, three ways (Leo, 18 Nov: black only when nobody listens): plain green while an agent is
    connected and listening, green with twitching ears while one works on pins (Leo: no third colour), black and still when nobody
@@ -342,17 +315,16 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
 .agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
-.mark .eye { fill: var(--_bg); }
-.listener .mark { margin: -2px 0 -1px -3px; }
-.listener .mark { fill: rgb(36, 160, 70); }
-.listener.idle .mark { fill: var(--_fg); }
-.listener.stale .mark { opacity: .4; }
+.mark .eye, .agentmark .eye { fill: var(--_bg); }
+.listener .mark { margin: -2px 0 -1px -3px; fill: var(--_green-fg); }
+.listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
+.listener.stale .mark { fill: rgb(217, 139, 0); } /* reconnecting: amber */
+.listener.stale.idle .mark { fill: var(--_muted); }
 .mark :is(.e1, .e2, .eye) { transform-box: fill-box; transform-origin: 35% 100%; }
 .mark .eye { transform-origin: 50% 50%; }
 .listener.working .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
 .listener.working .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
 @keyframes lab-twitch { 0%, 62%, 100% { transform: rotate(0); } 70% { transform: rotate(-9deg); } 80% { transform: rotate(5deg); } 90% { transform: rotate(-3deg); } }
-.listener { cursor: default; }
 /* Letter spacing follows the size, as Apple's SF text does: looser below 12 px, tighter above (11 +.006em,
    13 −.006, 15 −.016, 17 −.025). Uppercase labels and the ✓✓ overlap keep their own. */
 /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
@@ -360,56 +332,49 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
       color: var(--_muted) !important; opacity: .45; transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar:hover kbd { opacity: .75; }
 .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
-.bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/3) reads like (c)hat and ne(w) */
+.bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1) reads like (c)hat and ne(w) */
 /* One bar of segments, a hairline between them; the less used ones in the ⋯ menu above it (phones too: same bar, bigger to tap). */
-@media all {
-  .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
-  .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
-  .bar > button.first { box-shadow: none; }
-  /* Hover, pressed and "its menu is open" are the first grey step after white (soft), not the second: on the white
-     bar the second read as a dirty block (Leo, 16 Nov). */
-  /* Only with a mouse: on a phone the grey stayed on a tapped segment (iOS keeps :hover after a tap; Leo, 16 Nov). */
-  @media (hover: hover) and (pointer: fine) {
-    .bar > button:not(:disabled):hover { background: var(--_soft); }
-    .bar > button:active { background: var(--_soft); }
-  }
-  .bar > .more[aria-expanded=true] { background: var(--_soft); }
-  .bar > button:active { transform: none; }
-  .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
-  .bar > button.quiet.first { box-shadow: none; }
-  .bar .list-btn, .bar .done-btn { min-width: 0; }
-  .bar .mn { color: var(--_muted); font-weight: 400; }
-  /* Words stay grey (as the bar's buttons were); the count is a plain number: grey at 0, green when something is new. */
-  .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
-  .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
-  .bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
-  .bar .cnt.zero { color: var(--_muted); }
-  .bar .cnt:not(.zero) { color: rgb(36, 160, 70); } /* something new: green, the go pin's green (Leo, 17 Nov) */
-  .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
-        color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
-  /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
-  .go-btn:not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
-  /* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
-     grey. It had a thicker, darker ring and regular letters, which read as another control (Leo, 16 Nov). */
-  .go-btn.cursor .gp { color: transparent; background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); position: relative; }
-  .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
-                              font-size: 10px; font-weight: 600; letter-spacing: 0; }
-  .more { font-size: 15px !important; letter-spacing: .05em; }
-  .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
-               border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
-  .more-menu[hidden] { display: none; }
-  .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
-                      border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
-  .more-menu button:hover:not(:disabled) { background: var(--_soft); }
-  .more-menu button:disabled { color: var(--_muted); cursor: default; }
-  .more-menu button[hidden] { display: none; }
-  /* A pin left by the agent: labit's mark in place of a letter. */
-  .pin .agentmark { width: 60%; height: 60%; display: block; }
-  .more-menu kbd { margin: 0; }
-  /* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
-  .more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
-    color: var(--_muted); user-select: text; overflow-wrap: anywhere; }
+.bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
+.bar > button.first { box-shadow: none; }
+/* Hover, pressed and "its menu is open" are the first grey step after white (soft), not the second: on the white
+   bar the second read as a dirty block (Leo, 16 Nov). */
+/* Only with a mouse: on a phone the grey stayed on a tapped segment (iOS keeps :hover after a tap; Leo, 16 Nov). */
+@media (hover: hover) and (pointer: fine) {
+  .bar > button:not(:disabled):hover { background: var(--_soft); }
+  .bar > button:active { background: var(--_soft); }
 }
+.bar > .more[aria-expanded=true] { background: var(--_soft); }
+.bar > button.quiet { cursor: default; color: var(--_muted); }
+.bar .mn { color: var(--_muted); font-weight: 400; }
+/* The count is a plain number: grey at 0, green when something is new. */
+.bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
+.bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
+.bar .cnt.zero { color: var(--_muted); }
+.bar .cnt:not(.zero) { color: rgb(36, 160, 70); } /* something new: green, the go pin's green (Leo, 17 Nov) */
+.gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
+      color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
+/* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
+.go-btn:not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
+/* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
+   grey. It had a thicker, darker ring and regular letters, which read as another control (Leo, 16 Nov). */
+.go-btn.cursor .gp { color: transparent; background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); position: relative; }
+.go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
+                            font-size: 10px; font-weight: 600; letter-spacing: 0; }
+.more { font-size: 15px !important; letter-spacing: .05em; }
+.more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
+             border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
+.more-menu[hidden] { display: none; }
+.more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
+                    border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
+.more-menu button:hover:not(:disabled) { background: var(--_soft); }
+.more-menu button:disabled { color: var(--_muted); cursor: default; }
+.more-menu button[hidden] { display: none; }
+/* A pin left by the agent: labit's mark in place of a letter. */
+.pin .agentmark { width: 60%; height: 60%; display: block; }
+.more-menu kbd { margin: 0; }
+/* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
+.more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
+  color: var(--_muted); user-select: text; overflow-wrap: anywhere; }
 kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
 .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
         box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
@@ -429,7 +394,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @supports (corner-shape: squircle) {
   :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
   *, *::before, *::after { corner-shape: squircle; }
-  .pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
+  .pin, .pin .ring, .pin.new::after, .send, .bar .toggle:not(.secondary)::before,
   .msg :is(.stamp, .stamp-room) .ring, .gp { corner-shape: round; } /* circles stay circles */
 }
 @keyframes lab-pin { from { transform: scale(1.1); } }
@@ -455,13 +420,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
   /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
      panning the page can't push it up and nothing of the page shows above or below it. */
-  :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: var(--lab-top, 0px) !important; bottom: auto !important;
-    height: var(--lab-vh, 100dvh) !important; max-height: none !important; border-radius: 0; }
+  :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { bottom: auto !important; max-height: none !important; }
   /* A new comment stays small, just above the keyboard, with the page (dimmed) above it: you see what you comment on. */
-  :host([data-kb]) .float { top: auto !important; bottom: var(--lab-kb, 0px) !important; height: auto !important; border-radius: var(--_radius) var(--_radius) 0 0; }
-  .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
-                  max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: var(--_radius) var(--_radius) 0 0; padding: 8px 0 0; z-index: 3; }
-  .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
+  :host([data-kb]) .float { top: auto !important; height: auto !important; }
+  .card, .float { position: fixed; top: auto !important; width: auto; max-width: none;
+                  max-height: var(--_sheet-max); display: flex; flex-direction: column; padding: 8px 0 0; z-index: 3; }
   /* The same 12 px sides as the chat's, so a thread's reply box sits exactly where the chat's message box does. */
   .card > .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 4px; margin-right: 0; }
   /* A thread keeps one height, as the chat does (Leo, 15 Nov: it jumped while the chat stays put): the sheet's full
@@ -471,14 +434,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card > .foot, .float > .composer { flex: none; padding: 0 12px var(--_pb); }
   .card > .foot { margin-top: 0; padding-top: 6px; }
   .card .composer { margin-top: 0; }
-  .card > .nav { flex: none; margin: -6px 0 0; padding: 0 12px; gap: 20px; }
+  .card > .nav { flex: none; margin: -6px 0 0; padding: 0 12px; }
   .card .nav .btn { font-size: 14px; letter-spacing: -.011em; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
-  .card .nav { gap: 16px; }
-  .card .nav { flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
+  .card .nav { gap: 16px; flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
   .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
   .box.one .who span { font-size: 16px; letter-spacing: -.019em; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
-  .card .nav .acts button.btn { font-size: 14px; letter-spacing: -.011em; }
-  .float { background: var(--_bg); box-shadow: var(--_shadow); }
   /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
   /* Reaching 60 px above the sheet's edge over the dimmed page (Leo, 15 Nov: "the whole top and a bit above", then
      "do more"); the bar and the layout stay as they were. The chat's and the list's header reach up the same way. */
@@ -491,8 +451,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .list .tabs::before { content: ''; position: absolute; left: 0; right: 0; top: -60px; height: 60px; }
   .list .tabs { touch-action: pan-x; }
   .chatwin .tabs { touch-action: none; }
-  .list .items, .msgs, .card > .body { touch-action: pan-y; }
-  .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
+  .msgs, .card > .body { touch-action: pan-y; }
 
   :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
   /* The bar steps down under the screen's edge while a sheet is open and comes back as the sheet goes: --lab-p is
@@ -511,17 +470,15 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-opening]) :is(.card.in, .float.in, .scrim) { animation-play-state: paused; }
   /* Leaving (see leave() in sheets.ts): the dimmed page stays until the sheet is gone, fading on the sheet's curve. */
   :host([data-leaving]) .scrim { display: block; }
-  .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
+  .list { width: auto; max-height: var(--_sheet-max); overflow: visible;
           font-size: 15px; letter-spacing: -.016em; z-index: 3; }
   /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
   .chatwin { height: var(--_sheet-max); }
   .chatwin, .card { transition: height var(--_t-slow) var(--_ease-settle); } /* a comment pulls up to full height as the chat does */
   /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
-  .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
+  .chatwin.full, .card.full { max-height: none; }
   /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
-  .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
-                background: var(--_bg); }
-  .list .items { padding: 0 12px calc(10px + var(--_safe)); }
+  .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; background: var(--_bg); }
   .chatwin .msgs { padding: 4px 12px 8px; }
   .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
   .chatwin .chat { padding: 6px 12px var(--_pb); }
@@ -531,25 +488,22 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card > .body { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
   /* …and fade out behind the box (iOS's scroll edge): from 4 px above its top to 12% at its bottom (Leo, 15 Nov:
      "behind input bottom", "a bit more", "less, it's just black", then "more, darker there"). */
-  .chatwin .msgs, .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
-                                          mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
+  .chatwin .msgs, .card > .body { mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
   .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
   :host { --_box-bg: color-mix(in srgb, var(--_bg) 72%, transparent);
           --_box-edge: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
   .float { --_box-bg: inherit; --_box-edge: inherit; } /* phones: the new comment sheet's box is the same glass */
-  .box { -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); }
-  .list .it { padding: 11px 8px; }
+  .box { backdrop-filter: blur(18px) saturate(1.8); }
   /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Closed ones smaller still. */
   .pin { scale: .8; }
   /* …but a 44 pt place to tap (iOS 44 pt, Leo 16 Nov: hard to hit at 22): an invisible circle round the pin, so it
-     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a closed pin (.64) gets 70 px. */
+     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a moved pin (.64) gets 70 px. */
   .pin .hit { display: block; position: absolute; inset: -14px; border-radius: 50%; }
-  .pin:is(.resolved, .moved) .hit { inset: -21px; }
+  .pin.moved:not(.resolved) .hit { inset: -21px; }
   /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
   .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }
-  .msg b, .msg .quote b { font-size: 12px; letter-spacing: 0; }
-  .pin:is(.resolved, .moved) { scale: .64; }
+  .pin.moved:not(.resolved) { scale: .64; }
   /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
   .bar > button { padding: 12px 14px; min-height: 44px; }
   .more-menu { bottom: 72px; min-width: 200px; }
@@ -561,21 +515,21 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
    card does (.in / .out, above); a copy of the bar goes out as the dialog comes in. */
 .fd { position: absolute; z-index: 4; overflow: hidden; background: var(--_bg); border-radius: var(--_radius);
       box-shadow: var(--_shadow); }
-.pane { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; transition: opacity .16s; }
-.pane.on { opacity: 1; pointer-events: auto; transition: opacity .22s .2s; }
+.pane { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; transition: opacity var(--_t-quick); }
+.pane.on { opacity: 1; pointer-events: auto; transition: opacity var(--_t-base) var(--_t-base); }
 .settled .p-dlg { position: relative; }
 .fd .p-bar { width: max-content; margin: 0; padding: 6px; }
 .p-dlg { padding: 8px; }
-.fd .float { position: static; width: auto; max-width: none; --_box-bg: var(--_soft); --_box-edge: none; }
+.fd .float { position: static; width: auto; max-width: none; --_box-bg: var(--_soft); --_box-edge: none; background: none; border-radius: 0; box-shadow: none; padding: 0; }
 .quick { display: flex; gap: 4px; margin: 0 0 6px; }
 .quick button { border: 0; border-radius: var(--_r-s); padding: 5px 8px; background: var(--_soft); font-size: 12px; letter-spacing: 0; cursor: pointer; }
 .quick button:hover { background: var(--_hover); }
 .quick button.on { background: var(--_fg); color: var(--_bg); font-weight: 600; }
-.quick button.hl { box-shadow: 0 0 0 1.5px var(--_fg); } /* the action a typed / names: Enter runs it */
+.quick.alt button::after { content: attr(data-n); margin-left: 6px; opacity: .55; font-variant-numeric: tabular-nums; } /* ⌥ held: the key for each */
 /* Corners inside corners (Leo, 18 Nov): an inner radius is the outer one less the gap between them, so they run
    concentric: the bar's buttons sit 6 px in, the dialog's quick buttons and box 8 px in. */
 .p-bar button { border-radius: max(0px, calc(var(--_radius) - 6px)); }
-.fd .p-dlg .quick button, .fd .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
+.fd .p-dlg .quick button, .fd .box, .float .quick button, .float .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
 .fd.gone .quick [data-k=rewrite], .fd.gone .quick [data-k=cut] { opacity: .4; pointer-events: none; } /* its words are gone: cut and rewrite have nothing to act on */
 .fd.still .pane { transition: none; } /* back after a reload: nothing moves */
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
@@ -583,7 +537,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .p-bar button { min-height: 44px; padding: 0 14px; font-size: 14px; letter-spacing: -.011em; }
   .float > .quick { flex: none; gap: 8px; margin: 0; padding: 2px 12px 10px; }
   .float > .quick button { min-height: 36px; padding: 0 12px; font-size: 14px; letter-spacing: -.011em; }
-  .float > .quick button, .float > .composer .box { border-radius: max(0px, calc(var(--_card-r) - 12px)); } /* the sheet's corners (--_card-r), the box and buttons 12 px in */
+  .float > .composer .box { border-radius: max(0px, calc(var(--_card-r) - 12px)); } /* the sheet's corners (--_card-r), the box 12 px in */
+  /* The action buttons keep the computer's corner (Leo, 19 Nov: from the sheet's they read as pills on a phone). */
+  .float > .quick button { border-radius: max(0px, calc(var(--_radius) - 8px)); }
 }
 /* Phones: the listening label is the mark on the "chat" button (dark and blinking now and then: listening,
    green with twitching ears: working, grey: nobody), the bar goes back to the bottom, and the send button is big
@@ -596,7 +552,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* Sized and set to the word: its ink about 1.3× the text's height, its foot on the baseline, 6 px from "chat" like the count. */
   .chat-btn .mark { align-self: center; width: 13px; height: 13px; margin: 0 -2.5px 0 -2px; translate: 0 -1.5px; }
   .chat-btn[data-agent=listening] .mark { fill: rgb(36, 160, 70); }
-  .chat-btn[data-agent=away] .mark { fill: var(--_fg); }
+  .chat-btn:is([data-agent=away], [data-agent=quiet]) .mark { fill: var(--_fg); }
   .chat-btn.stale .mark { opacity: .4; }
   .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
   .chat-btn[data-agent=working] .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
@@ -615,9 +571,12 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
     background: var(--_bg);
     box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px rgba(0, 0, 0, .18); transform-origin: var(--lab-from, 50% 100%); }
   .list .tabs { border-radius: var(--_card-r) var(--_card-r) 0 0; }
-  .card::after, .float::after, .list::after { content: none; }
   :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
   :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
+  /* Pinch-zoomed: a thread's or new comment's sheet (on the page's layer, with the pins) is drawn the same way as .ui:
+     scaled about the unzoomed screen's bottom left corner, then moved to the bottom left of what the screen shows. */
+  :host([data-zoom]) .layer > :is(.card, .float) { transform-origin: calc(-1 * var(--_gap)) calc(100% + var(--_gap)) !important;
+    translate: var(--lab-zx) var(--lab-zb); scale: var(--lab-zk); }
   .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px - var(--_gap) + var(--_kb)); }
   .scrim { background: transparent; }
   .card.in, .float.in, .list:not([hidden]), .sw-box { animation: lab-card-in var(--_t-slow) var(--_ease); }
@@ -633,74 +592,100 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .msg button.offer .tm { opacity: .55; } .msg button.offer .tick { color: rgb(36, 160, 70); }
 .msg button.offer .tick svg { width: 9px; height: 9px; vertical-align: top; margin-top: .5px; }
 .msg button :is(svg, svg *) { color: inherit; } /* the widget gives every element its text colour, the icon parts too */
-/* Labs & pages (⌘K, src/widget/switcher.ts): a box over the page on a computer, a card sheet on a phone. The ⋯ menu
-   opens with which lab this is. */
+/* The ⋯ menu opens with which lab this is (labs & pages, ⌘K, is switcher.ts, its styles in switcher.css). */
 .more-menu .lab-head { margin: 2px 10px 4px; padding-bottom: 6px; border-bottom: var(--_hair); font-size: 12px; font-weight: 600; color: var(--_fg); }
-.switch { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
-.sw-box { pointer-events: auto; }
-/* The page behind dims with the widget's own .scrim (a click there closes it, as it closes a sheet). */
-:host([data-labs]) .scrim { display: block; background: rgba(0, 0, 0, .18); }
-:host([data-labs]) .hint { visibility: hidden; }
-.sw-box { position: absolute; left: 50%; top: 12vh; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); max-height: 70vh;
-  display: flex; flex-direction: column; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
-.sw-box input { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 14px 16px 12px; font-size: 16px; color: var(--_fg); border-bottom: var(--_hair); }
-.sw-box input::placeholder { color: var(--_muted); }
-.sw-box a { cursor: default; } /* no hand in this box: its buttons show the arrow by default, its links need it said */
-.sw-list { overflow-y: auto; padding: 4px 6px 6px; overscroll-behavior: contain; }
-.sw-lab { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 10px 10px 4px; }
-.sw-lab + .sw-lab, .sw-row + .sw-lab, .sw-none + .sw-lab { margin-top: 6px; border-top: var(--_hair); }
-.sw-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 5px; font-size: 12px; color: var(--_muted); min-width: 0; white-space: nowrap; }
-.sw-port { font-size: 12px; color: var(--_muted); }
-.sw-row .sw-t .sw-path { font-size: 12px; color: var(--_muted); }
-.sw-name b { color: var(--_fg); font-weight: 600; font-size: 13px; }
-.sw-row.armed .sw-m { color: rgb(196, 60, 40); } /* ⇧⌥A once: archiving the whole lab waits for a second press */
-.sw-row { display: flex; justify-content: space-between; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 7px 10px;
-  border-radius: var(--_r-s); font-size: 14px; color: var(--_fg); }
-.sw-row.on, .sw-row:hover { background: var(--_soft); }
-.sw-row .sw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sw-row .sw-m { color: var(--_muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums;
-  flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; } /* a long lab name gives way to the title */
-.sw-none { color: var(--_muted); font-size: 12px; padding: 4px 10px 6px; }
-.sw-group { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--_muted); padding: 12px 10px 0; margin-top: 6px; border-top: var(--_hair); }
-.sw-lab.parked { padding-top: 6px; border-top: 0; margin-top: 0; }
-.sw-row.parked .sw-t { font-size: 12px; color: var(--_muted); }
-.sw-row.parked .sw-t b { color: var(--_fg); font-weight: 600; font-size: 13px; }
-.sw-fold { display: block; width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-bottom: 0; font-family: inherit; padding-bottom: 6px; }
-.sw-foot { font-size: 11px; color: var(--_muted); padding: 7px 14px 9px; border-top: var(--_hair); }
-/* Phones: labs & pages is one of the widget's sheets, the comment and chat drawer (sheets.ts): the shared dimmed page
-   (.scrim, via data-sheet), the handle, the swipe down, the keyboard fit (data-kb) and the card look all come from the
-   .card / .list rules above, so it looks and moves as they do (Leo 18 Nov: "our comment or chat drawer"). */
-@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
-  /* Its look, place and keyboard fit are the .card / .list rules' (the sheets' block below lists .sw-box with them). */
-  .sw-box { position: fixed; top: auto; transform: none; width: auto; max-height: var(--_sheet-max); padding: 8px 0 calc(6px + var(--_safe));
-    font-size: 15px; letter-spacing: -.016em; }
-  :host([data-kb]) .sw-box { bottom: auto !important; max-height: none; animation: none; }
-  .sw-box input { padding: 4px 20px 14px; }
-  .sw-list { padding: 4px 10px 8px; touch-action: pan-y; }
-  /* The counts under the title, so a long title isn't cut to make room for them. */
-  .sw-row { padding: 9px 12px; font-size: 16px; }
-  .sw-row:not(.parked) { flex-direction: column; gap: 1px; }
-  .sw-row .sw-t { white-space: normal; }
-  .sw-lab { align-items: center; }
-  .sw-foot { display: none; }
+/* Experiments (lib/flags.ts) in the ⋯ menu: the item with how many are on, then its list in the menu's place: a back
+   row, a switch a flag (its one line, and why it can't be switched when the project sets it), a note for guests. */
+.more-menu .exp-cnt { font-size: 12px; letter-spacing: 0; font-variant-numeric: tabular-nums; color: rgb(36, 160, 70); }
+.more-menu .exp-cnt.zero { color: var(--_muted); }
+.more-menu button.exp-back { color: var(--_muted); font-weight: 500; margin-bottom: 2px; border-bottom: var(--_hair); border-radius: var(--_r-s) var(--_r-s) 0 0; }
+.more-menu button.exp { white-space: normal; max-width: 280px; align-items: center; }
+.more-menu .exp-words { display: grid; gap: 2px; color: inherit; }
+.more-menu .exp-why { font-size: 11px; letter-spacing: .006em; color: var(--_muted); }
+.more-menu .exp-sw { flex: none; position: relative; width: 28px; height: 16px; border-radius: 8px; background: var(--_line);
+  transition: background-color var(--_t-quick) var(--_ease-out); }
+.more-menu .exp-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--_bg); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform var(--_t-quick) var(--_ease); }
+.more-menu button.exp[aria-checked='true'] .exp-sw { background: rgb(36, 160, 70); }
+.more-menu button.exp[aria-checked='true'] .exp-sw::after { transform: translateX(12px); }
+.more-menu button.exp:disabled .exp-sw { opacity: .5; }
+.more-menu .exp-note { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px; color: var(--_muted); max-width: 260px; }
+@media (pointer: coarse) {
+  .more-menu .exp-sw { width: 40px; height: 24px; border-radius: 12px; }
+  .more-menu .exp-sw::after { width: 20px; height: 20px; }
+  .more-menu button.exp[aria-checked='true'] .exp-sw::after { transform: translateX(16px); }
+  .more-menu .exp-why { font-size: 13px; }
 }
 
-/* New since you looked (changes.ts): a "New · 3" pill by the listener pill; it opens a short list of the new ids, each a
-   link. On narrow screens the pill rides above the bar and the list is a small sheet at the bottom. */
-.since { position: relative; display: inline-flex; align-items: center; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
-.since-count { font: inherit; border: 0; background: none; color: var(--_fg); cursor: pointer; padding: 9px 14px; border-radius: inherit; }
-.since-count:hover { background: var(--_soft); }
-.since-panel { position: absolute; left: 0; bottom: calc(100% + 8px); width: 300px; max-width: calc(100vw - 32px); max-height: min(50vh, 320px); overflow: auto; padding: 4px;
-               border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); white-space: normal; }
-.news-item { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border-radius: var(--_r-s); color: var(--_fg); text-decoration: none; }
-.news-item:hover, .news-item:focus-visible { background: var(--_soft); outline: none; }
-.news-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.news-id { color: var(--_muted); font-size: 12px; flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 800px) {
-  .since { position: absolute; left: 0; bottom: 54px; }
-  .since-panel { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); width: auto; max-width: none; padding: 6px; z-index: 2; }
-  .news-item { padding: 11px 10px; }
+/* The section bar (sections.ts): the page's sections along the top, the current one filled; new = a filled green dot,
+   updated = a ring. Above the dimmed page of a sheet (the scrim is 2), so it stays lit and tappable. Drawn inside .ui, so a
+   pinch zoom scales it with the rest. */
+.sbar { position: fixed; left: 0; right: 0; top: var(--lab-top, 0px); z-index: 3; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
+        background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
+.sbar[hidden] { display: none; }
+/* Leo, 19 Nov, on the phone: the status is the green ink on the name alone, as words get on the page (quoted, kept):
+   no dot, no "new"/"updated" word (kept for screen readers), no fill on the current chip and no grey on hover or tap.
+   "…" turns green when it holds something new. On a phone the bar steps away while a sheet is open, so the sheet's
+   handle and swipe down are free. */
+.sbar .sb-dot, .sbar .sb-more[data-st="1"]::before { display: none !important; }
+.sbar .sb-w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sbar .sb-chip[aria-current] { background: none; font-weight: inherit; color: var(--_fg); }
+.sbar .sb-chip:hover, .sbar .sb-more:hover { background: none; color: var(--_fg); }
+.sbar .sb-chip, .sbar .sb-more { -webkit-tap-highlight-color: transparent; }
+.sbar .sb-t { border-radius: 3px; transition: background-color var(--_t-slow) var(--_ease); }
+.sbar .sb-chip[data-st="new"] .sb-t { background-color: color-mix(in srgb, var(--_green) 30%, transparent); }
+.sbar .sb-chip[data-st="updated"] .sb-t { background-color: color-mix(in srgb, var(--_green) 15%, transparent); }
+.sbar .sb-more[data-st="1"] { color: var(--_green); }
+@media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
+.sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
+.sb-nav::-webkit-scrollbar { display: none; }
+.sb-edge { display: none; position: absolute; top: 0; bottom: 0; width: 28px; pointer-events: none; }
+.sb-edge.l { left: 0; background: linear-gradient(to right, var(--_bg), transparent); }
+.sb-edge.r { right: 0; background: linear-gradient(to left, var(--_bg), transparent); }
+/* A hidden new or updated chip past an edge: the fade is tinted green there. */
+.sb-edge.new.l { background: linear-gradient(to right, color-mix(in srgb, var(--_green) 24%, var(--_bg)), transparent); }
+.sb-edge.new.r { background: linear-gradient(to left, color-mix(in srgb, var(--_green) 24%, var(--_bg)), transparent); }
+.sb-edge.new { pointer-events: auto; cursor: pointer; width: 44px; -webkit-tap-highlight-color: transparent; } /* green: a tap goes to what is new */
+.sb-chip, .sb-more { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
+.sb-chip[hidden] { display: none; }
+.sb-chip:hover, .sb-more:hover { background: var(--_soft); }
+.sb-chip[aria-current] { background: var(--_hover); color: var(--_fg); font-weight: 600; }
+.sb-dot { display: none; flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; background: var(--_green); }
+.sb-chip:is([data-st="new"], [data-st="updated"]) .sb-dot { display: block; }
+.sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid var(--_green); }
+.sb-more[data-st="1"]::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_green); }
+.sb-w { color: var(--_green-fg); font-size: 12px; }
+.sb-w:empty { display: none; }
+.sb-menu { position: absolute; right: 8px; top: calc(100% + 4px); display: flex; flex-direction: column; align-items: stretch; max-height: min(60vh, 360px); overflow: auto; padding: 4px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); }
+.sb-menu[hidden] { display: none; }
+.sb-menu .sb-chip { text-align: left; }
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
+  .sbar { height: 44px; padding: 0 8px; }
+  .sb-title, .sb-more { display: none; }
+  .sb-edge.on { display: block; }
+  .sb-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sb-chip { padding: 9px 12px; }
+  /* A sheet that fills the screen (keyboard up) leaves the bar clear. */
+  :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }
 }
 /* Phones: a choice is a 44 pt row to tap, Keep a full-size button under them (V1: not stuck, so it never covers a row). */
 @media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
   button.keep { padding: 10px 16px; font-size: 14px; } }
+
+/* Select (select.ts): remove · make like · move · states · variants · pin · done for the picked block, as the comment box's action pills (.quick),
+   on a card above the widget's bar (Leo, 19 Nov: "select pills don't look good"). */
+.selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 3; margin: 0; padding: 8px; gap: 8px;
+          background: var(--_bg); border-radius: var(--_radius); box-shadow: 0 0 0 .5px rgba(20, 20, 20, .14), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .1); }
+.selbar[hidden] { display: none; }
+.selbar button { font: inherit; font-size: 15px; padding: 9px 16px; color: var(--_fg); border-radius: max(0px, calc(var(--_radius) - 8px)); -webkit-tap-highlight-color: transparent; }
+.selbar button:disabled { opacity: .35; }
+.selbar button { flex: none; white-space: nowrap; }
+@media (pointer: coarse) { /* one row the width of the screen that scrolls sideways, not a block of rows */
+  .selbar { left: 12px; right: 12px; transform: none; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px; padding: 6px; }
+  .selbar::-webkit-scrollbar { display: none; }
+  .selbar button { font-size: 14px; padding: 8px 12px; }
+}
+.selsay { align-self: center; padding: 0 8px; color: var(--_muted); font-size: 14px; }
+@media (pointer: fine) { .selbar { bottom: 72px; gap: 4px; padding: 6px; } .selbar button { font-size: 13px; padding: 6px 10px; } }

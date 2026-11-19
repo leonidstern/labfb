@@ -16,8 +16,9 @@ const pw = (() => {
     try {
       return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
     } catch {
-      console.log('playwright is not installed: skipped');
-      process.exit(0);
+      // On CI a missing browser is a failure: a skip there would pass with nothing run.
+      console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+      process.exit(process.env.CI ? 1 : 0);
     }
   }
 })();
@@ -26,7 +27,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-browser-'));
 const PORT = String(5100 + Math.floor(Math.random() * 300));
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const paras = Array.from({ length: 80 }, (_, i) => `<p id="p${i}">paragraph ${i} with some words</p>`).join('');
 const PAGE = `<!doctype html><meta charset="utf-8"><title>T1</title><link rel="stylesheet" href="s.css"><body>
 <div id="top"></div><input id="i" value="typed"><details id="d"><summary>more</summary>inside</details>
@@ -117,16 +118,25 @@ for (const eng of ['webkit', 'chromium']) {
   check(eng, 'a comment from elsewhere shows up, no reload', loads === 1 && (await shadow(() => { return r.querySelectorAll('button.pin').length; })) === pinsBefore + 1);
   // Pages toggle state classes; a pin stays on its element. One whose element is gone waits on the left edge, at its height.
   await p.evaluate(() => document.querySelector('#p2').classList.add('offscreen'));
+  // The lab keeps its comments from the engine before: take that engine's 'gone' pin away, so the count below is this run's one.
+  const adminKey = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
+  for (const c of (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.filter((c) => c.text === 'gone')) {
+    await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': adminKey, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/index', action: 'delete', id: c.id }) });
+  }
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'gone', anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 400, width: 1000, element: '<p id="nope">' } }) });
-  await untilShadow(p, (r) => [...r.querySelectorAll('button.pin.moved')].some((b) => b.style.left === '10px' && b.style.top === '400px'), null, 900);
+  await untilShadow(p, (r) => r.querySelector('.moved-btn')?.textContent === 'moved · 1', null, 2000);
   const pins = await shadow(() => { return [...r.querySelectorAll('button.pin')].map((b) => [b.classList.contains('moved'), b.style.left, b.style.top]); });
   check(eng, 'a pin keeps its element when the page adds a class to it', pins.every(([m, l]) => !m || l === '10px'), JSON.stringify(pins));
-  check(eng, 'a pin whose element is gone waits on the left edge at its height', pins.some(([m, l, t]) => m && l === '10px' && t === '400px'), JSON.stringify(pins));
-  // With wide margins (a centred column on a wide window) it waits beside the content, not at the window's edge.
+  check(eng, 'a pin whose element is gone is off the page, and the ⋯ menu counts it', pins.every(([m]) => !m) && (await shadow(() => { return r.querySelector('.moved-btn').textContent; })) === 'moved · 1', JSON.stringify([pins, await shadow(() => { return r.querySelector('.moved-btn').textContent; })]));
+  // Opened from the menu it shows on the left edge at its height; with wide margins, beside the content.
+  const open = async () => shadow(() => { r.querySelector('.moved-btn').click(); return new Promise((res) => setTimeout(() => res([...r.querySelectorAll('button.pin.moved')].map((b) => [b.style.left, b.style.top])), 400)); });
+  const edge = await open();
+  check(eng, 'opened from the menu it waits on the left edge at its height', edge.length === 1 && edge[0][0] === '10px' && edge[0][1] === '400px', JSON.stringify(edge));
   write('s.css', 'h1{color:rgb(0,0,255)} body{margin:30px 300px}');
-  await untilShadow(p, (r) => { const m = [...r.querySelectorAll('button.pin.moved')]; return m.length > 0 && m.every((b) => b.style.left === '270px'); }, null, 1300);
-  const wide = await shadow(() => { return [...r.querySelectorAll('button.pin.moved')].map((b) => b.style.left); });
-  check(eng, 'on a page with wide margins it waits beside the content', wide.length > 0 && wide.every((l) => l === '270px'), JSON.stringify(wide));
+  await sleep(1300);
+  const wide = await open();
+  check(eng, 'on a page with wide margins it waits beside the content', wide.length > 0 && wide.every(([l]) => l === '270px'), JSON.stringify(wide));
+  await p.keyboard.press('Escape');
   write('s.css', 'h1{color:rgb(0,0,255)} body{margin:30px}');
   await untilShadow(p, (r) => { const m = [...r.querySelectorAll('button.pin.moved')]; return m.length > 0 && m.every((b) => b.style.left === '10px'); }, null, 1300);
 
@@ -143,6 +153,13 @@ for (const eng of ['webkit', 'chromium']) {
   const zone = await shadow(() => { const z = r.querySelector('.zone.draft'); return z ? Math.round(z.getBoundingClientRect().width) + 'x' + Math.round(z.getBoundingClientRect().height) : null; });
   check(eng, 'a narrow area can be drawn, even after a stray click', zone === '330x20', String(zone));
   await p.keyboard.type('narrow strip');
+  // Safari sends the Enter that picks a word from an input method after the composition has ended, as key code 229.
+  const picked = await shadow(() => {
+    const e = new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true, composed: true });
+    r.activeElement.dispatchEvent(e);
+    return e.defaultPrevented;
+  });
+  check(eng, 'the Enter that picks a word while typing Japanese or Chinese does not send', picked === false, String(picked));
   await p.keyboard.press('Enter');
   await untilApi((c) => c.text === 'narrow strip', 600);
   const saved = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'narrow strip');
@@ -151,6 +168,16 @@ for (const eng of ['webkit', 'chromium']) {
 
   // Text selection
   const lede = await p.locator('#p5').boundingBox();
+  // Comment mode is back first: while a comment box is open (or still going out) comment mode is off and the page's own
+  // pointer shows, so a drag then selects text on purpose. CI showed it: text "a" selected with lab-pinning off, 2 s
+  // after Escape, in Linux WebKit. Escape until the page is back in comment mode, and say so if it never is.
+  for (let i = 0; i < 4 && !(await p.evaluate(() => document.documentElement.classList.contains('lab-pinning'))); i++) {
+    await p.keyboard.press('Escape');
+    await until(p, () => document.documentElement.classList.contains('lab-pinning'), null, 600);
+  }
+  check(eng, 'comment mode is back before the selection check', await p.evaluate(() => document.documentElement.classList.contains('lab-pinning')), JSON.stringify(await p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot; return { html: [...document.documentElement.classList].join(' '), go: r?.querySelector('.go-btn')?.className, boxes: [...(r?.querySelectorAll('.float, .card') || [])].map((n) => n.className), text: [...(r?.querySelectorAll('textarea') || [])].map((t) => t.value), on: localStorage.getItem('lab-on') }; })));
+  // What the press saw, so a failure says why (Linux WebKit only, now and then).
+  await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { const c = document.documentElement.classList; const us = (n) => getComputedStyle(n).webkitUserSelect + '/' + getComputedStyle(n).userSelect; window.__press ??= { shift: e.shiftKey, labShift: c.contains('lab-shift'), pinning: c.contains('lab-pinning'), lit: c.contains('lab-lit'), us: us(document.getElementById('p5')) }; }, { capture: true, once: true }); window.__ss = []; addEventListener('selectstart', (e) => window.__ss.push(e.defaultPrevented ? 'blocked' : 'allowed'), true); });
   await p.keyboard.down('Shift');
   await p.keyboard.up('Shift');
   await p.mouse.move(lede.x + 10, lede.y + 8);
@@ -158,7 +185,8 @@ for (const eng of ['webkit', 'chromium']) {
   await p.mouse.move(lede.x + 16, lede.y + 9);
   await p.mouse.up();
   await sleep(100);
-  check(eng, 'a click right after Shift selects no text', (await p.evaluate(() => getSelection().toString())) === '');
+  const sel = await p.evaluate(() => { const g = getSelection(); const n = g.anchorNode; return { text: g.toString(), at: n ? (n.nodeType === 3 ? n.parentElement : n)?.closest('[id]')?.id ?? n.nodeName : null, labShift: document.documentElement.classList.contains('lab-shift'), press: window.__press, selectstart: window.__ss }; });
+  check(eng, 'a click right after Shift selects no text', sel.text === '', JSON.stringify(sel));
   await p.keyboard.press('Escape');
   await sleep(200);
 
@@ -199,28 +227,50 @@ for (const eng of ['webkit', 'chromium']) {
 
   // Keys
   const chatOpen = () => shadow(() => { return !r.querySelector('.chatwin').hidden; });
-  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'с', code: 'KeyC', bubbles: true })));
+  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'е', code: 'KeyT', bubbles: true })));
   await untilShadow(p, (r) => !r.querySelector('.chatwin').hidden, null, 300);
-  check(eng, 'C opens the chat, on a Cyrillic layout too', await chatOpen());
+  check(eng, 'T opens the chat, on a Cyrillic layout too', await chatOpen());
   await p.keyboard.press('Escape');
   await sleep(200);
+  // C is comment (Leo, 19 Nov): from the pointer, C brings the comment back; 1 still switches.
+  const pointer = () => shadow(() => { return r.querySelector('.go-btn').classList.contains('cursor'); });
+  await p.keyboard.press('1');
+  await untilShadow(p, (r) => r.querySelector('.go-btn').classList.contains('cursor'), null, 300);
+  const wasPointer = await pointer();
+  await p.keyboard.press('c');
+  await untilShadow(p, (r) => !r.querySelector('.go-btn').classList.contains('cursor'), null, 300);
+  const after = await pointer(), chatAfter = await chatOpen();
+  check(eng, 'C goes back to comment from the pointer, and opens no chat', wasPointer && !after && !chatAfter, JSON.stringify({ wasPointer, after, chatAfter }));
   await p.keyboard.press('2');
   const keys = await shadow(() => { return r.querySelector('.go-btn').textContent.replace(/\s/g, ''); });
   const goLeft = await shadow(() => { return document.documentElement.classList.contains('lab-go') || r.querySelector('.go-btn').classList.contains('cursor'); });
-  await p.keyboard.press('3');
+  await p.keyboard.press('1');
   await sleep(100);
   await p.mouse.click(500, 400);
   await sleep(300);
-  const pinnedIn3 = await shadow(() => { return Boolean(r.querySelector('.float')); });
+  const pinnedInPointer = await shadow(() => { return Boolean(r.querySelector('.float')); });
   await p.keyboard.press('1');
-  check(eng, 'there is no go mode: 2 does nothing, 3 is cursor (a click pins nothing)', !goLeft && /\(?1\/3\)?$/.test(keys) && !pinnedIn3, keys);
+  await sleep(100);
+  await p.mouse.click(500, 400);
+  await sleep(400);
+  const pinnedAgain = await shadow(() => { return Boolean(r.querySelector('.float')); });
+  await p.keyboard.press('Escape');
+  await sleep(300);
+  check(eng, 'there is no go mode: 2 does nothing; key 1 once is the pointer (a click pins nothing), again it is the comment (a click pins); the switch shows (1)', !goLeft && /\(?1\)?$/.test(keys) && !pinnedInPointer && pinnedAgain, keys);
+  await p.keyboard.press('3');
+  await sleep(100);
+  await p.mouse.click(500, 400);
+  await sleep(400);
+  check(eng, '3 does nothing now: a click still pins', await shadow(() => { return Boolean(r.querySelector('.float')); }));
+  await p.keyboard.press('Escape');
+  await sleep(300);
 
   // A "go" comment is a pin like any other: your initial, and the tick once resolved.
   const admin = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
   const post = (body) =>
     fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': admin, 'x-lab-agent': '1' }, body: JSON.stringify(body) }).then((r) => r.json());
   const page = await p.evaluate(() => document.querySelector('script[src*="comments.js"]').dataset.page);
-  const placed = await post({ page, name: 'leo', text: 'go', anchor: { kind: 'element', selector: '#p3', x: 0.5, y: 0.5, element: '<p>', text: 'paragraph 3 with some words', section: '' } });
+  const placed = await post({ page, name: 'leo', text: 'go', anchor: { kind: 'element', selector: '#p3', x: 0.5, y: 0.5, docX: 0.5, docY: 200, width: 1000, element: '<p id="p3">', text: 'paragraph 3 with some words', section: '' } });
   const ticks = () => shadow(() => { return [...r.querySelectorAll('.pin')].filter((n) => n.textContent.trim() === '✓').length; });
   await untilShadow(p, (r) => r.querySelectorAll('.pin').length > 0, null, 1200);
   const goFace = await ticks();
@@ -230,6 +280,15 @@ for (const eng of ['webkit', 'chromium']) {
   await untilShadow(p, (r) => [...r.querySelectorAll('.pin')].filter((n) => n.textContent.trim() === '✓').length > 0, null, 1500);
   const doneFace = await ticks();
   check(eng, 'a go comment is an ordinary pin (no go look), and wears the tick once it is done', !goClass && doneFace === goFace + 1, `${goClass} go-looks; ticks ${goFace} → ${doneFace}`);
+  // A done pin is as big as an open one, only faded (once its face change has played).
+  await untilShadow(p, (r) => { const d = [...r.querySelectorAll('button.pin.resolved')]; return d.length > 0 && d.every((b) => b.getAnimations({ subtree: true }).every((a) => a.playState !== 'running')); }, null, 1500);
+  const sizes = await shadow(() => {
+    const w = (b) => b && Math.round(b.getBoundingClientRect().width * 10) / 10;
+    const pins = [...r.querySelectorAll('button.pin')];
+    const done = pins.find((b) => b.classList.contains('resolved'));
+    return { done: w(done), open: w(pins.find((b) => !b.classList.contains('resolved') && !b.classList.contains('moved'))), fade: done && getComputedStyle(done).opacity };
+  });
+  check(eng, 'a done pin is the same size as an open one, only faded', sizes.done > 0 && sizes.done === sizes.open && Number(sizes.fade) < 1, JSON.stringify(sizes));
   await post({ page, action: 'delete', id: placed.comment.id });
   // Option-click on a pin resolves its thread without opening it; again opens it again
   const elsewhere = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'from elsewhere');
@@ -386,7 +445,7 @@ for (const eng of ['webkit', 'chromium']) {
     await sq(() => { r.querySelector('button.keep').click(); });
     await sleep(900);
     const asIs = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
-    check(eng, 'Keep on the page\'s own words keeps them as they are', asIs.length === 1 && asIs[0].picked.n === -1 && /^Keep as is/.test(asIs[0].text) && (await html()) === original, JSON.stringify(asIs.map((x) => [x.picked, x.text])));
+    check(eng, 'Keep on the page\'s own words keeps them as they are', asIs.length === 1 && asIs[0].picked.n === -1 && asIs[0].text.startsWith('Keep as is') && (await html()) === original, JSON.stringify(asIs.map((x) => [x.picked, x.text])));
     for (const x of asIs) await post({ page: '/ask', action: 'delete', id: x.id });
     await q.keyboard.press('Escape');
     await sleep(400);
@@ -400,7 +459,7 @@ for (const eng of ['webkit', 'chromium']) {
     await sleep(900);
     const got = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
     c = await card();
-    check(eng, 'Keep B sends the pick', got.length === 1 && got[0].picked.of === asked.id && got[0].picked.n === 1 && /^Picked B: /.test(got[0].text) && (await html()) === original, JSON.stringify(got.map((x) => [x.picked, x.text])));
+    check(eng, 'Keep B sends the pick', got.length === 1 && got[0].picked.of === asked.id && got[0].picked.n === 1 && got[0].text.startsWith('Picked B: ') && (await html()) === original, JSON.stringify(got.map((x) => [x.picked, x.text])));
     check(eng, 'after the pick the rows are disabled and the pick is marked', c && c.disabled && c.picked === 1 && c.cls.includes('margin'), JSON.stringify(c && [c.disabled, c.picked, c.cls]));
     await post({ page: '/ask', action: 'delete', id: got[0].id });
     await q.keyboard.press('Escape');
@@ -419,7 +478,7 @@ for (const eng of ['webkit', 'chromium']) {
     write('ask.html', body(para.replace('labit puts the <a id="lnk" href="#g">full guide</a> on the page, not in chat.', 'Nothing of it is left.') + fill));
     await sleep(1800);
     c = await card();
-    check(eng, 'words gone after a save: rows only, out of the margin, no "now" row', c && !/margin|under/.test(c.cls) && !c.tie && c.rows.length === 3 && !/now$/.test(c.rows[0]), JSON.stringify(c));
+    check(eng, 'words gone after a save: rows only, out of the margin, no "now" row', c && !/margin|under/.test(c.cls) && !c.tie && c.rows.length === 3 && !c.rows[0]?.endsWith('now'), JSON.stringify(c));
     await q.keyboard.press('Escape');
     write('ask.html', body(para + fill));
     await sleep(1800);
@@ -481,7 +540,7 @@ for (const eng of ['webkit', 'chromium']) {
     await sq(() => { r.querySelectorAll('.choice')[1].click(); });
     await sleep(200);
     const row = await sq(() => { return { cls: r.querySelector('.card').className, rows: [...r.querySelectorAll('.choice')].map((x) => x.textContent) }; });
-    check(eng, 'a quote across two blocks: rows only, no "now" row, nothing changed in the page', !/margin/.test(row.cls) && row.rows.length === 2 && !row.rows.some((t) => /now$/.test(t)) && (await mine()) === before, JSON.stringify(row));
+    check(eng, 'a quote across two blocks: rows only, no "now" row, nothing changed in the page', !/margin/.test(row.cls) && row.rows.length === 2 && !row.rows.some((t) => t?.endsWith('now')) && (await mine()) === before, JSON.stringify(row));
     await q.keyboard.press('Escape');
     await post({ page: '/ask2', action: 'delete', id: across.id });
     const text = (await post({ page: '/ask2', name: 'leo', text: 'tags', anchor: { kind: 'text', selector: '#c', x: 0.3, y: 0.2, docX: 0.3, docY: 200, width: 1000, element: '<p id="c">', text: '…Alone [bold] words…', quote: { exact: 'Alone', prefix: '', suffix: ' bold words here' } } })).comment;
@@ -505,7 +564,18 @@ for (const eng of ['webkit', 'chromium']) {
   write('notes.md', '# notes, changed');
   await sleep(3000);
   check(eng, 'a save the page does not use leaves it alone', loads === 1, `loads ${loads}`);
+  // With the chat open the reload waits ("update waiting"), and what comes meanwhile still shows: before 19 Nov the
+  // held reload cut off every later update, so the agent's answer stayed out of an open chat until it was closed.
+  await p.keyboard.press('t');
+  await untilShadow(p, (r) => r.querySelector('.chatwin').hidden === false, null, 1000);
+  const said = () => shadow(() => { return [...r.querySelectorAll('.msg')].some((m) => m.textContent.includes('while it waits')); });
   write('data.json', '{"a":2}');
+  await untilShadow(p, (r) => r.querySelector('.soon')?.hidden === false, null, 3000);
+  const waiting = await shadow(() => { return r.querySelector('.soon')?.hidden === false; });
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'while it waits', anchor: { kind: 'page', width: 1000, height: 700, dpr: 1 } }) });
+  await untilShadow(p, (r) => [...r.querySelectorAll('.msg')].some((m) => m.textContent.includes('while it waits')), null, 2000);
+  check(eng, 'a reload that waits for an open chat does not hold back new messages', waiting && loads === 1 && (await said()), `waiting ${waiting}, loads ${loads}`);
+  await p.keyboard.press('Escape');
   for (const end = Date.now() + 3000; Date.now() < end && loads < 2; ) await sleep(50);
   check(eng, 'a save it may fetch reloads the page', loads === 2, `loads ${loads}`);
   await sleep(800);

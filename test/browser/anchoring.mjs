@@ -16,8 +16,9 @@ const pw = (() => {
     try {
       return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
     } catch {
-      console.log('playwright is not installed: skipped');
-      process.exit(0);
+      // On CI a missing browser is a failure: a skip there would pass with nothing run.
+      console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+      process.exit(process.env.CI ? 1 : 0);
     }
   }
 })();
@@ -120,7 +121,7 @@ try {
       p = await open(ctx, '<p id="t" style="width:400px">Some words here and the target word sits in the middle of this line of text.</p>');
       r = await p.evaluate(() => {
         const w = wordAt('target');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         document.getElementById('t').firstChild.data = 'Lots of brand new words came first, pushing everything on. ' + document.getElementById('t').firstChild.data;
         return { kind: a.kind, at: A.position(a), word: wordAt('target') };
       });
@@ -131,7 +132,7 @@ try {
       p = await open(ctx, '<div id="top"></div>Loose text with a findme word in it.');
       r = await p.evaluate(() => {
         const w = wordAt('findme');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         document.getElementById('top').style.height = '300px';
         const at = A.position(a);
         const word = wordAt('findme');
@@ -224,7 +225,7 @@ try {
       p = await open(ctx, '<div id="pad"></div><p class="lede">Intro words, then the special phrase sits here, and more after.</p><p>Elsewhere a phrase too.</p>');
       r = await p.evaluate(() => {
         const w = wordAt('special');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         const swap = (html) => (document.querySelector('.lede, .intro').outerHTML = html);
         document.getElementById('pad').style.height = '200px';
         swap('<div class="intro">Intro words, then the special phrase sits here, and more after.</div>');
@@ -279,6 +280,22 @@ try {
       const rounded = (o) => JSON.stringify(Object.entries(o).map(([k, v]) => [k, Math.round(v.left), Math.round(v.top), Boolean(v.moved)]));
       check(eng, 'a try moves no pin: the pin above stays, the one below follows its word', /this short guide/.test(r.tried) && rounded({ up: r.before.up }) === rounded({ up: r.during.up }) && !r.during.low.moved && r.during.low.top >= r.lowWord.top - 2 && r.during.low.top <= r.lowWord.bottom + 2 && r.during.low.top > r.before.low.top, JSON.stringify([r.before.low, r.during.low, r.lowWord]));
       check(eng, 'after the try everything is as it was: the page, every pin, the quote found again', r.same && rounded(r.before) === rounded(r.after) && !r.after.quote.moved, JSON.stringify([r.same, rounded(r.before), rounded(r.after)]));
+      await p.close();
+
+      // A long list: the pinned row is past the first 400 of its kind, and a row above it is taken out.
+      p = await open(ctx, `<div id="list">${Array.from({ length: 520 }, (_, i) => `<div class="row">Row number ${i}</div>`).join('')}</div>`);
+      r = await p.evaluate(() => {
+        const row = document.querySelectorAll('.row')[450];
+        row.scrollIntoView();
+        const b = row.getBoundingClientRect();
+        const a = A.anchorAt(b.left + 2, b.top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        document.querySelectorAll('.row')[440].remove();
+        const now = A.foundAt(a);
+        return { now, top: row.getBoundingClientRect().top + scrollY };
+      });
+      check(eng, 'a pin far down a long list is found again when a row above it goes', r.now && Math.abs(r.now.docY - r.top) < 30, JSON.stringify(r.now));
       await p.close();
       await ctx.close();
     } finally {

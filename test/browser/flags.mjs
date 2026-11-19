@@ -1,5 +1,6 @@
-// Flags from labit.json in real browsers (WebKit and Chrome's engine): the ⋯ menu has no switches for them (no
-// "trying" section), the lab takes no switch from a page, and an agent's pin wears labit's mark with no flag set. Not part of `npm test`; CI runs it in the `browser` job.
+// Flags in real browsers (WebKit and Chrome's engine): the ⋯ menu's experiments list switches them (saved in your own
+// settings, applied at once: on starts the feature in place, off reloads the page), a page without the lab's key
+// switches nothing, and an agent's pin wears labit's mark with no flag set. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/flags.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -15,8 +16,9 @@ const pw = (() => {
       return require(require.resolve('playwright', paths && { paths }));
     } catch {}
   }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
+  // On CI a missing browser is a failure: a skip there would pass with nothing run.
+  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+  process.exit(process.env.CI ? 1 : 0);
 })();
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
@@ -25,7 +27,7 @@ const PORT = 7970 + Math.floor(Math.random() * 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>f</title><h1 id="t">Flags</h1><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 for (let i = 0; i < 80; i++) {
@@ -43,10 +45,9 @@ const check = (eng, name, ok, detail = '') => {
 };
 
 try {
-  // The lab no longer takes a switch from a page: the old endpoint is not there.
-  const sw = await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: 'liveUrl', on: true }) });
-  check('lab', 'POST /_lab/flags switches nothing', sw.status !== 200, String(sw.status));
-  check('lab', 'labit.json is as it was', JSON.parse(fs.readFileSync(path.join(DIR, 'labit.json'), 'utf8')).flags === undefined);
+  // A page without the lab's key (not this computer's browser) can't switch anything.
+  const sw = await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: 'sectionBar', on: true }) });
+  check('lab', 'POST /_lab/flags without the key is refused', sw.status === 403, String(sw.status));
   // An agent's pin, left the way an agent leaves one.
   execFileSync(process.execPath, [LAB, 'pin', '#t', 'a question from the agent'], { cwd: DIR, env: { ...env, PORT: String(PORT) }, stdio: 'pipe' });
 
@@ -61,22 +62,44 @@ try {
       const p = await ctx.newPage();
       await p.goto(B + '/');
       await sleep(1500);
-      const menu = await p.evaluate(async () => {
-        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.more-menu'))?.shadowRoot;
-        r?.querySelector('.more')?.click();
+      await p.evaluate(() => (window.labMark = 1)); // gone if the page reloads
+      const r = () => p.evaluateHandle(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.more-menu'))?.shadowRoot);
+      const menu = await (await r()).evaluate(async (root) => {
+        root.querySelector('.more').click();
         await new Promise((res) => setTimeout(res, 300));
-        const m = r?.querySelector('.more-menu');
-        return {
-          open: Boolean(m && !m.hidden),
-          text: m?.textContent || '',
-          switches: m?.querySelectorAll('[role="switch"], .trying, .trying-head').length ?? -1,
-          agentMark: r?.querySelectorAll('.pin .agentmark').length ?? 0,
-        };
+        const m = root.querySelector('.more-menu');
+        const item = m.querySelector('.exp-btn');
+        return { open: !m.hidden, item: item?.textContent || '', agentMark: root.querySelectorAll('.pin .agentmark').length };
       });
       check(eng, 'the ⋯ menu opens', menu.open);
-      check(eng, 'the ⋯ menu has no trying section', menu.switches === 0 && !/trying/i.test(menu.text), menu.text.slice(0, 120));
-      check(eng, "no flag's name is in the menu", !/live URL|labit's mark/.test(menu.text));
+      check(eng, 'it has experiments, none on', menu.item === 'experiments0', menu.item);
       check(eng, "with no flag set, the agent's pin wears labit's mark", menu.agentMark === 1, String(menu.agentMark));
+      const list = await (await r()).evaluate(async (root) => {
+        root.querySelector('.exp-btn').click();
+        await new Promise((res) => setTimeout(res, 100));
+        const m = root.querySelector('.more-menu');
+        const sw = m.querySelector('[role="switch"][data-flag="sectionBar"]');
+        return { open: !m.hidden, back: Boolean(m.querySelector('.exp-back')), sw: sw?.getAttribute('aria-checked'), disabled: sw?.disabled, words: sw?.textContent || '' };
+      });
+      check(eng, 'experiments opens its list in the menu', list.open && list.back);
+      check(eng, 'a switch for sectionBar, off, that this computer may switch', list.sw === 'false' && list.disabled === false, JSON.stringify(list));
+      check(eng, 'with its one line', /a section bar at the top/.test(list.words), list.words);
+      const on = await (await r()).evaluate(async (root) => {
+        root.querySelector('[data-flag="sectionBar"]').click();
+        await new Promise((res) => setTimeout(res, 800));
+        return { checked: root.querySelector('[data-flag="sectionBar"]').getAttribute('aria-checked'), menuOpen: !root.querySelector('.more-menu').hidden, since: Boolean(root.querySelector('.sbar')) };
+      });
+      check(eng, 'switched on, the menu stays open', on.checked === 'true' && on.menuOpen, JSON.stringify(on));
+      check(eng, 'the feature starts at once, no reload', on.since && (await p.evaluate(() => window.labMark)) === 1);
+      const saved = JSON.parse(fs.readFileSync(path.join(env.XDG_CONFIG_HOME, 'labit', 'settings.json'), 'utf8'));
+      check(eng, 'saved in your own settings', saved.flags?.sectionBar === true, JSON.stringify(saved));
+      check(eng, 'labit.json is as it was', JSON.parse(fs.readFileSync(path.join(DIR, 'labit.json'), 'utf8')).flags === undefined);
+      // Off: the page goes back to the lab for itself and comes back without it.
+      await (await r()).evaluate((root) => root.querySelector('[data-flag="sectionBar"]').click());
+      await p.waitForFunction(() => !window.labMark, null, { timeout: 5000 }).catch(() => {});
+      await sleep(1500);
+      const off = await (await r()).evaluate((root) => ({ since: Boolean(root.querySelector('.sbar')), item: root.querySelector('.exp-btn')?.textContent || '' }));
+      check(eng, 'switched off, the page reloads without it', !(await p.evaluate(() => window.labMark)) && !off.since && off.item === 'experiments0', JSON.stringify(off));
       await p.goto('about:blank');
       await ctx.close();
     } finally {

@@ -1,4 +1,5 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { stickToEnd } from './stick.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -65,7 +66,7 @@ export function drawChat() {
   };
   W.patchKids(box, msgs.flatMap((m) => {
     const root = m.parent ? byId.get(m.parent) : m;
-    const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${root && W.S.replyTo === root.id ? ' to' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
+    const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
     // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
     // "Done" answer closes the thread.
     b.append(W.nameLine(m.name, false));
@@ -87,28 +88,23 @@ export function drawChat() {
     stamped(b, W.stampOf(m, root));
     return m.id === W.S.newFrom && m !== msgs[0] ? [W.el('div', { class: 'newline' }, 'new'), b] : [b];
   }).map(same));
-  const strip = W.$('.replying', W.chatEl);
-  const target: any = W.S.replyTo && byId.get(W.S.replyTo);
-  strip.hidden = !target;
-  if (target) {
-    const x = W.el('button', { type: 'button', title: 'about the page instead' }, '✕');
-    x.addEventListener('click', () => ((W.S.replyTo = null), drawChat()));
-    strip.replaceChildren(document.createTextNode(`↩ ${target.name}: ${target.text.replace(/\s+/g, ' ').slice(0, 40)}`), x);
-  }
   if (!box.firstChild) box.append(W.el('div', { class: 'none' }, 'say something about the page as a whole'));
   const chat = W.chatEl.querySelector('.chat');
+  if (!chat.firstChild) {
+    // At its newest it stays at its newest while it gets shorter (the keyboard coming up as you write), as a thread
+    // does; scrolled back to read, it stays put (Leo, 19 Nov: "opening keyboard in chat scrolls content so I can't
+    // see the latest message").
+    const end = stickToEnd(box);
+    // Going to write: the last message comes into view, so you write under it.
+    chat.addEventListener('focusin', (e) => (e.target as Element).localName === 'textarea' && end.pin());
+  }
   if (!chat.firstChild)
     chat.append(
       W.composer({
         placeholder: 'message',
         draftKey: `lab-typing:${W.S.page}:chat`,
         onSubmit: async (name, text) => {
-          const { comment } = await W.send(
-            W.S.replyTo ? { name, text, parent: W.S.replyTo } : { name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } },
-          );
-          const answered = W.S.replyTo && W.S.comments.find((x) => x.id === W.S.replyTo);
-          if (answered?.resolved) answered.resolved = false; // writing in a done thread reopens it
-          W.S.replyTo = null;
+          const { comment } = await W.send({ name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } });
           W.S.comments.push(comment);
           W.markSeen([comment]);
           box.scrollTop = box.scrollHeight;
@@ -117,6 +113,5 @@ export function drawChat() {
         },
       }),
     );
-  chat.querySelector('textarea').placeholder = target ? 'reply' : 'message';
   if (atEnd) box.scrollTop = box.scrollHeight;
 }

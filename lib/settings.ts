@@ -7,11 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
-// The actions row on selected words ("words") and, once the regular dialog has one, on a spot ("spot"). The comment itself is
-// always there, first and unlisted; the list holds the built-in rewrite, cut and go, and your own: { label, send, ask? }.
-const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go'];
-const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go'] };
+const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
+// The actions row on selected words ("words") and on a spot ("spot"). The comment itself is
+// always there, first and unlisted; the list holds the built-in rewrite, cut, go, remove and fix, and your own: { label, send }.
+const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go', 'remove', 'fix'];
+const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] };
 const MAX_ACTIONS = 5; // with comment, 6 in all
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
@@ -34,7 +34,7 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags' | 'actions'; def
   pagesFolder: { type: 'string', def: '~/lab-pages', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
   actions: { type: 'actions', def: ACTIONS },
-  // What is being tried here (lib/flags.ts). Off unless labit.json (or your settings) turns one on.
+  // What is being tried here (lib/flags.ts). Off unless labit.json, your settings or the ⋯ menu's experiments turn one on.
   flags: { type: 'flags', def: flagDefaults() },
 };
 // The environment variables that set a setting (as before), and how their values read.
@@ -50,6 +50,7 @@ const ENV: Record<string, [string, (v: string) => unknown]> = {
 type Settings = {
   values: Record<string, any>;
   from: Record<string, string>; // flag, env PORT, labit.json, ~/.config/labit/settings.json, default
+  flagFrom: Record<string, 'project' | 'personal'>; // each flag a file names: the project's (which wins) or yours
   files: { project: string | null; personal: string };
   problems: string[];
 };
@@ -75,7 +76,7 @@ const read = (file: string | null, problems: string[]): Record<string, unknown> 
   return {};
 };
 
-// One list of actions, checked: the built-in names and { label, send, ask? } of your own, in the order given. comment is
+// One list of actions, checked: the built-in names and { label, send } of your own, in the order given. comment is
 // implied (listed, it is dropped); a name that isn't one, a label over 16 characters, a repeat, or more than 5 are said and left out.
 const actionList = (list: unknown[], bad: (why: string) => void): unknown[] => {
   const out: unknown[] = [];
@@ -98,11 +99,10 @@ const actionList = (list: unknown[], bad: (why: string) => void): unknown[] => {
     if (!o || typeof o !== 'object' || Array.isArray(o) || !label || !send) bad(`an action of your own needs a "label" and the text to "send"; ignored`);
     else if (label.length > 16) bad(`"${label}": a label is 16 characters at most; ignored`);
     else if (send.length > 300) bad(`"${label}": the text to send is 300 characters at most; ignored`);
-    else if (o.ask !== undefined && typeof o.ask !== 'boolean') bad(`"${label}": ask must be true or false; ignored`);
     else if (seen.has(label.toLowerCase())) bad(`"${label}" is listed twice; ignored`);
     else {
       seen.add(label.toLowerCase());
-      out.push(o.ask ? { label, send, ask: true } : { label, send });
+      out.push({ label, send });
     }
   }
   if (out.length > MAX_ACTIONS) {
@@ -120,6 +120,7 @@ const check = (key: string, v: unknown, file: string, problems: string[]): unkno
     if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object of action → key');
     const out: Record<string, string> = {};
     for (const [action, key1] of Object.entries(v)) {
+      if (action === 'pointer') continue; // the old key 3: key 1 now switches between comment and pointer; a leftover setting is ignored, not said
       if (!(action in SHORTCUTS)) bad(`.${action} is not an action (${Object.keys(SHORTCUTS).join(', ')})`);
       else if (typeof key1 !== 'string' || !/^[a-z0-9]$/i.test(key1)) bad(`.${action} must be one letter or digit`);
       else out[action] = key1.toLowerCase();
@@ -163,6 +164,7 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
   ];
   const values: Record<string, any> = {};
   const from: Record<string, string> = {};
+  const flagFrom: Settings['flagFrom'] = {};
   for (const [file, data] of layers)
     for (const key of Object.keys(data)) if (!(key in SPEC) && key !== '$schema') problems.push(`${file}: ${key} is not a setting; ignored`);
   for (const key of Object.keys(SPEC)) {
@@ -188,6 +190,7 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       if (v === undefined) continue;
       // Shortcuts and flags add up, one at a time: the project's over yours over the defaults.
       if (s.type === 'shortcuts' || s.type === 'flags' || s.type === 'actions') {
+        if (s.type === 'flags') for (const f of Object.keys(v as object)) flagFrom[f] ??= where;
         values[key] = { ...(v as object), ...values[key] };
         from[key] = from[key] ? `${from[key]} + ${file}` : file;
         continue;
@@ -208,7 +211,7 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       from[key] = 'default';
     }
   }
-  return { values, from, files, problems };
+  return { values, from, flagFrom, files, problems };
 }
 
 /** The shortcuts that differ from the defaults (what the widget needs to hear). */
@@ -217,14 +220,46 @@ export const changedShortcuts = (keys: Record<string, string>) => Object.fromEnt
 /** The actions lists that differ from the defaults (what the widget needs to hear). */
 export const changedActions = (actions: Record<string, unknown[]>) => Object.fromEntries(Object.entries(actions).filter(([area, list]) => JSON.stringify(ACTIONS[area as keyof typeof ACTIONS]) !== JSON.stringify(list)));
 
+/** Turns a flag on or off in your own settings file (the Experiments list in the ⋯ menu), keeping the rest of the
+ *  file. Off leaves no trace: off is the absence of a flag. A file that isn't JSON is left alone (it throws) rather than
+ *  written over. Returns the file. */
+export function savePersonalFlag(flag: string, on: boolean): string {
+  if (!(flag in FLAGS)) throw new Error(`${flag} is not something being tried now`);
+  const file = personalFile();
+  let data: Record<string, unknown> = {};
+  if (fs.existsSync(file)) {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${file}: not an object of settings`);
+  }
+  const flags = (data.flags && typeof data.flags === 'object' && !Array.isArray(data.flags) ? data.flags : {}) as Record<string, unknown>;
+  if (on) flags[flag] = true;
+  else delete flags[flag];
+  if (Object.keys(flags).length) data.flags = flags;
+  else delete data.flags;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+  return file;
+}
+
 /** Sets one setting in your own file, keeping the rest. */
 export function savePersonal(key: string, value: unknown) {
   const file = personalFile();
   let data: Record<string, unknown> = {};
+  let src: string | null = null;
   try {
-    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    src = fs.readFileSync(file, 'utf8');
   } catch {}
+  // A file that is there but can't be read as settings is left as it is: writing one key over it would drop the rest.
+  if (src !== null) {
+    try {
+      data = JSON.parse(src);
+    } catch {
+      throw new Error(`${file} is not valid JSON: fix it, then ${key} can be saved`);
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${file} does not hold settings: fix it, then ${key} can be saved`);
+  }
   data[key] = value;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+  fs.writeFileSync(file + '.tmp', JSON.stringify(data, null, 2) + '\n');
+  fs.renameSync(file + '.tmp', file);
 }

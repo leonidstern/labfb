@@ -2,8 +2,8 @@
   "name": "labit",
   "displayName": "labit",
   "version": "0.6.2",
-  "description": "Pin comments on pages; your agent reads them as plain text and answers on the pins. Skill + MCP server (comments, reply, wait).",
+  "description": "Pin comments on pages; your agent reads them as plain text and answers on the pins. Skill: wait, fix, reply on the pin.",
   "author": { "name": "leonidstern", "url": "https://github.com/LeonidStern" },
-  "license": "SEE LICENSE IN LICENSE",
-  "keywords": ["comments", "feedback", "review", "pins", "mcp"]
+  "license": "PolyForm-Small-Business-1.0.0",
+  "keywords": ["comments", "feedback", "review", "pins"]
 }

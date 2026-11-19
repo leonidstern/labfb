@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-test-'));
-const PORT = String(4600 + Math.floor(Math.random() * 300));
+const PORT = String(4600 + Math.floor(Math.random() * 100));
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 
@@ -145,6 +145,12 @@ test('a comment about the page as a whole has no spot in the agent text', async 
   const block = text.split('\n## ').find((b) => b.includes('too airy'));
   assert.match(block, /^on: the page as a whole \(no spot\)$/m);
   assert.doesNotMatch(block, /^(where on element|selector \(at comment time\)):/m);
+  // A link in a comment reaches the agent as written, and the text's own links are the lab's. (Every "http://localhost"
+  // in the text used to be replaced with the lab's address, so :3000 below came out as :<lab port>:3000.)
+  await post({ page: '/index', name: 'Leo', text: 'compare with http://localhost:3000/a please', anchor: { kind: 'page', width: 390, height: 664, dpr: 2 } });
+  const after = await (await fetch(B + '/_lab/agent/index')).text();
+  assert.ok(after.includes('compare with http://localhost:3000/a please'), after.split('\n').find((l) => l.includes('compare with')));
+  assert.ok(after.includes(`page: ${B}/index`));
 });
 
 test('read marks are shared by name: a phone and a Mac with the same name see the same new and read', async () => {
@@ -222,6 +228,8 @@ test('a reply goes in the short thread form only to the session that has its thr
   const b = (await waiting).out;
   assert.match(b, /^## /m, 'the whole thread for a session that never had it');
   assert.match(b, /^Answer each: .* reply <id> .* add --wait to the last one/m, 'how to answer, in full the first time a session hears');
+  assert.match(b, /Read each thread whole \(every message and reply/, 'told to read the whole conversation before answering, not to guess from the page');
+  assert.match(b, /^Work that takes more than a minute .*: first .* reply <id> --on-it /m, 'on it first, before long work');
   assert.match(b, /^Write answers short/m);
   assert.match(b, /tighten the spacing under the title/);
   assert.match(b, /a bit more/);
@@ -236,7 +244,7 @@ test('a reply goes in the short thread form only to the session that has its thr
   assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --on-it \| --question\] \[--wait\]$/m, 'then one short line');
   assert.doesNotMatch(b2, /Write answers short|run in /);
   await new Promise((r) => setTimeout(r, 500));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/handed.json'), 'utf8'))[comment.id][1], 'sess-b', 'which session has the thread: kept beside the comments');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/state.json'), 'utf8')).handed[comment.id][1], 'sess-b', 'which session has the thread: kept beside the comments');
   const seen = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === comment.id);
   assert.equal(seen.deliveredTo, undefined, 'and not sent to pages');
 });
@@ -245,7 +253,7 @@ test('one lab per folder: two started at once make one; a dead lock or a silent 
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-lock-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
-  const base = 4950 + Math.floor(Math.random() * 40) * 3;
+  const base = 4700 + Math.floor(Math.random() * 15) * 3;
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
   const start = (port) => {
     const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port)], { cwd: dir, env });
@@ -294,7 +302,7 @@ test('labit --name gives the lab its topic, and later starts keep it', async () 
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-name-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
-  const port = 4870 + Math.floor(Math.random() * 60);
+  const port = 4750 + Math.floor(Math.random() * 50);
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
   const run = async (...more) => {
     const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), ...more], { cwd: dir, env });
@@ -313,14 +321,14 @@ test('labit --name gives the lab its topic, and later starts keep it', async () 
   try {
     assert.equal(await run(), path.basename(dir), 'no topic: the folder');
     assert.equal(await run('--name', 'Lab navigation'), 'Lab navigation');
-    assert.equal(await run(), 'Lab navigation', 'kept in .lab/name');
+    assert.equal(await run(), 'Lab navigation', 'kept in .lab/state.json');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
 
-test('a page can be archived and brought back (labs & pages), in .lab/archived.json; the file stays', async () => {
+test('a page can be archived and brought back (labs & pages), in .lab/state.json; the file stays', async () => {
   for (let i = 0; i < 50 && !fs.existsSync(path.join(DIR, '.lab/server.json')); i++) await new Promise((r) => setTimeout(r, 100));
   const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
   const post = (body) => fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ port: Number(PORT), ...body }) });
@@ -337,7 +345,7 @@ test('a page can be archived and brought back (labs & pages), in .lab/archived.j
 test('labit publish puts a page in the one pages lab, starts it once, and publishing again keeps the link', async () => {
   const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-pub-')));
   const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), LABIT_HOME: path.join(home, '.labit'), LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
-  const port = 4940 + Math.floor(Math.random() * 9);
+  const port = 4800 + Math.floor(Math.random() * 9);
   fs.mkdirSync(path.join(home, '.config/labit'), { recursive: true });
   fs.writeFileSync(path.join(home, '.config/labit/settings.json'), JSON.stringify({ port }));
   fs.writeFileSync(path.join(home, 'Heading options.html'), '<!doctype html><title>Heading options</title><h1>one</h1>');
@@ -353,6 +361,18 @@ test('labit publish puts a page in the one pages lab, starts it once, and publis
     assert.match(await (await fetch(link)).text(), /<h1>two<\/h1>/, 'updated');
     assert.equal(fs.readdirSync(path.join(home, '.labit/servers')).length, 1, 'one lab');
     assert.ok(fs.existsSync(path.join(home, 'lab-pages/heading-options.html')));
+    // A folder published under the name of the folder it sits in would be removed before it is copied: refused, untouched.
+    fs.mkdirSync(path.join(home, 'lab-pages/topic/sub'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'lab-pages/topic/sub/index.html'), '<!doctype html><h1>sub</h1>');
+    const inside = await new Promise((r) => execFile(process.execPath, [LAB, 'publish', path.join(home, 'lab-pages/topic/sub'), '--name', 'topic'], { cwd: home, env }, (err, out, errOut) => r({ code: err?.code, said: String(errOut) })));
+    assert.equal(inside.code, 1);
+    assert.match(inside.said, /inside one another/);
+    assert.ok(fs.existsSync(path.join(home, 'lab-pages/topic/sub/index.html')), 'the source is still there');
+    // The page's own file in the pages lab, published again through a link to that folder: nothing to copy, nothing removed.
+    fs.symlinkSync(path.join(home, 'lab-pages'), path.join(home, 'pages-link'));
+    const linked = await new Promise((r) => execFile(process.execPath, [LAB, 'publish', path.join(home, 'pages-link/heading-options.html')], { cwd: home, env }, (err, out) => r(String(out).split('\n')[0])));
+    assert.equal(linked, link);
+    assert.match(fs.readFileSync(path.join(home, 'lab-pages/heading-options.html'), 'utf8'), /<h1>two<\/h1>/);
   } finally {
     if (pid) process.kill(pid);
     await new Promise((r) => setTimeout(r, 300));
@@ -408,6 +428,80 @@ test('a look bumps looked in the live state, so other tabs and devices check aga
   await look({ name: 'Leo', page: '/index', ids: [['rev', 'check']] });
   await new Promise((r) => setTimeout(r, 400));
   assert.equal(await rev(), before + 1);
+});
+
+// ---------- the section bar: sections read, per person, in their own store ----------
+const sec = (body) => fetch(B + '/_lab/api/sections', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) });
+const secOf = (q) => fetch(`${B}/_lab/api/sections?${q}`).then((r) => r.json());
+
+test('sections read are kept by name and page, apart from the looks', async () => {
+  await up();
+  assert.deepEqual(await secOf('name=Leo&page=/index'), {}, 'nothing yet: a first visit');
+  assert.equal((await sec({ name: 'Leo ', page: '/index', sections: { intro: 'a1', v1: 'b2' } })).status, 204);
+  assert.deepEqual((await secOf('name=leo&page=/index')).sections, { intro: 'a1', v1: 'b2' }, 'same name in any case or spacing');
+  await sec({ name: 'Leo', page: '/index', sections: { v1: 'c3', v2: 'd4' } });
+  assert.deepEqual((await secOf('name=Leo&page=/index')).sections, { intro: 'a1', v1: 'c3', v2: 'd4' }, 'a post sets those sections and leaves the rest');
+  assert.deepEqual(await secOf('name=Mira&page=/index'), {}, 'another name has its own');
+  assert.deepEqual(await secOf('name=Leo&page=/other'), {}, 'per page');
+  assert.deepEqual(await lookOf('name=Leo&page=/index&snap=none'), {}, 'not a look');
+    await new Promise((r) => setTimeout(r, 500));
+  const file = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/state.json'), 'utf8')).sections;
+  assert.deepEqual(file.leo['/index'], { intro: 'a1', v1: 'c3', v2: 'd4' });
+});
+
+test('a section mark never shows up as a person who looked', async () => {
+  await up();
+  await sec({ name: 'Zed Sections', page: '/index', sections: { intro: 'a1' } });
+  const text = await (await fetch(B + '/_lab/agent/index')).text();
+  assert.doesNotMatch(text, /zed sections/i);
+  assert.doesNotMatch((await (await fetch(B + '/_lab/api/looked?name=Zed%20Sections&page=/index')).text()), /zed/i);
+});
+
+test('section marks are checked: a name, a page of this lab, an object, a size', async () => {
+  await up();
+  assert.equal((await sec({ page: '/index', sections: {} })).status, 400, 'no name');
+  assert.equal((await sec({ name: 'Leo', page: '/index', sections: ['x'] })).status, 400, 'not an object');
+  assert.equal((await sec({ name: 'Leo', page: '/nope-not-a-page', sections: {} })).status, 400, 'a page of this lab only');
+  assert.equal((await sec({ name: 'Leo', page: '/index', sections: Object.fromEntries(Array.from({ length: 401 }, (_, i) => [`s${i}`, 'h'])) })).status, 413, 'more than 400 sections');
+  assert.equal((await fetch(B + '/_lab/api/sections', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' })).status, 403, 'other sites cannot post');
+  await sec({ name: '__proto__', page: '/index', sections: { __proto__: 'x', ok: 'y' } });
+  assert.deepEqual((await secOf('name=__proto__&page=/index')).sections?.ok, 'y', 'a name like __proto__ is just a key');
+});
+
+test('a section mark bumps sections in the live state, and only when something changed', async () => {
+  await up();
+  const rev = async () => {
+    const ctl = new AbortController();
+    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+    const { value } = await res.body.getReader().read();
+    ctl.abort();
+    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).sections;
+  };
+  const before = await rev();
+  assert.equal(typeof before, 'number');
+  await sec({ name: 'Leo', page: '/index', sections: { rev: 'one' } });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(await rev(), before + 1);
+  await sec({ name: 'Leo', page: '/index', sections: { rev: 'one' } });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(await rev(), before + 1, 'the same marks again change nothing');
+});
+
+test('a renamed page takes its section marks along', async () => {
+  await up();
+  fs.writeFileSync(path.join(DIR, 'secold.html'), '<!doctype html><h1>Old</h1>');
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal((await sec({ name: 'Leo', page: '/secold', sections: { old: 'h' } })).status, 204);
+  await look({ name: 'Leo', page: '/secold', ids: [['old', 'Old']] }); // a look makes the page's file known by what the disk calls it
+  await new Promise((r) => setTimeout(r, 600));
+  fs.renameSync(path.join(DIR, 'secold.html'), path.join(DIR, 'secnew.html'));
+  let moved = {};
+  for (let i = 0; i < 30 && !moved.sections; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+    moved = await secOf('name=Leo&page=/secnew');
+  }
+  assert.deepEqual(moved.sections, { old: 'h' });
+  assert.deepEqual(await secOf('name=Leo&page=/secold'), {});
 });
 
 test('a renamed page takes its looks along', async () => {
@@ -536,7 +630,7 @@ test('stale: a pin the agent said it is on, with no sign since, comes back in it
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-stale-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
-  const port = String(5300 + Math.floor(Math.random() * 300));
+  const port = String(4810 + Math.floor(Math.random() * 90));
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '1500', LAB_SETTLE_MS: '0' };
   const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', port], { cwd: dir, env });
   const base = `http://localhost:${port}`;

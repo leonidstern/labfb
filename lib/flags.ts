@@ -2,11 +2,13 @@
 // a while, then kept (the flag goes and it is simply labit) or dropped (the code goes with it). The changelog says
 // which. Nothing is in the product because it was built.
 //
-// Each flag: the key as it is written in labit.json, one line saying what it is, and when it was first offered.
+// Each flag: the key as it is written in labit.json, the one line the ⋯ menu's experiments list shows, and when it was
+// first offered.
 
-// agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
+// sinceLooked (an "Added" pill) was replaced by sectionBar. agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
 export const FLAGS: Record<string, { name: string; since: string }> = {
-  sinceLooked: { name: 'a "New" pill: what was added since you looked', since: '0.6.3' },
+  select: { name: 'select mode (V): pick a block and ask the agent to remove, restyle, move or vary it', since: '0.6.3' },
+  sectionBar: { name: 'a section bar at the top: each section, what is new or updated since you read it', since: '0.6.3' },
 };
 
 /** Every flag, off. */

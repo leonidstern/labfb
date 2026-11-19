@@ -240,12 +240,11 @@ export function swipeDown(node, close, grows = false) {
       else if (nearTop && box?.localName !== 'textarea') mode = 'drag';
       else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? 'drag' : 'off';
       else mode = sideways ? 'hold' : 'drag';
-      W.S.dbg?.(`touch ${String(e.target.className || e.target.localName).slice(0, 20)} at ${Math.round(y0 - node.getBoundingClientRect().top)}/${node.offsetHeight} down${Math.round(down)} → ${mode}${e.cancelable ? '' : ' (not cancelable)'}${box ? ` box${Math.round(box.scrollTop)}` : ''}`);
       if (mode === 'off') return;
       if (mode === 'hold') return e.preventDefault();
     }
     e.preventDefault();
-    raw = t.clientY - y0;
+    raw = (t.clientY - y0) * (W.vv?.scale || 1); // pinch-zoomed, the sheet is drawn 1/scale as big: it still keeps up with the finger
     // Up past where it sits: iOS's rubber band (UIScrollView's: offset = (1 − 1 / (pull × 0.55 / size + 1)) × size),
     // so it follows the finger, more and more slowly (it barely moved before: 100 px of pull gave 20 px, now ~50).
     const size = node.offsetHeight || 400;
@@ -286,7 +285,6 @@ export function swipeDown(node, close, grows = false) {
     // the distance plus the speed carried on at the normal deceleration, 0.998 a millisecond, so v × 499): past half
     // its height it goes. A short quick flick closes; a slow long drag closes past halfway; a move back up never does.
     const rest = dy + Math.max(0, v) * 499;
-    W.S.dbg?.(`let go: moved ${Math.round(dy)} speed ${v.toFixed(2)} rest ${Math.round(rest)} of half ${Math.round(h / 2)} → ${v > -0.1 && rest > h / 2 ? 'close' : 'stay'}`);
     // Off the screen's bottom at the finger's speed (it leaves at a steady pace, see leave).
     if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(W.ms('slow'), Math.max(W.ms('quick'), (innerHeight - node.getBoundingClientRect().top) / Math.max(v, 1.2))));
     node.style.transition = 'transform var(--_t-slow) var(--_ease-settle)';
@@ -379,6 +377,23 @@ export function startSheets() {
       if (kb > 60) W.S.kbSeen = kb; // the keyboard's height, for revealDraft before the next one comes up
     };
     W.S.refit = fit;
+    // Pinch-zoomed: fixed things stay put on the page's unzoomed screen, so they came out magnified and partly off the
+    // screen (Leo, 19 Nov: "on mobile zooms breaks our windows"). The bar, chat and list (.ui) and a thread's or new
+    // comment's sheet are drawn at their usual size where the screen shows now (styles.css, data-zoom); pins stay on the page.
+    const zoomFit = () => {
+      const k = W.vv.scale;
+      W.host.toggleAttribute('data-zoom', Math.abs(k - 1) > 0.01);
+      const set = (n, v) => W.host.style.setProperty(`--lab-z${n}`, `${v}px`);
+      set('x', W.vv.offsetLeft);
+      set('y', W.vv.offsetTop);
+      set('w', W.vv.width * k);
+      set('h', W.vv.height * k);
+      set('b', W.vv.offsetTop + W.vv.height - probe.getBoundingClientRect().height); // a sheet's bottom: the screen's
+      W.host.style.setProperty('--lab-zk', String(1 / k));
+    };
+    W.vv.addEventListener('resize', zoomFit);
+    W.vv.addEventListener('scroll', zoomFit);
+    zoomFit();
     W.root.addEventListener('focusin', () => setTimeout(fit, 50));
     W.root.addEventListener('focusout', () => setTimeout(fit, 50));
     W.vv.addEventListener('resize', fit);
