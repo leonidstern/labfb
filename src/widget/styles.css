@@ -681,7 +681,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-nav::-webkit-scrollbar { display: none; }
 .sb-chip, .sb-more { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
 .sb-chip[hidden] { display: none; }
-.sb-chip:hover, .sb-more:hover { background: var(--_soft); }
+.sb-chip:hover, .sb-more:hover { background: none; color: var(--_fg); } /* hover and tap: the text darkens, no grey box (Leo, 19 Nov) */
+.sb-chip, .sb-more { -webkit-tap-highlight-color: transparent; }
 .sb-chip[aria-current] { background: none; color: var(--_fg); } /* the one you are in: dark text, no fill (Leo, 19 Nov) */
 .sb-chip[aria-current] .sb-t { color: var(--_fg); }
 /* A status that goes (you read it) folds away over a moment instead of vanishing, so the chips after it glide left
