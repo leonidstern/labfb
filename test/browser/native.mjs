@@ -73,11 +73,17 @@ try {
         const tag = phone ? `${eng}/${eng === 'webkit' ? 'ios' : 'android'}` : eng;
         const ctx = await browser.newContext(phone ? { ...pw.devices[phone] } : { viewport: { width: 900, height: 700 } });
         await ctx.addInitScript(() => (localStorage.setItem('lab-on', '1'), localStorage.setItem('lab-name', 'leo')));
+        // Which events the widget listens to (what it uses of the browser): recorded from the page's first script.
+        await ctx.addInitScript(() => {
+          window.__listened = new Set();
+          const add = EventTarget.prototype.addEventListener;
+          EventTarget.prototype.addEventListener = function (type, ...rest) { window.__listened.add(type); return add.call(this, type, ...rest); };
+        });
         const p = await ctx.newPage();
         await p.goto(B + '/');
         await p.waitForFunction(() => document.querySelector('[data-lab-comments]')?.shadowRoot?.querySelector('.layer'), null, { timeout: 8000 });
         await sleep(600);
-        const can = await p.evaluate(() => ({ anchor: CSS.supports('anchor-name: --a'), popover: typeof HTMLElement.prototype.showPopover === 'function', grow: CSS.supports('field-sizing', 'content') }));
+        const can = await p.evaluate(() => ({ anchor: CSS.supports('anchor-name: --a'), popover: typeof HTMLElement.prototype.showPopover === 'function', grow: CSS.supports('field-sizing', 'content'), overlay: CSS.supports('overlay: auto') && CSS.supports('transition-behavior: allow-discrete'), navigation: Boolean(window.navigation?.addEventListener), scrollend: 'onscrollend' in window }));
         console.log(`info ${tag.padEnd(16)} ${JSON.stringify(can)}`);
         const tap = async (x, y) => (phone ? p.touchscreen.tap(x, y) : p.mouse.click(x, y));
         const at = (sel, fx, fy) => p.evaluate(([sel, fx, fy]) => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.left + fx * r.width, y: r.top + fy * r.height }; }, [sel, fx, fy]);
@@ -188,6 +194,10 @@ try {
           await untilRoot(p, (r) => r.querySelector('.switch')?.matches(':popover-open'), null, 4000);
           const swAgain = await inRoot(p, (r) => r.querySelector('.switch').matches(':popover-open'));
           await p.mouse.click(40, 640);
+          // The browser closed it: it is still on screen a moment, leaving as a card does (Chromium holds a popover's
+          // display for its exit; a browser that does not just hides it, as before).
+          const leaving = await p.waitForFunction(() => { const r = document.querySelector('[data-lab-comments]').shadowRoot; const b = r.querySelector('.switch'); return b.querySelector('.sw-box.out') && getComputedStyle(b).display !== 'none'; }, null, { timeout: 400, polling: 'raf' }).then(() => true, () => false);
+          if (can.overlay) check(tag, '…it leaves with the card\'s exit, not at once', leaving);
           await sleep(500);
           const swOut = await inRoot(p, (r) => { const b = r.querySelector('.switch'); return { pop: b.matches(':popover-open'), hidden: b.hidden }; });
           check(tag, '…and so does a press elsewhere', swAgain && !swOut.pop && swOut.hidden, JSON.stringify({ swAgain, ...swOut }));
@@ -235,6 +245,20 @@ try {
         });
         check(tag, 'a long chat opens at its newest message', chat.n >= 80 && chat.lastInView && chat.lastText, JSON.stringify(chat));
         check(tag, '…laying out only the messages near the screen', chat.cv === 'auto', String(chat.cv));
+        // The browser says when the page navigated, and when a scroll ended: what the widget listens to follows what there is.
+        const heard = await p.evaluate(() => [...window.__listened]);
+        check(tag, can.navigation ? 'the widget listens to the Navigation API, and leaves the page\'s history alone' : 'no Navigation API here: the widget patches the history, as before', can.navigation ? heard.includes('currententrychange') && !heard.includes('popstate') && (await p.evaluate(() => /native code/.test(history.pushState.toString()))) : heard.includes('popstate') && (await p.evaluate(() => !/native code/.test(history.pushState.toString()))), JSON.stringify({ nav: can.navigation, listened: heard.filter((t) => /currententrychange|popstate|scrollend/.test(t)) }));
+        check(tag, can.scrollend ? 'the widget listens for scrollend' : 'no scrollend here: its timer ends a scroll', can.scrollend ? heard.includes('scrollend') || !phone : true, `${can.scrollend}`);
+        // A navigation inside the page: the comments of the new page are asked for, and of the old one after Back.
+        const asked = [];
+        p.on('request', (r) => { const m = /\/_lab\/api\/comments\?page=([^&]*)/.exec(r.url()); if (m) asked.push(decodeURIComponent(m[1])); });
+        // (The lab pins each page's key in data-page; a proxied or single-page app has none, and its route is the key.)
+        await p.evaluate(() => { document.querySelector('script[src*="comments.js"]').removeAttribute('data-page'); history.pushState({}, '', '/elsewhere'); });
+        await sleep(600);
+        const went = asked.includes('/elsewhere');
+        await p.evaluate(() => history.back());
+        await sleep(800);
+        check(tag, 'a pushState to another page: its comments are asked for, and back again after Back', went && asked.filter((x) => x !== '/elsewhere').length >= 1 && asked.at(-1) !== '/elsewhere', JSON.stringify(asked));
         await ctx.close();
       }
     } finally {
