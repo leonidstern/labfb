@@ -6,9 +6,9 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-export type Ask = { was: string; now: string; prefix?: string; suffix?: string; file?: string; line?: number; pageFile?: string };
-export type Rec = { id: string; at: string; page: string; file: string; line: number; rung: string; was: string; now: string; wrote: string; before: string; after: string; state: 'kept' | 'undone' | 'overwritten' };
-export type Out = { ok: true; edit: Rec } | { ok: false; why: string };
+type Ask = { was: string; now: string; prefix?: string; suffix?: string; file?: string; line?: number; pageFile?: string };
+type Rec = { id: string; at: string; page: string; file: string; line: number; rung: string; was: string; now: string; wrote: string; before: string; after: string; state: 'kept' | 'undone' | 'overwritten' };
+type Out = { ok: true; edit: Rec } | { ok: false; why: string };
 
 const TYPES = /\.(html?|md|mdx|astro|[jt]sx?|vue|svelte|json)$/i;
 const SKIP = /^(node_modules|dist|build|out|coverage|\.[^/]*)$/;
@@ -24,7 +24,7 @@ const pat = (s: string) =>
     .replace(/\s+/g, '(?:\\s|&nbsp;|\\{\\s*[\'"] [\'"]\\s*\\})+');
 
 /** A path inside the project that may be written: a real file under root, not in a dot folder or node_modules, a text type, small. */
-export function inside(root: string, rel: string): string | null {
+function inside(root: string, rel: string): string | null {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) return null;
   const file = path.resolve(root, rel);
   if (file !== root && !file.startsWith(root + path.sep)) return null;
