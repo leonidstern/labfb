@@ -1783,7 +1783,7 @@ const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${actionsAttr()}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${actionsAttr()}${flagsAttr()}${LABIT_ATTR}${PROXY ? ' data-proxied="1"' : ''} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -1806,15 +1806,21 @@ const withIcon = (html) => {
   return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
 };
 // The section bar (flag sectionBar) keeps its own room at the top of the page, so it never covers the page's first lines.
-// Kept here, from the first paint, when the page has sections (an h2 or h3, or more than one h1): kept by the widget
+// Kept here, from the first paint, when the page has sections: kept by the widget
 // alone, it came a frame or two after the page had painted, and the page jumped down. 38 px, 44 on a phone, as the bar
 // (src/widget/styles.css .sbar); not with comments hidden (lab-on). The widget takes it over (src/widget/sections.ts).
-const ROOM = '<style data-lab="section-bar">html { padding-top: 38px !important; } @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { html { padding-top: 44px !important; } }</style>' +
+// Only on a lab page (links /_lab/lab.css, not switched off by <meta name="lab-sections"> or data-lab-sections) with 3 or
+// more headings of one level: elsewhere the bar floats and keeps no room. Screens only (no strip in a print), and with
+// scroll-padding, so a #link in the address lands below the bar from the first paint.
+const ROOM = '<style data-lab="section-bar">@media screen { html { padding-top: 38px !important; scroll-padding-top: 46px; } } @media screen and (pointer: coarse) and (max-width: 560px), screen and (pointer: coarse) and (max-height: 500px) { html { padding-top: 44px !important; scroll-padding-top: 52px; } }</style>' +
   `<script data-lab="section-bar">try{localStorage.getItem('lab-on')==='0'&&document.currentScript.previousElementSibling.remove()}catch{}</script>`;
 const withRoom = (html, framed) => {
   if (framed || SET.flags.sectionBar !== true) return html;
   const body = html.replace(/<(script|style|template|svg)\b[\s\S]*?<\/\1>/gi, '');
-  if (!/<h[23][\s>]/i.test(body) && (body.match(/<h1[\s>]/gi) || []).length < 2) return html;
+  const said = (/<meta\b(?=[^>]*\bname=["']?lab-sections\b)[^>]*\bcontent=["']?\s*(on|off)\b/i.exec(html) || /<(?:html|body)\b[^>]*\bdata-lab-sections=["']?\s*(on|off)\b/i.exec(html) || [])[1]?.toLowerCase();
+  if (said === 'off' || !/<link\b[^>]*\bhref=["']?\/_lab\/lab\.css\b/i.test(html)) return html;
+  const n = (t) => (body.replace(/<(nav|aside|dialog|footer)\b[\s\S]*?<\/\1>/gi, '').match(new RegExp(`<${t}[\\s>]`, 'gi')) || []).length;
+  if (n('h2') < 3 && n('h3') < 3 && n('h1') < 3) return html;
   const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + ROOM + html.slice(at.index + at[0].length) : ROOM + html;
 };

@@ -13,6 +13,16 @@
 // The bar only ever scrolls itself sideways (nav.scrollTo): never scrollIntoView, which dragged the whole page to the top.
 // Phones: one line that scrolls sideways, opening at the first section with a status, above the sheets' dimmed page.
 // A computer: the page's title on the left, and what does not fit folds into "…". Flag: sectionBar (lib/flags.ts).
+// Where it shows (Leo, 19 Nov, the six rules in labit-md-research canvas-proposals #bar-edges):
+//   1. by itself only on a lab page: served from the lab's folder (not behind --proxy) and linking /_lab/lab.css;
+//   2. <meta name="lab-sections" content="on|off">, or data-lab-sections on <html> or <body>, says so for one page;
+//   3. it pushes the page down (the inset) only on a lab page with no top bar of its own and no inner scroller (an app
+//      shell); anywhere else it floats over the page, away while you scroll down and back when you scroll up;
+//   4. from 3 sections; the "written anew" rule from 5; headings in nav, aside, dialogs and the page's header and
+//      footer are not sections;
+//   5. sections are looked for again on a route change (history, back/forward, #hash) and when headings change, each
+//      route keeping its own marks (behind a proxy, by its real path);
+//   6. no bar and no inset in print; the inset comes with scroll-padding-top, so #links land below the bar.
 import { noisy } from '../../lib/ids.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,7 +35,14 @@ type Sec = { key: string; h: Element; label: string; hash: string };
 type Marks = Record<string, string>;
 
 const HEAD = 'h1,h2,h3';
-const SKIP = '[data-lab-comments], script, style, template, noscript, svg';
+const SKIP = '[data-lab-comments], script, style, template, noscript, svg, nav, aside, dialog, [role=dialog], [role=alertdialog], [inert], [aria-hidden=true]';
+const MIN = 3; // sections before the bar shows
+const REWRITE_FROM = 5; // sections before "written anew" applies: one of one changed is news, not a rewrite
+// The page's own header and footer (not an article's or a section's): its masthead and small print, not sections.
+const chrome = (h: Element) => {
+  const c = h.closest('header, footer');
+  return Boolean(c && !c.parentElement?.closest('article, section, main'));
+};
 const READ_AFTER = 3000; // as the current section
 const SCROLL_ON_AFTER = 800; // scrolling on from one this long counts as having read it
 
@@ -38,7 +55,7 @@ const words = (t: string | null) => (t || '').replace(/\s+/g, ' ').trim();
 
 // The page's sections, in order. A section's text runs from its heading to the next one.
 function collect(): Sec[] {
-  const heads = [...document.body.querySelectorAll(HEAD)].filter((h) => !h.closest(SKIP) && h.getClientRects().length && words(h.textContent));
+  const heads = [...document.body.querySelectorAll(HEAD)].filter((h) => !h.closest(SKIP) && !chrome(h) && h.getClientRects().length && words(h.textContent));
   const all = heads.length === 1 && heads[0].matches('h1') ? [] : heads.filter((h, _, every) => !h.matches('h1') || every.filter((x) => x.matches('h1')).length > 1);
   // One level: the highest the sections use (h2 on most pages), so headings inside a section don't each get a chip.
   const top = ['h1', 'h2', 'h3'].find((t) => all.some((h) => h.matches(t)));
@@ -100,7 +117,15 @@ export function startSections() {
   W.root.querySelector('.ui').append(bar);
   bar.addEventListener('click', (e) => e.stopPropagation()); // not a click on the page: no comment starts, nothing closes
 
-  const key = () => `lab-sections:${W.S.page}`;
+  // The page: the lab's own name for it, or behind a proxy the route's real path (the widget's page stays the first
+  // route's, so every route of an app shared one set of marks), named as the lab names pages (lib/labs.ts keyFor).
+  const proxied = W.script?.dataset.proxied === '1';
+  const enc = new TextEncoder();
+  const pathKey = (p: string) =>
+    '/' + (p.replace(/^\/+|\/+$/g, '').replace(/\.html?$/i, '') || 'index').split('/').map((seg) =>
+      [...enc.encode(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join('')).join('/');
+  const pg = (): string => (proxied ? pathKey(location.pathname) : W.S.page);
+  const key = () => `lab-sections:${pg()}`;
   const api = () => W.script.dataset.live?.replace(/live$/, 'api/sections') || '';
   const who = () => W.store.get('lab-name').trim();
   const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -134,12 +159,12 @@ export function startSections() {
   // What goes up to the lab: the marks it has not got yet, a moment after the last change.
   const push = async () => {
     const name = who();
-    const page = W.S.page;
+    const page = pg();
     if (!api() || !name || !marks || !dirty.size) return;
     const sent = [...dirty];
     try {
       const res = await fetch(api(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, page, sections: Object.fromEntries(sent.filter((k) => k in marks!).map((k) => [k, marks![k]])) }) });
-      if (res.ok && page === W.S.page) {
+      if (res.ok && page === pg()) {
         sent.forEach((k) => dirty.delete(k));
         pushes++;
         save();
@@ -155,12 +180,12 @@ export function startSections() {
   const sync = async () => {
     load();
     const name = who();
-    const page = W.S.page;
+    const page = pg();
     if (api() && name) {
       const n = pushes;
       try {
         const r = await (await fetch(`${api()}?name=${encodeURIComponent(name)}&page=${encodeURIComponent(page)}`, { cache: 'no-store' })).json();
-        if (page !== W.S.page) return false;
+        if (page !== pg()) return false;
         // Not when marks went up meanwhile: the answer predates them and would light a name just read again (Leo, 19
         // Nov: "remove green as read right after click").
         if (r.sections && n === pushes) marks = { ...r.sections, ...Object.fromEntries([...dirty].filter((k) => marks && k in marks).map((k) => [k, marks![k]])) };
@@ -233,8 +258,8 @@ export function startSections() {
     more.dataset.st = [...menu.children].some((c) => (c as HTMLElement).dataset.st) ? '1' : '';
     edges();
   };
-  // The page's own bar at the top, fixed or sticky, that the bar sits under: its bottom, and whether it is sticky (in the
-  // page's flow, so moving the page down would move it too). Looked for below the room the bar keeps (inset).
+  // The page's own bar at the top, fixed or sticky, that the bar sits under: its bottom, and whether there is one (then the
+  // bar floats: a sticky one would move down with the page). Looked for below the room the bar keeps (inset).
   const pageBar = () => {
     for (const y of inset ? [3, 3 + inset] : [3])
       for (const e of document.elementsFromPoint(innerWidth / 2, y)) {
@@ -242,15 +267,45 @@ export function startSections() {
         for (let n: Element | null = e; n && n !== document.documentElement; n = n.parentElement) {
           const p = getComputedStyle(n).position;
           const r = n.getBoundingClientRect();
-          if ((p === 'fixed' || p === 'sticky') && r.top <= y && r.height < innerHeight / 3) return { bottom: Math.max(0, Math.round(r.bottom)), sticky: p === 'sticky' };
+          if ((p === 'fixed' || p === 'sticky') && r.top <= y && r.height < innerHeight / 3) return { bottom: Math.max(0, Math.round(r.bottom)), found: true };
         }
         break;
       }
-    return { bottom: 0, sticky: false };
+    return { bottom: 0, found: false };
   };
+  // Rules 1-3. Asked for on this page: its own switch, else whether it is a lab page.
+  const switchOf = (): boolean | null => {
+    const v = (document.querySelector('meta[name="lab-sections"]')?.getAttribute('content') || document.documentElement.dataset.labSections || document.body?.dataset.labSections || '').trim().toLowerCase();
+    return v === 'on' ? true : v === 'off' ? false : null;
+  };
+  const labPage = () =>
+    !proxied &&
+    [...document.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]')].some((l) => {
+      try {
+        const u = new URL(l.href, location.href);
+        return u.origin === location.origin && u.pathname === '/_lab/lab.css';
+      } catch {
+        return false;
+      }
+    });
+  const wanted = () => switchOf() ?? labPage();
+  // An app shell: the window does not scroll (overflow hidden on html or body), or the sections sit in a scroller of
+  // their own. Not while a sheet of ours holds the page still (html.lab-sheet).
+  const shell = () => {
+    if (document.documentElement.classList.contains('lab-sheet')) return false;
+    const held = (e: Element | null) => Boolean(e && /hidden|clip/.test(getComputedStyle(e).overflowY));
+    if (held(document.documentElement) || held(document.body)) return true;
+    for (let e = (secs[0]?.h || document.body.querySelector(HEAD))?.parentElement; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      const o = getComputedStyle(e).overflowY;
+      if ((o === 'auto' || o === 'scroll') && e.scrollHeight > e.clientHeight + 1) return true;
+    }
+    return false;
+  };
+  let pushable = false; // a lab page that is no app shell: the bar may keep its room (unless the page has a top bar)
+  let floating = false; // over the page: away on scroll down, back on scroll up
   // The bar keeps its own room at the top of the page (Leo, 19 Nov: "tab bar overlaying first heading on mobile"): the page
-  // is moved down by the bar's height, so at the top nothing of the page is under it. Not under a sticky bar of the page's
-  // own: that one would move down with it. What is in view stays where it is (the bar does not move the page), and a #link
+  // is moved down by the bar's height, so at the top nothing of the page is under it. Only on a lab page with no top bar
+  // of its own and no app shell (pushable, place). What is in view stays where it is (the bar does not move the page), and a #link
   // lands clear of the bar (scroll-padding).
   // The lab may have kept it already, in the page as served (local.mjs, ROOM): taken over from there.
   const room = document.querySelector<HTMLStyleElement>('style[data-lab="section-bar"]') || Object.assign(document.createElement('style'), { textContent: '' });
@@ -258,7 +313,9 @@ export function startSections() {
   let checked = false; // the page has been looked at once (check): until then the room stays as kept at the start
   let inset = room.isConnected ? parseFloat(getComputedStyle(document.documentElement).paddingTop) || 0 : 0;
   const keep = (px: number, below: number) => {
-    const css = `${px ? `html { padding-top: ${px}px !important; }` : ''}${below ? `html { scroll-padding-top: ${below + 8}px; }` : ''}`;
+    // Screens only: a print has neither bar nor room (rule 6).
+    const pad = Math.max(px, below);
+    const css = px || pad ? `@media screen { html { ${px ? `padding-top: ${px}px !important; ` : ''}scroll-padding-top: ${pad + 8}px; } }` : '';
     if (!room.isConnected) document.head.append(room);
     if (px === inset) {
       if (room.textContent !== css) room.textContent = css;
@@ -287,21 +344,23 @@ export function startSections() {
     return h;
   };
   const place = () => {
-    // Under the page's own bar when it has a fixed or sticky one at the top.
+    // Under the page's own bar when it has a fixed or sticky one at the top; then it floats, and the page is not moved.
     let own = pageBar();
-    if (own.sticky && inset) {
-      keep(0, 0); // a sticky bar of the page's own after all: it goes back up, and the bar sits under it
+    floating = !pushable || own.found;
+    if (floating && inset) {
+      keep(0, 0); // not a page to push after all: it goes back up, and the bar floats (under the page's own bar)
       own = pageBar();
     }
+    if (!floating) bar.removeAttribute('data-away');
     bar.style.marginTop = `${own.bottom}px`;
     // How far down the bar reaches, for the page to scroll a section clear of it (goToBlock), and for the sheets on a phone.
     W.host.style.setProperty('--lab-sbb', bar.hidden ? '0px' : `${own.bottom + bar.offsetHeight}px`);
     W.host.toggleAttribute('data-sbar', !bar.hidden);
     if (bar.hidden && !checked) return; // not drawn yet: the room kept for it stays
-    keep(bar.hidden || own.sticky ? 0 : bar.offsetHeight, bar.hidden ? 0 : own.bottom + bar.offsetHeight);
+    keep(bar.hidden || floating ? 0 : bar.offsetHeight, bar.hidden ? 0 : own.bottom + bar.offsetHeight);
   };
   const draw = () => {
-    bar.hidden = !secs.length || !W.S.on || !ready;
+    bar.hidden = secs.length < MIN || !W.S.on || !ready;
     if (bar.hidden) return place();
     title.textContent = words(document.title);
     const sig = secs.map((s) => `${s.key}\n${s.label}`).join('\n');
@@ -344,7 +403,19 @@ export function startSections() {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => watch());
   };
-  addEventListener('scroll', onScroll, { passive: true });
+  // Floating (rule 3): away while the page scrolls down, back when it scrolls up or reaches the top. Any scroller: an app
+  // shell scrolls an element of its own, and the capture hears it.
+  const lastTop = new WeakMap<object, number>();
+  const away = (e: Event) => {
+    if (!floating || bar.hidden) return;
+    const t = e.target instanceof Element ? e.target : document.scrollingElement;
+    if (!t) return;
+    const y = t.scrollTop, d = y - (lastTop.get(t) ?? y);
+    lastTop.set(t, y);
+    if (y < 8 || d < -6) bar.removeAttribute('data-away');
+    else if (d > 6 && menu.hidden) bar.setAttribute('data-away', '');
+  };
+  addEventListener('scroll', (e) => (away(e), onScroll()), { passive: true, capture: true });
   addEventListener('resize', () => (W.coarse ? place() : (fold(), place())));
   more.onclick = (e) => {
     e.stopPropagation();
@@ -358,7 +429,8 @@ export function startSections() {
   const check = async () => {
     const run = ++gen;
     secs = collect();
-    if (!W.S.on) {
+    pushable = labPage() && !shell();
+    if (!W.S.on || !wanted() || secs.length < MIN) {
       ready = false;
       checked = true;
       return draw();
@@ -369,7 +441,7 @@ export function startSections() {
       marks = Object.fromEntries(secs.map((s) => [s.key, s.hash]));
       dirty = new Set(secs.map((s) => s.key));
       later();
-    } else if (secs.length && secs.filter((s) => status(s)).length >= 0.8 * secs.length) {
+    } else if (secs.length >= REWRITE_FROM && secs.filter((s) => status(s)).length >= 0.8 * secs.length) {
       // Nearly all of it new or updated at once (80 % or more): a page written anew, not news. Read, as on a first
       // visit, so no name lights up (Leo, 19 Nov: "if all new like page updated dont show it green make it read").
       for (const s of secs) {
@@ -390,15 +462,51 @@ export function startSections() {
     const fresh = secs.find((s) => status(s) && (first || !had.has(s.key)));
     const jump = fresh && !(first && scrollY > innerHeight / 2);
     if (jump) glide(find(fresh.key), true);
-    current = '';
+    // A look again that found nothing new (a heading changed, a route's hash) leaves the line where it is.
+    if (first || jump || !secs.some((s) => s.key === current)) current = '';
     watch(!jump);
   };
   // The room is kept as soon as it is known the bar will show (comments on, sections on the page), well before the bar
   // itself, which waits for the page to settle and the lab's marks.
-  const start = W.S.on && collect().length ? pageBar() : { bottom: 0, sticky: true };
-  keep(start.sticky ? 0 : height(), 0);
+  secs = W.S.on && wanted() ? collect() : [];
+  pushable = labPage() && !shell();
+  const h0 = secs.length >= MIN && pushable && !pageBar().found ? height() : 0;
+  keep(h0, h0);
+  secs = [];
   W.S.checkSections = check;
   W.S.syncSections = check; // another device read something
+  // Rule 5: looked at again a moment after a route change or a change to the headings (an app drawing its page late,
+  // the agent's edit). A new route starts unread-free: nothing of the old one is read meanwhile, or saved under the new.
+  let again: ReturnType<typeof setTimeout>;
+  const soon = (ms = 400) => {
+    clearTimeout(again);
+    again = setTimeout(check, ms);
+  };
+  let route = location.pathname;
+  const routed = (hash = false) => {
+    if (location.pathname === route && !hash) return;
+    if (location.pathname !== route) {
+      route = location.pathname;
+      clearTimeout(readTimer);
+      ready = false;
+      marks = null;
+    }
+    soon();
+  };
+  for (const m of ['pushState', 'replaceState'] as const) {
+    const original = history[m];
+    history[m] = function (this: History, ...args: Parameters<History['pushState']>) {
+      const out = original.apply(this, args);
+      queueMicrotask(() => routed());
+      return out;
+    };
+  }
+  addEventListener('popstate', () => routed());
+  addEventListener('hashchange', () => routed(true));
+  const heady = (n: Node) => n.nodeType === 1 && ((n as Element).matches(HEAD) || Boolean((n as Element).querySelector(HEAD)));
+  new MutationObserver((list) => {
+    if (list.some((m) => !W.host.contains(m.target) && (m.type === 'characterData' ? Boolean(m.target.parentElement?.closest(HEAD)) : Boolean((m.target as Element).closest?.(HEAD)) || [...m.addedNodes, ...m.removedNodes].some(heady)))) soon(500);
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
   const first = () => setTimeout(check, 400); // after the page's own scripts and fonts have settled
   if (document.readyState === 'complete') first();
   else addEventListener('load', first, { once: true });

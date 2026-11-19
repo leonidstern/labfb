@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -34,21 +35,43 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const write = (f, t, dir = DIR) => fs.writeFileSync(path.join(dir, f), t);
 // Four sections far apart (each a screen and a half), after a title.
 const sec = (id, title, words = `Words of ${title}.`) => `<section id="${id}"><h2>${title}</h2><p>${words}</p></section>`;
-const page = ({ head = '', body = '', extra = '', title = 'Plan' } = {}) =>
-  `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{margin:0 30px;font:16px/1.4 serif}h1{margin:50px 0}section{height:1100px}${head}</style><body><h1>${title}</h1>` +
+// A lab page (it links /_lab/lab.css), unless lab is false: a project's own HTML.
+const page = ({ head = '', body = '', extra = '', title = 'Plan', lab = true, meta = '' } = {}) =>
+  `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>${lab ? '<link rel="stylesheet" href="/_lab/lab.css">' : ''}${meta}<style>body{margin:0 30px;font:16px/1.4 serif}h1{margin:50px 0}section{height:1100px}${head}</style><body><h1>${title}</h1>` +
   (body || sec('speed', 'Speed') + sec('cost', 'Cost') + sec('risk', 'Risk') + sec('plan', 'Next steps')) + extra + '</body>';
 write('labit.json', JSON.stringify({ port: PORT, flags: { sectionBar: true } }));
 write('index.html', page());
 write('plain.html', page({ body: '<p>Only words.</p>' }));
-write('sticky.html', page({ head: 'h1{display:none}header{position:sticky;top:0;height:60px;background:#eee;z-index:5}', body: '<header>Site</header>' + sec('a', 'Alpha') + sec('b', 'Beta') }));
+write('sticky.html', page({ head: 'h1{display:none}header{position:sticky;top:0;height:60px;background:#eee;z-index:5}', body: '<header>Site</header>' + sec('a', 'Alpha') + sec('b', 'Beta') + sec('c', 'Gamma') }));
 write('zoomed.html', page().replace('initial-scale=1', 'initial-scale=2.5'));
 write('tight.html', page({ head: 'h1{margin:0}' }));
 write('many.html', page({ body: Array.from({ length: 14 }, (_, i) => sec(`m${i}`, `Section number ${i}`)).join('') }));
+// The six rules (Leo, 19 Nov): project HTML, the per-page switch, a 2-section page with headings in site chrome, an app
+// shell, and a page that changes its headings by itself.
+write('project.html', page({ lab: false }));
+write('project-on.html', page({ lab: false, meta: '<meta name="lab-sections" content="on">' }));
+write('meta-off.html', page({ meta: '<meta name="lab-sections" content="off">' }));
+write('two.html', page({ body: '<nav><h2>Home</h2><h2>About</h2></nav>' + sec('a', 'Alpha') + sec('b', 'Beta') + '<footer><h2>Contact</h2></footer>' }));
+write('shell.html', page({ head: 'html,body{height:100%;overflow:hidden}main{height:100%;overflow:auto}', body: '<main>' + sec('a', 'Alpha') + sec('b', 'Beta') + sec('c', 'Gamma') + '</main>' }));
 fs.writeFileSync(path.join(OFF_DIR, 'labit.json'), JSON.stringify({ port: PORT + 200 }));
 write('index.html', page(), OFF_DIR);
+// A dev server behind --proxy: an app that switches routes with pushState and draws its headings late.
+const APP_PORT = PORT + 600;
+const PX = `http://localhost:${PORT + 400}`;
+const PX_DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sections-px-')));
+fs.writeFileSync(path.join(PX_DIR, 'labit.json'), JSON.stringify({ port: PORT + 400, flags: { sectionBar: true } }));
+const route = (names) => names.map((n) => sec(n.toLowerCase(), n)).join('');
+const app = http.createServer((req, res) => {
+  const meta = req.url.startsWith('/plain') ? '' : '<meta name="lab-sections" content="on">';
+  const body = `<div id="app">${route(req.url.startsWith('/r2') ? ['Xray', 'Yankee', 'Zulu'] : ['Alpha', 'Beta', 'Gamma', 'Delta'])}</div>` +
+    `<script>window.go=()=>{history.pushState({}, '', '/r2');document.getElementById('app').innerHTML=${JSON.stringify(route(['Xray', 'Yankee', 'Zulu']))}}</script>`;
+  res.writeHead(200, { 'content-type': 'text/html' });
+  res.end(page({ meta, body, head: 'header{position:static}' }));
+}).listen(APP_PORT);
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
 const offServer = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: OFF_DIR, env });
-for (const base of [B, OFF])
+const pxServer = spawn(process.execPath, [LAB, '--new', '--no-open', '--proxy', String(APP_PORT)], { cwd: PX_DIR, env });
+for (const base of [B, OFF, PX])
   for (let i = 0; i < 80; i++) {
     try {
       await fetch(base + '/');
@@ -64,7 +87,7 @@ const check = (eng, name, ok, detail = '') => {
 };
 const until = async (f, ms = 6000) => {
   for (let t = 0; t < ms; t += 150) {
-    if (await f()) return true;
+    if (await f().catch(() => false)) return true; // a reload mid-look (a rebuilt widget) is another try
     await sleep(150);
   }
   return false;
@@ -187,6 +210,7 @@ try {
     const S = await open(await context(), '/sticky');
     const gap = await S.shadow(() => { return r.querySelector('.sbar').getBoundingClientRect().top; });
     check(eng, "under the page's own sticky bar", gap >= 59, String(gap));
+    check(eng, "rule 3: a page with its own sticky bar is not pushed down", (await S.p.evaluate(() => parseFloat(getComputedStyle(document.documentElement).paddingTop))) === 0);
     // The bar keeps its own room: at the top, the page's first line starts under it (Leo, 19 Nov: "tab bar overlaying
     // first heading on mobile").
     const T = await open(await context(), '/tight');
@@ -243,13 +267,63 @@ try {
     const zm = await Z.shadow(() => { const b = r.querySelector('.sbar').getBoundingClientRect(); const v = visualViewport; return { scale: v.scale, zoom: r.host.hasAttribute('data-zoom'), h: b.height * v.scale, left: b.left, right: b.right, vw: v.width, inUi: r.querySelector('.sbar').parentElement.className === 'ui' }; });
     if (Math.abs(zm.scale - 1) < 0.01) console.log(`skip ${eng.padEnd(8)} this engine does not zoom a page (scale 1)`);
     else check(eng, 'zoomed in: the bar keeps its usual size and is inside what the screen shows', zm.inUi && zm.zoom && Math.abs(zm.h - 44) < 3 && zm.left >= -1 && zm.right <= zm.vw + 1, JSON.stringify(zm));
+
+    // ---- the six rules (Leo, 19 Nov) ----
+    const pad = (X) => X.p.evaluate(() => ({ top: parseFloat(getComputedStyle(document.documentElement).paddingTop), scroll: getComputedStyle(document.documentElement).scrollPaddingTop }));
+    const barOf = (X) => X.shadow(() => { const b = r.querySelector('.sbar'); return { shown: Boolean(b && !b.hidden), away: Boolean(b?.hasAttribute('data-away')), display: b ? getComputedStyle(b).display : '' }; });
+    // 1. a lab page: bar and inset, with scroll-padding (6); project HTML: none; behind a proxy: none, lab.css or not.
+    const lp = await pad(L);
+    check(eng, 'rule 1: a lab page keeps the inset, with scroll-padding-top (rule 6)', lp.top === 38 && parseFloat(lp.scroll) >= 38, JSON.stringify(lp));
+    const PJ = await open(await context(), '/project');
+    check(eng, "rule 1: a project's own HTML (no lab.css): no bar, no inset", !(await barOf(PJ)).shown && (await pad(PJ)).top === 0, JSON.stringify(await pad(PJ)));
+    const served = await (await fetch(`${B}/project`)).text();
+    check(eng, '...and the lab keeps no room in it as served', !served.includes('data-lab="section-bar"'));
+    const PP = await open(await context(), '/plain', 'px-leo', PX);
+    check(eng, 'rule 1: a proxied page, even with lab.css: no bar', !(await barOf(PP)).shown);
+    // 2. the per-page switch, both ways.
+    const MF = await open(await context(), '/meta-off');
+    check(eng, 'rule 2: meta off on a lab page: no bar, no inset, no room served', !(await barOf(MF)).shown && (await pad(MF)).top === 0 && !(await (await fetch(`${B}/meta-off`)).text()).includes('data-lab="section-bar"'));
+    const PO = await open(await context(), '/project-on');
+    check(eng, 'rule 2: meta on, project HTML: the bar shows', (await barOf(PO)).shown, await PO.states());
+    // 3. it floats there: no inset, away on scroll down, back on scroll up.
+    check(eng, 'rule 3: not a lab page: the bar floats, the page is not pushed', (await pad(PO)).top === 0);
+    await PO.scrollTo(800);
+    await sleep(150);
+    await PO.scrollTo(1600);
+    await sleep(300);
+    const down = await barOf(PO);
+    await PO.scrollTo(1200);
+    await sleep(300);
+    const up = await barOf(PO);
+    check(eng, 'rule 3: away on scroll down, back on scroll up', down.away && !up.away, JSON.stringify({ down, up }));
+    const SH = await open(await context(), '/shell');
+    check(eng, 'rule 3: an app shell (inner scroller) is not pushed down', (await barOf(SH)).shown && (await pad(SH)).top === 0, JSON.stringify(await pad(SH)));
+    // 4. two sections (and headings in nav and footer, which are not sections): no bar.
+    const TW = await open(await context(), '/two');
+    check(eng, 'rule 4: two sections (nav and footer headings skipped): no bar, no inset', !(await barOf(TW)).shown && (await pad(TW)).top === 0);
+    // 5. a route change behind a proxy: the new route's sections, under its own path; headings added by script.
+    const PR = await open(await context(), '/', 'px-leo', PX);
+    check(eng, 'rule 5: proxied app with meta on: bar, floating', (await PR.states()) === 'Alpha: Beta: Gamma: Delta:' && (await pad(PR)).top === 0, await PR.states());
+    await PR.p.evaluate(() => window.go());
+    const routed = await until(async () => (await PR.states()) === 'Xray: Yankee: Zulu:', 4000);
+    check(eng, 'rule 5: pushState to another route: its sections, not the first route\'s', routed, await PR.states());
+    check(eng, '...kept under the real path', await until(() => PR.p.evaluate(() => Boolean(localStorage.getItem('lab-sections:/r2'))), 3000));
+    await p.evaluate(() => { const s = document.createElement('section'); s.innerHTML = '<h2>Drawn late</h2><p>x</p>'; document.body.append(s); });
+    check(eng, 'rule 5: a heading added by the page shows up', await until(async () => (await states()).includes('Drawn late'), 3000), await states());
+    // 6. print: no bar, no inset.
+    await p.emulateMedia({ media: 'print' });
+    const pr = { bar: (await barOf(L)).display, pad: (await pad(L)).top };
+    check(eng, 'rule 6: printing: no bar, no inset', pr.bar === 'none' && pr.pad === 0, JSON.stringify(pr));
+    await p.emulateMedia({ media: 'screen' });
     await browser.close();
   }
 } finally {
   server.kill();
   offServer.kill();
+  pxServer.kill();
+  app.close();
   await sleep(100);
-  for (const d of [DIR, OFF_DIR]) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of [DIR, OFF_DIR, PX_DIR]) fs.rmSync(d, { recursive: true, force: true });
 }
 console.log(failed ? `${failed} failed` : 'all ok');
 process.exit(failed ? 1 : 0);
