@@ -51,6 +51,15 @@ write('many.html', page({ body: Array.from({ length: 14 }, (_, i) => sec(`m${i}`
 write('project.html', page({ lab: false }));
 write('project-on.html', page({ lab: false, meta: '<meta name="lab-sections" content="on">' }));
 write('meta-off.html', page({ meta: '<meta name="lab-sections" content="off">' }));
+// The switch as data-lab-sections on <html> or <body>; where it and the meta disagree, the meta wins, then <html>, then <body>.
+const attr = (html, { on = '', off = '' } = {}) => html.replace('<!doctype html>', `<!doctype html>${on === 'html' ? '<html data-lab-sections="on">' : off === 'html' ? '<html data-lab-sections="off">' : ''}`).replace('<body>', `<body${on === 'body' ? ' data-lab-sections="on"' : off === 'body' ? ' data-lab-sections="off"' : ''}>`);
+write('html-off.html', attr(page(), { off: 'html' }));
+write('body-on.html', attr(page({ lab: false }), { on: 'body' }));
+write('meta-on-html-off.html', attr(page({ meta: '<meta name="lab-sections" content="on">' }), { off: 'html' }));
+write('html-off-body-on.html', attr(page(), { off: 'html', on: 'body' }));
+// A board's own page (a frame of a board, /_lab/board/<name>/<frame>, kept under /_board/): a lab page with sections, yet no bar.
+fs.mkdirSync(path.join(DIR, '.lab', 'boards', 'demo'), { recursive: true });
+write(path.join('.lab', 'boards', 'demo', 'a.html'), page());
 write('two.html', page({ body: '<nav><h2>Home</h2><h2>About</h2></nav>' + sec('a', 'Alpha') + sec('b', 'Beta') + '<footer><h2>Contact</h2></footer>' }));
 write('shell.html', page({ head: 'html,body{height:100%;overflow:hidden}main{height:100%;overflow:auto}', body: '<main>' + sec('a', 'Alpha') + sec('b', 'Beta') + sec('c', 'Gamma') + '</main>' }));
 fs.writeFileSync(path.join(OFF_DIR, 'labit.json'), JSON.stringify({ port: PORT + 200, flags: { sectionBar: false } })); // a file from before it was kept
@@ -320,6 +329,25 @@ try {
     // 2. the per-page switch, both ways.
     const MF = await open(await context(), '/meta-off');
     check(eng, 'rule 2: meta off on a lab page: no bar, no inset, no room served', !(await barOf(MF)).shown && (await pad(MF)).top === 0 && !(await (await fetch(`${B}/meta-off`)).text()).includes('data-lab="section-bar"'));
+    const HO = await open(await context(), '/html-off');
+    check(eng, 'rule 2: <html data-lab-sections="off"> on a lab page: no bar, no inset, no room served', !(await barOf(HO)).shown && (await pad(HO)).top === 0 && !(await (await fetch(`${B}/html-off`)).text()).includes('data-lab="section-bar"'), JSON.stringify({ bar: await barOf(HO), pad: await pad(HO) }));
+    const BO = await open(await context(), '/body-on');
+    check(eng, 'rule 2: <body data-lab-sections="on"> on project HTML: the bar shows, floating (no inset)', (await BO.states()) === 'Speed: Cost: Risk: Next steps:' && (await pad(BO)).top === 0, await BO.states());
+    const MH = await open(await context(), '/meta-on-html-off');
+    check(eng, 'rule 2: meta on and <html> off: the meta wins (bar and inset)', (await barOf(MH)).shown && (await pad(MH)).top === 38, JSON.stringify({ bar: await barOf(MH), pad: await pad(MH) }));
+    const HB = await open(await context(), '/html-off-body-on');
+    check(eng, 'rule 2: <html> off and <body> on: <html> wins (no bar, no inset)', !(await barOf(HB)).shown && (await pad(HB)).top === 0, JSON.stringify({ bar: await barOf(HB), pad: await pad(HB) }));
+    // A board open over the page (its view, [data-lab-board-view]): the bar steps away, and comes back when it closes.
+    const boardState = () => shadow(() => { const b = r.querySelector('.sbar'); return { board: b.hasAttribute('data-board'), vis: getComputedStyle(b).visibility, shown: !b.hidden }; });
+    const before = await boardState();
+    await p.evaluate(() => { const d = document.createElement('div'); d.setAttribute('data-lab-board-view', ''); d.id = 'bv'; document.body.append(d); });
+    const opened = await until(async () => { const s = await boardState(); return s.board && s.vis === 'hidden'; }, 2000);
+    check(eng, 'a board open over the page: the bar gets data-board and is hidden', before.shown && !before.board && before.vis === 'visible' && opened, JSON.stringify({ before, now: await boardState() }));
+    await p.evaluate(() => document.getElementById('bv').remove());
+    const closed = await until(async () => { const s = await boardState(); return !s.board && s.vis === 'visible' && s.shown; }, 2000);
+    check(eng, '...and the board closed: the bar is back', closed, JSON.stringify(await boardState()));
+    const BF = await open(await context(), '/_lab/board/demo/a');
+    check(eng, "a board's own page (a frame, under /_board/): no bar, though a lab page with sections", !(await barOf(BF)).shown && (await BF.chips()).length === 0, JSON.stringify(await barOf(BF)));
     const PO = await open(await context(), '/project-on');
     check(eng, 'rule 2: meta on, project HTML: the bar shows', (await barOf(PO)).shown, await PO.states());
     // 3. it floats there: no inset, away on scroll down, back on scroll up.
