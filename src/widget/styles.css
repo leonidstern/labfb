@@ -695,6 +695,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid #0a84ff; }
 .sb-more[data-st="1"]::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #0a84ff; }
 .sb-w { color: #0a84ff; font-size: 12px; }
+.sb-w:empty { display: none; }
 .sb-menu { position: absolute; right: 8px; top: calc(100% + 4px); display: flex; flex-direction: column; align-items: stretch; max-height: min(60vh, 360px); overflow: auto; padding: 4px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); }
 .sb-menu[hidden] { display: none; }
 .sb-menu .sb-chip { text-align: left; }

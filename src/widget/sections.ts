@@ -38,9 +38,15 @@ const hash = (t: string) => {
 };
 const words = (t: string | null) => (t || '').replace(/\s+/g, ' ').trim();
 
+// A heading's words without what is nested in it (buttons, links, icons, hidden bits), on one line.
+const titleOf = (h: Element) => {
+  const c = h.cloneNode(true) as Element;
+  c.querySelectorAll('button, a[href], svg, [aria-hidden="true"], [data-lab-comments]').forEach((n) => n.remove());
+  return words(c.textContent);
+};
 // The page's sections, in order. A section's text runs from its heading to the next one.
 function collect(): Sec[] {
-  const heads = [...document.body.querySelectorAll(HEAD)].filter((h) => !h.closest(SKIP) && h.getClientRects().length && words(h.textContent));
+  const heads = [...document.body.querySelectorAll(HEAD)].filter((h) => !h.closest(SKIP) && h.getClientRects().length && titleOf(h));
   // One level only: the highest that occurs at least twice (a lone h1 is the page's title, never a section).
   const level = [1, 2, 3].find((n) => heads.filter((h) => h.matches(`h${n}`)).length >= 2);
   const list = heads.filter((h) => h.matches(`h${level}`)).slice(0, MAX);
@@ -50,14 +56,14 @@ function collect(): Sec[] {
     let key = '';
     // Its own id, or the nearest element around it that holds no other heading (a <section id>); else its words.
     for (let e: Element | null = h; e && e !== document.body && !key; e = e.parentElement) if (e.id && !noisy(e.id) && e.querySelectorAll(HEAD).length <= 1) key = e.id;
-    key ||= `~${words(h.textContent).toLowerCase().slice(0, 60)}`;
+    key ||= `~${titleOf(h).toLowerCase().slice(0, 60)}`;
     for (let n = 2, k = key; used.has(key); n++) key = `${k}~${n}`;
     used.add(key);
     const r = document.createRange();
     r.setStartBefore(h);
     if (next) r.setEndBefore(next);
     else r.setEndAfter(document.body.lastChild!);
-    const label = words(h.textContent);
+    const label = titleOf(h);
     return { key, h, label: label.length > 40 ? `${label.slice(0, 39)}…` : label, hash: hash(words(r.toString())) };
   });
 }

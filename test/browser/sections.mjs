@@ -43,6 +43,7 @@ write('plain.html', page({ body: '<p>Only words.</p>' }));
 write('sticky.html', page({ head: 'h1{display:none}header{position:sticky;top:0;height:60px;background:#eee;z-index:5}', body: '<header>Site</header>' + sec('a', 'Alpha') + sec('b', 'Beta') }));
 write('zoomed.html', page().replace('initial-scale=1', 'initial-scale=2.5'));
 write('levels.html', page({ body: '<nav><h2>Menu</h2></nav><header><h2>Site head</h2></header>' + Array.from({ length: 8 }, (_, i) => `<section id="p${i}"><h2>Part ${i}</h2><h3>Detail ${i}</h3><p>Words.</p></section>`).join('') + '<aside><h2>Related</h2></aside><footer><h2>Foot</h2></footer>' }));
+write('nested.html', page({ body: '<h2>Alpha <button>Copy link</button> <a href="#x"><svg width="8" height="8"></svg>#</a> <span aria-hidden="true">hid</span></h2><p>a</p><h2>  Beta\n   words  <span class="badge">new!</span></h2><p>b</p>' }));
 write('long.html', page({ body: Array.from({ length: 62 }, (_, i) => `<h2>Heading ${i}</h2><p>Words ${i}.</p>`).join('') }));
 write('h1s.html', page({ body: '<h1>One</h1><p>a</p><h1>Two</h1><p>b</p><h3>Small</h3><h3>Smaller</h3>' }));
 write('many.html', page({ body: Array.from({ length: 14 }, (_, i) => sec(`m${i}`, `Section number ${i}`)).join('') }));
@@ -171,6 +172,10 @@ try {
     // ---- which headings are sections ----
     const LV = await open(await context(), '/levels');
     check(eng, 'one level (h2): not the h3s, not what is inside nav, header, aside or footer', (await LV.states()) === Array.from({ length: 8 }, (_, i) => `Part ${i}:`).join(' '), await LV.states());
+    const NE = await open(await context(), '/nested');
+    check(eng, 'a heading\'s nested buttons, links, icons and hidden bits stay out of its chip, on one line', (await NE.states()) === 'Alpha: Beta words new!:', await NE.states());
+    const empty = await NE.shadow(() => { const w = r.querySelector('.sb-w'); return { d: getComputedStyle(w).display, cur: getComputedStyle(r.querySelector('.sb-chip')).gap }; });
+    check(eng, 'an empty status takes no space', empty.d === 'none', JSON.stringify(empty));
     const LG = await open(await context({ viewport: { width: 900, height: 600 } }), '/long');
     const lg = await LG.shadow(() => { return { n: r.querySelectorAll('.sb-nav .sb-chip').length, more: !r.querySelector('.sb-more').hidden, menu: r.querySelectorAll('.sb-menu .sb-chip').length, w: r.querySelector('.sbar').scrollWidth <= r.querySelector('.sbar').clientWidth + 1 }; });
     check(eng, 'a long page is cut at 40 sections, and what does not fit folds into "…"', lg.n === 40 && lg.more && lg.menu > 0 && lg.w, JSON.stringify(lg));
