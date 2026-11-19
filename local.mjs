@@ -383,8 +383,13 @@ const AGENT_KEY = randomBytes(16).toString('hex');
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
 const writeAtomic = (file, text, mode) => {
-  fs.writeFileSync(file + '.tmp', text, mode ? { mode } : undefined);
-  fs.renameSync(file + '.tmp', file);
+  try {
+    fs.writeFileSync(file + '.tmp', text, mode ? { mode } : undefined);
+    fs.renameSync(file + '.tmp', file);
+  } catch (e) {
+    fs.rmSync(file + '.tmp', { force: true }); // a half-written copy would hold on to the space a full disk needs back
+    throw e;
+  }
 };
 // Comments are kept one file per page in .lab/comments/: one comments.json for every page was ~700 KB in a busy lab
 // and was written whole for every comment (16 Nov). Each file holds its page's key, so its name only has to be safe and
@@ -757,18 +762,38 @@ function persist(page) {
   // Which pages this version changed, so an open page on another one skips the pull (a reply on /a used to make every
   // open tab on every page ask for its changes).
   version.commentPages = changeLog.filter((e) => e.rev === version.comments && e.page !== null).map((e) => e.page);
+  return flush();
+}
+// A page whose file could not be written (a full disk, a folder that turned read-only) stays unsaved: its comments
+// are in memory, and it is written again every few seconds until it works. Before 19 Nov the page was taken off the
+// list first, so a comment the page showed as sent was never written and was gone at the next start.
+const SAVE_RETRY_MS = Number(process.env.LAB_SAVE_RETRY_MS || 5000);
+let saveRetry = null;
+let saveFailing = false;
+function flush() {
   if (writing) {
     again = true;
     return writing;
   }
   writing = (async () => {
+    let failed;
     do {
       again = false;
+      failed = 0;
       // Only the pages that changed: one comment rewrites its own page's file, not every page's.
       for (const p of Array.from(unsaved)) {
-        unsaved.delete(p);
-        savePage(p);
+        try {
+          savePage(p);
+          unsaved.delete(p);
+        } catch (e) {
+          failed++;
+          if (!saveFailing) console.error(`[lab] could not save comments (${/** @type {Error} */ (e).message}). They are kept while the lab runs and saved again every ${SAVE_RETRY_MS / 1000} s.`);
+          saveFailing = true;
+        }
       }
+      if (!failed && saveFailing) console.log('[lab] comments saved again');
+      if (!failed) saveFailing = false;
+      else saveRetry ??= setTimeout(() => ((saveRetry = null), flush().catch(() => {})), SAVE_RETRY_MS).unref();
       const all = pages();
       for (const p of Array.from(dirty)) {
         dirty.delete(p); // a change during the rebuild marks it again, and the next round picks it up
@@ -785,7 +810,7 @@ function persist(page) {
             `Those pins wait until a session listens there: \`${CMD} wait --pages ${deaf.map((p) => p.page.replace(/^\//, '')).join(',')}\`\n\n`
           : '');
       writeAtomic(path.join(LAB, 'comments.md'), head + (all.map((p) => texts.get(p)).filter(Boolean).join('\n') || 'No comments yet.\n'));
-    } while (again || dirty.size || unsaved.size);
+    } while (again || dirty.size || (unsaved.size && !failed));
   })().finally(() => (writing = null));
   return writing;
 }
@@ -995,7 +1020,18 @@ const register = () => {
     writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: STARTED, ...(registeredListener ? { listener: registeredListener, listenedAt: new Date().toISOString() } : {}) }, null, 2));
   } catch {}
 };
-const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
+// Written again as the mode and the session change. A write that fails then (a full disk) is said once and the lab
+// goes on with the file it has: it used to throw out of a wait, which answered 500 and then ended the lab.
+let serverSaved = true;
+const saveServer = () => {
+  try {
+    writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
+    serverSaved = true;
+  } catch (e) {
+    if (serverSaved) console.error(`[lab] could not write ${path.relative(ROOT, SERVER)}: ${/** @type {Error} */ (e).message}`);
+    serverSaved = false;
+  }
+};
 const clients = new Set();
 // A beat every 15 s on every live connection: a page that hears nothing for longer knows its connection stalled (the
 // laptop slept, the wifi changed) and connects again at once instead of waiting for the browser to notice.
@@ -2364,6 +2400,7 @@ server.on('listening', async () => {
   newerVersion().then((v) => v && console.log(`[lab] labit ${v} is out (you have ${VERSION}): npx @leonidstern/labit@latest`));
   origin = `http://localhost:${PORT}`;
   saveServer();
+  if (!serverSaved) die(`[lab] could not start: ${path.relative(ROOT, SERVER)} can't be written`);
   writeAtomic(LOCK, JSON.stringify({ pid: process.pid, at: Date.now(), port: PORT }), 0o600); // a lab starting next asks this port
   // Started again after it parked (⌘K, or labit in its folder): the session that listened last is its listener again,
   // so that session's wake (the labit plugin) finds this lab and the next pin reaches it, from any folder.
