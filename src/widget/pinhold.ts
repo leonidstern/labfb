@@ -1,6 +1,6 @@
 // Part of the comment widget (src/comments.js bundles it).
 //
-// Pins the browser holds (flag nativePins): a pin on an element of the page is tied to that element with CSS anchor
+// Pins the browser holds (flag native): a pin on an element of the page is tied to that element with CSS anchor
 // positioning, so the browser keeps it on its spot through scrolling (the page, a box that scrolls, a sticky header, a
 // parent that moves), and hides it while a box it is inside cuts its spot off. No script runs for that. The script still
 // finds the spot (anchoring.ts, position) when the pins are drawn or the page changes size, and writes it here as an
@@ -18,6 +18,14 @@
 let sheet: HTMLStyleElement | null = null;
 const names = new WeakMap<Element, string>(); // an element's anchor name, kept while it lives
 const rules = new Map<HTMLElement, string>(); // a held pin and its rule
+const spots = new Map<HTMLElement, { name: string; dx: number; dy: number }>(); // a held pin's element and offset
+const boxes = new Map<HTMLElement, string>(); // a card tied to the element its held pin is on, and its rule
+// A card's places, in the page's sheet (tree-scoped names): below its pin as the script puts it, above it or in from the
+// screen's right edge when there is no room. --lab-dx / --lab-dy: its pin's tip from the element's corner.
+const TRIES =
+  '@position-try --lab-c-above{top:auto;bottom:calc(anchor(top) - var(--lab-dy) + 40px)}' +
+  '@position-try --lab-c-edge{left:auto;right:12px}' +
+  '@position-try --lab-c-edge-above{left:auto;right:12px;top:auto;bottom:calc(anchor(top) - var(--lab-dy) + 40px)}';
 let count = 0;
 let dirty = false;
 let able: boolean | null = null;
@@ -96,11 +104,43 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
     rules.set(pin, rule);
     dirty = true;
   }
+  spots.set(pin, { name, dx: left - scrollX - r.left, dy: top - scrollY - r.top });
   return true;
+}
+
+/** Ties a card to the element its pin is held on (not to the pin: anchor positioning reads a held pin's place from before
+ *  the browser follows a scroll, so a card on the pin would trail by the scroll). False when the pin isn't held. */
+export function holdBox(node: HTMLElement, pin: HTMLElement | null | undefined): boolean {
+  const at = pin && rules.has(pin) ? spots.get(pin) : null;
+  if (!at) {
+    letBox(node);
+    return false;
+  }
+  const part = node.getAttribute('part') || `lb${(++count).toString(36)}`;
+  node.setAttribute('part', part);
+  node.style.setProperty('--lab-dx', px(at.dx));
+  node.style.setProperty('--lab-dy', px(at.dy));
+  const rule =
+    `[data-lab-comments]::part(${part}){position:fixed;position-anchor:--${at.name};` +
+    `left:max(12px,calc(anchor(left, -10000px) + var(--lab-dx) - 14px));top:calc(anchor(top, -10000px) + var(--lab-dy) + 10px);` +
+    'position-try-fallbacks:--lab-c-above,--lab-c-edge,--lab-c-edge-above}';
+  if (boxes.get(node) !== rule) {
+    boxes.set(node, rule);
+    dirty = true;
+  }
+  return true;
+}
+
+/** The card is placed another way again (in the margin, a sheet, untied). */
+export function letBox(node: HTMLElement) {
+  if (!boxes.delete(node)) return;
+  node.removeAttribute('part');
+  dirty = true;
 }
 
 /** The script places this pin again (it is dragged, or it can't be held). */
 export function letPin(pin: HTMLElement) {
+  spots.delete(pin);
   if (!rules.delete(pin)) return;
   pin.removeAttribute('part');
   dirty = true;
@@ -112,14 +152,15 @@ export const heldPin = (pin?: HTMLElement) => Boolean(pin && rules.has(pin));
 
 /** Writes the rules once the pins are drawn; pins gone from the page let go of theirs. */
 export function flushPins() {
-  for (const pin of rules.keys()) {
-    if (pin.isConnected) continue;
-    rules.delete(pin);
-    dirty = true;
-  }
+  for (const map of [rules, boxes])
+    for (const node of map.keys()) {
+      if (node.isConnected) continue;
+      map.delete(node);
+      dirty = true;
+    }
   if (!dirty) return;
   dirty = false;
   if (!sheet) sheet = Object.assign(document.createElement('style'), { id: 'lab-pinhold' });
   if (!sheet.isConnected) document.head.append(sheet);
-  sheet.textContent = [...rules.values()].join('');
+  sheet.textContent = (boxes.size ? TRIES : '') + [...rules.values(), ...boxes.values()].join('');
 }
