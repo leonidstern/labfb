@@ -642,7 +642,7 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
 
 // The stored selector can point at a different element after a redeploy; check it against the
 // file / text fingerprint, look for the right one, and otherwise fall back to the page position.
-function findTarget(anchor) {
+export function findTarget(anchor) {
   let node = null;
   try {
     node = anchor.selector ? document.querySelector(anchor.selector) : null;

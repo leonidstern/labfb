@@ -13,6 +13,7 @@ import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
 import { pageIds } from './lib/ids.ts';
+import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
@@ -1309,8 +1310,9 @@ const hotSaved = new Map(); // served path -> kind
 // Files that can't be swapped in place. They're sent with the update, and each page reloads only if it uses one of
 // them: a README, another page's script or the project's server code leaves your page where it is.
 const otherSaved = new Set(); // served paths
-if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
-  if (!file || file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules')) return;
+const hidden = (file) => file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules');
+if (!PROXY) watchTree(ROOT, (event, file) => {
+  if (!file || hidden(file)) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
   // event's name can't tell; a CSS or JS save leaves the index alone.)
   if (/\.html?$/i.test(file) || !path.extname(file)) indexStale = true;
@@ -1339,7 +1341,7 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
     // While the agent works it often saves several files for one fix: wait for 400 ms of quiet so the page updates
     // once. A person saving by hand gets it after 80 ms.
   }, mode === 'working' ? 400 : 80);
-});
+}, hidden);
 
 // The widget's own files: a changed script reloads open pages (they need the new one); lab.css is swapped in place.
 let widgetTimer;
@@ -1379,7 +1381,7 @@ const watchBoards = () => {
   const hot = new Set();
   let timer;
   try {
-    fs.watch(B.dirOf(ROOT), { recursive: true }, (event, file) => {
+    watchTree(B.dirOf(ROOT), (event, file) => {
       const m = /^([a-z0-9][a-z0-9_-]*)(?:\.json|[\\/]([a-z][a-z0-9]*)\.html)$/.exec(file || '');
       if (!m) return; // a half-written .tmp, a file that is not a board's
       names.add(m[1]);
