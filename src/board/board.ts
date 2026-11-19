@@ -33,6 +33,8 @@ html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;backgrou
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
+#lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
+#lab-board .t u.on{opacity:1;text-decoration:underline}
 #lab-board .none{position:absolute;inset:0;display:grid;place-items:center;opacity:.7}
 #lab-board .done{position:fixed;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
 `;
@@ -51,6 +53,8 @@ let view = { w: innerWidth, h: innerHeight };
 let moved = false; // the person moved the camera: a resize no longer fits everything again
 let selected = '';
 let entered = '';
+let board: Board | null = null; // as the lab gave it: saved whole, with the rev it was read at
+let undo: Frame[][] = []; // the frames before each change, newest last (⌘Z)
 let focus = false; // the camera is fitted to one frame (a phone's first view, Tab): a swipe goes to the next
 let lastDown = 0;
 let checked = { x: 1e9, y: 1e9, z: 0 }; // the camera at the last wake/cull check
@@ -173,6 +177,7 @@ function sleep(c: Card) {
 // ---------- frames in the world ----------
 const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
 function show(b: Board) {
+  board = b;
   of = of || (b.of || '').split('#')[0];
   const live = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
   // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
@@ -235,10 +240,62 @@ fetch('/_lab/pages').then((r) => r.json()).then((d) => {
   for (const c of cards) if (!c.frame) c.inner.replaceChildren(card(c));
 }).catch(() => {});
 
-// The label above a frame.
+// The label above a frame; on the selected one a plain list of sizes to pick from.
+const SIZES: Record<number, number> = { 390: 844, 820: 1180, 1280: 800, 1440: 900 };
+const editable = () => Boolean(document.querySelector('script[data-admin]')); // this computer's browser; a guest only looks
 function paint(c: Card) {
-  (c.box.querySelector('.t') as HTMLElement).textContent = label(c.f);
+  const t = c.box.querySelector('.t') as HTMLElement;
+  t.textContent = label(c.f);
+  if (c.f.id !== selected || !editable()) return;
+  for (const w of Object.keys(SIZES)) t.append(' ', Object.assign(document.createElement('u'), { textContent: w, className: +w === c.f.w ? 'on' : '' }));
+  t.dataset.id = c.f.id;
 }
+const api = (more = '') => `/_lab/api/board?name=${name}${of ? `&page=${encodeURIComponent(of)}` : ''}${more}`;
+const copy = (fs: Frame[]) => fs.map((f) => ({ ...f }));
+// Every change is the whole board put back with the rev it was read at; a frame is never dropped, only archived. A frame the
+// lab placed (auto) is sent without x and y, or it would become fixed where it is now.
+async function save(frames: Frame[], before: Frame[], remember = true) {
+  if (!board || !editable()) return;
+  if (remember) undo.push(before);
+  const body = { ...board, frames: frames.map(({ auto, x, y, ...f }) => (auto ? f : { ...f, x, y })) };
+  const res = await fetch(api(), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+  if (!res) return;
+  const j = await res.json();
+  if (res.status === 409 && remember) undo.pop(); // somebody else changed it: theirs is shown, the change is not made
+  if (res.ok || res.status === 409) show(res.ok ? j : j.board);
+}
+// One change at a time: the next is made from what the lab answered to the last (the rev it names).
+let queue: Promise<unknown> = Promise.resolve();
+const change = (fn: (fs: Frame[]) => void, remember = true) => {
+  queue = queue.then(() => {
+    if (!board) return;
+    const before = copy(board.frames);
+    const fs = copy(board.frames);
+    fn(fs);
+    return save(fs, before, remember);
+  });
+};
+const mutate = (id: string, fn: (f: Frame) => void) => change((fs) => fn(fs.find((f) => f.id === id)!));
+const nextId = (fs: Frame[]) => {
+  for (let n = 0; ; n++) {
+    const id = String.fromCharCode(97 + (n % 26)) + (n >= 26 ? Math.floor(n / 26) : '');
+    if (!fs.some((f) => f.id === id)) return id;
+  }
+};
+const dup = (id: string) =>
+  change((fs) => {
+    const f = fs.find((g) => g.id === id)!;
+    const n = { ...f, id: nextId(fs), x: (f.x || 0) + f.w + 80, y: f.y, variantOf: f.id, auto: false, state: 'live' };
+    fs.splice(fs.indexOf(f) + 1, 0, n);
+    setTimeout(() => select(n.id), 400);
+  });
+const archive = (id: string) => (select(''), mutate(id, (f) => (f.state = 'archived')));
+const nudge = (id: string, dx: number, dy: number) => mutate(id, (f) => ((f.x += dx), (f.y += dy), (f.auto = false)));
+// ⌘Z: the frames as they were; one added since is archived (a frame is never dropped).
+const undoLast = () => {
+  const was = undo.pop();
+  if (was) change((fs) => fs.splice(0, fs.length, ...was, ...fs.filter((f) => !was.some((g) => g.id === f.id)).map((f) => ({ ...f, state: 'archived' }))), false);
+};
 
 // ---------- selecting and entering ----------
 const find = (id: string) => cards.find((c) => c.f.id === id);
@@ -287,7 +344,7 @@ const at = (e: { clientX: number; clientY: number }) => {
 };
 const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
 const pts = new Map<number, { x: number; y: number }>();
-let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; held?: boolean } | null = null;
+let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean } | null = null;
 let holdTimer = 0;
 // A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
 // put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
@@ -301,6 +358,8 @@ addEventListener('pointerdown', (e) => {
   if (!mine(e) || entered && e.target instanceof HTMLIFrameElement) return;
   eat(e);
   lastDown = performance.now();
+  const size = (e.target as HTMLElement).closest?.('u');
+  if (size && editable()) return mutate((e.target as HTMLElement).parentElement!.dataset.id!, (f) => ((f.w = +size.textContent!), (f.h = SIZES[f.w]))); // a size from the list
   (document.activeElement as HTMLElement | null)?.blur?.();
   pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   root.setPointerCapture?.(e.pointerId);
@@ -310,7 +369,8 @@ addEventListener('pointerdown', (e) => {
     if (down) down.far = true; // a second finger: this was no tap
   } else {
     const id = at(e);
-    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), t: e.timeStamp };
+    const mv = e.pointerType === 'mouse' && id && id === selected && !entered && editable() ? find(id) : undefined; // a selected frame is moved by its body (a finger only pans)
+    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), t: e.timeStamp, mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined };
     clearTimeout(holdTimer);
     if (e.pointerType === 'touch') {
       const d = down;
@@ -343,7 +403,21 @@ addEventListener('pointermove', (e) => {
     clearTimeout(holdTimer);
   }
   if (down?.held) return; // the hold made a pin: the finger lifting off doesn't pan
-  if (down?.far) go(panBy(cam, dx, dy), true, true);
+  if (down?.far && down.mv) {
+    // Positions round to 8 px; an edge within 6 screen px of another frame's edge takes that edge.
+    const f = down.mv.f;
+    f.auto = false;
+    let nx = Math.round((down.fx + (e.clientX - down.x) / cam.z) / 8) * 8;
+    let ny = Math.round((down.fy + (e.clientY - down.y) / cam.z) / 8) * 8;
+    for (const o of cards) {
+      if (o === down.mv) continue;
+      for (const edge of [o.f.x, o.f.x + o.f.w]) for (const mine of [nx, nx + f.w]) if (Math.abs(edge - mine) * cam.z < 6) nx += edge - mine;
+      for (const edge of [o.f.y, o.f.y + o.f.h]) for (const mine of [ny, ny + f.h]) if (Math.abs(edge - mine) * cam.z < 6) ny += edge - mine;
+    }
+    [f.x, f.y] = [nx, ny];
+    Object.assign(down.mv.box.style, { left: `${nx}px`, top: `${ny}px` });
+    dispatchEvent(new Event('lab-board-moved'));
+  } else if (down?.far) go(panBy(cam, dx, dy), true, true);
 }, true);
 const up = (e: PointerEvent) => {
   if (!pts.delete(e.pointerId)) return;
@@ -364,7 +438,8 @@ const up = (e: PointerEvent) => {
     if (w && e.type === 'pointerup') setTimeout(() => (w.hold || w.place)(d.x, d.y), 0);
     return;
   }
-  if (d.far && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
+  if (d.mv && d.far && d.before && board) return void save(copy(board.frames), d.before);
+  if (d.far && !d.mv && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
   if (d.far || e.type === 'pointercancel') return;
   const widget = boardWidget();
   if (widget?.pinning() && e.pointerType !== 'touch') return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
@@ -426,7 +501,21 @@ const step = (by: number) => {
   focus = true;
 };
 const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
+  const [cmd, sel] = [e.metaKey || e.ctrlKey, find(selected)];
+  if (cmd && !e.altKey && !e.shiftKey && !entered && editable()) {
+    if (e.code === 'KeyZ') {
+      undoLast();
+      return true;
+    }
+  }
   if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  if (sel && !entered && editable() && /^(Arrow(Left|Right|Up|Down)|Backspace|Delete)$/.test(e.key)) {
+    if (e.key.length > 6 && e.key[0] === 'A') {
+      const d = e.shiftKey ? 80 : 8;
+      nudge(selected, e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0);
+    } else archive(selected);
+    return true;
+  }
   const digit = /^Digit(\d)$/.exec(e.code)?.[1];
   if (e.shiftKey && digit === '1') go(fitAll(boxes(), view));
   else if (e.shiftKey && digit === '2') go(zoomAt(cam, view.w / 2, view.h / 2, 1, boxes(), view));
@@ -444,6 +533,13 @@ const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 
   } else return false;
   return true;
 };
+// ⌘D / Ctrl D duplicates the selected frame. In capture: Control-D is also the widget's "next new comment".
+addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyD' && selected && !entered && editable() && !typing(e)) {
+    eat(e);
+    dup(selected);
+  }
+}, true);
 addEventListener('keydown', (e) => {
   if (e.key === ' ') space = true;
   if (e.defaultPrevented || typing(e) || (entered && document.activeElement instanceof HTMLIFrameElement)) return;
