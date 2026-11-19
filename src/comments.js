@@ -2499,8 +2499,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Held, its place is the browser's: the script writes none (it would make the next pin's reading lay the page out again);
   // a drawing still gets its size.
   const placePin = (pin, c, zone, left, top, moved) => {
-    const node = flag('native') && !moved && c.anchor?.kind !== 'board' ? findTarget(c.anchor || {}) : null;
-    const held = holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
+    const a = c.anchor || {};
+    let held;
+    if (a.kind === 'board') {
+      // A board pin on a frame: tied to the frame's box by its share of it, so the board's camera carries it (pinhold.ts).
+      const box = flag('native') && a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null;
+      const share = box?.offsetWidth && box.offsetHeight ? { x: a.fx / box.offsetWidth, y: (a.fy || 0) / box.offsetHeight } : null;
+      held = holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
+    } else {
+      const node = flag('native') && !moved ? findTarget(a) : null;
+      held = holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
+    }
     if (!held) inkAt(pin, zone, left, top);
     else if (zone) inkAt(pin, zone, zone.left, zone.top);
     return held;
@@ -2768,7 +2777,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // and where a pin sits), and the pins are drawn again as the camera moves.
   if (S.board) {
     Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
-    addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+    // The camera moved: the pins are drawn again, unless the browser holds every one (flag native: tied to their frames).
+    const allHeld = () => !S.openId && !S.draft && pinsById.size > 0 && [...pinsById.values()].every((p) => heldPin(p));
+    // When the frames themselves changed (detail.layout: one gone, replaced or resized), every pin is placed again.
+    addEventListener('lab-board-moved', (e) => S.on && (/** @type {CustomEvent} */ (e).detail?.layout || !allHeld()) && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
   }
   startLive();
   // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads

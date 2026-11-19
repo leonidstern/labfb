@@ -55,8 +55,10 @@ const inTopLayer = (node: Element) => {
   }
 };
 
-/** Ties a pin to node, its spot at (left, top) in page coordinates. False, and the pin let go, when the script places it. */
-export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, left: number, top: number): boolean {
+/** Ties a pin to node, its spot at (left, top) in page coordinates. False, and the pin let go, when the script places it.
+ *  share: the spot as a share of node's box instead (a board's frame, which the board's camera scales: anchor() reads the
+ *  box as the camera shows it, so a share stays on the same point of the frame through any pan and zoom). */
+export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, left: number, top: number, share?: { x: number; y: number }): boolean {
   // The page itself, or a big container placed by a share of its size, keeps the script's place (anchoring.ts, spotOf).
   if (!on || !node || !can() || /^(html|body|main)$/.test(node.localName) || pin.classList.contains('dragging')) {
     letPin(pin);
@@ -77,10 +79,13 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
   const part = pin.getAttribute('part') || `lp${(++count).toString(36)}`;
   pin.setAttribute('part', part);
   const r = node.getBoundingClientRect();
+  const pct = (n: number) => `${Math.round(n * 10000) / 100}%`;
+  const at = share
+    ? `left:anchor(${pct(share.x)}, -10000px)!important;top:anchor(${pct(share.y)}, -10000px)!important`
+    : `left:calc(anchor(left, -10000px) + ${px(left - scrollX - r.left)})!important;top:calc(anchor(top, -10000px) + ${px(top - scrollY - r.top)})!important`;
   const rule =
     `[data-lab-anchor="${name}"]{anchor-name:--${name}}` +
-    `[data-lab-comments]::part(${part}){position:fixed!important;position-anchor:--${name};position-visibility:anchors-visible;` +
-    `left:calc(anchor(left, -10000px) + ${px(left - scrollX - r.left)})!important;top:calc(anchor(top, -10000px) + ${px(top - scrollY - r.top)})!important}`;
+    `[data-lab-comments]::part(${part}){position:fixed!important;position-anchor:--${name};position-visibility:anchors-visible;${at}}`;
   if (rules.get(pin) !== rule) {
     rules.set(pin, rule);
     dirty = true;
