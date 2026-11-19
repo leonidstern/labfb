@@ -27,51 +27,45 @@ export function bindInk(w: unknown) {
 
 type Drawn = { c?: any; r: Range; pin?: HTMLElement };
 const html = document.documentElement;
-const can = typeof Highlight === 'function' && Boolean(CSS.highlights);
+// Whether this browser can draw it: highlights, and an underline in them (asked once the page has the rules, inkCss).
+let can = false;
+const able = () => (can ||= typeof Highlight === 'function' && Boolean(CSS.highlights) && getComputedStyle(html, '::highlight(lab-ink-next)').textDecorationLine === 'underline');
 const STATES = ['draft', 'next', 'now', 'asks', 'rest', 'kept', 'done'];
 let drawn: Drawn[] = [];
+let inked = 0; // how many the last render inked (the draft too)
 let over: Drawn | null = null; // the one under the mouse: its words light up, the pointer is a hand
-let opts: { quiet?: boolean; colors?: Record<string, string> } = {};
 
 // A comment on words someone selected (a click on a word quotes it too, but that is a pin on a point). Older ones,
 // from before the flag, count when they quote more than one word.
-const selected = (a) => can && W.flag('inkOnText') && a?.kind === 'text' && !a.zw && Boolean(a.quote?.exact) && (a.quote.selected || /\s/.test(a.quote.exact.trim()));
+const selected = (a) => W.flag('inkOnText') && able() && a?.kind === 'text' && !a.zw && Boolean(a.quote?.exact) && (a.quote.selected || /\s/.test(a.quote.exact.trim()));
 /** The words of a comment that is shown as ink, where they are now; null when it is a pin (or its words are gone). */
 export const inkRange = (anchor): Range | null => (selected(anchor) && wordsRange(anchor)) || null;
 
 // The page's rules for the bands (highlights are styled from the page, not from the widget's own root). The band: an
 // underline half a letter thick, pulled up under the letters. Safari reads "don't skip the letters" from the words
 // themselves, Chrome from the highlight, so both say it. Working and asks move through one number the page animates
-// (--lab-ink-a), only while something is working or asking. Dark pages (light words) get the stronger set.
+// (--lab-ink-a), only while something is working or asking. On a dark page (light words) one more number makes the
+// greens half as strong again (--lab-ink-k): 30 % reads on white, 45 % on black (Leo, 19 Nov).
 export function inkCss() {
-  const ok = Object.entries(opts.colors || {}).filter(([, c]) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c));
-  const C = { draft: '#8e8a82', sent: '#24a046', working: '#34c759', asks: '#e08a1a', done: '#24a046', ...Object.fromEntries(ok) };
-  const D = { asks: '#f0a040', done: '#34c759', ...Object.fromEntries(ok) };
-  const mix = (c: string, pct: string) => `text-decoration-color:color-mix(in srgb,${c} ${pct},transparent)`;
   const band = 'text-decoration-line:underline;text-decoration-skip-ink:none;text-decoration-thickness:.5em;text-underline-offset:-.28em;';
-  const beat = opts.quiet ? '' : '*var(--lab-ink-a)';
-  const on = (st: string, css: string, dk = '') => `${dk}::highlight(lab-ink-${st}){${css}}`;
-  const dk = 'html.lab-ink-dk ';
+  const mix = (c: string, pct: string) => `text-decoration-color:color-mix(in srgb,${c} ${pct},transparent)`;
+  const green = (c: string, pct: number, beat = '') => mix(c, `calc(${pct}%*var(--lab-ink-k,1)${beat})`);
+  const on = (st: string, css: string) => `::highlight(lab-ink-${st}){${css}}`;
   return (
-    'html.lab-ink-on{text-decoration-skip-ink:none}' +
+    'html.lab-ink-on{text-decoration-skip-ink:none}html.lab-ink-dk{--lab-ink-k:1.5}' +
     '@property --lab-ink-a{syntax:"<number>";inherits:true;initial-value:1}' +
     'html.lab-ink-live{animation:lab-ink-pulse 1.8s ease-in-out infinite}@keyframes lab-ink-pulse{50%{--lab-ink-a:.35}}' +
-    on('draft', band + mix(C.draft, '16%')) +
-    on('next', band + mix(C.sent, '30%')) +
-    on('now', band + mix(C.working, `calc(30%${beat})`)) +
-    on('asks', band + mix(C.asks, 'calc(32% + 16%*var(--lab-ink-a))')) +
-    on('rest', band + mix(C.asks, '48%')) +
-    on('kept', band + mix(C.done, '28%')) +
-    on('done', `text-decoration-line:underline;text-decoration-thickness:2px;${mix(C.done, '14%')}`) +
-    on('next', mix(C.sent, '45%'), dk) +
-    on('now', mix(C.working, `calc(40%${beat})`), dk) +
-    on('asks', mix(D.asks, 'calc(30% + 14%*var(--lab-ink-a))'), dk) +
-    on('rest', mix(D.asks, '44%'), dk) +
-    on('done', mix(D.done, '14%'), dk) +
+    on('draft', band + mix('#8e8a82', '16%')) +
+    on('next', band + green('#24a046', 30)) +
+    on('now', band + green('#34c759', 30, '*var(--lab-ink-a)')) +
+    on('asks', band + mix('#e08a1a', 'calc(32% + 16%*var(--lab-ink-a))')) +
+    on('rest', band + mix('#e08a1a', '48%')) +
+    on('kept', band + green('#24a046', 28)) +
+    on('done', `text-decoration-line:underline;text-decoration-thickness:2px;${green('#24a046', 14)}`) +
     // While commenting, the page's own selection paint is clear and the selected words wear the sent ink's band, so
     // selecting looks like the ink they will get (Leo, 18 Nov). Fields keep the green. The quoted words of an open
     // comment or a hovered pin are a fainter green, and so are inked words under the pointer, over their band.
-    `html.lab-pinning.lab-ink-on ::selection{background-color:transparent;color:inherit;${band}${mix(C.sent, '30%')}}` +
+    `html.lab-pinning.lab-ink-on ::selection{background-color:transparent;color:inherit;${band}${green('#24a046', 30)}}` +
     'html.lab-ink-on ::highlight(lab-quote){background-color:rgba(52,199,89,.14)}' +
     'html.lab-pinning.lab-ink-on :is(input,textarea)::selection{background-color:rgba(52,199,89,.3);text-decoration-line:none}'
   );
@@ -80,7 +74,9 @@ export function inkCss() {
 // The inks this render draws: [{ c, r, pin }] for comments, [{ r }] for the one being written. Each state's highlight
 // takes its notes' ranges. The comment's pin, unseen, still does what it did: a click on the words is a click on it.
 export function drawInks(items: Drawn[]) {
-  if (!can) return;
+  html.classList.toggle('lab-ink-on', W.flag('inkOnText') && able());
+  if (!items.length && !inked) return; // nothing to ink, nothing to wipe
+  inked = items.length;
   const by: Record<string, Range[]> = {};
   let live = false;
   for (const { c, r } of items) {
@@ -93,17 +89,15 @@ export function drawInks(items: Drawn[]) {
     // Breathing says "answer me": while the answer is unread, or while it asks you something; a plain answer you have
     // read just rests.
     if (st === 'asks' && work !== 'asks' && !news) st = 'rest';
-    live ||= st === 'asks' || (st === 'now' && !opts.quiet);
+    live ||= st === 'asks' || st === 'now';
     (by[st] ||= []).push(r);
   }
   drawn = items.filter((x) => x.c);
-  html.classList.toggle('lab-ink-on', W.flag('inkOnText'));
   html.classList.toggle('lab-ink-live', live && !W.still.matches);
-  html.classList.toggle('lab-ink-dk', (([r, g, b]) => 0.299 * r + 0.587 * g + 0.114 * b > 150)((getComputedStyle(document.body).color.match(/[\d.]+/g) || [0, 0, 0]).map(Number)));
-  // WebKit paints no highlight set while the text can't be selected (see markQuote in anchoring.ts).
-  html.classList.add('lab-lit');
+  // A dark page is one with light words: the green of the body's text colour says so (rgb(238, 238, 238) → 238).
+  html.classList.toggle('lab-ink-dk', +getComputedStyle(document.body).color.split(',')[1] > 128);
+  // (Safari paints a highlight wrongly on text that can't be selected: with lab-ink-on the page's text can be, comments.js.)
   for (const st of STATES) CSS.highlights.set(`lab-ink-${st}`, new Highlight(...(by[st] || [])));
-  requestAnimationFrame(() => requestAnimationFrame(() => html.classList.remove('lab-lit')));
   if (over && !drawn.some((d) => d.c.id === over!.c.id)) hover(null);
 }
 /** True when some inked words left the page since the last render (their range has nothing in it): the pin is due. */
@@ -112,7 +106,7 @@ export const inkGone = () => drawn.some((d) => d.r.collapsed);
 const hover = (d: Drawn | null) => {
   over = d;
   html.classList.toggle('lab-ink-over', Boolean(d));
-  markQuote(d ? d.c.anchor : W.S.quoted); // the words under the pointer light up, faintly
+  if (!W.S.openId && !W.S.draft) markQuote(d?.c.anchor); // the words under the pointer light up, faintly (not over an open note's own)
 };
 
 // The comment whose words are under the pointer, if any: of notes on the same words, the one on the fewest (a note
@@ -135,11 +129,7 @@ function under(e) {
 }
 
 // Before the widget's other page listeners (comments.js), so a click on inked words opens it and places nothing.
-// Settings the lab passed (data-ink): quiet stills all but "asks"; a colour replaces a state's, one for light and dark.
-export function startInk(data?: string) {
-  try {
-    opts = JSON.parse(data || '{}');
-  } catch {}
+export function startInk() {
   addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
     const now = e.composedPath().includes(W.host) || e.shiftKey || e.altKey ? null : under(e);

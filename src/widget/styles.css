@@ -243,7 +243,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* Ink on selected words instead of a pin (ink.ts): the band is the page's (a highlight). The pin stays, unseen, at the
    end of the words: only its new-reply dot shows, and Tab shows the pin itself. */
 button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; color: transparent; pointer-events: none; }
-.pin.on-ink:not(:focus-visible) > * { display: none; }
+.pin.on-ink:not(:focus-visible) > *, button.pin.on-ink:not(:focus-visible)::before { display: none; }
 .pin.draft.on-ink { visibility: hidden; }
 /* Close: a round, quiet button with a drawn cross (not the ✕ character), darker on hover. */
 .list .tabs .show-done { color: var(--_muted); }

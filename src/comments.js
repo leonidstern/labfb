@@ -307,7 +307,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // further down are read when called.
   bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
-  startInk(script?.dataset.ink); // comments on selected words show as ink on them, not a pin (src/widget/ink.ts)
+  startInk(); // comments on selected words show as ink on them, not a pin (src/widget/ink.ts)
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -2023,8 +2023,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
-  // Fields and editable text stay selectable.
-  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  // Fields and editable text stay selectable. With ink on words (lab-ink-on, ink.ts) the text stays selectable and only
+  // selectstart (below) keeps a drag from selecting: Safari paints a highlight over whole blocks of text that can't be
+  // selected, and the ink is a highlight.
+  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit, .lab-ink-on) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit, .lab-ink-on) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   // Letting go of Shift keeps text selectable a moment longer, so a selection made with it isn't dropped before its
   // comment opens.
   /** @type {any} */

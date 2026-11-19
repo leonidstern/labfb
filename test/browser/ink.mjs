@@ -1,10 +1,13 @@
 // Ink on selected words (src/widget/ink.ts) in real browsers: Safari's engine (WebKit) and Chrome's. A comment on
-// selected words shows no pin; the words carry its state as a band under the lower part of each line.
+// selected words shows no pin; the words carry its state as a band under the lower part of each line. The band is the
+// browser's own (a highlight per state, painted as a thick underline), so what is checked is which words each state's
+// highlight holds, the rules it is painted by, and the pixels under the words.
 // Not part of `npm test`; CI runs it in the `browser` job. Run: node test/browser/ink.mjs   (needs playwright;
 // NODE_PATH can point at a node_modules that has it; ENGINES=webkit,chromium picks the engines).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -86,8 +89,8 @@ async function lab(settings) {
   const page = '/index';
   return {
     base, dir, page,
-    // Your own note (leo is the name the browser uses: never "new").
-    say: async (anchor, text = 'note', on = page) => (await call({ page: on, name: 'leo', text, anchor })).comment,
+    // Your own note (tester is the name the browser uses: never "new").
+    say: async (anchor, text = 'note', on = page) => (await call({ page: on, name: 'tester', text, anchor })).comment,
     // The agent's word on a thread.
     // (a moment after the note: an answer in the same millisecond would not count as later)
     reply: async (id, text, intent) => (await sleep(20), await call({ page, parent: id, name: 'Claude', text, ...(intent ? { intent } : {}) }, true)).comment,
@@ -102,46 +105,105 @@ async function lab(settings) {
   };
 }
 
-// What the page shows of the ink and the pins, read from the widget's shadow root.
+// What the page shows of the ink and the pins: each state's highlight and the words in it, and the pins from the
+// widget's shadow root (a pin on inked words is there, unseen: no face, no box, no clicks of its own).
 const look = (p) =>
   p.evaluate(() => {
     const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
-    const rect = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width, h: b.height }; };
+    const html = document.documentElement;
     return {
-      inks: [...r.querySelectorAll('.ink:not(.sel)')].map((b) => {
+      inks: [...CSS.highlights].filter(([k]) => k.startsWith('lab-ink-')).flatMap(([k, h]) => [...h].map((range) => ({ st: k.slice(8), text: String(range).replace(/\s+/g, ' ').trim() }))),
+      quote: [...(CSS.highlights.get('lab-quote') || [])].map((range) => String(range).replace(/\s+/g, ' ').trim()),
+      pins: [...r.querySelectorAll('button.pin')].map((b) => {
         const s = getComputedStyle(b);
-        return {
-          st: b.dataset.st, calm: b.classList.contains('calm'), k: s.getPropertyValue('--k').trim().toLowerCase(), al: s.getPropertyValue('--al').trim(),
-          lines: [...b.querySelectorAll('.ln')].map((l) => {
-            const q = getComputedStyle(l, '::before');
-            return { ...rect(l), fill: l.classList.contains('fill'), top: parseFloat(q.top), height: parseFloat(q.height), anim: q.animationName, opacity: q.opacity, bg: q.backgroundColor, img: q.backgroundImage, pr: parseFloat(l.style.left) + parseFloat(l.style.width), pb: parseFloat(l.style.top) + parseFloat(l.style.height) };
-          }),
-          end: b.querySelector('.ink-end') && { ...rect(b.querySelector('.ink-end')), label: b.querySelector('.ink-end').getAttribute('aria-label'), news: b.querySelector('.ink-end').classList.contains('new'), q: Boolean(b.querySelector('.ink-end .q')), open: b.querySelector('.ink-end').classList.contains('open') },
-          dk: b.classList.contains('dk'), over: b.classList.contains('over'),
-        };
+        return { label: b.getAttribute('aria-label'), ink: b.classList.contains('on-ink'), seen: !/rgba\(0, 0, 0, 0\)|transparent/.test(s.backgroundColor), taps: s.pointerEvents !== 'none', news: b.classList.contains('new'), dot: getComputedStyle(b, '::after').content !== 'none', open: b.classList.contains('open') };
       }),
-      pins: [...r.querySelectorAll('button.pin:not(.draft)')].map((b) => ({ label: b.getAttribute('aria-label'), moved: b.classList.contains('moved'), vis: getComputedStyle(b).visibility !== 'hidden' })),
-      draftInk: r.querySelector('.ink[data-st=draft]') !== null,
-      display: getComputedStyle(r.querySelector('.inks')).display,
+      draftPin: r.querySelector('.pin.draft') ? getComputedStyle(r.querySelector('.pin.draft')).visibility : null,
+      card: r.querySelector('.card')?.textContent || '',
+      html: html.className.split(' ').filter((c) => c.startsWith('lab-ink')),
+      beat: getComputedStyle(html).animationName,
     };
   });
+// The rules a state's band is painted by, as the browser computed them for the words in #id.
+const rules = (p, id, name) =>
+  p.evaluate(([id, name]) => {
+    const s = getComputedStyle(document.getElementById(id), name);
+    return { line: s.textDecorationLine, color: s.textDecorationColor, thick: s.textDecorationThickness, bg: s.backgroundColor };
+  }, [id, name]);
+
+// A PNG's pixels (8 bits a channel, as both engines' screenshots are).
+function pixels(buf) {
+  let [o, w, h, bpp] = [8, 0, 0, 4];
+  const idat = [];
+  while (o < buf.length) {
+    const len = buf.readUInt32BE(o);
+    const type = buf.toString('latin1', o + 4, o + 8);
+    const data = buf.subarray(o + 8, o + 8 + len);
+    if (type === 'IHDR') [w, h, bpp] = [data.readUInt32BE(0), data.readUInt32BE(4), data[9] === 6 ? 4 : 3];
+    if (type === 'IDAT') idat.push(data);
+    o += 12 + len;
+  }
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const row = w * bpp;
+  const px = Buffer.alloc(row * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < row; x++) {
+      const a = x >= bpp ? px[y * row + x - bpp] : 0;
+      const b = y ? px[(y - 1) * row + x] : 0;
+      const c = x >= bpp && y ? px[(y - 1) * row + x - bpp] : 0;
+      const [pa, pb, pc] = [Math.abs(b - c), Math.abs(a - c), Math.abs(a + b - 2 * c)];
+      px[y * row + x] = (raw[y * (row + 1) + 1 + x] + [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][raw[y * (row + 1)]]) & 255;
+    }
+  return Array.from({ length: h }, (_, y) => [...px.subarray(y * row, y * row + 3)]);
+}
+// The space between two words of #id (the character `i` into `text`, found in the element's text): where it is on screen.
+const gap = (p, id, text, i = text.length) =>
+  p.evaluate(([id, text, i]) => {
+    const walk = document.createTreeWalker(document.getElementById(id), NodeFilter.SHOW_TEXT);
+    for (let t; (t = walk.nextNode()); ) {
+      const at = t.data.indexOf(text);
+      if (at < 0) continue;
+      const r = document.createRange();
+      r.setStart(t, at + i);
+      r.setEnd(t, at + i + 1);
+      const b = r.getBoundingClientRect();
+      return { x: b.left + b.width / 2, t: b.top, h: b.height };
+    }
+    return null;
+  }, [id, text, i]);
+// What is painted in that space, from the top of the line box to its foot: where the band starts and how much of the
+// line it takes (as shares of the box), and its colour. No glyph is there, so what isn't the page's colour is ink.
+async function band(p, at) {
+  const col = pixels(await p.screenshot({ clip: { x: Math.round(at.x), y: Math.floor(at.t), width: 1, height: Math.ceil(at.h) + 3 } }));
+  const bg = col[0];
+  // The longest run of rows that aren't the page's colour; a lone row is a serif of the next letter, not ink.
+  let [from, rows] = [0, 0];
+  for (let y = 0, start = -1; y <= col.length; y++) {
+    const on = y < col.length && col[y].some((v, k) => Math.abs(v - bg[k]) > 6);
+    if (on && start < 0) start = y;
+    if (!on && start >= 0) {
+      if (y - start > rows) [from, rows] = [start, y - start];
+      start = -1;
+    }
+  }
+  if (rows < 2) rows = 0;
+  return { rows, from: rows ? from / at.h : 1, share: rows / at.h, rgb: rows ? col[from + Math.floor(rows / 2)] : bg, bg };
+}
+const low = (b) => b.from > 0.35 && b.share > 0.25 && b.share < 0.65; // the lower part of the line, not all of it
+const green = (b) => b.rgb[1] > b.rgb[0] + 8 && b.rgb[1] > b.rgb[2] + 8;
+const amber = (b) => b.rgb[0] > b.rgb[1] + 8 && b.rgb[1] > b.rgb[2] + 8;
+const say = (b) => `from ${b.from.toFixed(2)}, ${b.rows} rows (${b.share.toFixed(2)}), rgb ${b.rgb} on ${b.bg}`;
 
 const rect = (p, sel) => p.$eval(sel, (e) => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height, r: b.right, b: b.bottom }; });
 const engines = (process.env.ENGINES || 'webkit,chromium').split(',');
 const L = await lab({ flags: { inkOnText: true } });
 const OFF = await lab();
-const Q = await lab({ flags: { inkOnText: true }, quietInk: true, inkColors: { sent: '#ff0000' } });
-// "color(srgb 0.94 0.72 0.04 / 0.34)" or "rgba(240, 183, 10, 0.34)" → [r, g, b] in 0-255 and the alpha.
-const colour = (s) => {
+// "color(srgb 0.14 0.63 0.27 / 0.3)" or "rgba(36, 160, 70, 0.3)" → the alpha.
+const alpha = (s) => {
   const n = (s.match(/-?[\d.]+(?:e-?\d+)?/g) || []).map(Number);
-  const k = s.startsWith('color(') ? 255 : 1;
-  return { rgb: n.slice(0, 3).map((v) => v * k), a: n[3] ?? 1 };
+  return n[3] ?? 1;
 };
-const is = (s, hex, alpha, tol = 0.03) => {
-  const c = colour(s);
-  const want = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  return c.rgb.every((v, i) => Math.abs(v - want[i]) < 4) && Math.abs(c.a - alpha) < tol;
-};
+const clear = (c) => /rgba\(0, 0, 0, 0\)|transparent|\/ 0\)/.test(c);
 const sel = (p, id, from, to) =>
   p.evaluate(([id, from, to]) => {
     const t = document.getElementById(id).firstChild.nodeType === 3 ? document.getElementById(id).firstChild : document.getElementById(id).lastChild;
@@ -152,43 +214,18 @@ const sel = (p, id, from, to) =>
     getSelection().removeAllRanges();
     getSelection().addRange(r);
   }, [id, from, to]);
-// Words selected in #id (from … to), with comment mode on or off: the page's own ::selection paint and the band
-// drawn for the selection (the .ink.sel box in the widget's layer), read as the inks are.
-const selDrawn = async (p, id, from, to, on) => {
-  await p.evaluate((on) => document.documentElement.classList.toggle('lab-pinning', on), on);
-  await sel(p, id, from, to);
-  await sleep(150); // selectionchange, then a frame
-  const out = await p.evaluate((id) => {
-    const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot;
-    const lines = [...r.querySelectorAll('.ink.sel .ln')].map((l) => {
-      const b = l.getBoundingClientRect();
-      const q = getComputedStyle(l, '::before');
-      return { l: b.left, t: b.top, w: b.width, h: b.height, top: parseFloat(q.top), height: parseFloat(q.height), radius: q.borderTopLeftRadius, bg: q.backgroundColor };
-    });
-    return { native: getComputedStyle(document.getElementById(id), '::selection').backgroundColor, lines, st: r.querySelector('.ink.sel')?.dataset.st };
-  }, id);
-  await p.evaluate(() => getSelection().removeAllRanges());
-  await sleep(150);
-  out.after = await p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelectorAll('.ink.sel .ln').length);
-  return out;
-};
-// The selection's band against an ink's: the same pieces, boxes, band offset and height, radius and colour.
-const sameBand = (a, ink) => a.lines.length > 0 && a.lines.length === ink.lines.length && a.lines.every((l, i) => {
-  const k = ink.lines[i];
-  return Math.abs(l.l - k.l) < 1 && Math.abs(l.t - k.t) < 1 && Math.abs(l.w - k.w) < 1 && Math.abs(l.h - k.h) < 1 && Math.abs(l.top - k.top) < 0.5 && Math.abs(l.height - k.height) < 0.5 && l.bg === k.bg;
-});
-const bandText = (a) => a.lines.map((l) => `${l.l.toFixed(1)},${l.t.toFixed(1)} ${l.w.toFixed(1)}x${l.h.toFixed(1)} ${l.top.toFixed(1)}/${l.height.toFixed(1)} ${l.bg}`).join(' | ');
 // Opens a fresh page in a context (the name the notes were written under).
 async function open(browser, url, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 }, ...opts });
-  await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+  await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tester'));
   const p = await ctx.newPage();
   await p.goto(url);
   await sleep(1200);
   return [ctx, p];
 }
-const middle = (l) => [(l.l + l.r) / 2, (l.t + l.b) / 2];
 const shadow = (p, fn, arg) => p.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
+// The middle of a word of #id, to point at or click.
+const word = async (p, id, text) => { const g = await gap(p, id, text, 1); return [g.x, g.t + g.h / 2]; };
 
 try {
   for (const eng of engines) {
@@ -212,121 +249,124 @@ try {
     const [ctx, p] = await open(browser, L.base + '/');
     // The "done" one is read; the "kept" one has the agent's reply nobody opened yet.
     const v = await look(p);
-    const by = (label) => v.inks.find((i) => i.end?.label.includes(label));
-
-    check(eng, 'selected words: ink, no pin; a clicked word keeps its pin', v.inks.length === 6 && v.pins.length === 1 && v.pins[0].vis, `${v.inks.length} inks, ${v.pins.length} pins`);
-    const sentInk = by('delta epsilon');
-    check(eng, 'the band is the lower 44%, one per line', sentInk.lines.length >= 2 && sentInk.lines.every((l) => Math.abs(l.height / l.h - 0.44) < 0.03 && l.top / l.h > 0.5), sentInk.lines.map((l) => `${(l.top / l.h).toFixed(2)}/${(l.height / l.h).toFixed(2)}`).join(' '));
-
-    check(eng, 'sent: the pins\' green', sentInk.st === 'next' && (is(sentInk.lines[0].bg, '#24a046', 0.3) || is(sentInk.lines[0].bg, '#24a046', 0.45)), sentInk.lines[0].bg);
-    const now = by('paragraph here');
-    check(eng, 'working: the working ring\'s green, pulsing (no sweep)', now.st === 'now' && (is(now.lines[0].bg, '#34c759', 0.3) || is(now.lines[0].bg, '#34c759', 0.4)) && /lab-ink-pulse/.test(now.lines[0].anim || ''), JSON.stringify([now.lines[0].bg, now.lines[0].anim]));
-    const ask = by('second paragraph');
-    check(eng, 'asks amber, breathing until read', ask.st === 'asks' && !ask.calm && (is(ask.lines[0].bg, '#e08a1a', 0.48) || is(ask.lines[0].bg, '#f0a040', 0.44)) && /breath/.test(ask.lines[0].anim), `${ask.lines[0].bg} ${ask.lines[0].anim}`);
-    const keptInk = by('cell one');
-    check(eng, 'unread done is green, still', keptInk.st === 'kept' && (is(keptInk.lines[0].bg, '#24a046', 0.28) || is(keptInk.lines[0].bg, '#34c759', 0.28)) && keptInk.lines[0].anim === 'none', `${keptInk.st} ${keptInk.lines[0].bg}`);
-    const doneInk = by('cell two');
-    const dl = doneInk.lines[0];
-    check(eng, 'read done is a hairline at the foot, faint, there at once', doneInk.st === 'done' && Math.abs(dl.height - 2) < 0.5 && Math.abs(dl.top + dl.height - dl.h) < 1 && Math.abs(dl.opacity - 0.35) < 0.03, `${dl.top}/${dl.height}/${dl.h} opacity ${dl.opacity}`);
-    check(eng, 'a done note stays with "show done" off, and loads with no fill', v.inks.every((i) => i.lines.every((l) => !l.fill)));
+    const st = (w, text) => w.inks.find((i) => i.text.startsWith(text))?.st;
+    const inked = v.pins.filter((x) => x.ink);
+    check(eng, 'selected words: ink, their pins unseen; a clicked word keeps its pin', v.inks.length === 6 && inked.length === 6 && inked.every((x) => !x.seen && !x.taps) && v.pins.filter((x) => !x.ink).length === 1 && v.pins.find((x) => !x.ink).seen, `${v.inks.length} inks, ${JSON.stringify(v.pins.map((x) => [x.ink, x.seen, x.taps]))}`);
+    const sentBand = await band(p, await gap(p, 'a', 'epsilon'));
+    check(eng, 'the band is painted under the lower part of the line, in the pins\' green', low(sentBand) && green(sentBand), say(sentBand));
+    const off = await band(p, await gap(p, 'a', 'sigma'));
+    check(eng, 'no ink beside the words', off.rows === 0, say(off));
+    const sent = await rules(p, 'a', '::highlight(lab-ink-next)');
+    check(eng, 'sent: an underline half a letter thick, 30% green on a light page', st(v, 'delta epsilon') === 'next' && /underline/.test(sent.line) && Math.abs(parseFloat(sent.thick) - 9) < 0.6 && Math.abs(alpha(sent.color) - 0.3) < 0.03, JSON.stringify(sent));
+    check(eng, 'working: its own highlight, and the page beats while it works', st(v, 'paragraph here') === 'now' && v.html.includes('lab-ink-live') && v.beat === 'lab-ink-pulse', `${st(v, 'paragraph here')} ${v.html} ${v.beat}`);
+    const askBand = await band(p, await gap(p, 'p2', 'second'));
+    check(eng, 'asks: amber, for a plain answer not read yet and for a question', st(v, 'second paragraph') === 'asks' && st(v, 'one two') === 'asks' && low(askBand) && amber(askBand), `${st(v, 'second paragraph')} ${st(v, 'one two')} ${say(askBand)}`);
+    const keptBand = await band(p, await gap(p, 'c1', 'cell'));
+    check(eng, 'unread done is a green band', st(v, 'cell one') === 'kept' && low(keptBand) && green(keptBand), say(keptBand));
+    const doneBand = await band(p, await gap(p, 'c2', 'cell'));
+    const hair = await rules(p, 'c2', '::highlight(lab-ink-done)');
+    check(eng, 'read done is a hairline at the foot, faint, with "show done" off too', st(v, 'cell two') === 'done' && hair.thick === '2px' && doneBand.rows > 0 && doneBand.rows <= 3 && doneBand.from > 0.6, `${JSON.stringify(hair)} ${say(doneBand)}`);
 
     // ---- A word in a link keeps its seam out of the band
-    check(eng, 'no seam at a link: one piece for the line', by('one two') && (await (async () => {
+    {
       const c = await L.say(words('lnk', 'two linked words three'), 'link');
       await sleep(1200);
-      const w = (await look(p)).inks.find((i) => i.end?.label.includes('two linked'));
+      const [before, after] = [await band(p, await gap(p, 'lnk', 'two')), await band(p, await gap(p, 'lnk', ' three', 0))];
+      check(eng, 'no seam at a link: the band runs through the spaces either side', low(before) && low(after), `${say(before)} | ${say(after)}`);
       await L.drop(c.id);
-      return w?.lines.length === 1;
-    })()));
+      await sleep(600);
+    }
 
     // ---- Click, selection, link
-    const first = by('delta epsilon').lines[0];
-    await p.mouse.move(...middle(first));
-    await sleep(800);
-    const over = (await look(p)).inks.find((i) => i.over);
-    check(eng, 'hovering only lightens the band: it stays low (no rise)', Boolean(over) && over.lines.every((l) => l.top > 1 && l.height < l.h * .6 && Number(l.opacity) < 1), over && `${over.lines[0].top}/${over.lines[0].height}/${over.lines[0].opacity}`);
-    await p.mouse.click(...middle(first));
+    const first = await word(p, 'a', 'epsilon');
+    await p.mouse.move(...first);
+    await sleep(300);
+    const over = await look(p);
+    const hand = await p.evaluate(() => getComputedStyle(document.getElementById('a')).cursor);
+    check(eng, 'pointing at inked words: a hand, and the words light up faintly', over.html.includes('lab-ink-over') && hand === 'pointer' && over.quote.some((q) => q.startsWith('delta epsilon')), `${over.html} ${hand} ${JSON.stringify(over.quote)}`);
+    await p.mouse.move(900, 600);
+    await sleep(300);
+    const away = await look(p);
+    check(eng, 'pointing away: the page\'s own pointer, nothing lit', !away.html.includes('lab-ink-over') && away.quote.length === 0, `${away.html} ${JSON.stringify(away.quote)}`);
+    await p.mouse.click(...first);
     await sleep(400);
-    check(eng, 'a click opens the thread', (await look(p)).inks.some((i) => i.end?.open && i.end.label.includes('delta epsilon')));
+    check(eng, 'a click opens the thread', (await look(p)).card.includes('sent'));
     await p.keyboard.press('Escape');
     await sleep(300);
     // With words selected over the ink, a click is for the selection.
     await p.keyboard.down('Shift'); // the page lets words be selected while Shift is down
     await sel(p, 'a', 'delta', 'delta');
-    await p.evaluate(([x, y]) => document.elementFromPoint(x, y).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 })), middle(first));
+    await p.evaluate(([x, y]) => document.elementFromPoint(x, y).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 })), first);
     await sleep(300);
-    check(eng, 'with words selected a click opens nothing', !(await look(p)).inks.some((i) => i.end?.open));
+    check(eng, 'with words selected a click opens nothing', !(await look(p)).card);
     await p.evaluate(() => getSelection().removeAllRanges());
     await p.keyboard.up('Shift');
-    // Selecting words while commenting draws the ink they will get: the sent band, low on each line, on the same
-    // words; the page's own selection paint is clear then. Off comment mode the page's selection is its own.
-    await p.mouse.move(5, 5);
-    await sleep(400);
-    const pinning = await p.evaluate(() => document.documentElement.classList.contains('lab-pinning'));
-    const sentNow = (await look(p)).inks.find((i) => i.end?.label.includes('delta epsilon'));
-    const selOn = await selDrawn(p, 'a', 'delta', 'pi', true);
-    const selOff = await selDrawn(p, 'a', 'delta', 'pi', false);
-    await p.evaluate((on) => document.documentElement.classList.toggle('lab-pinning', on), pinning);
-    check(eng, 'selecting while commenting draws the sent ink band on the words (light page)', selOn.st === 'next' && sameBand(selOn, sentNow) && is(selOn.lines[0].bg, '#24a046', 0.3), `${bandText(selOn)} vs ink ${bandText(sentNow)}`);
-    check(eng, 'the native selection paint is clear while commenting; the band goes with the selection', /rgba\(0, 0, 0, 0\)|transparent|\/ 0\)/.test(selOn.native) && selOn.after === 0, `${selOn.native}, ${selOn.after} left`);
-    check(eng, 'off comment mode the page keeps its own selection, no band', is(selOff.native, '#0000ff', 1) && selOff.lines.length === 0, `${selOff.native}, ${selOff.lines.length} lines`);
-    // A link inside inked words keeps its own click.
+    // Selecting words while commenting shows the ink they will get: the sent band, from the page's own selection,
+    // whose usual paint is clear then. Off comment mode the page's selection is its own.
+    {
+      await p.evaluate(() => document.documentElement.classList.add('lab-shift'));
+      await sel(p, 'long', 'w001x', 'w004x');
+      await sleep(200);
+      const [own, drawn] = [await rules(p, 'long', '::selection'), await band(p, await gap(p, 'long', 'w002x'))];
+      check(eng, 'selecting while commenting: the page\'s paint is clear, the words wear the sent band', clear(own.bg) && /underline/.test(own.line) && low(drawn) && green(drawn), `${JSON.stringify(own)} ${say(drawn)}`);
+      await p.evaluate(() => document.documentElement.classList.remove('lab-pinning'));
+      const plain = await rules(p, 'long', '::selection');
+      check(eng, 'off comment mode the page keeps its own selection, no band', /0, 0, 255/.test(plain.bg) && !/underline/.test(plain.line), JSON.stringify(plain));
+      await p.evaluate(() => (getSelection().removeAllRanges(), document.documentElement.classList.add('lab-pinning'), document.documentElement.classList.remove('lab-shift')));
+    }
     const c3 = await L.say(words('lnk', 'two linked words three'), 'link');
     await sleep(1200);
     const lk = await rect(p, '#lk');
     await p.mouse.click(lk.x + lk.w / 2, lk.y + lk.h / 2);
     await sleep(400);
-    check(eng, 'a link inside keeps its click', (await p.evaluate(() => location.hash)) === '#clicked' && !(await look(p)).inks.some((i) => i.end?.open));
+    check(eng, 'a link inside keeps its click', (await p.evaluate(() => location.hash)) === '#clicked' && !(await look(p)).card);
     await L.drop(c3.id);
 
-    // ---- Keyboard: the button at the end of the words
+    // ---- Keyboard: the pin, unseen at the end of the words, takes Tab and shows itself
     await p.evaluate(() => (location.hash = '', document.activeElement?.blur(), scrollTo(0, 0)));
     let reached = null;
     for (let i = 0; i < 80 && !reached; i++) {
       await p.keyboard.press('Tab');
-      reached = await shadow(p, () => { return r.activeElement?.classList.contains('ink-end') ? r.activeElement.getAttribute('aria-label') : null; });
+      reached = await shadow(p, () => { const el = r.activeElement; return el?.classList.contains('on-ink') ? { label: el.getAttribute('aria-label'), bg: getComputedStyle(el).backgroundColor } : null; });
     }
-    check(eng, 'Tab reaches the end button; its label names the words', Boolean(reached) && /on "/.test(reached), reached);
+    check(eng, 'Tab reaches the pin of inked words; it shows while it has the focus', Boolean(reached) && /^comment/.test(reached.label) && !clear(reached.bg), JSON.stringify(reached));
     await p.keyboard.press('Enter');
     await sleep(400);
-    check(eng, 'Enter opens the thread', (await look(p)).inks.some((i) => i.end?.open));
+    check(eng, 'Enter opens the thread', Boolean((await look(p)).card));
     await p.keyboard.press('Escape');
+    await sleep(300);
 
-    // ---- A new reply: a dot; a question: a ?
+    // ---- A new reply: the pin's dot shows, alone
     const vq = await look(p);
-    const asked1 = vq.inks.find((i) => i.end?.label.includes('one two'));
-    const plain = vq.inks.find((i) => i.end?.label.includes('second paragraph'));
-    check(eng, 'new reply: a dot; question: a ?', asked1.end.news && asked1.end.q && plain.end.news && !plain.end.q, `${asked1.end.news} ${asked1.end.q} ${plain.end.news} ${plain.end.q}`);
-    // Read, a plain answer rests; the question still breathes.
+    const dots = vq.pins.filter((x) => x.ink && x.news);
+    check(eng, 'new reply: a dot at the end of the words, the pin still unseen', dots.length >= 2 && dots.every((x) => x.dot && !x.seen), JSON.stringify(vq.pins.map((x) => [x.news, x.dot, x.seen])));
+    // Read, a plain answer rests; the question still asks.
     await p.evaluate(() => scrollTo(0, 0));
-    const plainLine = (await look(p)).inks.find((i) => i.end?.label.includes('second paragraph')).lines[0];
-    await p.mouse.click(...middle(plainLine));
+    await p.mouse.click(...(await word(p, 'p2', 'second')));
     await sleep(500);
     await p.keyboard.press('Escape');
     await sleep(500);
     const after = await look(p);
-    check(eng, 'a read, plain answer stops breathing; the question breathes on', after.inks.find((i) => i.end?.label.includes('second paragraph')).calm && !after.inks.find((i) => i.end?.label.includes('one two')).calm);
+    check(eng, 'a read, plain answer rests; the question asks on', st(after, 'second paragraph') === 'rest' && st(after, 'one two') === 'asks', `${st(after, 'second paragraph')} ${st(after, 'one two')}`);
+    // Comments hidden: no ink, and the words are the page's again.
+    await p.keyboard.press('m');
+    await sleep(500);
+    const hidden = await look(p);
+    const none = await band(p, await gap(p, 'a', 'epsilon'));
+    await p.mouse.move(...first);
+    await sleep(200);
+    check(eng, 'comments hidden: no ink, no hand', hidden.inks.length === 0 && none.rows === 0 && !(await look(p)).html.includes('lab-ink-over'), `${hidden.inks.length} inks, ${say(none)}`);
     await ctx.close();
 
-    // ---- A hairline and the states survive a reload, with no fill
+    // ---- A hairline and the states survive a reload
     {
       const [c2, q] = await open(browser, L.base + '/');
       const r2 = await look(q);
-      const d2 = r2.inks.find((i) => i.end?.label.includes('cell two'));
-      check(eng, 'a done hairline is there after a reload, with no fill', d2?.st === 'done' && d2.lines.every((l) => !l.fill) && r2.inks.length === 6, `${r2.inks.length} inks`);
-      await c2.close();
-    }
-
-    // ---- A note arriving while the page is open fills
-    {
-      const [c2, q] = await open(browser, L.base + '/');
-      const fresh = await L.say(words('a', 'alpha'.replace('alpha', 'Alpha beta gamma')), 'fresh');
-      let filled = false;
-      for (let i = 0; i < 20 && !filled; i++) {
-        await sleep(60);
-        filled = (await look(q)).inks.some((i) => i.end?.label.includes('Alpha beta') && i.lines.some((l) => l.fill));
-      }
-      check(eng, 'a note that arrives while open fills line by line', filled);
+      check(eng, 'a done hairline is there after a reload', st(r2, 'cell two') === 'done' && r2.inks.length === 6, `${r2.inks.length} inks`);
+      // A note arriving while the page is open is inked without a reload.
+      const fresh = await L.say(words('a', 'Alpha beta gamma'), 'fresh');
+      await sleep(1200);
+      check(eng, 'a note that arrives while open is inked', st(await look(q), 'Alpha beta gamma') === 'next');
       await L.drop(fresh.id);
       await c2.close();
     }
@@ -334,19 +374,24 @@ try {
     // ---- Words removed: no ink, the note is off the page in the ⋯ menu ("moved · 1", as any pin whose spot is gone); restored: ink again
     {
       const [c2, q] = await open(browser, L.base + '/');
-      await q.evaluate(() => { const e = document.getElementById('p1'); window.__p1 = e; e.replaceWith(document.createComment('gone')); window.__hole = document.body.childNodes; });
+      await q.evaluate(() => { const e = document.getElementById('p1'); window.__p1 = e; e.replaceWith(document.createComment('gone')); });
       await sleep(1500);
       const gone = await look(q);
       const movedBtn = await q.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.moved-btn')?.textContent);
-      check(eng, 'words removed: no ink, the ⋯ menu lists it as moved', movedBtn === 'moved · 1' && !gone.inks.some((i) => i.end?.label.includes('paragraph here')), `${movedBtn} ${JSON.stringify(gone.pins)}`);
+      check(eng, 'words removed: no ink, the ⋯ menu lists it as moved', movedBtn === 'moved · 1' && !st(gone, 'paragraph here'), `${movedBtn} ${JSON.stringify(gone.inks)}`);
       await q.evaluate(() => { const c = [...document.body.childNodes].find((n) => n.nodeType === 8 && n.data === 'gone'); c.replaceWith(window.__p1); });
       await sleep(1500);
       const back = await look(q);
-      check(eng, 'words restored: ink again', back.inks.some((i) => i.end?.label.includes('paragraph here')) && back.pins.length === 1);
+      check(eng, 'words restored: ink again', st(back, 'paragraph here') === 'now' && back.pins.filter((x) => !x.ink).length === 1);
+      // The words rewritten in place (the element stays): the pin shows again, by itself.
+      await q.evaluate(() => { document.getElementById('c2').textContent = 'something else'; dispatchEvent(new Event('resize')); });
+      await sleep(1500);
+      const rewritten = await look(q);
+      check(eng, 'words rewritten: no ink, the pin is back', !st(rewritten, 'cell two') && rewritten.pins.filter((x) => !x.ink && x.seen).length === 2, JSON.stringify(rewritten.pins.map((x) => [x.ink, x.seen])));
       await c2.close();
     }
 
-    // ---- Two cells, two paragraphs, a box that scrolls, sticky words, right to left
+    // ---- Two cells, two paragraphs, a box that scrolls, sticky words, right to left: the browser's work, no code of ours
     {
       await L.clear();
       await L.say(words('c1', 'cell one words', { quote: { exact: 'cell one words cell two words', prefix: '', suffix: '', selected: true } }), 'two cells');
@@ -356,59 +401,56 @@ try {
       await L.say(words('rt', 'كلمات عربية'), 'rtl');
       const [c2, q] = await open(browser, L.base + '/');
       const w = await look(q);
-      const cells = w.inks.find((i) => i.end?.label.includes('cell one words cell'));
+      const [in1, in2] = [await band(q, await gap(q, 'c1', 'cell')), await band(q, await gap(q, 'c2', 'cell'))];
       const c1 = await rect(q, '#c1');
-      const c2r = await rect(q, '#c2');
-      check(eng, 'two cells: two bands, none across the gutter', cells?.lines.length === 2 && cells.lines[0].r <= c1.r + 1 && cells.lines[1].l >= c2r.x - 1, cells && cells.lines.map((l) => `${Math.round(l.l)}-${Math.round(l.r)}`).join(' '));
-      const paras = w.inks.find((i) => i.end?.label.includes('paragraph here second'));
+      const gutter = await band(q, { x: c1.r - 20, t: c1.y, h: c1.h });
+      check(eng, 'two cells: a band in each, none across the gutter', w.inks.length === 5 && low(in1) && low(in2) && gutter.rows === 0, `${say(in1)} | ${say(in2)} | gutter ${gutter.rows}`);
       const [r1, r2] = [await rect(q, '#p1'), await rect(q, '#p2')];
-      check(eng, 'two paragraphs: bands in both, none between', paras?.lines.length === 2 && paras.lines[0].b <= r1.b + 1 && paras.lines[1].t >= r2.y - 1, paras && paras.lines.map((l) => `${Math.round(l.t)}-${Math.round(l.b)}`).join(' '));
+      const [pa, pb] = [await band(q, await gap(q, 'p1', 'paragraph')), await band(q, await gap(q, 'p2', 'second'))];
+      const between = await band(q, { x: r1.x + 40, t: r1.b + 2, h: r2.y - r1.b - 4 });
+      check(eng, 'two paragraphs: bands in both, none between', low(pa) && low(pb) && between.rows === 0, `${say(pa)} | ${say(pb)} | between ${between.rows}`);
       const box = await rect(q, '#box');
-      const bi = w.inks.find((i) => i.end?.label.includes('box line one'));
-      check(eng, 'scroll box: no band outside it', bi?.lines.length > 0 && bi.lines.every((l) => l.t >= box.y - 1 && l.b <= box.b + 1), bi && `${bi.lines.length} lines in ${Math.round(box.y)}-${Math.round(box.b)}`);
-      // Scrolled in the box, the bands cut to what it shows after the page notices.
-      const ri = w.inks.find((i) => i.end?.label.includes('كلمات'));
-      check(eng, 'rtl: the end button is at the left', ri && ri.end.r <= Math.min(...ri.lines.map((l) => l.l)) + 2, ri && `${ri.end.r} vs ${Math.min(...ri.lines.map((l) => l.l))}`);
+      // Its inked lines run on below what the box shows: nothing of them is painted on the lines under the box.
+      const rt = await rect(q, '#rt');
+      const [inBox, under, lower] = [await band(q, await gap(q, 'bp', 'line')), await band(q, await gap(q, 'stk', 'stay')), await band(q, { x: box.x + 60, t: rt.y, h: rt.h })];
+      check(eng, 'scroll box: ink inside it, none under it', low(inBox) && under.rows === 0 && lower.rows === 0, `${say(inBox)} | under ${under.rows}, ${lower.rows}`);
+      const rtl = await band(q, await gap(q, 'rt', 'كلمات'));
+      check(eng, 'right to left: inked', st(w, 'كلمات') === 'next' && rtl.rows > 0, say(rtl));
       await q.evaluate(() => scrollTo(0, 400));
       await sleep(600);
-      const st = (await look(q)).inks.find((i) => i.end?.label.includes('sticky words'));
-      const sr = await q.evaluate(() => { const r = document.createRange(); r.selectNodeContents(document.getElementById('stk')); return r.getBoundingClientRect().top; });
-      check(eng, 'sticky words: the ink follows', st && Math.abs(st.lines[0].t - sr) < 2, st && `${st.lines[0].t} vs ${sr}`);
+      const stuck = await band(q, await gap(q, 'stk', 'sticky'));
+      check(eng, 'sticky words: the ink stays on them as the page scrolls', low(stuck) && green(stuck), say(stuck));
       await c2.close();
     }
 
-    // ---- Reduced motion and print
+    // ---- Reduced motion: nothing beats
     {
+      const w0 = await L.say(words('a', 'Alpha beta gamma'), 'fresh');
+      await L.reply(w0.id, 'on it', 'working');
       const [c2, q] = await open(browser, L.base + '/', { reducedMotion: 'reduce' });
-      const fresh = await L.say(words('a', 'Alpha beta gamma'), 'fresh');
-      await sleep(900);
       const w = await look(q);
-      const f = w.inks.find((i) => i.end?.label.includes('Alpha beta'));
-      const stills = w.inks.every((i) => i.lines.every((l) => !l.fill && l.anim === 'none'));
-      check(eng, 'reduced motion: no fill, sweep or breathing; the ? and the dot stay', Boolean(f) && stills, JSON.stringify(w.inks.map((i) => i.lines.map((l) => [l.fill, l.anim]))));
-      await q.emulateMedia({ media: 'print' });
-      check(eng, 'print: no ink', (await look(q)).display === 'none');
-      await L.drop(fresh.id);
+      check(eng, 'reduced motion: working is inked, the page does not beat', st(w, 'Alpha beta gamma') === 'now' && !w.html.includes('lab-ink-live') && w.beat === 'none', `${w.html} ${w.beat}`);
+      await L.drop(w0.id);
       await c2.close();
     }
 
-    // ---- Dark page on a light computer: strengths chosen from the words' own colour
+    // ---- A dark page: the stronger set, by the page's own text colour, not the computer's setting
     {
       await L.clear();
-      await L.say(words('a', 'gamma delta'), 'on dark', '/dark');
-      await L.say(words('a', 'gamma delta'), 'on light');
+      await L.say(words('a', 'gamma delta epsilon'), 'on dark', '/dark');
+      await L.say(words('a', 'gamma delta epsilon'), 'on light');
       const [c2, q] = await open(browser, L.base + '/dark', { colorScheme: 'light' });
-      const [c3, q2] = await open(browser, L.base + '/', { colorScheme: 'dark' });
-      const [onDark, onLight] = [await look(q), await look(q2)];
-      const darkSel = await selDrawn(q, 'a', 'gamma', 'delta', true);
-      check(eng, 'selecting while commenting draws the sent ink band (dark page)', sameBand(darkSel, onDark.inks[0]) && is(darkSel.lines[0].bg, '#24a046', 0.45), `${bandText(darkSel)} vs ink ${onDark.inks[0] && bandText(onDark.inks[0])}`);
-      check(eng, 'light or dark follows the page, not the computer', onDark.inks[0]?.dk === true && onLight.inks[0]?.dk === false, `dark page ${onDark.inks[0]?.dk}, light page ${onLight.inks[0]?.dk}`);
+      const [onDark, darkRule, darkBand] = [await look(q), await rules(q, 'a', '::highlight(lab-ink-next)'), await band(q, await gap(q, 'a', 'gamma'))];
+      const [c3, q3] = await open(browser, L.base + '/', { colorScheme: 'dark' });
+      const [onLight, lightRule] = [await look(q3), await rules(q3, 'a', '::highlight(lab-ink-next)')];
+      check(eng, 'light or dark follows the page, not the computer', onDark.html.includes('lab-ink-dk') && !onLight.html.includes('lab-ink-dk') && Math.abs(alpha(darkRule.color) - 0.45) < 0.03 && Math.abs(alpha(lightRule.color) - 0.3) < 0.03, `dark ${darkRule.color}, light ${lightRule.color}`);
+      check(eng, 'a dark page: the band is painted, green', low(darkBand) && green(darkBand), say(darkBand));
       await c2.close();
       await c3.close();
     }
 
     // ---- Real flow: select words (the dialog opens at once; the words wear the draft's grey band), type, send: the sent
-    // note is yellow ink, nothing saved but the words
+    // note is green ink, saved as selected words
     {
       await L.clear();
       const [c2, q] = await open(browser, L.base + '/');
@@ -418,19 +460,41 @@ try {
       await q.keyboard.up('Shift');
       await sleep(600);
       const d = await look(q);
-      const band = await q.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.ink[data-st=draft] .ln'));
-      check(eng, 'selecting words: the words wear the draft band, no pin', Boolean(band) && d.pins.length === 0, `${d.inks.length} inks, ${d.pins.length} pins`);
+      const grey = await band(q, await gap(q, 'a', 'gamma'));
+      check(eng, 'selecting words: the words wear the draft band, no pin', st(d, 'gamma delta') === 'draft' && d.pins.length === 0 && d.draftPin !== 'visible' && low(grey) && !green(grey), `${JSON.stringify(d.inks)} ${d.pins.length} pins, draft pin ${d.draftPin}, ${say(grey)}`);
+      check(eng, 'the draft\'s words wear one band: the quote\'s green stays off them', d.quote.length === 0, JSON.stringify(d.quote));
       await q.keyboard.type('a note on words');
       await q.keyboard.press('Enter');
       await sleep(1000);
       const saved = (await L.read())[0];
       const w = await look(q);
-      check(eng, 'sent: yellow ink, no pin, saved as selected words', saved?.anchor.quote.selected === true && w.inks.length === 1 && w.inks[0].st === 'next' && w.pins.length === 0, JSON.stringify(saved?.anchor.quote));
+      check(eng, 'sent: green ink, the pin unseen, saved as selected words', saved?.anchor.quote.selected === true && w.inks.length === 1 && w.inks[0].st === 'next' && w.pins.length === 1 && !w.pins[0].seen, JSON.stringify(saved?.anchor.quote));
       await c2.close();
     }
 
-    // ---- A real Shift-drag with the mouse, let go: the words keep the low band (no full-height green), in the ink's
-    // look, after the drag ends and Shift's grace (400 ms) is over, and with the comment box open on them.
+    // ---- With ink on, the page's text stays selectable (Safari paints a highlight wrongly on text that can't be), so
+    // a plain drag must still select nothing: it marks an area, as with ink off.
+    {
+      await L.clear();
+      const [c2, q] = await open(browser, L.base + '/');
+      const from = await word(q, 'a', 'gamma');
+      const to = await word(q, 'lnk', 'three');
+      await q.mouse.move(...from);
+      await q.mouse.down();
+      await q.mouse.move(from[0] + 40, from[1] + 10, { steps: 4 });
+      await q.mouse.move(...to, { steps: 8 });
+      await sleep(150);
+      const picked = await q.evaluate(() => String(getSelection()));
+      const zone = await shadow(q, () => { return Boolean(r.querySelector('.zone')); });
+      await q.mouse.up();
+      await sleep(300);
+      check(eng, 'a plain drag selects no words: it marks an area', picked === '' && zone, `selected "${picked}", area ${zone}`);
+      await q.keyboard.press('Escape');
+      await c2.close();
+    }
+
+    // ---- A real Shift-drag with the mouse: the band shows while dragging (the selection's), and once let go the words
+    // keep the low band (the draft's grey), with no full-height green on them.
     {
       await L.clear();
       const [c2, q] = await open(browser, L.base + '/');
@@ -446,53 +510,33 @@ try {
       await q.mouse.down();
       await q.mouse.move(at[2], at[3], { steps: 8 });
       await sleep(200);
-      const during = await q.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelectorAll('.ink.sel:not(.quote) .ln').length);
+      const during = await band(q, await gap(q, 'a', 'gamma'));
       await q.mouse.up();
       await q.keyboard.up('Shift');
       await sleep(600);
-      const after = await q.evaluate(() => {
-        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot;
-        const a = document.getElementById('a');
-        const paint = (pseudo) => { try { return getComputedStyle(a, pseudo).backgroundColor; } catch { return 'n/a'; } };
-        const bands = [...r.querySelectorAll('.ink .ln')].map((l) => {
-          const b = l.getBoundingClientRect();
-          const q = getComputedStyle(l, '::before');
-          return { st: l.parentElement.dataset.st, h: b.height, height: parseFloat(q.height), bg: q.backgroundColor };
-        });
-        return { sel: paint('::selection'), quote: paint('::highlight(lab-quote)'), lit: Boolean(CSS.highlights?.get('lab-quote')?.size), bands, draft: Boolean(r.querySelector('.card textarea, .card [contenteditable]')) };
-      });
-      const green = (c) => is(c, '#34c759', 0.3);
-      check(eng, 'Shift-drag: the band shows while dragging', during > 0, `${during} pieces`);
-      check(eng, 'Shift-drag let go: no full-height green on the words (selection or quote)', !green(after.sel) && !green(after.quote), `selection ${after.sel}, quote ${after.quote}, quote set ${after.lit}`);
-      check(eng, 'Shift-drag let go: the words keep the low band in the ink look (the draft: grey)', after.bands.length > 0 && after.bands.every((b) => Math.abs(b.height / b.h - 0.44) < 0.03) && after.bands.some((b) => b.st === 'draft' && is(b.bg, '#8e8a82', 0.16)), JSON.stringify(after.bands));
-      check(eng, 'Shift-drag let go: one band on the words, not two stacked', after.bands.length === 1, `${after.bands.length} bands`);
+      const [after, own, lit, kept2] = [await look(q), await rules(q, 'a', '::selection'), await rules(q, 'a', '::highlight(lab-quote)'), await band(q, await gap(q, 'a', 'gamma'))];
+      check(eng, 'Shift-drag: the band shows while dragging', low(during) && green(during), say(during));
+      check(eng, 'Shift-drag let go: no full-height green on the words (selection or quote)', !/52, 199, 89|0\.2\d* 0\.78\d* 0\.3/.test(own.bg) && after.quote.length === 0 && alpha(lit.bg) < 0.2, `selection ${own.bg}, quote ${lit.bg}, quote set ${JSON.stringify(after.quote)}`);
+      check(eng, 'Shift-drag let go: the words keep the low band (the draft: grey), one band', st(after, 'gamma delta') === 'draft' && after.inks.length === 1 && low(kept2), `${JSON.stringify(after.inks)} ${say(kept2)}`);
       await c2.close();
     }
 
-    // ---- Whole words, as the quote takes them (anchoring.ts wholeWords): a Shift-drag from inside a word to inside
-    // another draws its band on both whole words and quotes them; a drag inside one word keeps its letters.
+    // ---- Whole words, as the quote takes them (comments.js): a Shift-drag from inside a word to inside another
+    // quotes both whole words, and the draft's band is on them; a drag inside one word keeps its letters.
     {
       const where = (q) => q.evaluate(() => {
         const t = document.getElementById('a').firstChild;
         const r = document.createRange();
         const at = (i) => (r.setStart(t, i), r.setEnd(t, i + 1), r.getBoundingClientRect());
-        const box = (w) => (r.setStart(t, t.data.indexOf(w)), r.setEnd(t, t.data.indexOf(w) + w.length), r.getBoundingClientRect());
         const g = t.data.indexOf('gamma');
         const d = t.data.indexOf('delta');
         const mid = (b) => [b.left + b.width / 2, b.top + b.height / 2];
-        return { g1: { xy: mid(at(g + 1)), i: g + 1 }, g3: { xy: mid(at(g + 3)), i: g + 3 }, d2: { xy: mid(at(d + 2)), i: d + 2 }, gd: [box('gamma delta').left, box('gamma delta').right], g: [box('gamma').left, box('gamma').right] };
-      });
-      const shown = (q) => q.evaluate(() => {
-        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot;
-        const ln = [...r.querySelectorAll('.ink.sel:not(.quote) .ln')].map((l) => l.getBoundingClientRect());
-        const sel = getSelection();
-        const own = sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
-        return { text: String(sel), own: own && [own.left, own.right], band: ln.length ? [Math.min(...ln.map((b) => b.left)), Math.max(...ln.map((b) => b.right))] : null };
+        return { g1: { xy: mid(at(g + 1)), i: g + 1 }, g3: { xy: mid(at(g + 3)), i: g + 3 }, d2: { xy: mid(at(d + 2)), i: d + 2 } };
       });
       // Chrome's engine starts no selection on a Shift-press inside a word when there is none yet (a plain page does
       // the same under Playwright), so there the drag's selection is set by hand between the same letters; the
-      // lab's part (the band and the quote) is what is checked.
-      const drag = async (q, from, to, shiftAtUp) => {
+      // lab's part (the quote and its band) is what is checked.
+      const drag = async (q, from, to) => {
         await q.keyboard.down('Shift');
         if (eng === 'chromium') {
           await q.evaluate(([f, t]) => {
@@ -505,82 +549,74 @@ try {
           await q.mouse.move(...to.xy, { steps: 8 });
         }
         await sleep(150);
-        const live = await shown(q);
-        if (!shiftAtUp) await q.keyboard.up('Shift'); // Shift's grace keeps the words selectable; no comment opens
-        if (eng === 'chromium') await q.evaluate((shift) => document.dispatchEvent(new MouseEvent('mouseup', { shiftKey: shift, button: 0, bubbles: true })), shiftAtUp);
+        const letters = await q.evaluate(() => String(getSelection()));
+        if (eng === 'chromium') await q.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { shiftKey: true, button: 0, bubbles: true })));
         else await q.mouse.up();
-        if (shiftAtUp) await q.keyboard.up('Shift');
-        await sleep(120);
-        return [live, await shown(q)];
+        await q.keyboard.up('Shift');
+        await sleep(400);
+        return letters;
       };
-      const near = (a, b) => a && b && Math.abs(a[0] - b[0]) < 1.5 && Math.abs(a[1] - b[1]) < 1.5;
-      for (const [name, from, to, want, box] of [['mid-word to mid-word', 'g1', 'd2', 'gamma delta', 'gd'], ['mid-word back to mid-word', 'd2', 'g1', 'gamma delta', 'gd'], ['inside one word', 'g1', 'g3', null, null]]) {
+      for (const [name, from, to, want] of [['mid-word to mid-word', 'g1', 'd2', 'gamma delta'], ['mid-word back to mid-word', 'd2', 'g1', 'gamma delta'], ['inside one word', 'g1', 'g3', null]]) {
         await L.clear();
         const [c2, q] = await open(browser, L.base + '/');
         const w = await where(q);
-        const [live] = await drag(q, w[from], w[to], false);
-        const letters = !want && live.text; // inside one word: exactly the letters selected
-        check(eng, `whole words, ${name}: the band ${want ? 'snaps to the whole words' : 'keeps the letters'} while dragging`, near(live.band, box ? w[box] : live.own), `${JSON.stringify(live.band)} vs ${JSON.stringify(box ? w[box] : live.own)}`);
-        await q.evaluate(() => getSelection().removeAllRanges());
-        await sleep(500);
-        await drag(q, w[from], w[to], true);
-        await sleep(400);
+        const letters = await drag(q, w[from], w[to]);
+        const draft = (await look(q)).inks.find((i) => i.st === 'draft')?.text;
+        if (want) check(eng, `whole words, ${name}: the draft's band is on the whole words`, draft === want, `${draft} (dragged "${letters}")`);
         await q.keyboard.type('whole words');
         await q.keyboard.press('Enter');
         await sleep(1000);
         const saved = (await L.read())[0];
-        check(eng, `whole words, ${name}: the saved quote is the words shown`, saved?.anchor.quote.exact === (want || letters), JSON.stringify(saved?.anchor.quote.exact));
+        check(eng, `whole words, ${name}: the saved quote is ${want ? 'the whole words' : 'the letters'}`, saved?.anchor.quote.exact === (want || letters), JSON.stringify(saved?.anchor.quote.exact));
         await c2.close();
       }
     }
 
-    // ---- Overlapping notes: the newest keeps its band, the others are hairlines under it
+    // ---- Overlapping notes: both are inked, and a click finds the right one
     {
       await L.clear();
       await L.say(words('a', 'delta epsilon zeta eta theta'), 'older');
       await L.say(words('a', 'epsilon zeta'), 'inside');
       const [c2, q] = await open(browser, L.base + '/');
       const w = await look(q);
-      const [o, n] = [w.inks.find((i) => i.end?.label.includes('delta epsilon')), w.inks.find((i) => i.end?.label.includes('on "epsilon zeta"'))];
-      const hair = o.lines[0].top - o.lines[0].h;
-      check(eng, 'overlapping notes: the newer keeps its band, the older is a hairline under it', Math.abs(n.lines[0].height / n.lines[0].h - 0.44) < 0.03 && Math.abs(o.lines[0].height - 2) < 0.5 && Math.abs(hair - 1) < 0.6, `band ${n.lines[0].height}, hairline ${o.lines[0].height} at +${hair}`);
+      check(eng, 'overlapping notes: both inked', w.inks.length === 2 && w.pins.every((x) => x.ink), JSON.stringify(w.inks));
       // On the shared words a click opens the one on the fewest; on the others' alone, that one.
-      const shared = [(n.lines[0].l + n.lines[0].r) / 2, (n.lines[0].t + n.lines[0].b) / 2];
-      await q.mouse.click(...shared);
+      await q.mouse.click(...(await word(q, 'a', 'zeta')));
       await sleep(400);
-      const open1 = (await look(q)).inks.find((i) => i.end?.open);
-      check(eng, 'a click on shared words opens the note on the fewest', open1?.end.label.includes('on "epsilon zeta"'), open1?.end.label);
+      const open1 = (await look(q)).card;
+      check(eng, 'a click on shared words opens the note on the fewest', open1.includes('inside'), open1.slice(0, 60));
       await q.keyboard.press('Escape');
       await sleep(300);
-      await q.mouse.click(o.lines[0].l + 3, (o.lines[0].t + o.lines[0].b) / 2);
+      await q.mouse.click(...(await word(q, 'a', 'delta')));
       await sleep(400);
-      const open2 = (await look(q)).inks.find((i) => i.end?.open);
-      check(eng, 'a click on the older note\'s own words opens it', open2?.end.label.includes('delta epsilon zeta eta theta'), open2?.end.label);
+      const open2 = (await look(q)).card;
+      check(eng, 'a click on the older note\'s own words opens it', open2.includes('older'), open2.slice(0, 60));
       await q.keyboard.press('Escape');
       await c2.close();
-      // Identical quotes: one stack, three hairlines at most 3 px apart; a click opens the newest; Tab reaches each.
+    }
+
+    // ---- Notes on the very same words: a click opens the newest, and Tab reaches each
+    {
       await L.clear();
-      for (let i = 0; i < 5; i++) await L.say(words('p2', 'second paragraph'), `same ${i}`);
-      const [c3, q3] = await open(browser, L.base + '/');
-      const w3 = await look(q3);
-      const tops = w3.inks.map((i) => Math.round((i.lines[0].top - i.lines[0].h) * 10) / 10).sort((x, y) => x - y);
-      const bands = w3.inks.filter((i) => i.lines[0].height > 5).length;
-      check(eng, 'identical notes: one band, at most three hairlines 3px apart', w3.inks.length === 5 && bands === 1 && JSON.stringify(tops.filter((t) => t > 0)) === JSON.stringify([1, 4, 7, 7]), `${bands} band, tops ${tops}`);
-      const line = w3.inks[0].lines[0];
-      await q3.mouse.click(...middle(line));
+      for (let i = 1; i <= 5; i++) await L.say(words('a', 'epsilon zeta eta'), `same ${i}`);
+      const [c2, q] = await open(browser, L.base + '/');
+      const w3 = await look(q);
+      check(eng, 'identical notes: all inked', w3.inks.length === 5 && w3.pins.length === 5 && w3.pins.every((x) => x.ink), `${w3.inks.length} inks`);
+      await q.mouse.click(...(await word(q, 'a', 'zeta')));
       await sleep(400);
-      const opened = (await look(q3)).inks.find((i) => i.end?.open);
-      check(eng, 'identical notes: a click opens the newest', opened?.end.label.startsWith('comment 5'), opened?.end.label);
-      await q3.keyboard.press('Escape');
-      await q3.evaluate(() => (document.activeElement?.blur(), scrollTo(0, 0)));
+      const opened = (await look(q)).card;
+      check(eng, 'identical notes: a click opens the newest', opened.includes('same 5'), opened.slice(0, 60));
+      await q.keyboard.press('Escape');
+      await sleep(300);
+      await q.evaluate(() => document.activeElement?.blur());
       const got = new Set();
-      for (let i = 0; i < 90 && got.size < 5; i++) {
-        await q3.keyboard.press('Tab');
-        const l = await shadow(q3, () => { return r.activeElement?.classList.contains('ink-end') ? r.activeElement.getAttribute('aria-label') : null; });
-        if (l) got.add(l);
+      for (let i = 0; i < 80; i++) {
+        await q.keyboard.press('Tab');
+        const label = await shadow(q, () => { return r.activeElement?.classList.contains('on-ink') ? r.activeElement.getAttribute('aria-label') : null; });
+        if (label) got.add(label);
       }
-      check(eng, 'identical notes: Tab reaches each one', got.size === 5, `${got.size} buttons`);
-      await c3.close();
+      check(eng, 'identical notes: Tab reaches each one', got.size === 5, `${got.size} pins`);
+      await c2.close();
     }
 
     // ---- A long selection: saved cut at 300 characters with its last words; the ink runs to the end
@@ -596,68 +632,29 @@ try {
       await q.keyboard.press('Enter');
       await sleep(1000);
       const saved = (await L.read())[0];
-      const lastLine = async (page) => page.evaluate(() => { const r = document.createRange(); r.selectNodeContents(document.getElementById('long')); const b = [...r.getClientRects()].at(-1); return { r: b.right, b: b.bottom }; });
-      const lastWords = await lastLine(q);
-      // The box as laid out, not as the fill's scale shows it (a long fill takes seconds).
-      const draw = async (page) => { const i = (await look(page)).inks[0]; return i && { n: i.lines.length, r: i.lines.at(-1).pr, b: i.lines.at(-1).pb, st: i.st }; };
-      const now = await draw(q);
+      const now = (await look(q)).inks[0];
       check(eng, 'a long selection: cut at 300 characters, with its last words kept', saved?.anchor.quote.exact.length >= 290 && saved.anchor.quote.exact.length <= 300 && saved.anchor.quote.tail?.endsWith('w089x') && saved.anchor.quote.tail.length <= 40, JSON.stringify(saved?.anchor.quote.tail));
-      check(eng, 'a long selection: the ink reaches the last line, on send and after a reload', Boolean(now) && Math.abs(now.r - lastWords.r) < 2 && Math.abs(now.b - lastWords.b) < 2, JSON.stringify(now) + JSON.stringify(lastWords));
+      check(eng, 'a long selection: the ink reaches the last word', now?.st === 'next' && now.text.startsWith('w000x') && now.text.endsWith('w089x'), now && `${now.text.slice(0, 12)} … ${now.text.slice(-12)}`);
       await q.reload();
       await sleep(1200);
-      const again = await draw(q);
-      check(eng, 'a long selection: the same after a reload', Boolean(again) && again.n === now.n && Math.abs(again.r - lastWords.r) < 2, JSON.stringify(again));
+      const again = (await look(q)).inks[0];
+      check(eng, 'a long selection: the same after a reload', again?.text === now?.text, again && again.text.slice(-12));
       await c2.close();
     }
 
-    // ---- Quiet ink and colours (labit.json: quietInk, inkColors)
-    {
-      await Q.clear();
-      const w1 = await Q.say(words('p1', 'paragraph here'), 'working');
-      await Q.reply(w1.id, 'on it', 'working');
-      const a1 = await Q.say(words('p2', 'second paragraph'), 'asks');
-      await Q.reply(a1.id, 'an answer');
-      await Q.say(words('a', 'gamma delta'), 'sent');
-      const d1 = await Q.say(words('c2', 'cell two'), 'done');
-      await Q.resolve(d1.id);
-      const [c2, q] = await open(browser, Q.base + '/');
-      const fresh = await Q.say(words('lnk', 'one two'), 'arrives');
-      await sleep(250);
-      const w = await look(q);
-      const work = w.inks.find((i) => i.st === 'now');
-      check(eng, 'quietInk: working is a still tint, nothing moves', work.lines.every((l) => l.anim === 'none' && !/gradient/.test(l.img)) && (is(work.lines[0].bg, '#34c759', 0.3) || is(work.lines[0].bg, '#34c759', 0.4)), `${work.lines[0].anim} ${work.lines[0].img}`);
-      check(eng, 'quietInk: a note that arrives does not fill', w.inks.length === 5 && w.inks.every((i) => i.lines.every((l) => !l.fill)), `${w.inks.length} inks`);
-      const asks = w.inks.find((i) => i.st === 'asks');
-      check(eng, 'quietInk: asks still breathes', /breath/.test(asks.lines[0].anim), asks.lines[0].anim);
-      const done = await q.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot; return getComputedStyle(r.querySelector('.ink[data-st=done] .ln'), '::before').transitionDuration; });
-      check(eng, 'quietInk: the drain is at once', /^(0s,? ?)+$/.test(done), done);
-      const sent = w.inks.find((i) => i.st === 'next');
-      check(eng, 'inkColors.sent recolours the band (one colour, strengths stay)', is(sent.lines[0].bg, '#ff0000', 0.3) || is(sent.lines[0].bg, '#ff0000', 0.45), sent.lines[0].bg);
-      const other = w.inks.find((i) => i.st === 'asks');
-      check(eng, 'inkColors: the other states keep theirs', is(other.lines[0].bg, '#e08a1a', 0.48) || is(other.lines[0].bg, '#f0a040', 0.44), other.lines[0].bg);
-      void fresh;
-      await c2.close();
-    }
-
-    // ---- Busy page: sixty notes, and a pointer move reads no layout
+    // ---- Busy page: sixty notes, each inked, each found under the pointer
     {
       await L.clear();
       for (let i = 0; i < 60; i++) await L.say(words(`n${i}`, 'has a few words'), `note ${i}`);
       const [c2, q] = await open(browser, L.base + '/');
-      await q.evaluate(() => scrollTo(0, 1100));
+      await q.evaluate(() => document.getElementById('n30').scrollIntoView({ block: 'center' }));
       await sleep(900);
       const n = (await look(q)).inks.length;
-      await q.evaluate(() => {
-        window.__reads = 0;
-        for (const [o, m] of [[Element.prototype, 'getBoundingClientRect'], [Element.prototype, 'getClientRects'], [Range.prototype, 'getBoundingClientRect'], [Range.prototype, 'getClientRects']]) {
-          const f = o[m];
-          o[m] = function (...a) { window.__reads++; return f.apply(this, a); };
-        }
-      });
-      for (let i = 0; i < 80; i++) await q.mouse.move(40 + (i * 7) % 500, 60 + (i * 13) % 600);
-      await sleep(200);
-      const reads = await q.evaluate(() => window.__reads);
-      check(eng, `${n > 50 ? n : 60} notes: a pointer move reads no layout`, n === 60 && reads === 0, `${n} inks, ${reads} reads`);
+      for (let i = 0; i < 40; i++) await q.mouse.move(40 + (i * 7) % 500, 60 + (i * 13) % 600);
+      await q.mouse.click(...(await word(q, 'n30', 'few')));
+      await sleep(400);
+      const opened = (await look(q)).card;
+      check(eng, 'sixty notes: all inked, a click opens the one under it', n === 60 && opened.includes('note 30'), `${n} inks, opened ${opened.slice(0, 40)}`);
       await c2.close();
     }
 
@@ -671,14 +668,14 @@ try {
     await OFF.say(words('a', 'gamma delta epsilon'), 'pin please');
     const [c2, q] = await open(browser, OFF.base + '/');
     const w = await look(q);
-    check(eng, 'inkOnText off: selected words get a pin', w.inks.length === 0 && w.pins.length === 1 && w.pins[0].vis, `${w.inks.length} inks, ${w.pins.length} pins`);
+    const none = await band(q, await gap(q, 'a', 'gamma'));
+    check(eng, 'inkOnText off: selected words get a pin, no ink', w.inks.length === 0 && w.html.length === 0 && none.rows === 0 && w.pins.length === 1 && !w.pins[0].ink && w.pins[0].seen, `${w.inks.length} inks, ${JSON.stringify(w.pins)}, ${w.html}`);
     await c2.close();
     await browser.close();
   }
 } finally {
   L.stop();
   OFF.stop();
-  Q.stop();
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

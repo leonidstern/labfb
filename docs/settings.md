@@ -78,8 +78,6 @@ Your `~/.config/labit/settings.json`:
 | `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
 | `actions` | below | | The buttons in the comment dialog: on words you select, and on a spot or an area. | both |
-| `quietInk` | `false` | | Ink on selected words (flag `inkOnText`): a still green tint while the agent works, no fill when a note arrives, the drain to a hairline at once. Only "asks" still moves. | both |
-| `inkColors` | below | | The ink's colours, per state: `{ "sent": "#e0a800" }`. States: `draft`, `sent`, `working`, `asks`, `done`; each a `#rgb` or `#rrggbb`. One colour serves light and dark; the strengths stay. The project's win over yours, state by state. Hosted labs use the defaults. | both |
 | `flags` | everything off | the ⋯ menu's **experiments** | What this lab is trying: `{ "<flag>": true }`. See **Experiments** below. | both |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
