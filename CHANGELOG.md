@@ -4,6 +4,58 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+## 0.7.0 · 2026-11-19
+
+The first release under a new license, and a big one: boards, select mode, drawn pins, one list of actions, and labs that wake your agent and follow their install. MCP and cloud labs are parked. The full list of changes as they landed is at the end.
+
+### Before you update
+
+- **License.** labit 0.7.0 and later are under [PolyForm Small Business 1.0.0](LICENSE), not MIT: free for people and companies with fewer than 100 people and under $1M in yearly revenue, a paid license for larger ones. 0.6.2 and earlier stay MIT.
+- **MCP is parked** (kept whole on the `park/mcp` branch). `labit mcp` is gone; agents use the command line: `wait`, `reply`, `resolve`, `pin`. Drop any `claude mcp add labit …` line and use the plugin or `labit skill`.
+- **Cloud labs are parked** (on `park/cloud-lab`). `labit add` / `labit remove`, saved cloud pages, invite links for hosted labs and the Vercel deploy are gone; labit is the local lab only.
+- **Actions are a new setting.** `actions` in your own settings.json is an ordered list of `{ "name", "prompt" }`, seeded once from your old buttons. The old `{ words, spot }` form and a project's `actions` are no longer read.
+- **Keys moved.** `1` toggles comment / pointer, `C` is comment mode, `T` opens the chat (was C), `V` is select mode, `D` held draws, `P` pauses and `S` slows motion. Go mode (`2`), `3`, zoom and the `a` key are gone; a stale key in settings is ignored with a note.
+- **Zoom is out** for now: no zoom pins, `labit zoom` or zoom skill. Old zoom pins show as ordinary comments.
+- **`.lab/` is tidier.** Seven small state files become one `state.json`, moved on the first start. A lab last run before 16 Nov must run `npx @leonidstern/labit@0.6.2` there once first.
+- **npm gets releases only.** Merges to main no longer publish `next`.
+
+### New
+
+- **Boards.** `labit board new "<topic>" --of /page --variants 3` copies a page into variants side by side; `--widths` and `--flow` show real pages at several sizes or in order. `/_lab/board/<name>` is one canvas of live frames to pan, zoom, select and enter, with pins on frames or on the board. Frames can be resized, duplicated, archived and undone; `labit board pick` marks the winner and hands the agent what to put back into the real page. Boards are in ⌘K.
+- **Select mode** (flag `select`). `V` picks a block; the same action box as a pin opens on it, one tap one pin.
+- **Drawing pins.** Hold `D` and drag: circles, arrows, crossings-out and carets reach the agent as what they read as, plus the path.
+- **One list of actions** for pins and select: a line of chips that fits the box, **…** for the rest, each sending `<name>: <your words>` with its full prompt to the agent.
+- **Choices.** `labit reply --choice A --choice B [--recommend B]` asks with options; each is tried live in the sentence, and Keep sends the pick back as `Picked B: …`.
+- **Never stuck.** `reply --progress "…"` keeps a live status line on the thread; the pin's ring shows sent, picked up, working, waiting in line, quiet, or asking; the pill counts the queue. A hand-off nobody answers within 2 minutes goes to the next wait.
+- **Claude Code wakes for pins.** The plugin's hook gives the session that listened last a new turn when pins land while it isn't waiting, even while it is busy, and from any folder.
+- **Labs & pages (⌘K).** One list of every page in every running lab, last active first, with who listens; archive a page or a whole lab, name a lab (`labit --name`), hop between labs from a phone without a new invite.
+- **Labs follow their install** and come back on the newest build once nobody is working; an idle lab parks itself after an hour (`LABIT_IDLE_MS`). `labit list` and the ⋯ menu say which build each lab runs.
+- **Section bar**, now always on: every section along the top, new and updated ones marked in green, kept read per person across devices.
+- **Motion control.** Hold ⌥ over a video or loop for pause, ¼ speed and its moment in ms; on phones it sits in the thing's corner. A pin made while paused tells the agent the moment.
+- **Agent pins.** `labit pin <selector> "text"` leaves the agent's own numbered pin, wearing labit's mark.
+- **Action buttons on a page.** `data-lab-action="merge #224"` makes an element open a ready comment the agent acts on; `data-lab-confirm` asks first.
+- **`labit publish`** puts a one-off page into your pages lab and prints its link; **`labit skill`** prints the agent's instructions for agents without the plugin.
+- **Experiments** in the ⋯ menu switch flags on and off from the page, saved to your settings.
+
+### Better
+
+- Threads arrive whole: a reply comes with the opening comment and its messages, the new ones marked, so an agent no longer answers one thread with another's context.
+- Listening is per page: a page no wait covers says so, two sessions on one lab no longer end each other's wait in silence, and a `wait` outlives a lab restart.
+- Pins: done pins full size and faded, pins whose spot is gone leave the page (the ⋯ menu lists them to drag back), quoting snaps to whole words, pins move less and keep their state across redraws.
+- Phones: chat and threads keep the newest message above the keyboard, pinch zoom keeps the widget usable, a hold always focuses its box, wifi guests stay in while they use the lab.
+- Smaller: the page script is 1.6 KB lighter and the npm package 122 KB (one minified CLI, no changelog).
+- One motion system (tokens in `docs/motion.md`) and one design census checked in CI.
+
+### Fixed and safer
+
+- A symbolic link into `.lab` or at a dot file is no longer served (it exposed the lab's keys).
+- Behind `--proxy` another site can't write to your dev server through the lab; only this computer keeps rules; request bodies are capped at 256 KB.
+- A comment whose save failed is kept and retried, not lost; a broken `settings.json` or `replies.md` is no longer written over.
+- `labit publish` can no longer delete its own source; localhost links reach the agent as written; IME Enter in Safari no longer sends half a word; a crashed lab no longer misroutes `wait` and `pin`.
+
+<details>
+<summary>Every change as it landed, newest first</summary>
+
 - One list of actions for a pin and for select: `actions` in your own settings.json is an ordered list of `{ "name", "prompt" }` (names 7 characters at most, said and left out when longer). A pin's box fills one line with as many chips as fit, in order, and **…** for the rest; **…** grows the line into the whole list (name over its prompt, tap to use one); the lab can save a new list to your settings (`PUT /_lab/api/actions`, this computer with the lab key only), for the in-place editor that comes next; a chip sends `<name>: <your words>` and the agent reads the full prompt as `action: …`. Select mode opens that same box on the picked block (no pin drawn while open) in place of its bar; the second-tap flow of make like and move is gone (say which in words). The list is seeded once into your settings from go, fix, remove, like, move, states, variant (plus any old `{ label, send }` buttons), then it is yours: no default, no reset. `labit settings` lists it. The old `{ words, spot }` form and a project's `actions` are no longer read; selected words keep rewrite · cut · go.
 - Motion control on the moving thing, not beside every loop: on a computer, hold ⌥ over a video or a looping animation and a small control shows in its top right corner (pause / play · ¼ · its moment in ms) for it and what moves inside it; a click there never pins, and a paused one keeps a small ▶ after you let go. On a phone the same control sits, quieter, in the corner of each moving thing at least half in view, gone while scrolling or while a sheet is open. P pauses all, S slows all. The control stays where it first showed and is kept while you cross to it; one at a time, another thing takes it only after the pointer rests on it; it is placed from the thing at rest, not where its animation has it. Paused ▶s no longer redraw every frame.
 - Select mode's bar: one tap sends one pin. The same ask on the same block is left alone while it is on its way and for 2 s after (a second tap on states sent it twice). The pin lands on the picked block itself, not on whatever is at its spot, so a block scrolled away or under the bar no longer pins `<body>`. Phones: the bar steps away while the chat, a thread or a new comment is open, and comes back after.
@@ -96,9 +148,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Go mode is gone: no `2` key, no go state in the bar (its switch is now comment / pointer, keys `1` and `3`; `2` does nothing), no green go pointer, and no `go` shortcut (one in a settings file is ignored). Go pins already on pages show as before ("go", the tick when done), and a comment whose text is "go" is handled by the server and agent as before.
 - "Pin over controls": with it on, the pointer over the page's links, buttons and clickable cards is the pin, not their hand. The menu item shows how to do it once without the switch: (⌥ click).
 - Phones: a sent comment's card slides down whole, like any sheet, and its new pin pops in with one green ring. It used to shrink and fly into the pin, which squeezed the card, and the pin was already there while it flew (its pop-in had been dropped by a later change).
-
 - Option-click on a pin resolves its thread without opening it (again opens it again), for whoever may resolve it.
-
 - `labit skill` prints the agent's instructions (the skill the plugin installs), and a lab's first lines point agents without the plugin to it. So an agent that is only told to run `npx @leonidstern/labit@latest` reads the skill and answers pins.
 - Closed pins show on the page by default, faded and small (50% opacity, 80% size; hover or open brings them back to full), so the open ones stand out; D (or **hide done** in the ⋯ menu) still hides them, and that choice is kept per browser. This undoes 0.6.2's solid done tick for resolved pins.
 - A pin whose spot is gone from the page is no longer a state of its own: it looks like a closed pin (same faded look) and says nothing about having moved. Nothing changes on disk or for the agent.
@@ -147,9 +197,9 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - The 500 cap skips owner, agent and done threads. One lab per folder (`.lab/lock`). A new session gets whole threads.
 - A page file renamed with `mv` keeps its comments. `wait` says how to answer once per session, then in one line.
 - Comments API: a write can't undo a change made meanwhile.
-
-- Releases publish themselves: a version bump merged to main goes to npm as `latest` (tagged `vX.Y.Z`), and every merge to main goes out as `next` (0.6.3-main.41…). `npx @leonidstern/labit@latest` is the newest release; `@next` is main as it is now, for whoever wants each merge in their labs. From GitHub Actions with npm trusted publishing, no token.
 - Labs & pages: no hand pointer on its links, rows or buttons; they show the arrow.
+
+</details>
 
 ## 0.6.2 · 2026-11-17
 
