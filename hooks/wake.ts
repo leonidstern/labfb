@@ -158,9 +158,11 @@ async function look($: any): Promise<void> {
     if (busy) queued = true;
     else submittedAt = await $.clock.now(); // its turn starts once the session is idle; don't submit twice meanwhile
     const n = p.fresh === 1 ? 'A new pin' : `${p.fresh} new pins`;
+    // No page names here: this text is a turn of its own, and a page's path is whatever a comment was posted to (a
+    // guest on the wifi can post one). `wait` names the pages, in text marked as the lab's.
     void $.prompt.submit({
       text:
-        `labit: ${n} on ${p.pages.join(', ')} (${p.url}) while you weren't listening${busy ? ' (queued while you were busy)' : ''}. ` +
+        `labit: ${n} (${p.url}) while you weren't listening${busy ? ' (queued while you were busy)' : ''}. ` +
         `Run \`${p.cmd} wait --timeout 5\` in ${p.dir} to read them (nothing new means you already have them), ` +
         `read each thread whole (the page or section is not the question), answer each on its pin with reply, then listen again in the background as before (\`wait --bg\`).`,
     });
