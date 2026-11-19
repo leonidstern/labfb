@@ -1,11 +1,11 @@
-// A newer release for a lab run from npm: offered in the ⋯ menu with a few lines of what changed, and update moves the
-// lab onto it (npx at that version) on the same folder and port. Nothing moves until the person asks.
+// A newer release for a lab run from npm: offered in the ⋯ menu; pressing it asks the agent, whose `labit update`
+// prints what changed and moves the lab onto it (npx at that version) on the same folder and port. Nothing moves on its own.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { releaseNotes } from '../lib/update.ts';
 
@@ -59,10 +59,11 @@ test('a newer release is offered in the page, and nothing moves on its own', asy
   assert.match(html, /data-update="\{&quot;version&quot;:&quot;9\.9\.9&quot;/);
 });
 
-test('update moves the lab onto that release, same port', async () => {
-  const { pid, token } = server();
-  const res = await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ action: 'update', port: Number(PORT) }) });
-  assert.equal(res.status, 200);
+test('labit update (the agent, asked from the menu) moves the lab onto that release, same port', async () => {
+  const { pid } = server();
+  const out = await new Promise((resolve) => execFile(process.execPath, [LAB, 'update'], { cwd: DIR, env }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, text: stdout + stderr })));
+  assert.equal(out.code, 0, out.text);
+  assert.match(out.text, /Updating this lab to labit 9\.9\.9/);
   for (let i = 0; i < 150; i++) {
     try {
       if (server().pid !== pid) break;

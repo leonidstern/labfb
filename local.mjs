@@ -102,6 +102,8 @@ For the agent, from the project (any folder under it):
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
+  labit update
+      Move this folder's lab onto the newer release its ⋯ menu offers (the person pressed update): prints what changed.
   labit board new|add|move|pick|list ...
       Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (the lab copies the page into
       .lab/boards/<board>/a.html, b.html, c.html: edit those) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
@@ -150,7 +152,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands) reads them as before.
-const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'settings', 'skill'];
+const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'update', 'settings', 'skill'];
 const { loadSettings, changedShortcuts, changedActions, savePersonal, savePersonalFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -198,7 +200,7 @@ if (pos[0] === 'settings') {
 }
 
 // The commands that answer and exit (publish, preview, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
-if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board'].includes(pos[0])) {
+if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'update'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -2457,7 +2459,7 @@ const handler = async (req, res) => {
         if (!UPDATE) return res.writeHead(409).end('no newer labit');
         console.log(`[lab] updating to labit ${UPDATE.version}`);
         handOver(process.env.LABIT_NPX || 'npx', ['--yes', `@leonidstern/labit@${UPDATE.version}`]);
-        return answer(res, { ok: true, version: UPDATE.version });
+        return answer(res, { ok: true, ...UPDATE });
       }
       if (!['stop', 'park', 'archive', 'archive-page', 'unarchive-page'].includes(action)) return res.writeHead(400).end('action: stop, park, archive, unarchive, start, archive-page or unarchive-page');
       if (n !== PORT) {
