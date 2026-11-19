@@ -151,7 +151,7 @@ button.choice::before { content: ''; flex: none; width: 14px; text-align: center
 button.choice.on::before { content: '✓'; }
 button.choice:hover:not(:disabled) { background: var(--_soft); }
 button.choice:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--_accent) 40%, transparent); }
-button.choice:disabled { cursor: default; opacity: .7; }
+button.choice:disabled { cursor: default; opacity: .4; }
 button.choice.now { color: var(--_muted); }
 button.choice.picked { opacity: 1; }
 button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
@@ -609,7 +609,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   background: var(--_bg); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform var(--_t-quick) var(--_ease); }
 .more-menu button.exp[aria-checked='true'] .exp-sw { background: var(--_green-fg); }
 .more-menu button.exp[aria-checked='true'] .exp-sw::after { transform: translateX(12px); }
-.more-menu button.exp:disabled .exp-sw { opacity: .5; }
+.more-menu button.exp:disabled .exp-sw { opacity: .4; }
 .more-menu .exp-note { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px; color: var(--_muted); max-width: 260px; }
 @media (pointer: coarse) {
   .more-menu .exp-sw { width: 40px; height: 24px; border-radius: 12px; }
@@ -681,7 +681,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
           background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); }
 .selbar[hidden] { display: none; }
 .selbar button { font: inherit; font-size: 15px; padding: 9px 16px; color: var(--_fg); border-radius: max(0px, calc(var(--_radius) - 8px)); -webkit-tap-highlight-color: transparent; }
-.selbar button:disabled { opacity: .35; }
+.selbar button:disabled { opacity: .4; }
 .selbar button { flex: none; white-space: nowrap; }
 @media (pointer: coarse) { /* one row the width of the screen that scrolls sideways, not a block of rows */
   .selbar { left: 12px; right: 12px; transform: none; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px; padding: 6px; }
