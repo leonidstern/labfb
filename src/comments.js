@@ -1086,7 +1086,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
         // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
         // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
-        autofocus: !(draft.fluid && coarse) && !S.pinnedByHold && !(draft.select && coarse),
+        autofocus: !(draft.fluid && coarse) && !S.pinnedByHold && !draft.select, // select: the keys (Tab, Esc, Enter) stay with the page until the box is tapped
         draftKey: `lab-typing:${S.page}:new`,
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });

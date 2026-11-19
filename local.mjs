@@ -162,7 +162,7 @@ if (pos[0] === 'settings') {
   const w = Math.max(...Object.keys(SET).map((k) => k.length));
   for (const [k, v] of Object.entries(SET)) console.log(`${k.padEnd(w)}  ${show(k, v).padEnd(20)}  ${src(SETTINGS.from[k])}`);
   console.log(`\nYour actions, in order (edit them in your settings.json):`);
-  for (const a of SET.actions) console.log(`  ${a.name.padEnd(6)}  ${a.prompt}`);
+  for (const a of SET.actions) console.log(`  ${a.name.padEnd(7)}  ${a.prompt}`);
   console.log(`\nA flag or variable wins over labit.json, which wins over your file. See docs/settings.md.`);
   process.exit(SETTINGS.problems.length ? 1 : 0);
 }
