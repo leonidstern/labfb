@@ -28,13 +28,36 @@ const writing = new Set<HTMLTextAreaElement>();
 // Drafts whose words are on their way to the lab. A box rebuilt while one is in flight (the widget redraws as the
 // comment lands) must not read them back in, and must not lose them either if the send fails.
 const sending = new Set<string>();
-/** True while any box on the page holds words nobody has sent. */
-export const anyWriting = () => writing.size > 0;
+/** True while any box on the page holds words nobody has sent. A box that has left the page doesn't count, even before
+ *  it has let go of its hold: a stale entry used to keep comment mode off (the page's own pointer) until the page next changed. */
+export const anyWriting = () => [...writing].some((t) => t.isConnected);
 const saysWriting = (field: HTMLTextAreaElement) => {
   if (field.value.trim()) writing.add(field);
   else writing.delete(field);
   holdReloads(writing.size);
   d?.whileWriting?.(); // the page's own pointer comes back while you are writing (comments.js)
+};
+
+// Boxes that have been built, to see which have left the page. One observer for all of them, on the page and on the
+// widget's own tree (a box let go inside it, by Escape, changes nothing on the page, and its hold stayed until
+// something there did, keeping the page's text selectable without Shift). A box that is gone lets go of its hold; one
+// built for each redraw used to carry an observer of its own for good, and each ran on every change to the page.
+const boxes = new Set<WeakRef<HTMLElement>>();
+const textOf = new WeakMap<HTMLElement, HTMLTextAreaElement>();
+let sweeper: MutationObserver | null = null;
+const sweep = () => {
+  let gone = false;
+  for (const ref of boxes) {
+    const box = ref.deref();
+    if (!box) boxes.delete(ref);
+    else if (!box.isConnected) {
+      gone = true;
+      writing.delete(textOf.get(box) as HTMLTextAreaElement);
+    }
+  }
+  if (!gone) return;
+  holdReloads(writing.size);
+  d?.whileWriting?.();
 };
 
 // The send arrow is drawn with CSS (a stem and a chevron), no picture.
@@ -44,12 +67,10 @@ const ARROW = '<i class="arr" aria-hidden="true"></i>';
 // empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a "go" comment from someone with no name
 // yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
 // opened: the box is open from the start (selected words' dialog and sheet: "comment preopened", Leo 18 Nov).
-export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false, opened = false, draftKey = '' }: {
+export function composer({ placeholder, onSubmit, autofocus = false, opened = false, draftKey = '' }: {
   placeholder: string;
   onSubmit: (name: string, text: string) => Promise<unknown>;
   autofocus?: boolean;
-  empty?: string;
-  nameFirst?: boolean;
   opened?: boolean;
   /** Where to keep what is typed but not sent, so a page that reloads under you (a dev server rebuilding,
    *  a crash, a tab closed by mistake) does not take the words with it. Empty: not kept. */
@@ -116,7 +137,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   }
 
   const sync = () => {
-    const open = nameFirst || opened || text.value.length > 0 || root.activeElement === name || !!error.textContent;
+    const open = opened || text.value.length > 0 || root.activeElement === name || !!error.textContent;
     // Opening moves the arrow from the text row to the name row: slide it there while the box grows, no jump.
     const glide = open !== box.classList.contains('open') && !store.get('lab-name') && box.isConnected && !matchMedia('(prefers-reduced-motion: reduce)').matches;
     const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
@@ -125,7 +146,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     box.classList.toggle('open', open);
     as.hidden = !name.value.trim();
     if (one && !CSS.supports?.('field-sizing', 'content')) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
-    sendBtn.classList.toggle('ready', Boolean((text.value.trim() || empty) && name.value.trim()));
+    sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
     saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
     text.style.height = 'auto';
     text.style.height = `${text.scrollHeight}px`;
@@ -149,7 +170,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   let busy = false;
   const go = async () => {
     if (busy) return;
-    const said = text.value.trim() || empty;
+    const said = text.value.trim();
     if (!said) return text.focus();
     if (!name.value.trim()) {
       box.classList.add('open');
@@ -206,16 +227,13 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   };
   text.addEventListener('input', sync);
   text.addEventListener('input', keepDraft);
-  // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept. The widget's own
-  // tree is watched too: a box let go inside it (Escape) changes nothing on the page, and its hold stayed until
-  // something there did, keeping the page's text selectable without Shift.
-  const gone = new MutationObserver(() => {
-    if (wrap.isConnected) return;
-    writing.delete(text);
-    holdReloads(writing.size);
-    d?.whileWriting?.();
-  });
-  for (const n of [document.documentElement, root]) gone.observe(n, { childList: true, subtree: true });
+  // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept (see sweep).
+  boxes.add(new WeakRef(wrap));
+  textOf.set(wrap, text);
+  if (!sweeper) {
+    sweeper = new MutationObserver(sweep);
+    for (const n of [document.documentElement, d.root]) sweeper.observe(n, { childList: true, subtree: true });
+  }
   name.addEventListener('input', sync);
   name.addEventListener('blur', () => setTimeout(sync, 0));
   text.addEventListener('keydown', onKey);
@@ -239,9 +257,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
   requestAnimationFrame(sync);
   // Right after it's on screen, in the same tap: phones open the keyboard only then.
   // preventScroll: the sheet is still sliding in from below the screen, and the page must not scroll to meet it.
-  const first = nameFirst ? name : text;
-  if (nameFirst) name.setAttribute('data-first', '');
-  const focus = () => first.focus({ preventScroll: true });
-  if (autofocus) queueMicrotask(() => (first.isConnected ? focus() : setTimeout(focus, 0)));
+  const focus = () => text.focus({ preventScroll: true });
+  if (autofocus) queueMicrotask(() => (text.isConnected ? focus() : setTimeout(focus, 0)));
   return wrap;
 }
