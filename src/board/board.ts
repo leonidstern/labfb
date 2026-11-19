@@ -344,7 +344,7 @@ let down: { x: number; y: number; id: string; far: boolean; at: number; mv?: Car
 let holdTimer = 0;
 // A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
 // put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
-const boardWidget = () => (window as unknown as { __labBoardWidget?: { pinning: () => boolean; place: (x: number, y: number) => void } }).__labBoardWidget;
+const boardWidget = () => (window as unknown as { __labBoardWidget?: { pinning: () => boolean; holding?: () => boolean; hold?: (x: number, y: number) => void; place: (x: number, y: number) => void } }).__labBoardWidget;
 let tap = { at: 0, x: 0, y: 0 };
 let pinch = 0;
 let space = false;
@@ -372,10 +372,9 @@ addEventListener('pointerdown', (e) => {
       const d = down;
       holdTimer = window.setTimeout(() => {
         const w = boardWidget();
-        if (down !== d || d.far || pts.size !== 1 || !w?.pinning()) return;
-        d.held = true;
+        if (down !== d || d.far || pts.size !== 1 || !(w?.holding ? w.holding() : w?.pinning())) return;
+        d.held = true; // the comment opens on the lift (below), as a page's hold does: opened now, the lift closed it
         navigator.vibrate?.(8);
-        w.place(d.x, d.y);
       }, 400);
     }
   }
@@ -421,7 +420,11 @@ const up = (e: PointerEvent) => {
   clearTimeout(holdTimer);
   if (pts.size || !d) return;
   down = null;
-  if (d.held) return; // a hold already pinned
+  if (d.held) {
+    const w = boardWidget();
+    if (w && e.type === 'pointerup') setTimeout(() => (w.hold || w.place)(d.x, d.y), 0);
+    return;
+  }
   if (d.mv && d.far && d.before && board) return void save(copy(board.frames), d.before);
   if (d.far && !d.mv && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
   if (d.far || e.type === 'pointercancel') return;
