@@ -36,34 +36,68 @@ export function step(dir: 1 | -1) {
   return all[at < 0 ? (dir > 0 ? 0 : all.length - 1) : (at + dir + all.length) % all.length] || null;
 }
 export const picked = () => T.pick;
-// Phones have no V, Enter or Esc: while select is on, a small bar above the widget's bar does what the keys do for the
-// picked block (Leo, 19 Nov: "what can select do on mobile?" → edit · pin · done).
+// The bar for the picked block (Leo, 19 Nov: "make select tool full"), on phones and computers alike: edit · remove ·
+// make like · move · states · variants · pin · done. Edit works in place; the rest go to the agent as a pin on the block,
+// worded so it knows what to do. Make like and move ask for a second block first ("tap the one to copy").
 let bar: HTMLElement | null = null;
+let want: { say: string; then: (other: HTMLElement) => void } | null = null;
+const label = (e: HTMLElement) => {
+  const t = (e.textContent || '').replace(/\s+/g, ' ').trim();
+  return `${e.localName}${e.id ? `#${e.id}` : ''} "${t.length > 50 ? `${t.slice(0, 49)}…` : t}"`;
+};
+const pinOn = async (e: HTMLElement, text: string) => {
+  const r = e.getBoundingClientRect();
+  const anchor = W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2);
+  let name = '';
+  try {
+    name = (W.store.get('lab-name') || '').trim();
+  } catch {}
+  try {
+    const { comment } = await W.send({ name: name || 'guest', text, anchor });
+    W.S.comments.push(comment);
+    W.markSeen([comment]);
+    W.render();
+    W.say?.('sent to the agent');
+  } catch {
+    W.say?.("couldn't send it: is the lab running?");
+  }
+};
+const ACTS: Array<[string, () => void]> = [
+  ['edit', () => T.pick && T.open(T.pick)],
+  ['remove', () => T.pick && pinOn(T.pick, 'Remove this.')],
+  ['make like', () => {
+    const p = T.pick;
+    if (p) want = { say: 'tap the one to copy', then: (o) => pinOn(p, `Make this look like ${label(o)}: same size, spacing, colour and type.`) };
+  }],
+  ['move', () => {
+    const p = T.pick;
+    if (p) want = { say: 'tap where it goes: it lands after that', then: (o) => pinOn(p, `Move this to just after ${label(o)}.`) };
+  }],
+  ['states', () => T.pick && pinOn(T.pick, 'Show this in its states (hover, loading, empty, error) so I can review each one.')],
+  ['variants', () => T.pick && pinOn(T.pick, 'Make 3 variants of this, shown in place as a / b / c tabs on it, so I can pick one.')],
+  ['pin', () => {
+    const p = T.pick;
+    if (!p) return;
+    const r = p.getBoundingClientRect();
+    selectMode(false);
+    W.begin(W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2));
+  }],
+];
 const drawBar = () => {
-  if (!W?.coarse) return;
+  if (!W) return;
   if (!bar) {
     bar = W.el('div', { class: 'selbar quick', role: 'toolbar', 'aria-label': 'picked block' });
-    const b = (name: string, act: () => void) => {
-      const x = W.el('button', { type: 'button', 'data-a': name }, name);
-      x.addEventListener('click', (e: Event) => (e.stopPropagation(), act()));
-      return x;
-    };
-    bar!.append(
-      b('edit', () => T.pick && T.open(T.pick)),
-      b('pin', () => {
-        const p = T.pick;
-        if (!p) return;
-        const r = p.getBoundingClientRect();
-        selectMode(false);
-        W.begin(W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2));
-      }),
-      b('done', () => (T.pick ? pick(null) : selectMode(false))),
-    );
     W.root.append(bar);
   }
-  bar.hidden = !T.on || Boolean(W.S.editing);
-  for (const x of bar.querySelectorAll<HTMLButtonElement>('[data-a="edit"], [data-a="pin"]')) x.disabled = !T.pick;
-  bar.querySelector('[data-a="done"]')!.textContent = T.pick ? 'done' : 'leave select';
+  const b = (name: string, act: () => void, off = false) => {
+    const x = W.el('button', { type: 'button', 'data-a': name }, name) as HTMLButtonElement;
+    x.disabled = off;
+    x.addEventListener('click', (e: Event) => (e.stopPropagation(), act(), drawBar()));
+    return x;
+  };
+  if (want) bar!.replaceChildren(W.el('span', { class: 'selsay' }, want.say), b('cancel', () => (want = null)));
+  else bar!.replaceChildren(...ACTS.map(([n, a]) => b(n, a, !T.pick)), b(T.pick ? 'done' : 'leave select', () => (T.pick ? pick(null) : selectMode(false))));
+  bar!.hidden = !T.on || Boolean(W.S.editing);
 };
 export const redrawSelectBar = () => drawBar();
 /** The page holds its reloads while a block is picked or being edited. */
@@ -81,6 +115,7 @@ export function pick(el: HTMLElement | null) {
 /** The mode on or off (V, E). */
 export function selectMode(on = !T.on) {
   if (!on) T.close();
+  if (!on) want = null;
   T.on = on;
   W.S.selecting = on;
   document.documentElement.classList.toggle('lab-editing', on);
@@ -104,6 +139,13 @@ export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.clos
       if (!mine(m) || (W.S.editing && (m.target as Element).closest?.('[data-lab-editing]'))) return; // inside the words being edited: the browser's own
       quiet(m);
       if (type === 'pointerdown') {
+        const other = want && blockAt(m.target);
+        if (want && other && other !== T.pick) {
+          const w = want;
+          want = null;
+          w.then(other);
+          return void drawBar();
+        }
         T.close();
         pick(blockAt(m.target));
       } else if (type === 'dblclick' && T.pick && T.pick === blockAt(m.target)) T.open(T.pick, m);

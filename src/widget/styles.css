@@ -670,6 +670,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .selbar[hidden] { display: none; }
 .selbar button { font: inherit; font-size: 15px; padding: 9px 16px; color: var(--_fg); border-radius: max(0px, calc(var(--_radius) - 8px)); -webkit-tap-highlight-color: transparent; }
 .selbar button:disabled { opacity: .35; }
+.selbar button { flex: none; white-space: nowrap; }
+@media (pointer: coarse) { /* one row the width of the screen that scrolls sideways, not a block of rows */
+  .selbar { left: 12px; right: 12px; transform: none; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px; padding: 6px; }
+  .selbar::-webkit-scrollbar { display: none; }
+  .selbar button { font-size: 14px; padding: 8px 12px; }
+}
+.selsay { align-self: center; padding: 0 8px; color: var(--_muted); font-size: 14px; }
+@media (pointer: fine) { .selbar { bottom: 72px; gap: 4px; padding: 6px; } .selbar button { font-size: 13px; padding: 6px 10px; } }
 
 /* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
