@@ -77,7 +77,7 @@ Your `~/.config/labit/settings.json`:
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
 | `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
-| `actions` | below | | The buttons on words you select (and, later, on a spot). | both |
+| `actions` | below | | The buttons in the comment dialog: on words you select, and on a spot or an area. | both |
 | `flags` | everything off | | What this lab is trying: `{ "<flag>": true }`. See **Trying things** below. | either |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
@@ -99,7 +99,7 @@ came from.
 
 | Flag | What it is |
 | --- | --- |
-| `sinceLooked` | a "New · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
+| `sinceLooked` | a "Added · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
 
 `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
@@ -108,28 +108,31 @@ otherwise ignored, so an old file never stops a lab from running.
 
 ## Actions
 
-Select words (hold Shift and drag) and labit shows a bar: **comment** and then the actions. Typing or clicking comment opens
-the box, which is already a comment; its row has the actions only, since the box itself is the comment. The defaults:
+Select words (hold Shift and drag) and the comment dialog opens at once, the cursor in its box; a click on a spot or an area
+opens the same dialog there. Its row has the actions only, since the box itself is the comment; clicking one sends it at
+once. The defaults:
 
 ```json
-{ "actions": { "words": ["rewrite", "cut", "go"], "spot": ["go"] } }
+{ "actions": { "words": ["rewrite", "cut", "go"], "spot": ["go", "remove", "fix"] } }
 ```
 
-- **Built in:** `rewrite` puts the words in the box to edit (sent as old → new), `cut` sends `Cut: “…”` at once, `go` sends a comment that says "go"
-  on the words at once, nothing to type.
-- **Your own:** `{ "label": "tighter", "send": "Tighter: less space" }` sends that text on the words at once, with whatever you
-  typed after it. Add `"ask": true` and it puts the text in the box first so you can finish it.
+- **Built in:** `rewrite` sends `Rewrite: “…”` at once (the agent proposes the new wording), `cut` sends `Cut: “…”` at once,
+  `go` sends a comment that says "go" on the words (or the spot) at once, nothing to type, `remove` sends `Remove this` and `fix` sends
+  `Fix this`. `rewrite` and `cut` need words, so a spot's row leaves them out.
+- **Your own:** `{ "label": "tighter", "send": "Tighter: less space" }` sends that text on the words or the spot at once, with whatever you
+  typed after it.
 - **Order** is the order shown. `comment` is always there first, so it isn't listed (listed anyway, it is ignored). Up to 5
   actions beside it, labels up to 16 characters. A name that isn't one, a repeat or a bad label is said when labit starts and
   left out; the rest still counts.
-- **Slash keys:** in the box, `/` and the first letters of a label (`/t` for tighter) light the action and Enter runs it.
-- **`spot`** is for the regular box on a spot or an area, which has no actions row yet: it is read and checked now and used
-  once that row exists. Only `words` changes anything today.
+- **Keys:** ⌥ + 1 to 4 run the buttons in the order they show (the key's place, so Option's own characters don't matter); holding ⌥
+  while the dialog is open shows the number on each button. Up to the number of actions (4 at most).
+- **`spot`** is the row of the regular dialog on a spot or an area (phones: the same row in the sheet); `words` is the row
+  on selected words. Each is its own list.
 
 ```json
 {
   "actions": {
-    "words": ["go", { "label": "tighter", "send": "Tighter: less space" }, { "label": "shorter", "send": "Shorter:", "ask": true }]
+    "words": ["go", { "label": "tighter", "send": "Tighter: less space" }, { "label": "shorter", "send": "Shorter: half the words" }]
   }
 }
 ```
@@ -144,14 +147,14 @@ win over yours, key by key.
 | Action | Default | Does |
 | --- | --- | --- |
 | `toggle` | `m` | Show or hide comments |
-| `comment` | `1` | A click places a comment |
-| `pointer` | `3` | A click is just a click |
+| `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
 | `chat` | `c` | Open the chat |
 | `next` | `w` | The next new comment (with Shift: the one before) |
 | `pause` | `p` | Pause or play the page's videos and animations (the button shows on a page that has them) |
 | `done` | `d` | Hide or show done threads (shown, faded, at first) |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
+| `added` | `a` | With the `sinceLooked` flag on: open the Added list; press again to go to the next added item |
 
 Letters follow the key's place on non-Latin layouts (the C key is C in Russian too), and digits work with Shift or
 on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat` is `x`.

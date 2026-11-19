@@ -1,4 +1,4 @@
-// "New since you looked" in real browsers (WebKit and Chrome's engine): the "New · N" pill and its list of the ids the
+// "Added since you looked" in real browsers (WebKit and Chrome's engine): the "Added · N" pill and its list of the ids the
 // agent added to a page, each a link that goes there; what drops an id off the list (going to it, a second in view);
 // no buttons under the list; two names, two devices, a phone's sheet, the lab being down; and what must never count (a changed
 // text, a removed id, an id a framework makes up, ids a page's own script makes). Not part of `npm test`; CI runs it
@@ -27,7 +27,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-since-')));
 const PORT = 5400 + Math.floor(Math.random() * 300);
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, PORT: '', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, PORT: '', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const write = (f, t) => fs.writeFileSync(path.join(DIR, f), t);
 // A page with six ids of its own (a, b, c, d, hid, z) and room: its blocks are far apart, so what comes after them is
@@ -85,7 +85,7 @@ try {
       if (look) await p.waitForFunction(() => localStorage.getItem('lab-looked:' + document.querySelector('script[data-page]').dataset.page), null, { timeout: 15000 }).catch(() => {});
       await sleep(400);
       const shadow = (fn, arg) => p.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
-      // The pill's words ("New · 2"), or '' while it is hidden.
+      // The pill's words ("Added · 2"), or '' while it is hidden.
       const pill = () => shadow(() => { const b = r.querySelector('.since'); return b && !b.hidden ? r.querySelector('.since-count').textContent.trim() : ''; });
       const rows = () => shadow(() => { return [...r.querySelectorAll('.news-item')].map((n) => ({ label: n.querySelector('.news-label')?.textContent || '', id: n.querySelector('.news-id').textContent, href: n.getAttribute('href') })); });
       const listOpen = () => shadow(() => { return !r.querySelector('.since-panel').hidden; });
@@ -111,7 +111,7 @@ try {
     const first = await stored();
     check(eng, 'the first look is kept in this browser: every id with its label', first.ids.length === 6 && first.ids.some(([id, t]) => id === 'a' && /first block/.test(t)) && first.ids.some(([id, t]) => id === 'd' && t === 'More'), JSON.stringify(first.ids.map((n) => n[0])));
     write('index.html', page({ end: sec('v1', 'Version one') }));
-    check(eng, 'a section with an id is added: "New · 1"', await until(async () => (await pill()) === 'New · 1'), await pill());
+    check(eng, 'a section with an id is added: "Added · 1"', await until(async () => (await pill()) === 'Added · 1'), await pill());
     check(eng, 'the list is closed until it is asked for', !(await listOpen()));
     await click('.since-count');
     const list = await rows();
@@ -133,7 +133,7 @@ try {
 
     // ---- ↓ ↑ and Enter ----
     write('index.html', page({ end: sec('v1', 'Version one') + sec('v2', 'Version two') + sec('v3', 'Version three') }));
-    await until(async () => (await pill()) === 'New · 2');
+    await until(async () => (await pill()) === 'Added · 2');
     await click('.since-count');
     const names = async () => shadow(() => { return r.activeElement?.querySelector?.('.news-id')?.textContent || ''; });
     const at0 = await names();
@@ -146,7 +146,7 @@ try {
     check(eng, '↓ and ↑ walk the list and wrap', at0 === '#v2' && at1 === '#v3' && at2 === '#v2' && at3 === '#v3', `${at0} ${at1} ${at2} ${at3}`);
     await p.keyboard.press('Enter');
     await sleep(200);
-    check(eng, 'Enter goes there and drops it; the other stays, and the keyboard stays on the list', (await pill()) === 'New · 1' && (await rows()).map((r) => r.id).join() === '#v2' && (await names()) === '#v2' && (await p.evaluate(() => { const t = document.getElementById('v3').getBoundingClientRect().top; return t >= 0 && t < innerHeight; })));
+    check(eng, 'Enter goes there and drops it; the other stays, and the keyboard stays on the list', (await pill()) === 'Added · 1' && (await rows()).map((r) => r.id).join() === '#v2' && (await names()) === '#v2' && (await p.evaluate(() => { const t = document.getElementById('v3').getBoundingClientRect().top; return t >= 0 && t < innerHeight; })));
     await p.keyboard.press('Escape');
     check(eng, 'Esc closes the list', !(await listOpen()));
     await p.mouse.click(5, 5);
@@ -155,7 +155,7 @@ try {
     await p.evaluate(() => scrollTo(0, 0));
     await p.evaluate(() => document.getElementById('v2').scrollIntoView({ block: 'center' }));
     await sleep(350);
-    check(eng, 'in view for less than a second: still new', (await pill()) === 'New · 1', await pill());
+    check(eng, 'in view for less than a second: still new', (await pill()) === 'Added · 1', await pill());
     check(eng, 'after a second in view it drops off', await until(async () => (await pill()) === '', 2500), await pill());
     check(eng, 'an id seen by being in view is kept', (await stored()).ids.some((n) => n[0] === 'v2'));
 
@@ -168,7 +168,7 @@ try {
     await sleep(3000);
     check(eng, 'ids a framework makes up (:r4:, a long hex, radix-:r5:, css-1abc2de) are not new', (await pill()) === '', await pill());
     write('index.html', page({ c: false, end: sec('v1', 'Version one') + sec('v2', 'Version two') + sec('v3', 'Version three') + '<p id="notes">The first words of this block are its label, cut where they get long, at sixty characters in all.</p>' }));
-    await until(async () => (await pill()) === 'New · 1');
+    await until(async () => (await pill()) === 'Added · 1');
     await click('.since-count');
     const long = (await rows())[0];
     check(eng, 'no heading: the label is its first words, 60 characters at most', long && long.id === '#notes' && long.label.length === 60 && long.label.endsWith('…') && /^The first words of this block/.test(long.label), JSON.stringify(long));
@@ -176,7 +176,17 @@ try {
     // ---- going to each one clears the list ----
     await p.keyboard.press('Escape');
     write('index.html', page({ c: false, end: sec('v1', 'Version one') + sec('v2', 'Version two') + sec('v3', 'Version three') + '<p id="notes">notes</p>' + sec('v4', 'Version four') }));
-    check(eng, 'something else new joins the list', await until(async () => (await pill()) === 'New · 2'), await pill());
+    check(eng, 'something else new joins the list', await until(async () => (await pill()) === 'Added · 2'), await pill());
+    await p.evaluate(() => document.activeElement?.blur?.());
+    check(eng, 'nothing is open before the key', !(await listOpen()));
+    await p.keyboard.press('a');
+    check(eng, 'the a key opens the Added list', await until(listOpen, 1500));
+    await p.keyboard.press('a');
+    check(eng, 'a again goes to the first one, which drops off; the list stays for the next', await until(async () => (await pill()) === 'Added · 1' && (await rows()).length === 1 && (await listOpen()), 2000), await pill());
+    await p.keyboard.press('a');
+    check(eng, 'a again goes to the next; the list is empty and closed', await until(async () => (await pill()) === '' && !(await listOpen()), 2000), await pill());
+    write('index.html', page({ c: false, end: sec('v1', 'Version one') + sec('v2', 'Version two') + sec('v3', 'Version three') + '<p id="notes">notes</p>' + sec('v4', 'Version four') + sec('v5', 'Version five') }));
+    await until(async () => (await pill()) === 'Added · 1');
     await seeAll();
     check(eng, 'going to each one clears the pill and the list', (await pill()) === '' && (await rows()).length === 0, await pill());
     await p.reload();
@@ -199,7 +209,7 @@ try {
     await sleep(1500);
     check(eng, "an id the page's own script adds, with no save of the file: not new", (await N.pill()) === '');
     write('late.html', page({ end: sec('v1', 'Version one') }));
-    check(eng, 'a save that adds a real one counts it', await until(async () => /^New · \d$/.test(await N.pill()), 8000), await N.pill());
+    check(eng, 'a save that adds a real one counts it', await until(async () => /^Added · \d$/.test(await N.pill()), 8000), await N.pill());
     await ctx2.close();
 
     // ---- a page with its own scripts reloads; the pill comes after the reload ----
@@ -207,7 +217,7 @@ try {
     const ctx3 = await context();
     const S = await open(ctx3, '/scripted');
     write('scripted.html', page({ script: '<script>document.title="two"</script>', end: sec('v1', 'Version one') }));
-    check(eng, 'a page with scripts: the pill after its reload', await until(async () => (await S.pill()) === 'New · 1'), await S.pill());
+    check(eng, 'a page with scripts: the pill after its reload', await until(async () => (await S.pill()) === 'Added · 1'), await S.pill());
     await ctx3.close();
 
     // ---- the last look lives in the lab, under your name ----
@@ -221,8 +231,8 @@ try {
     nobody.p.on('request', (r) => r.method() === 'POST' && /\/_lab\/api\/looked/.test(r.url()) && posted.push(r.url()));
     check(eng, 'the first look reaches the lab, under the name', (await lookOf(ME, 'sync'))?.length === 6 && (await lookOf(ME, 'sync'))[0].length === 2);
     write('sync.html', page({ end: sec('v1', 'Version one') + sec('v2', 'Version two') }));
-    await until(async () => (await mac.pill()) === 'New · 2' && (await phone.pill()) === 'New · 2' && (await mira.pill()) === 'New · 2' && (await nobody.pill()) === 'New · 2', 8000);
-    check(eng, 'same name in a second browser: the same list', (await phone.rows()).map((r) => r.id).join() === (await mac.rows()).map((r) => r.id).join() && (await mac.pill()) === 'New · 2', `${await mac.pill()} · ${await phone.pill()}`);
+    await until(async () => (await mac.pill()) === 'Added · 2' && (await phone.pill()) === 'Added · 2' && (await mira.pill()) === 'Added · 2' && (await nobody.pill()) === 'Added · 2', 8000);
+    check(eng, 'same name in a second browser: the same list', (await phone.rows()).map((r) => r.id).join() === (await mac.rows()).map((r) => r.id).join() && (await mac.pill()) === 'Added · 2', `${await mac.pill()} · ${await phone.pill()}`);
     const agentLine = async () => (await (await fetch(`${B}/_lab/agent/sync`)).text()).split('\n').filter((l) => /^unseen by /.test(l));
     const seenBy = await agentLine();
     check(eng, 'the agent text says what each name has not seen', seenBy.length === 2 && seenBy.includes(`unseen by ${ME}: #v1, #v2`) && seenBy.includes(`unseen by mira-${eng}: #v1, #v2`), seenBy.join(' | '));
@@ -233,11 +243,11 @@ try {
     check(eng, 'on a phone the list is a sheet inside the screen, at its bottom', sheet.open && sheet.fixed === 'fixed' && sheet.left >= 0 && sheet.right <= sheet.w && sheet.bottom <= sheet.h && sheet.bottom > sheet.h - 40, JSON.stringify(sheet));
     await phone.click('.news-item');
     await sleep(400);
-    check(eng, 'a tap on an item on the phone closes the sheet, goes there, and drops it', (!sheet.coarse || !(await phone.listOpen())) && (await phone.pill()) === 'New · 1' && (await phone.p.evaluate(() => scrollY)) > 1000, `${await phone.pill()} coarse ${sheet.coarse}`);
-    check(eng, "seen on the phone reaches the Mac with the same name, within a second or two; Mira's list is her own", (await until(async () => (await mac.pill()) === 'New · 1', 4000)) && (await mira.pill()) === 'New · 2', `${await mac.pill()} · ${await mira.pill()}`);
+    check(eng, 'a tap on an item on the phone closes the sheet, goes there, and drops it', (!sheet.coarse || !(await phone.listOpen())) && (await phone.pill()) === 'Added · 1' && (await phone.p.evaluate(() => scrollY)) > 1000, `${await phone.pill()} coarse ${sheet.coarse}`);
+    check(eng, "seen on the phone reaches the Mac with the same name, within a second or two; Mira's list is her own", (await until(async () => (await mac.pill()) === 'Added · 1', 4000)) && (await mira.pill()) === 'Added · 2', `${await mac.pill()} · ${await mira.pill()}`);
     await mac.seeAll();
     check(eng, 'seen on one clears the other', await until(async () => (await phone.pill()) === '', 3000), await phone.pill());
-    check(eng, "another name keeps its list: Leo's seen leaves Mira's", (await mira.pill()) === 'New · 2' && (await mira.rows()).length === 2);
+    check(eng, "another name keeps its list: Leo's seen leaves Mira's", (await mira.pill()) === 'Added · 2' && (await mira.rows()).length === 2);
     check(eng, 'and the agent text now says only Mira has unseen ids', (await agentLine()).length === 1 && (await agentLine())[0].startsWith(`unseen by mira-${eng}`), (await agentLine()).join(' | '));
     await phone.p.reload();
     await sleep(2500);
@@ -253,7 +263,7 @@ try {
     const L2 = await open(late, '/down');
     await late.route('**/_lab/api/looked**', (r) => r.abort());
     write('down.html', page({ end: sec('v1', 'Version one') }));
-    await until(async () => (await L2.pill()) === 'New · 1', 6000);
+    await until(async () => (await L2.pill()) === 'Added · 1', 6000);
     await L2.seeAll();
     await sleep(300);
     const held = await L2.stored();
@@ -261,7 +271,7 @@ try {
     await late.unroute('**/_lab/api/looked**');
     write('down.html', page({ end: sec('v1', 'Version one') + sec('v2', 'Version two') }));
     await sleep(3000);
-    check(eng, 'and goes to the lab with the next check, once; the next new one is still new', (await lookOf(ME, 'down')).length === 7 && !(await L2.stored()).dirty && (await L2.pill()) === 'New · 1', `${(await lookOf(ME, 'down')).length} ids in the lab, badge ${await L2.pill()}`);
+    check(eng, 'and goes to the lab with the next check, once; the next new one is still new', (await lookOf(ME, 'down')).length === 7 && !(await L2.stored()).dirty && (await L2.pill()) === 'Added · 1', `${(await lookOf(ME, 'down')).length} ids in the lab, badge ${await L2.pill()}`);
     await late.close();
 
     // A look from before ids (blocks of text, or the first build's plain list) is not "no ids seen": the page's ids now count as seen, nothing floods.

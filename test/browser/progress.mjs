@@ -39,7 +39,7 @@ async function lab(n) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-progress-'));
   const port = String(6300 + n * 40 + Math.floor(Math.random() * 30));
   const B = `http://localhost:${port}`;
-  const env = { ...process.env, LAB_SETTLE_MS: '0', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+  const env = { ...process.env, LAB_SETTLE_MS: '0', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><meta charset="utf-8"><title>p</title><body style="margin:40px"><p id="a">first line</p><p id="b">second line</p><p id="c">third line</p></body>');
   const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', port], { cwd: dir, env });
   for (let i = 0; i < 80; i++) {
@@ -85,6 +85,11 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     const ids = [await L.post('make it red', '#a'), await L.post('and bigger', '#b'), await L.post('and blue', '#c')];
     await until(async () => (await pins()).length === 3);
     check(eng, 'sent pins wear no ring', (await pins()).every(([ring]) => ring === ''), JSON.stringify(await pins()));
+    // The listening mark: grey when no agent listens (not black), and its tooltip names the state.
+    const mark = () => shadow(() => { const w = r.querySelector('.listener'); return { title: w?.title || '', fill: w?.querySelector('.mark') ? getComputedStyle(w.querySelector('.mark')).fill : '' }; });
+    await until(async () => /^Away/.test((await mark()).title));
+    const away = await mark();
+    check(eng, 'away: a grey mark and the tooltip says Away', /^Away/.test(away.title) && /rgba\(/.test(away.fill), JSON.stringify(away));
 
     // The agent takes all three: the oldest is picked up (pale green, still), the others wait in line (muted, still).
     const heard = await L.cli('wait', '--timeout', '5');
@@ -92,6 +97,7 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     await ringsAre(['ring got', 'ring wait', 'ring wait']);
     check(eng, 'picked up: a still pale green ring; the rest wait with a still muted ring', (await ringOf(0)) === 'ring got' && (await ringOf(1)) === 'ring wait' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill counts those waiting', await pillIs(/is working · 2 waiting/), await pill());
+    check(eng, 'working: a green mark and the tooltip says Working', /^Working/.test((await mark()).title) && (await mark()).fill === 'rgb(36, 160, 70)', JSON.stringify(await mark()));
     await shadow(() => { [...r.querySelectorAll('button.pin')][1].click(); });
     await until(() => shadow(() => { return !!r.querySelector('.card .stamp'); }));
     const stamp = () => shadow(() => { return r.querySelector('.card .msg.mine .stamp .tm')?.textContent || ''; });
@@ -134,6 +140,14 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     // it would still read as old: the stored line is what's checked).
     await L.cli('reply', ids[1], '--progress', 'drawing W1–W6 · 4 of 4');
     check(eng, 'the next line replaces the last on the thread', (await L.comments()).find((c) => c.id === ids[1]).progress?.text === 'drawing W1–W6 · 4 of 4');
+    // A named session: the pill has no name in its words; the name is in its tooltip.
+    for (const id of ids) await L.cli('reply', id, 'Done', '--done');
+    const named = L.cli('wait', '--name', 'ooze', '--timeout', '4');
+    const pillTip = () => shadow(() => { const w = r.querySelector('.listener'); return { words: w?.querySelector('.lbl')?.textContent || '', title: w?.title || '' }; });
+    await until(async () => /session: ooze/.test((await pillTip()).title), 3000);
+    const nm = await pillTip();
+    check(eng, 'a named session: the pill has no name in its words, the tooltip has it', /session: ooze/.test(nm.title) && !/ooze/.test(nm.words), JSON.stringify(nm));
+    await named;
     await p.close();
   } finally {
     await browser.close();

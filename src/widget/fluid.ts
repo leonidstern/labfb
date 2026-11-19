@@ -1,8 +1,7 @@
-// Selected words get one comment element (F1, Leo 18 Nov): the actions bar (comment · rewrite · cut · go) at the end of the
-// words, with no chip first ("go right into bar", Leo 18 Nov); the box joins it once you type, click comment or press
-// Tab / Enter. It comes and goes with the comment card's own motion (the .in / .out classes: lab-in, lab-out; "same as
-// the comment one", "rework", Leo 18 Nov): the bar goes out as a card does, the dialog comes in as a card does, and a
-// sent dialog leaves as a card does while the pin pops in. Only phones still grow the bar into the bottom sheet.
+// Selected words get one comment element (F1, Leo 18 Nov). Computers: the dialog opens at the end of the words as soon
+// as they are selected ("open this right away"), arriving as the comment card does (.in); a sent dialog leaves as a
+// card does while the pin pops in. Phones: the actions bar (comment · rewrite · cut) at the words' end, which grows
+// into the bottom sheet (the .in / .out classes: lab-in, lab-out).
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -24,12 +23,12 @@ let dlg: HTMLElement;
 let pick: (text?: string, act?: string) => void = () => {};
 
 export const fluidState = () => F.state;
-// An action: a built-in name (rewrite, cut, go) or one of your own (labit.json `actions`).
-type Act = string | { label: string; send: string; ask?: boolean };
+// An action: a built-in name (rewrite, cut, go, remove, fix) or one of your own (labit.json `actions`).
+type Act = string | { label: string; send: string };
 export const actName = (a: Act) => (typeof a === 'string' ? a : a.label);
 /** The actions: the bar has comment first, which opens the box; the dialog's row has only the others (the box is the
  *  comment). Long quotes (300 characters are kept) have no cut or rewrite. */
-export const acts = (quote: number, bar = true): Act[] => [...(bar ? ['comment'] : []), ...(W.actions as Act[]).filter((a) => quote < 300 || !/^(rewrite|cut)$/.test(actName(a)))];
+export const acts = (quote: number, bar = true, list: Act[] = W.actions): Act[] => [...(bar ? ['comment'] : []), ...list.filter((a) => quote < 300 || !/^(rewrite|cut)$/.test(actName(a)))];
 export const actButton = (a: Act, on: boolean) => W.el('button', { type: 'button', 'data-k': actName(a), class: on ? 'on' : '' }, actName(a));
 /** The dialog already holds this draft (a redraw leaves it, and the words typed in it, alone). */
 export const fluidHas = (draft: unknown) => F.draft === draft && /^(dlg|grow)$/.test(F.state);
@@ -127,28 +126,30 @@ export function fluidKey(e: KeyboardEvent) {
 }
 
 /** Computers: the dialog (the actions row and the box, in `float`) comes in as a comment card does (.in), below the words'
- *  end; above them when there is no room below; the bar goes out as a card does (a copy of it, .out). rects: the quoted
+ *  end; above them when there is no room below; rects: the quoted
  *  words, now. back: it is back after a reload, so no motion. */
 export function fluidOpen(float: HTMLElement, draft: unknown, rects: Rects, back = false) {
   make();
-  if (F.state === 'picked' && !W.still.matches) {
-    const ghost = fd.cloneNode(true) as HTMLElement;
-    ghost.className = 'fd out';
-    ghost.inert = true;
-    ghost.style.zIndex = '3'; // under the dialog
-    fd.after(ghost);
-    setTimeout(() => ghost.remove(), 140); // lab-out's length
-  }
   F.draft = draft;
   dlg.replaceChildren(float);
   fd.className = 'fd still'; // the panes swap at once
   show(dlg, 'dlg');
   const w = Math.min(320, document.documentElement.clientWidth - 24);
   dlg.style.width = `${w}px`;
-  put(by(rects, -70, w, dlg.offsetHeight, 8, 12), null, 0);
+  const h = dlg.offsetHeight;
+  put(by(rects, -70, w, h, 8, 12), null, 0);
+  // The box settles into its open size a moment later (fonts, the name row): placed again by its real height, so above the
+  // words it never overlaps them.
+  requestAnimationFrame(() => F.state === 'dlg' && F.draft === draft && Math.abs(dlg.offsetHeight - h) > 1 && put(by(rects, -70, w, dlg.offsetHeight, 8, 12), null, 0));
   // Its height follows the box from here on (the name row, an error), as the old box's did.
   fd.classList.add('settled');
   fd.style.height = '';
+  // Its own height now the row and the box are in: where it sits (above the words, on the window's last line) is worked out on that.
+  if (Math.abs(fd.offsetHeight - dlg.offsetHeight) > 1 || fd.offsetHeight !== parseFloat(fd.style.height || '0')) {
+    const h = fd.offsetHeight;
+    put(by(rects, -70, w, h, 8, 12), null, 0);
+    fd.style.height = '';
+  }
   if (!back) {
     void fd.offsetWidth; // the card's arrival, from the start
     fd.classList.add('in');

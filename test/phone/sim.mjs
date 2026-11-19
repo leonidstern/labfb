@@ -246,7 +246,7 @@ if (cmd === 'serve') {
       fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('</body>', '<section id="v9"><h2>Version nine</h2><p>The agent added this.</p></section></body>'));
       await sleep(3000); // the patch, then the check
       const s = lines().at(-1);
-      return s.pill ? `tap ${fmt(dev(s, s.pill.x + s.pill.w / 2, s.pill.y + s.pill.h / 2))} (the "New · 1" pill above the bar)` : 'no pill came up (was the page opened before the edit?)';
+      return s.pill ? `tap ${fmt(dev(s, s.pill.x + s.pill.w / 2, s.pill.y + s.pill.h / 2))} (the "Added · 1" pill above the bar)` : 'no pill came up (was the page opened before the edit?)';
     }, expect: (ss) => {
       const end = ss.at(-1);
       const sh = end.sheet;
