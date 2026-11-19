@@ -166,6 +166,8 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const body = W.el('div', { class: 'body' });
   const foot = W.el('div', { class: 'foot' });
   card.append(W.el('div', { class: 'handle' }), body, foot);
+  // Written while the page was paused: the moment, as a chip; clicked, the page pauses there again (comments.js).
+  if (c.anchor?.moment && W.S.momentChip) card.insertBefore(W.S.momentChip(c.anchor.moment, true), body);
   card.addEventListener('click', (e) => e.stopPropagation());
   // Messages as in the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, and
   // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.

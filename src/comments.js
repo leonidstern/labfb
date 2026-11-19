@@ -25,11 +25,13 @@ import {
   readable,
   readComponents,
   openingTag,
+  selectorFor,
   short,
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
+import { momentText } from '../lib/moment.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass } from './widget/pinhold.ts';
 import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
@@ -507,6 +509,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // fluid: words that were selected; their box is the one element that grew out of the bar (fluid.ts). act: the bar's
   // button that was pressed (rewrite, cut, go: run once the dialog's row is there).
   function begin(anchor, fluid = false, act = '') {
+    if (!anchor.moment) {
+      const moment = S.momentFor?.(anchor); // the moment as the pin goes down, not as it is sent
+      if (moment) anchor = { ...anchor, moment };
+    }
     S.draft = { anchor, fluid, act };
     keepSpot(anchor, S.draft);
     render();
@@ -516,9 +522,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
-    // Paused when written: the agent is told, with the paused thing's time in ms.
+    // Paused when written: the agent is told, with the moment (a loop's pass and second, a video's time, lib/moment.mjs).
     // The page stays paused after (Leo, 19 Nov: "dont need to play again"): pause, pin, pin again, play when you like.
     if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: msOf(pausedEl(payload.anchor)) } };
+    const moment = payload.anchor && !payload.action && !payload.anchor.moment ? momentFor(payload.anchor) : undefined;
+    if (moment) payload = { ...payload, anchor: { ...payload.anchor, moment } };
     if ((S.slow || slowEls.size > 0) && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
@@ -1188,6 +1196,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         },
       });
       float.append(el('div', { class: 'handle' }));
+      // Paused: the moment this pin will carry, so you know it is kept (Leo, 19 Nov: "some info in pin where it was").
+      if (anchor.moment) float.append(S.momentChip(anchor.moment));
       const row = quickRow(draft, box);
       if (row?.children.length) float.append(row);
       const act = draft.act;
@@ -1335,15 +1345,114 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     held[stop ? 'add' : 'delete'](el);
     S.paused = held.size > 0; // a comment written now says the page was paused
   };
-  // The paused thing a pin is about: the one that holds the pinned element or sits in it, else the first paused.
-  const pausedEl = (anchor) => {
+  // The moving thing a pin is about (Leo, 19 Nov: pins on a dot, a video and a GIF all got the loop next to them): the
+  // pinned element's own motion wins, the video or animation it is, holds or sits in, and of several the one under
+  // the pin's own spot (else the nearest to it). Only a pin with no motion of its own (the page, a heading) takes the
+  // paused thing most in view, nearest the screen's middle.
+  const ownMotion = (anchor) => {
     let at = null;
     try {
       at = anchor?.selector ? document.querySelector(anchor.selector) : null;
     } catch {}
-    const all = [...held].filter((el) => el.isConnected);
-    return all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+    if (at === document.body || at === document.documentElement || (at && root.contains(at))) at = null;
+    const things = [...new Set([...held, ...document.querySelectorAll('video'), ...pageAnims().map(targetOf)])].filter((el) => el?.isConnected && !root.contains(el));
+    const area = (r) => r.width * r.height;
+    if (at) {
+      const ar = at.getBoundingClientRect();
+      const px = ar.left + (Number.isFinite(anchor.x) ? anchor.x : 0.5) * ar.width, py = ar.top + (Number.isFinite(anchor.y) ? anchor.y : 0.5) * ar.height;
+      const own = things.filter((el) => at.contains(el) || el.contains(at));
+      const box = (el) => el.getBoundingClientRect();
+      const under = own.filter((el) => { const r = box(el); return px >= r.left && px <= r.right && py >= r.top && py <= r.bottom; });
+      if (under.length) return under.sort((p, q) => area(box(p)) - area(box(q)))[0]; // the smallest under the spot: the thing itself, not what holds it
+      const off = (el) => { const r = box(el); return Math.hypot(Math.max(r.left - px, 0, px - r.right), Math.max(r.top - py, 0, py - r.bottom)); };
+      if (own.length) return own.sort((p, q) => off(p) - off(q))[0];
+    }
+    return null;
   };
+  // A pin with no motion of its own, while paused: the paused thing most in view, nearest the screen's middle.
+  const pausedEl = (anchor) => ownMotion(anchor) || inView();
+  const inView = () => {
+    const all = [...held].filter((el) => el.isConnected);
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    const score = (el) => {
+      const r = el.getBoundingClientRect();
+      const seen = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+      return [seen > 0 ? 0 : 1, Math.hypot(r.left + r.width / 2 - cx, r.top + r.height / 2 - cy)];
+    };
+    return all.map((el) => [el, score(el)]).sort((p, q) => p[1][0] - q[1][0] || p[1][1] - q[1][1])[0]?.[0];
+  };
+  // A short name for it, as a person would point at it: ".hero video", "#spinner", "div.dot".
+  const nameOf = (el) => {
+    const own = (n) => n.localName + (n.id ? `#${n.id}` : n.classList[0] ? `.${n.classList[0]}` : '');
+    const me = own(el);
+    if (el.id || el.classList.length) return me.slice(0, 80);
+    const up = el.parentElement?.closest('[id], [class]');
+    return (up && up !== document.body ? `${up.id ? `#${up.id}` : `.${up.classList[0]}`} ${me}` : me).slice(0, 80);
+  };
+  // Where a paused thing stands: a video's second of its length; an animation's second inside one pass and which pass
+  // (a loop's total time, 835734 ms, says neither). lib/moment.mjs words it.
+  const momentOf = (el) => {
+    if (!el) return undefined;
+    const what = nameOf(el), sel = selectorFor(el);
+    const playing = isStill(el) ? undefined : true; // nothing paused: the moment it was showing as the pin went down
+    if (el instanceof HTMLVideoElement) {
+      if (!Number.isFinite(el.currentTime)) return undefined;
+      return { kind: 'video', at: el.currentTime, of: Number.isFinite(el.duration) ? el.duration : undefined, what, sel, playing };
+    }
+    const a = animsOf(el)[0];
+    const t = a?.effect?.getComputedTiming();
+    const dur = Number(t?.duration), local = Number(t?.localTime);
+    if (!t || !(dur > 0) || !Number.isFinite(local)) return undefined;
+    const pass = Number.isFinite(t.currentIteration) ? t.currentIteration : 0;
+    const at = Math.min(Math.max(local - (t.delay || 0) - pass * dur, 0), dur);
+    return { kind: t.iterations === Infinity ? 'loop' : 'anim', at: at / 1000, of: dur / 1000, pass: pass + 1, what, sel, ms: Number(a.currentTime), playing };
+  };
+  // A pin's moment chip: the page pauses and the thing goes back to that moment, to see what was meant. It stays
+  // paused; play it again as usual (the control or the pause key).
+  const seekMoment = (m) => {
+    let el = null;
+    try {
+      el = m?.sel ? document.querySelector(m.sel) : null;
+    } catch {}
+    if (!el || m.kind === 'gif') return false;
+    setPause(true);
+    if (!held.has(el)) setItem(el, true);
+    if (el instanceof HTMLVideoElement) el.currentTime = m.at;
+    else {
+      const a = animsOf(el)[0];
+      const t = a?.effect?.getComputedTiming();
+      if (!a) return false;
+      a.currentTime = Number.isFinite(m.ms) ? m.ms : (t?.delay || 0) + ((m.pass || 1) - 1) * Number(t?.duration) + m.at * 1000;
+    }
+    drawMotion();
+    return true;
+  };
+  S.seekMoment = seekMoment;
+  // The moment, in a small chip: a label in the box being written, a button on a sent pin (back to that moment).
+  const PAUSED = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
+  const momentChip = (m, seek = false) => {
+    const chip = el(seek && m.kind !== 'gif' ? 'button' : 'div', { class: 'moment' });
+    chip.innerHTML = m.kind === 'gif' || m.playing ? '' : PAUSED; // ⏸ only for a moment that was paused
+    chip.append(el('span', {}, momentText(m)));
+    if (chip.localName === 'button') {
+      chip.setAttribute('type', 'button');
+      chip.title = 'pause the page at this moment';
+      chip.addEventListener('click', (e) => (e.stopPropagation(), seekMoment(m)));
+    }
+    return chip;
+  };
+  S.momentChip = momentChip;
+  // A pin's moment: on a GIF (it can't be paused), how long it had been showing; else, while paused, where the paused
+  // thing it is about stood.
+  // Every way (Leo, 19 Nov: "it says only if i pause one"): the page paused, one thing paused, or nothing paused, a pin
+  // on a moving thing takes that thing's moment as the pin goes down (begin); a pin on still things, while paused, the
+  // paused thing most in view.
+  const momentFor = (anchor) => {
+    if (anchor.shownFor !== undefined) return { kind: 'gif', at: anchor.shownFor };
+    const el = ownMotion(anchor) || (S.paused ? inView() : null);
+    return el ? momentOf(el) : undefined;
+  };
+  S.momentFor = momentFor;
   const msOf = (el) => {
     if (!el) return undefined;
     const t = el instanceof HTMLVideoElement ? el.currentTime * 1000 : Number(animsOf(el)[0]?.currentTime);

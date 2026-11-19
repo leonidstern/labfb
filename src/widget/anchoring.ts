@@ -106,7 +106,7 @@ const generated = (v) => GENERATED.test(v || '');
 // Names a page gives an element for tests or for comments: the most lasting way to find it again.
 const NAMED = ['data-testid', 'data-lab', 'data-comment-target'];
 
-function selectorFor(node) {
+export function selectorFor(node) {
   const parts = [];
   while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
     const name = NAMED.find((a) => node.getAttribute(a));
