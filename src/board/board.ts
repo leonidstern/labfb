@@ -290,7 +290,6 @@ const dup = (id: string) =>
     setTimeout(() => select(n.id), 400);
   });
 const archive = (id: string) => (select(''), mutate(id, (f) => (f.state = 'archived')));
-const nudge = (id: string, dx: number, dy: number) => mutate(id, (f) => ((f.x += dx), (f.y += dy), (f.auto = false)));
 // ⌘Z: the frames as they were; one added since is archived (a frame is never dropped).
 const undoLast = () => {
   const was = undo.pop();
@@ -344,7 +343,7 @@ const at = (e: { clientX: number; clientY: number }) => {
 };
 const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
 const pts = new Map<number, { x: number; y: number }>();
-let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean } | null = null;
+let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; held?: boolean } | null = null;
 let holdTimer = 0;
 // A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
 // put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
@@ -369,8 +368,7 @@ addEventListener('pointerdown', (e) => {
     if (down) down.far = true; // a second finger: this was no tap
   } else {
     const id = at(e);
-    const mv = e.pointerType === 'mouse' && id && id === selected && !entered && editable() ? find(id) : undefined; // a selected frame is moved by its body (a finger only pans)
-    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), t: e.timeStamp, mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined };
+    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), t: e.timeStamp };
     clearTimeout(holdTimer);
     if (e.pointerType === 'touch') {
       const d = down;
@@ -403,21 +401,7 @@ addEventListener('pointermove', (e) => {
     clearTimeout(holdTimer);
   }
   if (down?.held) return; // the hold made a pin: the finger lifting off doesn't pan
-  if (down?.far && down.mv) {
-    // Positions round to 8 px; an edge within 6 screen px of another frame's edge takes that edge.
-    const f = down.mv.f;
-    f.auto = false;
-    let nx = Math.round((down.fx + (e.clientX - down.x) / cam.z) / 8) * 8;
-    let ny = Math.round((down.fy + (e.clientY - down.y) / cam.z) / 8) * 8;
-    for (const o of cards) {
-      if (o === down.mv) continue;
-      for (const edge of [o.f.x, o.f.x + o.f.w]) for (const mine of [nx, nx + f.w]) if (Math.abs(edge - mine) * cam.z < 6) nx += edge - mine;
-      for (const edge of [o.f.y, o.f.y + o.f.h]) for (const mine of [ny, ny + f.h]) if (Math.abs(edge - mine) * cam.z < 6) ny += edge - mine;
-    }
-    [f.x, f.y] = [nx, ny];
-    Object.assign(down.mv.box.style, { left: `${nx}px`, top: `${ny}px` });
-    dispatchEvent(new Event('lab-board-moved'));
-  } else if (down?.far) go(panBy(cam, dx, dy), true, true);
+  if (down?.far) go(panBy(cam, dx, dy), true, true);
 }, true);
 const up = (e: PointerEvent) => {
   if (!pts.delete(e.pointerId)) return;
@@ -438,8 +422,7 @@ const up = (e: PointerEvent) => {
     if (w && e.type === 'pointerup') setTimeout(() => (w.hold || w.place)(d.x, d.y), 0);
     return;
   }
-  if (d.mv && d.far && d.before && board) return void save(copy(board.frames), d.before);
-  if (d.far && !d.mv && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
+  if (d.far && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
   if (d.far || e.type === 'pointercancel') return;
   const widget = boardWidget();
   if (widget?.pinning() && e.pointerType !== 'touch') return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
@@ -509,11 +492,9 @@ const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 
     }
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return false;
-  if (sel && !entered && editable() && /^(Arrow(Left|Right|Up|Down)|Backspace|Delete)$/.test(e.key)) {
-    if (e.key.length > 6 && e.key[0] === 'A') {
-      const d = e.shiftKey ? 80 : 8;
-      nudge(selected, e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0);
-    } else archive(selected);
+  // Frames stay where the lab or the agent put them: no key and no drag moves one (Leo, 19 Nov: "dont allow moving frames").
+  if (sel && !entered && editable() && (e.key === 'Backspace' || e.key === 'Delete')) {
+    archive(selected);
     return true;
   }
   const digit = /^Digit(\d)$/.exec(e.code)?.[1];

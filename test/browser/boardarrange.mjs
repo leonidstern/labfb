@@ -60,35 +60,33 @@ try {
       await put('arr', three(), { of: '/pricing' });
       await p.goto(B + '/_lab/board/arr');
       await sleep(2000);
-      // ----- nudge
+      // ----- frames stay put: no arrow key and no drag moves one
       await sel('a');
+      const was = JSON.stringify(file('arr').frames.map((f) => [f.x, f.y]));
+      const at0 = await centre('a');
       await p.keyboard.press('ArrowRight');
-      await wait(() => file('arr').frames.find((f) => f.id === 'a').x !== undefined);
-      let fr = file('arr').frames;
-      check(eng, 'an arrow key moves the selected frame 8 px; the frames the lab placed stay unplaced in the file', fr[0].x % 8 === 0 && fr[0].x !== undefined && fr[1].x === undefined && fr[2].x === undefined, JSON.stringify(fr.map((f) => [f.id, f.x])));
-      const a1 = fr[0].x;
       await p.keyboard.press('Shift+ArrowDown');
-      await wait(() => file('arr').frames[0].y === 80);
-      check(eng, 'Shift + arrow moves it 80 px', file('arr').frames[0].y === 80, String(file('arr').frames[0].y));
-      // ----- drag the selected frame by its body
-      const [cx, cy] = await centre('a');
-      const z = (await p.evaluate(() => __labBoard.camera())).z;
+      const [cx, cy] = at0;
       await p.mouse.move(cx, cy);
       await p.mouse.down();
       await p.mouse.move(cx + 120, cy + 40, { steps: 6 });
       await p.mouse.up();
-      await wait(() => file('arr').frames[0].x !== a1);
-      const moved = file('arr').frames[0];
-      check(eng, 'dragging the selected frame moves it, rounded to 8, saved on release', moved.x !== a1 && moved.x % 8 === 0 && moved.y % 8 === 0 && Math.abs((moved.x - a1) - 120 / z) < 24, JSON.stringify([a1, moved.x, moved.y, z]));
+      await sleep(800);
+      const sx = (await centre('a'))[0] - at0[0];
+      check(eng, 'arrow keys and a drag move no frame (a drag pans the board)', JSON.stringify(file('arr').frames.map((f) => [f.x, f.y])) === was, JSON.stringify([was, sx]));
+      await sel('a');
       // ----- size from the label's list
       await p.evaluate(() => [...document.querySelectorAll('#lab-board .f.sel .t u')].find((u) => u.textContent === '820').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, composed: true, clientX: 5, clientY: 5 })));
       await wait(() => file('arr').frames[0].w === 820);
       check(eng, 'a size picked from the label list sets width and its preset height', file('arr').frames[0].w === 820 && file('arr').frames[0].h === 1180, JSON.stringify(file('arr').frames[0]));
       // ----- duplicate, undo
+      const n0 = file('arr').frames.length;
+      const ids0 = file('arr').frames.map((f) => f.id);
       await p.keyboard.press('Control+KeyD');
-      await wait(() => file('arr').frames.length === 4);
-      const d = file('arr').frames.find((f) => f.variantOf === 'a');
-      check(eng, 'Ctrl/⌘ D duplicates the frame as a variant with a new id, 80 px to its right', file('arr').frames.length === 4 && d && d.id !== 'a' && d.x === file('arr').frames[0].x + 820 + 80 && d.src === '/pricing', JSON.stringify(d));
+      await wait(() => file('arr').frames.length === n0 + 1);
+      const d = file('arr').frames.find((f) => !ids0.includes(f.id));
+      const ax = (await p.evaluate(() => Number(document.querySelector('#lab-board .f[data-id="a"]').style.left.replace('px', ''))));
+      check(eng, 'Ctrl/⌘ D duplicates the frame as a variant with a new id, 80 px to its right', d && d.variantOf === 'a' && d.x === ax + 820 + 80 && d.src === '/pricing', JSON.stringify([d, ax]));
       await sleep(600);
       await p.keyboard.press('Control+KeyZ');
       await wait(async () => file('arr').frames.find((f) => f.id === d.id)?.state === 'archived' && (await kids()).length === 3);
