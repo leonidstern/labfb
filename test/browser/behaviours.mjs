@@ -16,8 +16,9 @@ const pw = (() => {
     try {
       return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
     } catch {
-      console.log('playwright is not installed: skipped');
-      process.exit(0);
+      // On CI a missing browser is a failure: a skip there would pass with nothing run.
+      console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+      process.exit(process.env.CI ? 1 : 0);
     }
   }
 })();
@@ -152,6 +153,13 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   const zone = await shadow(() => { const z = r.querySelector('.zone.draft'); return z ? Math.round(z.getBoundingClientRect().width) + 'x' + Math.round(z.getBoundingClientRect().height) : null; });
   check(eng, 'a narrow area can be drawn, even after a stray click', zone === '330x20', String(zone));
   await p.keyboard.type('narrow strip');
+  // Safari sends the Enter that picks a word from an input method after the composition has ended, as key code 229.
+  const picked = await shadow(() => {
+    const e = new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true, composed: true });
+    r.activeElement.dispatchEvent(e);
+    return e.defaultPrevented;
+  });
+  check(eng, 'the Enter that picks a word while typing Japanese or Chinese does not send', picked === false, String(picked));
   await p.keyboard.press('Enter');
   await untilApi((c) => c.text === 'narrow strip', 600);
   const saved = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'narrow strip');
@@ -219,11 +227,20 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
 
   // Keys
   const chatOpen = () => shadow(() => { return !r.querySelector('.chatwin').hidden; });
-  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'с', code: 'KeyC', bubbles: true })));
+  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'е', code: 'KeyT', bubbles: true })));
   await untilShadow(p, (r) => !r.querySelector('.chatwin').hidden, null, 300);
-  check(eng, 'C opens the chat, on a Cyrillic layout too', await chatOpen());
+  check(eng, 'T opens the chat, on a Cyrillic layout too', await chatOpen());
   await p.keyboard.press('Escape');
   await sleep(200);
+  // C is comment (Leo, 19 Nov): from the pointer, C brings the comment back; 1 still switches.
+  const pointer = () => shadow(() => { return r.querySelector('.go-btn').classList.contains('cursor'); });
+  await p.keyboard.press('1');
+  await untilShadow(p, (r) => r.querySelector('.go-btn').classList.contains('cursor'), null, 300);
+  const wasPointer = await pointer();
+  await p.keyboard.press('c');
+  await untilShadow(p, (r) => !r.querySelector('.go-btn').classList.contains('cursor'), null, 300);
+  const after = await pointer(), chatAfter = await chatOpen();
+  check(eng, 'C goes back to comment from the pointer, and opens no chat', wasPointer && !after && !chatAfter, JSON.stringify({ wasPointer, after, chatAfter }));
   await p.keyboard.press('2');
   const keys = await shadow(() => { return r.querySelector('.go-btn').textContent.replace(/\s/g, ''); });
   const goLeft = await shadow(() => { return document.documentElement.classList.contains('lab-go') || r.querySelector('.go-btn').classList.contains('cursor'); });
@@ -359,7 +376,18 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   write('notes.md', '# notes, changed');
   await sleep(3000);
   check(eng, 'a save the page does not use leaves it alone', loads === 1, `loads ${loads}`);
+  // With the chat open the reload waits ("update waiting"), and what comes meanwhile still shows: before 19 Nov the
+  // held reload cut off every later update, so the agent's answer stayed out of an open chat until it was closed.
+  await p.keyboard.press('t');
+  await untilShadow(p, (r) => r.querySelector('.chatwin').hidden === false, null, 1000);
+  const said = () => shadow(() => { return [...r.querySelectorAll('.msg')].some((m) => m.textContent.includes('while it waits')); });
   write('data.json', '{"a":2}');
+  await untilShadow(p, (r) => r.querySelector('.soon')?.hidden === false, null, 3000);
+  const waiting = await shadow(() => { return r.querySelector('.soon')?.hidden === false; });
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'while it waits', anchor: { kind: 'page', width: 1000, height: 700, dpr: 1 } }) });
+  await untilShadow(p, (r) => [...r.querySelectorAll('.msg')].some((m) => m.textContent.includes('while it waits')), null, 2000);
+  check(eng, 'a reload that waits for an open chat does not hold back new messages', waiting && loads === 1 && (await said()), `waiting ${waiting}, loads ${loads}`);
+  await p.keyboard.press('Escape');
   for (const end = Date.now() + 3000; Date.now() < end && loads < 2; ) await sleep(50);
   check(eng, 'a save it may fetch reloads the page', loads === 2, `loads ${loads}`);
   await sleep(800);

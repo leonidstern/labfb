@@ -43,7 +43,7 @@ export function startLive() {
     // for a new widget script or comments schema, and follows the lab's comments and the board file.
     const board = Boolean(W.S.board); // exactly /_board/<name>: a variant opened by itself is a page like any other
     const busy = () =>
-      frame ? W.S.busy() || performance.now() - touchedAt < 1500 : W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
+      frame ? W.S.busy() || performance.now() - touchedAt < 1500 : W.S.draft || W.S.selecting || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
     let reloadTimer: any = 0;
@@ -158,7 +158,7 @@ export function startLive() {
     };
     let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
     let readsAt = null;
-    let lookedAt = null;
+    let sectionsAt = null;
     let hotAt = null;
     // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
@@ -345,7 +345,7 @@ export function startLive() {
             if (Math.abs(moved) > 1) scrollBy(0, moved);
           }
           W.reflow();
-          W.S.checkChanges?.(); // the "New" list follows the new page
+          W.S.checkSections?.(); // the section bar follows the new page
         };
         // An error inside the cross-fade would go unseen: any failure falls back to a reload.
         const safe = () => {
@@ -423,8 +423,9 @@ export function startLive() {
       }));
     function onState(v) {
       {
-        // A new widget script: this page needs it, so it reloads (when it's safe, as always).
-        if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) return reload();
+        // A new widget script: this page needs it, so it reloads (when it's safe, as always). While the reload waits
+        // (a chat, a thread or a draft is open) the rest still runs: replies keep arriving and the pill stays true.
+        if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) reload();
         // Comments stored in a new shape (lib/schema.mjs VERSION): this page reads them with the widget that knows it.
         if (v.schema && W.script.dataset.schema && String(v.schema) !== W.script.dataset.schema) return reload();
         // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
@@ -441,7 +442,7 @@ export function startLive() {
         if (String(v.files) !== W.script.dataset.version) {
           // The lab says which files changed (no list: a burst too big to judge, so reload as before).
           if (board || (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere))) W.script.dataset.version = String(v.files);
-          else return reload();
+          else reload(); // held while something is open: the comments below still come in (the agent's answer, read marks)
         }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
@@ -461,10 +462,10 @@ export function startLive() {
           readsAt = v.reads;
           W.syncReads();
         }
-        // a last look made on another device with your name
-        if (v.looked !== lookedAt) {
-          lookedAt = v.looked;
-          W.S.syncLooked?.();
+        // a section read on another device with your name
+        if (v.sections !== sectionsAt) {
+          sectionsAt = v.sections;
+          W.S.syncSections?.();
         }
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;

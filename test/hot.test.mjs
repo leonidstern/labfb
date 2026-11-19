@@ -100,6 +100,16 @@ test('an HTML save and a picture save are hot too', async () => {
   assert.equal(img.files, first.files, 'still no reload');
 });
 
+test('more hot files in one go than the list holds is a reload, not a list that leaves some out', async () => {
+  const live = await listen();
+  const first = await live.next(() => true);
+  for (let i = 0; i < 60; i++) save(`many-${i}.css`, `h1{margin:${i}px}`);
+  const said = await live.next((s) => s.files > first.files || s.hot > (first.hot || 0));
+  live.stop();
+  assert.ok(said?.files > first.files, 'every page reloads');
+  assert.equal(said.changed, null, 'with no list of files');
+});
+
 test('a script save is a reload', async () => {
   const live = await listen();
   const first = await live.next(() => true);

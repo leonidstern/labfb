@@ -15,8 +15,9 @@ const pw = (() => {
       return require(require.resolve('playwright', paths && { paths }));
     } catch {}
   }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
+  // On CI a missing browser is a failure: a skip there would pass with nothing run.
+  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+  process.exit(process.env.CI ? 1 : 0);
 })();
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
@@ -25,6 +26,8 @@ const PORT = 7930 + Math.floor(Math.random() * 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'ask.html'), '<!doctype html><meta charset="utf-8"><title>a</title><h1 id="h">Pick</h1><p>text</p>');
+// Fades are not motion: a transition and a short animation get no pause button; an infinite one and a long one do.
+fs.writeFileSync(path.join(DIR, 'fades.html'), '<!doctype html><meta charset="utf-8"><title>f</title><style>@keyframes spin { to { rotate: 1turn } } div { width: 40px; height: 40px; margin: 20px; background: red } #inf { animation: spin 2s linear infinite } #long { animation: spin 5s linear 1 } #short { animation: spin 1.5s linear 1 } #tr { transition: width 1.5s linear }</style><h1>Fades</h1><div id="inf"></div><div id="long"></div><div id="short"></div><div id="tr"></div><div id="web"></div><script>setTimeout(() => (document.getElementById("tr").style.width = "100px"), 100); document.getElementById("web").animate([{ opacity: 1 }, { opacity: .5 }], { duration: 2000 })</script>');
 fs.writeFileSync(path.join(DIR, 'anim.html'), '<!doctype html><meta charset="utf-8"><title>m</title><style>@keyframes spin { to { rotate: 1turn } } #s, #t { width: 40px; height: 40px; background: red; animation: spin 2s linear infinite }</style><h1>Moving</h1><div id="s"></div><div id="t"></div><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, shortcuts: { toggle: 'h', chat: 'x' } }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
@@ -224,6 +227,19 @@ try {
       await untilRoot(p, (r) => !r.querySelector('.motion'), 1500);
       check(eng, 'hidden comments hide the pause controls too', !(await pause()).shown);
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/anim', action: 'delete', id: c.id }) });
+      // Fades are not motion.
+      await p.evaluate(() => localStorage.setItem('lab-on', '1'));
+      await p.goto(B + '/fades');
+      await untilRoot(p, (r) => r.querySelectorAll('.motion:not([hidden])').length >= 1, 2500);
+      await sleep(300);
+      const fades = await p.evaluate(() => {
+        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+        const kinds = document.getAnimations().filter((a) => a.playState === 'running').map((a) => a.constructor.name + ':' + a.effect.target.id);
+        const at = [...(r?.querySelectorAll('.motion') || [])].map((b) => b.getBoundingClientRect().top);
+        const tops = Object.fromEntries(['inf', 'long', 'short', 'tr', 'web'].map((id) => [id, (e => e.offsetTop + e.offsetHeight / 2 - 20 - scrollY)(document.getElementById(id))]));
+        return { n: at.length, kinds, near: Object.entries(tops).filter(([, t]) => at.some((a) => Math.abs(a - t - 20) < 8)).map(([id]) => id) };
+      });
+      check(eng, 'only the infinite animation gets a pause: not a transition, a 5 s or 1.5 s animation, or a 2 s Web Animation', fades.n === 1 && fades.near.join() === 'inf' && fades.kinds.some((k) => k.startsWith('CSSTransition')) && fades.kinds.some((k) => k.endsWith(':short')), JSON.stringify(fades));
       await p.goto('about:blank');
       await ctx.close();
     } finally {
