@@ -618,7 +618,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   try {
     update = script?.dataset.admin && script.dataset.update ? JSON.parse(script.dataset.update) : null;
   } catch {}
-  const updateBtn = update && el('button', { type: 'button', class: 'update-btn' }, `update to ${update.version}`);
+  // A small "update" beside the version line (Leo, 19 Nov), not a menu item of its own.
+  const updateBtn = update && versionLine && el('button', { type: 'button', class: 'update-btn', title: `update to labit ${update.version}` }, 'update');
+  if (updateBtn) versionLine.append(' · ', updateBtn);
   updateBtn?.addEventListener('click', async () => {
     setMenu(false);
     const act = `update labit to ${update.version}`;
@@ -739,7 +741,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   function placeBar() {
     const inMenu = !S.on ? []
       : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), ...(flag('select') ? [selectBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(updateBtn ? [updateBtn] : []), ...(versionLine ? [versionLine] : [])];
+      : [...(labHead ? [labHead, labsBtn] : []), ...(flag('select') ? [selectBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
