@@ -681,7 +681,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
-    if (name === 'sectionBar') startSections(); // the section bar: what is new or updated on the page since you read it
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
   S.syncFlags = (on, reload) => {
@@ -2111,7 +2110,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     if (flag('select')) startFlag('select');
     load();
-    for (const name of flagNames) if (flag(name)) startFlag(name); // select, sectionBar (lib/flags.ts)
+    startSections(); // the section bar: what is new or updated on the page since you read it
+    for (const name of flagNames) if (flag(name)) startFlag(name); // select (lib/flags.ts)
     scanForFramework();
     if (!S.components) {
       addEventListener('load', scanForFramework, { once: true });

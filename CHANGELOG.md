@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Kept: the section bar is simply labit now, no flag. A page with two or more sections gets it; the `sectionBar` flag is gone, and a settings file that still names it is told so when the lab starts and otherwise ignored.
 - A question's choices are tried in the sentence: pointing at a row or tapping it puts its words in the page where the quoted words are (only the words that differ, in their own text nodes, so a link or `<em>` keeps its word), Esc, close, a pick or another card puts the page back exactly, and the page's own saves (HTML hot patch) keep the try or leave rows only when the words are gone. On a computer the card opens in the right margin beside the paragraph with a thin line to the words, or under the quote's last line when there is no room; it never covers the quoted lines or moves while you try. `labit reply --choice` says in a note when a choice reaches past the quoted words, or when the note has no quoted words to try them in.
 - A phone or laptop on the wifi stays in while it uses the lab: a pin, a reply or the page's live stream renews its day-long pass, not only opening a page. A tab left open for a day lost its pins to the gate without a word.
 - Phones: the go / remove / fix buttons under a new comment keep the computer's corner (radius − 8 px) instead of the sheet's, which made them read as pills.
