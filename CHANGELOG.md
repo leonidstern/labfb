@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Two frames of one page (the board's) no longer swap their scroll when a save reloads both: the position kept across a reload is stored per frame name, not per page. A page not in a frame keeps its key.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.
 - Pause sits beside what moves, not in the bar: each video and each animated element on the page gets a small pause / play just past its top right corner, over the page (nothing shifts), that stops or starts only that one. It shows with the comments and hides with them (M). **P** still pauses everything, or plays what was paused. The bar's pause button is gone.
 - A pin handed to a wait that gets no reply of any kind (on it, progress, a question, an answer) within 2 minutes counts as not answered: it goes to the next wait, any session's, and its card says "not answered". The pill says "Claude isn't answering" instead of "talking to Claude" until that session replies to anything, and a session that isn't answering no longer ends another session's wait. `LAB_ANSWER_MS` sets the time. Before, a shell loop left running by a closed session kept waiting: pins went to it and sat unanswered. The skill, `labit --help` and the README say never to wrap `wait` in a shell loop.

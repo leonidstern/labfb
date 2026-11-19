@@ -1,0 +1,96 @@
+// Shortcuts from labit.json in real browsers (WebKit and Chrome's engine): the changed keys work, the old ones don't,
+// and the bar shows the new key. Not part of `npm test`; CI runs it in the `browser` job.
+// Run: node test/browser/shortcuts.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const pw = (() => {
+  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
+    try {
+      return require(require.resolve('playwright', paths && { paths }));
+    } catch {}
+  }
+  console.log('playwright is not installed: skipped');
+  process.exit(0);
+})();
+
+const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
+const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-framescroll-'));
+const PORT = 8020 + Math.floor(Math.random() * 30);
+const B = `http://localhost:${PORT}`;
+fs.writeFileSync(path.join(DIR, 'pricing.html'), '<!doctype html><meta charset="utf-8"><title>p</title><script>window.x=1</script><h1 id="t">Pricing one</h1><div style="height:3000px"></div><p id="end">end</p>');
+fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
+fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
+const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
+const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+for (let i = 0; i < 80; i++) {
+  try {
+    await fetch(B + '/');
+    break;
+  } catch {
+    await sleep(100);
+  }
+}
+let failed = 0;
+const check = (eng, name, ok, detail = '') => {
+  if (!ok) failed++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
+};
+try {
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+    const browser = await pw[eng].launch();
+    try {
+      const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+      await ctx.addInitScript(() => {
+        localStorage.setItem('lab-name', 'leo');
+        const set = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) {
+          if (this === sessionStorage && k.startsWith('lab-scroll:')) localStorage.setItem('rec', (localStorage.getItem('rec') || '') + k + '|');
+          return set.call(this, k, v);
+        };
+      });
+      // A stand-in for a board: no widget on it, two frames of one page that has a script (a save reloads it).
+      const board = await ctx.newPage();
+      await board.route(B + '/stub', (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><iframe name="lab:A" src="/pricing" style="width:400px;height:500px"></iframe><iframe name="lab:B" src="/pricing" style="width:400px;height:500px"></iframe>' }));
+      await board.goto(B + '/stub');
+      await sleep(1500);
+      const [A, Bf] = ['lab:A', 'lab:B'].map((n) => board.frame({ name: n }));
+      await A.evaluate(() => scrollTo(0, 400));
+      await Bf.evaluate(() => scrollTo(0, 900));
+      await A.evaluate(() => (window.__same = 1));
+      fs.writeFileSync(path.join(DIR, 'pricing.html'), fs.readFileSync(path.join(DIR, 'pricing.html'), 'utf8').replace('Pricing one', 'Pricing two'));
+      let got = [];
+      for (let i = 0; i < 50; i++) {
+        await sleep(200);
+        try {
+          got = await Promise.all([A, Bf].map((f) => f.evaluate(() => [document.getElementById('t')?.textContent, Math.round(scrollY), window.__same])));
+        } catch {
+          continue;
+        }
+        if (got.every((g) => g[0] === 'Pricing two') && !got[0][2]) break;
+      }
+      await sleep(600);
+      got = await Promise.all([A, Bf].map((f) => f.evaluate(() => [document.getElementById('t')?.textContent, Math.round(scrollY), window.__same])));
+      check(eng, 'both frames reloaded (not patched)', got.every((g) => g[0] === 'Pricing two' && !g[2]), JSON.stringify(got));
+      check(eng, 'each frame of one page comes back to its own scroll', got[0][1] === 400 && got[1][1] === 900, JSON.stringify(got));
+      const keys = await board.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith('lab-scroll:')));
+      const rec = await board.evaluate(() => localStorage.getItem('rec') || '');
+      check(eng, 'each frame saves its scroll under its own key', rec.includes('lab-scroll:lab:A:/pricing|') && rec.includes('lab-scroll:lab:B:/pricing|'), rec);
+      check(eng, 'the scroll keys are used up, none left behind', keys.length === 0, JSON.stringify(keys));
+      await ctx.close();
+    } finally {
+      await browser.close();
+    }
+  }
+} finally {
+  server.kill();
+  fs.rmSync(DIR, { recursive: true, force: true });
+}
+console.log(failed ? `${failed} failed` : 'all passed');
+process.exit(failed ? 1 : 0);
