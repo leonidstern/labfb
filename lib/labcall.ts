@@ -1,18 +1,31 @@
-// Talking to this folder's lab as its agent: the `wait` / `reply` commands and the MCP server use the same call, so
-// the MCP server waits in its own process (a cancel or the client going away aborts the request; nothing outlives it).
+// Talking to this folder's lab as its agent: the `wait` / `reply` commands' call to the lab.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 
 // agent: the agent's own key (labs since 17 Nov); a lab from before has only token, the browser's key, and takes that.
-type Server = { port: number; token: string; agent?: string };
+type Server = { port: number; token: string; agent?: string; pid?: number };
 type Session = Record<string, unknown>;
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM'; // there, and somebody else's
+  }
+};
 
 /** The lab serving `from` or a folder above it, from its .lab/server.json; null when none is there. */
 export function findLab(from: string): { dir: string; server: Server } | null {
   for (let dir = path.resolve(from); ; dir = path.dirname(dir)) {
     const file = path.join(dir, '.lab/server.json');
-    if (fs.existsSync(file)) return { dir, server: JSON.parse(fs.readFileSync(file, 'utf8')) };
+    if (fs.existsSync(file)) {
+      const server = JSON.parse(fs.readFileSync(file, 'utf8'));
+      // A lab that crashed (or a reboot) leaves its file behind, and its port may be another folder's lab by now:
+      // a wait there is refused and a pin lands on the wrong lab. A file whose process is gone is not a lab.
+      if (!Number.isInteger(server.pid) || alive(server.pid)) return { dir, server };
+    }
     if (path.dirname(dir) === dir) return null;
   }
 }

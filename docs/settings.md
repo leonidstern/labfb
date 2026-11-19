@@ -99,7 +99,8 @@ came from.
 
 | Flag | What it is |
 | --- | --- |
-| `sinceLooked` | a "Added · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
+| `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
+| `sectionBar` | a bar at the top of the page that lists each section (a heading of one level, usually h2) and keeps what is new and what is updated since you read it: a filled dot and "new" for a section that was not there, a ring and "updated" for one whose text changed. A section counts as read after about 3 seconds in it, when you scroll on after a moment, or when you tap it in the bar; the lab keeps that per name, so your Mac and your phone agree. Off by default: set it in `labit.json` |
 
 `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
@@ -148,15 +149,17 @@ win over yours, key by key.
 | --- | --- | --- |
 | `toggle` | `m` | Show or hide comments |
 | `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
-| `chat` | `c` | Open the chat |
+| `chat` | `t` | Open the chat |
+| `pin` | `c` | Comment mode: a click places a comment. Leaves select mode or the pointer |
 | `next` | `w` | The next new comment (with Shift: the one before) |
 | `pause` | `p` | Pause the page's videos and animations, or play what was paused (each one also has its own pause / play beside it) |
+| `slow` | `s` | Play the page's videos and animations at ¼ speed, or back at full speed (the ¼ beside each pause does the same); a pin made while paused carries the moment in ms |
 | `done` | `d` | Hide or show done threads (shown, faded, at first) |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
-| `added` | `a` | With the `sinceLooked` flag on: open the Added list; press again to go to the next added item |
+| `select` | `v` | With the `select` flag on: select mode on or off |
 
-Letters follow the key's place on non-Latin layouts (the C key is C in Russian too), and digits work with Shift or
+Letters follow the key's place on non-Latin layouts (the T key is T in Russian too), and digits work with Shift or
 on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat` is `x`.
 
 ## Not settings
