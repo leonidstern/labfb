@@ -272,6 +272,11 @@ button.btn.undo { color: var(--_fg); }
 .list .none { padding: 8px; color: var(--_muted); }
 /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
+/* Ink on selected words instead of a pin (wordink.ts): the band is the page's (a highlight). The pin stays, unseen, at its
+   spot: only its new-reply dot shows, and Tab shows the pin itself. */
+button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; color: transparent; pointer-events: none; }
+.pin.on-ink:not(:focus-visible) > *, button.pin.on-ink:not(:focus-visible)::before { display: none; }
+.pin.draft.on-ink { visibility: hidden; }
 .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
 .chatwin .replying { flex: none; }

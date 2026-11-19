@@ -52,10 +52,9 @@ jobs:
           # behaviours; the live connection; shortcuts from labit.json; pins finding their spot again;
           # what a drag does (words, an area, a point, fields and links); new since you looked (the pill and list of the
           # ids the agent added, what drops one off, two names, a phone's sheet, and what must never count).
+          # Ink on selected words (flag inkOnText).
           # A phone pinch-zoomed in: the bar and the chat stay their usual size on screen (zoom).
-          # The "!" on the labit mark for a held reload: its host, its label, a tap that takes the update (updbadge).
-          - behaviours connection shortcuts anchoring selection flags progress moved zoom shiftkeys frame framescroll boardreload board boardmode boardpins boardarrange select sections actions draw motionreach updbadge
-          - behaviours connection shortcuts anchoring selection flags progress moved zoom shiftkeys frame framescroll boardreload board boardmode boardpins boardarrange select sections actions draw motionreach update undo moment nativepins native nativeboard
+          - behaviours connection shortcuts anchoring selection flags progress moved zoom shiftkeys frame framescroll boardreload board boardmode boardpins boardarrange select sections actions draw motionreach ink # The "!" on the labit mark for a held reload: its host, its label, a tap that takes the update (updbadge). updbadge update undo moment nativepins native nativeboard
     name: browser (${{ matrix.engine }}, ${{ matrix.group == 'fluid' && 'fluid' || 'rest' }})
     # Playwright's own image has both browsers and their system libraries already in it. Installing them with
     # apt on each run took 30 s on a good day and 33 min on a bad one (#124, #127).

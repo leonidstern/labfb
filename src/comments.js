@@ -27,6 +27,7 @@ import {
   openingTag,
   selectorFor,
   short,
+  wholeWords,
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
@@ -48,6 +49,7 @@ import { bindSelect, pick, selectChips, selectMode } from './widget/select.ts';
 import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
+import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget/wordink.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -92,7 +94,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get coarse() { return coarse; },
     get composer() { return composer; },
     get contentEnd() { return contentEnd; },
+    get control() { return control; },
     get doneBtn() { return doneBtn; },
+    get flag() { return flag; },
     get movedBtn() { return movedBtn; },
     get drawList() { return drawList; },
     get el() { return el; },
@@ -151,6 +155,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   bindThread(W);
   bindSheets(W);
   bindFluid(W);
+  bindInk(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // In a board's frame the widget draws nothing and binds nothing (src/widget/frame.ts).
   if (inFrame()) return startFrame(script);
@@ -357,6 +362,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // further down are read when called.
   bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning(), native: () => flag('native') });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
+  startInk(); // comments on selected words show as ink on them, not a pin (src/widget/wordink.ts)
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -792,6 +798,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
+    if (name === 'inkOnText' && S.loaded) render(); // switched on from the ⋯ menu: the notes on words turn to ink (wordink.ts)
     if (name === 'native') host.toggleAttribute('data-native', true); // what the widget's CSS does natively (styles.css)
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
@@ -954,7 +961,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const appear = now !== S.shown;
     const anim = appear ? ' in' : '';
     let quoted = null;
+    const inkNow = []; // comments on selected words: ink on them instead of a pin
     const done = () => {
+      drawInks(inkNow);
       patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       flushPins(); // the rules of the pins the browser holds, now they are on the page (pinhold.ts)
       if (S.closeFast && !now && prev) {
@@ -985,6 +994,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
       fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
+      if (quoted && inkRange(quoted)) quoted = null; // words that wear their own ink are lit already (wordink.ts)
       if (!isTrying()) markQuote(quoted); // a tried choice wears the green itself
       S.quoted = quoted;
       S.shown = now;
@@ -1030,6 +1040,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (S.openId !== c.id) return;
       }
       const ink = zone && c.anchor.ink; // a drawing is its own pin: its lines, no marker (draw.ts)
+      const words = !moved && !zone && inkRange(c.anchor); // its words are where they were: ink, the pin unseen at their end (wordink.ts)
       if (S.openId === c.id && !ink) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
@@ -1044,7 +1055,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
       for (const [cls, on] of Object.entries({
         resolved: c.resolved, done: state === 'done', new: news.length, moved,
-        grab: movable, open: S.openId === c.id, dragging: false,
+        grab: movable, open: S.openId === c.id, dragging: false, 'on-ink': words,
       })) pin.classList.toggle(cls, Boolean(on));
       pin.classList.add('pin');
       if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
@@ -1150,6 +1161,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (zone && !ink) info.shown = add(drawZone(zone, 'saved'));
         else if (c.anchor?.quote && !quoted) quoted = c.anchor;
       }
+      if (words) inkNow.push({ c, r: words, pin }); // a click on the words is a click on it (wordink.ts)
       next.push(pin);
       pinsById.set(c.id, pin);
       if (S.openId === c.id) {
@@ -1202,6 +1214,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // goes out). Phones: the usual sheet, which the bar grows into, with no keyboard until the box is tapped.
     const rects = S.draft?.fluid && !sheetMode.matches && quoteRects(S.draft.anchor);
     const fluid = Boolean(rects?.length); // words not found: the plain box
+    // Words selected with ink on words (wordink.ts): the band in the draft's grey while you write, the dialog open or not;
+    // a plain box's pin stays, unseen, for the sheet to aim at.
+    const draftInk = S.draft && !position(S.draft.anchor).zone && inkRange(S.draft.anchor);
+    if (draftInk) inkNow.push({ r: draftInk });
     if (S.draft && fluidHas(S.draft)) {
       quoted = S.draft.anchor; // the words stay lit while it is open
       if (rects) fluidFollow(rects); // and it stays with them (a saved file moved them); gone, it stays, cut and rewrite off
@@ -1213,7 +1229,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       else add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
       if (!fluid && !draft.select && !anchor.ink) {
-        const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
+        const pin = el('div', { class: `pin draft${anim}${draftInk ? ' on-ink' : ''}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
         layer.append(pin);
@@ -1952,8 +1968,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.recheckCtl = () => S.mouse && sayCtl(document.elementFromPoint(S.mouse.x, S.mouse.y));
   const control = (t) => {
     if (S.overControls) return false; // with the switch on, nothing on the page keeps its click
+    const hand = !document.documentElement.classList.contains('lab-ink-over'); // over inked words the hand is ours (wordink.ts)
     for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
-      if (n.matches(INTERACTIVE) || getComputedStyle(n).cursor === 'pointer') return true;
+      if (n.matches(INTERACTIVE) || (hand && getComputedStyle(n).cursor === 'pointer')) return true;
     return false;
   };
   // data-uncommentable: no new pins or areas start inside this part of the page (same attribute as Claude artifacts).
@@ -2274,18 +2291,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     };
     range.setEnd(range.endContainer, trim(range.endContainer, range.endOffset, -1));
     range.setStart(range.startContainer, trim(range.startContainer, range.startOffset, 1));
-    // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
-    // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
-    /** @param {Node} node @param {number} i @param {number} step */
-    const grow = (node, i, step) => {
-      const d = node.nodeType === 3 ? /** @type {Text} */ (node).data : '';
-      while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
-      return i;
-    };
-    if (/\s/.test(String(range).trim())) {
-      range.setStart(range.startContainer, grow(range.startContainer, range.startOffset, -1));
-      range.setEnd(range.endContainer, grow(range.endContainer, range.endOffset, 1));
-    }
+    wholeWords(range); // a drag that starts or ends inside a word takes the whole word (anchoring.ts)
     const exact = String(range).replace(/\s+/g, ' ').trim();
     if (!exact) return;
     // The pin sits on the last selected letter (where the selection ended), when that's in the same element as its
@@ -2312,6 +2318,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       exact: short(exact, 300),
       prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, '').slice(-40),
       suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
+      selected: true, // picked by selecting, not the word under a click: shown as ink on the words (wordink.ts)
+      // Saved at 300 characters; a longer selection also keeps its last words, so the ink reaches them (anchoring.ts).
+      ...(exact.length > 300 && { tail: exact.slice(-40) }),
     };
     sel.removeAllRanges();
     return anchor;
@@ -2726,12 +2735,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const movePins = (scrolled = false) => {
     // An open thread is drawn again with its pin; after a scroll, not when the browser holds the pin and its card.
     const openHeld = () => { const pin = pinsById.get(S.openId); return heldPin(pin) && !pinData.get(pin)?.zone; };
-    if (!S.on || (S.openId && !(scrolled && openHeld()))) return render();
+    if (!S.on || inkGone() || (S.openId && !(scrolled && openHeld()))) return render();
     newPass();
     const all = threads().filter((c) => c.anchor?.kind !== 'page');
     const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
     const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
     if (places.length + all.filter(skip).length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
+    // A pin whose words show again (back after an edit) turns into ink again.
+    if (places.some(([pin, { zone }, c]) => !zone && !pin.classList.contains('on-ink') && inkRange(c.anchor))) return render();
     for (const [pin, { left, top, clipped, zone }, c] of places) {
       const held = placePin(pin, c, pin.classList.contains('ink') && zone, left, top, false);
       pin.style.visibility = clipped && !held ? 'hidden' : '';
@@ -2875,8 +2886,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
-  // Fields and editable text stay selectable.
-  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  // Fields and editable text stay selectable. With ink on words (lab-ink-on, wordink.ts) the text stays selectable and only
+  // selectstart (below) keeps a drag from selecting: Safari paints a highlight over whole blocks of text that can't be
+  // selected, and the ink is a highlight.
+  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit, .lab-ink-on) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit, .lab-ink-on) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   // Letting go of Shift keeps text selectable a moment longer, so a selection made with it isn't dropped before its
   // comment opens.
   /** @type {any} */
@@ -2933,6 +2946,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
+  // Over inked words (a click opens their comment, wordink.ts) the page shows a hand.
+  fonts.textContent += 'html.lab-ink-over body, html.lab-ink-over body * { cursor: pointer !important; }';
   // The agent's ring draws its arc in (lab C2): an arc length that can animate has to be registered on the page itself.
   fonts.textContent += '@property --lab-arc { syntax: "<percentage>"; inherits: false; initial-value: 66%; }';
   // The room a phone's sheet made below the page's end (see goTo) stays after the sheet closes, so the page doesn't jump
@@ -2968,10 +2983,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     refreshPinCursor();
     if (S.on) showHint();
     document.body.append(host);
-    // The page's own selection while commenting, and the quoted words of an open text comment.
+    // The page's own selection while commenting (ink on words off), and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    fonts.textContent += inkCss(); // ink on words: the bands, and the selection drawn as sent ink (wordink.ts)
     if (flag('select')) startFlag('select');
     if (flag('native')) startFlag('native');
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
