@@ -90,7 +90,7 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--lab-radius, 12px); ry: var(--lab-radius, 12px); }
 /* Green dots, the same green as quoted words. */
-.zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
+.zone rect.dots { stroke: var(--_green); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
 .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade var(--_fade); }
 /* The agent is on it: a green stroke runs round the pin's own teardrop outline. The ring (a still 2 px teardrop mask)
    holds a conic gradient that turns by transform, so the screen turns it without redrawing: 30 such pins cost ~1 ms
@@ -98,7 +98,7 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .pin .ring { position: absolute; inset: -4px; border-radius: 18px 18px 18px 6px; padding: 2px; overflow: hidden; pointer-events: none;
              mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 .ring::before { content: ''; position: absolute; inset: -50%; will-change: transform; transition: opacity var(--_t-slow) var(--_ease-out);
-                background: conic-gradient(rgb(52, 199, 89) 0 var(--lab-arc, 66%), rgba(52, 199, 89, .22) var(--lab-arc, 66%) 100%); animation: lab-turn var(--_t-loop) linear infinite; }
+                background: conic-gradient(var(--_green) 0 var(--lab-arc, 66%), color-mix(in srgb, var(--_green) 22%, transparent) var(--lab-arc, 66%) 100%); animation: lab-turn var(--_t-loop) linear infinite; }
 @keyframes lab-turn { to { transform: rotate(360deg); } }
 /* The agent takes it: the green arc draws itself in while it turns (lab C2, Leo 16 Nov; --lab-arc is registered on the page). */
 .pin .ring.come::before { animation: lab-draw var(--_t-slow) var(--_ease-out), lab-turn var(--_t-loop) linear infinite; }
@@ -182,7 +182,7 @@ button.btn.undo { color: var(--_fg); }
 .btn.undo .w > span { grid-area: 1 / 1; }
 .btn.undo .ghost { visibility: hidden; }
 .btn.undo .w > span:first-child { position: relative; isolation: isolate; --_ui: 30%; }
-.btn.undo .w > span:first-child::before { content: ''; position: absolute; z-index: -1; right: 0; top: calc(50% + .03em); height: .52em; border-radius: 3px;
+.btn.undo .w > span:first-child::before { content: ''; position: absolute; z-index: -1; right: 0; top: calc(50% + .03em); height: .52em; border-radius: max(0px, calc(var(--_r-s) - 3px));
   width: 0; background: color-mix(in srgb, var(--_green-fg) var(--_ui), transparent); pointer-events: none;
   animation: lab-undo var(--undo-ms, 3s) linear forwards; }
 @media (prefers-color-scheme: dark) { .btn.undo .w > span:first-child { --_ui: 45%; } }
@@ -266,7 +266,7 @@ button.btn.undo { color: var(--_fg); }
 .send.sent .arr { animation: lab-fly var(--_t-slow) var(--_ease); }
 @keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
 .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
-.msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
+.msg.mine { align-self: flex-end; background: color-mix(in srgb, var(--_green) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
 .msg b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; opacity: .7; margin-bottom: 1px; }
 /* Each agent's messages in its own brand colour: the name in it, the bubble a soft wash of it (Leo, 15 Nov). */
 .msg[data-agent=claude] { --_brand: #d97757; } .msg[data-agent=codex] { --_brand: #10a37f; } .msg[data-agent=cursor] { --_brand: #8a8a8e; }
@@ -276,7 +276,7 @@ button.btn.undo { color: var(--_fg); }
 .msg[data-agent] > b { color: var(--_brand); opacity: 1; }
 .msg.mine b { display: none; }
 .msg { position: relative; } .mark { font-weight: 400; font-size: 11px; letter-spacing: .006em; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: var(--_green-fg); font-weight: 600; font-size: 12px; letter-spacing: 0; } /* a small green tick, as the ticks on messages */
-.msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12px; letter-spacing: 0; line-height: 1.35;
+.msg .quote { display: block; border-left: 2px solid var(--_green); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12px; letter-spacing: 0; line-height: 1.35;
               color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .msg .quote b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; color: var(--_green-fg); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
 .msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; } /* no lone last word */ .msg .p.gap { margin-top: 6px; }
