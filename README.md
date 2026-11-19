@@ -36,6 +36,8 @@ npx @leonidstern/labit@latest reply <id> --progress "…"  # during long work: o
 npx @leonidstern/labit@latest pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered
 ```
 
+Run each `wait` from the agent itself, never in a shell loop (`while true; do … wait; done`): a loop keeps listening after its session is gone, so pins are handed to nobody. A pin handed over that gets no reply of any kind in 2 minutes (`LAB_ANSWER_MS`) is marked "not answered" and goes to the next wait, and the pill says "Claude isn't answering" until that session replies.
+
 Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
 
 
