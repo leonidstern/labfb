@@ -149,7 +149,8 @@ win over yours, key by key.
 | --- | --- | --- |
 | `toggle` | `m` | Show or hide comments |
 | `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
-| `chat` | `c` | Open the chat |
+| `chat` | `t` | Open the chat |
+| `pin` | `c` | Comment mode: a click places a comment. Leaves select mode or the pointer |
 | `next` | `w` | The next new comment (with Shift: the one before) |
 | `pause` | `p` | Pause the page's videos and animations, or play what was paused (each one also has its own pause / play beside it) |
 | `done` | `d` | Hide or show done threads (shown, faded, at first) |
@@ -158,7 +159,7 @@ win over yours, key by key.
 | `select` | `v` | With the `select` flag on: select mode on or off |
 | `added` | `a` | With the `sinceLooked` flag on: open the Added list; press again to go to the next added item |
 
-Letters follow the key's place on non-Latin layouts (the C key is C in Russian too), and digits work with Shift or
+Letters follow the key's place on non-Latin layouts (the T key is T in Russian too), and digits work with Shift or
 on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat` is `x`.
 
 ## Not settings

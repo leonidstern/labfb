@@ -117,7 +117,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a', select: 'v' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a', select: 'v', pin: 'c' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -221,7 +221,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
-      <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
+      <button class="secondary chat-btn" type="button" hidden title="chat (T)">chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
@@ -1165,7 +1165,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // Computers: the cursor goes in the message box (phones wait for a tap, so the keyboard doesn't cover the chat).
     if (S.chatOpen && !coarse) /** @type {HTMLElement | null} */ (chatEl.querySelector('.chat textarea'))?.focus({ preventScroll: true });
   });
-  // No close cross on the chat: a click outside it, Escape or C closes it (phones: the handle or the dimmed page).
+  // No close cross on the chat: a click outside it, Escape or T closes it (phones: the handle or the dimmed page).
   // On a computer a click outside the chat closes it (phones have the dimmed page for that); what you typed stays.
   // That click only closes: it doesn't start a comment or press what's under it.
   S.closingClick = false;
@@ -1220,14 +1220,21 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
     // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
+    // C is comment, always (Leo, 19 Nov): out of select mode or the pointer, a click pins again. 1 still switches.
+    if (S.on && act === 'pin' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      if (S.selecting) selectMode(false);
+      if (S.cursorMode) setCursor(false);
+      return;
+    }
     if (S.on && act === 'comment' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setCursor(!S.cursorMode);
       return;
     }
-    // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
+    // The list's keys, with comments shown and nothing typed: L list, T chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
-    // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment / pointer,
+    // The keys (Leo, 2026-11-15/16), marked in the bar's words: cha(t) (C was chat until 19 Nov; Leo: C is comment), ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
     // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
     if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act) && (act === 'next' || !e.shiftKey)) {

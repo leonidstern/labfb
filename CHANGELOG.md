@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Keys: C is comment mode (a click places a comment; it also leaves select mode and the pointer). The chat moved to T. 1 still switches between comment and pointer.
 - Flag `select` (off): select mode. **V**, or select in the ⋯ menu, makes a click pick the block under it (a green ring, no pin, links don't go); Tab and Shift+Tab step, Esc lets go, then leaves. A bar under the picked block asks the agent, as a pin on it, to remove it, make it like another block, move it after another, show its states or make three variants; pin starts a comment there. On phones too. The page's reload waits while select mode is on.
 - Shift and a digit (⇧1, ⇧2, ⇧0), ⇧D, ⇧M and the like no longer work the comment, done and hide keys: Shift is left free for the board. A plain 1, D and M are as they were. An Escape that closes a comment box or the chat now says it was used.
 - MCP is parked (kept whole on the `park/mcp` branch); agents use the command line: `wait`, `reply`, `resolve`, `pin`. Gone: `labit mcp` and `lib/mcp.ts`, `mcp.json`, the MCP part of the skill, README and help, the MCP permissions in `examples/claude-settings.json`, and its tests. In Codex's sandbox a blocked `wait` now says to allow the sandbox network (`-c sandbox_workspace_write.network_access=true`).
