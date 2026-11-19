@@ -580,14 +580,29 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       openSwitcher();
     });
   }
+  // Board mode on request (flag board): this page as a board, from ⇧B or here; on a board, back to the page.
+  // The page's scroll waits under the key a reload uses (live.ts), so coming back lands where you were.
+  const boardBtn = flag('board') ? el('button', { type: 'button', class: 'board-btn' }) : null;
+  const toBoard = () => {
+    const page = location.pathname.replace(/\.html?$/i, '').replace(/\/+$/, '') || '/';
+    const name = page.replace(/^\/+/, '').replace(/\//g, '--').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 80) || 'index';
+    try {
+      sessionStorage.setItem('lab-scroll:' + location.pathname, JSON.stringify({ y: scrollY }));
+    } catch {}
+    location.href = `/_lab/board/${name}?of=${encodeURIComponent(location.pathname)}`;
+  };
+  if (boardBtn) {
+    boardBtn.append(S.board ? 'back to page' : 'open as board', el('kbd', { 'aria-hidden': 'true' }, '⇧B'));
+    boardBtn.addEventListener('click', () => (S.board ? /** @type {any} */ (window).__labBoard?.back() : toBoard()));
+  }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : boardBtn ? [boardBtn] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
-    moreBtn.hidden = !S.on;
+    moreBtn.hidden = !inMenu.length;
     if (!S.on && !moreMenu.hidden) setMenu(false);
     // The first segment shown has no line before it.
     let first = true;
@@ -1210,6 +1225,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
       if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
       return stepNew(e.shiftKey ? -1 : 1);
+    }
+    // ⇧B: this page as a board (flag board); on a board the board's own key takes it back.
+    if (boardBtn && !S.board && e.shiftKey && e.code === 'KeyB' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      return toBoard();
     }
     // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
