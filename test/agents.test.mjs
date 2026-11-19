@@ -228,7 +228,7 @@ test('each comment is marked when handed over: one left out of a batch still com
   const first = (await get()).find((c) => c.id === a);
   assert.ok(!('deliveredAt' in first) && !('deliveredTo' in first), 'the mark is not in the comment (so a wait does not change what pages load)');
   await new Promise((r) => setTimeout(r, 500));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, '.lab/handed.json'), 'utf8'))[a][0], first.createdAt, 'marked beside the comments, with the stamp it was handed over at');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, '.lab/state.json'), 'utf8')).handed[a][0], first.createdAt, 'marked beside the comments, with the stamp it was handed over at');
   const b = await pin(B, 'and bigger');
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, new RegExp(`id ${b}`), 'the new one comes');

@@ -261,11 +261,10 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
 
     // A comment by its id (of the thread or of a reply in it) or by the number on its card.
-    // The store: one file per page in .lab/comments/ (or, from a lab not started since 16 Nov, the one comments.json).
+    // The store: one file per page in .lab/comments/.
     const data = {};
     const store = path.join(dir, '.lab/comments');
-    if (!fs.existsSync(store)) Object.assign(data, JSON.parse(fs.readFileSync(path.join(dir, '.lab/comments.json'), 'utf8')));
-    else
+    if (fs.existsSync(store))
       for (const name of fs.readdirSync(store).filter((n) => n.endsWith('.json'))) {
         try {
           const file = JSON.parse(fs.readFileSync(path.join(store, name), 'utf8'));

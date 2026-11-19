@@ -35,7 +35,7 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       (labit invite), so finding the port isn't enough. The pages still travel in the clear over the wifi.
       A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
       --name gives the lab its topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder; it's
-      kept in .lab/name, so later starts keep it.
+      kept in .lab/state.json, so later starts keep it.
   labit publish <page.html | folder> [--name "topic"]
       Show a page the way an Artifact is shown: it goes into your one pages lab (pagesFolder, ~/lab-pages), which
       starts if it isn't running, and the page's link is printed. Publish it again to update it, at the same link.
@@ -89,8 +89,9 @@ For the agent, from the project (any folder under it):
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
-page), archive/ (done threads with nothing new in 30 days), looked/ (last looks), server.json (port, keys, session;
-owner-only), seen.
+page), archive/ (done threads with nothing new in 30 days), looked/ (last looks), state.json (the lab's name, read
+marks, hand-offs, archived pages), server.json and key (port, keys, session; owner-only), and a .gitignore so git
+skips the folder.
 Delete .lab to start over.`;
 
 // ---------- arguments ----------
@@ -277,23 +278,13 @@ if (!opts.proxy && !alreadyRunning) {
 
 const LAB = path.join(ROOT, '.lab');
 const STORE = path.join(LAB, 'comments'); // the comments, one file per page
-const OLD_DATA = path.join(LAB, 'comments.json'); // before 16 Nov: every page in this one file
 const ARCHIVE = path.join(LAB, 'archive'); // done threads a month old, one file per page
 const SERVER = path.join(LAB, 'server.json');
-const SEEN = path.join(LAB, 'seen');
 fs.mkdirSync(LAB, { recursive: true });
-// The lab's name: its topic, given when it starts (labit --name "Lab navigation", Leo 18 Nov: "named as topic on starting
-// lab"), kept in .lab/name so a restart keeps it. Without one, the folder's name. (wait/add use --name for themselves.)
-const NAME_FILE = path.join(LAB, 'name');
-const SERVES = !COMMANDS.includes(pos[0]);
-if (SERVES && typeof opts.name === 'string' && opts.name.trim()) fs.writeFileSync(NAME_FILE, opts.name.trim().slice(0, 80) + '\n');
-const LAB_NAME = (() => {
-  try {
-    return fs.readFileSync(NAME_FILE, 'utf8').trim() || path.basename(ROOT);
-  } catch {
-    return path.basename(ROOT);
-  }
-})();
+// Git skips the folder by itself: .lab/.gitignore holds `*`, so nobody has to add .lab to the project's .gitignore.
+try {
+  fs.writeFileSync(path.join(LAB, '.gitignore'), '*\n', { flag: 'wx' });
+} catch {}
 
 // One server per folder: two would overwrite each other's comments.
 const alreadyHere = (running) => {
@@ -386,6 +377,69 @@ const writeAtomic = (file, text, mode) => {
   fs.writeFileSync(file + '.tmp', text, mode ? { mode } : undefined);
   fs.renameSync(file + '.tmp', file);
 };
+// The lab's small state, in one file: .lab/state.json as { name, reads, opened, archived, handed, claims, seen }, each
+// described where it is used below. Saved whole through a .tmp, a moment after its last change, and on exit. A damaged
+// one is put aside (never read again or written over) and the lab starts without it. Before 19 Nov each part was a
+// file of its own (name, reads.json, opened.json, archived.json, handed.json, claims.json, seen): read once into this
+// one, then removed.
+const STATE_FILE = path.join(LAB, 'state.json');
+const OLD_STATE = { name: 'name', reads: 'reads.json', opened: 'opened.json', archived: 'archived.json', handed: 'handed.json', claims: 'claims.json', seen: 'seen' };
+const isObj = (o) => Boolean(o) && typeof o === 'object' && !Array.isArray(o);
+let oldStateFiles = [];
+const labState = (() => {
+  let text;
+  try {
+    text = fs.readFileSync(STATE_FILE, 'utf8');
+  } catch {
+    const old = {};
+    for (const [k, name] of Object.entries(OLD_STATE)) {
+      const file = path.join(LAB, name);
+      if (!fs.existsSync(file)) continue;
+      oldStateFiles.push(file);
+      try {
+        const t = fs.readFileSync(file, 'utf8');
+        old[k] = name.endsWith('.json') ? JSON.parse(t) : t.trim();
+      } catch {}
+    }
+    return old;
+  }
+  try {
+    const s = JSON.parse(text);
+    if (isObj(s)) return s;
+  } catch {}
+  const aside = `${STATE_FILE}.broken-${Date.now()}`;
+  fs.renameSync(STATE_FILE, aside);
+  console.log(`[lab] state.json was damaged; moved it to ${path.basename(aside)}`);
+  return {};
+})();
+const stateParts = {};
+let stateTimer;
+// Every part registers how to read it (stateParts) further down; nothing is written until all have, so a save never
+// leaves one out.
+const stateReady = () => Object.keys(OLD_STATE).every((k) => stateParts[k]);
+const writeState = () => {
+  clearTimeout(stateTimer);
+  stateTimer = null;
+  if (!stateReady()) return void (stateTimer = setTimeout(writeState, 300));
+  try {
+    writeAtomic(STATE_FILE, JSON.stringify(Object.fromEntries(Object.entries(stateParts).map(([k, get]) => [k, get()]))));
+    for (const file of oldStateFiles) fs.rmSync(file, { force: true });
+    oldStateFiles = [];
+  } catch (e) {
+    console.error('[lab] could not save state.json:', e.message);
+  }
+};
+const saveState = () => {
+  if (!stateTimer) stateTimer = setTimeout(writeState, 300);
+};
+process.on('exit', () => stateTimer && stateReady() && writeState());
+// The lab's name: its topic, given when it starts (labit --name "Lab navigation", Leo 18 Nov: "named as topic on starting
+// lab"), kept in state.json so a restart keeps it. Without one, the folder's name. (wait/add use --name for themselves.)
+const SERVES = !COMMANDS.includes(pos[0]);
+let givenName = typeof labState.name === 'string' ? labState.name.trim().slice(0, 80) : '';
+if (SERVES && typeof opts.name === 'string' && opts.name.trim()) givenName = opts.name.trim().slice(0, 80);
+stateParts.name = () => givenName || undefined;
+const LAB_NAME = givenName || path.basename(ROOT);
 // Comments are kept one file per page in .lab/comments/: one comments.json for every page was ~700 KB in a busy lab
 // and was written whole for every comment (16 Nov). Each file holds its page's key, so its name only has to be safe and
 // unique: a-z, 0-9 and - as they are, anything else (/, _, capitals, dots) as _ and its hex code, so /A and /a stay
@@ -410,7 +464,7 @@ const putAside = (file, what) => {
   console.log(`[lab] ${what} was damaged; moved it to ${path.relative(LAB, aside)}`);
 };
 let saved = {};
-// What each wait was handed, kept beside the comments (.lab/handed.json) and not in them: { comment id: [the stamp it
+// What each wait was handed, kept beside the comments (.lab/state.json, handed) and not in them: { comment id: [the stamp it
 // had when handed over, the session it went to, when it was last brought up again] }. In the comments (before 17 Nov)
 // every wait rewrote its pages' files, sent each mark to every open page, and each comment carried ~100 bytes of them.
 // Only handedAt stays on a thread: from it the page shows that the agent has the thread.
@@ -418,18 +472,11 @@ const handoff = Object.create(null);
 const outdated = []; // pages whose file is in an older shape: written again in today's once the lab is up
 // Each page's own file, and what the disk knows that file by (see rehome): kept in its comments file as file and fid.
 const homes = new Map();
-// A lab from before 16 Nov has the single file: its pages are moved into the folder once, and the old file is kept
-// beside it as comments.json.bak.
-const migrate = !fs.existsSync(STORE) && fs.existsSync(OLD_DATA);
-if (migrate) {
-  try {
-    saved = JSON.parse(fs.readFileSync(OLD_DATA, 'utf8'));
-  } catch {
-    const aside = OLD_DATA.replace(/\.json$/, `.broken-${Date.now()}.json`);
-    fs.renameSync(OLD_DATA, aside);
-    console.log(`[lab] comments.json was damaged; moved it to ${path.basename(aside)} and started empty`);
-  }
-} else if (fs.existsSync(STORE)) {
+// A lab last run before 16 Nov kept every page in one comments.json; labit 0.6 moves it into comments/. This one
+// doesn't read it: it says how to move it and stops, so those comments are never left behind unnoticed.
+if (!fs.existsSync(STORE) && fs.existsSync(path.join(LAB, 'comments.json')))
+  die(`[lab] .lab/comments.json is from an older labit. Run npx @leonidstern/labit@0.6.2 here once to move it, then start this one again.`);
+if (fs.existsSync(STORE)) {
   for (const name of fs.readdirSync(STORE)) {
     if (!name.endsWith('.json')) continue; // half-written .tmp files and damaged ones put aside
     const file = path.join(STORE, name);
@@ -447,16 +494,6 @@ if (migrate) {
 // Each comment comes up to the current shape as it loads (lib/schema.mjs), whatever version its file was written in.
 const db = new Map(Object.entries(saved).map(([page, h]) => [`lab:comments:${page}`, new Map(Object.entries(h).map(([id, c]) => [id, JSON.stringify(upgrade(c, handoff))]))]));
 saved = null;
-if (migrate) {
-  // Written into a folder of its own and then renamed, so a lab stopped halfway starts over from the old file.
-  const fresh = `${STORE}.new`;
-  fs.rmSync(fresh, { recursive: true, force: true });
-  fs.mkdirSync(fresh);
-  for (const key of db.keys()) savePage(key.slice('lab:comments:'.length), fresh);
-  fs.renameSync(fresh, STORE);
-  if (fs.existsSync(OLD_DATA)) fs.renameSync(OLD_DATA, `${OLD_DATA}.bak`);
-  console.log(`[lab] comments are now kept one file per page in .lab/comments/ (the old file is .lab/comments.json.bak)`);
-}
 fs.mkdirSync(STORE, { recursive: true });
 const api = await apiOn(db);
 const commentsOf = (page) => [...(db.get(`lab:comments:${page}`)?.values() ?? [])].map((v) => JSON.parse(v)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -1003,46 +1040,26 @@ setInterval(() => {
   for (const c of clients) c.res.write('event: beat\ndata: 1\n\n');
 }, 15000).unref();
 // Read marks per name: a person on their phone and their Mac (same name) shares what's new and what's read. Kept in
-// .lab/reads.json as { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
-const READS = path.join(LAB, 'reads.json');
-// When each page was last opened (served with the widget), for labs & pages: .lab/opened.json as { page: ISO time },
-// written at most every few seconds.
-const OPENED = path.join(LAB, 'opened.json');
-const opened = (() => {
-  try {
-    return new Map(Object.entries(JSON.parse(fs.readFileSync(OPENED, 'utf8'))));
-  } catch {
-    return new Map();
-  }
-})();
-let openedTimer = null;
+// state.json as reads: { name: { page: [comment ids] } }; the name is compared as the widget does (case and spaces).
+// When each page was last opened (served with the widget), for labs & pages: opened, { page: ISO time }.
+const opened = new Map(Object.entries(isObj(labState.opened) ? labState.opened : {}));
+stateParts.opened = () => Object.fromEntries(opened);
 const markOpened = (page) => {
   opened.set(page, new Date().toISOString());
-  openedTimer ??= setTimeout(() => {
-    openedTimer = null;
-    try {
-      writeAtomic(OPENED, JSON.stringify(Object.fromEntries(opened)));
-    } catch {}
-  }, 3000);
+  saveState();
 };
-// Pages archived in labs & pages (Leo 18 Nov: "it should archive pages… or pages and folders"): .lab/archived.json as
+// Pages archived in labs & pages (Leo 18 Nov: "it should archive pages… or pages and folders"): archived, as
 // { page: ISO time }. The file stays; the page folds away under "archived" in the box until it's brought back.
-const ARCHIVED = path.join(LAB, 'archived.json');
-const archivedPages = (() => {
-  try {
-    return new Map(Object.entries(JSON.parse(fs.readFileSync(ARCHIVED, 'utf8'))));
-  } catch {
-    return new Map();
-  }
-})();
+const archivedPages = new Map(Object.entries(isObj(labState.archived) ? labState.archived : {}));
+stateParts.archived = () => Object.fromEntries(archivedPages);
 const archivePage = (page, on) => {
   if (on) archivedPages.set(page, new Date().toISOString());
   else archivedPages.delete(page);
-  writeAtomic(ARCHIVED, JSON.stringify(Object.fromEntries(archivedPages)));
+  writeState();
 };
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
-// Side files (read marks, claims) are written whole through a .tmp, and one that can't be read is put aside like a
+// Side files (last looks) are written whole through a .tmp, and one that can't be read is put aside like a
 // page's file, not taken for empty and then written over.
 const readSide = (file, what) => {
   let text;
@@ -1060,9 +1077,10 @@ const readSide = (file, what) => {
 };
 const reads = (() => {
   const out = Object.create(null);
-  for (const [name, pagesOf] of Object.entries(readSide(READS, 'reads.json') || {})) if (pagesOf && typeof pagesOf === 'object') out[name] = bare(pagesOf);
+  for (const [name, pagesOf] of Object.entries(isObj(labState.reads) ? labState.reads : {})) if (isObj(pagesOf)) out[name] = bare(pagesOf);
   return out;
 })();
+stateParts.reads = () => reads;
 /** @type {any} */
 let readsBroadcast = 0;
 let readsRev = 0;
@@ -1081,7 +1099,7 @@ const saver = (file, data, what) => {
     }, 300);
   };
 };
-const saveReads = saver(READS, () => reads, 'read marks');
+const saveReads = saveState;
 // New since you looked: each person's last look at a page (the ids on it, each with its label), so a phone and a Mac
 // with the same name agree on what is new. .lab/looked/<same file name as .lab/comments/>.json as
 //   { v: 1, page, file, fid, snaps: { id: { at, by, ids: [[id, label]…] } }, who: { plain name: { name, snap, at } } }
@@ -1130,14 +1148,14 @@ let lookedBroadcast = 0;
 let lookedIndexed = 0;
 // The hand-off marks (see handoff, above): the file's own win over what old comment files still said, and the marks of
 // comments that are gone (deleted, archived) go as it is saved.
-const HANDED = path.join(LAB, 'handed.json');
-const saveHanded = saver(HANDED, () => {
+stateParts.handed = () => {
   const live = new Set(pages().flatMap((p) => [...db.get(`lab:comments:${p}`).keys()]));
   for (const id of Object.keys(handoff)) if (!live.has(id)) delete handoff[id];
   return handoff;
-}, 'hand-off marks');
+};
+const saveHanded = saveState;
 if (Object.keys(handoff).length) saveHanded();
-for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
+for (const [id, mark] of Object.entries(isObj(labState.handed) ? labState.handed : {})) if (Array.isArray(mark)) handoff[id] = mark;
 const state = (local) => JSON.stringify({ ...version, labit: VERSION, reads: readsRev, looked: lookedRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
@@ -1199,25 +1217,27 @@ try {
 } catch {}
 
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
-let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
+// (seen: the one "given up to" time of labs before 17 Nov, kept as it was; nothing moves it now.)
+const seen = typeof labState.seen === 'string' ? labState.seen : '';
+stateParts.seen = () => seen || undefined;
 // Sessions listening: each wait covers some pages (or, without --pages, every page no other wait has claimed).
 let waiters = [];
 // A page a session listened on stays its own for half an hour after its wait ends (while it works on the pins), so a
 // wait for every page doesn't take that page's next pin in between.
-// Kept in .lab/claims.json, so a lab restart doesn't hand a working session's pages to the other wait.
+// Kept in state.json as claims, so a lab restart doesn't hand a working session's pages to the other wait.
 const CLAIM_MS = 1800000;
-const CLAIMS_FILE = path.join(LAB, 'claims.json');
 const claims = new Map(
-  Object.entries(readSide(CLAIMS_FILE, 'claims.json') || {}).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS),
+  Object.entries(isObj(labState.claims) ? labState.claims : {}).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS),
 ); // page -> last time a wait for it was open
 const claim = (pages) => {
   if (!pages?.length) return;
   const now = Date.now();
   for (const p of pages) claims.set(p, now);
-  try {
-    writeAtomic(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
-  } catch {}
+  writeState();
 };
+stateParts.claims = () => Object.fromEntries([...claims].filter(([, at]) => Date.now() - at < CLAIM_MS));
+// A name just given, or the files of before 19 Nov still there: written now, not at the first change.
+if (oldStateFiles.length || givenName !== (labState.name || '')) saveState();
 // The last wait on each set of pages (its key), to tell a second session on the same pages that it isn't alone.
 const OTHER_MS = 600000;
 const lastWait = new Map(); // key -> { who, label, at }

@@ -238,7 +238,7 @@ test('a reply goes in the short thread form only to the session that has its thr
   assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --on-it \| --question\] \[--wait\]$/m, 'then one short line');
   assert.doesNotMatch(b2, /Write answers short|run in /);
   await new Promise((r) => setTimeout(r, 500));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/handed.json'), 'utf8'))[comment.id][1], 'sess-b', 'which session has the thread: kept beside the comments');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/state.json'), 'utf8')).handed[comment.id][1], 'sess-b', 'which session has the thread: kept beside the comments');
   const seen = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === comment.id);
   assert.equal(seen.deliveredTo, undefined, 'and not sent to pages');
 });
@@ -315,14 +315,14 @@ test('labit --name gives the lab its topic, and later starts keep it', async () 
   try {
     assert.equal(await run(), path.basename(dir), 'no topic: the folder');
     assert.equal(await run('--name', 'Lab navigation'), 'Lab navigation');
-    assert.equal(await run(), 'Lab navigation', 'kept in .lab/name');
+    assert.equal(await run(), 'Lab navigation', 'kept in .lab/state.json');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
 
-test('a page can be archived and brought back (labs & pages), in .lab/archived.json; the file stays', async () => {
+test('a page can be archived and brought back (labs & pages), in .lab/state.json; the file stays', async () => {
   for (let i = 0; i < 50 && !fs.existsSync(path.join(DIR, '.lab/server.json')); i++) await new Promise((r) => setTimeout(r, 100));
   const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
   const post = (body) => fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ port: Number(PORT), ...body }) });
