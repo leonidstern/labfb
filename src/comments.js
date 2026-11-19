@@ -34,6 +34,7 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
+import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { bindEdit, editKey } from './widget/edit.ts';
@@ -111,6 +112,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get vv() { return vv; },
   };
   bindLive(W);
+  bindSections(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
@@ -126,7 +128,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   if (inFrame()) return startFrame(script);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a', edit: 'e', select: 'v' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', edit: 'e', select: 'v' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -230,7 +232,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <div class="scrim"></div>
     <div class="layer"></div>
     <div class="motions"></div>
-    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new${flag('sinceLooked') ? ` · ${KEYS.added} added` : ''} · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
+    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -659,7 +661,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const startFlag = (name) => {
     if (started.has(name) || !script?.dataset.live || !host.isConnected) return;
     started.add(name);
-    if (name === 'sinceLooked') S.added = part('changes').then((m) => m.startChanges(W)).catch(() => {}); // the ids added since you looked: its own file
+    if (name === 'sectionBar' && flag('sectionBar')) startSections(); // the section bar: what is new or updated on the page since you read it
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
   S.syncFlags = (on, reload) => {
@@ -1127,7 +1129,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
-    S.checkChanges?.(); // hidden comments: no "New" pill
+    S.checkSections?.(); // hidden comments: no section bar
     if (S.on) showHint();
     S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
@@ -1236,7 +1238,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // The list opens on "new" each time.
   // A #block link in a message: go to that block on the page. A phone's sheet covers the page, so it closes first.
   addEventListener('lab-goto', (e) => {
-    const target = document.getElementById(/** @type {CustomEvent} */ (e).detail);
+    const to = /** @type {CustomEvent} */ (e).detail;
+    const target = typeof to === 'string' ? document.getElementById(to) : to; // an id, or the element itself (the section bar's)
     if (!target) return;
     if (coarse) {
       S.openId = null;
@@ -1328,13 +1331,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
     // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act) && (act === 'next' || !e.shiftKey)) {
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || !e.shiftKey)) {
       const k = act;
       e.preventDefault();
       if (k === 'pause') return setPause(!S.paused);
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'added') return void S.added?.then(() => dispatchEvent(new CustomEvent('lab-added'))); // the Added list (changes.ts, flag sinceLooked), once it is loaded
       if (k === 'done') return toggleDone();
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
@@ -1841,7 +1843,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.openId = null;
     render();
     load();
-    setTimeout(() => S.checkChanges?.(), 400);
+    setTimeout(() => S.checkSections?.(), 400);
   };
   for (const m of ['pushState', 'replaceState']) {
     const original = history[m];

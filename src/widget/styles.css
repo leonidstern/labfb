@@ -654,6 +654,36 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .sw-foot { display: none; }
 }
 
+/* The section bar (sections.ts): the page's sections along the top, the current one filled; new = a filled blue dot,
+   updated = a ring. Above the dimmed page of a sheet (the scrim is 2), so it stays lit and tappable. Drawn inside .ui, so a
+   pinch zoom scales it with the rest. */
+.sbar { position: fixed; left: 0; right: 0; top: var(--lab-top, 0px); z-index: 3; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
+        background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
+.sbar[hidden] { display: none; }
+.sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
+.sb-nav::-webkit-scrollbar { display: none; }
+.sb-chip, .sb-more { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
+.sb-chip[hidden] { display: none; }
+.sb-chip:hover, .sb-more:hover { background: var(--_soft); }
+.sb-chip[aria-current] { background: var(--_fg); color: var(--_bg); }
+.sb-dot { display: none; flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; background: #0a84ff; }
+.sb-chip:is([data-st="new"], [data-st="updated"]) .sb-dot { display: block; }
+.sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid #0a84ff; }
+.sb-more[data-st="1"]::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #0a84ff; }
+.sb-w { color: #0a84ff; font-size: 12px; }
+.sb-chip[aria-current] .sb-w { color: inherit; opacity: .75; }
+.sb-menu { position: absolute; right: 8px; top: calc(100% + 4px); display: flex; flex-direction: column; align-items: stretch; max-height: min(60vh, 360px); overflow: auto; padding: 4px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); }
+.sb-menu[hidden] { display: none; }
+.sb-menu .sb-chip { text-align: left; }
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
+  .sbar { height: 44px; padding: 0 8px; }
+  .sb-title, .sb-more { display: none; }
+  .sb-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sb-chip { padding: 9px 12px; }
+  /* A sheet that fills the screen (keyboard up) leaves the bar clear. */
+  :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }
+}
 /* Phones: a choice is a 44 pt row to tap, Keep a full-size button under them (V1: not stuck, so it never covers a row). */
 @media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
   button.keep { padding: 10px 16px; font-size: 14px; } }

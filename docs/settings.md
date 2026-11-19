@@ -106,7 +106,7 @@ whose each is: `flags  sinceLooked (yours)`.
 | Flag | What it is |
 | --- | --- |
 | `editText` | words edited in place: `V` picks blocks, `E` (or Enter, or a double click on a picked block) edits one as plain text, Esc writes it into the project's source file when the old words are in exactly one place. Off by default |
-| `sinceLooked` | a "Added · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
+| `sectionBar` | a bar at the top of the page that lists each section (a heading, h1 to h3) and keeps what is new and what is updated since you read it: a filled dot and "new" for a section that was not there, a ring and "updated" for one whose text changed. A section counts as read after about 3 seconds in it, when you scroll on after a moment, or when you tap it in the bar; the lab keeps that per name, so your Mac and your phone agree. Off by default: set it in `labit.json` |
 
 `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
@@ -163,7 +163,6 @@ win over yours, key by key.
 | `resolve` | `e` | With a thread open: resolve or reopen it |
 | `select` | `v` | With the `editText` flag on: select mode. A click picks the block under it (no pin), Tab and Shift+Tab step, Esc lets go, then leaves |
 | `edit` | `e` | With the `editText` flag on and no thread open: select mode with the text tool; with a block picked, edit it where it is. Esc writes it into the source file, Cmd-Z takes it back |
-| `added` | `a` | With the `sinceLooked` flag on: open the Added list; press again to go to the next added item |
 
 Letters follow the key's place on non-Latin layouts (the C key is C in Russian too), and digits work with Shift or
 on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat` is `x`.

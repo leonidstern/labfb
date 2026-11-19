@@ -2,8 +2,6 @@
   "$comment": "The widget's shared parts (checked by ci/reuse.mjs). Something new (a module, an animation) is listed here on purpose, with what it is, in the same pull request, so it's a choice made in review and not a copy that slipped in. Before adding one, look for the part that already does it.",
   "modules": {
     "anchoring.ts": "where a pin sits on the page and how it finds its spot again",
-    "changes.ts": "since you looked (flag sinceLooked): the \"Added · N\" pill and its list of the ids added since your last look; built as its own file (public/_lab/changes.js), loaded only with the flag on",
-    "changes.css": "the styles of changes.ts, which brings them with it",
     "chat.ts": "the chat sheet",
     "composer.ts": "the text box for a comment or a reply, and its send button",
     "edit.ts": "editing words in place (flag editText): the picked block becomes plain text, Esc writes it into the source file, Cmd-Z takes it back",
@@ -14,6 +12,7 @@
     "live.ts": "the live stream: listening badge, mode, who is heard",
     "messages.ts": "one message in a thread or the chat",
     "select.ts": "select mode (flag editText): V picks the block under a click in low ink, Tab steps, Esc lets go; the text tool and the board build on it",
+    "sections.ts": "the section bar (flag sectionBar): each section with a heading, current one filled, new and updated marked, read kept per person in the lab",
     "sheets.ts": "THE drawer: every sheet on a phone (handle, swipe down, dimmed page, keyboard fit, back closes). Any new panel on a phone uses it.",
     "switcher.ts": "labs & pages (⌘K): a box on a computer, one of the sheets on a phone",
     "thread.ts": "a pin's thread card",

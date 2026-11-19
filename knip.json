@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@5.66.0/schema.json",
   "entry": [
     "src/comments.js",
-    "src/widget/changes.ts",
     "src/board/board.ts",
     "lib/comments-api.mjs",
     "scripts/*.mjs",

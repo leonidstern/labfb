@@ -45,7 +45,7 @@ const options = {
 // Parts the page script loads only when they are used (part(name) in src/comments.js): each one an ES module beside
 // it, <name>.js, with its own styles in it. The lab serves them with the script (public/_lab/*.js), and its widget
 // version covers them (widgetRev in local.mjs), so a change to one reloads open pages too.
-const PARTS = { changes: 'src/widget/changes.ts' };
+const PARTS = {};
 // The board page's script (src/board/board.ts) is built beside it: only the board page loads it.
 const board = { ...options, entryPoints: ['src/board/board.ts'], outfile: path.join(path.dirname(outfile), 'board.js') };
 const builds = [

@@ -92,7 +92,6 @@ test('shortcuts merge key by key (the project\'s over yours over the defaults); 
   assert.equal(s.values.shortcuts.toggle, 'h');
   assert.equal(s.values.shortcuts.next, 'x', 'lowercased');
   assert.equal(s.values.shortcuts.comment, '1', 'a default');
-  assert.equal(s.values.shortcuts.added, 'a', 'the Added list key');
   assert.equal(s.values.shortcuts.done, 'd', 'two letters: refused, the default stays');
   assert.ok(s.problems.some((p) => /bogus is not an action/.test(p)));
   assert.equal(s.values.shortcuts.pause, 'o', 'pause is an action again: the project can move it');

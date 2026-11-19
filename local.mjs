@@ -90,7 +90,7 @@ For the agent, from the project (any folder under it):
       --after <frame>; pick <board> <frame>; list [<board>].
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
-page), archive/ (done threads with nothing new in 30 days), looked/ (last looks), server.json (port, keys, session;
+page), archive/ (done threads with nothing new in 30 days), looked/ (last looks), sections.json (sections read), server.json (port, keys, session;
 owner-only), seen.
 Delete .lab to start over.`;
 
@@ -574,6 +574,12 @@ function rehome() {
     homes.delete(page);
     homes.set(to, [fileIndex.get(to), fid]);
     for (const mine of Object.values(reads)) if (mine[page]) mine[to] = [...(mine[to] || []), ...mine[page]];
+    for (const mine of Object.values(sections)) {
+      if (!mine[page]) continue;
+      mine[to] ||= mine[page];
+      delete mine[page];
+      saveSections();
+    }
     // The looks go with the page, in a file named for the new page.
     if (looked.has(page)) {
       if (!looked.has(to)) looked.set(to, looked.get(page));
@@ -1214,6 +1220,27 @@ const saveLooks = (page) => {
 /** @type {any} */
 let lookedBroadcast = 0;
 let lookedIndexed = 0;
+// Sections read, per person (the section bar): .lab/sections.json as { name: { page: { section id: text hash } } }. A
+// section whose id is not there is new; one whose hash differs from the page's now is updated; one that matches is read.
+// Kept apart from the looks above, so it never shows up as a person in the agent's text. No entry for a page: a first visit.
+const SECTIONS = path.join(LAB, 'sections.json');
+const SEC = { ids: 400, id: 200, hash: 24, names: 200, pages: 500 };
+const sections = (() => {
+  const out = Object.create(null);
+  for (const [name, pagesOf] of Object.entries(readSide(SECTIONS, 'sections.json') || {})) {
+    if (!pagesOf || typeof pagesOf !== 'object') continue;
+    out[name] = bare(pagesOf);
+    for (const [page, marks] of Object.entries(out[name])) out[name][page] = marks && typeof marks === 'object' && !Array.isArray(marks) ? bare(marks) : bare({});
+  }
+  return out;
+})();
+let sectionsRev = 0;
+/** @type {any} */
+let sectionsBroadcast = 0;
+const saveSections = saver(SECTIONS, () => sections, 'section marks');
+// A page of this lab: it has comments or a file. A page saved a moment ago may not be in the file list yet (the watcher
+// is a beat behind): look again, at most every 2 s.
+const isLabPage = (page) => db.has(`lab:comments:${page}`) || fileFor(page) || (Date.now() - lookedIndexed > 2000 && ((lookedIndexed = Date.now()), (fileIndex = null), fileMemo.clear(), fileFor(page)));
 // The hand-off marks (see handoff, above): the file's own win over what old comment files still said, and the marks of
 // comments that are gone (deleted, archived) go as it is saved.
 const HANDED = path.join(LAB, 'handed.json');
@@ -1224,7 +1251,7 @@ const saveHanded = saver(HANDED, () => {
 }, 'hand-off marks');
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, labit: VERSION, flags: flagsOn(SET.flags), reads: readsRev, looked: lookedRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, labit: VERSION, flags: flagsOn(SET.flags), reads: readsRev, looked: lookedRev, sections: sectionsRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -2455,8 +2482,7 @@ const handler = async (req, res) => {
         if (!name || !page.startsWith('/') || !Array.isArray(b.ids)) return plain(res, 400, 'name, page and ids needed');
         if (b.ids.length > LOOKS.ids) return plain(res, 413, 'too many ids');
         // A page saved a moment ago may not be in the file list yet (the watcher is a beat behind): look again, at most every 2 s.
-        if (!db.has(`lab:comments:${page}`) && !fileFor(page) && !(Date.now() - lookedIndexed > 2000 && ((lookedIndexed = Date.now()), (fileIndex = null), fileMemo.clear(), fileFor(page))))
-          return plain(res, 400, 'a page of this lab needed');
+        if (!isLabPage(page)) return plain(res, 400, 'a page of this lab needed');
         if (!looked.has(page) && looked.size >= LOOKS.pages) return plain(res, 429, 'too many pages');
         const rec = looked.get(page) || { snaps: bare(), who: bare() };
         if (!(name in rec.who) && Object.keys(rec.who).length >= LOOKS.names) return plain(res, 429, 'too many names');
@@ -2521,6 +2547,42 @@ const handler = async (req, res) => {
         }
       }
       return answer(res, out);
+    }
+    // Sections read, by name and page (see SECTIONS, above): GET ?name=&page= gives { sections: { id: hash } }, or {} when
+    // that person has none for the page yet (a first visit); POST { name, page, sections: { id: hash } } sets those
+    // sections as read at that text. Open to any device the lab lets in, as the read marks are.
+    if (pathname === '/_lab/api/sections') {
+      if (req.method === 'POST') {
+        const b = await sent(req);
+        const name = plainName(b.name);
+        const page = String(b.page || '').slice(0, 500);
+        const given = b.sections && typeof b.sections === 'object' && !Array.isArray(b.sections) ? Object.entries(b.sections) : null;
+        if (!name || !page.startsWith('/') || !given) return plain(res, 400, 'name, page and sections needed');
+        if (given.length > SEC.ids) return plain(res, 413, 'too many sections');
+        if (!isLabPage(page)) return plain(res, 400, 'a page of this lab needed');
+        if (!(name in sections) && Object.keys(sections).length >= SEC.names) return plain(res, 429, 'too many names');
+        const mine = (sections[name] ||= bare({}));
+        if (!(page in mine) && Object.keys(mine).length >= SEC.pages) return plain(res, 429, 'too many pages');
+        const marks = (mine[page] ||= bare({}));
+        let changed = false;
+        for (const [id, hash] of given) {
+          const k = String(id).slice(0, SEC.id);
+          const h = String(hash).slice(0, SEC.hash);
+          if (marks[k] === h) continue;
+          delete marks[k]; // set again at the end: the oldest go first when a page is past its room
+          marks[k] = h;
+          changed = true;
+        }
+        for (const k of Object.keys(marks).slice(0, Math.max(0, Object.keys(marks).length - SEC.ids))) delete marks[k];
+        if (changed) {
+          sectionsRev++;
+          saveSections();
+          if (!sectionsBroadcast) sectionsBroadcast = setTimeout(() => ((sectionsBroadcast = 0), broadcast()), 100);
+        }
+        return res.writeHead(204).end();
+      }
+      const marks = sections[plainName(url.searchParams.get('name'))]?.[url.searchParams.get('page') || ''];
+      return answer(res, marks ? { sections: marks } : {});
     }
     if (pathname === '/_lab/api/comments') {
       const agent = isAgent(req);
