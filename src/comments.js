@@ -1,10 +1,10 @@
 /*!
  * lab comments: click anywhere on a lab page to pin a comment. No login, just a name.
  * https://github.com/leonidstern/labit · PolyForm Small Business 1.0.0
- * The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
- * link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
- * Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
  */
+// The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
+// link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
+// Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
 import styles from './widget/styles.css';
 import {
   bindAnchoring,
@@ -27,12 +27,12 @@ import {
   zoneEl,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
-import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
+import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
-import { bindLive, startLive } from './widget/live.ts';
+import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
@@ -49,7 +49,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get OFF() { return OFF; },
     get S() { return S; },
     get agentOf() { return agentOf; },
-    get ago() { return ago; },
     get anchorAt() { return anchorAt; },
     get bar() { return bar; },
     get chatBtn() { return chatBtn; },
@@ -67,26 +66,20 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get goFace() { return goFace; },
     get goTo() { return goTo; },
     get host() { return host; },
-    get isDone() { return isDone; },
     get isNew() { return isNew; },
     get isPage() { return isPage; },
-    get keyWord() { return keyWord; },
     get KEYS() { return KEYS; },
     get keyLabel() { return keyLabel; },
     get layer() { return layer; },
     get listBtn() { return listBtn; },
     get load() { return load; },
     get loadChanges() { return loadChanges; },
-    get ease() { return ease; },
     get markSeen() { return markSeen; },
     get ms() { return ms; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
     get actions() { return ACTIONS.words; },
-    get newNext() { return newNext; },
-    get newPrev() { return newPrev; },
     get numberOf() { return numberOf; },
-    get onWhat() { return onWhat; },
     get openSheet() { return openSheet; },
     get patchKids() { return patchKids; },
     get pinCursorStyle() { return pinCursorStyle; },
@@ -221,13 +214,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <div class="layer"></div>
     <div class="motions"></div>
     <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new${flag('sinceLooked') ? ` · ${KEYS.added} added` : ''} · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
-    <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
+    <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
       <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
-      <button class="secondary new-prev" type="button" hidden aria-label="previous new comment">‹</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
-      <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
@@ -250,7 +241,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // The bar's "new" pill: J/K step through the new comments, R replies, E resolves.
   const listBtn = /** @type {HTMLButtonElement} */ ($('.list-btn'));
   const goBtn = $('.go-btn');
-  const newPrev = $('.new-prev');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
   const motions = $('.motions');
   const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
@@ -263,7 +253,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     store.set('lab-hide-done', S.showDone ? '' : '1');
     render();
   };
-  const newNext = $('.new-next');
   const chatEl = $('.chatwin');
   const chatBtn = /** @type {HTMLElement} */ (root.querySelector('.chat-btn'));
   S.refit = () => {}; // phones: fit the sheets to the keyboard again (below)
@@ -558,7 +547,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.keepKeys = false;
   // Done: resolved, or answered "Done: …" by someone other than its author (the agent).
   // Done means the same everywhere (the list, the pins, show done): what workState says.
-  const isDone = (c) => c.resolved || workState(c)[0] === 'done';
   // Computers (Leo, 2026-11-15, option 1b): one bar of segments (chat, new, go, ⋯) at the bottom right; the less used
   // ones (show done, copy link, hide) sit in the ⋯ menu. Comments hidden: the bar is just "comments". Phones keep theirs.
   // A word with its key marked inside it, as in menus: (c)hat, ne(w).
@@ -610,11 +598,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
-  const ago = (iso) => {
-    const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-    return m < 1 ? 'just now' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
-  };
-  S.replyTo = null;
   S.newFrom = null;
   // Open comments are numbered 1, 2, 3… in order, the same for everyone, admins and the agent text.
   const numberOf = (c) =>
@@ -672,12 +655,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     svg.setAttribute('viewBox', '0 0 64 64');
     svg.setAttribute('class', 'agentmark');
     svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML =
-      '<g transform="translate(-1 -.5)" fill="currentColor">' +
-      '<path d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
-      '<path d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
-      '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
-      '<circle cx="31" cy="45" r="6.2" fill="var(--_bg)"/></g>';
+    svg.innerHTML = MARK_PATHS;
     return svg;
   };
   // An agent's own comment carries the session it was written in; a person's carries where they wrote it from.
@@ -988,8 +966,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       const float = el('div', { class: `float${draft.fluid ? '' : anim}` });
       const box = composer({
         placeholder: S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
-        empty: '',
-        nameFirst: false,
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
         // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
         // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
@@ -1084,7 +1060,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
   }, true);
   goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
-  newPrev.addEventListener('click', () => stepNew(-1));
   // Pause (Leo, 19 Nov): each video and each moving thing on the page has its own pause / play just beyond its top right
   // corner, over the page (nothing moves), shown with the comments; P pauses them all, or plays what labit paused.
   // The widget's own animations keep moving, and a comment on a paused video says which second (anchoring.ts).
@@ -1148,7 +1123,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   doneBtn.addEventListener('click', toggleDone);
   movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
   overBtn.addEventListener('click', () => setOver(!S.overControls));
-  newNext.addEventListener('click', () => stepNew(1));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
   const showAgain = () => {
     if (S.on) return;
@@ -1511,7 +1485,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     stopPress();
     pressing(false);
     // A finger's lift is touchend's (one focus, so the keyboard doesn't close and open again).
-    if (S.pinnedByHold && e.pointerType !== 'touch') /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
+    if (S.pinnedByHold && e.pointerType !== 'touch') /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, true);
   // The lift after a hold: no click follows it (it would land on the dimmed page and take the cursor away), and the
   // touch's own end puts the cursor in the box, so the phone opens its keyboard.
@@ -1520,7 +1494,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (!S.pinnedByHold) return;
     S.pinnedByHold = false;
     e.preventDefault();
-    const box = /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'));
+    const box = /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'));
     if (box && root.activeElement === box) box.blur(); // focused without a keyboard: again from the lift, so it opens
     box?.focus({ preventScroll: true });
   }, { capture: true, passive: false });
