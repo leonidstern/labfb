@@ -216,9 +216,11 @@ const sel = (p, id, from, to) =>
     getSelection().addRange(r);
   }, [id, from, to]);
 // Opens a fresh page in a context (the name the notes were written under).
-async function open(browser, url, opts = {}) {
+// (init: a script run in the page before its own, as the browser's own was different)
+async function open(browser, url, { init, ...opts } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 }, ...opts });
   await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tester'));
+  if (init) await ctx.addInitScript(init);
   const p = await ctx.newPage();
   await p.goto(url);
   await sleep(1200);
@@ -724,6 +726,24 @@ try {
       await c2.close();
     }
 
+    await browser.close();
+  }
+
+  // ---- With the flag on, a browser without the CSS Custom Highlight API can't ink: selected words keep their pin
+  for (const eng of engines) {
+    const browser = await pw[eng].launch();
+    await L.clear();
+    await L.say(words('a', 'gamma delta epsilon'), 'pin please');
+    const [c2, q] = await open(browser, L.base + '/', { init: () => { delete window.Highlight; } });
+    const errors = [];
+    q.on('pageerror', (e) => errors.push(e.message));
+    await q.reload();
+    await sleep(1200);
+    const w = await look(q);
+    const none = await band(q, await gap(q, 'a', 'gamma'));
+    const gone = await q.evaluate(() => typeof window.Highlight);
+    check(eng, 'no Highlight API: selected words get a pin, no ink', gone === 'undefined' && w.inks.length === 0 && w.html.length === 0 && none.rows === 0 && w.pins.length === 1 && !w.pins[0].ink && w.pins[0].seen && !errors.length, `Highlight ${gone}, ${w.inks.length} inks, ${JSON.stringify(w.pins)}, ${w.html}, ${errors.join('; ')}`);
+    await c2.close();
     await browser.close();
   }
 
