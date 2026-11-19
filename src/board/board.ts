@@ -17,7 +17,6 @@ const coarse = matchMedia('(pointer: coarse)').matches;
 const CAP = coarse ? 3 : 8; // frames alive at once
 const AT_ONCE = coarse ? 1 : 2; // frames loading at once
 const WAKE = 120; // a frame is woken when it is in view and at least this many screen px wide
-const MARGIN = 96;
 
 const css = `
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#e9e8e4;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif}
@@ -45,7 +44,6 @@ root.append(world);
 document.body.append(root);
 
 let cards: Card[] = [];
-let rev = -1;
 let edited: Record<string, string> = {}; // page path -> when its file was saved
 let cam: Cam = { x: 0, y: 0, z: 1 };
 let view = { w: innerWidth, h: innerHeight };
@@ -157,7 +155,6 @@ function sleep(c: Card) {
 // ---------- frames in the world ----------
 const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
 function show(b: { frames: Frame[]; rev: number; of?: string }) {
-  rev = b.rev;
   of = of || (b.of || '').split('#')[0];
   const next = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
   const old = new Map(cards.map((c) => [c.f.id, c]));
@@ -239,7 +236,7 @@ function leave() {
   if (!c) return;
   c.box.classList.remove('in');
   // The keys stay with the frame's document until focus is moved back: M, ⇧B and Esc would go to the wrong one.
-  c.frame?.contentWindow && (c.frame.contentWindow as unknown as { __labSpot?: { clear?: () => void } }).__labSpot?.clear?.();
+  (c.frame?.contentWindow as unknown as { __labSpot?: { clear?: () => void } } | null | undefined)?.__labSpot?.clear?.();
   c.frame?.blur();
   window.focus();
 }
