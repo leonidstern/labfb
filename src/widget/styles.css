@@ -668,6 +668,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-wrap[data-l="1"][data-r="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
 /* Something new past an edge: that edge's fade takes a faint blue (Leo, 19 Nov: "slightly colored fade if new there"). */
 .sb-edge { position: absolute; top: 0; bottom: 0; width: 32px; opacity: 0; transition: opacity var(--_t-slow); pointer-events: none; }
+/* No dot either: the green ink on the name is the whole status (Leo, 19 Nov: "no pin icons"). */
+.sb-dot { display: none !important; }
+.sb-more[data-st="1"]::before { width: 0; }
 .sb-edge.l { left: 0; background: linear-gradient(90deg, rgba(52, 199, 89, .24), transparent); }
 .sb-edge.r { right: 0; background: linear-gradient(270deg, rgba(52, 199, 89, .24), transparent); }
 .sb-edge[data-st="1"] { opacity: 1; }
@@ -678,7 +681,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-chip, .sb-more { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
 .sb-chip[hidden] { display: none; }
 .sb-chip:hover, .sb-more:hover { background: var(--_soft); }
-.sb-chip[aria-current] { background: var(--_soft); color: var(--_fg); }
+.sb-chip[aria-current] { background: none; color: var(--_fg); } /* the one you are in: dark text, no fill (Leo, 19 Nov) */
 .sb-chip[aria-current] .sb-t { color: var(--_fg); }
 /* A status that goes (you read it) folds away over a moment instead of vanishing, so the chips after it glide left
    rather than jump (Leo, 19 Nov: "scrolling to tab jumps a bit"). */
