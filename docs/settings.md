@@ -150,7 +150,7 @@ win over yours, key by key.
 | `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
 | `chat` | `c` | Open the chat |
 | `next` | `w` | The next new comment (with Shift: the one before) |
-| `pause` | `p` | Pause or play the page's videos and animations (the button shows on a page that has them) |
+| `pause` | `p` | Pause the page's videos and animations, or play what was paused (each one also has its own pause / play beside it) |
 | `done` | `d` | Hide or show done threads (shown, faded, at first) |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
