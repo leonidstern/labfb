@@ -39,6 +39,7 @@ const options = {
   logLevel: 'warning',
   outfile,
   plugins: [minifiedCss],
+  define: { 'globalThis.__LAB_DEBUG__': 'false' },
 };
 // The board page's script (src/board/board.ts) is built beside it: only the board page loads it.
 const board = { ...options, entryPoints: ['src/board/board.ts'], outfile: path.join(path.dirname(outfile), 'board.js') };
