@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Drawing pins: hold D and drag to draw on the page instead of marking a box. Strokes drawn while D is held are one drawing (an X, an arrow with its head); letting D go opens the comment box. The agent gets the area as for a box, plus what the drawing reads as (circled, a box, underlined, crossed out, an X, scribbled over, an arrow with what it starts on and points at, a caret for insert here, a side line for this block, or an unclear mark, when the comment's words decide) and the lines as a path. The drawing is the pin: no marker, click its line to open it. Tapping D alone still hides or shows done pins, now as the key is let go. The reading is its own file (draw.js), loaded the first time D is pressed.
 - A `wait` (or `reply`, `pin`) that outlives a restart of the lab keeps going: it reads the lab's new key again instead of ending on "forbidden", which left the lab showing nobody listening and its pins unanswered.
 - Kept: the section bar is simply labit now, no flag. A page with two or more sections gets it; the `sectionBar` flag is gone, and a settings file that still names it is told so when the lab starts and otherwise ignored.
 - Board page: the frames are the lab's live pages, 8 at once (3 on a phone), the nearest the middle first, the rest title cards. Keys: ⇧1 fits everything, ⇧2 is 100%. A board made from a page has a plain "‹ back" at its top left; ⇧B and Esc on an empty board go back too.
