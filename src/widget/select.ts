@@ -57,7 +57,10 @@ export const selectOn = () => T.on;
 export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.close) {
   W = w;
   [T.open, T.close] = [open, close];
-  W.fonts.textContent += '::highlight(lab-pick) { background-color: rgba(120, 120, 128, .22); color: inherit; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }';
+  W.fonts.textContent += '::highlight(lab-pick) { background-color: rgba(120, 120, 128, .22); color: inherit; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }' +
+    // In select mode a long tap picks a block, so the page's own text selection and iOS's menu stay off; the block
+    // being edited keeps both (Leo, 19 Nov: a long tap called two menus, iOS's and ours).
+    ' html.lab-editing body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } html.lab-editing [data-lab-editing], html.lab-editing [data-lab-editing] * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }';
   const quiet = (e: Event) => (e.preventDefault(), e.stopImmediatePropagation());
   const mine = (e: MouseEvent) => T.on && !e.altKey && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.composedPath().includes(W.host);
   // Before the page and the pins see them (window, capture): a click picks a block instead of pinning.
