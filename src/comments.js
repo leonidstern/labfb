@@ -1064,9 +1064,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // corner, over the page (nothing moves), shown with the comments; P pauses them all, or plays what labit paused.
   // The widget's own animations keep moving, and a comment on a paused video says which second (anchoring.ts).
   const held = new Set(); // the videos and elements labit paused
+  // A transition, or anything that ends within 2 s, is a fade, not something that moves on its own (the section bar's glide
+  // lit one on a heading): skipped, unless labit paused it.
   const pageAnims = () => document.getAnimations().filter((a) => {
     const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
-    return t && !root.contains(t);
+    return t && !root.contains(t) && (held.has(t) || (!(a instanceof CSSTransition) && /** @type {number} */ (a.effect?.getComputedTiming().endTime) > 2000));
   });
   const animsOf = (el) => pageAnims().filter((a) => /** @type {KeyframeEffect} */ (a.effect).target === el);
   const moving = () => [...new Set([...document.querySelectorAll('video'), ...held, ...pageAnims().filter((a) => a.playState === 'running').map((a) => /** @type {KeyframeEffect} */ (a.effect).target)])].filter((el) => el?.isConnected);
