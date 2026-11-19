@@ -68,7 +68,10 @@
       "anchoring.ts: rgb(1, 2, 3)": "a sentinel colour to tell whether the page set one, never drawn",
       "select.ts: rgba(52, 199, 89, .18)": "the picked block highlight, drawn in the page document where the widget tokens are not",
       "comments.js: rgba(52, 199, 89, .3)": "the selection highlight, drawn in the page document where the widget tokens are not",
-      "select.ts: rgb(52, 199, 89)": "the picked block's outline, drawn in the page document where the widget tokens are not"
+      "select.ts: rgb(52, 199, 89)": "the picked block's outline, drawn in the page document where the widget tokens are not",
+      "ink.ts: #24a046": "ink on words: the pins' green (selecting, draft, sent, done), a highlight in the page document where the widget tokens are not",
+      "ink.ts: #34c759": "ink on words: working's green, a highlight in the page document where the widget tokens are not",
+      "ink.ts: #e08a1a": "ink on words: asks' amber, a highlight in the page document where the widget tokens are not"
     }
   }
 }
