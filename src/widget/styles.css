@@ -415,6 +415,14 @@ kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
 .motion-ms { padding: 0 6px 0 4px; font-size: 11px; color: var(--_muted); font-variant-numeric: tabular-nums; white-space: nowrap;
              min-width: 9ch; text-align: right; } /* steady width: the ms ticking up never slides the pause away from the pointer */
 .motion-ms:empty, .motion-ctl.mini .motion-slow, .motion-ctl.mini .motion-ms { display: none; }
+/* A pin's moment (pause, comment): a small quiet chip above the box or the thread, there from the start (no jump). */
+.moment { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; width: max-content; max-width: 100%; margin: 0 0 6px;
+          padding: 2px 8px 2px 6px; border: 0; border-radius: var(--_r-s); background: var(--_soft); color: var(--_muted);
+          font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moment svg { width: 9px; height: 9px; fill: currentColor; flex: none; }
+button.moment { cursor: pointer; }
+.float > .moment { background: var(--_bg); box-shadow: 0 0 0 1px var(--_edge); } /* over the page, above the box */
+button.moment:hover { color: var(--_fg); }
 @media (pointer: coarse) { .motion-ctl button { width: 30px; height: 30px; } }
 /* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
 .more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
@@ -667,50 +675,69 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar { position: fixed; left: 0; right: 0; top: var(--lab-top, 0px); z-index: 3; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
         background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
 .sbar[hidden] { display: none; }
+/* A computer: only as wide as its sections (no page name), centred; when they do not fit, the line scrolls sideways (Leo, 19 Nov:
+   "can it be on desktop fit to content pls with swipe scroll"). Its lower corners round off where it ends. */
+.sbar { width: fit-content; max-width: calc(100% - 24px); margin-inline: auto; border-bottom-left-radius: var(--_r-s); border-bottom-right-radius: var(--_r-s); box-shadow: 0 0 0 .5px var(--_line); }
+/* Floating over a page it does not push (a proxied app, an app shell, a page with its own top bar): away while the page
+   scrolls down, back on the way up (sections.ts, rule 3). Never in a print (rule 6). */
+.sbar { transition: opacity var(--_t-quick), transform var(--_t-quick) var(--_ease); }
+.sbar[data-away] { opacity: 0; transform: translateY(-100%); pointer-events: none; }
+@media print { .sbar { display: none !important; } }
+/* A board open over the page (its #board=<name> view): the bar steps aside, its room kept, so the board's own bar and
+   its "‹ close" are free; back on close with nothing moved (Leo, 19 Nov: "can you dont show them on board"). */
 .sbar[data-board] { visibility: hidden; pointer-events: none; }
-/* Leo, 19 Nov, on the phone: the status is the green ink on the name alone, as words get on the page (quoted, kept):
-   no dot, no "new"/"updated" word (kept for screen readers), no fill on the current chip and no grey on hover or tap.
-   "…" turns green when it holds something new. On a phone the bar steps away while a sheet is open, so the sheet's
-   handle and swipe down are free. */
-.sbar .sb-dot, .sbar .sb-more[data-st="1"]::before { display: none !important; }
-.sbar .sb-w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.sbar .sb-chip[aria-current] { background: var(--_soft); font-weight: inherit; color: var(--_fg); } /* on: the rows' soft wash */
-.sbar .sb-chip:hover, .sbar .sb-more:hover { background: none; color: var(--_fg); }
-.sbar .sb-chip, .sbar .sb-more { -webkit-tap-highlight-color: transparent; }
-.sbar .sb-t { border-radius: var(--_r-s); transition: background-color var(--_fade); }
-.sbar .sb-chip[data-st="new"] .sb-t { background-color: color-mix(in srgb, var(--_green) 30%, transparent); }
-.sbar .sb-chip[data-st="updated"] .sb-t { background-color: color-mix(in srgb, var(--_green) 15%, transparent); }
-.sbar .sb-more[data-st="1"] { color: var(--_green); }
+/* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
+   swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
 @media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
-.sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+/* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
-.sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
+.sb-wrap .sb-nav { flex: 1; }
+.sb-wrap[data-l="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
+.sb-wrap[data-r="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+.sb-wrap[data-l="1"][data-r="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
+/* Something new past an edge: that edge's fade takes a faint green (Leo, 19 Nov: "slightly colored fade if new there"). */
+.sb-edge { position: absolute; top: 0; bottom: 0; width: 32px; opacity: 0; transition: opacity var(--_t-slow); pointer-events: none; }
+/* No dot either: the green ink on the name is the whole status (Leo, 19 Nov: "no pin icons"). */
+.sb-dot { display: none !important; }
+.sb-edge.l { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--_green) 24%, transparent), transparent); }
+.sb-edge.r { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--_green) 24%, transparent), transparent); }
+.sb-edge[data-st="1"] { opacity: 1; pointer-events: auto; cursor: pointer; width: 44px; } /* green: a tap slides to what is new */
+
+.sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
 .sb-nav::-webkit-scrollbar { display: none; }
-.sb-edge { display: none; position: absolute; top: 0; bottom: 0; width: 28px; pointer-events: none; }
-.sb-edge.l { left: 0; background: linear-gradient(to right, var(--_bg), transparent); }
-.sb-edge.r { right: 0; background: linear-gradient(to left, var(--_bg), transparent); }
-/* A hidden new or updated chip past an edge: the fade is tinted green there. */
-.sb-edge.new.l { background: linear-gradient(to right, color-mix(in srgb, var(--_green) 24%, var(--_bg)), transparent); }
-.sb-edge.new.r { background: linear-gradient(to left, color-mix(in srgb, var(--_green) 24%, var(--_bg)), transparent); }
-.sb-edge.new { pointer-events: auto; cursor: pointer; width: 44px; -webkit-tap-highlight-color: transparent; } /* green: a tap goes to what is new */
-.sb-chip, .sb-more { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
+.sb-chip { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
 .sb-chip[hidden] { display: none; }
-.sb-chip:hover, .sb-more:hover { background: var(--_soft); }
-.sb-chip[aria-current] { background: var(--_soft); color: var(--_fg); font-weight: 600; }
-.sb-dot { display: none; flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; background: var(--_green); }
-.sb-chip:is([data-st="new"], [data-st="updated"]) .sb-dot { display: block; }
-.sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid var(--_green); }
-.sb-more[data-st="1"]::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_green); }
+.sb-chip:hover { background: none; color: var(--_fg); } /* hover and tap: the text darkens, no grey box (Leo, 19 Nov) */
+.sb-chip { -webkit-tap-highlight-color: transparent; }
+.sb-chip[aria-current] { background: none; color: var(--_fg); } /* the one you are in: dark text, no fill (Leo, 19 Nov) */
+.sb-chip[aria-current] .sb-t { color: var(--_fg); }
+/* A status that goes (you read it) folds away over a moment instead of vanishing, so the chips after it glide left
+   rather than jump (Leo, 19 Nov: "scrolling to tab jumps a bit"). */
+.sb-dot { flex: none; width: 0; height: 7px; margin-right: -6px; opacity: 0; border-radius: 50%; box-sizing: border-box; background: var(--_green-fg);
+          transition: width var(--_t-slow) var(--_ease), margin var(--_t-slow) var(--_ease), opacity var(--_t-quick); }
+.sb-chip:is([data-st="new"], [data-st="updated"]) .sb-dot { width: 7px; margin-right: 0; opacity: 1; }
+/* New and updated names wear the half ink of words on the page (ink.ts, "Ink on selected words"): a band under the
+   lower 44 % of the words' line, from 52.6 % down, in the sent ink's green at 30 % (45 % on dark), corners 3 px (Leo,
+   19 Nov: "in tab bar use same half ink as on text"). The page's line is the font's box (1.18em of the system face),
+   centred in the name's line: so the band starts .03em below the middle and is .52em high. Behind the letters, no
+   room taken. The page's ink has no lighter kind, so new and updated wear the same. */
+.sb-t { position: relative; isolation: isolate; --_sbi: 30%; }
+.sb-t::before { content: ''; position: absolute; z-index: -1; left: 0; right: 0; top: calc(50% + .03em); height: .52em; border-radius: max(0px, calc(var(--_r-s) - 3px));
+                background-color: transparent; transition: background-color var(--_t-quick) var(--_ease); pointer-events: none; }
+@media (prefers-color-scheme: dark) { .sb-t { --_sbi: 45%; } }
+/* The ink comes in slowly and goes at once: a tap on a green name clears it right away (Leo, 19 Nov: "remove green as
+   read right after click"). */
+.sb-chip:is([data-st="new"], [data-st="updated"], [data-st="pin"]) .sb-t::before { background-color: color-mix(in srgb, var(--_green-fg) var(--_sbi), transparent); transition-duration: var(--_t-slow); }
+.sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid var(--_green-fg); }
 .sb-w { color: var(--_green-fg); font-size: 12px; }
-.sb-w:empty { display: none; }
-.sb-menu { position: absolute; right: 8px; top: calc(100% + 4px); display: flex; flex-direction: column; align-items: stretch; max-height: min(60vh, 360px); overflow: auto; padding: 4px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); }
-.sb-menu[hidden] { display: none; }
-.sb-menu .sb-chip { text-align: left; }
+.sb-chip[aria-current] .sb-w { color: var(--_green-fg); }
+.sb-w { display: inline-block; max-width: 6em; overflow: hidden; white-space: nowrap; transition: max-width var(--_t-slow) var(--_ease), margin var(--_t-slow) var(--_ease), opacity var(--_t-quick); }
+.sb-w.off { max-width: 0; margin-left: -6px; opacity: 0; }
+/* No status word on the chips (Leo, 19 Nov): the dot and the green ink say it; the word stays for screen readers. */
+.sb-w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
-  .sbar { height: 44px; padding: 0 8px; }
-  .sb-title, .sb-more { display: none; }
-  .sb-edge.on { display: block; }
-  .sb-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sbar { height: 44px; padding: 0 8px; width: auto; max-width: none; margin-inline: 0; border-radius: 0; box-shadow: 0 .5px 0 var(--_line); }
+  .sb-nav { -webkit-overflow-scrolling: touch; }
   .sb-chip { padding: 9px 12px; }
   /* A sheet that fills the screen (keyboard up) leaves the bar clear. */
   :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }
