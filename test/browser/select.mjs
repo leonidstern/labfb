@@ -63,16 +63,23 @@ try {
       reset();
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tess'));
-      // Nothing is saved: a comment is answered here (the lab never sees it).
+      const missed = [];
+      // Debug: every change to what the page shows must be followed by a redraw (window.__labDebug in src/comments.js);
+      // a miss is reported here as it happens, so a reload doesn't lose it.
+      await ctx.exposeFunction('__labMiss', (s) => missed.push(s));
+      await ctx.addInitScript(() => Object.assign(window, { __labDebug: true, __labMissed: { push: (s) => window.__labMiss(s) } }));
+      // Nothing is saved: a comment is answered here (the lab never sees it), in the shape the lab's own answer has.
       const posts = [];
       await ctx.route('**/_lab/api/comments**', (r) => {
         if (r.request().method() !== 'POST') return r.continue();
         const body = r.request().postDataJSON();
         posts.push(body);
-        return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ comment: { id: `m${posts.length}`, page: '/index', name: body.name, text: body.text, anchor: body.anchor, created: new Date().toISOString(), replies: [] }, edit: 'k1' }) });
+        return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ comment: { id: `m${posts.length}`, page: '/index', name: body.name, text: body.text, anchor: body.anchor, createdAt: new Date().toISOString(), resolved: false }, edit: 'k1' }) });
       });
       const texts = async () => posts.map((b) => b.text);
       const p = await ctx.newPage();
+      const errors = []; // any error the page throws fails the run (a mocked answer once lacked createdAt and threw in render)
+      p.on('pageerror', (e) => errors.push(e.message));
       await p.goto(B + '/');
       await sleep(600);
       const mode = () => p.evaluate(() => document.documentElement.classList.contains('lab-selecting'));
@@ -132,6 +139,9 @@ try {
       await until(async () => (await line()).names !== '');
       l = await line();
       check(eng, 'at 390 px the line is still one line', l.tops === 1 && l.fits, JSON.stringify(l));
+      check(eng, 'the page threw no errors', !errors.length, errors.join(' | '));
+      await sleep(100); // two frames for the last change
+      check(eng, 'every change to what the page shows was redrawn', !missed.length, missed.join('\n'));
     } finally {
       await browser.close();
     }
