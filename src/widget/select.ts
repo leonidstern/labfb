@@ -37,7 +37,7 @@ function step(dir: 1 | -1) {
 // The bar for the picked block (Leo, 19 Nov: "make select tool full"), on phones and computers alike: remove · make like ·
 // move · states · variants · pin · done. Each goes to the agent as a pin on the block, worded so it knows what to do. Make like and move ask for a second block first ("tap the one to copy").
 let bar: HTMLElement | null = null;
-let want: { say: string; then: (other: HTMLElement) => void } | null = null;
+let want: { say: string; act: (other: HTMLElement) => void } | null = null;
 const label = (e: HTMLElement) => {
   const t = (e.textContent || '').replace(/\s+/g, ' ').trim();
   return `${e.localName}${e.id ? `#${e.id}` : ''} "${t.length > 50 ? `${t.slice(0, 49)}…` : t}"`;
@@ -63,11 +63,11 @@ const ACTS: Array<[string, () => void]> = [
   ['remove', () => T.pick && pinOn(T.pick, 'Remove this.')],
   ['make like', () => {
     const p = T.pick;
-    if (p) want = { say: 'tap the one to copy', then: (o) => pinOn(p, `Make this look like ${label(o)}: same size, spacing, colour and type.`) };
+    if (p) want = { say: 'tap the one to copy', act: (o) => pinOn(p, `Make this look like ${label(o)}: same size, spacing, colour and type.`) };
   }],
   ['move', () => {
     const p = T.pick;
-    if (p) want = { say: 'tap where it goes: it lands after that', then: (o) => pinOn(p, `Move this to just after ${label(o)}.`) };
+    if (p) want = { say: 'tap where it goes: it lands after that', act: (o) => pinOn(p, `Move this to just after ${label(o)}.`) };
   }],
   ['states', () => T.pick && pinOn(T.pick, 'Show this in its states (hover, loading, empty, error) so I can review each one.')],
   ['variants', () => T.pick && pinOn(T.pick, 'Make 3 variants of this, shown in place as a / b / c tabs on it, so I can pick one.')],
@@ -96,7 +96,7 @@ const drawBar = () => {
   bar!.hidden = !T.on;
 };
 /** Pick a block (or none). */
-export function pick(el: HTMLElement | null) {
+function pick(el: HTMLElement | null) {
   T.pick?.removeAttribute('data-lab-picked');
   T.pick = el;
   el?.setAttribute('data-lab-picked', ''); // a green ring as well as the ink, so a phone shows what is picked (Leo, 19 Nov)
@@ -133,7 +133,7 @@ export function bindSelect(w: unknown) {
         if (want && other && other !== T.pick) {
           const w = want;
           want = null;
-          w.then(other);
+          w.act(other);
           return void drawBar();
         }
         pick(blockAt(m.target));
@@ -145,7 +145,10 @@ export function bindSelect(w: unknown) {
     if (e.key !== 'Escape' && e.key !== 'Tab') return;
     quiet(e);
     if (e.key === 'Tab') pick(step(e.shiftKey ? -1 : 1));
-    else if (want) (want = null), drawBar();
+    else if (want) {
+      want = null;
+      drawBar();
+    }
     else if (T.pick) pick(null);
     else selectMode(false);
   }, true);
