@@ -1,7 +1,7 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 //
 // Ink on words: a comment on selected words shows no pin. The words carry its state as low ink, a band under the lower
-// part of their line: a light green while you write it, the pins' green once sent, green and pulsing while the agent works,
+// part of their line: the pins' green while you write it and once sent, green and pulsing while the agent works,
 // amber and breathing when the agent answered and it's your turn, and a green hairline once done (Leo, 18 Nov).
 // Behind the flag inkOnText (lib/flags.ts): with it off, selected words get a pin as before.
 //
@@ -55,7 +55,7 @@ export function inkCss() {
     'html.lab-ink-on{text-decoration-skip-ink:none}html.lab-ink-dk{--lab-ink-k:1.5}' +
     '@property --lab-ink-a{syntax:"<number>";inherits:true;initial-value:1}' +
     'html.lab-ink-live{animation:lab-ink-pulse 1.8s ease-in-out infinite}@keyframes lab-ink-pulse{50%{--lab-ink-a:.35}}' +
-    on('draft', band + green('#24a046', 18)) + // being written: the sent green, lighter (Leo, 19 Nov: "make draft green")
+    on('draft', band + green('#24a046', 30)) + // being written: as it was while selecting, nothing changes on letting go (Leo, 19 Nov)
     on('next', band + green('#24a046', 30)) +
     on('now', band + green('#34c759', 30, '*var(--lab-ink-a)')) +
     on('asks', band + mix('#e08a1a', 'calc(32% + 16%*var(--lab-ink-a))')) +

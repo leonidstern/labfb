@@ -459,7 +459,7 @@ try {
       await c3.close();
     }
 
-    // ---- Real flow: select words (the dialog opens at once; the words wear the draft's band, a lighter green), type, send: the sent
+    // ---- Real flow: select words (the dialog opens at once; the words wear the draft's band, the selecting green), type, send: the sent
     // note is green ink, saved as selected words
     {
       await L.clear();
@@ -471,7 +471,7 @@ try {
       await sleep(600);
       const d = await look(q);
       const light = await band(q, await gap(q, 'a', 'gamma'));
-      check(eng, 'selecting words: the words wear the draft band, no pin', st(d, 'gamma delta') === 'draft' && d.pins.length === 0 && d.draftPin !== 'visible' && low(light) && green(light) && light.rgb[0] > 205, `${JSON.stringify(d.inks)} ${d.pins.length} pins, draft pin ${d.draftPin}, ${say(light)}`);
+      check(eng, 'selecting words: the words wear the draft band, no pin', st(d, 'gamma delta') === 'draft' && d.pins.length === 0 && d.draftPin !== 'visible' && low(light) && green(light), `${JSON.stringify(d.inks)} ${d.pins.length} pins, draft pin ${d.draftPin}, ${say(light)}`);
       check(eng, 'the draft\'s words wear one band: the quote\'s green stays off them', d.quote.length === 0, JSON.stringify(d.quote));
       await q.keyboard.type('a note on words');
       await q.keyboard.press('Enter');
@@ -535,7 +535,7 @@ try {
     }
 
     // ---- A real Shift-drag with the mouse: the band shows while dragging (the selection's), and once let go the words
-    // keep the low band (the draft's lighter green), with no full-height green on them.
+    // keep the low band, in the very colour it had while selecting, with no full-height green on them.
     {
       await L.clear();
       const [c2, q] = await open(browser, L.base + '/');
@@ -558,7 +558,7 @@ try {
       const [after, own, lit, kept2] = [await look(q), await rules(q, 'a', '::selection'), await rules(q, 'a', '::highlight(lab-quote)'), await band(q, await gap(q, 'a', 'gamma'))];
       check(eng, 'Shift-drag: only the band shows while dragging, none of the page\'s own selection paint', low(during) && green(during) && clear(native.bg) && live.sel === 'gamma delta', `${say(during)} ${native.bg} "${live.sel}"`);
       check(eng, 'Shift-drag let go: no full-height green on the words (selection or quote)', !/52, 199, 89|0\.2\d* 0\.78\d* 0\.3/.test(own.bg) && after.quote.length === 0 && alpha(lit.bg) < 0.2, `selection ${own.bg}, quote ${lit.bg}, quote set ${JSON.stringify(after.quote)}`);
-      check(eng, 'Shift-drag let go: the words keep the low band (the draft: a lighter green), one band', st(after, 'gamma delta') === 'draft' && after.inks.length === 1 && !after.sel && low(kept2) && green(kept2) && kept2.rgb[0] > during.rgb[0] + 10, `${JSON.stringify(after.inks)} "${after.sel}" ${say(kept2)}`);
+      check(eng, 'Shift-drag let go: the words keep the low band, the same colour as while selecting, one band', st(after, 'gamma delta') === 'draft' && after.inks.length === 1 && !after.sel && low(kept2) && kept2.rgb.every((v, k) => Math.abs(v - during.rgb[k]) < 4), `${JSON.stringify(after.inks)} "${after.sel}" ${say(kept2)}`);
       // With that box open (comment mode's pointer is off the page then), a second Shift-drag on other words: the
       // band again from the first letter, never the page's own selection paint (Leo, 19 Nov).
       const at2 = await q.evaluate(() => {
