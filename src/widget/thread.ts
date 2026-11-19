@@ -261,7 +261,30 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       W.S.openId = null;
       W.render();
     });
-    actions.append(...(W.S.isAdmin ? [resolve, del] : [resolve]));
+    // Undo (Leo, 19 Nov): for 3 s after this tab sent the thread (W.S.undo, src/comments.js), "undo" sits in the
+    // resolve key's place, a line under it running out; a tap deletes the pin and opens its box again with the words.
+    // The key keeps resolve's width (both words stacked, one hidden), so nothing moves when it turns back.
+    const take = W.S.undo?.id === c.id ? W.S.undo : null;
+    const left = take ? take.until - Date.now() : 0;
+    let first = resolve;
+    if (left > 0) {
+      const undo = W.el('button', { class: 'btn undo', type: 'button', 'aria-label': 'undo: take this pin back' });
+      const w = W.el('span', { class: 'w', style: `--undo-ms:${left}ms;--undo-from:${Math.min(1, left / W.UNDO_MS)}` });
+      w.append(W.el('span', {}, 'undo'), W.el('span', { class: 'ghost', 'aria-hidden': 'true' }, 'resolve'));
+      undo.append(w);
+      undo.addEventListener('click', async () => {
+        try {
+          await W.takeBack(c);
+        } catch {
+          failed(undo);
+        }
+      });
+      // Touched: the card stays open when the 3 s are up (untouched, it closes as a sent card always did).
+      for (const ev of ['pointerdown', 'focusin', 'keydown']) card.addEventListener(ev, (e) => e.target !== undo && !undo.contains(e.target) && (take.touched = true));
+      setTimeout(() => undo.isConnected && undo.replaceWith(resolve), left);
+      first = undo;
+    }
+    actions.append(...(W.S.isAdmin ? [first, del] : [first]));
     body.append(actions);
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).

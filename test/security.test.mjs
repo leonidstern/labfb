@@ -297,17 +297,21 @@ test("the key a page carries (data-admin) is not the agent's: it can't listen, i
   assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: as(agent) })).status, 204, 'the agent listens');
 });
 
-test("whoever started a thread may resolve and reopen it with its key, not delete it or touch another", async () => {
+test("whoever started a thread may resolve and reopen it with its key, take back a fresh unanswered one, not touch another", async () => {
   const mine = await pin('/anna/site/own');
   const other = await pin('/anna/site/own');
   const page = '/anna/site/own';
   assert.ok(mine.edit, 'the starter gets a key');
   assert.equal((await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).status, 200);
   assert.equal((await call({ page, action: 'reopen', id: mine.comment.id, edit: mine.edit })).status, 200);
-  assert.equal((await call({ page, action: 'delete', id: mine.comment.id, edit: mine.edit })).status, 403, 'delete stays admin-only');
   assert.equal((await call({ page, action: 'resolve', id: other.comment.id, edit: mine.edit })).status, 403, "another thread's key");
   const r = await (await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).json();
   assert.equal(r.comment.resolvedBy, 'author');
+  // Delete: only the starter's undo, a fresh pin nobody answered; with a reply in it, it stays admin-only.
+  assert.equal((await call({ page, action: 'delete', id: other.comment.id, edit: mine.edit })).status, 403, "another thread's key can't delete");
+  assert.equal((await call({ page, name: 'Bo', text: 'seen', parent: other.comment.id })).status, 201);
+  assert.equal((await call({ page, action: 'delete', id: other.comment.id, edit: other.edit })).status, 403, 'answered: delete stays admin-only');
+  assert.equal((await call({ page, action: 'delete', id: mine.comment.id, edit: mine.edit })).status, 200, 'a fresh pin is taken back with its key');
 });
 
 // ---------- a guest's one-time link (--wifi) ----------

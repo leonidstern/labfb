@@ -47,6 +47,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
   /** @type {any} */
   const S = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
+  const UNDO_MS = 3000; // a sent pin can be taken back this long (takeBack)
+  S.undo = null; // { id, until, text, anchor, touched }: the pin this tab just sent, while undo is on offer
+  S.quietOpen = false;
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
@@ -109,6 +112,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get still() { return still; },
     get store() { return store; },
     get syncReads() { return syncReads; },
+    get takeBack() { return takeBack; },
+    UNDO_MS,
     get tabTitle() { return tabTitle; },
     get threads() { return threads; },
     get unread() { return unread; },
@@ -475,6 +480,24 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     return data;
   }
   const placed = [];
+  // Undo, 3 s after a new pin is sent (Leo, 19 Nov): its card opens with "undo" in the resolve key's place (thread.ts).
+  // A tap deletes it (this computer as admin, anyone else with the pin's own key, which the lab takes for a fresh pin
+  // nobody answered) and opens the comment box again at the same spot with the words in it, to fix and send again.
+  // An agent may have been handed it already (the lab hands pins after batchSeconds, 2 s): it is gone on its next look.
+  async function takeBack(c) {
+    const u = S.undo;
+    if (!u || u.id !== c.id) return;
+    const ownKey = store.get(`lab-edit:${c.id}`);
+    await send({ action: 'delete', id: c.id, ...(ownKey && !S.isAdmin ? { edit: ownKey } : {}) });
+    S.undo = null;
+    S.comments = S.comments.filter((x) => x.id !== c.id && x.parent !== c.id);
+    if (ownKey) store.set(`lab-edit:${c.id}`, '');
+    const at = placed.indexOf(c.id);
+    if (at >= 0) placed.splice(at, 1);
+    S.openId = null;
+    store.set(`lab-typing:${S.page}:new`, u.text); // the new box reads its words from here (composer.ts)
+    begin(u.anchor);
+  }
   // Command-Z (Control-Z elsewhere), not in a text box: the last pin or go placed from this tab goes away. This
   // computer deletes it; a guest, who can't delete, resolves it (it steps aside).
   async function undoLast() {
@@ -1042,7 +1065,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
         // The reply box takes the cursor on a computer. Phones don't (no keyboard popping up over what you came to read,
         // Leo 15 Nov); a keyboard already up while stepping to the next one stays up.
-        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
+        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && !S.quietOpen && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
+        S.quietOpen = false; // opened by a send, for its undo (takeBack): the cursor stays where it was
         S.openCard = card;
         if (appear && !S.stepping) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
@@ -1110,6 +1134,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           S.draft = null;
           keepSpot(null);
           S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
+          // Undo for 3 s (takeBack): its card opens quietly (no reply cursor) with undo in the resolve key's place, and
+          // closes when they are up, unless it was touched meanwhile.
+          if (S.isAdmin || edit) {
+            const u = { id: comment.id, until: Date.now() + UNDO_MS, text: said, anchor, touched: false };
+            S.undo = u;
+            S.openId = comment.id;
+            S.quietOpen = true;
+            setTimeout(() => {
+              if (S.undo !== u) return;
+              S.undo = null;
+              if (u.touched || S.openId !== u.id) return;
+              S.closeFast = true;
+              S.openId = null;
+              render();
+            }, UNDO_MS);
+          }
           S.posted = comment.id;
           if (fluid) fluidDrop(); // goes out as a card does, as the pin pops in
           holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)

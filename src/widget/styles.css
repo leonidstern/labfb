@@ -166,6 +166,16 @@ button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color
              letter-spacing: 0; border-radius: var(--_r-s); transition: color var(--_t-quick) var(--_ease-out); }
 button.btn:hover { color: var(--_fg); }
 button.btn.danger, button.btn.danger:hover { color: #e5484d; }
+/* Undo, 3 s after sending (thread.ts): in the resolve key's place and at its width ("resolve" stacked under it, hidden),
+   with a hairline under the word running out, so nothing moves when it turns back into resolve. */
+button.btn.undo { color: var(--_fg); }
+.btn.undo .w { display: inline-grid; position: relative; justify-items: end; }
+.btn.undo .w, .btn.undo .w > span { font: inherit; letter-spacing: inherit; color: inherit; } /* not the * rule's 14 px */
+.btn.undo .w > span { grid-area: 1 / 1; }
+.btn.undo .ghost { visibility: hidden; }
+.btn.undo .w::after { content: ''; position: absolute; left: 0; right: 0; bottom: -3px; height: 1.5px; border-radius: 1px; background: currentColor;
+                      opacity: .55; transform-origin: right; transform: scaleX(var(--undo-from, 1)); animation: lab-undo var(--undo-ms, 3s) linear forwards; }
+@keyframes lab-undo { to { transform: scaleX(0); } }
 .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: 0; padding: 2px 0; animation: lab-fade var(--_fade); }
 .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
 .card .composer { margin-top: 6px; } /* close under resolve / delete */
