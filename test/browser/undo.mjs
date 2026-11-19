@@ -39,7 +39,9 @@ async function lab(n) {
   const port = String(6700 + n * 40 + Math.floor(Math.random() * 30));
   const B = `http://localhost:${port}`;
   const env = { ...process.env, LAB_SETTLE_MS: '0', LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><meta charset="utf-8"><title>p</title><body style="margin:40px"><p id="a">first line</p><p id="b" style="margin-top:120px">second line</p></body>');
+  const html = '<!doctype html><meta charset="utf-8"><title>p</title><body style="margin:40px"><p id="a">first line</p><p id="b" style="margin-top:120px">second line</p></body>';
+  fs.writeFileSync(path.join(dir, 'index.html'), html);
+  fs.writeFileSync(path.join(dir, 'guest.html'), html); // the guest's checks, on a page of their own
   const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', port], { cwd: dir, env });
   for (let i = 0; i < 80; i++) {
     try {
@@ -49,7 +51,7 @@ async function lab(n) {
       await sleep(100);
     }
   }
-  const comments = () => fetch(B + '/_lab/api/comments?page=/index').then((r) => r.json()).then((j) => j.comments || []);
+  const comments = (page = '/index') => fetch(B + `/_lab/api/comments?page=${page}`).then((r) => r.json()).then((j) => j.comments || []);
   return { B, comments, stop: () => (server.kill(), fs.rmSync(dir, { recursive: true, force: true }), fs.rmSync(home, { recursive: true, force: true })) };
 }
 
@@ -128,6 +130,59 @@ for (const [n, eng] of (process.env.ENGINES || 'chromium').split(',').entries())
     await sleep(3600);
     const after = await shadow(() => { return { card: Boolean(r.querySelector('.card:not(.out)')), undo: Boolean(r.querySelector('.btn.undo')) }; });
     check(eng, 'left alone, after 3 s the card has closed and the pin is kept', !after.card && !after.undo && (await L.comments()).length === had + 1, JSON.stringify(after));
+
+    // A guest (not this computer: the page carries no admin key, so the lab takes them for anyone) holds the new pin's
+    // own key (lab-edit), and undo sends it: the lab lets the starter take a fresh pin back with it.
+    const guest = async (keyless) => {
+      const g = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+      await g.addInitScript(() => localStorage.setItem('lab-name', 'zz-guest'));
+      await g.route(L.B + '/guest', async (route) => {
+        const res = await route.fetch();
+        const body = (await res.text()).replace(/ data-admin="[^"]*"/, '');
+        await route.fulfill({ response: res, body, headers: { ...res.headers(), 'content-encoding': '', 'content-length': String(Buffer.byteLength(body)) } });
+      });
+      // keyless: the lab's answer to the send carries no key for the pin (a guest who can't take it back).
+      if (keyless) await g.route('**/_lab/api/comments', async (route) => {
+        if (route.request().method() !== 'POST') return route.continue();
+        const res = await route.fetch();
+        const j = await res.json();
+        delete j.edit;
+        await route.fulfill({ response: res, json: j });
+      });
+      const q = await g.newPage();
+      await q.goto(L.B + '/guest');
+      const gs = (fn) => q.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((x) => x.shadowRoot?.querySelector('.scrim'))?.shadowRoot), fn.toString().replace(/^[^{]*{|}$/g, ''));
+      await until(() => q.evaluate(() => [...document.querySelectorAll('*')].some((x) => x.shadowRoot?.querySelector('.scrim'))));
+      await sleep(300);
+      const admin = await q.evaluate(() => Boolean(document.querySelector('script[data-admin]')));
+      if (!(await q.evaluate(() => document.documentElement.classList.contains('lab-pinning')))) await q.keyboard.press('1');
+      const b = await q.locator('#b').boundingBox();
+      await q.mouse.click(b.x + 30, b.y + b.height / 2);
+      await until(() => gs(() => { return Boolean(r.querySelector('.float textarea')); }));
+      await q.keyboard.type(keyless ? 'no key' : 'guest typo');
+      await q.keyboard.press('Enter');
+      await until(async () => (await L.comments('/guest')).length > 0, 3000);
+      return { g, q, gs, admin };
+    };
+    {
+      const { g, q, gs, admin } = await guest(false);
+      const offered = await until(() => gs(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
+      const held = await q.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith('lab-edit:') && localStorage.getItem(k)));
+      check(eng, 'a guest holding the pin\'s key is offered undo', !admin && held && offered, JSON.stringify({ admin, held, offered }));
+      await gs(() => { r.querySelector('.card .btn.undo')?.click(); });
+      const gone = await until(async () => (await L.comments('/guest')).length === 0, 2000);
+      check(eng, '…and a guest\'s undo deletes the pin (with its key)', gone, JSON.stringify((await L.comments('/guest')).map((c) => c.text)));
+      await g.close();
+    }
+    {
+      const { g, gs, admin } = await guest(true);
+      await sleep(800);
+      const seen = await gs(() => { return { undo: Boolean(r.querySelector('.btn.undo')), card: Boolean(r.querySelector('.card:not(.out)')) }; });
+      const kept = (await L.comments('/guest')).map((c) => c.text);
+      // No undo to offer: the card closes as a sent card always did (not held open for 3 s with nothing in it).
+      check(eng, 'a guest without the pin\'s key gets no undo: the card closes, the pin stays', !admin && !seen.undo && !seen.card && kept.includes('no key'), JSON.stringify([seen, kept]));
+      await g.close();
+    }
   } finally {
     await browser.close();
     L.stop();
