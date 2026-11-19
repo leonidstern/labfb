@@ -14,6 +14,7 @@ import {
   goToBlock,
   inPage,
   ease,
+  findTarget,
   markQuote,
   ms,
   nameLine,
@@ -24,16 +25,19 @@ import {
   readable,
   readComponents,
   openingTag,
+  selectorFor,
   short,
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
+import { momentText } from '../lib/moment.mjs';
+import { flushPins, heldPin, holdPin, letPin, newPass } from './widget/pinhold.ts';
 import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
-import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
+import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
@@ -41,14 +45,34 @@ import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { inkAnchor, inkSvg, liveInk } from './widget/ink.ts';
 import { bindSelect, pick, selectChips, selectMode } from './widget/select.ts';
-import { SEED } from '../lib/actions.ts';
+import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
+  const state = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
+  // Debug only (a page, e.g. a test, sets window.__labDebug before this loads): a change to what the page shows that no
+  // render() follows within two frames goes into window.__labMissed, with where it was made. From the first render on;
+  // a change left unredrawn on purpose says so with quiet(key). Otherwise S is the plain object and this costs nothing.
+  const win = /** @type {any} */ (window);
+  /** @type {Map<string | symbol, Error> | null} */
+  let unseen = null;
+  const quiet = (/** @type {string} */ k) => unseen?.delete(k);
   /** @type {any} */
-  const S = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
+  const S = !win.__labDebug
+    ? state
+    : new Proxy(state, {
+        set(o, k, v) {
+          o[k] = v;
+          if (unseen && !unseen.has(k) && /^(openId|draft|chatOpen|comments|on|showDone|page|seen|cursorMode|isAdmin)$/.test(String(k))) {
+            const e = Error(String(k));
+            unseen.set(k, e);
+            requestAnimationFrame(() => requestAnimationFrame(() => unseen?.get(k) === e && unseen.delete(k) && (win.__labMissed ||= []).push(e.stack)));
+          }
+          return true;
+        },
+      });
   const UNDO_MS = 3000; // a sent pin can be taken back this long (takeBack)
   S.undo = null; // { id, until, text, anchor, touched }: the pin this tab just sent, while undo is on offer
   S.quietOpen = false;
@@ -99,6 +123,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get position() { return position; },
     get readable() { return readable; },
     get reflow() { return reflow; },
+    letPin,
     get render() { return render; },
     get repliesOf() { return repliesOf; },
     get root() { return root; },
@@ -195,6 +220,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
   const flag = (name) => FLAGS[name]?.on === true;
   const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
+  const ACTSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'api/actions') : ''; // your actions, from the "…" menu
   let meSent = ME;
   const rememberMe = (name) => {
     if (!MEAPI || !name || name === meSent) return;
@@ -329,7 +355,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const scanForFramework = () => lookForFramework([document.body, ...document.querySelectorAll('body > *, body > * > *, body > * > * > *')]);
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
+  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning(), native: () => flag('native') });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
@@ -419,9 +445,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // Someone is in a box: the open thread gets its new replies in place, the chat its new messages (its box is left
     // alone); everything else shows on the next render.
     else {
+      quiet('comments'); // drawn on the next render, not under the cursor
       if (S.openCard?.isConnected) S.openCard.sync();
       if (S.chatOpen) drawChat();
       drawList(); // the bar's counts and the tab's "(3)" keep up even while a box has the cursor (a tab left in the background)
+      S.paintSections?.(); // and the section bar's ink for unread pins
     }
   }
 
@@ -477,6 +505,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   const setCursor = (v) => {
     S.cursorMode = v;
+    quiet('cursorMode'); // the button and the pointer change; nothing is redrawn
     if (!S.board) store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
     goFace();
@@ -485,6 +514,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // fluid: words that were selected; their box is the one element that grew out of the bar (fluid.ts). act: the bar's
   // button that was pressed (rewrite, cut, go: run once the dialog's row is there).
   function begin(anchor, fluid = false, act = '') {
+    if (!anchor.moment) {
+      const moment = S.momentFor?.(anchor); // the moment as the pin goes down, not as it is sent
+      if (moment) anchor = { ...anchor, moment };
+    }
     S.draft = { anchor, fluid, act };
     keepSpot(anchor, S.draft);
     render();
@@ -494,9 +527,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
-    // Paused when written: the agent is told, with the paused thing's time in ms.
+    // Paused when written: the agent is told, with the moment (a loop's pass and second, a video's time, lib/moment.mjs).
     // The page stays paused after (Leo, 19 Nov: "dont need to play again"): pause, pin, pin again, play when you like.
     if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: msOf(pausedEl(payload.anchor)) } };
+    const moment = payload.anchor && !payload.action && !payload.anchor.moment ? momentFor(payload.anchor) : undefined;
+    if (moment) payload = { ...payload, anchor: { ...payload.anchor, moment } };
     if ((S.slow || slowEls.size > 0) && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
@@ -663,6 +698,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       },
       swipe: swipeDown,
       leave: goOut,
+      native: () => flag('native'),
     });
     return (labs = m);
   }).catch(() => (S.switcher = null))); // couldn't load: nothing opens, and the next ask tries again
@@ -737,6 +773,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
+    if (name === 'native') host.toggleAttribute('data-native', true); // what the widget's CSS does natively (styles.css)
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
   S.syncFlags = (on, reload) => {
@@ -864,6 +901,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   /** @type {WeakMap<Element, any>} */
   const pinData = new WeakMap();
   function render() {
+    newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
+    if (win.__labDebug) unseen = new Map();
     if (S.selDraft && S.draft !== S.selDraft) pick(null, false); // the picked block's box closed: the block is let go
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
@@ -898,6 +937,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     let quoted = null;
     const done = () => {
       patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
+      flushPins(); // the rules of the pins the browser holds, now they are on the page (pinhold.ts)
       if (S.closeFast && !now && prev) {
         S.closeFast = false;
         prev.inert = true;
@@ -953,6 +993,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     setPinning();
     copyBtn.hidden = !S.on || !S.isAdmin || list.every((c) => c.resolved);
     drawList();
+    S.paintSections?.(); // the section bar's ink for unread pins (sections.ts)
     drawChat();
     if (!S.on) return done();
     list.forEach((c) => {
@@ -1050,8 +1091,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         pin.querySelector(':scope > svg')?.remove();
         pin.append(inkSvg(ink, { left: 0, top: 0, width: zone.width, height: zone.height }));
       }
-      inkAt(pin, ink && zone, left, top);
-      pin.style.visibility = clipped && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position)
+      const held = placePin(pin, c, ink && zone, left, top, moved);
+      pin.style.visibility = clipped && !held && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position; a held pin: the browser)
       if (born) {
         // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
         grab(pin, () => pinData.get(pin).c);
@@ -1104,10 +1145,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         S.stepping = S.keepKeys = false;
         next.push(card);
-        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
+        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top, nativeTie() ? pin : null, zone ? zone.top - 12 : top - 40);
         // A question with choices on quoted words: by its quote, in the margin or under it (thread.ts). Drawn again after
         // the pick, it stays where it was instead of jumping back under its pin.
         if (!zone && (openAsk(c) || (!appear && prev?.matches('.margin, .under')))) placeAsk(card, c);
+        if (card.matches('.margin, .under')) tieToPin(card, null, 'card'); // by its words, where the script put it
         if (card.tie) next.push(card.tie); // its line to the words (trial.ts), kept by the layer's redraw
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
@@ -1128,7 +1170,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (coarse && S.cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
         swipeDown(card, () => ((S.openId = null), (S.cardFull = false), render()), true);
         markSeen(news);
-        if (news.length) drawList(); // opened is read: the "N new" pill and the tab title count it off at once
+        if (news.length) {
+          drawList(); // opened is read: the "N new" pill, the tab title and the section bar's ink count it off at once
+          S.paintSections?.();
+        }
         quoted = zone ? null : c.anchor; // an area's outline says what it's on; only selected words get the highlight
       }
     });
@@ -1194,6 +1239,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         },
       });
       float.append(el('div', { class: 'handle' }));
+      // Paused: the moment this pin will carry, so you know it is kept (Leo, 19 Nov: "some info in pin where it was").
+      if (anchor.moment) float.append(S.momentChip(anchor.moment));
       const row = quickRow(draft, box);
       if (row?.children.length) float.append(row);
       const act = draft.act;
@@ -1205,7 +1252,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       else {
         next.push(float);
         if (zone) placeCard(float, left + 14, zone.top + zone.height);
-        else placeBeside(float, left, top);
+        else placeBeside(float, left, top, nativeTie() ? layer.querySelector(':scope > .pin.draft') : null);
       }
       // Phones: the sheet the bar grows into. Computers whose words can't be found again: the plain box, the bar lets go.
       if (draft.fluid && !fluid) (sheetMode.matches ? fluidSheet : fluidDrop)(float);
@@ -1247,7 +1294,32 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   toggleBtn.addEventListener('click', () => setOn(!S.on));
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
+  // With the flag native the menu is a popover the ⋯ button opens (read at start): the browser closes it on a press
+  // elsewhere or Esc, gives focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
+  const popMenu = flag('native') && !coarse && typeof moreMenu.showPopover === 'function'; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
+  if (popMenu) {
+    moreMenu.popover = 'auto';
+    /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
+    moreMenu.addEventListener('beforetoggle', (e) => {
+      const open = /** @type {ToggleEvent} */ (e).newState === 'open';
+      moreMenu.hidden = !open;
+      moreBtn.setAttribute('aria-expanded', String(open)); // the browser doesn't write it for its invoker
+      if (open) {
+        moreMenu.classList.remove('out');
+        if (LABS) void switcher().then((m) => m?.preloadSwitcher());
+        requestAnimationFrame(() => [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true }));
+      } else if (expOpen) {
+        expOpen = false;
+        placeBar();
+      }
+    });
+  }
   function setMenu(open, refocus = false) {
+    if (popMenu) {
+      if (open !== moreMenu.matches(':popover-open')) moreMenu[open ? 'showPopover' : 'hidePopover']();
+      if (!open && refocus) moreBtn.focus({ preventScroll: true });
+      return;
+    }
     if (open && LABS) void switcher().then((m) => m?.preloadSwitcher()); // the box and its list, ready by the time it is picked
     if (open) {
       moreMenu.classList.remove('out');
@@ -1263,14 +1335,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }
   moreBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    setMenu(moreMenu.hidden || moreMenu.classList.contains('out')); // leaving counts as closed
+    if (!popMenu) setMenu(moreMenu.hidden || moreMenu.classList.contains('out')); // leaving counts as closed (a popover: the browser)
   });
   moreMenu.addEventListener('click', () => setTimeout(() => setMenu(false, true), 0));
   addEventListener('pointerdown', (e) => {
-    if (!moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) setMenu(false);
+    if (!popMenu && !moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) setMenu(false);
   }, true);
   addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !moreMenu.hidden) {
+    if (e.key === 'Escape' && !popMenu && !moreMenu.hidden) {
       setMenu(false, true);
       e.stopPropagation();
     }
@@ -1316,15 +1388,114 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     held[stop ? 'add' : 'delete'](el);
     S.paused = held.size > 0; // a comment written now says the page was paused
   };
-  // The paused thing a pin is about: the one that holds the pinned element or sits in it, else the first paused.
-  const pausedEl = (anchor) => {
+  // The moving thing a pin is about (Leo, 19 Nov: pins on a dot, a video and a GIF all got the loop next to them): the
+  // pinned element's own motion wins, the video or animation it is, holds or sits in, and of several the one under
+  // the pin's own spot (else the nearest to it). Only a pin with no motion of its own (the page, a heading) takes the
+  // paused thing most in view, nearest the screen's middle.
+  const ownMotion = (anchor) => {
     let at = null;
     try {
       at = anchor?.selector ? document.querySelector(anchor.selector) : null;
     } catch {}
-    const all = [...held].filter((el) => el.isConnected);
-    return all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+    if (at === document.body || at === document.documentElement || (at && root.contains(at))) at = null;
+    const things = [...new Set([...held, ...document.querySelectorAll('video'), ...pageAnims().map(targetOf)])].filter((el) => el?.isConnected && !root.contains(el));
+    const area = (r) => r.width * r.height;
+    if (at) {
+      const ar = at.getBoundingClientRect();
+      const px = ar.left + (Number.isFinite(anchor.x) ? anchor.x : 0.5) * ar.width, py = ar.top + (Number.isFinite(anchor.y) ? anchor.y : 0.5) * ar.height;
+      const own = things.filter((el) => at.contains(el) || el.contains(at));
+      const box = (el) => el.getBoundingClientRect();
+      const under = own.filter((el) => { const r = box(el); return px >= r.left && px <= r.right && py >= r.top && py <= r.bottom; });
+      if (under.length) return under.sort((p, q) => area(box(p)) - area(box(q)))[0]; // the smallest under the spot: the thing itself, not what holds it
+      const off = (el) => { const r = box(el); return Math.hypot(Math.max(r.left - px, 0, px - r.right), Math.max(r.top - py, 0, py - r.bottom)); };
+      if (own.length) return own.sort((p, q) => off(p) - off(q))[0];
+    }
+    return null;
   };
+  // A pin with no motion of its own, while paused: the paused thing most in view, nearest the screen's middle.
+  const pausedEl = (anchor) => ownMotion(anchor) || inView();
+  const inView = () => {
+    const all = [...held].filter((el) => el.isConnected);
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    const score = (el) => {
+      const r = el.getBoundingClientRect();
+      const seen = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+      return [seen > 0 ? 0 : 1, Math.hypot(r.left + r.width / 2 - cx, r.top + r.height / 2 - cy)];
+    };
+    return all.map((el) => [el, score(el)]).sort((p, q) => p[1][0] - q[1][0] || p[1][1] - q[1][1])[0]?.[0];
+  };
+  // A short name for it, as a person would point at it: ".hero video", "#spinner", "div.dot".
+  const nameOf = (el) => {
+    const own = (n) => n.localName + (n.id ? `#${n.id}` : n.classList[0] ? `.${n.classList[0]}` : '');
+    const me = own(el);
+    if (el.id || el.classList.length) return me.slice(0, 80);
+    const up = el.parentElement?.closest('[id], [class]');
+    return (up && up !== document.body ? `${up.id ? `#${up.id}` : `.${up.classList[0]}`} ${me}` : me).slice(0, 80);
+  };
+  // Where a paused thing stands: a video's second of its length; an animation's second inside one pass and which pass
+  // (a loop's total time, 835734 ms, says neither). lib/moment.mjs words it.
+  const momentOf = (el) => {
+    if (!el) return undefined;
+    const what = nameOf(el), sel = selectorFor(el);
+    const playing = isStill(el) ? undefined : true; // nothing paused: the moment it was showing as the pin went down
+    if (el instanceof HTMLVideoElement) {
+      if (!Number.isFinite(el.currentTime)) return undefined;
+      return { kind: 'video', at: el.currentTime, of: Number.isFinite(el.duration) ? el.duration : undefined, what, sel, playing };
+    }
+    const a = animsOf(el)[0];
+    const t = a?.effect?.getComputedTiming();
+    const dur = Number(t?.duration), local = Number(t?.localTime);
+    if (!t || !(dur > 0) || !Number.isFinite(local)) return undefined;
+    const pass = Number.isFinite(t.currentIteration) ? t.currentIteration : 0;
+    const at = Math.min(Math.max(local - (t.delay || 0) - pass * dur, 0), dur);
+    return { kind: t.iterations === Infinity ? 'loop' : 'anim', at: at / 1000, of: dur / 1000, pass: pass + 1, what, sel, ms: Number(a.currentTime), playing };
+  };
+  // A pin's moment chip: the page pauses and the thing goes back to that moment, to see what was meant. It stays
+  // paused; play it again as usual (the control or the pause key).
+  const seekMoment = (m) => {
+    let el = null;
+    try {
+      el = m?.sel ? document.querySelector(m.sel) : null;
+    } catch {}
+    if (!el || m.kind === 'gif') return false;
+    setPause(true);
+    if (!held.has(el)) setItem(el, true);
+    if (el instanceof HTMLVideoElement) el.currentTime = m.at;
+    else {
+      const a = animsOf(el)[0];
+      const t = a?.effect?.getComputedTiming();
+      if (!a) return false;
+      a.currentTime = Number.isFinite(m.ms) ? m.ms : (t?.delay || 0) + ((m.pass || 1) - 1) * Number(t?.duration) + m.at * 1000;
+    }
+    drawMotion();
+    return true;
+  };
+  S.seekMoment = seekMoment;
+  // The moment, in a small chip: a label in the box being written, a button on a sent pin (back to that moment).
+  const PAUSED = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
+  const momentChip = (m, seek = false) => {
+    const chip = el(seek && m.kind !== 'gif' ? 'button' : 'div', { class: 'moment' });
+    chip.innerHTML = m.kind === 'gif' || m.playing ? '' : PAUSED; // ⏸ only for a moment that was paused
+    chip.append(el('span', {}, momentText(m)));
+    if (chip.localName === 'button') {
+      chip.setAttribute('type', 'button');
+      chip.title = 'pause the page at this moment';
+      chip.addEventListener('click', (e) => (e.stopPropagation(), seekMoment(m)));
+    }
+    return chip;
+  };
+  S.momentChip = momentChip;
+  // A pin's moment: on a GIF (it can't be paused), how long it had been showing; else, while paused, where the paused
+  // thing it is about stood.
+  // Every way (Leo, 19 Nov: "it says only if i pause one"): the page paused, one thing paused, or nothing paused, a pin
+  // on a moving thing takes that thing's moment as the pin goes down (begin); a pin on still things, while paused, the
+  // paused thing most in view.
+  const momentFor = (anchor) => {
+    if (anchor.shownFor !== undefined) return { kind: 'gif', at: anchor.shownFor };
+    const el = ownMotion(anchor) || (S.paused ? inView() : null);
+    return el ? momentOf(el) : undefined;
+  };
+  S.momentFor = momentFor;
   const msOf = (el) => {
     if (!el) return undefined;
     const t = el instanceof HTMLVideoElement ? el.currentTime * 1000 : Number(animsOf(el)[0]?.currentTime);
@@ -1581,6 +1752,16 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     else if (altMotion) drawMotion();
   }, { capture: true, passive: true });
   let scrollQuiet = 0;
+  // With the flag native the browser says when a scroll ended (scrollend); the timer stays as a backstop, longer, for a
+  // scroll that never says so. Without it, the timer is the end.
+  const scrollEnds = flag('native') && 'onscrollend' in window;
+  const scrollOver = () => {
+    clearTimeout(scrollQuiet);
+    if (scrolling) {
+      scrolling = 0;
+      drawMotion();
+    }
+  };
   let motionAgain = 0;
   const redrawMotionSoon = () => motionAgain || (motionAgain = requestAnimationFrame(() => ((motionAgain = 0), drawMotion())));
   addEventListener('resize', () => held.size && redrawMotionSoon(), { passive: true });
@@ -1591,8 +1772,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       scrolling = 1;
       drawMotion();
     }
-    scrollQuiet = window.setTimeout(() => ((scrolling = 0), drawMotion()), 250);
+    scrollQuiet = window.setTimeout(scrollOver, scrollEnds ? 1500 : 250);
   }, { capture: true, passive: true });
+  if (scrollEnds) addEventListener('scrollend', () => coarse && scrollOver(), { capture: true, passive: true });
   setInterval(() => ((S.slow || slowEls.size > 0) && slowAll(), drawMotion()), 1000);
   if (coarse) new MutationObserver(() => drawMotion()).observe(host, { attributeFilter: ['data-sheet'] }); // a sheet opens: the controls go
   doneBtn.addEventListener('click', toggleDone);
@@ -2141,6 +2323,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // `Cut: “…”`, go is an ordinary comment that says "go", and your own (labit.json `actions`) send their text. They go
   // through the box's own send, so a missing name is asked for there, a lab that can't be reached keeps them. ⌥ + 1…4 runs the nth button (holding ⌥ shows the numbers). Long quotes (the first 300 characters are kept)
   // have no cut or rewrite: the words said aren't all there; nor do words the page no longer has (the row is dimmed then).
+  /** @type {{ i: number, a: { name: string, prompt: string }, until: number } | null} */
+  let ACT_GONE = null; // the action just deleted from a "…" list, while its "deleted · undo" is on offer (4 s)
   const quickRow = (draft, box) => {
     const row = el('div', { class: 'quick' });
     const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
@@ -2171,7 +2355,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
     else {
       // Your list, in its order: as many chips as fit on one line (measured; select's ↑ ↓ go first), then "…". "…"
-      // grows the line into the whole list (tap = use it).
+      // grows the line into the whole list (tap = use it) and, on this computer, hold or right-click a row to edit it, "+ add"
+      // (saved in your settings through the lab, PUT /_lab/api/actions; a new one goes at the end).
+      const mayEdit = Boolean(adminToken && ACTSAPI);
       const menu = el('div', { class: 'acts', hidden: '' });
       const spill = el('div', { class: 'quick' }); // select's ↑ ↓ when the line has no room for them
       const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
@@ -2179,11 +2365,131 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       let shown = LIST.length;
       const quiet = (b) => (b.addEventListener('mousedown', (e) => e.preventDefault()), b);
       const btn = (text, attrs = {}) => el('button', { type: 'button', ...attrs }, text);
+      const save = async (next, why) => {
+        const r = await fetch(ACTSAPI, { method: 'PUT', headers: headers(), body: JSON.stringify({ actions: next }) }).catch(() => null);
+        if (!r?.ok) return void (why.textContent = r ? await r.text() : 'the lab is not answering');
+        LIST = (await r.json()).actions;
+        editing?.close();
+        const top = menu.scrollTop;
+        const fresh = quickRow(draft, box); // the line again, measured, with its menu open where it was
+        row.replaceWith(fresh);
+        menu.remove();
+        queueMicrotask(() => {
+          const d = /** @type {HTMLElement | null} */ (fresh.querySelector('[data-k="…"]'));
+          if (!d) return;
+          d.dataset.still = '1'; // open again as it was, no growing
+          d.click();
+          const m = fresh.nextElementSibling;
+          if (m?.classList.contains('acts')) m.scrollTop = top;
+        });
+        return true;
+      };
+      // Edit in place (Leo, 19 Nov, "C" of the preset editor page): a held or right-clicked row turns editable where it
+      // is, on soft grey, no form and no boxes. The name is plain text (7 letters just stop; "6/7" shows near the end),
+      // the prompt under it unfolds to its full length and grows as you type, a muted "delete" sits at the row's end
+      // (no confirm: "deleted · undo" stands in its place for 4 s). Enter in the name goes to the prompt, Enter in the
+      // prompt saves (Shift+Enter is a new line), Escape or a tap anywhere else cancels. "+ add" opens an empty row the
+      // same way, at the end. Phones: the row is kept in view above the keyboard, inside the sheet's list.
+      /** @type {{ line: HTMLElement, close: () => void } | null} */
+      let editing = null;
+      const keepInView = (line) => {
+        if (!line.isConnected) return;
+        const m = menu.getBoundingClientRect();
+        const r = line.getBoundingClientRect();
+        const vv = window.visualViewport;
+        const bottom = Math.min(m.bottom, vv ? vv.offsetTop + vv.height : innerHeight);
+        if (r.bottom > bottom) menu.scrollTop += r.bottom - bottom + 4;
+        else if (r.top < m.top) menu.scrollTop -= m.top - r.top;
+      };
+      const editRow = (line, i, focus = true) => {
+        if (editing?.line === line) return null;
+        editing?.close();
+        const fresh = i >= LIST.length;
+        const a = LIST[i] || { name: '', prompt: '' };
+        const kept = /** @type {HTMLElement[]} */ ([...line.children]); // hidden while edited: a hold's touch still ends on it
+        for (const k of kept) k.hidden = true;
+        line.classList.add('act-edit');
+        const name = /** @type {HTMLInputElement} */ (el('input', { class: 'nm', maxlength: String(NAME_MAX), placeholder: 'name', 'aria-label': 'name', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'next' }));
+        const cnt = el('span', { class: 'cnt', 'aria-live': 'polite' });
+        const del = btn('delete', { class: 'del' });
+        del.hidden = fresh;
+        const prompt = /** @type {HTMLTextAreaElement} */ (el('textarea', { class: 'p', rows: '1', maxlength: '300', placeholder: 'what the agent does', 'aria-label': 'prompt', enterkeyhint: 'done' }));
+        const why = el('span', { class: 'why', role: 'status' });
+        const fields = el('div', { class: 'act-fields' });
+        fields.append(name, cnt, del, prompt, el('span', { class: 'k' }, coarse ? 'return saves · tap outside cancels' : 'Enter saves · Esc cancels'), why);
+        line.append(fields);
+        name.value = a.name;
+        prompt.value = a.prompt;
+        const count = () => (cnt.textContent = name.value.length >= NAME_MAX - 1 ? `${name.value.length}/${NAME_MAX}` : '');
+        const fit = () => {
+          prompt.style.height = 'auto';
+          prompt.style.height = `${prompt.scrollHeight}px`;
+          keepInView(line);
+        };
+        name.addEventListener('input', () => ((why.textContent = ''), count()));
+        prompt.addEventListener('input', () => ((why.textContent = ''), fit()));
+        const commit = () => {
+          const next = [...LIST];
+          next[i] = { name: name.value.trim(), prompt: prompt.value.trim() };
+          if (fresh && !next[i].name && !next[i].prompt) return close();
+          if (!fresh && next[i].name === a.name && next[i].prompt === a.prompt) return close();
+          save(next, why);
+        };
+        del.addEventListener('click', async () => {
+          ACT_GONE = { i, a, until: Date.now() + 4000 };
+          if (!(await save(LIST.filter((_, j) => j !== i), why))) ACT_GONE = null;
+        });
+        fields.addEventListener('keydown', (e) => {
+          if (e.isComposing) return;
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+          } else if (e.key === 'Enter' && e.target === name) {
+            e.preventDefault();
+            prompt.focus();
+          } else if (e.key === 'Enter' && e.target === prompt && !e.shiftKey) {
+            e.preventDefault();
+            commit();
+          }
+        });
+        fields.addEventListener('focusin', () => requestAnimationFrame(() => keepInView(line)));
+        const vv = window.visualViewport;
+        const onView = () => keepInView(line);
+        vv?.addEventListener('resize', onView);
+        // A tap anywhere else cancels, and is only that: a tap on another row (or done, + add) doesn't also use it.
+        const eat = (e) => (e.preventDefault(), e.stopPropagation());
+        const outside = (e) => {
+          if (e.composedPath().includes(line)) return;
+          close();
+          if (!e.composedPath().includes(menu)) return;
+          menu.addEventListener('click', eat, { capture: true, once: true });
+          setTimeout(() => menu.removeEventListener('click', eat, true), 800);
+        };
+        document.addEventListener('pointerdown', outside, true);
+        function close() {
+          if (editing?.line !== line) return;
+          editing = null;
+          document.removeEventListener('pointerdown', outside, true);
+          vv?.removeEventListener('resize', onView);
+          if (fresh) return void line.remove();
+          fields.remove();
+          line.classList.remove('act-edit');
+          for (const k of kept) k.hidden = false;
+        }
+        editing = { line, close };
+        count();
+        requestAnimationFrame(fit);
+        if (focus) name.focus();
+        return name;
+      };
       // Growing sheet (Leo, 19 Nov, "c"): "…" grows the line itself into the whole list, in the same sheet or box, the
       // text field staying where it is below it. Each row is the action's name over its prompt on one muted line, tap =
-      // use it; "done" (or "…" again) folds it back to the line. Editing the list from here comes next; until then it is
-      // edited in settings.json.
+      // use it; holding it (450 ms) or right-clicking it edits it in place, no pencil (Leo, 19 Nov: "i dont like pencil remove it");
+      // "+ add" is the last row, "done" (or "…" again) folds it back to the line. Until you have edited once, the bottom
+      // line says how, muted, in the room between "+ add" and "done" (so nothing moves when it goes).
       function fill() {
+        editing?.close();
         menu.replaceChildren(...(spill.children.length ? [spill] : []));
         const list = el('div', { class: 'act-list' });
         for (const i of LIST.keys()) {
@@ -2191,11 +2497,71 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           const line = el('div', { class: 'act' });
           const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
           use.append(el('b', {}, a.name), el('span', {}, a.prompt));
-          use.addEventListener('click', () => (openMenu(false, true), chips[i].click()));
+          let held = false; // a hold opened the editor: the click that follows the release is not a use
+          use.addEventListener('click', () => (held ? (held = false) : (openMenu(false, true), chips[i].click())));
           line.append(use);
+          if (mayEdit) {
+            /** @type {HTMLInputElement | null} */
+            let focusOnLift = null; // a finger's hold: the keyboard comes up on the lift (iOS raises it only for a touch)
+            const edit = (focus) => {
+              if (!line.isConnected) return;
+              store.set('lab-act-edited', '1');
+              const name = editRow(line, i, focus);
+              if (name && !focus) focusOnLift = name;
+            };
+            use.addEventListener('contextmenu', (e) => (e.preventDefault(), (held = true), edit(e.pointerType !== 'touch' && !coarse)));
+            /** @type {ReturnType<typeof setTimeout> | undefined} */
+            let t;
+            let at = [0, 0];
+            const stop = () => clearTimeout(t);
+            use.addEventListener('pointerdown', (e) => {
+              if (e.button) return;
+              held = false;
+              focusOnLift = null;
+              at = [e.clientX, e.clientY];
+              stop();
+              t = setTimeout(() => ((held = true), edit(e.pointerType === 'mouse')), 450);
+            });
+            use.addEventListener('pointermove', (e) => Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 8 && stop());
+            for (const k of ['pointercancel', 'pointerleave']) use.addEventListener(k, stop);
+            const lift = () => {
+              stop();
+              focusOnLift?.focus();
+              focusOnLift = null;
+            };
+            use.addEventListener('pointerup', lift);
+            use.addEventListener('touchend', lift);
+          }
           list.append(line);
         }
+        // Just deleted: "deleted · undo" stands in its place for 4 s; undo puts it back where it was.
+        const g = ACT_GONE && ACT_GONE.until > Date.now() ? ACT_GONE : null;
+        if (g) {
+          const line = el('div', { class: 'act gone' });
+          const why = el('span', { class: 'why', role: 'status' });
+          const undo = quiet(btn('undo', { class: 'undo' }));
+          undo.addEventListener('click', () => {
+            if (ACT_GONE !== g) return;
+            ACT_GONE = null;
+            const next = [...LIST];
+            next.splice(Math.min(g.i, next.length), 0, g.a);
+            save(next, why);
+          });
+          line.append(el('span', {}, 'deleted ·'), undo, why);
+          list.insertBefore(line, list.children[g.i] || null);
+          setTimeout(() => line.remove(), g.until - Date.now());
+        }
         const foot = el('div', { class: 'act-foot' });
+        if (mayEdit) {
+          const add = btn('+ add', { class: 'add' });
+          add.addEventListener('click', () => {
+            const line = el('div', { class: 'act' });
+            list.insertBefore(line, foot);
+            editRow(line, LIST.length);
+          });
+          foot.append(add);
+          if (!store.get('lab-act-edited')) foot.append(el('span', { class: 'act-hint' }, coarse ? 'hold to edit' : 'right-click to edit'));
+        }
         const fold = quiet(btn('done', { class: 'fold' }));
         fold.addEventListener('click', () => openMenu(false));
         foot.append(fold);
@@ -2241,7 +2607,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         let at = null; // ↑ before ↓, however many go
         for (const b of [...row.querySelectorAll('.sel:not([data-a=done])')].reverse()) if (over()) at = spill.insertBefore(b, at);
         while (over() && shown) chips[--shown].remove();
-        dots.hidden = shown === LIST.length && !spill.children.length;
+        dots.hidden = shown === LIST.length && !spill.children.length && !mayEdit;
         [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
       };
       queueMicrotask(measure);
@@ -2313,25 +2679,58 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     pin.style.left = `${zone ? zone.left : left}px`;
     pin.style.top = `${zone ? zone.top : top}px`;
   };
+  // ...and, with the flag native, held there by the browser (pinhold.ts): tied to its element, so scrolling needs no
+  // script. True when it is held.
+  // A card or box tied to its pin by the browser (thread.ts tieToPin): on a computer; phones keep their sheets.
+  const nativeTie = () => flag('native') && !sheetMode.matches;
+  // Held, its place is the browser's: the script writes none (it would make the next pin's reading lay the page out again);
+  // a drawing still gets its size.
+  const placePin = (pin, c, zone, left, top, moved) => {
+    const a = c.anchor || {};
+    let held;
+    if (a.kind === 'board') {
+      // A board pin on a frame: tied to the frame's box by its share of it, so the board's camera carries it (pinhold.ts).
+      const box = flag('native') && a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null;
+      const share = box?.offsetWidth && box.offsetHeight ? { x: a.fx / box.offsetWidth, y: (a.fy || 0) / box.offsetHeight } : null;
+      held = holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
+    } else {
+      const node = flag('native') && !moved ? findTarget(a) : null;
+      held = holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
+    }
+    if (!held) inkAt(pin, zone, left, top);
+    else if (zone) inkAt(pin, zone, zone.left, zone.top);
+    return held;
+  };
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
-  const movePins = () => {
-    if (!S.on || S.openId) return render();
-    const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {})]).filter(([, at]) => !at.moved);
-    if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
-    for (const [pin, { left, top, clipped, zone }] of places) {
-      inkAt(pin, pin.classList.contains('ink') && zone, left, top);
-      pin.style.visibility = clipped ? 'hidden' : '';
+  // After a scroll, the pins the browser holds are left alone.
+  const movePins = (scrolled = false) => {
+    // An open thread is drawn again with its pin; after a scroll, not when the browser holds the pin and its card.
+    const openHeld = () => { const pin = pinsById.get(S.openId); return heldPin(pin) && !pinData.get(pin)?.zone; };
+    if (!S.on || (S.openId && !(scrolled && openHeld()))) return render();
+    newPass();
+    const all = threads().filter((c) => c.anchor?.kind !== 'page');
+    const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
+    const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
+    if (places.length + all.filter(skip).length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
+    for (const [pin, { left, top, clipped, zone }, c] of places) {
+      const held = placePin(pin, c, pin.classList.contains('ink') && zone, left, top, false);
+      pin.style.visibility = clipped && !held ? 'hidden' : '';
     }
+    flushPins();
   };
   S.frame = 0;
-  const reflow = () => {
+  let reflowAll = false; // something but a scroll asked (a resize, the page's size): every pin is placed again
+  const reflow = (scrolled) => {
+    reflowAll ||= scrolled !== true;
     cancelAnimationFrame(S.frame);
     S.frame = requestAnimationFrame(() => {
+      const scrolledOnly = !reflowAll;
       if (fluidState() === 'dlg' && S.draft) fluidFollow(quoteRects(S.draft.anchor)); // so does the open dialog
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (S.draft || root.activeElement || S.grabbing || isTrying()) return; // words tried in place: the pins stay put
-      movePins();
+      reflowAll = false;
+      movePins(scrolledOnly);
     });
   };
   addEventListener('resize', reflow);
@@ -2340,7 +2739,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const card = layer.querySelector('.card.margin');
     if (card && card.getBoundingClientRect().right > document.documentElement.clientWidth - 12) requestAnimationFrame(render);
   });
-  addEventListener('scroll', (e) => (e.target !== document || fluidFixed()) && !host.contains(/** @type {Node} */ (e.target)) && reflow(), { capture: true, passive: true }); // the page's own scroll moves only what is held to the screen
+  addEventListener('scroll', (e) => (e.target !== document || fluidFixed()) && !host.contains(/** @type {Node} */ (e.target)) && reflow(true), { capture: true, passive: true }); // the page's own scroll moves only what is held to the screen
 
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
@@ -2359,15 +2758,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     load();
     setTimeout(() => S.checkSections?.(), 400);
   };
-  for (const m of ['pushState', 'replaceState']) {
-    const original = history[m];
-    history[m] = function (...args) {
-      const out = original.apply(this, args);
-      queueMicrotask(navigated);
-      return out;
-    };
+  // With the flag native and the Navigation API, the browser says when the current entry changed (pushState, replaceState,
+  // back and forward alike), so the page's own history is left as it is; else it is patched, as before. A page that
+  // patches history too can clash with the patch.
+  const navApi = flag('native') ? /** @type {any} */ (window).navigation : null;
+  if (navApi?.addEventListener) navApi.addEventListener('currententrychange', () => queueMicrotask(navigated));
+  else {
+    for (const m of ['pushState', 'replaceState']) {
+      const original = history[m];
+      history[m] = function (...args) {
+        const out = original.apply(this, args);
+        queueMicrotask(navigated);
+        return out;
+      };
+    }
+    addEventListener('popstate', navigated);
   }
-  addEventListener('popstate', navigated);
   document.addEventListener('astro:after-swap', navigated);
   // Pick up comments others left while this tab was in the background.
   document.addEventListener('visibilitychange', () => {
@@ -2548,6 +2954,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     if (flag('select')) startFlag('select');
+    if (flag('native')) startFlag('native');
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
     startSections(); // the section bar: what is new or updated on the page since you read it
@@ -2564,7 +2971,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // and where a pin sits), and the pins are drawn again as the camera moves.
   if (S.board) {
     Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
-    addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+    // The camera moved: the pins are drawn again, unless the browser holds every one (flag native: tied to their frames).
+    const allHeld = () => !S.openId && !S.draft && pinsById.size > 0 && [...pinsById.values()].every((p) => heldPin(p));
+    // When the frames themselves changed (detail.layout: one gone, replaced or resized), every pin is placed again.
+    addEventListener('lab-board-moved', (e) => S.on && (/** @type {CustomEvent} */ (e).detail?.layout || !allHeld()) && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
   }
   startLive();
   // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads
