@@ -95,6 +95,7 @@ test('a running lab is listed for the Lab panel: a registry file while it runs, 
   fs.writeFileSync(path.join(dir, 'index.html'), '<title>Start</title><h1>start</h1>');
   const port = String(4990 + Math.floor(Math.random() * 9));
   const lab = spawn(process.execPath, [LAB, '--no-open', '--port', port], { cwd: dir, env: { ...process.env, LABIT_HOME: home } });
+  kids.push(lab); // stopped by after() also when an assertion below fails
   let info = null;
   for (let i = 0; i < 50 && !info; i++) {
     try {

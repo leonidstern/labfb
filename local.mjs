@@ -1312,7 +1312,7 @@ function threadText(page, root, replies, fresh, spot, when) {
     `- ${who(root)} · ${when(root)} · opened · id ${root.id}: ${body(root.text)}`,
     ...spot.map((l) => `  ${l}`),
   ];
-  if (from) out.push(`- … ${from} earlier message${from === 1 ? '' : 's'} (whole thread: http://localhost:${PORT}/_lab/agent${page})`);
+  if (from) out.push(`- … ${from} earlier message${from === 1 ? '' : 's'} (read them first, the whole thread: http://localhost:${PORT}/_lab/agent${page})`);
   for (const r of replies.slice(from)) {
     const state = r.session ? STATE[r.intent] : '';
     // A pick on a question with choices says which question it answers (the words already say which choice).
@@ -1407,7 +1407,11 @@ async function unseen(scope = pages(), who = '') {
   const full = !(now - toldAt.get(who) < 1800000);
   const rules = rulesOnce();
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${blocks.join('\n\n')}` +
+    `\n\nRead each thread whole (every message and reply, not only the newest) before answering; the page, URL or #section is where a pin sits, not what it asks.` +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
+    // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked
+    // lost (Leo, 18 Nov). An --on-it first turns the ring and the pill at once.
+    `\nWork that takes more than a minute (a build, a restart, a PR): first ${CMD} reply <id> --on-it "<what you'll do>" on each, then start.` +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     (full ? `\n${WRITE_SHORT}` : '') + (rules || '');
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
@@ -2030,7 +2034,7 @@ const handler = async (req, res) => {
         const p = parkedLabs().find((x) => x.port === n);
         if (!p) return res.writeHead(404).end('not parked');
         if (runningLabs().some((l) => l.port === n)) return res.writeHead(409).end('already running');
-        const env = { ...process.env, ...(p.edge ? { LABIT_EDGE: p.edge } : {}) };
+        const env = { ...process.env, LABIT_EXIT_WITH_PARENT: '', ...(p.edge ? { LABIT_EDGE: p.edge } : {}) }; // a lab started again outlives the one that started it
         spawn(process.execPath, [...p.execArgv, ...p.argv.filter((a) => a !== '--no-open'), '--no-open'], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
         fs.rmSync(path.join(PARKED, `${n}.json`), { force: true });
         console.log(`[lab] started ${p.name} again on ${n}`);
@@ -2327,6 +2331,12 @@ const bye = () => {
   } catch {}
   process.exit(0);
 };
+// A lab a test run started (LABIT_EXIT_WITH_PARENT=1, set by test/setup.mjs and the browser tests) ends with that run:
+// a run that failed or was cancelled before its own cleanup left its lab running for days (18 Nov: dozens of them).
+if (process.env.LABIT_EXIT_WITH_PARENT === '1') {
+  const parent = process.ppid;
+  setInterval(() => process.ppid !== parent && bye(), 1000).unref();
+}
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed
