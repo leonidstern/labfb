@@ -228,12 +228,13 @@ try {
     check(eng, 'the bar gliding sideways did not move the page', sy === 0, String(sy));
     await P.shadow(() => { r.querySelector('.chat-btn').hidden = false; r.querySelector('.chat-btn').click(); });
     await sleep(700);
-    const sheet = await P.shadow(() => { const c = r.querySelector('.chatwin'); const b = r.querySelector('.sbar'); const all = [...b.querySelectorAll(".sb-chip")].map((c) => c.getBoundingClientRect()); const k = all.find((q) => q.left >= 19 && q.right < innerWidth - 20); if (!k) return { all: all.map((q) => [Math.round(q.left), Math.round(q.right)]), sl: b.querySelector(".sb-nav").scrollLeft }; const hit = r.elementFromPoint(k.x + k.width / 2, k.y + k.height / 2); return { sheetTop: c.getBoundingClientRect().top, barBottom: b.getBoundingClientRect().bottom, open: !c.hidden, scrim: getComputedStyle(r.querySelector('.scrim')).display, hit: hit?.closest('.sbar') ? 'bar' : hit?.className }; });
-    check(eng, 'chat sheet open: dimmed page, the bar above it and tappable, the sheet clear of it', sheet.open && sheet.scrim === 'block' && sheet.hit === 'bar' && sheet.sheetTop >= sheet.barBottom, JSON.stringify(sheet));
-    await P.p.touchscreen.tap(195, 22);
-    await sleep(900);
-    const after = await P.shadow(() => { return { open: !r.querySelector('.chatwin').hidden }; });
-    check(eng, 'a tap on a chip with the sheet open goes to that section and closes the sheet', (await P.p.evaluate(() => scrollY)) > 0 && !after.open, JSON.stringify(after));
+    // A sheet open on a phone: the bar steps away so the sheet's handle and swipe down are free (Leo, 19 Nov).
+    const sheet = await P.shadow(() => { return { open: !r.querySelector('.chatwin').hidden, scrim: getComputedStyle(r.querySelector('.scrim')).display, bar: getComputedStyle(r.querySelector('.sbar')).visibility }; });
+    check(eng, 'chat sheet open: dimmed page, the bar out of the way', sheet.open && sheet.scrim === 'block' && sheet.bar === 'hidden', JSON.stringify(sheet));
+    await P.shadow(() => { r.querySelector('.chat-btn').click(); });
+    await sleep(700);
+    const after = await P.shadow(() => { return { open: !r.querySelector('.chatwin').hidden, bar: getComputedStyle(r.querySelector('.sbar')).visibility }; });
+    check(eng, 'the sheet closed: the bar is back', !after.open && after.bar === 'visible', JSON.stringify(after));
     // The line fades at an edge with more past it, and the fade is tinted green on the side where a new or updated chip is hidden.
     const edge = (c) => P.shadow(() => { const x = r.querySelector('.sb-edge.' + a); return { on: getComputedStyle(x).display !== 'none', tint: x.classList.contains('new'), image: getComputedStyle(x).backgroundImage }; }, c);
     const fade = { l: await edge('l'), r: await edge('r') };
