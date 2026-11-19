@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-test-'));
-const PORT = String(4600 + Math.floor(Math.random() * 300));
+const PORT = String(4600 + Math.floor(Math.random() * 100));
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 
@@ -145,6 +145,12 @@ test('a comment about the page as a whole has no spot in the agent text', async 
   const block = text.split('\n## ').find((b) => b.includes('too airy'));
   assert.match(block, /^on: the page as a whole \(no spot\)$/m);
   assert.doesNotMatch(block, /^(where on element|selector \(at comment time\)):/m);
+  // A link in a comment reaches the agent as written, and the text's own links are the lab's. (Every "http://localhost"
+  // in the text used to be replaced with the lab's address, so :3000 below came out as :<lab port>:3000.)
+  await post({ page: '/index', name: 'Leo', text: 'compare with http://localhost:3000/a please', anchor: { kind: 'page', width: 390, height: 664, dpr: 2 } });
+  const after = await (await fetch(B + '/_lab/agent/index')).text();
+  assert.ok(after.includes('compare with http://localhost:3000/a please'), after.split('\n').find((l) => l.includes('compare with')));
+  assert.ok(after.includes(`page: ${B}/index`));
 });
 
 test('read marks are shared by name: a phone and a Mac with the same name see the same new and read', async () => {
@@ -247,7 +253,7 @@ test('one lab per folder: two started at once make one; a dead lock or a silent 
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-lock-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
-  const base = 4950 + Math.floor(Math.random() * 40) * 3;
+  const base = 4700 + Math.floor(Math.random() * 15) * 3;
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
   const start = (port) => {
     const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port)], { cwd: dir, env });
@@ -296,7 +302,7 @@ test('labit --name gives the lab its topic, and later starts keep it', async () 
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-name-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
-  const port = 4870 + Math.floor(Math.random() * 60);
+  const port = 4750 + Math.floor(Math.random() * 50);
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
   const run = async (...more) => {
     const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), ...more], { cwd: dir, env });
@@ -339,7 +345,7 @@ test('a page can be archived and brought back (labs & pages), in .lab/archived.j
 test('labit publish puts a page in the one pages lab, starts it once, and publishing again keeps the link', async () => {
   const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-pub-')));
   const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), LABIT_HOME: path.join(home, '.labit'), LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
-  const port = 4940 + Math.floor(Math.random() * 9);
+  const port = 4800 + Math.floor(Math.random() * 9);
   fs.mkdirSync(path.join(home, '.config/labit'), { recursive: true });
   fs.writeFileSync(path.join(home, '.config/labit/settings.json'), JSON.stringify({ port }));
   fs.writeFileSync(path.join(home, 'Heading options.html'), '<!doctype html><title>Heading options</title><h1>one</h1>');
@@ -355,6 +361,18 @@ test('labit publish puts a page in the one pages lab, starts it once, and publis
     assert.match(await (await fetch(link)).text(), /<h1>two<\/h1>/, 'updated');
     assert.equal(fs.readdirSync(path.join(home, '.labit/servers')).length, 1, 'one lab');
     assert.ok(fs.existsSync(path.join(home, 'lab-pages/heading-options.html')));
+    // A folder published under the name of the folder it sits in would be removed before it is copied: refused, untouched.
+    fs.mkdirSync(path.join(home, 'lab-pages/topic/sub'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'lab-pages/topic/sub/index.html'), '<!doctype html><h1>sub</h1>');
+    const inside = await new Promise((r) => execFile(process.execPath, [LAB, 'publish', path.join(home, 'lab-pages/topic/sub'), '--name', 'topic'], { cwd: home, env }, (err, out, errOut) => r({ code: err?.code, said: String(errOut) })));
+    assert.equal(inside.code, 1);
+    assert.match(inside.said, /inside one another/);
+    assert.ok(fs.existsSync(path.join(home, 'lab-pages/topic/sub/index.html')), 'the source is still there');
+    // The page's own file in the pages lab, published again through a link to that folder: nothing to copy, nothing removed.
+    fs.symlinkSync(path.join(home, 'lab-pages'), path.join(home, 'pages-link'));
+    const linked = await new Promise((r) => execFile(process.execPath, [LAB, 'publish', path.join(home, 'pages-link/heading-options.html')], { cwd: home, env }, (err, out) => r(String(out).split('\n')[0])));
+    assert.equal(linked, link);
+    assert.match(fs.readFileSync(path.join(home, 'lab-pages/heading-options.html'), 'utf8'), /<h1>two<\/h1>/);
   } finally {
     if (pid) process.kill(pid);
     await new Promise((r) => setTimeout(r, 300));
@@ -612,7 +630,7 @@ test('stale: a pin the agent said it is on, with no sign since, comes back in it
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-stale-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
-  const port = String(5300 + Math.floor(Math.random() * 300));
+  const port = String(4810 + Math.floor(Math.random() * 90));
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '1500', LAB_SETTLE_MS: '0' };
   const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', port], { cwd: dir, env });
   const base = `http://localhost:${port}`;

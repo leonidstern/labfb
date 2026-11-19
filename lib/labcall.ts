@@ -1,5 +1,4 @@
-// Talking to this folder's lab as its agent: the `wait` / `reply` commands and the MCP server use the same call, so
-// the MCP server waits in its own process (a cancel or the client going away aborts the request; nothing outlives it).
+// Talking to this folder's lab as its agent: the `wait` / `reply` commands' call to the lab.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
