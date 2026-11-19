@@ -83,6 +83,11 @@ For the agent, from the project (any folder under it):
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
+  labit board new|add|move|pick|list ...
+      Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (the lab copies the page into
+      .lab/boards/<board>/a.html, b.html, c.html: edit those) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
+      frames; you only give an order. add <board> <frame|/page|file.html> [--label] [--width] [--after]; move <board> <frame>
+      --after <frame>; pick <board> <frame>; list [<board>].
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
 page), archive/ (done threads with nothing new in 30 days), looked/ (last looks), state.json (the lab's name, read
@@ -108,7 +113,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands) reads them as before.
-const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'settings', 'skill'];
+const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'settings', 'skill'];
 const { loadSettings, changedShortcuts, changedActions, savePersonal, savePersonalFlag } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -156,7 +161,7 @@ if (pos[0] === 'settings') {
 }
 
 // The commands that answer and exit (publish, preview, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
-if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
+if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -198,7 +203,7 @@ const alreadyRunning = Boolean(await runningServer());
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
-if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'pin'].includes(pos[0])) {
+if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'pin', 'board'].includes(pos[0])) {
   const home = runningLabs().find((lab) => ROOT.startsWith(lab.root + path.sep));
   if (home) {
     const url = `http://localhost:${home.port}/${path.relative(home.root, ROOT).split(path.sep).map(encodeURIComponent).join('/')}/`;
@@ -1953,9 +1958,21 @@ const labInfo = () => {
 };
 // GET /_lab/api/board?name=<n> or ?page=/x (the board of that page) is the board with every drawn frame placed (x, y; auto
 // when the lab chose them); no query lists the boards. PUT (this computer, JSON) replaces it: it carries the rev it was
-// made from (409 when the file moved on) and may not drop a frame.
+// made from (409 when the file moved on) and may not drop a frame. POST {action, …} is the agent's (labit board …): new,
+// add, move, pick, list; the answer is {text, board} (what the command prints), or 422 {error, text}.
 const boardApi = async (req, res, url) => {
   const json = (code, data) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+  if (req.method === 'POST') {
+    if (!isAgent(req) && !(isLoopback(req) && keyOk(req))) return plain(res, 403, 'forbidden');
+    const b = await sent(req);
+    const env = { root: ROOT, origin, proxied: Boolean(PROXY), open: (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length, titleOf: (p) => { const f = fileFor(boardPage(p)); return f ? titleOf(path.join(ROOT, f)) : ''; }, fileOf: (p) => fileFor(boardPage(p)) };
+    const out = (await import('./lib/boardact.ts')).act(String(b.action), b, env);
+    boardCache.clear();
+    boardList = null;
+    watchBoards();
+    if (out.picked) await pickedPin(out.board, out.picked);
+    return json(out.error ? 422 : 200, out);
+  }
   const page = url.searchParams.get('page');
   const name = url.searchParams.get('name') || (page && B.nameOf(page));
   if (req.method === 'GET' && !name) return json(200, { boards: (boardList ??= B.names(ROOT).flatMap((n) => boardGet(n) || [])).map(({ name, of, frames }) => ({ name, of, frames: frames.length })) });
@@ -1966,7 +1983,7 @@ const boardApi = async (req, res, url) => {
     if (!page) return json(404, { error: `no board ${name}` });
     return json(200, { ...B.place({ v: 1, name, rev: 0, of: page, frames: [{ id: 'a', src: page, w: 1440, h: 900, state: 'live' }] }), exists: false });
   }
-  if (req.method !== 'PUT' || !isLoopback(req)) return plain(res, 405, 'GET or PUT (this computer)');
+  if (req.method !== 'PUT' || !isLoopback(req)) return plain(res, 405, 'GET, PUT (this computer) or POST');
   const body = await sent(req);
   if (was && body.rev !== was.rev) return json(409, { error: 'the board changed since you read it', board: B.place(was) });
   const next = B.check({ ...(page && !body.of ? { of: page } : {}), ...body }, name, was);
@@ -1977,6 +1994,22 @@ const boardApi = async (req, res, url) => {
   watchBoards();
   return json(200, { ...B.place(boardGet(name)), exists: true });
 };
+// A pick reaches the agent as a pin from the person on the board, once (a pick that changes nothing posts nothing).
+const pickedPin = async (board, frame) => {
+  const res = await api.POST(new Request('http://localhost/api', {
+    method: 'POST',
+    headers: { host: 'localhost', 'content-type': 'application/json', 'x-lab-agent': '0', 'x-forwarded-for': '127.0.0.1', 'x-lab-stamp-key': process.env.LAB_STAMP_KEY, 'x-lab-stamp': encodeURIComponent(JSON.stringify({ from: 'this computer' })) },
+    body: JSON.stringify({ page: `/_board/${board.name}`, name: myName || 'Someone', text: `Picked ${frame.id}`, anchor: { kind: 'board', board: board.name, frame: frame.id, fx: 0, fy: 0 }, nonce: `pick-${board.rev}-${board.name}-${frame.id}`.slice(0, 40) }),
+  }));
+  if (!res.ok) return;
+  const { comment } = await res.json();
+  announce(`/_board/${board.name}`, comment);
+  persist(`/_board/${board.name}`).catch((e) => console.error('[lab] could not save comments:', e.message));
+  broadcast();
+  wake();
+};
+// A page as a board's page key spells it: /pricing.html is /pricing, / is /index.
+const boardPage = (p) => (p === '/' ? '/index' : p.replace(/\.html?$/i, '').replace(/\/$/, ''));
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
 const keyOk = (req) => {
   const got = Buffer.from(String(req.headers['x-lab-admin'] || ''));
