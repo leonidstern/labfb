@@ -100,7 +100,9 @@ try {
       check(eng, 'D held + a drag draws: the new comment box opens with the lines, no draft pin', circle.open && circle.lines && !circle.draftPin, JSON.stringify(circle).slice(0, 200));
       check(eng, 'a loop reads as circled, with the words inside it', /type: drawing/.test(circle.text) && /drawn: circled/.test(circle.text) && /Pricing/.test(circle.text) && /lines \(px from the area's top left\): M\d/.test(circle.text), circle.text.split('\n').filter((l) => /drawn|type|text in|lines/.test(l)).join(' | '));
       check(eng, 'the drawing is the pin: its lines, no marker face', await p.evaluate((r) => { const pin = new Function(`return ${r}`)().querySelector('.pin.ink'); return Boolean(pin?.querySelector('path.hit')) && getComputedStyle(pin).backgroundColor === 'rgba(0, 0, 0, 0)'; }, root));
-      // Clicking the line opens it.
+      // Clicking the line opens it (once the sent pin's undo card has gone: Esc lets it go).
+      await p.keyboard.press('Escape');
+      await new Promise((r) => setTimeout(r, 300));
       const hit = await p.evaluate((r) => { const b = new Function(`return ${r}`)().querySelector('.pin.ink path.hit').getBoundingClientRect(); return [b.left + b.width / 2, b.top + 1]; }, root);
       const pts = ring(h.cx, h.cy, (h.r - h.l) / 2 + 30, 40);
       await p.mouse.click(Math.max(4, pts[5][0]), pts[5][1]);
