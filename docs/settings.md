@@ -106,8 +106,10 @@ whose each is: `flags  select (yours)`.
 | Flag | What it is |
 | --- | --- |
 | `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
+| `inkOnText` | a comment on selected words shows no pin: the words carry its state as ink under them. Turn it on in `labit.json`: `{ "flags": { "inkOnText": true } }` |
+| `native` | let the browser do it (Chromium, Safari 26; the old way elsewhere and wherever a part is missing). Pins on an element are tied to it with CSS anchor positioning: on their spot through any scrolling, a sticky header included, with no script, hidden while a box that scrolls cuts their spot off (where the browser really hides them; Safari doesn't, so there a pin in such a box stays the script's). A pin's card and a new comment's box are tied to their pin, and open above it or in from the screen's edge when there is no room. The comment box grows with its words by itself (field-sizing). The ⋯ menu is a popover: the browser closes it on a press elsewhere or Esc, and it comes and goes by CSS. A long chat lays out only the messages near the screen. Labs & pages (⌘K) is a popover on a computer. On a board, a pin on a frame is tied to the frame by its share of it, so the board's pan and zoom carry it with no redraw. The widget learns of a page's navigation from the Navigation API instead of patching the page's own history, and of a scroll's end from `scrollend` instead of a timer; labs & pages leaves with the card's exit when the browser closes it. Each falls back to the old way where the browser lacks it. Off by default |
 
-`sectionBar` was kept, so the section bar is always on a page with two or more sections; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
+`sectionBar` was kept, so the section bar has no switch: it shows by itself on a lab page with three or more sections, and `<meta name="lab-sections" content="on|off">` (or `data-lab-sections` on `<html>` or `<body>`) says so for one page; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.
@@ -138,7 +140,12 @@ characters at most) and a `prompt` (the full text your agent gets):
   reads the full prompt for that name as `action: …`.
 - **Yours:** the list is written into your settings.json the first time a lab starts without one (from labit's own,
   above, plus any `{ "label", "send" }` buttons you had), and from then on it is yours: there is no default to reset
-  to. Edit them in the file (a lab reads it when it starts). `labit settings` lists them.
+  to. Edit them in the **…** list (hold a row for 450 ms, or right-click it: its name and prompt turn editable where
+  they are; Enter in the name goes to the prompt, Enter there saves, Shift+Enter is a new line, Esc or a tap elsewhere
+  cancels; **delete** keeps "deleted · undo" for 4 s; **+ add** puts a new one at the end), saved here at once, or in the
+  file (a lab reads it when it starts). The list edits only on your own computer, never a wifi guest's. A save the lab
+  refuses (a name over 7 characters or used twice, a prompt over 300) keeps the row open and says why; nothing is
+  saved. `labit settings` lists them.
 - **Checked:** a name over 7 characters, a repeat or an item without a name and a prompt (300 characters at most) is
   said when labit starts and left out; the rest still counts. Only your own file holds the list: a project's
   `labit.json` can't set it.

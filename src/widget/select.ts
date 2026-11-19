@@ -85,6 +85,7 @@ export function bindSelect(w: unknown) {
       if (!mine(m)) return;
       quiet(m);
       if (type === 'pointerdown') {
+        W.S.letUndoGo?.(m, false); // a sent pin's undo card lets go, as on any press on the page (comments.js); the pick redraws
         pick(blockAt(m.target));
       }
     }, true);

@@ -163,6 +163,25 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     process.exit(out.status < 300 ? 0 : 1);
   }
 
+  // ---------- labit update: this folder's lab moves onto the newer release its ⋯ menu offers ----------
+  // The person pressed update (an "action: update labit to X" pin): this prints what changed, for the agent to say in
+  // its reply, and the lab hands over to npx at that version on the same folder and port.
+  if (pos[0] === 'update') {
+    const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
+    const res = await fetch(`http://localhost:${lab.server.port}/_lab/labs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-lab-admin': lab.server.token },
+      body: JSON.stringify({ action: 'update', port: lab.server.port }),
+    }).catch(() => null);
+    if (!res) die(`The lab server for ${lab.dir} isn't running.`);
+    if (res.status === 409) die('This lab is on the newest labit: nothing to update.');
+    if (!res.ok) die(`The lab didn't update: ${res.status} ${await res.text()}`);
+    const { version, notes } = await res.json();
+    console.log(`Updating this lab to labit ${version}: it starts again on the same port in a few seconds, open pages catch up.`);
+    console.log(notes.length ? `What changed:\n${notes.map((n: string) => `- ${n}`).join('\n')}` : 'No notes for this release.');
+    process.exit(0);
+  }
+
   // ---------- Claude's side: wait, reply, resolve, pin ----------
   if (['wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
     const [cmd, ref, ...words] = pos;

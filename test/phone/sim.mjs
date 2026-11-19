@@ -48,6 +48,8 @@ if (cmd === 'serve') {
   fs.mkdirSync(dir, { recursive: true });
   for (const f of fs.readdirSync(path.join(HERE, 'page'))) fs.copyFileSync(path.join(HERE, 'page', f), path.join(dir, f));
   save(read());
+  // Ink on selected words is behind a flag: on here, with one note on the first words of the intro for the tap step.
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { inkOnText: true } }));
   const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-phone-home-')), LABIT_NO_UPDATE_CHECK: '1' };
   const lab = spawn(process.execPath, [path.join(HERE, '../../local.mjs'), '.', '--new', '--no-open', '--port', String(LAB)], { cwd: dir, env, stdio: 'inherit' });
   http.createServer((req, res) => {
@@ -64,6 +66,12 @@ if (cmd === 'serve') {
       res.end();
     });
   }).listen(SINK, '0.0.0.0', () => console.log(`lab ${B}/  sink :${SINK}  log ${LOG}`));
+  (async () => {
+    for (let i = 0; i < 80; i++) if (await fetch(B + '/').then(() => true, () => false)) break; else await sleep(100);
+    const text = "A long page to hold, tap, scroll and type on.";
+    await fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B },
+      body: JSON.stringify({ page: '/index', name: 'Ink', text: 'a note on words', anchor: { kind: 'text', selector: '#intro', x: 0.2, y: 0.2, docX: 0.1, docY: 80, width: 390, text, element: '<p id="intro"', quote: { exact: 'A long page to hold, tap,', prefix: '', suffix: 'scroll and type on.', selected: true } } }) });
+  })();
   process.on('SIGTERM', () => (lab.kill(), process.exit(0)));
   process.on('SIGINT', () => (lab.kill(), process.exit(0)));
 } else {
@@ -127,6 +135,21 @@ if (cmd === 'serve') {
       const d = firstEv(ss, 'pointerdown');
       if (d) st.off = { x: 200 - d.ev.cx, y: 330 - d.ev.cy };
       return [['the tap reached the page', Boolean(d), d ? `client ${d.ev.cx},${d.ev.cy} → offset ${st.off.x},${st.off.y}` : 'no pointerdown seen'], ['a tap on the page makes no comment box', !ss.some((s) => s.float)]];
+    } },
+    // Words with a note on them wear ink, not a pin: a tap on them opens the thread, as a tap on a pin does.
+    { name: 'tap-ink', say: (s) => `tap ${fmt(pt(s, 'intro', 0.18, 0.12))} (the first words of the intro, inked)`, expect: (ss, s0) => {
+      const end = ss.at(-1);
+      return [
+        ['the thread opens', Boolean(end.card), JSON.stringify(end.card)],
+        ['no keyboard just for reading', kbDown(end), `covers ${kb(end)}px`],
+        ['the thread fits on the screen', fits(end, 'card'), JSON.stringify({ card: end.card, vt: end.vt, vh: end.vh })],
+        ['no comment box from that tap', !ss.some((s) => s.float)],
+        ['a tap on words selects no text', ss.every((s) => !s.sel)],
+      ];
+    } },
+    { name: 'close-ink', say: (s) => `tap ${fmt(top(s))} (the dimmed page above the thread)`, expect: (ss, s0) => {
+      const end = ss.at(-1);
+      return [['the thread closes', !end.card], ['focus leaves the widget', !end.inner, end.inner], ['no new box from that tap', !end.float], noScroll(ss, s0)];
     } },
     { name: 'tap-no-pin', say: (s) => { st.tapId = at(s, 0.45); return `tap ${fmt(pt(s, st.tapId, 0.7))} (paragraph ${st.tapId})`; }, expect: (ss, s0) => [
       ['a short tap makes no comment box', !ss.some((s) => s.float)],
