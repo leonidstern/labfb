@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Pause buttons go only on motion that keeps going (loops, videos). A transition or an animation that ends, such as the highlight on a heading you just went to, no longer gets one.
 - Shift and a digit (⇧1, ⇧2, ⇧0), ⇧D, ⇧M and the like no longer work the comment, done and hide keys: Shift is left free for the board. A plain 1, D and M are as they were. An Escape that closes a comment box or the chat now says it was used.
 - MCP is parked (kept whole on the `park/mcp` branch); agents use the command line: `wait`, `reply`, `resolve`, `pin`. Gone: `labit mcp` and `lib/mcp.ts`, `mcp.json`, the MCP part of the skill, README and help, the MCP permissions in `examples/claude-settings.json`, and its tests. In Codex's sandbox a blocked `wait` now says to allow the sandbox network (`-c sandbox_workspace_write.network_access=true`).
 - Phones: a comment made by holding the page always gets the cursor and the keyboard. The box used to focus itself during the hold, which Safari could do without a keyboard; now the finger's lift focuses it, once.
