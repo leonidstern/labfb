@@ -308,7 +308,8 @@ export function startSections() {
         return false;
       }
     });
-  const wanted = () => switchOf() ?? labPage();
+  // Never on a board's own page (/_lab/board/<name>): its frames are pages of their own, and its bar is the board's.
+  const wanted = () => !String(W.S.page || '').startsWith('/_board/') && (switchOf() ?? labPage());
   // An app shell: the window does not scroll (overflow hidden on html or body), or the sections sit in a scroller of
   // their own. Not while a sheet of ours holds the page still (html.lab-sheet).
   const shell = () => {
@@ -522,6 +523,12 @@ export function startSections() {
   new MutationObserver((list) => {
     if (list.some((m) => !W.host.contains(m.target) && (m.type === 'characterData' ? Boolean(m.target.parentElement?.closest(HEAD)) : Boolean((m.target as Element).closest?.(HEAD)) || [...m.addedNodes, ...m.removedNodes].some(heady)))) soon(500);
   }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  // A board open over the page ([data-lab-board-view], src/board/overlay.ts): the bar is hidden while it is (its room
+  // kept: nothing moves), so the board's bar and its "‹ close" are not under it (Leo, 19 Nov: "can you dont show them on board").
+  const boardOpen = () => bar.toggleAttribute('data-board', Boolean(document.querySelector('[data-lab-board-view]')));
+  new MutationObserver(boardOpen).observe(document.body, { childList: true });
+  addEventListener('hashchange', boardOpen);
+  boardOpen();
   const first = () => setTimeout(check, 400); // after the page's own scripts and fonts have settled
   if (document.readyState === 'complete') first();
   else addEventListener('load', first, { once: true });

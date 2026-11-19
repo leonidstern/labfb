@@ -701,6 +701,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar { transition: opacity var(--_t-quick), transform var(--_t-quick) var(--_ease); }
 .sbar[data-away] { opacity: 0; transform: translateY(-100%); pointer-events: none; }
 @media print { .sbar { display: none !important; } }
+/* A board open over the page (its #board=<name> view): the bar steps aside, its room kept, so the board's own bar and
+   its "‹ close" are free; back on close with nothing moved (Leo, 19 Nov: "can you dont show them on board"). */
+.sbar[data-board] { visibility: hidden; pointer-events: none; }
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
 @media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
