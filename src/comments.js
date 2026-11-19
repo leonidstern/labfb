@@ -633,10 +633,30 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     toolsBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, 'V'));
     toolsBtn.addEventListener('click', () => selectMode(true));
   }
-  // Measure (flag measure): px and space tokens between two things, G or here; its code loads the first time (measure.ts).
+  // Measure (flag measure): px and space tokens between two things; its code loads the first time (measure.ts). Phones:
+  // a mode, from here. Computers: no mode (Leo, 19 Nov: "just with some shortcut pressed"), it shows while ⌥ (Option) is
+  // held, as in design tools; ⌥-click still pins, and that pin carries what was shown. A release before the part came is
+  // kept (the last call wins, in order). ⌥ does nothing else on its own: no preventDefault, so ⌥W and ⌥-click stay.
   const measureMode = () => part('measure').then((m) => m.measure(W), () => say("measure couldn't load"));
+  let altHeld = false;
+  /** @type {{ current: () => string } | null} */
+  let measured = null;
+  const measureHold = (on) => {
+    if (altHeld === on) return;
+    altHeld = on;
+    part('measure').then((m) => ((measured = m), m.hold(W, altHeld)), () => on && say("measure couldn't load"));
+  };
+  addEventListener('keydown', (e) => {
+    if (e.key !== 'Alt' || e.repeat || e.metaKey || e.ctrlKey || e.shiftKey || coarse || !flag('measure') || !S.on) return;
+    if (typing(e) || (document.activeElement?.localName.includes('-') && document.activeElement !== host)) return;
+    measureHold(true);
+  }, true);
+  addEventListener('keyup', (e) => e.key === 'Alt' && measureHold(false), true);
+  addEventListener('keydown', (e) => altHeld && e.key !== 'Alt' && measureHold(false), true); // ⌥W, ⌥1…: a shortcut, not a measure
+  addEventListener('pointermove', (e) => altHeld && !e.altKey && measureHold(false), { capture: true, passive: true }); // its keyup went to another window
+  addEventListener('blur', () => measureHold(false));
   const measureBtn = el('button', { type: 'button', class: 'board-btn' });
-  measureBtn.append('measure', el('kbd', { 'aria-hidden': 'true' }, 'G'));
+  measureBtn.append('measure');
   measureBtn.addEventListener('click', measureMode);
   // Motion (Leo, 19 Nov: in the ⋯ menu, nothing floating on the page): one row, shown while the page has motion that
   // goes on (a loop, a video): pause all / play (P), ¼ speed (S), and the first one's moment in ms while held or slowed.
@@ -733,7 +753,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   function placeBar() {
     const inMenu = !S.on ? (boardBtn ? [boardBtn] : [])
       : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), ...(toolsBtn && !S.board ? [toolsBtn] : []), ...(flag('measure') && !S.board ? [measureBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, motionRow, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
+      : [...(labHead ? [labHead, labsBtn] : []), ...(toolsBtn && !S.board ? [toolsBtn] : []), ...(flag('measure') && !S.board && matchMedia('(pointer: coarse)').matches ? [measureBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, motionRow, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
@@ -1403,11 +1423,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (flag('editText') && S.on && !S.draft && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !S.editing && !typing(e) && !inOtherWidget && (keyOf(e) === KEYS.select || (keyOf(e) === KEYS.edit && !S.openId))) {
       e.preventDefault();
       return void (keyOf(e) === KEYS.select ? selectMode() : editKey());
-    }
-    // G (gauge: M hides comments) measures (flag measure).
-    if (flag('measure') && S.on && !S.draft && keyOf(e) === 'g' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
-      e.preventDefault();
-      return void measureMode();
     }
     if (actionOf(e) === 'toggle' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
@@ -2086,7 +2101,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     if (String(getSelection?.() || '').trim()) return;
     showAgain();
-    begin(anchorAt(e.clientX, e.clientY));
+    const shown = e.altKey && altHeld ? measured?.current() : ''; // ⌥ held: the pin carries the measure shown (flag measure)
+    begin({ ...anchorAt(e.clientX, e.clientY), ...(shown ? { measure: shown } : {}) });
   }
 
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.

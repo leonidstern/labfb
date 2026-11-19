@@ -24,6 +24,8 @@ html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;backgrou
 @media (prefers-color-scheme:dark){html,body{background:#1b1b1a;color:#e9e8e4}}
 #lab-board{position:fixed;inset:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:default}
 #lab-board .world{position:absolute;left:0;top:0;transform-origin:0 0}
+#lab-board.grab,#lab-board.grab *{cursor:grab!important}
+#lab-board.grab.grabbing,#lab-board.grab.grabbing *{cursor:grabbing!important}
 #lab-board .f{position:absolute}
 #lab-board .b{position:absolute;inset:0;background:#fff;contain:layout paint}
 #lab-board .f.off{content-visibility:hidden}
@@ -81,7 +83,14 @@ const card = (c: Card) => {
   return el;
 };
 
+// One camera write per frame: a trackpad sends two or three wheel events a frame, each was a transform, a --iz restyle
+// of every label and a pin redraw (Leo, 19 Nov: "lags a lot").
+let drawFrame = 0;
 const draw = () => {
+  drawFrame ||= requestAnimationFrame(paintCam);
+};
+const paintCam = () => {
+  drawFrame = 0;
   world.style.transform = `scale(${cam.z}) translate(${cam.x}px,${cam.y}px)`;
   world.style.setProperty('--iz', String(1 / cam.z));
   dispatchEvent(new Event('lab-board-moved')); // the widget draws the pins again
@@ -96,7 +105,7 @@ const draw = () => {
 const moving = () => {
   world.style.willChange = 'transform';
   clearTimeout(still);
-  still = setTimeout(() => (world.style.willChange = ''), 140);
+  still = setTimeout(() => (world.style.willChange = ''), 400); // a trackpad's short pauses keep the layer: no full re-raster of every live frame between them
 };
 const go = (next: Cam, user = true, soft = false) => {
   const c = clamp(next, boxes(), view);
@@ -344,18 +353,32 @@ const at = (e: { clientX: number; clientY: number }) => {
 };
 const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
 const pts = new Map<number, { x: number; y: number }>();
-let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean } | null = null;
+let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean; hand?: boolean } | null = null;
 let holdTimer = 0;
 // A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
 // put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
 const boardWidget = () => (window as unknown as { __labBoardWidget?: { pinning: () => boolean; holding?: () => boolean; hold?: (x: number, y: number) => void; place: (x: number, y: number) => void } }).__labBoardWidget;
 let tap = { at: 0, x: 0, y: 0 };
 let pinch = 0;
+// On a computer a plain mouse drag is labit's, as on a page (a click pins, a drag marks an area, a click selects); the
+// board pans with Space held and a drag (the hand), or a trackpad's two fingers / the wheel (Leo, 19 Nov: "like the
+// sketch"). A finger still pans, and a hold pins.
 let space = false;
+let theirs = false; // this press went to the widget (comment mode): its click isn't eaten
+const hand = () => {
+  root.classList.toggle('grab', space);
+  root.classList.toggle('grabbing', space && Boolean(down?.hand));
+};
 const eat = (e: Event) => (e.stopImmediatePropagation(), e.preventDefault());
 
 addEventListener('pointerdown', (e) => {
   if (!mine(e) || entered && e.target instanceof HTMLIFrameElement) return;
+  theirs = false;
+  if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget()?.pinning()) {
+    lastDown = performance.now();
+    theirs = true; // comment mode, no Space: the widget's own click (a pin) and drag (an area)
+    return;
+  }
   eat(e);
   lastDown = performance.now();
   const size = (e.target as HTMLElement).closest?.('u');
@@ -370,7 +393,9 @@ addEventListener('pointerdown', (e) => {
   } else {
     const id = at(e);
     const mv = e.pointerType === 'mouse' && id && id === selected && !entered && editable() ? find(id) : undefined; // a selected frame is moved by its body (a finger only pans)
-    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), t: e.timeStamp, mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined };
+    const pan = e.pointerType === 'touch' || space;
+    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), t: e.timeStamp, mv: pan ? undefined : mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined, hand: pan };
+    hand();
     clearTimeout(holdTimer);
     if (e.pointerType === 'touch') {
       const d = down;
@@ -417,7 +442,7 @@ addEventListener('pointermove', (e) => {
     [f.x, f.y] = [nx, ny];
     Object.assign(down.mv.box.style, { left: `${nx}px`, top: `${ny}px` });
     dispatchEvent(new Event('lab-board-moved'));
-  } else if (down?.far) go(panBy(cam, dx, dy), true, true);
+  } else if (down?.far && down.hand) go(panBy(cam, dx, dy), true, true);
 }, true);
 const up = (e: PointerEvent) => {
   if (!pts.delete(e.pointerId)) return;
@@ -427,6 +452,7 @@ const up = (e: PointerEvent) => {
   clearTimeout(holdTimer);
   if (pts.size || !d) return;
   down = null;
+  hand();
   // Right after the page loads, the live frames keep the page busy: the finger's lift can be handled before the 400 ms
   // timer runs, and the first hold was taken for a tap (Leo, 19 Nov). The touch's own times decide it then.
   if (!d.held && !d.far && e.type === 'pointerup' && e.pointerType === 'touch' && e.timeStamp - d.t >= 400) {
@@ -451,7 +477,7 @@ const up = (e: PointerEvent) => {
 };
 addEventListener('pointerup', up, true);
 addEventListener('pointercancel', up, true);
-addEventListener('click', (e) => mine(e) && eat(e), true);
+addEventListener('click', (e) => mine(e) && !theirs && eat(e), true);
 addEventListener('dblclick', (e) => mine(e) && eat(e), true);
 addEventListener('contextmenu', (e) => mine(e) && e.preventDefault(), true);
 // A mouse or trackpad. Pinch on a trackpad arrives as a wheel with ctrlKey (Chrome, Firefox); ⌘ or Ctrl and a wheel zoom.
@@ -541,12 +567,16 @@ addEventListener('keydown', (e) => {
   }
 }, true);
 addEventListener('keydown', (e) => {
-  if (e.key === ' ') space = true;
+  if (e.key === ' ' && !typing(e) && !(entered && document.activeElement instanceof HTMLIFrameElement)) {
+    e.preventDefault(); // the hand, not a scroll
+    if (!space) ((space = true), hand());
+    return;
+  }
   if (e.defaultPrevented || typing(e) || (entered && document.activeElement instanceof HTMLIFrameElement)) return;
   if (press(e)) e.preventDefault();
 });
-addEventListener('keyup', (e) => e.key === ' ' && (space = false));
-void space;
+addEventListener('keyup', (e) => e.key === ' ' && space && ((space = false), hand()));
+addEventListener('blur', () => space && ((space = false), hand()));
 
 // ---------- what the frames and the widget see ----------
 Object.assign(window, {

@@ -1,14 +1,18 @@
-// Measure (flag measure, Leo 19 Nov): G (for gauge; M hides comments) or "measure" in the ⋯ menu. Click or tap one
-// thing (green ring), then hover (computer) or tap (phone) another (blue ring): lines with the px between them and the
-// space token, red when it is none, and the other's size. Border edge to border edge between two things; the inner
+// Measure (flag measure, Leo 19 Nov): on a computer while ⌥ (Option) is held, as in design tools, no mode ("just with
+// some shortcut pressed"): the thing under the mouse shows its size and its gaps to its nearest siblings, or to its
+// parent's inner edges where none is; with something picked (select mode's block, or the open pin's or new pin's thing,
+// green ring) the mouse on another (blue ring) gives the gap between the two. The reading sits small beside the mouse;
+// ⌥-click pins as ever and the pin carries it (current(), read by comments.js); letting go of ⌥ clears it all. Phones:
+// "measure" in the ⋯ menu is a mode, with a bar (reading, pin, done); tap one thing, then another. Lines with the px between
+// them and the space token, red when it is none, and the other's size. Border edge to border edge between two things; the inner
 // border edges when one holds the other (all four sides). One decimal, CSS px (a zoom or scale above both is taken out
 // with a 100 px probe), a token named only on an exact match: the page's own --space-* if it has them, else 4/8/12/16/
-// 24/32 = space-1…space-8. Enter or "pin" leaves a pin on it carrying what was measured. Esc lets go, then leaves.
+// 24/32 = space-1…space-8. Phones: "pin" (or Enter) leaves a pin on it carrying what was measured. Esc lets go, then leaves.
 // A part loaded the first time it is used (scripts/build-widget.mjs PARTS); the widget's own parts come in through W.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
-const M = { on: false, sel: null as Element | null, hov: null as Element | null, locked: false, text: '', k: 1, tok: new Map<number, string>(), box: null as HTMLElement | null, bar: null as HTMLElement | null, words: null as HTMLElement | null, raf: 0 };
+const M = { on: false, sel: null as Element | null, hov: null as Element | null, locked: false, text: '', k: 1, tok: new Map<number, string>(), box: null as HTMLElement | null, bar: null as HTMLElement | null, words: null as HTMLElement | null, raf: 0, held: false, x: 0, y: 0 };
 const GREEN = 'rgb(52, 199, 89)', BLUE = '#0a84ff', RED = '#ff3b30';
 const CSS = `.mz { position: fixed; inset: 0; pointer-events: none; z-index: 4; font: 500 11px/1 system-ui, sans-serif; }
 .mz i { position: absolute; display: block; box-sizing: border-box; }
@@ -16,6 +20,7 @@ const CSS = `.mz { position: fixed; inset: 0; pointer-events: none; z-index: 4; 
 .mz .tg { padding: 3px 5px; border-radius: 4px; background: ${BLUE}; color: #fff; white-space: nowrap; transform: translate(-50%, -50%); font-style: normal; }
 .mz .tg.bad { background: ${RED}; } .mz .tg.sz { background: #141414; transform: translate(-50%, 4px); }
 .mz .bx { outline: 1.5px solid ${BLUE}; } .mz .bx.sel { outline: 2px solid ${GREEN}; }
+.mz .rd { max-width: 280px; padding: 4px 6px; border-radius: 5px; background: #141414; color: #fff; font-style: normal; line-height: 1.3; overflow-wrap: anywhere; }
 .mzbar { position: fixed; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); width: fit-content; max-width: 560px; margin: 0 auto; box-sizing: border-box;
   display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow);
   font: 13px/1.3 var(--lab-font, system-ui, sans-serif); pointer-events: auto; }
@@ -104,18 +109,17 @@ function draw() {
   const coarse = W.coarse;
   if (sel) ring(sel.getBoundingClientRect(), 'bx sel');
   let text = '';
-  if (!hov) {
-    say(sel ? `${desc(sel)}: now ${coarse ? 'tap' : 'hover'} another` : `${coarse ? 'Tap' : 'Click'} one thing, then ${coarse ? 'tap' : 'hover'} another`);
-    return;
-  }
+  if (!hov) return say(sel ? `${desc(sel)}: now ${coarse ? 'tap' : 'hover'} another` : M.held ? 'hover a thing' : `${coarse ? 'Tap' : 'Click'} one thing, then ${coarse ? 'tap' : 'hover'} another`);
   const h = hov.getBoundingClientRect();
   M.k = scaleOf(sel && sel !== hov ? common(sel, hov) : hov.parentElement || hov);
   const size = `${fmt(h.width)} × ${fmt(h.height)}`;
   ring(h, 'bx');
   add('tg sz', { left: `${(h.left + h.right) / 2}px`, top: `${h.bottom}px` }, size);
   const zoom = Math.abs(M.k - 1) > 0.001 ? ` (CSS px; on screen ×${+M.k.toFixed(2)})` : '';
-  if (!sel || sel === hov) text = `${desc(hov)} ${size} px${zoom}`;
-  else {
+  if (!sel || sel === hov) {
+    const out = M.held ? around(hov, h) : [];
+    text = `${desc(hov)} ${size} px${zoom}${out.length ? `; ${out.join('; ')}` : ''}`;
+  } else {
     const a = sel.getBoundingClientRect();
     const inside = (o: DOMRect, i: DOMRect) => i.left >= o.left - 0.5 && i.right <= o.right + 0.5 && i.top >= o.top - 0.5 && i.bottom <= o.bottom + 0.5;
     const out: string[] = [];
@@ -146,6 +150,43 @@ function say(words: string, text = '') {
   M.text = text;
   M.words!.textContent = words;
   (M.bar!.querySelector('[data-a="pin"]') as HTMLButtonElement).disabled = !text;
+  if (M.held) reading(words);
+}
+// ⌥ held: the reading beside the mouse, small.
+function reading(words: string) {
+  const d = document.createElement('i');
+  d.className = 'rd';
+  d.append(words);
+  const left = M.x > innerWidth - 300;
+  Object.assign(d.style, { left: `${M.x + (left ? -14 : 14)}px`, top: `${M.y + 18}px`, transform: left ? 'translateX(-100%)' : '' });
+  M.box!.append(d);
+}
+const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.min(a1, b1) - Math.max(a0, b0) > 0;
+/** Hovered alone (⌥ held): each side's gap to the nearest sibling there, else to the parent's inner (border) edge. */
+function around(hov: Element, h: DOMRect) {
+  const P = hov.parentElement, out: string[] = [];
+  if (!P || P === document.documentElement) return out;
+  const cs = getComputedStyle(P), bw = (s: string) => parseFloat(cs.getPropertyValue(s)) * M.k || 0, R = P.getBoundingClientRect();
+  const o = { l: R.left + bw('border-left-width'), r: R.right - bw('border-right-width'), t: R.top + bw('border-top-width'), b: R.bottom - bw('border-bottom-width') };
+  const sibs = [...P.children].filter((c) => c !== hov && c !== W.host).map((c) => [c, c.getBoundingClientRect()] as const).filter(([, r]) => r.width || r.height);
+  const my = (h.top + h.bottom) / 2, mx = (h.left + h.right) / 2;
+  const side = (dir: string, near: (r: DOMRect) => number | null, edge: number, at: (r: DOMRect | null, from: number) => [number, number, number, number]) => {
+    let best: (typeof sibs)[number] | null = null, px = Infinity;
+    for (const sb of sibs) {
+      const v = near(sb[1]);
+      if (v !== null && v < px) [best, px] = [sb, v];
+    }
+    if (!best) px = edge;
+    line(...at(best && best[1], px), px);
+    out.push(`${dir} ${said(fmt(px))} to ${best ? desc(best[0]) : 'parent'}`);
+  };
+  const midY = (r: DOMRect | null) => (r ? (Math.max(r.top, h.top) + Math.min(r.bottom, h.bottom)) / 2 : my);
+  const midX = (r: DOMRect | null) => (r ? (Math.max(r.left, h.left) + Math.min(r.right, h.right)) / 2 : mx);
+  side('left', (r) => (r.right <= h.left + 0.5 && overlap(r.top, r.bottom, h.top, h.bottom) ? h.left - r.right : null), h.left - o.l, (r, px) => [h.left - px, midY(r), h.left, midY(r)]);
+  side('right', (r) => (r.left >= h.right - 0.5 && overlap(r.top, r.bottom, h.top, h.bottom) ? r.left - h.right : null), o.r - h.right, (r, px) => [h.right, midY(r), h.right + px, midY(r)]);
+  side('top', (r) => (r.bottom <= h.top + 0.5 && overlap(r.left, r.right, h.left, h.right) ? h.top - r.bottom : null), h.top - o.t, (r, px) => [midX(r), h.top - px, midX(r), h.top]);
+  side('bottom', (r) => (r.top >= h.bottom - 0.5 && overlap(r.left, r.right, h.left, h.right) ? r.top - h.bottom : null), o.b - h.bottom, (r, px) => [midX(r), h.bottom, midX(r), h.bottom + px]);
+  return out;
 }
 const redraw = () => M.on && (M.raf ||= requestAnimationFrame(draw));
 
@@ -160,19 +201,48 @@ function pin() {
   W.begin({ ...a, measure: text });
 }
 
+// What is picked already: select mode's block, else the thing of the open pin, or of the new one being written.
+function picked(): Element | null {
+  const sel = document.querySelector('[data-lab-picked]');
+  if (sel) return sel;
+  const S = W.S, a = S.draft?.anchor || S.comments?.find((c: { id: string }) => c.id === S.openId)?.anchor;
+  try {
+    return a?.selector ? document.querySelector(a.selector) : null;
+  } catch {
+    return null;
+  }
+}
+/** ⌥ down or up on a computer: measuring only while it is held (the thing under the mouse at once). */
+export function hold(w: unknown, on: boolean) {
+  if (!on) return void (M.on && M.held && measure(w, false));
+  measure(w, true, true);
+  M.sel = picked();
+  const m = W.S.mouse;
+  if (m) {
+    [M.x, M.y] = [m.x, m.y];
+    const t = document.elementFromPoint(m.x, m.y);
+    M.hov = t && t !== document.documentElement && t !== W.host ? t : null;
+  }
+  draw();
+}
+/** The measure shown now, while ⌥ is held: an ⌥-click's pin carries it. */
+export const current = () => (M.on && M.held ? M.text : '');
+
 let bound = false;
-/** The mode on or off (G, the ⋯ menu's "measure", or the bar's done). */
-export function measure(w: unknown, on = !M.on) {
+/** The mode on or off (phones: the ⋯ menu's "measure", or the bar's done); held: ⌥ on a computer, no bar. */
+export function measure(w: unknown, on = !M.on, held = false) {
   W = w;
   if (!bound) bind();
   M.on = on;
+  M.held = on && held;
   W.S.measuring = on;
   document.documentElement.classList.toggle('lab-measuring', on);
   M.sel = M.hov = null;
   M.locked = false;
   if (!on) return void (M.box?.remove(), M.bar?.remove());
   M.tok = tokens();
-  W.root.append(M.box!, M.bar!);
+  W.root.append(M.box!);
+  if (!M.held) W.root.append(M.bar!);
   draw();
 }
 function bind() {
@@ -191,9 +261,10 @@ function bind() {
     b.addEventListener('click', (e) => (e.stopPropagation(), go()));
     return b;
   };
-  M.bar.append(M.words, btn('pin', 'pin', 'a pin carrying this (Enter)', pin), btn('done', 'done', 'leave measure (G, Esc)', () => measure(W, false)));
+  M.bar.append(M.words, btn('pin', 'pin', 'a pin carrying this (Enter)', pin), btn('done', 'done', 'leave measure (Esc)', () => measure(W, false)));
   const quiet = (e: Event) => (e.preventDefault(), e.stopImmediatePropagation());
   const mine = (e: Event) => M.on && !e.composedPath().includes(W.host);
+  const tapping = (e: Event) => mine(e) && !M.held; // ⌥ held: a click is the widget's (an ⌥-click pins)
   const at = (e: Event) => {
     const t = e.target instanceof Element ? e.target : null;
     return t && t !== document.documentElement ? t : null;
@@ -209,7 +280,7 @@ function bind() {
   // Before the page and the pins see them (window, capture): a click or tap picks instead of pinning or pressing.
   for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'])
     addEventListener(type, (e) => {
-      if (!mine(e)) return;
+      if (!tapping(e)) return;
       const pe = e as PointerEvent, touch = pe.pointerType === 'touch' || pe.pointerType === 'pen';
       if (type === 'pointerdown' && touch) down = { x: pe.clientX, y: pe.clientY, at: Date.now() };
       quiet(e);
@@ -221,13 +292,14 @@ function bind() {
   addEventListener('pointermove', (e) => {
     if (!mine(e) || M.locked || e.pointerType !== 'mouse') return;
     const t = at(e);
-    if (t === M.hov) return;
+    if (M.held) [M.x, M.y] = [e.clientX, e.clientY]; // the reading follows the mouse
+    else if (t === M.hov) return;
     M.hov = t;
     redraw();
   }, true);
   addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
-    if (!M.on || e.metaKey || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName) || t?.isContentEditable || W.S.draft) return;
+    if (!M.on || M.held || e.metaKey || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName) || t?.isContentEditable || W.S.draft) return;
     if (e.key === 'Escape') {
       quiet(e);
       if (!M.sel && !M.hov) return void measure(W, false);

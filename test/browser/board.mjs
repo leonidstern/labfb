@@ -74,6 +74,25 @@ try {
       await sleep(200);
       const c1 = await cam();
       check(eng, 'a wheel pans the board, never the page', c1.y < c0.y + 0.001 && (await p.evaluate(() => scrollY)) === 0 && c1.z === c0.z, JSON.stringify([c0, c1]));
+      // a plain mouse drag is labit's (a pin, an area, a selection): it doesn't pan; Space held and a drag does (the hand)
+      const drag = async (x, y) => {
+        await p.mouse.move(600, 400);
+        await p.mouse.down();
+        await p.mouse.move(x, y, { steps: 6 });
+        await p.mouse.up();
+        await sleep(200);
+      };
+      await drag(700, 460);
+      const c2 = await cam();
+      check(eng, 'a plain mouse drag does not pan the board', c2.x === c1.x && c2.y === c1.y, JSON.stringify([c1, c2]));
+      await p.keyboard.down('Space');
+      const grab = await p.evaluate(() => getComputedStyle(document.querySelector('#lab-board .f') || document.getElementById('lab-board')).cursor);
+      await drag(700, 460);
+      await p.keyboard.up('Space');
+      const c3 = await cam();
+      check(eng, 'Space + drag pans (the hand cursor), never the page', grab === 'grab' && c3.x > c2.x && c3.y > c2.y && (await p.evaluate(() => scrollY)) === 0, JSON.stringify([grab, c2, c3]));
+      await p.keyboard.press('Shift+Digit1');
+      await sleep(200);
       await p.keyboard.press('Shift+Digit2');
       await sleep(200);
       check(eng, 'Shift+2 goes to 100%', (await cam()).z === 1);
