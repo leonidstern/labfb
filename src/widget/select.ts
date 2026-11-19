@@ -36,6 +36,15 @@ export function step(dir: 1 | -1) {
   return all[at < 0 ? (dir > 0 ? 0 : all.length - 1) : (at + dir + all.length) % all.length] || null;
 }
 export const picked = () => T.pick;
+// Higher and deeper, as in Figma (Leo, 19 Nov): Shift+Enter picks what holds the picked thing (its parent, never the
+// body), Enter goes into it (its first child that shows), and on words Enter edits them as before.
+const shows = (e: Element) => e.getClientRects().length > 0 && !e.closest(OUT);
+const higher = (e: HTMLElement) => {
+  for (let p = e.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) if (shows(p) && (p.getBoundingClientRect().height > e.getBoundingClientRect().height + 1 || p.getBoundingClientRect().width > e.getBoundingClientRect().width + 1)) return p;
+  return null;
+};
+const deeper = (e: HTMLElement) => ([...e.children].find((c) => shows(c) && (c.textContent || '').trim()) as HTMLElement) || null;
+export const isWords = (e: HTMLElement | null) => Boolean(e) && isBlock(e!);
 // The bar for the picked block (Leo, 19 Nov: "make select tool full"), on phones and computers alike: edit · remove ·
 // make like · move · states · variants · pin · done. Edit works in place; the rest go to the agent as a pin on the block,
 // worded so it knows what to do. Make like and move ask for a second block first ("tap the one to copy").
@@ -63,7 +72,9 @@ const pinOn = async (e: HTMLElement, text: string) => {
   }
 };
 const ACTS: Array<[string, () => void]> = [
-  ['edit', () => T.pick && T.open(T.pick)],
+  ['↑', () => T.pick && pick(higher(T.pick) || T.pick)],
+  ['↓', () => T.pick && pick(deeper(T.pick) || T.pick)],
+  ['edit', () => T.pick && isBlock(T.pick) && T.open(T.pick)],
   ['remove', () => T.pick && pinOn(T.pick, 'Remove this.')],
   ['make like', () => {
     const p = T.pick;
@@ -90,13 +101,14 @@ const drawBar = () => {
     W.root.append(bar);
   }
   const b = (name: string, act: () => void, off = false) => {
-    const x = W.el('button', { type: 'button', 'data-a': name }, name) as HTMLButtonElement;
+    const say = name === '↑' ? 'higher: what holds it (Shift+Enter)' : name === '↓' ? 'deeper: inside it (Enter)' : '';
+    const x = W.el('button', { type: 'button', 'data-a': name, ...(say ? { 'aria-label': say, title: say } : {}) }, name) as HTMLButtonElement;
     x.disabled = off;
     x.addEventListener('click', (e: Event) => (e.stopPropagation(), act(), drawBar()));
     return x;
   };
   if (want) bar!.replaceChildren(W.el('span', { class: 'selsay' }, want.say), b('cancel', () => (want = null)));
-  else bar!.replaceChildren(...ACTS.map(([n, a]) => b(n, a, !T.pick)), b(T.pick ? 'done' : 'leave select', () => (T.pick ? pick(null) : selectMode(false))));
+  else bar!.replaceChildren(...ACTS.map(([n, a]) => b(n, a, !T.pick || (n === 'edit' && !isBlock(T.pick)) || (n === '↑' && !higher(T.pick)) || (n === '↓' && (isBlock(T.pick) || !deeper(T.pick))))), b(T.pick ? 'done' : 'leave select', () => (T.pick ? pick(null) : selectMode(false))));
   bar!.hidden = !T.on || Boolean(W.S.editing);
 };
 export const redrawSelectBar = () => drawBar();
@@ -160,7 +172,8 @@ export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.clos
       if (pickOn) pick(null);
       else selectMode(false);
     }
-    else if (e.key === 'Enter') T.open(pickOn!);
+    else if (e.key === 'Enter' && e.shiftKey) pick(higher(pickOn!) || pickOn);
+    else if (e.key === 'Enter') isBlock(pickOn!) ? T.open(pickOn!) : pick(deeper(pickOn!) || pickOn);
     else pick(step(e.shiftKey ? -1 : 1));
   }, true);
 }
