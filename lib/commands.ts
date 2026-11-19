@@ -33,7 +33,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       const args = ['.', '--no-open', ...(typeof opts.proxy === 'string' ? ['--proxy', opts.proxy] : opts.proxy ? ['--proxy'] : [])];
       // Under npx this script sits in npx's cache, which moves with every version: name the package, not the path.
       return CMD.startsWith('npx')
-        ? { name: 'lab', runtimeExecutable: 'npx', runtimeArgs: ['--yes', '@leonidstern/labit', ...args], port: 4400, autoPort: true }
+        ? { name: 'lab', runtimeExecutable: 'npx', runtimeArgs: ['--yes', '@leonidstern/labit@latest', ...args], port: 4400, autoPort: true }
         : { name: 'lab', program: ME, args, port: 4400, autoPort: true };
     }
     config.configurations = [...(config.configurations || []).filter((c) => c.name !== 'lab'), entry()];
