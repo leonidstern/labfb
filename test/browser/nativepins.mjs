@@ -39,7 +39,8 @@ fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="ut
 <section id="gapsec"><p id="ga">The block above the gap.</p><p id="gb">The block below the gap.</p></section>
 <p id="words"><span id="before">Some words before</span> the <span id="q">quoted</span> words and more after them.</p>
 <div id="shifted"><p id="tp">A paragraph whose parent is moved by a transform.</p></div>
-<div style="height:1600px"></div>`);
+<div style="height:1600px"></div>
+<p id="own" style="anchor-name:--theirs">A paragraph the page anchors something to itself.</p>`);
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, flags: { nativePins: true } }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env, stdio: 'ignore' });
@@ -65,6 +66,8 @@ const PINS = [
   ['gap', '#ga'],
   ['words', '#q'],
   ['shifted', '#tp'],
+  ['drawing', '#box'], // an area is on the element that holds all of it: here the box itself
+  ['own', '#own'], // the page's own anchor-name would win over ours: the script places this one
 ];
 // Every pin's place from its element's corner, and whether the browser holds it (fixed, in its rule).
 const where = (p) =>
@@ -127,10 +130,22 @@ try {
       await send('on the words');
       await clickAt('#tp', 0.5, 0.5);
       await send('under a transform');
+      // A drawing (hold D and drag, draw.ts): its lines are the pin, over its whole area.
+      await p.evaluate(() => document.getElementById('box').scrollIntoView({ block: 'nearest' }));
       await settle(p);
-      const names = PINS.map(([name]) => name);
+      const c = await at('#inbox', 0.5, 0.5);
+      await p.keyboard.down('d');
+      await p.mouse.move(c.x + 120, c.y);
+      await p.mouse.down();
+      for (let i = 1; i <= 22; i++) await p.mouse.move(c.x + 120 * Math.cos((i / 20) * 2 * Math.PI), c.y + 30 * Math.sin((i / 20) * 2 * Math.PI), { steps: 2 });
+      await p.mouse.up();
+      await p.keyboard.up('d');
+      await send('this one, circled');
+      await p.evaluate(() => scrollTo(0, 0));
+      await settle(p);
+      const names = PINS.map(([name]) => name).filter((k) => k !== 'own'); // own is put last, below
       const rest = await where(p);
-      check(eng, 'five pins, all held by the browser', names.every((k) => rest[k]?.held && rest[k]?.shown), JSON.stringify(rest));
+      check(eng, 'five pins and a drawing, all held by the browser', names.every((k) => rest[k]?.held && rest[k]?.shown), JSON.stringify(rest));
       // A scroll measures nothing: no element or words are measured by the widget while the box and the page scroll.
       await p.evaluate(() => {
         window.labMeasured = 0;
@@ -183,6 +198,13 @@ try {
       await sleep(800);
       const dropped = await where(p);
       check(eng, 'a drag moves a pin, and it is held again on its new spot', Math.abs(mid.shifted.dx - rest.shifted.dx - 30) <= 4 && Math.abs(mid.shifted.dy - rest.shifted.dy - 40) <= 4 && !mid.shifted.held && dropped.shifted.held, JSON.stringify({ rest: rest.shifted, mid: mid.shifted, dropped: dropped.shifted }));
+      // An element the page anchors something to itself: our anchor-name would take its place, so the script places the pin.
+      await p.evaluate(() => document.getElementById('own').scrollIntoView({ block: 'center' }));
+      await settle(p);
+      await clickAt('#own', 0.5, 0.5);
+      await send('on an element the page anchors');
+      const own = (await where(p)).own;
+      check(eng, 'a pin on an element the page anchors itself is placed by the script, on its spot', own && !own.held && own.shown && Math.abs(own.dy + 15) <= 2, JSON.stringify(own));
       await ctx.close();
     } finally {
       await browser.close();

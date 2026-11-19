@@ -10,6 +10,9 @@
 // - the pin is fixed: an absolute pin's containing block is the widget's own host, which no element of the page is in;
 // - its rule is in the page's style sheet, by ::part: anchor names given in the page are not seen from the shadow root.
 // A browser without anchor positioning (or without position-visibility) keeps the pins the script places, as before.
+// So does a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
+// dialog, popover or full screen (the top layer is laid out after the pin, so it can't be its anchor). An element whose
+// anchor attribute a live patch took away parks its pins off screen (anchor()'s fallback) until they are placed again.
 let sheet: HTMLStyleElement | null = null;
 const names = new WeakMap<Element, string>(); // an element's anchor name, kept while it lives
 const rules = new Map<HTMLElement, string>(); // a held pin and its rule
@@ -18,6 +21,13 @@ let dirty = false;
 let able: boolean | null = null;
 const can = () => (able ??= typeof CSS !== 'undefined' && CSS.supports('anchor-name: --a') && CSS.supports('position-visibility: anchors-visible'));
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
+const inTopLayer = (node: Element) => {
+  try {
+    return Boolean(node.closest('dialog[open], :popover-open, :fullscreen'));
+  } catch {
+    return true;
+  }
+};
 
 /** Ties a pin to node, its spot at (left, top) in page coordinates. False, and the pin let go, when the script places it. */
 export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, left: number, top: number): boolean {
@@ -28,6 +38,11 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
   }
   let name = names.get(node);
   if (!name) names.set(node, (name = `lab${(++count).toString(36)}`));
+  const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
+  if ((own && own !== 'none' && own !== `--${name}`) || inTopLayer(node)) {
+    letPin(pin);
+    return false;
+  }
   if (node.getAttribute('data-lab-anchor') !== name) node.setAttribute('data-lab-anchor', name); // put back after a live patch
   const part = pin.getAttribute('part') || `lp${(++count).toString(36)}`;
   pin.setAttribute('part', part);
@@ -35,7 +50,7 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
   const rule =
     `[data-lab-anchor="${name}"]{anchor-name:--${name}}` +
     `[data-lab-comments]::part(${part}){position:fixed!important;position-anchor:--${name};position-visibility:anchors-visible;` +
-    `left:calc(anchor(left) + ${px(left - scrollX - r.left)})!important;top:calc(anchor(top) + ${px(top - scrollY - r.top)})!important}`;
+    `left:calc(anchor(left, -10000px) + ${px(left - scrollX - r.left)})!important;top:calc(anchor(top, -10000px) + ${px(top - scrollY - r.top)})!important}`;
   if (rules.get(pin) !== rule) (rules.set(pin, rule), (dirty = true));
   return true;
 }
