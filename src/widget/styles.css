@@ -666,7 +666,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar[hidden] { display: none; }
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
-@media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
+@media (pointer: coarse) { :host([data-sheet]) :is(.sbar, .selbar) { visibility: hidden; } } /* the select bar steps out of the chat, a thread or the comment sheet (Leo, 19 Nov: "states overlaying chat") */
 /* Select on a phone (select.ts): edit · pin · done for the picked block, as the comment box's action pills (.quick),
    on a card above the widget's bar (Leo, 19 Nov: "select pills don't look good"). */
 .selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 3; margin: 0; padding: 8px; gap: 8px;

@@ -545,7 +545,8 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
   const onBoard = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor } }).__labBoard?.anchor; // a board page: the board says what is there
   if (onBoard) return onBoard(clientX, clientY);
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
-  if (onto && !stack.length) stack = [onto];
+  // ...and when the point is on something else (scrolled away, under the bar), the element the caller names wins.
+  if (onto && !(stack[0] && (stack[0] === onto || onto.contains(stack[0])))) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
   let shadowHost = null;

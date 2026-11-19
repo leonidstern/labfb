@@ -49,14 +49,24 @@ export const isWords = (e: HTMLElement | null) => Boolean(e) && isBlock(e!);
 // make like · move · states · variants · pin · done. Edit works in place; the rest go to the agent as a pin on the block,
 // worded so it knows what to do. Make like and move ask for a second block first ("tap the one to copy").
 let bar: HTMLElement | null = null;
-let want: { say: string; then: (other: HTMLElement) => void } | null = null;
+let want: { say: string; act: (other: HTMLElement) => void } | null = null;
 const label = (e: HTMLElement) => {
   const t = (e.textContent || '').replace(/\s+/g, ' ').trim();
   return `${e.localName}${e.id ? `#${e.id}` : ''} "${t.length > 50 ? `${t.slice(0, 49)}…` : t}"`;
 };
-const pinOn = async (e: HTMLElement, text: string) => {
+// One tap, one pin (19 Nov: a phone's "states" sent the same pin twice in a second, and once on <body>). The same ask on
+// the same block is left alone while it is on its way and for 2s after; the anchor is built onto the block itself, so a
+// block scrolled away or under the bar no longer lands on whatever is at that point (body).
+const lastAsk = new WeakMap<HTMLElement, { text: string; at: number }>();
+const pointOn = (e: HTMLElement) => {
   const r = e.getBoundingClientRect();
-  const anchor = W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2);
+  return W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2, false, e);
+};
+const pinOn = async (e: HTMLElement, text: string) => {
+  const was = lastAsk.get(e);
+  if (was && was.text === text && Date.now() - was.at < 2000) return void W.say?.('already sent');
+  lastAsk.set(e, { text, at: Date.now() });
+  const anchor = pointOn(e);
   let name = '';
   try {
     name = (W.store.get('lab-name') || '').trim();
@@ -68,6 +78,7 @@ const pinOn = async (e: HTMLElement, text: string) => {
     W.render();
     W.say?.('sent to the agent');
   } catch {
+    lastAsk.delete(e); // not sent: a second tap may try again
     W.say?.("couldn't send it: is the lab running?");
   }
 };
@@ -78,20 +89,20 @@ const ACTS: Array<[string, () => void]> = [
   ['remove', () => T.pick && pinOn(T.pick, 'Remove this.')],
   ['make like', () => {
     const p = T.pick;
-    if (p) want = { say: 'tap the one to copy', then: (o) => pinOn(p, `Make this look like ${label(o)}: same size, spacing, colour and type.`) };
+    if (p) want = { say: 'tap the one to copy', act: (o) => pinOn(p, `Make this look like ${label(o)}: same size, spacing, colour and type.`) };
   }],
   ['move', () => {
     const p = T.pick;
-    if (p) want = { say: 'tap where it goes: it lands after that', then: (o) => pinOn(p, `Move this to just after ${label(o)}.`) };
+    if (p) want = { say: 'tap where it goes: it lands after that', act: (o) => pinOn(p, `Move this to just after ${label(o)}.`) };
   }],
   ['states', () => T.pick && pinOn(T.pick, 'Show this in its states (hover, loading, empty, error) so I can review each one.')],
   ['variants', () => T.pick && pinOn(T.pick, 'Make 3 variants of this, shown in place as a / b / c tabs on it, so I can pick one.')],
   ['pin', () => {
     const p = T.pick;
     if (!p) return;
-    const r = p.getBoundingClientRect();
+    const anchor = pointOn(p);
     selectMode(false);
-    W.begin(W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2));
+    W.begin(anchor);
   }],
 ];
 const drawBar = () => {
@@ -155,7 +166,7 @@ export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.clos
         if (want && other && other !== T.pick) {
           const w = want;
           want = null;
-          w.then(other);
+          w.act(other);
           return void drawBar();
         }
         T.close();
@@ -173,7 +184,10 @@ export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.clos
       else selectMode(false);
     }
     else if (e.key === 'Enter' && e.shiftKey) pick(higher(pickOn!) || pickOn);
-    else if (e.key === 'Enter') isBlock(pickOn!) ? T.open(pickOn!) : pick(deeper(pickOn!) || pickOn);
+    else if (e.key === 'Enter') {
+      if (isBlock(pickOn!)) T.open(pickOn!);
+      else pick(deeper(pickOn!) || pickOn);
+    }
     else pick(step(e.shiftKey ? -1 : 1));
   }, true);
 }
