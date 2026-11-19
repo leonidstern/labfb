@@ -2009,7 +2009,11 @@ const handler = async (req, res) => {
     // so only that session is woken, with a new turn, once it stopped listening.
     if (pathname === '/_lab/pending' && req.method === 'GET') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
-      const fresh = freshIn(pages().filter((p) => !claimed().has(p)));
+      // Left out: only the pages an open wait hears (their pins reach it). Not the pages a wait named and then left
+      // (claimed for half an hour so an all-pages wait doesn't take them): those are the very pages the session that
+      // listened last is woken for, and leaving them out kept every `wait --pages` session from ever being woken.
+      const heard = new Set(waiters.flatMap((w) => scopeOf(w)));
+      const fresh = freshIn(pages().filter((p) => !heard.has(p)));
       const ids = fresh.map(({ c }) => c.id).sort();
       // The threads handed to the agent and being worked on (no answer since the person's last words, or only "on it"):
       // the plugin's hook keeps a progress line on them while its session (helpers too) runs tools.

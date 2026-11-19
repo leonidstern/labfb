@@ -60,3 +60,16 @@ test('pending: the agent key only; it says what nobody was handed, who listened 
   assert.equal(reg.listener, 'w1');
   assert.equal(reg.port, Number(PORT));
 });
+
+// A wait names its pages (`wait --pages /a`), ends, and its session goes quiet: a pin there must still wake that
+// session. Those pages stay claimed for half an hour (so an all-pages wait elsewhere doesn't take them), which used to
+// hide their pins from /_lab/pending too, so the wake never came for the very pages its session listened on.
+test('pending: a pin on the pages the last wait named counts once that wait has ended', async () => {
+  await wait('w2', { pages: ['/third'], timeout: 1 }); // nothing there: it ends empty
+  await post('after the wait', '/third');
+  const p = await (await pending()).json();
+  assert.equal(p.listening, false);
+  assert.equal(p.last, 'w2');
+  assert.equal(p.fresh, 1);
+  assert.deepEqual(p.pages, ['/third']);
+});
