@@ -221,6 +221,12 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }
+/* Pause / play beside a video or a moving thing on the page (comments.js): a small key in the pin's look, over the page. */
+.motion { position: absolute; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--_r-s); cursor: pointer;
+          background: var(--_bg); color: var(--_fg); box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16); transition: transform var(--_t-quick) var(--_ease); }
+.motion:hover { transform: scale(1.03); }
+.motion[hidden] { display: none; }
+.motion svg { width: 12px; height: 12px; fill: currentColor; }
 .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
 .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
               box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
