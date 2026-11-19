@@ -246,9 +246,8 @@ button.btn.danger, button.btn.danger:hover { color: var(--_red); }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
 /* Something just sent eases in; the arrow flies off and comes back. */
-.fresh { animation: lab-rise var(--_t-base) var(--_ease); }
+.fresh { animation: lab-in var(--_t-base) var(--_ease); } /* a message arrives as a card does */
 .send.sent .arr { animation: lab-fly var(--_t-slow) var(--_ease); }
-@keyframes lab-rise { from { opacity: 0; transform: translateY(6px); } }
 @keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
 .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
 .msg.mine { align-self: flex-end; background: color-mix(in srgb, rgb(52, 199, 89) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
@@ -362,7 +361,7 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
                             font-size: 10px; font-weight: 600; letter-spacing: 0; }
 .more { font-size: 15px !important; letter-spacing: .05em; }
 .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
-             border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
+             border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-in var(--_t-base) var(--_ease); }
 .more-menu[hidden] { display: none; }
 .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
                     border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
@@ -385,7 +384,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .box.one .who { line-height: 22px; padding-bottom: 7px; } }
 @keyframes lab-fade { from { opacity: 0; } }
 /* Movement only: a page in the background can stall an animation, and a card stalled mid-fade showed the page through it. */
-@keyframes lab-in { from { transform: translateY(4px) scale(.98); } }
+@keyframes lab-in { from { translate: 0 4px; scale: .98; } } /* translate and scale, so it adds to a box's own transform (⌘K's centring) */
 @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
 /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
 /* Apple's continuous corners (squircle) where the browser draws them (Safari 26, Chrome): the same three sizes, a

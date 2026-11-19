@@ -1389,7 +1389,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
-      if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
+      if (typed?.value.trim()) return shake(typed.closest('.card, .float'));
       return stepNew(e.shiftKey ? -1 : 1);
     }
     // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
@@ -1607,12 +1607,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.chatOpen = false;
     render();
   };
-  // Text typed in a thread or a new comment would be lost, so the sheet stays and nudges instead; the chat's box keeps
+  // Unsent words: the card or sheet shakes sideways ("no") instead of closing, on a computer (⌥W) and a phone alike.
+  const shake = (/** @type {Element | null | undefined} */ node) => node?.animate?.([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
+  // Text typed in a thread or a new comment would be lost, so the sheet stays and shakes instead; the chat's box keeps
   // its text when closed, so the chat always closes.
   const closeOrNudge = () => {
     const node = openSheet();
     if (![...root.querySelectorAll('textarea')].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
-    node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease('out') });
+    shake(node);
   };
   // A tap on the dimmed page closes the sheet; a pull on it moves the sheet with the finger (see swipeDown), and the
   // click that ends such a pull isn't a tap.

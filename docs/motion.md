@@ -86,8 +86,7 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | keyboard fit (sheets.ts) | transform | slow | settle | the sheet moving over the keyboard |
 | composer glide (`composer.ts`) | height; the arrow's transform | base | standard | the box growing, the arrow sliding |
 | `closeFast` fade (`comments.js`) | opacity | quick | out | a card closing at once on a computer |
-| shake (`comments.js`) | transform | base | linear | unsent words: the sheet won't close |
-| nudge (`comments.js`) | transform | base | out | the chat bounces when it can't close |
+| shake (`comments.js`) | transform | base | standard | unsent words: the card (⌥W) or the sheet (closing on a phone) won't close; one sideways shake for both |
 | `goToBlock` (anchoring.ts) | outline | 2 × hold | linear | a block named in a message |
 | quote jump (`chat.ts`) | box-shadow | hold | linear | the message you jumped to |
 
