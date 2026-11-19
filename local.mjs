@@ -1213,7 +1213,7 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
       const known = pages()[0] ?? [...looked.keys()][0];
       if (known) fileFor(known); // listed again at once, so a renamed page's comments and looks go with it now
     }
-    const hotOnly = !otherSaved.size && hotSaved.size > 0;
+    const hotOnly = !otherSaved.size && hotSaved.size > 0 && hotSaved.size <= 50; // more than the list holds: a reload
     const hot = [...hotSaved].slice(0, 50).map(([p, kind]) => ({ path: p, kind }));
     // A burst too big to list (a branch switch, a build): no list, so every page reloads, as it always did.
     const changed = otherSaved.size && otherSaved.size <= 50 ? [...otherSaved] : null;
@@ -2047,6 +2047,8 @@ const handler = async (req, res) => {
       for (const [id, d] of unacked) if (d.who === w.who && d.key === key) takeBack(id);
       claim(want);
       const got = await unseen(scopeOf(w), w.who);
+      // Cancelled while that was read: its close has come and gone, so nothing below would ever take it off the list.
+      if (res.destroyed) return;
       recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
       if (got?.text && !(quietOne && waiters.some((x) => x.key === key && !silent.has(x.who)))) {
         remember(w);
@@ -2354,6 +2356,8 @@ const handler = async (req, res) => {
     if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
+    // A link in the folder that points at a dot file or into a dot folder (.lab holds the lab's keys) is one too.
+    if (!lab && path.relative(base, file).split(path.sep).some((s) => s.startsWith('.'))) return plain(res, 404, 'not found');
     if (fs.statSync(file).isDirectory() && !pathname.endsWith('/') && fs.existsSync(file + '.html')) file += '.html'; // /a is a.html, /a/ is a/index.html
     if (fs.statSync(file).isDirectory()) {
       if (!pathname.endsWith('/')) return res.writeHead(302, { location: url.pathname + '/' + url.search }).end();

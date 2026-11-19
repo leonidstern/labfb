@@ -45,7 +45,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     process.exit(0);
   }
 
-    const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
+  const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
   // `labit publish <page.html | folder>`: like publishing an Artifact (Leo 18 Nov: "process is similar to artifacts, can
   // you do it like this"). The page goes into the one pages lab (pagesFolder), named for its topic; that lab starts if
   // it isn't running; the link is printed. Publishing again replaces it, same link. No folder or lab of its own.
@@ -61,7 +61,12 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const slug = topic.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
     if (!dir && !/\.html?$/i.test(src)) die(`${src}: give an .html file, or a folder of pages`);
     const dest = path.join(root, dir ? slug : `${slug}.html`);
-    if (path.resolve(src) !== dest) {
+    // The page's old copy is removed first, so the source must not be that copy, in it or around it: a folder
+    // published under the name of the folder it sits in (or through a link to the pages folder) used to delete itself.
+    const from = fs.realpathSync(src);
+    const within = (a: string, b: string) => a.startsWith(b + path.sep);
+    if (within(from, dest) || within(dest, from)) die(`${src} and its place in the pages lab (${dest}) are inside one another. Publish it from another folder, or under another --name.`);
+    if (from !== dest) {
       fs.rmSync(dest, { recursive: true, force: true });
       fs.cpSync(src, dest, { recursive: true });
     }

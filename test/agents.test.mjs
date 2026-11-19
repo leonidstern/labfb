@@ -29,7 +29,7 @@ const site = (name) => {
   fs.writeFileSync(path.join(d, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
   return d;
 };
-let port = 6100 + Math.floor(Math.random() * 300);
+let port = 6100 + Math.floor(Math.random() * 250);
 async function lab(dir, args = [], env = {}) {
   const p = port++;
   const child = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(p), ...args], { cwd: dir, env: { ...clean, LABIT_HOME: home, ...env } });

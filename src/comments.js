@@ -129,7 +129,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // when it's Latin (QWERTZ and AZERTY move letters), else by its place (Cyrillic and other layouts).
   const keyOf = (e) => {
     const d = /^(Digit|Numpad)(\d)$/.exec(e.code || '');
-    if (d) return d[2];
+    // Shift and a digit is the board's (⇧1 fit, ⇧2 100%, ⇧0): its key shows another character ("!"), which a plain 1 never does.
+    if (d) return e.shiftKey && e.key !== d[2] ? '' : d[2];
     return /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
   };
   const actionOf = (e) => Object.keys(KEYS).find((a) => KEYS[a] === keyOf(e)) || '';
@@ -1184,7 +1185,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // A letter typed while the bar shows starts the comment with it (F4); Escape lets the bar and its words go.
     // Not while typing in a field of the page or the widget (the chat), nor in another widget.
     if (!typing(e) && !inOtherWidget && fluidKey(e)) return void (S.draft || dropOffer());
-    if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if (actionOf(e) === 'toggle' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
       return;
@@ -1214,7 +1215,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act)) {
+    // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act) && (act === 'next' || !e.shiftKey)) {
       const k = act;
       e.preventDefault();
       if (k === 'pause') return setPause(!S.paused);
@@ -1236,9 +1238,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
       S.draft = null;
       S.openId = null;
+      e.preventDefault(); // this press was this one's: whatever listens after (the board's Esc) leaves it
       render();
     } else if (e.key === 'Escape' && S.chatOpen) {
       S.chatOpen = false;
+      e.preventDefault();
       render();
     }
   });
@@ -1569,8 +1573,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
     const endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
     const anchor = startEl && (startEl === endEl || startEl.contains(endEl))
-      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2)
-      : anchorAt(first.left + 2, first.top + first.height / 2);
+      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2, false, endEl)
+      : anchorAt(first.left + 2, first.top + first.height / 2, false, startEl);
     const at = range.commonAncestorContainer;
     const block = /** @type {Element | null} */ (at.nodeType === 1 ? at : at.parentElement)?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div') || document.body;
     /** @param {[Node, number]} a @param {[Node, number]} b */
