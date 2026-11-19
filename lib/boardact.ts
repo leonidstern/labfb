@@ -24,10 +24,10 @@ export const seed = (html: string, rel: string) => {
 
 // ---------- what an agent reads ----------
 /** The board as plain text: one line per frame, in order. `pins(frame)` is its open pins. */
-export function text(b: Board, o: { origin: string; file?: string | null; pins?: (f: Frame) => number }): string {
+export function text(b: Board, o: { origin: string; file?: string | null; json?: boolean; pins?: (f: Frame) => number }): string {
   const lines = [`# Board ${b.name}${b.title ? ` · ${b.title}` : ''}`, `url: ${o.origin}/_lab/board/${b.name}`];
   if (b.of) lines.push(`of: ${b.of.replace('#', ' #')}${o.file ? ` (file ${o.file})` : ''}`);
-  lines.push(`file: .lab/boards/${b.name}.json`);
+  if (o.json) lines.push(`file: .lab/boards/${b.name}.json`);
   if (b.frames.some((f) => f.src.startsWith('/_lab/'))) lines.push(`folder: .lab/boards/${b.name}/ (edit a frame's file; it reloads)`);
   for (const f of b.frames) {
     const open = o.pins?.(f) || 0;
@@ -35,10 +35,12 @@ export function text(b: Board, o: { origin: string; file?: string | null; pins?:
   }
   return lines.join('\n') + '\n';
 }
-/** The one line a pin on a frame carries: which frame, of which board. */
-export const frameLine = (b: Board, f: Frame) => {
-  const kept = b.frames.filter((g) => g.id !== f.id && g.state !== 'archived').map((g) => g.id);
-  return `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, `${f.w}×${f.h}`, f.label && `"${f.label}"`, kept.length && `beside ${kept.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
+/** The line a pin on a frame carries: which frame, of which board. A picked frame also says what to do. */
+export const frameLine = (b: Board, f: Frame, file?: string | null) => {
+  const beside = b.frames.filter((g) => g.id !== f.id && g.state !== 'archived').map((g) => g.id);
+  const gone = b.frames.filter((g) => g.state === 'archived').map((g) => g.id);
+  const line = `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, `${f.w}×${f.h}`, f.label && `"${f.label}"`, beside.length && `beside ${beside.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
+  return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived, files kept. ` : ''}${b.of ? `Put ${f.id}'s change into ${file || b.of.split('#')[0]}, then reply --done.` : ''}`.trimEnd() : line;
 };
 
 // ---------- the changes ----------
@@ -56,7 +58,7 @@ const copyIn = (e: Env, name: string, id: string, html: string) => writeAtomic(f
 
 /** One command's work (new, add, move, pick) on the stored board; the answer is what the agent reads. */
 export function act(action: string, a: Ask, e: Env): Done {
-  const view = (b: Board, file: string | null) => text(b, { origin: e.origin, file, pins: (f) => (f.src.startsWith('/_lab/') ? e.open(`/_board/${b.name}/${f.id}`) : 0) });
+  const view = (b: Board, file: string | null) => text(b, { origin: e.origin, file, json: true, pins: (f) => (f.src.startsWith('/_lab/') ? e.open(`/_board/${b.name}/${f.id}`) : 0) });
   if (action === 'list') {
     if (!a.name) return { text: names(e.root).map((n) => { const b = read(e.root, n); return b ? `${n}  ${b.frames.filter((f) => f.state !== 'archived').length} frames${b.of ? `  of ${b.of}` : ''}  ${e.origin}/_lab/board/${n}` : ''; }).filter(Boolean).join('\n') || 'No boards yet. Make one: labit board new "<topic>" --of /page --variants 3' };
     const b = read(e.root, a.name);
