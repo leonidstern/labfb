@@ -7,3 +7,6 @@ process.env.LABIT_HOME ||= fs.mkdtempSync(path.join(os.tmpdir(), 'labit-test-hom
 process.env.LABIT_NO_UPDATE_CHECK = '1';
 // Settings (lib/settings.ts) too: a run never reads or writes the person's own ~/.config/labit/settings.json.
 process.env.XDG_CONFIG_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-test-config-'));
+// Every lab a test starts ends with the test file that started it, also when the file fails or is stopped before its
+// own cleanup (local.mjs watches its parent).
+process.env.LABIT_EXIT_WITH_PARENT = '1';

@@ -26,7 +26,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-selection-'));
 const PORT = String(5800 + Math.floor(Math.random() * 300));
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const PAGE = `<!doctype html><meta charset="utf-8"><title>selection</title>
 <style>body{margin:30px;max-width:420px;font:18px/1.6 Georgia,serif}</style>
 <p id="t">Plain words to drag across in this paragraph of text, quite a few of them.</p>
@@ -141,7 +141,7 @@ try {
         const s = await dragWords(p, '#t', 'words to drag', true);
         await barUp(p);
         const l = await look(p);
-        check(eng, 'Shift-drag over words shows the actions bar, no area', l.bar && !l.zone && !l.draftPin, JSON.stringify(l));
+        check(eng, 'Shift-drag over words opens the dialog at once (no bar), no area', l.dlg && !l.bar && !l.zone && !l.draftPin, JSON.stringify(l));
         await p.keyboard.type('shifted');
         await dlgUp(p);
         await p.keyboard.press('Enter');
@@ -220,7 +220,27 @@ try {
         await p.keyboard.press('Enter');
         await untilSent('point', 700);
         const c = (await comments()).find((x) => x.text === 'point');
-        check(eng, '…saved as a point (no quote selected)', Boolean(c) && !c.anchor.quote?.selected && c.anchor.zw === undefined, JSON.stringify(c?.anchor?.kind));
+        check(eng, '…saved as a point (no quote selected)', Boolean(c) && !c.anchor.quote && c.anchor.kind !== 'text' && c.anchor.zw === undefined, JSON.stringify(c?.anchor?.kind));
+      });
+      // A click on a word, the mouse moving a pixel or two between down and up: still a point pin, never a quote, nothing lit
+      await scene(browser, async (p) => {
+        const s = await span(p, '#t', 'paragraph');
+        const [x, y] = [(s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2];
+        for (const [dx, dy] of [[0, 0], [2, 1], [-2, 0], [1, -2]]) {
+          await p.mouse.move(x, y);
+          await p.mouse.down();
+          await p.mouse.move(x + dx, y + dy);
+          await p.mouse.up();
+          await sleep(600);
+          const lit = await p.evaluate(() => Boolean(CSS.highlights?.get('lab-quote')?.size));
+          const l = await look(p);
+          check(eng, `a click on a word with ${dx},${dy} px of jitter is a point pin: no quote lit, no dialog row`, !lit && l.box === 1 && !l.dlg && !l.bar, JSON.stringify([lit, l]));
+          await p.keyboard.type(`jit${dx}${dy}`);
+          await p.keyboard.press('Enter');
+          await sleep(700);
+          const c = (await comments()).find((q) => q.text === `jit${dx}${dy}`);
+          check(eng, '…saved with no quote', Boolean(c) && !c.anchor.quote && c.anchor.kind !== 'text', JSON.stringify(c?.anchor?.kind));
+        }
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'paragraph');
@@ -243,7 +263,7 @@ try {
         await p.keyboard.up('Shift');
         await barUp(p, 900);
         const l = await look(p);
-        check(eng, 'Shift + double-click on a word shows the actions bar (no box left from the first click)', l.bar && !l.box && !l.draftPin, JSON.stringify(l));
+        check(eng, 'Shift + double-click on a word opens the dialog (one box, none left from the first click)', l.dlg && !l.bar && l.box === 1 && !l.draftPin, JSON.stringify(l));
         await p.keyboard.type('word');
         await dlgUp(p);
         await p.keyboard.press('Enter');
@@ -256,9 +276,9 @@ try {
         await p.keyboard.down('Shift');
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await p.keyboard.up('Shift');
-        await barUp(p, 900);
+        await untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.classList.contains('settled'); }, 1500);
         const l = await look(p);
-        check(eng, 'Shift + triple-click selects the paragraph and shows the actions bar', l.bar && !l.box, JSON.stringify(l));
+        check(eng, 'Shift + triple-click selects the paragraph and opens the dialog at once', l.dlg && !l.bar, JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const f = await p.locator('#field').boundingBox();
