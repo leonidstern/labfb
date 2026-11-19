@@ -162,7 +162,7 @@ async function look($: any): Promise<void> {
       text:
         `labit: ${n} on ${p.pages.join(', ')} (${p.url}) while you weren't listening${busy ? ' (queued while you were busy)' : ''}. ` +
         `Run \`${p.cmd} wait --timeout 5\` in ${p.dir} to read them (nothing new means you already have them), ` +
-        `answer each on its pin with reply, then listen again in the background as before (\`wait --bg\`).`,
+        `read each thread whole (the page or section is not the question), answer each on its pin with reply, then listen again in the background as before (\`wait --bg\`).`,
     });
     return;
   }
