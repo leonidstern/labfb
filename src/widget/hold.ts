@@ -9,10 +9,11 @@ const holder = (): Holder | null => (window as unknown as { __lab?: Holder }).__
 
 let words = 0;
 let open = false;
+let editing = false;
 const update = () => {
   const L = holder();
   if (!L) return;
-  L.writing = words + (open ? 1 : 0);
+  L.writing = words + (open ? 1 : 0) + (editing ? 1 : 0);
   if (!L.writing) L.flush(); // nothing is being written or read any more: the page can catch up
 };
 
@@ -26,5 +27,11 @@ export function holdReloads(count: number) {
 export function holdWhileOpen(isOpen: boolean) {
   if (open === isOpen) return;
   open = isOpen;
+  update();
+}
+
+/** Words are being edited in place, or a block is picked (edit.ts): a reload waits for them. */
+export function holdEditing(on: boolean) {
+  editing = on;
   update();
 }
