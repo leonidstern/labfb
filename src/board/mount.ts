@@ -1,0 +1,755 @@
+// A board's frames on one canvas you pan and zoom, mounted into a box: the board page (/_lab/board/<name>, board.ts) mounts
+// it into a box over the whole window, a lab page mounts it into its board view (overlay.ts, over the same page, Leo
+// 19 Nov: "can board be part of same page?"). The board file and its API come from the lab (lib/board.ts, GET
+// /_lab/api/board). Frames are the lab's own pages in iframes, named "lab:<id>", which the widget in them reads as
+// "draw nothing, bind nothing" (src/widget/frame.ts, it finds window.__labBoard on top).
+//
+// Camera: cam = { x, y, z }, box = (world + cam) * z, the box's own px from its top left. The world is one element with one
+// transform; a frame is a box in it.
+import { clamp, fitAll, fitFrame, panBy, zoomAt } from './camera.ts';
+import type { Cam, Box } from './camera.ts';
+
+type Frame = { id: string; src: string; w: number; h: number; x: number; y: number; label?: string; state?: string; auto?: boolean; variantOf?: string };
+type Board = { rev: number; frames: Frame[]; of?: string } & Record<string, unknown>;
+type Card = { f: Frame; box: HTMLElement; inner: HTMLElement; frame?: HTMLIFrameElement; seen: number };
+type Spot = { left: number; top: number; zone: null; clipped?: boolean };
+
+type MountOpts = {
+  of?: string; // the page this board is about (the API's ?page=, and where back goes on the board page)
+  back?: () => void; // ⇧B and Esc on an empty board: back to the page (the board page) or closing the view (a page's)
+  hash?: boolean; // the camera is kept in the address's #x,y,z (the board page; a page's view keeps #board=<name>)
+  clip?: boolean; // a pin whose spot is outside the box hides (the box is less than the window)
+};
+
+const coarse = matchMedia('(pointer: coarse)').matches;
+const CAP = coarse ? 3 : 8; // frames alive at once (a phone draws them at 390 wide, so three side by side stay light)
+const AT_ONCE = coarse ? 1 : 2; // frames loading at once
+const WAKE = coarse ? 56 : 120; // a frame is woken when it is in view and at least this many screen px wide (a phone: every frame fitted, live)
+
+const css = `
+#lab-board{position:fixed;inset:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:default;background:#f7f7f7;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif;overscroll-behavior:none}
+@media (prefers-color-scheme:dark){#lab-board{background:#1b1b1a;color:#e9e8e4}}
+#lab-board .dots{position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(circle,var(--lab-black-2,rgba(0,0,0,.1)) .5px,transparent 1px)}
+@media (prefers-color-scheme:dark){#lab-board .dots{background-image:radial-gradient(circle,var(--lab-white-2,rgba(255,255,255,.1)) .5px,transparent 1px)}}
+#lab-board .world{position:absolute;left:0;top:0;transform-origin:0 0}
+#lab-board.grab,#lab-board.grab *{cursor:grab!important}
+#lab-board.grab.grabbing,#lab-board.grab.grabbing *{cursor:grabbing!important}
+#lab-board .f{position:absolute;outline:calc(1px*var(--iz,1)) solid rgba(0,0,0,.08)}
+#lab-board .b{position:absolute;inset:0;background:#fff;contain:layout paint}
+#lab-board .f.off{content-visibility:hidden}
+#lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
+#lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
+#lab-board .f.in iframe{pointer-events:auto}
+#lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
+#lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
+#lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
+#lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
+#lab-board .t u.on{opacity:1;text-decoration:underline}
+#lab-board .none{position:absolute;inset:0;display:grid;place-items:center;opacity:.7}
+#lab-hand{position:fixed;z-index:2147483647;cursor:grab;touch-action:none}
+#lab-hand.grabbing{cursor:grabbing}
+#lab-board .zm{position:absolute;right:max(10px,env(safe-area-inset-right));top:10px;z-index:5;display:flex;flex-direction:row-reverse;align-items:center;gap:2px;font:500 12px/1 system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums;color:inherit}
+#lab-board .zm button{font:inherit;color:inherit;background:none;border:0;border-radius:999px;padding:6px 8px;cursor:pointer;opacity:.55}
+#lab-board .zm button:hover,#lab-board .zm.open button{opacity:1;background:rgba(0,0,0,.06)}
+#lab-board .zm .zo{min-width:3.2em;text-align:right}
+#lab-board .zm:not(.open) .zc{display:none}
+@media (prefers-color-scheme:dark){#lab-board .zm button:hover,#lab-board .zm.open button{background:rgba(255,255,255,.08)}}
+#lab-board .done{position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
+`;
+
+/** The board called name in root (an element with id lab-board, positioned: it is the board's box). destroy() lets go of
+ * every listener and the frames. */
+export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}) {
+  if (!document.getElementById('lab-board-css')) document.head.append(Object.assign(document.createElement('style'), { id: 'lab-board-css', textContent: css }));
+  const ac = new AbortController();
+  const signal = ac.signal;
+  const on = <K extends string>(type: K, fn: (e: never) => void, o: AddEventListenerOptions | boolean = {}) => addEventListener(type, fn as EventListener, { ...(typeof o === 'boolean' ? { capture: o } : o), signal });
+  root.id = 'lab-board';
+  // The canvas: a grid of dots, one background on one element (Leo, 19 Nov: "more fancy, maybe dotted, more our
+  // style"; then "more whiter pls and smaller dots less visible": near white, 1 px dots at a tenth of black, and a
+  // hairline round each frame so a white page still has an edge on it). It goes with the camera (paintCam) and fades
+  // out below a quarter zoom, where the dots would run together.
+  const dots = document.createElement('div');
+  dots.className = 'dots';
+  dots.setAttribute('aria-hidden', 'true');
+  const world = document.createElement('div');
+  world.className = 'world';
+  root.append(dots, world);
+
+  let of = opts.of || '';
+  let cards: Card[] = [];
+  let edited: Record<string, string> = {}; // page path -> when its file was saved
+  let cam: Cam = { x: 0, y: 0, z: 1 };
+  let view = { w: 1, h: 1 };
+  let ox = 0; // where the box is on the screen
+  let oy = 0;
+  const measure = () => {
+    const r = root.getBoundingClientRect();
+    [ox, oy, view] = [r.left, r.top, { w: r.width || innerWidth, h: r.height || innerHeight }];
+  };
+  measure();
+  let moved = false; // the person moved the camera: a resize no longer fits everything again
+  let selected = '';
+  let entered = '';
+  let board: Board | null = null; // as the lab gave it: saved whole, with the rev it was read at
+  let undo: Frame[][] = []; // the frames before each change, newest last (⌘Z)
+  let focus = false; // the camera is fitted to one frame (a phone's first view, Tab): a swipe goes to the next
+  let lastDown = 0;
+  let checked = { x: 1e9, y: 1e9, z: 0 }; // the camera at the last wake/cull check
+  let still: ReturnType<typeof setTimeout> | undefined;
+  let movedAt = -1e9; // when the camera last moved
+  let layered = false; // the world is its own layer (the camera is moving)
+  let paintedZ = 0; // the zoom the labels were last sized for
+
+  const boxes = (): Box[] => cards.map((c) => c.f);
+  const ago = (iso?: string) => {
+    const s = iso ? (Date.now() - Date.parse(iso)) / 1000 : NaN;
+    return !(s >= 0) ? '' : s < 60 ? 'edited just now' : s < 3600 ? `edited ${Math.floor(s / 60)}m ago` : s < 86400 ? `edited ${Math.floor(s / 3600)}h ago` : `edited ${Math.floor(s / 86400)}d ago`;
+  };
+  const text = (tag: string, t: string, to: Node) => to.appendChild(Object.assign(document.createElement(tag), { textContent: t }));
+
+  // A title card: what the frame is, as plain text. No screenshot (it would go stale), no count of comments.
+  const card = (c: Card) => {
+    const el = document.createElement('div');
+    el.className = 'c';
+    text('b', c.f.label || c.f.src, el);
+    text('div', `${c.f.w} × ${c.f.h}`, el);
+    if (c.f.label) text('div', c.f.src, el);
+    const when = ago(edited[c.f.src.replace(/\.html?$/i, '').replace(/\/$/, '') || '/']);
+    if (when) text('div', when, el);
+    return el;
+  };
+
+  // One camera write per frame: a trackpad sends two or three wheel events a frame, each was a transform, a --iz restyle
+  // of every label and a pin redraw (Leo, 19 Nov: "lags a lot"). Nothing here reads the page's layout, and the labels
+  // are sized again only when the zoom changed (a pan restyles nothing).
+  let drawFrame = 0;
+  let whole = false; // the next paint is not the camera alone
+  let boxed = false; // …or the box changed size with it (a view being dragged): the widget looks at what the view covers
+  let sizing = false; // the box is changing size: fitted and held to its edges again once it rests
+  const draw = () => {
+    drawFrame ||= requestAnimationFrame(paintCam);
+  };
+  const paintCam = () => {
+    drawFrame = 0;
+    if (signal.aborted) return;
+    world.style.transform = `scale(${cam.z}) translate(${cam.x}px,${cam.y}px)`;
+    // The dots: one every GRID px of the board, a dot on the board's own 0,0.
+    const step = GRID * cam.z;
+    dots.style.backgroundPosition = `${((cam.x * cam.z) % step) - step / 2}px ${((cam.y * cam.z) % step) - step / 2}px`;
+    if (cam.z !== paintedZ) {
+      paintedZ = cam.z;
+      dots.style.backgroundSize = `${step}px ${step}px`;
+      dots.style.opacity = String(Math.max(0, Math.min(1, (cam.z - 0.2) / 0.15))); // all there from 35 %, gone at 20 %
+      world.style.setProperty('--iz', String(1 / cam.z));
+      const pc = `${Math.round(cam.z * 100)}%`;
+      if (zoomBtn.textContent !== pc) zoomBtn.textContent = pc;
+    }
+    // The widget moves the board's pins with it, in this same frame (detail.camera: only the camera moved, so that is
+    // all it does: a whole redraw of the widget on every frame of a pinch took 70 ms a frame; Leo, 19 Nov: "zoom feels
+    // weird, slow").
+    dispatchEvent(whole ? new Event('lab-board-moved') : new CustomEvent('lab-board-moved', { detail: { camera: true, box: boxed } }));
+    whole = boxed = false;
+  };
+  // While the camera moves the world is its own layer (the browser moves the picture it has, it doesn't draw every live
+  // frame again at each step); a layer kept after it stops would stay a blurry bitmap at the new zoom. So it is let go
+  // once the camera has rested (REST: a trackpad's short pauses between strokes keep the layer), and the same rest is
+  // when frames are woken and the address is written: nothing is loaded and no timer is set per event mid-gesture.
+  const REST = 180;
+  const GRID = 32;
+  const rest = () => {
+    still = undefined;
+    if (signal.aborted) return;
+    const left = REST - (performance.now() - movedAt);
+    if (left > 1) return void (still = setTimeout(rest, left));
+    if (sizing) {
+      sizing = false;
+      return go(moved ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
+    }
+    layered = false;
+    world.style.willChange = '';
+    wake();
+    if (!opts.hash) return;
+    try {
+      history.replaceState(history.state, '', `#${Math.round(cam.x)},${Math.round(cam.y)},${cam.z.toFixed(3)}`);
+    } catch {}
+  };
+  const moving = () => {
+    movedAt = performance.now();
+    if (!layered) {
+      layered = true;
+      world.style.willChange = 'transform';
+    }
+    still ||= setTimeout(rest, REST);
+  };
+  // The camera goes to next, held to the board's edges: past an edge it just stops (Leo, 19 Nov: "remove weird bounce
+  // on edge of canvas": it gave way and sprang back). pan: a move that keeps a fitted frame's focus (a phone's swipe).
+  const go = (next: Cam, user = true, pan = false) => {
+    const c = clamp(next, boxes(), view);
+    if (user) moved = true;
+    if (user && (!pan || Math.abs(c.z - cam.z) > 1e-6)) focus = false;
+    if (!user) whole = true; // the board itself changed (its box, its frames): the widget draws everything again
+    cam = c;
+    draw();
+    moving();
+    // A frame coming into view is shown at once; loading one waits for the rest.
+    if (Math.abs(cam.x - checked.x) * cam.z > 64 || Math.abs(cam.y - checked.y) * cam.z > 64 || Math.abs(cam.z / (checked.z || 1) - 1) > 0.05) wake(false);
+  };
+
+  // Which frames are alive. Those in view and wide enough, nearest the centre first, up to the cap, two loading at a time;
+  // when the cap is reached the one seen longest ago is dropped back to its card (never the selected or entered one).
+  const loading = () => cards.filter((c) => c.frame && !c.frame.dataset.ready).length;
+  function wake(load = true) {
+    if (signal.aborted) return;
+    checked = { ...cam };
+    const now = performance.now();
+    const near = (c: Card) => {
+      const f = c.f;
+      return { l: (f.x + cam.x) * cam.z, t: (f.y + cam.y) * cam.z, r: (f.x + f.w + cam.x) * cam.z, b: (f.y + f.h + cam.y) * cam.z };
+    };
+    const seen = cards.filter((c) => {
+      const r = near(c);
+      const inView = r.r > -200 && r.l < view.w + 200 && r.b > -200 && r.t < view.h + 200;
+      if (inView || load) c.box.classList.toggle('off', !inView); // mid-move a frame is only ever shown, never hidden
+      return r.r > 0 && r.l < view.w && r.b > 0 && r.t < view.h;
+    });
+    for (const c of seen) if (c.frame) c.seen = now;
+    if (!load) return;
+    const dist = (c: Card) => {
+      const r = near(c);
+      return Math.hypot((r.l + r.r) / 2 - view.w / 2, (r.t + r.b) / 2 - view.h / 2);
+    };
+    const want = seen.filter((c) => !c.frame && c.f.w * cam.z >= WAKE).sort((a, b) => dist(a) - dist(b));
+    const alive = () => cards.filter((c) => c.frame);
+    for (const c of want) {
+      if (loading() >= AT_ONCE) break;
+      if (alive().length >= CAP) {
+        const old = alive().filter((o) => o.f.id !== selected && o.f.id !== entered && !seen.includes(o)).sort((a, b) => a.seen - b.seen)[0];
+        if (!old) break;
+        sleep(old);
+      }
+      live(c);
+    }
+  }
+  function live(c: Card) {
+    if (c.frame) return;
+    const fr = document.createElement('iframe');
+    fr.name = `lab:${c.f.id}`;
+    fr.title = c.f.label || c.f.src;
+    fr.addEventListener('load', () => {
+      fr.dataset.ready = '1';
+      if (entered === c.f.id) focusIn(c);
+      wake(); // the next one may load now
+    }, { once: true });
+    fr.src = c.f.src;
+    c.frame = fr;
+    c.seen = performance.now();
+    c.inner.replaceChildren(fr);
+  }
+  function sleep(c: Card) {
+    c.frame?.remove();
+    c.frame = undefined;
+    c.inner.replaceChildren(card(c));
+  }
+
+  // ---------- frames in the world ----------
+  const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
+  function show(b: Board) {
+    if (signal.aborted) return;
+    board = b;
+    of = of || (b.of || '').split('#')[0];
+    const shown = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
+    // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
+    // page). Only how it's drawn here: what is saved is the board as read (save sends board.frames).
+    const next = coarse ? [...shown].sort((p, q) => p.y - q.y || p.x - q.x).map((f, i) => ({ ...f, x: i * (390 + 80), y: 0, w: 390, h: 844 })) : shown;
+    const old = new Map(cards.map((c) => [c.f.id, c]));
+    cards = next.map((f) => {
+      const was = old.get(f.id);
+      old.delete(f.id);
+      if (was && was.f.src === f.src) {
+        if (!was.frame && (was.f.w !== f.w || was.f.h !== f.h)) was.inner.replaceChildren(card({ ...was, f }));
+        was.f = f;
+        return was;
+      }
+      was?.box.remove();
+      const box = document.createElement('div');
+      box.className = 'f';
+      const inner = document.createElement('div');
+      inner.className = 'b';
+      const c: Card = { f, box, inner, seen: 0 };
+      box.dataset.id = f.id;
+      inner.appendChild(card(c));
+      box.append(inner);
+      text('div', '', box).className = 't';
+      world.append(box);
+      return c;
+    });
+    for (const c of old.values()) c.box.remove();
+    for (const c of cards) {
+      const f = c.f;
+      Object.assign(c.box.style, { left: `${f.x}px`, top: `${f.y}px`, width: `${f.w}px`, height: `${f.h}px` });
+      paint(c);
+    }
+    if (selected && !cards.some((c) => c.f.id === selected)) selected = entered = '';
+    world.querySelector('.none')?.remove();
+    if (!cards.length) text('div', 'No frames on this board.', world).className = 'none';
+    const hash = opts.hash ? /^#(-?\d+),(-?\d+),([\d.]+)$/.exec(location.hash) : null;
+    if (hash && !moved) cam = { x: +hash[1], y: +hash[2], z: +hash[3] };
+    else if (!moved) {
+      // Every frame in view, as on a computer, phones too (Leo, 19 Nov: one frame at a time read as a slider, "dont like
+      // this view at all"): drag pans, pinch zooms, Tab or a frame's label still fits one.
+      focus = false;
+      cam = fitAll(boxes(), view);
+    }
+    moved = moved || Boolean(hash);
+    go(cam, false);
+    wake();
+  }
+  const api = (more = '') => `/_lab/api/board?name=${name}${of ? `&page=${encodeURIComponent(of)}` : ''}${more}`;
+  const load = async () => {
+    const res = await fetch(api()).catch(() => null);
+    if (signal.aborted) return;
+    if (!res?.ok) {
+      text('div', res?.status === 404 ? `There is no board called ${name}.` : 'The board could not be read.', world).className = 'none';
+      return;
+    }
+    show(await res.json());
+  };
+  // When each page was saved, for "edited 5m ago" (a variant's file has no such time here: the card says none).
+  fetch('/_lab/pages').then((r) => r.json()).then((d) => {
+    edited = Object.fromEntries((d.pages || []).map((p: { path: string; edited: string }) => [p.path, p.edited]));
+    for (const c of cards) if (!c.frame) c.inner.replaceChildren(card(c));
+  }).catch(() => {});
+
+  // The label above a frame; on the selected one a plain list of sizes to pick from.
+  const SIZES: Record<number, number> = { 390: 844, 820: 1180, 1280: 800, 1440: 900 };
+  const editable = () => Boolean(document.querySelector('script[data-admin]')); // this computer's browser; a guest only looks
+  function paint(c: Card) {
+    const t = c.box.querySelector('.t') as HTMLElement;
+    t.textContent = label(c.f);
+    if (c.f.id !== selected || !editable()) return;
+    for (const w of Object.keys(SIZES)) t.append(' ', Object.assign(document.createElement('u'), { textContent: w, className: +w === c.f.w ? 'on' : '' }));
+    t.dataset.id = c.f.id;
+  }
+  const copy = (fs: Frame[]) => fs.map((f) => ({ ...f }));
+  // Every change is the whole board put back with the rev it was read at; a frame is never dropped, only archived. A frame the
+  // lab placed (auto) is sent without x and y, or it would become fixed where it is now.
+  async function save(frames: Frame[], before: Frame[], remember = true) {
+    if (!board || !editable()) return;
+    if (remember) undo.push(before);
+    const body = { ...board, frames: frames.map(({ auto, x, y, ...f }) => (auto ? f : { ...f, x, y })) };
+    const res = await fetch(api(), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+    if (!res) return;
+    const j = await res.json();
+    if (res.status === 409 && remember) undo.pop(); // somebody else changed it: theirs is shown, the change is not made
+    if (res.ok || res.status === 409) show(res.ok ? j : j.board);
+  }
+  // One change at a time: the next is made from what the lab answered to the last (the rev it names).
+  let queue: Promise<unknown> = Promise.resolve();
+  const change = (fn: (fs: Frame[]) => void, remember = true) => {
+    queue = queue.then(() => {
+      if (!board) return;
+      const before = copy(board.frames);
+      const fs = copy(board.frames);
+      fn(fs);
+      return save(fs, before, remember);
+    });
+  };
+  const mutate = (id: string, fn: (f: Frame) => void) => change((fs) => fn(fs.find((f) => f.id === id)!));
+  const nextId = (fs: Frame[]) => {
+    for (let n = 0; ; n++) {
+      const id = String.fromCharCode(97 + (n % 26)) + (n >= 26 ? Math.floor(n / 26) : '');
+      if (!fs.some((f) => f.id === id)) return id;
+    }
+  };
+  const dup = (id: string) =>
+    change((fs) => {
+      const f = fs.find((g) => g.id === id)!;
+      const n = { ...f, id: nextId(fs), x: (f.x || 0) + f.w + 80, y: f.y, variantOf: f.id, auto: false, state: 'live' };
+      fs.splice(fs.indexOf(f) + 1, 0, n);
+      setTimeout(() => select(n.id), 400);
+    });
+  const archive = (id: string) => (select(''), mutate(id, (f) => (f.state = 'archived')));
+  // ⌘Z: the frames as they were; one added since is archived (a frame is never dropped).
+  const undoLast = () => {
+    const was = undo.pop();
+    if (was) change((fs) => fs.splice(0, fs.length, ...was, ...fs.filter((f) => !was.some((g) => g.id === f.id)).map((f) => ({ ...f, state: 'archived' }))), false);
+  };
+
+  // ---------- selecting and entering ----------
+  const find = (id: string) => cards.find((c) => c.f.id === id);
+  function select(id: string) {
+    if (entered && entered !== id) leave();
+    selected = id;
+    for (const c of cards) {
+      c.box.classList.toggle('sel', c.f.id === id);
+      paint(c);
+    }
+  }
+  function focusIn(c: Card) {
+    c.frame?.focus();
+    c.frame?.contentWindow?.focus();
+  }
+  function enter(id: string) {
+    const c = find(id);
+    if (!c) return;
+    select(id);
+    entered = id;
+    c.box.classList.add('in');
+    if (!c.frame) live(c); // a card is woken to be entered, cap or not
+    else focusIn(c);
+    if (coarse) done.hidden = false;
+  }
+  function leave() {
+    const c = find(entered);
+    entered = '';
+    done.hidden = true;
+    if (!c) return;
+    c.box.classList.remove('in');
+    // The keys stay with the frame's document until focus is moved back: M, ⇧B and Esc would go to the wrong one.
+    (c.frame?.contentWindow as unknown as { __labSpot?: { clear?: () => void } } | null | undefined)?.__labSpot?.clear?.();
+    c.frame?.blur();
+    window.focus();
+  }
+  const done = Object.assign(document.createElement('button'), { className: 'done', type: 'button', textContent: 'done', hidden: true });
+  done.addEventListener('click', () => (leave(), select('')));
+  root.append(done);
+  // The zoom, quiet in the top-right corner (the widget has both bottom ones) (Leo, 19 Nov: "show zoom somewhere"); a tap offers fit · 50% · 100%.
+  const zoomBox = document.createElement('div');
+  zoomBox.className = 'zm';
+  zoomBox.setAttribute('data-uncommentable', '');
+  const zoomBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'zo', textContent: '100%' });
+  zoomBtn.setAttribute('aria-label', 'zoom');
+  zoomBtn.addEventListener('click', () => zoomBox.classList.toggle('open'));
+  zoomBox.append(zoomBtn);
+  for (const [t, to] of [['fit', 0], ['50%', 0.5], ['100%', 1]] as const) {
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'zc', textContent: t });
+    b.addEventListener('click', () => {
+      measure();
+      go(to ? zoomAt(cam, view.w / 2, view.h / 2, to, boxes(), view) : fitAll(boxes(), view));
+      zoomBox.classList.remove('open');
+    });
+    zoomBox.append(b);
+  }
+  root.append(zoomBox);
+  const ours = (e: Event) => e.target instanceof Node && zoomBox.contains(e.target); // its own clicks, not the board's
+
+  // ---------- input: the board owns its surface (these run before the widget's own listeners) ----------
+  // Points are the box's own: the screen's less where the box is.
+  const lx = (e: { clientX: number }) => e.clientX - ox;
+  const ly = (e: { clientY: number }) => e.clientY - oy;
+  const at = (e: { clientX: number; clientY: number }) => {
+    const x = lx(e) / cam.z - cam.x;
+    const y = ly(e) / cam.z - cam.y;
+    return cards.find((c) => x >= c.f.x && x <= c.f.x + c.f.w && y >= c.f.y && y <= c.f.y + c.f.h)?.f.id || '';
+  };
+  const mine = (e: Event) => e.target instanceof Node && (root.contains(e.target) || e.target === handLayer);
+  const pts = new Map<number, { x: number; y: number }>();
+  let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; held?: boolean; hand?: boolean } | null = null;
+  let holdTimer = 0;
+  // A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
+  // put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
+  const boardWidget = () => (window as unknown as { __labBoardWidget?: { dismiss?: () => boolean; pinning: () => boolean; holding?: () => boolean; hold?: (x: number, y: number) => void; place: (x: number, y: number) => void } }).__labBoardWidget;
+  let tap = { at: 0, x: 0, y: 0 };
+  let pinch = 0;
+  // On a computer a plain mouse drag is labit's, as on a page (a click pins, a drag marks an area, a click selects); the
+  // board pans with Space held and a drag (the hand), or a trackpad's two fingers / the wheel (Leo, 19 Nov: "like the
+  // sketch"). A finger still pans, and a hold pins.
+  let space = false;
+  let theirs = false; // this press went to the widget (comment mode): its click isn't eaten
+  // While Space is held one still layer lies over the whole board, frames and pins included, with the hand on it: no
+  // frame, pin or pointer rule under it can show its own cursor between frames (Leo, 19 Nov: "switch to hand
+  // flickering"). Put there once on the key going down, never on its repeats, and taken away when it is let go.
+  let handLayer: HTMLElement | null = null;
+  const hand = () => {
+    root.classList.toggle('grab', space);
+    root.classList.toggle('grabbing', space && Boolean(down?.hand));
+    if (space && !handLayer) {
+      measure();
+      handLayer = document.createElement('div');
+      handLayer.id = 'lab-hand';
+      handLayer.setAttribute('data-uncommentable', '');
+      Object.assign(handLayer.style, { left: `${ox}px`, top: `${oy}px`, width: `${view.w}px`, height: `${view.h}px` });
+      document.documentElement.append(handLayer);
+    } else if (!space && handLayer && !down?.hand) {
+      handLayer.remove();
+      handLayer = null;
+    }
+    handLayer?.classList.toggle('grabbing', Boolean(down?.hand));
+  };
+  const eat = (e: Event) => (e.stopImmediatePropagation(), e.preventDefault());
+
+  on('pointerdown', (e: PointerEvent) => {
+    if (!mine(e) || ours(e) || entered && e.target instanceof HTMLIFrameElement) return;
+    if (zoomBox.classList.contains('open')) zoomBox.classList.remove('open');
+    measure();
+    theirs = false;
+    if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget()?.pinning()) {
+      lastDown = performance.now();
+      theirs = true; // comment mode, no Space: the widget's own click (a pin) and drag (an area)
+      return;
+    }
+    eat(e);
+    lastDown = performance.now();
+    const size = (e.target as HTMLElement).closest?.('u');
+    if (size && editable()) return mutate((e.target as HTMLElement).parentElement!.dataset.id!, (f) => ((f.w = +size.textContent!), (f.h = SIZES[f.w]))); // a size from the list
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    root.setPointerCapture?.(e.pointerId);
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      pinch = Math.hypot(a.x - b.x, a.y - b.y);
+      if (down) down.far = true; // a second finger: this was no tap
+    } else {
+      // A frame stays where the board put it: no drag moves one (Leo, 19 Nov: "make it simpler here, dont allow moving frames").
+      down = { x: e.clientX, y: e.clientY, id: at(e), far: false, at: performance.now(), t: e.timeStamp, hand: e.pointerType === 'touch' || space };
+      hand();
+      clearTimeout(holdTimer);
+      if (e.pointerType === 'touch') {
+        const d = down;
+        holdTimer = window.setTimeout(() => {
+          const w = boardWidget();
+          if (down !== d || d.far || pts.size !== 1 || !(w?.holding ? w.holding() : w?.pinning())) return;
+          d.held = true; // the comment opens on the lift (below), as a page's hold does: opened now, the lift closed it
+          navigator.vibrate?.(8);
+        }, 400);
+      }
+    }
+  }, true);
+  on('pointermove', (e: PointerEvent) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    eat(e);
+    const [dx, dy] = [e.clientX - p.x, e.clientY - p.y];
+    if (pts.size === 2) {
+      const o = [...pts.entries()].find(([id]) => id !== e.pointerId)![1];
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const d = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+      const mid = { x: (e.clientX + o.x) / 2 - ox, y: (e.clientY + o.y) / 2 - oy };
+      if (pinch) go(panBy(zoomAt(cam, mid.x, mid.y, cam.z * (d / pinch), boxes(), view), dx / 2, dy / 2));
+      pinch = d;
+      return;
+    }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) {
+      down.far = true;
+      clearTimeout(holdTimer);
+    }
+    if (down?.held) return; // the hold made a pin: the finger lifting off doesn't pan
+    if (down?.far && down.hand) go(panBy(cam, dx, dy), true, true); // a finger or the hand: the board stops at its edge
+  }, true);
+  const up = (e: PointerEvent) => {
+    if (!pts.delete(e.pointerId)) return;
+    eat(e);
+    pinch = 0;
+    const d = down;
+    clearTimeout(holdTimer);
+    if (pts.size || !d) return;
+    down = null;
+    hand();
+    // Right after the page loads, the live frames keep the page busy: the finger's lift can be handled before the 400 ms
+    // timer runs, and the first hold was taken for a tap (Leo, 19 Nov). The touch's own times decide it then.
+    if (!d.held && !d.far && e.type === 'pointerup' && e.pointerType === 'touch' && e.timeStamp - d.t >= 400) {
+      const w = boardWidget();
+      if (w?.holding ? w.holding() : w?.pinning()) d.held = true;
+    }
+    if (d.held) {
+      const w = boardWidget();
+      if (w && e.type === 'pointerup') setTimeout(() => (w.hold || w.place)(d.x, d.y), 0);
+      return;
+    }
+    if (d.far && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
+    if (d.far || e.type === 'pointercancel') return;
+    const widget = boardWidget();
+    // An open comment or the chat: this tap only closes it, as a click outside one does on a page (Leo, 19 Nov: "clicking
+    // outside comment should work here same as on page", "same with chat"). A drag (a pan) is no tap and closes nothing.
+    if (widget?.dismiss?.()) return;
+    if (widget?.pinning() && e.pointerType !== 'touch') return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
+    // A tap selects the frame under it (or nothing); a second one close by and soon enters it.
+    const again = performance.now() - tap.at < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24;
+    tap = { at: performance.now(), x: e.clientX, y: e.clientY };
+    if (again && d.id && d.id === selected) return enter(d.id);
+    select(d.id);
+  };
+  on('pointerup', up, true);
+  on('pointercancel', up, true);
+  on('click', (e: MouseEvent) => mine(e) && !theirs && !ours(e) && eat(e), true);
+  on('dblclick', (e: MouseEvent) => mine(e) && eat(e), true);
+  on('contextmenu', (e: MouseEvent) => mine(e) && e.preventDefault(), true);
+  // A mouse or trackpad. Pinch on a trackpad arrives as a wheel with ctrlKey (Chrome, Firefox); ⌘ or Ctrl and a wheel zoom.
+  // A wheel over a pin on the board is the board's too: it went to the page behind (Leo, 19 Nov: "scroll inside board
+  // working weird"). Only an entered frame scrolls its own page.
+  const overPin = (e: Event) => {
+    const t = e.composedPath()[0];
+    return t instanceof Element && Boolean(t.closest('.pin')) && inBox((e as WheelEvent).clientX, (e as WheelEvent).clientY);
+  };
+  // A pinch follows the fingers: Chrome and Firefox send it as ctrl + wheel with deltaY = -100 * ln(the fingers' scale),
+  // so e^(-deltaY / 100) is that scale again, as Safari's gesture gives it below (it was four times that: a small pinch
+  // shot to the most zoom). ⌘ + wheel is the same per px. One event never does more than a quarter.
+  let wheelAt = -1e9;
+  on('wheel', (e: WheelEvent) => {
+    if (!mine(e) && !overPin(e)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.timeStamp - wheelAt > 250) measure(); // where the box is, read once as a gesture starts, never per event
+    wheelAt = e.timeStamp;
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? view.h : 1; // lines (a mouse in Firefox), pages, px
+    if (e.ctrlKey || e.metaKey) {
+      const dy = Math.max(-24, Math.min(24, e.deltaY * unit));
+      go(zoomAt(cam, lx(e), ly(e), cam.z * Math.exp(-dy * 0.01), boxes(), view));
+    } else go(panBy(cam, -(e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * unit, e.shiftKey && !e.deltaX ? 0 : -e.deltaY * unit), true, true);
+  }, { passive: false, capture: true });
+  // Safari's pinch.
+  let g0 = 1;
+  on('gesturestart', (e: Event) => mine(e) && (e.preventDefault(), measure(), (g0 = cam.z)), true);
+  on('gesturechange', (e: Event) => {
+    if (!mine(e)) return;
+    e.preventDefault();
+    const x = e as unknown as { scale: number; clientX: number; clientY: number };
+    go(zoomAt(cam, x.clientX === undefined ? view.w / 2 : x.clientX - ox, x.clientY === undefined ? view.h / 2 : x.clientY - oy, g0 * x.scale, boxes(), view));
+  }, true);
+
+  // ---------- keys (after the widget's own: an Esc it used is not ours) ----------
+  const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(n.tagName) || n.hasAttribute('data-lab-comments')));
+  const back = () => opts.back?.();
+  // The next (1) or previous (-1) frame in board order, the camera on it.
+  const step = (by: number) => {
+    if (!cards.length) return;
+    const c = cards[(cards.findIndex((o) => o.f.id === selected) + by + cards.length) % cards.length];
+    select(c.f.id);
+    go(fitFrame(c.f, view));
+    focus = true;
+  };
+  const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
+    const [cmd, sel] = [e.metaKey || e.ctrlKey, find(selected)];
+    if (cmd && !e.altKey && !e.shiftKey && !entered && editable()) {
+      if (e.code === 'KeyZ') {
+        undoLast();
+        return true;
+      }
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return false;
+    if (sel && !entered && editable() && (e.key === 'Backspace' || e.key === 'Delete')) {
+      archive(selected);
+      return true;
+    }
+    const digit = /^Digit(\d)$/.exec(e.code)?.[1];
+    if (e.shiftKey && digit === '1') go(fitAll(boxes(), view));
+    else if (e.shiftKey && digit === '2') go(zoomAt(cam, view.w / 2, view.h / 2, 1, boxes(), view));
+    else if (e.shiftKey && digit === '0') go(find(selected) ? fitFrame(find(selected)!.f, view) : fitAll(boxes(), view));
+    else if (!e.shiftKey && (e.key === '+' || e.key === '=' || e.key === '-') && !fromFrame) go(zoomAt(cam, view.w / 2, view.h / 2, cam.z * (e.key === '-' ? 0.8 : 1.25), boxes(), view));
+    else if (e.shiftKey && e.code === 'KeyB' && !entered && opts.back) back();
+    else if (e.key === 'Enter' && !e.shiftKey && selected && !entered) enter(selected);
+    else if (e.key === 'Tab' && !entered && cards.length) step(e.shiftKey ? -1 : 1);
+    else if (e.key === 'Escape') {
+      // Heard in the frame, which keeps an Esc its page used (a menu closing) to itself: this one is ours.
+      if (entered) leave();
+      else if (selected) select('');
+      else if (opts.back && !coarse) back(); // an empty board's Esc goes back to the page, as ⇧B does
+      else return false;
+    } else return false;
+    return true;
+  };
+  // ⌘D / Ctrl D duplicates the selected frame. In capture: Control-D is also the widget's "next new comment".
+  on('keydown', (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyD' && selected && !entered && editable() && !typing(e)) {
+      eat(e);
+      dup(selected);
+    }
+  }, true);
+  on('keydown', (e: KeyboardEvent) => {
+    if (e.key === ' ' && !typing(e) && !(entered && document.activeElement instanceof HTMLIFrameElement)) {
+      e.preventDefault(); // the hand, not a scroll
+      if (!space) {
+        space = true;
+        hand();
+      }
+      return;
+    }
+    if (e.defaultPrevented || typing(e) || (entered && document.activeElement instanceof HTMLIFrameElement)) return;
+    if (press(e)) e.preventDefault();
+  });
+  on('keyup', (e: KeyboardEvent) => e.key === ' ' && space && ((space = false), hand()));
+  on('blur', () => {
+    if (!space) return;
+    space = false;
+    hand();
+  });
+
+  // ---------- what the frames and the widget see ----------
+  // By the box as last measured (its size changing, a press, a gesture starting): asked for every pin in every frame.
+  const inBox = (x: number, y: number) => x >= ox && x <= ox + view.w && y >= oy && y <= oy + view.h;
+  const boardApi = {
+    name,
+    back,
+    busy: () => performance.now() - lastDown < 1500,
+    key: (k: Parameters<typeof press>[0]) => press(k, true),
+    /** A press inside an entered frame (its page tells, frame.ts): outside any open comment or the chat, so they close. */
+    pressed: () => void boardWidget()?.dismiss?.(),
+    frame: (id: string) => find(id)?.frame,
+    box: (id: string) => find(id)?.box || null, // a frame's box in the world: what the widget ties a board pin to (flag native)
+    /** A screen point is on this board (a page's view is less than the window). */
+    contains: inBox,
+    // Where a point on the screen is on the board: the frame under it (else the nearest), by px from its top left, and the point.
+    anchor: (sx: number, sy: number) => {
+      measure();
+      const [wx, wy] = [Math.round((sx - ox) / cam.z - cam.x), Math.round((sy - oy) / cam.z - cam.y)];
+      const gap = (c: Card) => Math.hypot(Math.max(c.f.x - wx, 0, wx - c.f.x - c.f.w), Math.max(c.f.y - wy, 0, wy - c.f.y - c.f.h));
+      const f = [...cards].sort((a, b) => gap(a) - gap(b))[0]?.f;
+      return { kind: 'board', board: name, ...(f && { frame: f.id, fx: wx - f.x, fy: wy - f.y }), bx: wx, by: wy, selector: '', x: 0, y: 0, docX: 0, docY: 0, width: view.w, height: view.h };
+    },
+    // Where a board pin is, in page px (the pins' layer is the page's): with its frame, else at the point it was put.
+    spot: (a: { frame?: string; fx?: number; fy?: number; bx?: number; by?: number }): Spot => {
+      const f = cards.find((c) => c.f.id === a.frame)?.f;
+      const [wx, wy] = f && a.fx !== undefined ? [f.x + a.fx, f.y + (a.fy || 0)] : [a.bx || 0, a.by || 0];
+      const [sx, sy] = [ox + (wx + cam.x) * cam.z, oy + (wy + cam.y) * cam.z];
+      return { left: sx + scrollX, top: sy + scrollY, zone: null, ...(opts.clip && !inBox(sx, sy) && { clipped: true }) };
+    },
+    camera: () => ({ ...cam }),
+    selected: () => selected,
+    entered: () => entered,
+    live: () => cards.filter((c) => c.frame).map((c) => c.f.id),
+  };
+  // The box changed size (the window, or a page's view dragged smaller): everything fits again until the camera was moved.
+  // While it changes (a view's edge being dragged) what is on the screen stays where it is: the camera goes with the
+  // box's corner, nothing is fitted again, no frame is woken and the widget draws nothing but what the edge crosses.
+  // Once it rests the board fits again (or is held to its edges, when the camera was moved), in one step (Leo, 19 Nov:
+  // "when moving size of boards its sometimes flickering weirdly on some points": it fitted and drew all of it per step).
+  let sized = false;
+  const ro = new ResizeObserver(() => {
+    const [px, py] = [ox, oy];
+    measure();
+    if (!sized || !cards.length) return void ((sized = true), go(moved ? cam : fitAll(boxes(), view), false));
+    cam = { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
+    sizing = boxed = true;
+    cancelAnimationFrame(drawFrame);
+    paintCam(); // now, before this frame is drawn (a frame later the frames would trail the edge by one step of the drag)
+    moving();
+  });
+  ro.observe(root);
+  // The board file changed (the agent added a frame, a person moved one elsewhere): read it again. The lab's state says so.
+  let bver: number | undefined;
+  let started = false;
+  on('lab-state', (e: CustomEvent) => {
+    if (typeof e.detail?.boards === 'number' && e.detail.boardNames?.includes?.(name) !== false && e.detail.boards !== bver) {
+      const was = bver;
+      bver = e.detail.boards;
+      // The first state this page hears may already be a change (a tab that joins the lab's stream hears none until
+      // one comes): it names this board then, and the board is read again.
+      if (started && (was !== undefined || e.detail.boardNames?.includes?.(name))) load();
+    }
+  });
+  load().then(() => (started = true));
+  const destroy = () => {
+    ac.abort();
+    ro.disconnect();
+    cancelAnimationFrame(drawFrame);
+    clearTimeout(still);
+    clearTimeout(holdTimer);
+    handLayer?.remove();
+    if (entered) leave();
+    for (const c of cards) c.frame?.remove();
+    root.replaceChildren();
+  };
+  return { api: boardApi, destroy, measure: () => (measure(), go(cam, false)) };
+}

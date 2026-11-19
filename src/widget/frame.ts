@@ -30,6 +30,11 @@ export function startFrame(script: HTMLScriptElement | null) {
     drawList: none, reflow: none, load: none, loadChanges: none, syncReads: none,
   });
   startLive();
+  // An entered frame's wheel scrolls its own page and stops at its end: it never runs on into the page behind a board's view.
+  document.documentElement.style.overscrollBehavior = 'contain';
+  // A press in this page (the frame is entered: only then do presses reach it) is a press outside whatever the board's
+  // widget has open, a comment or the chat: the board is told, and closes it as a click outside does on a page.
+  addEventListener('pointerdown', (e) => e.button === 0 && board()?.pressed?.(), true);
   // What the board may ask of this page (the rest of the bridge comes with the pins).
   Object.assign(window, { __labSpot: { clear: () => getSelection()?.removeAllRanges() } });
   // A key heard here goes to the board unless the page used it or is typing in it: the board's keys work in a focused frame.

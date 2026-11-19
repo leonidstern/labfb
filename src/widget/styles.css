@@ -667,6 +667,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar { position: fixed; left: 0; right: 0; top: var(--lab-top, 0px); z-index: 3; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
         background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
 .sbar[hidden] { display: none; }
+.sbar[data-board] { visibility: hidden; pointer-events: none; }
 /* Leo, 19 Nov, on the phone: the status is the green ink on the name alone, as words get on the page (quoted, kept):
    no dot, no "new"/"updated" word (kept for screen readers), no fill on the current chip and no grey on hover or tap.
    "…" turns green when it holds something new. On a phone the bar steps away while a sheet is open, so the sheet's

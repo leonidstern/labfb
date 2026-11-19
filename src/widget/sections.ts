@@ -391,4 +391,10 @@ export function startSections() {
   if (document.readyState === 'complete') first();
   else addEventListener('load', first, { once: true });
   addEventListener('storage', (e) => e.key === key() && check()); // read in another tab of this browser
+  // A board open over the page ([data-lab-board-view], src/board/overlay.ts): the bar is hidden while it is (its room
+  // kept: nothing moves), so the board's bar and its "‹ close" are not under it (Leo, 19 Nov: "can you dont show them on board").
+  const boardOpen = () => bar.toggleAttribute('data-board', Boolean(document.querySelector('[data-lab-board-view]')));
+  new MutationObserver(boardOpen).observe(document.body, { childList: true });
+  addEventListener('hashchange', boardOpen);
+  boardOpen();
 }

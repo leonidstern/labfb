@@ -76,7 +76,7 @@ type Anchor = {
 type Box = { left: number; top: number; width: number; height: number };
 
 /** Where a pin shows: its point, the area it marks (if any), and whether its spot changed. */
-type Spot = { left: number; top: number; zone: Box | null; moved?: boolean };
+type Spot = { left: number; top: number; zone: Box | null; moved?: boolean; clipped?: boolean };
 
 type Deps = {
   host: HTMLElement;
@@ -498,8 +498,8 @@ function sameKind(node, tag) {
 // onto: the element the caller knows is there (selected words' own). Chrome now and then finds nothing but <html>
 // under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
 export function anchorAt(clientX, clientY, words = false, onto = null) {
-  const onBoard = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor } }).__labBoard?.anchor; // a board page: the board says what is there
-  if (onBoard) return onBoard(clientX, clientY);
+  const board = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor; contains?: (x: number, y: number) => boolean } }).__labBoard;
+  if (board?.anchor && (!board.contains || board.contains(clientX, clientY))) return board.anchor(clientX, clientY); // on a board (its page, or a page's board view): the board says what is there
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
   // ...and when the point is on something else (scrolled away, under the bar), the element the caller names wins.
   if (onto && !(stack[0] && (stack[0] === onto || onto.contains(stack[0])))) stack = [onto];
@@ -791,7 +791,16 @@ function edgeFor(anchor) {
 export function position(anchor) {
   const at = spotOf(anchor);
   if (at.moved) return { ...at, left: edgeFor(anchor) };
-  return anchor.kind === 'board' ? at : { ...at, clipped: clippedAt(findTarget(anchor), at.left - scrollX, at.top - scrollY) };
+  if (anchor.kind === 'board') return at;
+  // A page's board view covers what is under it: the page's pins there hide (overlay.ts).
+  const covered = coveredAt(at.left - scrollX, at.top - scrollY); // told apart, so a scroll under the view only asks this again
+  return { ...at, covered, clipped: covered || clippedAt(findTarget(anchor), at.left - scrollX, at.top - scrollY) };
+}
+/** A pin whose tip is at this screen point is under a page's board view: its tip, or its far corner (a pin with its tip
+ * just past the view's edge still lay over the board). */
+export function coveredAt(x: number, y: number) {
+  const covers = (window as unknown as { __labBoard?: { covers?: (x: number, y: number) => boolean } }).__labBoard?.covers;
+  return Boolean(covers && (covers(x, y) || covers(x + 28, y - 28)));
 }
 // A pin whose spot a box with overflow cut off (panned or scrolled out of a canvas, a carousel, a scroll box) hides
 // until its spot is back in view, instead of floating over the page outside that box.
@@ -819,7 +828,11 @@ function onWords(range, anchor, rect) {
 }
 // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
 function spotOf(anchor): Spot {
-  if (anchor.kind === 'board') return (window as unknown as { __labBoard: { spot: (a: unknown) => Spot } }).__labBoard.spot(anchor);
+  if (anchor.kind === 'board') {
+    // A board pin on a page shows only while that board is open in it (overlay.ts); the list still has it.
+    const board = (window as unknown as { __labBoard?: { name?: string; spot: (a: unknown) => Spot } }).__labBoard;
+    return board && (!anchor.board || !board.name || board.name === anchor.board) ? board.spot(anchor) : { left: 0, top: 0, zone: null, clipped: true };
+  }
   const node = findTarget(anchor);
   const hasWords = anchor.quote?.exact;
   // Words straight in the page (findTarget never returns the page itself): looked for in the whole page.
