@@ -304,7 +304,6 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
 .bar button.secondary { color: var(--_muted); }
 .bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
-.bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; letter-spacing: -.016em; line-height: 1; color: var(--_fg); }
 .bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
 .bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
 .newline { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0; font-weight: 500; color: var(--_muted); }
