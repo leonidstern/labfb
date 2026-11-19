@@ -708,6 +708,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* A hidden new or updated chip past an edge: the fade is tinted green there. */
 .sb-edge.new.l { background: linear-gradient(to right, color-mix(in srgb, var(--_green) 24%, var(--_bg)), transparent); }
 .sb-edge.new.r { background: linear-gradient(to left, color-mix(in srgb, var(--_green) 24%, var(--_bg)), transparent); }
+.sb-edge.new { pointer-events: auto; cursor: pointer; width: 44px; -webkit-tap-highlight-color: transparent; } /* green: a tap goes to what is new */
 .sb-chip, .sb-more { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
 .sb-chip[hidden] { display: none; }
 .sb-chip:hover, .sb-more:hover { background: var(--_soft); }

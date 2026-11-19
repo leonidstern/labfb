@@ -126,15 +126,10 @@ export function pillLine() {
   const top = all.filter((e) => e.s === 'now' || e.s === 'stale').sort((a, b) => b.at.localeCompare(a.at))[0];
   return { text: top ? lineOf(top) : '', key: top ? `${top.c.id}${top.s}${top.line}` : '', waiting: all.filter((e) => e.s === 'wait').length };
 }
-// Phones have no pill: the same words head the sheet (a thread's, the list's), "Claude · drawing W1–W6 · 40 s ago · 2 waiting".
-export const lineWords = () => {
-  const { text, waiting } = pillLine();
-  const words = [text, waiting && `${waiting} waiting`].filter(Boolean).join(' · ');
-  return words && `${W.S.agent || 'Claude'} · ${words}`;
-};
+// Off (Leo, 19 Nov: "in comment waiting queue in top near new - remove it, it disrupts modal"): the line pushed the
+// sheet's content down as it came and went. The pin's own ring and the chat still say where the agent is.
 export function paintLines() {
-  const words = lineWords();
-  for (const n of W.root.querySelectorAll('.agentline')) Object.assign(n, { hidden: !words, textContent: words });
+  for (const n of W.root.querySelectorAll('.agentline')) Object.assign(n, { hidden: true, textContent: '' });
 }
 
 export const stepNew = (dir) => {

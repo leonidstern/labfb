@@ -824,7 +824,18 @@ function edgeFor(anchor) {
 }
 export function position(anchor) {
   const at = spotOf(anchor);
-  return at.moved ? { ...at, left: edgeFor(anchor) } : at;
+  if (at.moved) return { ...at, left: edgeFor(anchor) };
+  return anchor.kind === 'board' ? at : { ...at, clipped: clippedAt(findTarget(anchor), at.left - scrollX, at.top - scrollY) };
+}
+// A pin whose spot a box with overflow cut off (panned or scrolled out of a canvas, a carousel, a scroll box) hides
+// until its spot is back in view, instead of floating over the page outside that box.
+function clippedAt(node, x, y) {
+  for (let el = node?.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    if (getComputedStyle(el).overflow === 'visible') continue;
+    const r = el.getBoundingClientRect();
+    if (x < r.left - 1 || x > r.right + 1 || y < r.top - 1 || y > r.bottom + 1) return true;
+  }
+  return false;
 }
 // Where a pin on quoted words sits: on the piece of them (one per line) nearest to where it was in its element, at
 // that spot when it's still on the words, else at the nearest point of them. So an unchanged page keeps the pin

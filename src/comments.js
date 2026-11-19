@@ -787,7 +787,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (isPage(c)) return; // in the chat, not on the page
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
-      const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
+      const { left, top, moved, zone, clipped } = places.get(c.id) || position(c.anchor || {});
       // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
       // new spot (drag) or close. The agent finishing one closes it.
       if (moved) {
@@ -874,6 +874,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (coarse && !pin.querySelector(':scope > .hit')) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
+      pin.style.visibility = clipped && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position)
       if (born) {
         // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
         grab(pin, () => pinData.get(pin).c);
@@ -1708,9 +1709,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (!S.on || S.openId) return render();
     const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {})]).filter(([, at]) => !at.moved);
     if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
-    for (const [pin, { left, top }] of places) {
+    for (const [pin, { left, top, clipped }] of places) {
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
+      pin.style.visibility = clipped ? 'hidden' : '';
     }
   };
   S.frame = 0;

@@ -88,6 +88,7 @@ export function startSections() {
   const api = () => W.script.dataset.live?.replace(/live$/, 'api/sections') || '';
   const who = () => W.store.get('lab-name').trim();
   const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const born = performance.now(); // the first placing (a load, a reload) jumps straight there: a slide then reads as the bar glitching
 
   let secs: Sec[] = [];
   let marks: Marks | null = null; // null: never read anything here
@@ -175,7 +176,7 @@ export function startSections() {
   // Sideways only: the bar moves, the page does not.
   const glide = (c: HTMLElement | undefined, always = false) => {
     if (!c || (nav.scrollWidth <= nav.clientWidth)) return;
-    if (always || c.offsetLeft < nav.scrollLeft || c.offsetLeft + c.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: Math.max(0, c.offsetLeft - 12), behavior: still() ? 'auto' : 'smooth' });
+    if (always || c.offsetLeft < nav.scrollLeft || c.offsetLeft + c.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: Math.max(0, c.offsetLeft - 12), behavior: still() || performance.now() - born < 1500 ? 'auto' : 'smooth' });
   };
   // Folds what does not fit into "…" (a computer; a phone's line scrolls).
   const fold = () => {
@@ -221,6 +222,14 @@ export function startSections() {
     r.classList.toggle('new', out.some((c) => c.offsetLeft >= right - 4));
   };
   nav.addEventListener('scroll', fades, { passive: true });
+  // A tap on a green edge slides the line to the nearest new or updated chip past it and goes to that section.
+  for (const [edge, side] of [[edges[0], 'l'], [edges[1], 'r']] as const) edge.addEventListener('click', () => {
+    if (!edge.classList.contains('new')) return;
+    const left = nav.scrollLeft, right = left + nav.clientWidth;
+    const past = chips().filter((c) => c.dataset.st && (side === 'l' ? c.offsetLeft + c.offsetWidth <= left + 4 : c.offsetLeft >= right - 4));
+    const c = side === 'l' ? past[past.length - 1] : past[0];
+    if (c) c.click(); // goes there, and the line follows it
+  });
   const place = () => {
     // Under the page's own bar when it has a fixed or sticky one at the top.
     let top = 0;
@@ -315,10 +324,13 @@ export function startSections() {
     ready = true;
     draw();
     // Opens at the first with a status, and glides to one that has just got one.
+    // A reload partway down the page (a live update keeps your place) opens at where you are instead: placing it at
+    // the first status and then at the current one a moment later read as the bar jumping.
     const fresh = secs.find((s) => status(s) && (first || !had.has(s.key)));
-    if (fresh) glide(find(fresh.key), true);
+    const jump = fresh && !(first && scrollY > innerHeight / 2);
+    if (jump) glide(find(fresh.key), true);
     current = '';
-    watch(!fresh);
+    watch(!jump);
   };
   W.S.checkSections = check;
   W.S.syncSections = check; // another device read something
