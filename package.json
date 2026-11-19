@@ -10,6 +10,7 @@
     "dist/local.mjs",
     "public/_lab/comments.js",
     "public/_lab/changes.js",
+    "public/_lab/board.js",
     "public/_lab/lab.css",
     "public/_lab/favicon.svg",
     "skills/",

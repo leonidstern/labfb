@@ -535,6 +535,8 @@ function sameKind(node, tag) {
 // onto: the element the caller knows is there (selected words' own). Chrome now and then finds nothing but <html>
 // under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
 export function anchorAt(clientX, clientY, words = false, onto = null) {
+  const onBoard = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor } }).__labBoard?.anchor; // a board page: the board says what is there
+  if (onBoard) return onBoard(clientX, clientY);
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
   if (onto && !stack.length) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
@@ -834,6 +836,7 @@ function onWords(range, anchor, rect) {
 }
 // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
 function spotOf(anchor): Spot {
+  if (anchor.kind === 'board') return (window as unknown as { __labBoard: { spot: (a: unknown) => Spot } }).__labBoard.spot(anchor);
   const node = findTarget(anchor);
   const hasWords = anchor.quote?.exact;
   // Words straight in the page (findTarget never returns the page itself): looked for in the whole page.

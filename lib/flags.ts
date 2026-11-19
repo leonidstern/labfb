@@ -8,6 +8,7 @@
 export const FLAGS: Record<string, { name: string; since: string }> = {
   editText: { name: 'edit words in place (E), saved into the source file', since: '0.6.3' },
   sinceLooked: { name: 'a "New" pill: what was added since you looked', since: '0.6.3' },
+  board: { name: 'boards: pages side by side as frames, options an agent draws as variants', since: '0.6.3' },
 };
 
 /** Every flag, off. */

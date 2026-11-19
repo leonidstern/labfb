@@ -33,6 +33,7 @@ import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, s
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
+import { inFrame, startFrame } from './widget/frame.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { bindEdit, editKey } from './widget/edit.ts';
@@ -121,6 +122,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const parts = {};
   /** @param {string} name */
   const part = (name) => (parts[name] ??= import(new URL(`${name}.js`, script?.src || location.href).href));
+  // In a board's frame the widget draws nothing and binds nothing (src/widget/frame.ts).
+  if (inFrame()) return startFrame(script);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
   const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a', edit: 'e', select: 'v' };
@@ -138,7 +141,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // when it's Latin (QWERTZ and AZERTY move letters), else by its place (Cyrillic and other layouts).
   const keyOf = (e) => {
     const d = /^(Digit|Numpad)(\d)$/.exec(e.code || '');
-    if (d) return d[2];
+    // Shift and a digit is the board's (⇧1 fit, ⇧2 100%, ⇧0): its key shows another character ("!"), which a plain 1 never does.
+    if (d) return e.shiftKey && e.key !== d[2] ? '' : d[2];
     return /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
   };
   const actionOf = (e) => Object.keys(KEYS).find((a) => KEYS[a] === keyOf(e)) || '';
@@ -192,6 +196,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.isAdmin = false;
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   S.on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
+  // A board page (src/board/): pins on a board come later, so comments stay off here and its clicks are the board's.
+  S.board = /^\/_board\/[^/]+$/.test(S.page);
   S.openId = null;
   S.closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
   S.cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
@@ -394,7 +400,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
 
   // Pointer (key 1 switches to it and back): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
   // Option-click still pins. 1 comment leaves it.
-  S.cursorMode = store.get('lab-cursor') === '1';
+  S.cursorMode = store.get('lab-cursor') === '1' || S.board; // a board opens as a pointer (a tap selects a frame); 1 is the comment mode, and not remembered
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
   // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
   S.overControls = store.get('lab-over') === '1';
@@ -427,7 +433,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   const setCursor = (v) => {
     S.cursorMode = v;
-    store.set('lab-cursor', v ? '1' : '');
+    if (!S.board) store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
     goFace();
     setPinning();
@@ -583,14 +589,29 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       openSwitcher();
     });
   }
+  // Board mode on request (flag board): this page as a board, from ⇧B or here; on a board, back to the page.
+  // The page's scroll waits under the key a reload uses (live.ts), so coming back lands where you were.
+  const boardBtn = flag('board') ? el('button', { type: 'button', class: 'board-btn' }) : null;
+  const toBoard = () => {
+    const page = location.pathname.replace(/\.html?$/i, '').replace(/\/+$/, '') || '/';
+    const name = page.replace(/^\/+/, '').replace(/\//g, '--').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 80) || 'index';
+    try {
+      sessionStorage.setItem('lab-scroll:' + location.pathname, JSON.stringify({ y: scrollY }));
+    } catch {}
+    location.href = `/_lab/board/${name}?of=${encodeURIComponent(location.pathname)}`;
+  };
+  if (boardBtn) {
+    boardBtn.append(S.board ? 'back to page' : 'open as board', el('kbd', { 'aria-hidden': 'true' }, '⇧B'));
+    boardBtn.addEventListener('click', () => (S.board ? /** @type {any} */ (window).__labBoard?.back() : toBoard()));
+  }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : boardBtn ? [boardBtn] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
-    moreBtn.hidden = !S.on;
+    moreBtn.hidden = !inMenu.length;
     if (!S.on && !moreMenu.hidden) setMenu(false);
     // The first segment shown has no line before it.
     let first = true;
@@ -1194,7 +1215,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       e.preventDefault();
       return void (keyOf(e) === KEYS.select ? selectMode() : editKey());
     }
-    if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if (actionOf(e) === 'toggle' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
       return;
@@ -1213,6 +1234,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
       return stepNew(e.shiftKey ? -1 : 1);
     }
+    // ⇧B: this page as a board (flag board); on a board the board's own key takes it back.
+    if (boardBtn && !S.board && e.shiftKey && e.code === 'KeyB' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      return toBoard();
+    }
     // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
     if (S.on && act === 'comment' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
@@ -1224,7 +1250,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act)) {
+    // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act) && (act === 'next' || !e.shiftKey)) {
       const k = act;
       e.preventDefault();
       if (k === 'pause') return setPause(!S.paused);
@@ -1246,9 +1273,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
       S.draft = null;
       S.openId = null;
+      e.preventDefault(); // this press was this one's: whatever listens after (the board's Esc) leaves it
       render();
     } else if (e.key === 'Escape' && S.chatOpen) {
       S.chatOpen = false;
+      e.preventDefault();
       render();
     }
   });
@@ -1932,6 +1961,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
+  // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
+  // and where a pin sits), and the pins are drawn again as the camera moves.
+  if (S.board) {
+    Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
+    addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+  }
   startLive();
   if (LABS) bindSwitcher({
       root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
