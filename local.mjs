@@ -618,8 +618,10 @@ const sourceFor = (page) => {
 
 let origin = '';
 const agentText = async (page) => {
-  const res = await api.GET(new Request(`http://localhost/api?format=text&page=${encodeURIComponent(page)}`, { headers: { host: 'localhost' } }));
-  const text = (await res.text()).replaceAll('http://localhost', origin);
+  // Asked with the lab's own address, so the links the text gives are right as written. (It used to be asked as
+  // http://localhost and every such string replaced afterwards, a comment's own "http://localhost:3000" included.)
+  const res = await api.GET(new Request(`${origin || 'http://localhost'}/api?format=text&page=${encodeURIComponent(page)}`, { headers: { host: 'localhost' } }));
+  const text = await res.text();
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   const file = fileFor(page);
