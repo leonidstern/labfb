@@ -1095,15 +1095,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const moving = () => [...new Set([...document.querySelectorAll('video'), ...held, ...pageAnims().filter((a) => a.playState === 'running').map((a) => /** @type {KeyframeEffect} */ (a.effect).target)])].filter((el) => el?.isConnected);
   const isStill = (el) => (el instanceof HTMLVideoElement ? el.paused : animsOf(el).every((a) => a.playState !== 'running'));
   const setItem = (el, stop) => {
-    if (el instanceof HTMLVideoElement) stop ? el.pause() : el.play?.().catch(() => {});
-    else for (const a of animsOf(el)) stop ? a.playState === 'running' && a.pause() : a.playState === 'paused' && a.play();
+    if (el instanceof HTMLVideoElement) {
+      if (stop) el.pause();
+      else el.play?.().catch(() => {});
+    } else {
+      for (const a of animsOf(el)) {
+        if (stop && a.playState === 'running') a.pause();
+        else if (!stop && a.playState === 'paused') a.play();
+      }
+    }
     held[stop ? 'add' : 'delete'](el);
     S.paused = held.size > 0; // a comment written now says the page was paused
   };
   const shown = new Map();
   const drawMotion = () => {
     const now = S.on ? moving() : [];
-    for (const [el, b] of shown) if (!now.includes(el)) (b.remove(), shown.delete(el));
+    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); shown.delete(el); }
     for (const el of now) {
       const r = el.getBoundingClientRect();
       let b = shown.get(el);
