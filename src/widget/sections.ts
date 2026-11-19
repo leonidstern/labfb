@@ -39,7 +39,10 @@ const words = (t: string | null) => (t || '').replace(/\s+/g, ' ').trim();
 // The page's sections, in order. A section's text runs from its heading to the next one.
 function collect(): Sec[] {
   const heads = [...document.body.querySelectorAll(HEAD)].filter((h) => !h.closest(SKIP) && h.getClientRects().length && words(h.textContent));
-  const list = heads.length === 1 && heads[0].matches('h1') ? [] : heads.filter((h, _, all) => !h.matches('h1') || all.filter((x) => x.matches('h1')).length > 1);
+  const all = heads.length === 1 && heads[0].matches('h1') ? [] : heads.filter((h, _, every) => !h.matches('h1') || every.filter((x) => x.matches('h1')).length > 1);
+  // One level: the highest the sections use (h2 on most pages), so headings inside a section don't each get a chip.
+  const top = ['h1', 'h2', 'h3'].find((t) => all.some((h) => h.matches(t)));
+  const list = all.filter((h) => h.matches(top || 'h2'));
   const used = new Set<string>();
   return list.map((h) => {
     const at = heads.indexOf(h);
