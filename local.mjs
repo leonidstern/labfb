@@ -1922,8 +1922,9 @@ const handler = async (req, res) => {
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
     if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '', url.searchParams.get('to') || '');
     if (!mayIn(req)) return gate(res);
-    // A guest who keeps using the lab stays in: each page they open starts their day again.
-    const guest = WIFI && !isLoopback(req) && req.method === 'GET' && !pathname.startsWith('/_lab/') && guestOk(req);
+    // A guest who keeps using the lab stays in: anything they do (a page, a pin, the page's live stream) starts their day
+    // again. Only page loads did before (Leo, 19 Nov): a tab left open past a day lost its pins to the gate unseen.
+    const guest = WIFI && !isLoopback(req) && guestOk(req);
     if (guest) res.setHeader('set-cookie', guestCookie(guest));
     if (PROXY && !pathname.startsWith('/_lab/')) return proxy.page(req, res, url);
     // .lab (comments, admin key), .git, .env and other dot files are never served.

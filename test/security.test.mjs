@@ -399,6 +399,17 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
 });
 
+test('a guest who keeps using the lab stays in: a pin or a look renews the pass, not only a page load', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
+  const cookie = r.cookie.split(';')[0];
+  const look = JSON.stringify({ name: 'Mira', page: '/index', ids: [['renew', 'renew look']] });
+  const post = await wraw('/_lab/api/looked', { host: lan, method: 'POST', body: look, headers: { cookie, origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json' } });
+  assert.equal(post.status, 200);
+  assert.match(post.cookie || '', new RegExp(`^lab_guest_${WPORT}=[0-9a-f]{16}\\.[0-9a-f]{32}; Path=/; Max-Age=86400`), 'a write from an open tab starts the day again');
+  const read = await wraw('/_lab/api/looked?name=Mira&page=/index', { host: lan, headers: { cookie } });
+  assert.match(read.cookie || '', new RegExp(`^lab_guest_${WPORT}=`), 'and so does a read');
+});
+
 test('two labs on one computer keep their own passes: another lab\'s cookie never pushes this one out, and a used link still lands', { skip: !lan && 'no local network address to come in on' }, async () => {
   // A browser keeps cookies per host, not per port: a phone that joined a second lab (a try lab on another port) holds
   // that lab's pass too. Before 18 Nov both were "lab_guest", the newer one replaced the other, and this lab met the

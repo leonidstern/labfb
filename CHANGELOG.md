@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- A phone or laptop on the wifi stays in while it uses the lab: a pin, a reply or the page's live stream renews its day-long pass, not only opening a page. A tab left open for a day lost its pins to the gate without a word.
 - Phones: the go / remove / fix buttons under a new comment keep the computer's corner (radius − 8 px) instead of the sheet's, which made them read as pills.
 - ¼ speed: **S**, or the ¼ under each pause / play, plays every page animation and video at a quarter of its speed (again: full speed); motion that starts later is slowed too. A pin made while paused carries the moment showing (`atMs`, from the paused thing under the pin, else the first) and whether the page was slowed; the agent reads "page paused at 1234 ms, ¼ speed".
 - Sent comments, replies and chat messages lose stray spaces: a no-break space (Safari) becomes a plain one, two spaces between words (a keyboard suggestion's extra) become one, and spaces at a line's end go. A line's indent stays.
