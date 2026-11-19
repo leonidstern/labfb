@@ -236,7 +236,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <style>${styles}</style>
     <div class="scrim"></div>
     <div class="layer"></div>
-    <div class="motions"></div>
     <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -266,7 +265,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const listBtn = /** @type {HTMLButtonElement} */ ($('.list-btn'));
   const goBtn = $('.go-btn');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
-  const motions = $('.motions');
   const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
   const overBtn = $('.over-btn');
   const tabTitle = { base: '' };
@@ -609,6 +607,16 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     toolsBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, 'V'));
     toolsBtn.addEventListener('click', () => selectMode(true));
   }
+  // Motion (Leo, 19 Nov: in the ⋯ menu, nothing floating on the page): one row, shown while the page has motion that
+  // goes on (a loop, a video): pause all / play (P), ¼ speed (S), and the first one's moment in ms while held or slowed.
+  // A pick here keeps the menu open, so the readout can be watched.
+  const motionRow = el('div', { class: 'motion-row', role: 'group', 'aria-label': 'motion on the page' });
+  const motionPause = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', class: 'motion-pause', 'aria-pressed': 'false' }));
+  const motionSlow = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', class: 'motion-slow', 'aria-pressed': 'false', title: 'every page animation and video at a quarter of its speed' }));
+  motionSlow.append('¼ speed', el('kbd', { 'aria-hidden': 'true' }, KEYS.slow.toUpperCase()));
+  const motionMs = el('span', { class: 'motion-ms' });
+  motionRow.append(motionPause, motionSlow, motionMs);
+  motionRow.hidden = true;
   const boardBtn = flag('board') && S.board ? /* only "back to page" on a board; "side by side" on a page is gone (Leo, 19 Nov) */ el('button', { type: 'button', class: 'board-btn' }) : null;
   const toBoard = () => {
     const page = location.pathname.replace(/\.html?$/i, '').replace(/\/+$/, '') || '/';
@@ -694,7 +702,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   function placeBar() {
     const inMenu = !S.on ? (boardBtn ? [boardBtn] : [])
       : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), ...(toolsBtn && !S.board ? [toolsBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
+      : [...(labHead ? [labHead, labsBtn] : []), ...(toolsBtn && !S.board ? [toolsBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, motionRow, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
@@ -1151,7 +1159,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
     render();
-    drawMotion(); // the pause / play beside each moving thing goes and comes with the comments
+    drawMotion(); // the ⋯ menu's motion row goes and comes with the comments
   };
   toggleBtn.addEventListener('click', () => setOn(!S.on));
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
@@ -1164,6 +1172,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       expOpen = false; // it opens on its first page again
       placeBar();
     }
+    if (open) drawMotion(); // the motion row as it is now
     if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
     else if (refocus) moreBtn.focus({ preventScroll: true });
   }
@@ -1182,9 +1191,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
   }, true);
   goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
-  // Pause (Leo, 19 Nov): each video and each moving thing on the page has its own pause / play just beyond its top right
-  // corner, over the page (nothing moves), shown with the comments; P pauses them all, or plays what labit paused.
-  // The widget's own animations keep moving, and a comment on a paused video says which second (anchoring.ts).
+  // Pause (Leo, 19 Nov): the ⋯ menu's motion row (or P) pauses every video and moving thing on the page, or plays what
+  // labit paused; nothing floats on the page. The widget's own animations keep moving, and a comment on a paused video
+  // says which second (anchoring.ts).
   const held = new Set(); // the videos and elements labit paused
   const pageAnims = () => document.getAnimations().filter((a) => {
     const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
@@ -1219,20 +1228,27 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       at = anchor?.selector ? document.querySelector(anchor.selector) : null;
     } catch {}
     const all = [...held].filter((el) => el.isConnected);
-    const el = all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+    return msOf(all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0]);
+  };
+  const msOf = (el) => {
     if (!el) return undefined;
     const t = el instanceof HTMLVideoElement ? el.currentTime * 1000 : Number(animsOf(el)[0]?.currentTime);
     return Number.isFinite(t) ? Math.round(t) : undefined;
   };
-  // ¼ speed (Leo, 19 Nov): every page animation and video at a quarter of its speed, S or the ¼ beside a pause; a pin
+  // ¼ speed (Leo, 19 Nov): every page animation and video at a quarter of its speed, S or the menu's ¼ speed; a pin
   // made now says so. Motion that starts later is slowed as it starts (and by the 1 s redraw, for script animations).
   const rates = new WeakMap(); // each animation's own rate, to go back to
   const slowAll = () => {
     for (const a of document.getAnimations()) {
       const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
       if (!t || root.contains(t)) continue;
-      if (S.slow && !rates.has(a)) rates.set(a, a.playbackRate), a.updatePlaybackRate(a.playbackRate / 4);
-      else if (!S.slow && rates.has(a)) a.updatePlaybackRate(rates.get(a)), rates.delete(a);
+      if (S.slow && !rates.has(a)) {
+        rates.set(a, a.playbackRate);
+        a.updatePlaybackRate(a.playbackRate / 4);
+      } else if (!S.slow && rates.has(a)) {
+        a.updatePlaybackRate(rates.get(a));
+        rates.delete(a);
+      }
     }
     for (const v of document.querySelectorAll('video')) v.playbackRate = S.slow ? 0.25 : 1;
   };
@@ -1242,53 +1258,34 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     drawMotion();
   };
   for (const type of ['animationstart', 'transitionrun', 'play']) addEventListener(type, () => S.slow && slowAll(), true);
-  const shown = new Map();
+  // The ⋯ menu's motion row: there while the page has motion and comments show; the readout moves with a slowed page
+  // while the menu is open, and stands still with a paused one.
+  let msLoop = 0;
+  const drawMs = () => {
+    cancelAnimationFrame(msLoop);
+    const ms = S.paused || S.slow ? msOf([...held].find((h) => h.isConnected) || moving()[0]) : undefined;
+    motionMs.textContent = ms === undefined ? '' : `${ms} ms`;
+    if (S.slow && !S.paused && !moreMenu.hidden && !motionRow.hidden) msLoop = requestAnimationFrame(drawMs);
+  };
   const drawMotion = () => {
-    const now = S.on ? moving() : [];
-    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); b.slowBtn.remove(); shown.delete(el); }
-    for (const el of now) {
-      const r = el.getBoundingClientRect();
-      let b = shown.get(el);
-      if (!b) {
-        b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'motion';
-        b.addEventListener('click', () => (setItem(el, !isStill(el)), drawMotion()));
-        const q = document.createElement('button');
-        q.type = 'button';
-        q.className = 'motion-slow';
-        q.textContent = '¼';
-        q.setAttribute('aria-label', q.title = `quarter speed, all motion (${KEYS.slow.toUpperCase()})`);
-        q.addEventListener('click', () => setSlow(!S.slow));
-        b.slowBtn = q;
-        motions.append(b, q);
-        shown.set(el, b);
-      }
-      b.slowBtn.setAttribute('aria-pressed', String(Boolean(S.slow)));
-      const stopped = isStill(el);
-      const what = el instanceof HTMLVideoElement ? 'video' : 'animation';
-      if (b.dataset.state !== String(stopped)) {
-        b.dataset.state = String(stopped);
-        b.innerHTML = stopped ? '<svg viewBox="0 0 12 12"><path d="M3.5 2.2v7.6L9.8 6z"/></svg>' : '<svg viewBox="0 0 12 12"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
-        b.setAttribute('aria-label', b.title = `${stopped ? 'play' : 'pause'} this ${what} (P: all)`);
-      }
-      // From its middle and its own size, so a spinning or growing thing's control stays put.
-      const w = el instanceof HTMLElement ? el.offsetWidth : r.width;
-      const h = el instanceof HTMLElement ? el.offsetHeight : r.height;
-      b.hidden = !w || !h;
-      b.style.left = `${Math.min(r.left + (r.width + w) / 2 + 6, document.documentElement.clientWidth - 30) + scrollX}px`;
-      b.style.top = `${r.top + (r.height - h) / 2 + scrollY}px`;
-      b.slowBtn.hidden = b.hidden;
-      b.slowBtn.style.left = b.style.left;
-      b.slowBtn.style.top = `${r.top + (r.height - h) / 2 + scrollY + 28}px`;
+    motionRow.hidden = !(S.on && (held.size > 0 || moving().length > 0));
+    if (motionRow.hidden) return cancelAnimationFrame(msLoop);
+    const word = S.paused ? 'play' : 'pause all';
+    if (motionPause.dataset.word !== word) {
+      motionPause.dataset.word = word;
+      motionPause.replaceChildren(word, el('kbd', { 'aria-hidden': 'true' }, KEYS.pause.toUpperCase()));
     }
+    motionPause.setAttribute('aria-pressed', String(Boolean(S.paused)));
+    motionSlow.setAttribute('aria-pressed', String(Boolean(S.slow)));
+    drawMs();
   };
   const setPause = (on) => {
     for (const el of on ? moving().filter((el) => !isStill(el)) : [...held]) setItem(el, on);
     drawMotion();
   };
+  motionPause.addEventListener('click', (e) => (e.stopPropagation(), setPause(!S.paused)));
+  motionSlow.addEventListener('click', (e) => (e.stopPropagation(), setSlow(!S.slow)));
   setInterval(() => (S.slow && slowAll(), drawMotion()), 1000);
-  addEventListener('scroll', () => requestAnimationFrame(drawMotion), { capture: true, passive: true });
   doneBtn.addEventListener('click', toggleDone);
   movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
   overBtn.addEventListener('click', () => setOver(!S.overControls));

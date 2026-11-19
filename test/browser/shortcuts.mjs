@@ -161,11 +161,12 @@ try {
       check(eng, 'Keep sends the row ticked', got.length === 1 && got[0].picked.n === 2 && got[0].picked.of === q.id, JSON.stringify(got.map((c) => c.picked)));
       await a.close();
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/ask', action: 'delete', id: c.id }) });
-      // Pause: each moving thing has its own pause / play beside it, over the page, that stops only that one; P stops
-      // them all and the controls say play, a comment written while paused tells the agent so (anchor.paused); P again plays.
+      // Pause: nothing floats on the page; the ⋯ menu has a motion row (pause all · ¼ speed · ms) while the page moves.
+      // P or the row stops them all and the row says play, a comment written while paused tells the agent so
+      // (anchor.paused, atMs); P again plays. S slows to ¼ and a pin says slow.
       await p.evaluate(() => localStorage.removeItem('lab-cursor')); // the steps above leave the pointer on (key 1 toggles it)
       await p.goto(B + '/anim');
-      await untilRoot(p, (r) => r.querySelectorAll('.motion:not([hidden])').length === 2, 2500);
+      await untilRoot(p, (r) => Boolean(r.querySelector('.motion-row:not([hidden])')), 2500);
       // A long comment scrolls inside its box: the scrollbar sits at the box's right edge, not left of the name and arrow.
       const h2 = await p.evaluate(() => document.querySelector('h1').getBoundingClientRect().toJSON());
       await p.mouse.click(h2.left + 20, h2.top + h2.height / 2);
@@ -187,26 +188,34 @@ try {
       }
       const after = await watching();
       check(eng, 'boxes opened and closed again leave no observers behind', after - before <= 1, `${before} → ${after}`);
+      const shadow = "[...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot";
       const pause = () => p.evaluate(() => {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
-        const [b] = r?.querySelectorAll('.motion') || [];
-        const s = document.getElementById('s').getBoundingClientRect();
-        const at = b?.getBoundingClientRect();
-        return { shown: Boolean(b && !b.hidden), words: b?.getAttribute('aria-label'), beside: Boolean(at && Math.abs(at.top - (s.top + s.height / 2 - 20)) < 2 && Math.abs(at.left - (s.left + s.width / 2 + 26)) < 2), bar: Boolean(r?.querySelector('.bar .pause-btn')),
+        const row = r?.querySelector('.motion-row');
+        return { shown: Boolean(row && !row.hidden), floating: Boolean(r?.querySelector('.motion, .motions')), words: row?.querySelector('.motion-pause')?.textContent, slow: row?.querySelector('.motion-slow')?.getAttribute('aria-pressed'), ms: row?.querySelector('.motion-ms')?.textContent,
           anim: document.getElementById('s').getAnimations()[0]?.playState, other: document.getElementById('t').getAnimations()[0]?.playState };
       });
       const first = await pause();
-      check(eng, 'each animation has its own pause beside it, none in the bar', first.shown && first.beside && !first.bar && first.words === 'pause this animation (P: all)', JSON.stringify(first));
-      await p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.motion').click());
+      check(eng, 'the ⋯ menu has a motion row, nothing floats on the page', first.shown && !first.floating && first.words === 'pause allP' && first.ms === '', JSON.stringify(first));
+      await p.evaluate(`${shadow}.querySelector('.more').click()`);
+      await p.evaluate(`${shadow}.querySelector('.motion-pause').click()`);
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'paused', null, 600);
-      const one = await pause();
-      check(eng, 'its pause stops only that one and then says play', one.anim === 'paused' && one.other === 'running' && one.words === 'play this animation (P: all)', JSON.stringify(one));
-      await p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.motion').click());
+      const viaMenu = await pause();
+      const menuOpen = await p.evaluate(`!${shadow}.querySelector('.more-menu').hidden`);
+      check(eng, 'pause all in the menu stops every animation, says play and shows the ms; the menu stays open', viaMenu.anim === 'paused' && viaMenu.other === 'paused' && viaMenu.words === 'playP' && /^\d+ ms$/.test(viaMenu.ms) && menuOpen, JSON.stringify({ viaMenu, menuOpen }));
+      await p.evaluate(`${shadow}.querySelector('.motion-pause').click()`);
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'running', null, 600);
+      await p.keyboard.press('Escape');
+      await p.keyboard.press('s');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playbackRate === 0.25, null, 600);
+      const slowed = await pause();
+      check(eng, 'S slows everything to ¼ and the row says so', slowed.slow === 'true' && /^\d+ ms$/.test(slowed.ms), JSON.stringify(slowed));
+      await p.keyboard.press('s');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playbackRate === 1, null, 600);
       await p.keyboard.press('p');
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'paused', null, 600);
       const paused = await pause();
-      check(eng, 'P pauses all the page\'s animations and the controls say play', paused.anim === 'paused' && paused.other === 'paused' && paused.words.startsWith('play'), JSON.stringify(paused));
+      check(eng, 'P pauses all the page\'s animations and the row says play', paused.anim === 'paused' && paused.other === 'paused' && paused.words.startsWith('play'), JSON.stringify(paused));
       const h = await p.evaluate(() => document.querySelector('h1').getBoundingClientRect().toJSON());
       await p.mouse.click(h.left + 20, h.top + h.height / 2);
       await untilRoot(p, (r) => Boolean(r.querySelector('textarea')), 900);
@@ -214,15 +223,15 @@ try {
       await p.keyboard.press('Enter');
       const pinned = async () => (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.find((c) => c.text === 'still');
       for (let i = 0; i < 20 && !(await pinned()); i++) await sleep(100);
-      check(eng, 'a comment written while paused says so', (await pinned())?.anchor?.paused === true, JSON.stringify((await pinned())?.anchor?.paused));
+      check(eng, 'a comment written while paused says so, with the moment', (await pinned())?.anchor?.paused === true && Number.isFinite((await pinned())?.anchor?.atMs), JSON.stringify((await pinned())?.anchor));
       await p.keyboard.press('Escape');
       await p.keyboard.press('p');
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'running', null, 600);
       const played = await pause();
-      check(eng, 'P again plays them and the controls say pause', played.anim === 'running' && played.other === 'running' && played.words.startsWith('pause'), JSON.stringify(played));
+      check(eng, 'P again plays them and the row says pause all', played.anim === 'running' && played.other === 'running' && played.words.startsWith('pause'), JSON.stringify(played));
       await p.keyboard.press('h'); // hide comments (this lab's toggle key): the controls go with them
-      await untilRoot(p, (r) => !r.querySelector('.motion'), 1500);
-      check(eng, 'hidden comments hide the pause controls too', !(await pause()).shown);
+      await untilRoot(p, (r) => !r.querySelector('.motion-row:not([hidden])'), 1500);
+      check(eng, 'hidden comments hide the motion row too', !(await pause()).shown);
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/anim', action: 'delete', id: c.id }) });
       await p.goto('about:blank');
       await ctx.close();
