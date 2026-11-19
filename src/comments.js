@@ -1571,6 +1571,16 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     else if (altMotion) drawMotion();
   }, { capture: true, passive: true });
   let scrollQuiet = 0;
+  // With the flag native the browser says when a scroll ended (scrollend); the timer stays as a backstop, longer, for a
+  // scroll that never says so. Without it, the timer is the end.
+  const scrollEnds = flag('native') && 'onscrollend' in window;
+  const scrollOver = () => {
+    clearTimeout(scrollQuiet);
+    if (scrolling) {
+      scrolling = 0;
+      drawMotion();
+    }
+  };
   let motionAgain = 0;
   const redrawMotionSoon = () => motionAgain || (motionAgain = requestAnimationFrame(() => ((motionAgain = 0), drawMotion())));
   addEventListener('resize', () => held.size && redrawMotionSoon(), { passive: true });
@@ -1581,8 +1591,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       scrolling = 1;
       drawMotion();
     }
-    scrollQuiet = window.setTimeout(() => ((scrolling = 0), drawMotion()), 250);
+    scrollQuiet = window.setTimeout(scrollOver, scrollEnds ? 1500 : 250);
   }, { capture: true, passive: true });
+  if (scrollEnds) addEventListener('scrollend', () => coarse && scrollOver(), { capture: true, passive: true });
   setInterval(() => ((S.slow || slowEls.size > 0) && slowAll(), drawMotion()), 1000);
   if (coarse) new MutationObserver(() => drawMotion()).observe(host, { attributeFilter: ['data-sheet'] }); // a sheet opens: the controls go
   doneBtn.addEventListener('click', toggleDone);
@@ -2363,15 +2374,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     load();
     setTimeout(() => S.checkSections?.(), 400);
   };
-  for (const m of ['pushState', 'replaceState']) {
-    const original = history[m];
-    history[m] = function (...args) {
-      const out = original.apply(this, args);
-      queueMicrotask(navigated);
-      return out;
-    };
+  // With the flag native and the Navigation API, the browser says when the current entry changed (pushState, replaceState,
+  // back and forward alike), so the page's own history is left as it is; else it is patched, as before. A page that
+  // patches history too can clash with the patch.
+  const navApi = flag('native') ? /** @type {any} */ (window).navigation : null;
+  if (navApi?.addEventListener) navApi.addEventListener('currententrychange', () => queueMicrotask(navigated));
+  else {
+    for (const m of ['pushState', 'replaceState']) {
+      const original = history[m];
+      history[m] = function (...args) {
+        const out = original.apply(this, args);
+        queueMicrotask(navigated);
+        return out;
+      };
+    }
+    addEventListener('popstate', navigated);
   }
-  addEventListener('popstate', navigated);
   document.addEventListener('astro:after-swap', navigated);
   // Pick up comments others left while this tab was in the background.
   document.addEventListener('visibilitychange', () => {

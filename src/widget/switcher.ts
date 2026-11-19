@@ -58,6 +58,9 @@ export function bindSwitcher(deps: Deps) {
     box.popover = 'auto';
     box.addEventListener('beforetoggle', (e) => {
       if ((e as ToggleEvent).newState !== 'closed' || box.hidden) return;
+      // The browser closed it (a press elsewhere): it leaves as a card does. The popover's display is held for the length of
+      // the exit (switcher.css), so the card's own leaving plays; openSwitcher takes the class off again.
+      panelEl.classList.add('out');
       box.hidden = true;
       d.sheet(false);
     });
