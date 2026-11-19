@@ -174,15 +174,22 @@ button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color
 button.btn:hover { color: var(--_fg); }
 button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* Undo, 3 s after sending (thread.ts): in the resolve key's place and at its width ("resolve" stacked under it, hidden),
-   with a hairline under the word running out, so nothing moves when it turns back into resolve. */
+   so nothing moves when it turns back into resolve. Behind the word, the page's half ink (as .sb-t below: lower 44 % of
+   the line, green 30 %, 45 % on dark) running out over the 3 s (Leo, 19 Nov: "make undo loader half ink like"). */
 button.btn.undo { color: var(--_fg); }
 .btn.undo .w { display: inline-grid; position: relative; justify-items: end; }
 .btn.undo .w, .btn.undo .w > span { font: inherit; letter-spacing: inherit; color: inherit; } /* not the * rule's 14 px */
 .btn.undo .w > span { grid-area: 1 / 1; }
 .btn.undo .ghost { visibility: hidden; }
-.btn.undo .w::after { content: ''; position: absolute; left: 0; right: 0; bottom: -3px; height: 1.5px; border-radius: 1px; background: currentColor;
-                      opacity: .55; transform-origin: right; transform: scaleX(var(--undo-from, 1)); animation: lab-undo var(--undo-ms, 3s) linear forwards; }
-@keyframes lab-undo { to { transform: scaleX(0); } }
+.btn.undo .w > span:first-child { position: relative; isolation: isolate; --_ui: 30%; }
+.btn.undo .w > span:first-child::before { content: ''; position: absolute; z-index: -1; right: 0; top: calc(50% + .03em); height: .52em; border-radius: 3px;
+  width: 0; background: color-mix(in srgb, rgb(36, 160, 70) var(--_ui), transparent); pointer-events: none;
+  animation: lab-undo var(--undo-ms, 3s) linear forwards; }
+@media (prefers-color-scheme: dark) { .btn.undo .w > span:first-child { --_ui: 45%; } }
+@keyframes lab-undo { from { width: calc(var(--undo-from, 1) * 100%); } to { width: 0; } }
+/* Reduced motion: the ink stays whole and fades out at the end. */
+@keyframes lab-undo-still { from, 90% { width: 100%; opacity: 1; } to { width: 100%; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .btn.undo .w > span:first-child::before { animation-name: lab-undo-still; } }
 .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: 0; padding: 2px 0; animation: lab-fade var(--_fade); }
 .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
 .card .composer { margin-top: 6px; } /* close under resolve / delete */
