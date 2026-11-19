@@ -60,6 +60,7 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
       const got = root?.handedAt && root.handedAt >= m.createdAt;
       stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, role: 'img', 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
       if (sg?.s === 'wait') stamp.firstChild!.textContent = `waiting · ${ord(sg.n)} in line · ${prefix}${time}`;
+      if (sg?.s === 'missed') stamp.firstChild!.textContent = `not answered · ${prefix}${time}`;
     }
   }
   return stamp;
