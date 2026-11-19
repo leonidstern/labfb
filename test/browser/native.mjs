@@ -102,30 +102,45 @@ try {
           await sleep(300);
         }
 
-        // A new comment's box: beside its pin on a computer, growing with its words by itself.
-        await p.evaluate(() => document.getElementById('mid').scrollIntoView({ block: 'center' }));
-        await settle(p);
-        const mid = await at('#mid', 0.3, 0.5);
-        await tap(mid.x, mid.y);
-        await untilRoot(p, (r) => Boolean(r.querySelector('.box textarea')));
+        // A new comment's box: beside its pin on a computer, growing with its words by itself. A phone pins on a long press
+        // (a tap only reads), so there the box that grows is the chat's: the same box.
+        let box = '.box textarea';
+        if (phone) {
+          await inRoot(p, (r) => r.querySelector('.chat-btn').click());
+          await untilRoot(p, (r) => Boolean(r.querySelector('.chat .box textarea')));
+          box = '.chat .box textarea';
+          await inRoot(p, (r, sel) => r.querySelector(sel).focus(), box);
+        } else {
+          await p.evaluate(() => document.getElementById('mid').scrollIntoView({ block: 'center' }));
+          await settle(p);
+          const mid = await at('#mid', 0.3, 0.5);
+          await tap(mid.x, mid.y);
+          await untilRoot(p, (r) => Boolean(r.querySelector('.box textarea')));
+        }
         if (!phone && can.anchor) {
           const beside = await inRoot(p, (r) => { const f = r.querySelector('.float'), d = r.querySelector('.pin.draft'); const a = f.getBoundingClientRect(), l = d.offsetParent.getBoundingClientRect().left + d.offsetLeft + d.offsetWidth; return { tied: f.classList.contains('tied-beside'), dx: Math.round(a.left - l), pos: getComputedStyle(f).position }; /* the pin's layout box: a pressed pin is scaled */ });
           check(tag, "a new comment's box is tied to its pin, just right of it", beside.tied && beside.pos === 'fixed' && Math.abs(beside.dx - 8) <= 2, JSON.stringify(beside));
         }
-        const h1 = await inRoot(p, (r) => r.querySelector('.box textarea').getBoundingClientRect().height);
+        const h1 = await inRoot(p, (r, sel) => r.querySelector(sel).getBoundingClientRect().height, box);
         for (const [i, line] of ['one line', 'and a second', 'and a third'].entries()) {
           if (i) await p.keyboard.press('Shift+Enter');
           await p.keyboard.type(line);
         }
         await settle(p);
-        const grown = await inRoot(p, (r) => { const t = r.querySelector('.box textarea'); return { h: t.getBoundingClientRect().height, inline: t.style.height, grow: t.classList.contains('grow') }; });
-        const lines = await inRoot(p, (r) => parseFloat(getComputedStyle(r.querySelector('.box textarea')).lineHeight));
+        const grown = await inRoot(p, (r, sel) => { const t = r.querySelector(sel); return { h: t.getBoundingClientRect().height, inline: t.style.height, grow: t.classList.contains('grow') }; }, box);
+        const lines = await inRoot(p, (r, sel) => parseFloat(getComputedStyle(r.querySelector(sel)).lineHeight), box);
         if (can.grow) check(tag, 'the box grows with its words (three lines), the script writing no height', grown.h >= 3 * lines && grown.grow && !grown.inline, JSON.stringify({ h1, lines, ...grown }));
         else check(tag, 'the box grows with its words (three lines; measured, no field-sizing here)', grown.h >= 3 * lines && !grown.grow, JSON.stringify({ h1, lines, ...grown }));
-        await p.keyboard.press('Enter');
-        await untilRoot(p, (r) => r.querySelectorAll('button.pin').length >= 1);
-        await p.keyboard.press('Escape');
-        await sleep(500);
+        if (phone) {
+          await inRoot(p, (r, sel) => { const t = r.querySelector(sel); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); t.blur(); }, box); // nothing sent: the chat is the long chat below
+          await inRoot(p, (r) => r.querySelector('.chat-btn').click());
+          await sleep(400);
+        } else {
+          await p.keyboard.press('Enter');
+          await untilRoot(p, (r) => r.querySelectorAll('button.pin').length >= 1);
+          await p.keyboard.press('Escape');
+          await sleep(500);
+        }
 
         // A pin's card, tied to its pin (computers): it stays with it as the page scrolls, and opens above it near the
         // screen's bottom.
