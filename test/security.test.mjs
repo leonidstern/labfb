@@ -146,6 +146,10 @@ fs.writeFileSync(path.join(DIR, 'index.html'), '<h1>page</h1>');
 fs.writeFileSync(path.join(DIR, '.env'), 'SECRET=1');
 fs.writeFileSync(path.join(OUTSIDE, 'private.txt'), 'outside the folder');
 fs.symlinkSync(path.join(OUTSIDE, 'private.txt'), path.join(DIR, 'link.txt'));
+// Links that stay inside the folder but point into .lab (its keys) or at a dot file: served as their targets are, not at all.
+fs.symlinkSync('.lab', path.join(DIR, 'labdir'));
+fs.symlinkSync(path.join('.lab', 'server.json'), path.join(DIR, 'keys.txt'));
+fs.symlinkSync('.env', path.join(DIR, 'env.txt'));
 const PORT = 5200 + Math.floor(Math.random() * 90); // clear of 5060 and 5061, which fetch refuses ("bad port")
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], {
   cwd: DIR,
@@ -182,11 +186,59 @@ test('posts must come from the lab page itself, as JSON', async () => {
   assert.equal((await raw('/_lab/api/comments', { method: 'POST', body, headers: { 'content-type': 'text/plain', origin: `http://localhost:${PORT}` } })).status, 403);
 });
 
+test('a body over 256 KB is 413 and one that is not JSON is 400, not a 500 with the error in it', async () => {
+  const headers = { 'content-type': 'application/json', origin: `http://localhost:${PORT}` };
+  const big = JSON.stringify({ page: '/index', name: 'X', text: 'x'.repeat(300 * 1024) });
+  for (const p of ['/_lab/api/comments', '/_lab/rule', '/_lab/api/reads']) assert.equal((await raw(p, { method: 'POST', body: big, headers })).status, 413, p);
+  const bad = await raw('/_lab/rule', { method: 'POST', body: '{"page":', headers });
+  assert.equal(bad.status, 400);
+  assert.doesNotMatch(bad.text, /SyntaxError|at /);
+  assert.equal((await raw('/')).status, 200, 'the lab is still there');
+});
+
+// Behind --proxy the lab hands requests on under the dev server's own Origin, so it is the lab that has to tell the
+// app's own writes from another site's.
+test('--proxy: the app writes through the lab, forms included; another site does not, and cannot open its websocket', async () => {
+  const seen = [];
+  const dev = http.createServer((req, res) => (seen.push(`${req.method} ${req.url} ${req.headers.origin || ''}`), res.end('ok')));
+  dev.on('upgrade', (req, socket) => (seen.push(`UPGRADE ${req.url}`), socket.destroy()));
+  await new Promise((r) => dev.listen(0, '127.0.0.1', r));
+  const devPort = dev.address().port;
+  const port = 5600 + Math.floor(Math.random() * 90);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sec-proxy-'));
+  const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), '--proxy', String(devPort)], { cwd: dir, env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' } });
+  const ask = (p, { method = 'GET', headers = {}, body } = {}) =>
+    new Promise((done) => {
+      const req = http.request({ host: '127.0.0.1', port, path: p, method, headers: { host: `localhost:${port}`, ...headers } }, (res) => (res.resume(), res.on('end', () => done(res.statusCode))));
+      req.on('upgrade', (res, socket) => (socket.destroy(), done(101)));
+      req.on('error', () => done(0));
+      req.end(body);
+    });
+  try {
+    for (let i = 0; i < 50 && (await ask('/')) !== 200; i++) await new Promise((r) => setTimeout(r, 100));
+    seen.length = 0;
+    const form = { 'content-type': 'application/x-www-form-urlencoded' };
+    assert.equal(await ask('/save', { method: 'POST', body: 'a=1', headers: { ...form, origin: `http://localhost:${port}` } }), 200, 'the app\'s own form');
+    assert.equal(await ask('/save', { method: 'POST', body: 'a=1', headers: form }), 200, 'a tool with no Origin (curl)');
+    assert.equal(await ask('/save', { method: 'POST', body: 'a=1', headers: { ...form, origin: 'https://evil.example' } }), 403, 'another site');
+    assert.equal(await ask('/save', { method: 'POST', body: 'a=1', headers: { ...form, 'sec-fetch-site': 'cross-site' } }), 403, 'another site, no Origin');
+    assert.deepEqual(seen, [`POST /save http://localhost:${devPort}`, 'POST /save '], 'only the first two reached the dev server');
+    const ws = { connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', 'sec-websocket-version': '13' };
+    assert.equal(await ask('/hmr', { headers: { ...ws, origin: 'https://evil.example' } }), 0, 'another site\'s websocket is dropped');
+    await ask('/hmr', { headers: { ...ws, origin: `http://localhost:${port}` } });
+    assert.deepEqual(seen.slice(2), ['UPGRADE /hmr'], 'the app\'s own reaches the dev server');
+  } finally {
+    lab.kill();
+    dev.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('dot files, .lab/ and paths outside the folder are never served', async () => {
-  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/.lab/comments/index.json', '/.lab/archive/index.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt']) {
+  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/.lab/comments/index.json', '/.lab/archive/index.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt', '/labdir/server.json', '/labdir/key', '/keys.txt', '/env.txt']) {
     const r = await raw(p);
     assert.ok([403, 404].includes(r.status), `${p} → ${r.status}`);
-    assert.doesNotMatch(r.text, /SECRET|outside the folder|root:/);
+    assert.doesNotMatch(r.text, /SECRET|outside the folder|root:|"agent"|"token"/);
   }
 });
 
