@@ -84,6 +84,8 @@ const withConfig = (cfg, fn) => {
   }
 };
 const mine = (cfg) => path.join(cfg, 'labit', 'settings.json');
+// No flag in your settings (a lab writes your actions there once when it starts, lib/actions.ts; that is not a switch).
+const noFlags = (cfg) => !fs.existsSync(mine(cfg)) || !('flags' in JSON.parse(fs.readFileSync(mine(cfg), 'utf8')));
 
 test('a switch is saved in your own settings, keeps the rest of the file, and off leaves no trace', () => {
   const cfg = tmp();
@@ -152,18 +154,18 @@ test('the Experiments switch: owner only, saved in your settings, on the page an
   assert.equal((await post({ flag: 'wasKeptLastYear', on: true })).status, 400);
   assert.equal((await post({ flag: 'select', on: 'yes' })).status, 400);
   assert.equal((await post({ flag: '__proto__', on: true })).status, 400);
-  assert.equal(fs.existsSync(mine(cfg)), false, 'nothing written for a refused switch');
+  assert.ok(noFlags(cfg), 'nothing written for a refused switch');
 
   const r = await post({ flag: 'select', on: true });
   assert.equal(r.status, 200);
   assert.deepEqual((await r.json()).flags, ['select']);
-  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { select: true } }, 'in your own settings');
+  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')).flags, { select: true }, 'in your own settings');
   assert.equal(fs.existsSync(path.join(dir, 'labit.json')), false, "the project's file is not touched");
   assert.equal(flagsOf(await (await fetch(B + '/')).text()).select.on, true, 'the next page load has it, no restart');
   assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, ['select'], 'open pages hear it');
 
   await post({ flag: 'select', on: false });
-  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), {});
+  assert.ok(noFlags(cfg), 'off leaves no flags behind');
   assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, []);
 });
 
@@ -174,7 +176,7 @@ test("a flag the project's labit.json sets: shown as the project's, and the swit
   const { html, flagsOf, post } = await startLab(dir, cfg);
   assert.deepEqual(flagsOf(html).select, { name: FLAGS.select.name, on: true, project: true });
   assert.equal((await post({ flag: 'select', on: false })).status, 409);
-  assert.equal(fs.existsSync(mine(cfg)), false);
+  assert.ok(noFlags(cfg));
 });
 
 test('`labit settings` names each flag that is on and whose it is', async () => {
