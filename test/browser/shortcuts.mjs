@@ -155,6 +155,15 @@ try {
       await p.evaluate(() => localStorage.removeItem('lab-cursor')); // the steps above leave the pointer on (key 1 toggles it)
       await p.goto(B + '/anim');
       await untilRoot(p, (r) => r.querySelector('.pause-btn') && !r.querySelector('.pause-btn').hidden, 2500);
+      // A long comment scrolls inside its box: the scrollbar sits at the box's right edge, not left of the name and arrow.
+      const h2 = await p.evaluate(() => document.querySelector('h1').getBoundingClientRect().toJSON());
+      await p.mouse.click(h2.left + 20, h2.top + h2.height / 2);
+      await untilRoot(p, (r) => Boolean(r.querySelector('textarea')), 900);
+      await p.keyboard.insertText(Array.from({ length: 14 }, (_, i) => `line ${i} of a long comment`).join('\n'));
+      await sleep(300);
+      const sb = await p.evaluate(() => { const deep = (root) => { for (const n of root.querySelectorAll('*')) { if (n.localName === 'textarea') return n; const f = n.shadowRoot && deep(n.shadowRoot); if (f) return f; } return null; }; const t = deep(document); const b = t.closest('.box').getBoundingClientRect(); const x = t.getBoundingClientRect(); return { scrolls: t.scrollHeight > t.clientHeight, gap: Math.round(b.right - x.right), tall: t.closest('.box').classList.contains('tall') }; });
+      check(eng, 'a long comment scrolls with its scrollbar at the box\'s right edge', sb.scrolls && sb.tall && sb.gap <= 16, JSON.stringify(sb));
+      await p.keyboard.press('Escape');
       const pause = () => p.evaluate(() => {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
         const b = r?.querySelector('.pause-btn');
