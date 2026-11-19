@@ -2289,7 +2289,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const nativeTie = () => flag('native') && !sheetMode.matches;
   const placePin = (pin, c, zone, left, top, moved) => {
     inkAt(pin, zone, left, top);
-    const node = flag('native') && !moved && c.anchor?.kind !== 'board' ? findTarget(c.anchor || {}) : null;
+    const a = c.anchor || {};
+    if (a.kind === 'board') {
+      // A board pin on a frame: tied to the frame's box by its share of it, so the board's camera carries it (pinhold.ts).
+      const box = flag('native') && a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null;
+      const share = box?.offsetWidth && box.offsetHeight ? { x: a.fx / box.offsetWidth, y: (a.fy || 0) / box.offsetHeight } : null;
+      return holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
+    }
+    const node = flag('native') && !moved ? findTarget(a) : null;
     return holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
   };
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
@@ -2553,7 +2560,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // and where a pin sits), and the pins are drawn again as the camera moves.
   if (S.board) {
     Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
-    addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+    // The camera moved: the pins are drawn again, unless the browser holds every one (flag native: tied to their frames).
+    const allHeld = () => !S.openId && !S.draft && pinsById.size > 0 && [...pinsById.values()].every((p) => heldPin(p));
+    addEventListener('lab-board-moved', () => S.on && !allHeld() && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
   }
   startLive();
   // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads

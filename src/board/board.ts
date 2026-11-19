@@ -536,6 +536,7 @@ Object.assign(window, {
     busy: () => performance.now() - lastDown < 1500,
     key: (k: Parameters<typeof press>[0]) => press(k, true),
     frame: (id: string) => find(id)?.frame,
+    box: (id: string) => find(id)?.box || null, // a frame's box in the world: what the widget ties a board pin to (flag native)
     // Where a point on the screen is on the board: the frame under it (else the nearest), by px from its top left, and the point.
     anchor: (sx: number, sy: number) => {
       const [wx, wy] = [Math.round(sx / cam.z - cam.x), Math.round(sy / cam.z - cam.y)];
