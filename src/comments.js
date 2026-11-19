@@ -1173,11 +1173,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
     if (!t || root.contains(t)) return false;
     if (held.has(t)) return true;
-    // A transition is a change of state, and an animation that ends within 2 s is a moment: neither is motion to pause
-    // (Leo, 19 Nov: going to a section put a pause button on its heading while a word faded).
+    // Only motion that goes on (a loop) gets a pause: a transition, or an animation that ends, is a moment, like the
+    // highlight on a heading you just went to (Leo, 19 Nov: "what's with the animation pause thing on headers").
     if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) return false;
     const end = a.effect?.getComputedTiming().endTime;
-    return !(typeof end === 'number' && Number.isFinite(end) && end < 2000);
+    return !(typeof end === 'number' && Number.isFinite(end));
   });
   const animsOf = (el) => pageAnims().filter((a) => /** @type {KeyframeEffect} */ (a.effect).target === el);
   const moving = () => [...new Set([...document.querySelectorAll('video'), ...held, ...pageAnims().filter((a) => a.playState === 'running').map((a) => /** @type {KeyframeEffect} */ (a.effect).target)])].filter((el) => el?.isConnected);
