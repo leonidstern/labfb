@@ -44,6 +44,14 @@ const css = `
 #lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
 #lab-board .t u.on{opacity:1;text-decoration:underline}
 #lab-board .none{position:absolute;inset:0;display:grid;place-items:center;opacity:.7}
+#lab-hand{position:fixed;z-index:2147483647;cursor:grab;touch-action:none}
+#lab-hand.grabbing{cursor:grabbing}
+#lab-board .zm{position:absolute;right:max(10px,env(safe-area-inset-right));top:10px;z-index:5;display:flex;flex-direction:row-reverse;align-items:center;gap:2px;font:500 12px/1 system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums;color:inherit}
+#lab-board .zm button{font:inherit;color:inherit;background:none;border:0;border-radius:999px;padding:6px 8px;cursor:pointer;opacity:.55}
+#lab-board .zm button:hover,#lab-board .zm.open button{opacity:1;background:rgba(0,0,0,.06)}
+#lab-board .zm .zo{min-width:3.2em;text-align:right}
+#lab-board .zm:not(.open) .zc{display:none}
+@media (prefers-color-scheme:dark){#lab-board .zm button:hover,#lab-board .zm.open button{background:rgba(255,255,255,.08)}}
 #lab-board .done{position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
 `;
 
@@ -113,6 +121,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (signal.aborted) return;
     world.style.transform = `scale(${cam.z}) translate(${cam.x}px,${cam.y}px)`;
     world.style.setProperty('--iz', String(1 / cam.z));
+    const pc = `${Math.round(cam.z * 100)}%`;
+    if (zoomBtn.textContent !== pc) zoomBtn.textContent = pc;
     dispatchEvent(new Event('lab-board-moved')); // the widget draws the pins again
     if (!opts.hash) return;
     clearTimeout(hashTimer);
@@ -368,6 +378,25 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const done = Object.assign(document.createElement('button'), { className: 'done', type: 'button', textContent: 'done', hidden: true });
   done.addEventListener('click', () => (leave(), select('')));
   root.append(done);
+  // The zoom, quiet in the top-right corner (the widget has both bottom ones) (Leo, 19 Nov: "show zoom somewhere"); a tap offers fit · 50% · 100%.
+  const zoomBox = document.createElement('div');
+  zoomBox.className = 'zm';
+  zoomBox.setAttribute('data-uncommentable', '');
+  const zoomBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'zo', textContent: '100%' });
+  zoomBtn.setAttribute('aria-label', 'zoom');
+  zoomBtn.addEventListener('click', () => zoomBox.classList.toggle('open'));
+  zoomBox.append(zoomBtn);
+  for (const [t, to] of [['fit', 0], ['50%', 0.5], ['100%', 1]] as const) {
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'zc', textContent: t });
+    b.addEventListener('click', () => {
+      measure();
+      go(to ? zoomAt(cam, view.w / 2, view.h / 2, to, boxes(), view) : fitAll(boxes(), view));
+      zoomBox.classList.remove('open');
+    });
+    zoomBox.append(b);
+  }
+  root.append(zoomBox);
+  const ours = (e: Event) => e.target instanceof Node && zoomBox.contains(e.target); // its own clicks, not the board's
 
   // ---------- input: the board owns its surface (these run before the widget's own listeners) ----------
   // Points are the box's own: the screen's less where the box is.
@@ -378,7 +407,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     const y = ly(e) / cam.z - cam.y;
     return cards.find((c) => x >= c.f.x && x <= c.f.x + c.f.w && y >= c.f.y && y <= c.f.y + c.f.h)?.f.id || '';
   };
-  const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
+  const mine = (e: Event) => e.target instanceof Node && (root.contains(e.target) || e.target === handLayer);
   const pts = new Map<number, { x: number; y: number }>();
   let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean; hand?: boolean } | null = null;
   let holdTimer = 0;
@@ -392,14 +421,31 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // sketch"). A finger still pans, and a hold pins.
   let space = false;
   let theirs = false; // this press went to the widget (comment mode): its click isn't eaten
+  // While Space is held one still layer lies over the whole board, frames and pins included, with the hand on it: no
+  // frame, pin or pointer rule under it can show its own cursor between frames (Leo, 19 Nov: "switch to hand
+  // flickering"). Put there once on the key going down, never on its repeats, and taken away when it is let go.
+  let handLayer: HTMLElement | null = null;
   const hand = () => {
     root.classList.toggle('grab', space);
     root.classList.toggle('grabbing', space && Boolean(down?.hand));
+    if (space && !handLayer) {
+      measure();
+      handLayer = document.createElement('div');
+      handLayer.id = 'lab-hand';
+      handLayer.setAttribute('data-uncommentable', '');
+      Object.assign(handLayer.style, { left: `${ox}px`, top: `${oy}px`, width: `${view.w}px`, height: `${view.h}px` });
+      document.documentElement.append(handLayer);
+    } else if (!space && handLayer && !down?.hand) {
+      handLayer.remove();
+      handLayer = null;
+    }
+    handLayer?.classList.toggle('grabbing', Boolean(down?.hand));
   };
   const eat = (e: Event) => (e.stopImmediatePropagation(), e.preventDefault());
 
   on('pointerdown', (e: PointerEvent) => {
-    if (!mine(e) || entered && e.target instanceof HTMLIFrameElement) return;
+    if (!mine(e) || ours(e) || entered && e.target instanceof HTMLIFrameElement) return;
+    if (zoomBox.classList.contains('open')) zoomBox.classList.remove('open');
     measure();
     theirs = false;
     if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget()?.pinning()) {
@@ -505,12 +551,18 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   };
   on('pointerup', up, true);
   on('pointercancel', up, true);
-  on('click', (e: MouseEvent) => mine(e) && !theirs && eat(e), true);
+  on('click', (e: MouseEvent) => mine(e) && !theirs && !ours(e) && eat(e), true);
   on('dblclick', (e: MouseEvent) => mine(e) && eat(e), true);
   on('contextmenu', (e: MouseEvent) => mine(e) && e.preventDefault(), true);
   // A mouse or trackpad. Pinch on a trackpad arrives as a wheel with ctrlKey (Chrome, Firefox); ⌘ or Ctrl and a wheel zoom.
+  // A wheel over a pin on the board is the board's too: it went to the page behind (Leo, 19 Nov: "scroll inside board
+  // working weird"). Only an entered frame scrolls its own page.
+  const overPin = (e: Event) => {
+    const t = e.composedPath()[0];
+    return t instanceof Element && Boolean(t.closest('.pin')) && inBox((e as WheelEvent).clientX, (e as WheelEvent).clientY);
+  };
   on('wheel', (e: WheelEvent) => {
-    if (!mine(e)) return;
+    if (!mine(e) && !overPin(e)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     measure();
@@ -593,7 +645,11 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (press(e)) e.preventDefault();
   });
   on('keyup', (e: KeyboardEvent) => e.key === ' ' && space && ((space = false), hand()));
-  on('blur', () => space && ((space = false), hand()));
+  on('blur', () => {
+    if (!space) return;
+    space = false;
+    hand();
+  });
 
   // ---------- what the frames and the widget see ----------
   const inBox = (x: number, y: number) => {
@@ -651,6 +707,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     cancelAnimationFrame(drawFrame);
     for (const t of [still, settle, hashTimer]) clearTimeout(t);
     clearTimeout(holdTimer);
+    handLayer?.remove();
     if (entered) leave();
     for (const c of cards) c.frame?.remove();
     root.replaceChildren();

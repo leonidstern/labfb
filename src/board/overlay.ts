@@ -111,6 +111,8 @@ export function show(name: string, o: Opts) {
     grip.addEventListener('pointerup', up, { once: true });
     grip.addEventListener('pointercancel', up, { once: true });
   });
+  // The view's bar never scrolls the page behind (the board itself pans on the wheel).
+  bar.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
   document.body.append(view);
   const board = mountBoard(root, name, { of: o.of, back: () => close(), clip: true });
   const covers = (x: number, y: number) => {
