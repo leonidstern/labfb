@@ -1,4 +1,5 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { stickToEnd } from './stick.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -93,15 +94,9 @@ export function drawChat() {
     // At its newest it stays at its newest while it gets shorter (the keyboard coming up as you write), as a thread
     // does; scrolled back to read, it stays put (Leo, 19 Nov: "opening keyboard in chat scrolls content so I can't
     // see the latest message").
-    let stick = true;
-    box.addEventListener('scroll', () => (stick = box.scrollHeight - box.scrollTop - box.clientHeight < 48), { passive: true });
-    if ('ResizeObserver' in window) new ResizeObserver(() => stick && (box.scrollTop = box.scrollHeight)).observe(box);
+    const end = stickToEnd(box);
     // Going to write: the last message comes into view, so you write under it.
-    chat.addEventListener('focusin', (e) => {
-      if ((e.target as Element).localName !== 'textarea') return;
-      stick = true;
-      box.scrollTop = box.scrollHeight;
-    });
+    chat.addEventListener('focusin', (e) => (e.target as Element).localName === 'textarea' && end.pin());
   }
   if (!chat.firstChild)
     chat.append(
