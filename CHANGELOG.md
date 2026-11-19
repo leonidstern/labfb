@@ -4,7 +4,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Fixed: a symbolic link in the folder that pointed into `.lab` (or at any dot file) was served, so a page script or a guest on the wifi could read the lab's keys through it (`.lab/server.json`, `.lab/key`). A link is now judged by what it points at, like any other path.
 - Phones: a comment made by holding the page always gets the cursor and the keyboard. The box used to focus itself during the hold, which Safari could do without a keyboard; now the finger's lift focuses it, once.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.
 - Pause sits beside what moves, not in the bar: each video and each animated element on the page gets a small pause / play just past its top right corner, over the page (nothing shifts), that stops or starts only that one. It shows with the comments and hides with them (M). **P** still pauses everything, or plays what was paused. The bar's pause button is gone.
@@ -16,6 +15,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Holding Shift over words (to quote them) shows the drawn I-beam with a low ink band at its foot, in place of the I-beam with a green pin tip.
 - One key for the mode: `1` (or a click on the switch) toggles between comment and pointer: once for the pointer, again for the comment. The switch reads "(1)" and the hint "1 comment / pointer". Key `3` and the `pointer` shortcut are gone; a `pointer` key left in a settings file is ignored without a message.
 - The listening pill drops the session name: "talking to Claude · Opus 5.5", not "… (labit for writing)". The name is in the pill's tooltip, and still in the labs & pages list.
+- Fixed: a symbolic link in the folder that pointed into `.lab` (or at any dot file) was served, so a page script or a guest on the wifi could read the lab's keys through it (`.lab/server.json`, `.lab/key`). A link is now judged by what it points at, like any other path.
 - On computers a comment on a spot or an area is one card like the dialog on words: the page's colour, the card's shadow, and the box (and its actions row, where there is one) 8 px in, its corners concentric with the card's.
 - The listening mark's colours: green while an agent listens or works, amber while the page reconnects to the lab (it was faded green), muted grey when no agent listens (it was black). Its tooltip names the state first (Listening, Working, Away), then the resume command.
 - Done pins are as big as open ones, only faded (50%). Before, a done pin also shrank to 80% (64% on phones); a pin whose spot is gone still does.
