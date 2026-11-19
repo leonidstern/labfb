@@ -33,15 +33,17 @@ const can = () => {
   return able;
 };
 // Whether the browser really hides a fixed element whose anchor a box cuts off: a 4 px probe at the screen's corner,
-// unseen and let through, tied to an anchor scrolled out of a 4 px box. The browser decides at its next rendering
+// unseen and let through, tied to an anchor scrolled out of a 4 px box that scrolls. The browser decides at its next rendering
 // update, so it is read two frames on: not found at that point, it is hidden.
 function hidesClipped() {
+  // As pins meet it: a box that scrolls (overflow auto), its anchor scrolled out of it.
   const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:hidden;opacity:0;pointer-events:none;z-index:2147483647';
-  box.append(Object.assign(document.createElement('div'), { style: 'margin-top:40px;height:4px;anchor-name:--lab-probe' }));
+  box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:auto;scrollbar-width:none;opacity:0;pointer-events:none;z-index:2147483647';
+  box.append(Object.assign(document.createElement('div'), { style: 'height:4px;anchor-name:--lab-probe' }), Object.assign(document.createElement('div'), { style: 'height:80px' }));
   const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--lab-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) - 40px)';
+  probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--lab-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) + 40px)';
   document.body.append(box, probe);
+  box.scrollTop = 40;
   requestAnimationFrame(() =>
     requestAnimationFrame(() => {
       const r = probe.getBoundingClientRect();

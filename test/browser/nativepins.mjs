@@ -86,6 +86,24 @@ const where = (p) =>
     return out;
   }, PINS);
 const same = (a, b, names) => names.filter((n) => !a[n] || !b[n] || Math.abs(a[n].dx - b[n].dx) > 1 || Math.abs(a[n].dy - b[n].dy) > 1);
+// Does the browser really hide a pin whose spot a box cuts off? The same probe as the widget's (pinhold.ts).
+const hidesClipped = (p) =>
+  p.evaluate(() => {
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:auto;scrollbar-width:none;opacity:0;pointer-events:none;z-index:2147483647';
+        box.append(Object.assign(document.createElement('div'), { style: 'height:4px;anchor-name:--t-probe' }), Object.assign(document.createElement('div'), { style: 'height:80px' }));
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--t-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) + 40px)';
+        document.body.append(box, probe);
+        box.scrollTop = 40;
+        return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => {
+          const r = probe.getBoundingClientRect();
+          const seen = document.elementFromPoint(1, 1) === probe;
+          box.remove();
+          probe.remove();
+          res(Math.abs(r.left) < 1 && Math.abs(r.top) < 1 && !seen);
+        })));
+      });
 const settle = (p) => p.evaluate(() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 60)))));
 
 try {
@@ -102,21 +120,7 @@ try {
       check(eng, 'the browser has anchor positioning and position-visibility', can.anchor && can.visibility, JSON.stringify(can));
       // Does it really hide a pin whose spot a box cuts off? (Safari takes the property but doesn't, pinhold.ts:
       // there the pin in the box is placed by the script.) The same probe as the widget's.
-      const hides = await p.evaluate(() => {
-        const box = document.createElement('div');
-        box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:hidden;opacity:0;pointer-events:none;z-index:2147483647';
-        box.append(Object.assign(document.createElement('div'), { style: 'margin-top:40px;height:4px;anchor-name:--t-probe' }));
-        const probe = document.createElement('div');
-        probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--t-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) - 40px)';
-        document.body.append(box, probe);
-        return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => {
-          const r = probe.getBoundingClientRect();
-          const seen = document.elementFromPoint(1, 1) === probe;
-          box.remove();
-          probe.remove();
-          res(Math.abs(r.left) < 1 && Math.abs(r.top) < 1 && !seen);
-        })));
-      });
+      const hides = await hidesClipped(p);
       console.log(`info ${eng.padEnd(8)} hides a pin its box cuts off: ${hides}`);
       // Pins put the usual way: a click and Enter; words by Shift + double-click.
       let n = 0;
@@ -143,6 +147,8 @@ try {
       await send('in the gap');
       const q = await at('#q', 0.5, 0.5);
       await p.keyboard.down('Shift');
+      // The words must be selectable before the press (WebKit restyles a moment after Shift; selection.mjs waits the same).
+      await p.waitForFunction(() => { const c = getComputedStyle(document.getElementById('q')); return c.userSelect !== 'none' && c.webkitUserSelect !== 'none'; }, null, { timeout: 1500, polling: 'raf' }).catch(() => {});
       await p.mouse.dblclick(q.x, q.y);
       await p.keyboard.up('Shift');
       await send('on the words');
@@ -163,6 +169,11 @@ try {
       await settle(p);
       const names = PINS.map(([name]) => name).filter((k) => k !== 'own'); // own is put last, below
       const rest = await where(p);
+      const missing = names.filter((k) => !rest[k]);
+      if (missing.length) {
+        check(eng, 'every pin was placed', false, `missing: ${missing.join(', ')}`);
+        continue;
+      }
       check(eng, hides ? 'five pins and a drawing, all held by the browser' : 'four pins and a drawing held; the one in the box placed by the script', names.every((k) => rest[k]?.shown && rest[k]?.held === (k !== 'inbox' || hides)), JSON.stringify(rest));
       // A scroll measures nothing: no element or words are measured by the widget while the box and the page scroll.
       await p.evaluate(() => {
@@ -224,6 +235,49 @@ try {
       const own = (await where(p)).own;
       check(eng, 'a pin on an element the page anchors itself is placed by the script, on its spot', own && !own.held && own.shown && Math.abs(own.dy + 15) <= 2, JSON.stringify(own));
       await ctx.close();
+
+      // The same pins on a phone: Safari's engine as an iPhone, Chrome's as a Pixel (touch, a phone's screen and pixels).
+      const phone = eng === 'webkit' ? 'iPhone 13' : 'Pixel 7';
+      const tag = `${eng}/${eng === 'webkit' ? 'ios' : 'android'}`;
+      const mctx = await browser.newContext({ ...pw.devices[phone] });
+      await mctx.addInitScript(() => (localStorage.setItem('lab-on', '1'), localStorage.setItem('lab-name', 'leo')));
+      const m = await mctx.newPage();
+      await m.goto(B + '/');
+      await m.waitForFunction(() => document.querySelector('[data-lab-comments]')?.shadowRoot?.querySelectorAll('button.pin').length >= 7, null, { timeout: 8000 }).catch(() => {});
+      await sleep(600);
+      const mHides = await hidesClipped(m);
+      console.log(`info ${tag.padEnd(8)} ${phone}: hides a pin its box cuts off: ${mHides}`);
+      const phoneNames = ['inbox', 'sticky', 'gap', 'words', 'shifted', 'drawing'];
+      await m.evaluate(() => document.getElementById('box').scrollIntoView({ block: 'center' }));
+      await settle(m);
+      const mRest = await where(m);
+      check(tag, 'on a phone: the pins held by the browser, the one in the box where it hides clipped ones', phoneNames.every((k) => mRest[k]?.held === (k !== 'inbox' || mHides)), JSON.stringify(mRest));
+      await m.evaluate(() => {
+        window.labMeasured = 0;
+        for (const [proto, fn] of [[Element.prototype, 'getBoundingClientRect'], [Range.prototype, 'getClientRects'], [Range.prototype, 'getBoundingClientRect']]) {
+          const was = proto[fn];
+          proto[fn] = function (...a) { window.labMeasured++; return was.apply(this, a); };
+        }
+      });
+      const boxTop = await m.evaluate(() => document.getElementById('box').scrollTop);
+      await m.evaluate((t) => (document.getElementById('box').scrollTop = t + 50), boxTop);
+      await settle(m);
+      const mMeasured = await m.evaluate(() => window.labMeasured);
+      const mBoxed = await where(m);
+      check(tag, 'on a phone, the box scrolls: every pin stays on its spot', same(mRest, mBoxed, phoneNames).length === 0, JSON.stringify(same(mRest, mBoxed, phoneNames)));
+      // The one pin the script places (on the element the page anchors itself) is measured; none of the held ones.
+      if (mHides) check(tag, '…and the widget measured only the pin it does not hold', mMeasured <= 1, `${mMeasured} measurements`);
+      const top0 = await m.evaluate(() => scrollY);
+      await m.evaluate((y) => scrollTo(0, y + 160), top0);
+      await settle(m);
+      const mPaged = await where(m);
+      check(tag, "on a phone, the page scrolls: every pin stays on its spot, the sticky header's on screen", same(mRest, mPaged, phoneNames).length === 0 && mPaged.sticky.y >= -30 && mPaged.sticky.y < 60, JSON.stringify({ sticky: mPaged.sticky, off: same(mRest, mPaged, phoneNames) }));
+      await m.evaluate(() => document.getElementById('box').scrollIntoView({ block: 'center' }));
+      await m.evaluate(() => (document.getElementById('box').scrollTop = 900));
+      await settle(m);
+      const mCut = await where(m);
+      check(tag, 'on a phone, its box cuts its spot off: hidden', mCut.inbox && !mCut.inbox.shown, JSON.stringify(mCut.inbox));
+      await mctx.close();
     } finally {
       await browser.close();
     }
