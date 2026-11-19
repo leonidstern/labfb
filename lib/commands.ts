@@ -161,7 +161,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   if (['wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
     const [cmd, ref, ...words] = pos;
     const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
-    const { dir, server } = lab;
+    const { dir } = lab;
+    let { server } = lab;
     const session = mySession(opts.name, opts.model);
     const gone = () =>
       die(
@@ -173,9 +174,14 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // A lab that goes and comes back (--dev, an update, a crash and a start again) shouldn't end a wait: the command
     // holds on for a few seconds and carries on. The clock starts when the lab first goes, not when the call began --
     // a wait sits open for 25 minutes, so a deadline set up front would already have passed by then.
+    // A lab started again has a new key in its .lab/server.json (this folder's, not a lab above): each try reads it again, so the old key isn't refused
+    // (before, a wait outlived the restart and then ended on "forbidden", and the lab showed nobody listening).
     const call = async (pathname: string, body: object, seconds = 5) => {
       let until = 0;
       for (;;) {
+        try {
+          server = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8'));
+        } catch {} // mid-write or gone: the last one read
         try {
           return await labCall(server, pathname, body, session);
         } catch {
