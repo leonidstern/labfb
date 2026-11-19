@@ -254,12 +254,15 @@ try {
     check(eng, 'the bar gliding sideways did not move the page', sy === 0, String(sy));
     await P.shadow(() => { r.querySelector('.chat-btn').hidden = false; r.querySelector('.chat-btn').click(); });
     await sleep(700);
-    const sheet = await P.shadow(() => { const c = r.querySelector('.chatwin'); const b = r.querySelector('.sbar'); const all = [...b.querySelectorAll(".sb-chip")].map((c) => c.getBoundingClientRect()); const k = all.find((q) => q.left >= 19 && q.right < innerWidth - 20); if (!k) return { all: all.map((q) => [Math.round(q.left), Math.round(q.right)]), sl: b.querySelector(".sb-nav").scrollLeft }; const hit = r.elementFromPoint(k.x + k.width / 2, k.y + k.height / 2); return { sheetTop: c.getBoundingClientRect().top, barBottom: b.getBoundingClientRect().bottom, open: !c.hidden, scrim: getComputedStyle(r.querySelector('.scrim')).display, hit: hit?.closest('.sbar') ? 'bar' : hit?.className }; });
-    check(eng, 'chat sheet open: dimmed page, the bar above it and tappable, the sheet clear of it', sheet.open && sheet.scrim === 'block' && sheet.hit === 'bar' && sheet.sheetTop >= sheet.barBottom, JSON.stringify(sheet));
+    // While a sheet is open on a phone the bar steps away (visibility: hidden), so the sheet's handle and its swipe down
+    // are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"); its place is the dimmed page's.
+    const sheet = await P.shadow(() => { const c = r.querySelector('.chatwin'); const b = r.querySelector('.sbar'); const k = b.getBoundingClientRect(); const hit = r.elementFromPoint(innerWidth / 2, k.top + k.height / 2); return { open: !c.hidden, scrim: getComputedStyle(r.querySelector('.scrim')).display, bar: getComputedStyle(b).visibility, hit: hit?.closest('.sbar') ? 'bar' : hit?.className }; });
+    check(eng, 'chat sheet open: dimmed page, the bar steps away (not tappable over the sheet)', sheet.open && sheet.scrim === 'block' && sheet.bar === 'hidden' && sheet.hit !== 'bar', JSON.stringify(sheet));
+    const sy0 = await P.p.evaluate(() => scrollY);
     await P.p.touchscreen.tap(195, 22);
     await sleep(900);
-    const after = await P.shadow(() => { return { open: !r.querySelector('.chatwin').hidden }; });
-    check(eng, 'a tap on a chip with the sheet open goes to that section and closes the sheet', (await P.p.evaluate(() => scrollY)) > 0 && !after.open, JSON.stringify(after));
+    const after = await P.shadow(() => { return { open: !r.querySelector('.chatwin').hidden, bar: getComputedStyle(r.querySelector('.sbar')).visibility }; });
+    check(eng, 'a tap where the bar was closes the sheet (the page stays put) and the bar comes back', !after.open && after.bar === 'visible' && (await P.p.evaluate(() => scrollY)) === sy0, JSON.stringify(after));
     await ph.close();
 
     // ---- pinch-zoomed in (as zoom.mjs: the page starts zoomed): the bar keeps its usual size, inside what the screen shows ----

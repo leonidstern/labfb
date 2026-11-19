@@ -24,7 +24,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 let DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-'));
 const PORT = String(5500 + Math.floor(Math.random() * 300));
 let B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_NO_UPDATE_CHECK: '1' };
 const LONG = 'This is a very long paragraph meant to be selected whole, it keeps going and going with plenty of words so that the selection runs over several lines of the window, and then it goes on a little more for good measure, with yet more words to be sure that it is over three hundred characters long, until finally it ends.';
 const PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>fluid</title>
 <style>body{margin:30px;max-width:520px;font:18px/1.6 Georgia,serif} #box{height:96px;overflow:auto;border:1px solid #999} #field{width:200px}</style>
@@ -52,11 +52,13 @@ for (let i = 0; i < 80; i++) {
     await sleep(100);
   }
 }
-// A second lab whose labit.json changes the actions (go, then two of your own): scenes run in it through withLab2.
+// A second lab whose settings.json has its own list of actions (go, then two of your own): scenes run in it through
+// withLab2. The list is personal only (lib/actions.ts): labit.json no longer sets it.
 const DIR2 = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-actions-'));
 const PORT2 = String(5850 + Math.floor(Math.random() * 100));
 const B2 = `http://localhost:${PORT2}`;
-fs.writeFileSync(path.join(DIR2, 'labit.json'), JSON.stringify({ actions: { words: ['go', { label: 'tighter', send: 'Tighter: less space' }, { label: 'shorter', send: 'Shorter: half the words' }] } }));
+fs.mkdirSync(path.join(DIR2, 'nobody', 'labit'), { recursive: true });
+fs.writeFileSync(path.join(DIR2, 'nobody', 'labit', 'settings.json'), JSON.stringify({ actions: [{ name: 'go', prompt: 'Go ahead.' }, { name: 'tighter', prompt: 'Tighter: less space' }, { name: 'shorter', prompt: 'Shorter: half the words' }] }));
 for (let i = 0; i <= 100; i++) fs.writeFileSync(path.join(DIR2, i ? `s${i}.html` : 'index.html'), PAGE);
 const server2 = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT2], { cwd: DIR2, env: { ...env, XDG_CONFIG_HOME: path.join(DIR2, 'nobody') }, stdio: 'ignore' });
 for (let i = 0; i < 80; i++) {
@@ -410,8 +412,11 @@ try {
         check(eng, 'phones: the bar\'s buttons are concentric with its corners', bar.n === 4 && bar.bad.length === 0 && bar.sample.R > 18, JSON.stringify(bar));
         await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
         await sleep(1200);
-        const sheet = await concentric(p, '.float:not(.out, .p-dlg *)', '.float:not(.p-dlg *) > .quick button:first-child, .float:not(.p-dlg *) > .composer .box', ['left', 'right']);
-        check(eng, '…and the sheet\'s first button and box (12 px in from its corners)', sheet.n === 2 && sheet.bad.length === 0 && sheet.sample.R > 24, JSON.stringify(sheet));
+        const sheet = await concentric(p, '.float:not(.out, .p-dlg *)', '.float:not(.p-dlg *) > .composer .box', ['left', 'right']);
+        check(eng, '…and the sheet\'s box (12 px in from its corners)', sheet.n === 1 && sheet.bad.length === 0 && sheet.sample.R > 24, JSON.stringify(sheet));
+        // The action buttons keep the computer's corner, not the sheet's (Leo, 19 Nov: they read as pills on a phone)
+        const btn = await inRoot(p, (r) => { const b = r.querySelector('.float:not(.p-dlg *) > .quick button'); const d = r.querySelector('.p-dlg'); return { ri: parseFloat(getComputedStyle(b).borderTopLeftRadius), R: parseFloat(getComputedStyle(d || b).getPropertyValue('--_radius')) }; });
+        check(eng, '…its action buttons keep the computer\'s corner (radius − 8 px), no pills', btn.ri > 0 && btn.ri < 20 && (!btn.R || Math.abs(btn.ri - (btn.R - 8)) < 0.6), JSON.stringify(btn));
       });
       // …computers: a comment on a spot is one card like the dialog on words, its box 8 px in and concentric with it
       await scene(eng, browser, {}, async (p) => {
@@ -423,51 +428,50 @@ try {
         check(eng, 'a spot\'s comment is one card (background, shadow, 8 px in) with its box concentric inside', card.bg !== 'rgba(0, 0, 0, 0)' && card.pad === '8px' && card.shadow && spot.n === 1 && spot.bad.length === 0, JSON.stringify({ card, spot }));
       });
 
-      // Picking an action shows it on; picking it again goes back to the plain comment
-      // Actions of your own (labit.json `actions`: go, tighter, shorter): the row and its keys follow them
+      // Actions of your own (settings.json `actions`: go, tighter, shorter): selected words keep rewrite · cut · go, a
+      // spot's row is your list in its order; each sends its prompt at once, and ⌥ + a digit runs the nth
       await withLab2(() => scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
         await dlgUp(p);
         const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '));
-        check(eng, 'actions in labit.json: the row is the listed ones in their order', names === 'go tighter shorter', names);
-        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=tighter]').click());
-        await sleep(1500);
-        const c = await sent('Tighter: less space');
-        check(eng, '…an action of your own sends its text at once, on the words', Boolean(c) && c.anchor?.quote?.exact === 'delta echo' && (await fd(p)) === null, JSON.stringify(c?.anchor?.quote));
+        check(eng, 'your own actions: selected words keep rewrite · cut · go', names === 'rewrite cut go', names);
       }));
       await withLab2(() => scene(eng, browser, {}, async (p) => {
-        await drag(p, '#a', 'foxtrot golf');
-        await dlgUp(p);
-        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=shorter]').click());
+        await p.mouse.click(300, 190);
+        await sleep(800);
+        const names = await inRoot(p, (r) => [...r.querySelectorAll('.float .quick button:not([data-k="…"])')].filter((b) => !b.hidden).map((b) => b.textContent).join(' '));
+        check(eng, 'your own actions: a spot\'s row is the listed ones in their order', names === 'go tighter shorter', names);
+        await inRoot(p, (r) => r.querySelector('.float [data-k=tighter]')?.click());
         await sleep(1500);
-        const c = await sent('Shorter: half the words');
-        check(eng, 'another action of your own sends its text at once too', Boolean(c) && c.anchor?.quote?.exact === 'foxtrot golf' && (await fd(p)) === null, JSON.stringify(c?.anchor?.quote));
+        const c = (await comments()).find((x) => x.anchor?.act === 'Tighter: less space');
+        check(eng, '…an action of your own sends its prompt at once, on the spot', Boolean(c) && c.anchor?.kind !== 'text' && (await fd(p)) === null, JSON.stringify(c?.anchor));
       }));
       await withLab2(() => scene(eng, browser, {}, async (p) => {
-        await drag(p, '#a', 'india juliet');
-        await dlgUp(p);
-        await p.keyboard.press('Alt+Digit2');
+        await p.mouse.click(300, 190);
+        await sleep(800);
+        await p.keyboard.press('Alt+Digit3');
         await sleep(1500);
-        check(eng, 'Option+2 runs the second of your own actions: tighter', Boolean(await sent('Tighter: less space')));
+        check(eng, 'Option+3 runs the third of your own actions: shorter', (await comments()).some((x) => x.anchor?.act === 'Shorter: half the words'));
       }));
 
-      // A spot (a click on the page): the regular dialog has the actions row too, over the open box; each sends at once
+      // A spot (a click on the page): the regular dialog has your actions too (lib/actions.ts, the seeded list here: go
+      // fix remove…), over the open box; each sends at once with its prompt
       await scene(eng, browser, {}, async (p) => {
         await p.mouse.click(300, 190);
         await sleep(800);
         const st = await inRoot(p, (r) => ({ names: [...r.querySelectorAll('.float .quick button')].map((b) => b.textContent).join(' '), open: r.querySelector('.float .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
-        check(eng, 'a spot\'s dialog has the row go · remove · fix over the open box, the cursor in it', st.names === 'go remove fix' && st.open && st.focus === 'textarea', JSON.stringify(st));
+        check(eng, 'a spot\'s dialog has your actions in order (go · fix · remove first) over the open box, the cursor in it', st.names.startsWith('go fix remove') && st.open && st.focus === 'textarea', JSON.stringify(st));
         await inRoot(p, (r) => r.querySelector('.float [data-k=remove]').click());
         await sleep(1500);
-        const c = await sent('Remove this');
-        check(eng, '…remove sends "Remove this" at once, on the spot', Boolean(c) && c.anchor?.kind !== 'text', JSON.stringify(c?.anchor));
+        const c = (await comments()).find((x) => x.text === 'remove' && x.anchor?.act === 'Remove this.');
+        check(eng, '…remove sends at once with its prompt ("Remove this."), on the spot', Boolean(c) && c.anchor?.kind !== 'text', JSON.stringify(c?.anchor));
       });
       await scene(eng, browser, {}, async (p) => {
         await p.mouse.click(300, 190);
         await sleep(800);
         await inRoot(p, (r) => r.querySelector('.float [data-k=fix]').click());
         await sleep(1500);
-        check(eng, '…fix sends "Fix this" at once', Boolean(await sent('Fix this')));
+        check(eng, '…fix sends at once with its prompt', (await comments()).some((x) => x.text === 'fix' && (x.anchor?.act || '').startsWith('Fix this')));
       });
 
       // Sending: leaves, a new selection while it goes
