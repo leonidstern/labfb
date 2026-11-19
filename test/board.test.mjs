@@ -186,3 +186,74 @@ test('a page loaded into a frame is not opened by anybody', async () => {
   assert.ok(await opened());
 });
 
+// ---------- the commands (labit board …) ----------
+import { execFile } from 'node:child_process';
+const cli = (dir, ...args) =>
+  new Promise((resolve) => execFile(process.execPath, [LAB, 'board', ...args], { cwd: dir, env: process.env }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, out: stdout + stderr })));
+
+test('board new --variants copies the page, prints the link, and each file is the page plus a base', async () => {
+  const r = await cli(DIR, 'new', 'Pricing hero', '--of', '/pricing', '--variants', '3');
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /^# Board pricing-hero · Pricing hero\nurl: http:\/\/localhost:\d+\/_lab\/board\/pricing-hero\n/);
+  assert.match(r.out, /\na {2}a\.html {2}1280×800\n/);
+  for (const id of 'abc') {
+    const file = fs.readFileSync(path.join(DIR, `.lab/boards/pricing-hero/${id}.html`), 'utf8');
+    assert.match(file, /<head><base href="\/"><title>Pricing<\/title>/);
+    assert.match(await (await fetch(`${B}/_lab/board/pricing-hero/${id}`)).text(), /<h1>Pricing<\/h1>/);
+  }
+  const nested = await cli(DIR, 'new', 'Deep', '--of', '/sub/deep', '--variants', '1');
+  assert.equal(nested.code, 0, nested.out);
+  assert.match(fs.readFileSync(path.join(DIR, '.lab/boards/deep/a.html'), 'utf8'), /<base href="\/sub\/">/);
+  const same = await cli(DIR, 'new', 'Pricing hero', '--of', '/pricing', '--variants', '2');
+  assert.match(same.out, /# Board pricing-hero-2/, 'a second board of the same topic never overwrites the first');
+});
+
+test('variants: default is the caller\'s, 7 is refused, a missing page or a non-page is said plainly', async () => {
+  assert.notEqual((await cli(DIR, 'new', 'Many', '--of', '/pricing', '--variants', '7')).code, 0);
+  assert.match((await cli(DIR, 'new', 'Nope', '--of', '/missing', '--variants', '2')).out, /not a plain HTML page/);
+  assert.match((await cli(DIR, 'new', 'Bad', '--of', 'https://example.com/', '--variants', '2')).out, /page of this lab/);
+});
+
+test('widths copy no file and run narrow to wide; flow keeps its order; add puts a step after another', async () => {
+  const w = await cli(DIR, 'new', 'Pricing widths', '--of', '/pricing', '--widths', '1280,390,820');
+  assert.equal(w.code, 0, w.out);
+  assert.deepEqual(w.out.split('\n').filter((l) => /^[abc] /.test(l)).map((l) => l.split(/ {2}/)[2]), ['390×844', '820×1180', '1280×800']);
+  assert.equal(fs.existsSync(path.join(DIR, '.lab/boards/pricing-widths')), false);
+  const f = await cli(DIR, 'new', 'Checkout flow', '--flow', '/pricing,/cart,/sub/deep');
+  assert.match(f.out, /"1 Pricing"/);
+  assert.match(f.out, /"3 Deep"/);
+  const added = await cli(DIR, 'add', 'checkout-flow', '/cart', '--after', 'a', '--label', 'again');
+  assert.match(added.out, /Added d \(\/cart\) after a\./);
+  const list = await cli(DIR, 'list', 'checkout-flow');
+  assert.deepEqual(list.out.split('\n').filter((l) => /^[a-d] /.test(l)).map((l) => l[0]), ['a', 'd', 'b', 'c']);
+  assert.match((await cli(DIR, 'move', 'checkout-flow', 'c', '--first')).out, /c is now first\./);
+  assert.match((await cli(DIR, 'move', 'checkout-flow', 'a', '--after', 'a')).out, /after itself/);
+  assert.match((await cli(DIR, 'add', 'checkout-flow', 'b', '--label', 'second', '--width', '390')).out, /Changed b\./);
+  const disk = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/boards/checkout-flow.json'), 'utf8'));
+  assert.deepEqual(disk.frames.map((x) => x.id), ['c', 'a', 'd', 'b']);
+  assert.equal(disk.frames.find((x) => x.id === 'b').h, 844);
+});
+
+test('add copies a file in as a new variant; list with no name lists boards; the page of a board of a page via board new --of', async () => {
+  fs.writeFileSync(path.join(DIR, 'mine.html'), '<!doctype html><title>mine</title><h1>mine</h1>');
+  const r = await cli(DIR, 'add', 'pricing-hero', 'mine.html', '--label', 'my take');
+  assert.match(r.out, /Added d \(d\.html\)\./);
+  assert.match(await (await fetch(`${B}/_lab/board/pricing-hero/d`)).text(), /<h1>mine<\/h1>/);
+  const all = await cli(DIR, 'list');
+  assert.match(all.out, /^pricing-hero {2}4 frames {2}of \/pricing {2}http/m);
+  const one = await cli(DIR, 'new', '--of', '/sub/deep');
+  assert.match(one.out, /# Board sub--deep/);
+  assert.match((await cli(DIR, 'list', 'nope')).out, /No board nope/);
+});
+
+test('git stays clean: a repo that ignores .lab sees nothing of boards', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const g = (...a) => execFileSync('git', a, { cwd: DIR, encoding: 'utf8' });
+  fs.writeFileSync(path.join(DIR, '.gitignore'), '.lab/\n');
+  g('init', '-q');
+  g('add', '-A');
+  g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base');
+  await cli(DIR, 'new', 'Clean', '--of', '/pricing', '--variants', '3');
+  await cli(DIR, 'pick', 'clean', 'a');
+  assert.equal(g('status', '--porcelain').trim(), '');
+});
