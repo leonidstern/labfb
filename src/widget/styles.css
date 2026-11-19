@@ -25,12 +25,13 @@
   --_ease-in: var(--lab-ease-in, cubic-bezier(.4, 0, 1, 1));        /* something leaving: it speeds up as it goes */
   --_ease-settle: var(--lab-ease-settle, cubic-bezier(.32, .72, 0, 1)); /* a sheet: iOS's curve, fast then a long settle */
   --_ease-pop: var(--lab-ease-pop, cubic-bezier(.34, 1.56, .64, 1)); /* an arrival with a small overshoot */
-  --_amber: #e08a1a; }
+  --_amber: var(--lab-amber, #e08a1a); --_red: #e5484d; /* one red: delete, errors, archiving a whole lab */ }
 @media (prefers-color-scheme: dark) {
   :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
           --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
           --_soft: var(--lab-soft, rgba(255,255,255,.05)); --_hover: var(--lab-hover, rgba(255,255,255,.10)); --_line: var(--lab-line, rgba(255,255,255,.15)); --_edge: var(--lab-edge, #48484a); --_muted: var(--lab-muted, rgba(255,255,255,.50));
-          --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); --_amber: #f0a040; }
+          --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); --_amber: var(--lab-amber, #f0a040);
+          --_green-fg: rgb(52, 199, 89); /* the text-sized green, lighter on dark (lab.css's dark --lab-green, #34c759) */ }
 }
 * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
     font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: -.011em;
@@ -54,10 +55,10 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
        transition: transform var(--_t-quick) var(--_ease), opacity var(--_t-quick) var(--_ease-out); } /* the green edge comes at once: eased, it flickered on a click (Leo, 18 Nov) */
 /* A 1 px edge in the text colour (dark on light pins, light in dark mode) so a pin shows on white and black alike;
    the one you point at or have open gets a green edge. */
-button.pin:hover { transform: scale(1.03); box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 3px 10px rgba(0,0,0,.16); }
+button.pin:hover { transform: scale(1.03); box-shadow: 0 0 0 1.5px var(--_green-fg), 0 3px 10px rgba(0,0,0,.16); }
 button.pin:active { transform: scale(1.03); } /* no press movement: it stays as hovered */
 /* The open one only gets the green edge, no lift: clicking away then changes nothing but the edge (Leo, 18 Nov). */
-button.pin.open:not(:hover) { box-shadow: 0 0 0 1.5px rgb(36, 160, 70), 0 2px 8px rgba(0,0,0,.16); }
+button.pin.open:not(:hover) { box-shadow: 0 0 0 1.5px var(--_green-fg), 0 2px 8px rgba(0,0,0,.16); }
 .pin.in { animation: lab-pin var(--_t-base) var(--_ease); }
 /* Phones: as the sent card slides away its new pin pops in from 70% with a small overshoot, and one green ring leaves
    it: sent (lab option 5, Leo 17 Nov). */
@@ -76,9 +77,9 @@ button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius
                   animation: lab-halo calc(var(--_t-slow) * 2.5) var(--_ease) forwards; }
 /* Closed: a resolved pin is a green ✓, faded and small, so the open ones stand out (closed pins show by default; D
    hides them). A pin whose spot is gone (.moved) is shown the same way: no state of its own (Leo, 17 Nov). */
-.pin.resolved { color: rgb(36, 160, 70); }
+.pin.resolved { color: var(--_green-fg); }
 /* Statuses. A pin: your initial, the stroke while the agent is on it, then a green tick. A "go" comment is a pin like any other. */
-button.pin.done { color: rgb(36, 160, 70); }
+button.pin.done { color: var(--_green-fg); }
 .pin:is(.resolved, .moved) { opacity: .5; } /* a done pin is as big as an open one, only faded (Leo, 18 Nov) */
 .pin.moved:not(.resolved) { scale: .8; }
 button.pin:is(.resolved, .moved):is(:hover, .open) { opacity: 1; }
@@ -153,13 +154,13 @@ button.choice:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in 
 button.choice:disabled { cursor: default; opacity: .7; }
 button.choice.now { color: var(--_muted); }
 button.choice.picked { opacity: 1; }
-button.choice.picked::before { content: '✓'; color: rgb(36, 160, 70); }
+button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .choice .tx { min-width: 0; overflow-wrap: anywhere; }
 .choice .tx, .choice .nw { color: inherit; }
 .choice .nw { flex: none; margin-left: -8px; white-space: pre; } /* " · now" right after the words, not a flex gap away */
 .choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); }
 button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding: 6px 12px; background: var(--_accent); color: var(--_accent-fg);
-              font-size: 12.5px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_t-quick); }
+              font-size: 12px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_t-quick); }
 button.keep:hover:not(:disabled) { opacity: .9; }
 button.keep:disabled { opacity: .4; cursor: default; }
 .card.margin { width: 280px; }
@@ -172,7 +173,7 @@ button.keep:disabled { opacity: .4; cursor: default; }
 button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
              letter-spacing: 0; border-radius: var(--_r-s); transition: color var(--_t-quick) var(--_ease-out); }
 button.btn:hover { color: var(--_fg); }
-button.btn.danger, button.btn.danger:hover { color: #e5484d; }
+button.btn.danger, button.btn.danger:hover { color: var(--_red); }
 .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: 0; padding: 2px 0; animation: lab-fade var(--_fade); }
 .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
 .card .composer { margin-top: 6px; } /* close under resolve / delete */
@@ -218,7 +219,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
 .send .arr { display: block; position: relative; left: -1px; width: 12px; height: 11px; background: currentColor; clip-path: polygon(0 42%, 100% 0, 66% 100%, 46% 60%); }
 .send * { color: inherit; }
-.error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
+.error { color: var(--_red); font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }
 /* Pause / play beside a video or a moving thing on the page (comments.js): a small key in the pin's look, over the page. */
@@ -260,10 +261,10 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .msg[data-agent] { background: color-mix(in srgb, var(--_brand) 11%, var(--_bg)); }
 .msg[data-agent] > b { color: var(--_brand); opacity: 1; }
 .msg.mine b { display: none; }
-.msg { position: relative; } .mark { font-weight: 400; font-size: 11px; letter-spacing: .006em; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: rgb(36, 160, 70); font-weight: 600; font-size: 12px; letter-spacing: 0; } /* a small green tick, as the ticks on messages */
+.msg { position: relative; } .mark { font-weight: 400; font-size: 11px; letter-spacing: .006em; color: var(--_muted); margin-left: 6px; white-space: nowrap; } .mark.done { color: var(--_green-fg); font-weight: 600; font-size: 12px; letter-spacing: 0; } /* a small green tick, as the ticks on messages */
 .msg .quote { display: block; border-left: 2px solid rgb(52, 199, 89); padding: 1px 0 1px 8px; margin: 3px 0 5px; font-size: 12px; letter-spacing: 0; line-height: 1.35;
               color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.msg .quote b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; color: rgb(36, 160, 70); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
+.msg .quote b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; color: var(--_green-fg); opacity: 1; margin: 0; } .mine .mark { color: inherit; opacity: .7; } a.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; } .msg.to { box-shadow: 0 0 0 2px var(--_accent); }
 .msg .p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; } /* no lone last word */ .msg .p.gap { margin-top: 6px; }
 .msg .p.li { padding-left: 14px; text-indent: -14px; } .msg .p.li .mk { display: inline-block; width: 14px; text-indent: 0; opacity: .6; }
 .msg i { display: block; font-style: normal; font-size: 12px; letter-spacing: 0; opacity: .7; margin-bottom: 1px; }
@@ -278,7 +279,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .msg .stamp .tm { font-size: inherit; line-height: inherit; color: inherit; } /* every element gets 14 px by default: the time keeps the stamp's 10 */
 .msg :is(.stamp, .stamp-room) .ring { position: relative; display: inline-block; width: 9px; height: 9px; border-radius: 50%; overflow: hidden;
                     mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
-.msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
+.msg .stamp.ans .tick { color: var(--_green-fg); letter-spacing: 0; font-weight: 600; }
 /* One slot for the mark, whatever it is (✓, ✓✓, the turning ring, the green ✓): 12 px wide after a 4 px gap, so the
    time doesn't shift when one turns into another (Leo, 15 Nov: it flicked as ✓ became the ring). */
 .msg :is(.stamp, .stamp-room) .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
@@ -318,7 +319,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .mark .eye, .agentmark .eye { fill: var(--_bg); }
 .listener .mark { margin: -2px 0 -1px -3px; fill: var(--_green-fg); }
 .listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
-.listener.stale .mark { fill: rgb(217, 139, 0); } /* reconnecting: amber */
+.listener.stale .mark { fill: var(--_amber); } /* reconnecting: amber */
 .listener.stale.idle .mark { fill: var(--_muted); }
 .mark :is(.e1, .e2, .eye) { transform-box: fill-box; transform-origin: 35% 100%; }
 .mark .eye { transform-origin: 50% 50%; }
@@ -350,9 +351,9 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
 .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
 .bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
 .bar .cnt.zero { color: var(--_muted); }
-.bar .cnt:not(.zero) { color: rgb(36, 160, 70); } /* something new: green, the go pin's green (Leo, 17 Nov) */
+.bar .cnt:not(.zero) { color: var(--_green-fg); } /* something new: green, the go pin's green (Leo, 17 Nov) */
 .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
-      color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
+      color: var(--_green-fg); box-shadow: inset 0 0 0 1.25px var(--_green-fg); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
 /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
 .go-btn:not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
 /* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
@@ -551,7 +552,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .hint { bottom: 64px !important; }
   /* Sized and set to the word: its ink about 1.3× the text's height, its foot on the baseline, 6 px from "chat" like the count. */
   .chat-btn .mark { align-self: center; width: 13px; height: 13px; margin: 0 -2.5px 0 -2px; translate: 0 -1.5px; }
-  .chat-btn[data-agent=listening] .mark { fill: rgb(36, 160, 70); }
+  .chat-btn[data-agent=listening] .mark { fill: var(--_green-fg); }
   .chat-btn:is([data-agent=away], [data-agent=quiet]) .mark { fill: var(--_fg); }
   .chat-btn.stale .mark { opacity: .4; }
   .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
@@ -589,14 +590,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .msg .rule button.btn { margin-left: 8px; font-size: 11px; padding: 0; color: inherit; opacity: .6; text-decoration: underline; text-underline-offset: 2px; }
 .msg button.offer { display: inline; padding: 0; font: inherit; letter-spacing: inherit; line-height: inherit; color: inherit; opacity: 1; pointer-events: auto; }
 .msg :is(.stamp, .stamp-room).offering > :not(.offer) { display: none; } .msg .stamp.offering { opacity: 1; }
-.msg button.offer .tm { opacity: .55; } .msg button.offer .tick { color: rgb(36, 160, 70); }
+.msg button.offer .tm { opacity: .55; } .msg button.offer .tick { color: var(--_green-fg); }
 .msg button.offer .tick svg { width: 9px; height: 9px; vertical-align: top; margin-top: .5px; }
 .msg button :is(svg, svg *) { color: inherit; } /* the widget gives every element its text colour, the icon parts too */
 /* The ⋯ menu opens with which lab this is (labs & pages, ⌘K, is switcher.ts, its styles in switcher.css). */
 .more-menu .lab-head { margin: 2px 10px 4px; padding-bottom: 6px; border-bottom: var(--_hair); font-size: 12px; font-weight: 600; color: var(--_fg); }
 /* Experiments (lib/flags.ts) in the ⋯ menu: the item with how many are on, then its list in the menu's place: a back
    row, a switch a flag (its one line, and why it can't be switched when the project sets it), a note for guests. */
-.more-menu .exp-cnt { font-size: 12px; letter-spacing: 0; font-variant-numeric: tabular-nums; color: rgb(36, 160, 70); }
+.more-menu .exp-cnt { font-size: 12px; letter-spacing: 0; font-variant-numeric: tabular-nums; color: var(--_green-fg); }
 .more-menu .exp-cnt.zero { color: var(--_muted); }
 .more-menu button.exp-back { color: var(--_muted); font-weight: 500; margin-bottom: 2px; border-bottom: var(--_hair); border-radius: var(--_r-s) var(--_r-s) 0 0; }
 .more-menu button.exp { white-space: normal; max-width: 280px; align-items: center; }
@@ -606,7 +607,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   transition: background-color var(--_t-quick) var(--_ease-out); }
 .more-menu .exp-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
   background: var(--_bg); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform var(--_t-quick) var(--_ease); }
-.more-menu button.exp[aria-checked='true'] .exp-sw { background: rgb(36, 160, 70); }
+.more-menu button.exp[aria-checked='true'] .exp-sw { background: var(--_green-fg); }
 .more-menu button.exp[aria-checked='true'] .exp-sw::after { transform: translateX(12px); }
 .more-menu button.exp:disabled .exp-sw { opacity: .5; }
 .more-menu .exp-note { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px; color: var(--_muted); max-width: 260px; }
@@ -677,7 +678,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 /* Select (select.ts): remove · make like · move · states · variants · pin · done for the picked block, as the comment box's action pills (.quick),
    on a card above the widget's bar (Leo, 19 Nov: "select pills don't look good"). */
 .selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 3; margin: 0; padding: 8px; gap: 8px;
-          background: var(--_bg); border-radius: var(--_radius); box-shadow: 0 0 0 .5px rgba(20, 20, 20, .14), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .1); }
+          background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); }
 .selbar[hidden] { display: none; }
 .selbar button { font: inherit; font-size: 15px; padding: 9px 16px; color: var(--_fg); border-radius: max(0px, calc(var(--_radius) - 8px)); -webkit-tap-highlight-color: transparent; }
 .selbar button:disabled { opacity: .35; }
