@@ -301,9 +301,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .has-upd { position: relative; cursor: pointer !important; }
 .upd { position: absolute; z-index: 1; width: 13px; height: 13px; border-radius: 50%; display: grid; place-items: center;
        background: rgb(36, 160, 70); color: #fff; box-shadow: 0 0 0 1.5px var(--_bg); font: 700 9.5px/1 system-ui, sans-serif;
-       letter-spacing: 0; pointer-events: none; animation: lab-upd-in var(--_t-quick) var(--_ease-out); }
+       letter-spacing: 0; pointer-events: none; animation: lab-arrive var(--_t-quick) var(--_ease-out); }
 .upd[hidden] { display: none; }
-@keyframes lab-upd-in { from { scale: .4; opacity: 0; } }
 .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
        background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; text-decoration: none; white-space: nowrap; cursor: default; }
 .listener span { color: var(--_muted); }
