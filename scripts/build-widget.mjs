@@ -40,6 +40,7 @@ const options = {
   logLevel: 'warning',
   outfile,
   plugins: [minifiedCss],
+  define: { 'globalThis.__LAB_DEBUG__': 'false' },
 };
 // Parts the page script loads only when they are used (part(name) in src/comments.js): each one an ES module beside
 // it, <name>.js, with its own styles in it. The lab serves them with the script (public/_lab/*.js), and its widget
