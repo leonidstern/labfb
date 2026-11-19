@@ -364,6 +364,15 @@ export function startSections() {
       marks = Object.fromEntries(secs.map((s) => [s.key, s.hash]));
       dirty = new Set(secs.map((s) => s.key));
       later();
+    } else if (secs.length && secs.filter((s) => status(s)).length >= 0.8 * secs.length) {
+      // Nearly all of it new or updated at once (80 % or more): a page written anew, not news. Read, as on a first
+      // visit, so no name lights up (Leo, 19 Nov: "if all new like page updated dont show it green make it read").
+      for (const s of secs) {
+        if (!status(s)) continue;
+        marks[s.key] = s.hash;
+        dirty.add(s.key);
+      }
+      later();
     }
     const first = !ready;
     const had = new Set(chips().filter((c) => c.dataset.st).map((c) => c.dataset.s));

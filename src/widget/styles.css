@@ -707,11 +707,16 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-dot { flex: none; width: 0; height: 7px; margin-right: -6px; opacity: 0; border-radius: 50%; box-sizing: border-box; background: rgb(36, 160, 70);
           transition: width var(--_t-slow) var(--_ease), margin var(--_t-slow) var(--_ease), opacity var(--_t-quick); }
 .sb-chip:is([data-st="new"], [data-st="updated"]) .sb-dot { width: 7px; margin-right: 0; opacity: 1; }
-/* New and updated names wear the same green ink as quoted or kept words on the page (comments.js paint), lighter for
-   updated (Leo, 19 Nov: "make new tab also color like we do for texts"). */
-.sb-t { border-radius: 3px; transition: background-color var(--_t-slow) var(--_ease); }
-.sb-chip[data-st="new"] .sb-t { background-color: rgba(52, 199, 89, .3); }
-.sb-chip[data-st="updated"] .sb-t { background-color: rgba(52, 199, 89, .15); }
+/* New and updated names wear the half ink of words on the page (ink.ts, "Ink on selected words"): a band under the
+   lower 44 % of the words' line, from 52.6 % down, in the sent ink's green at 30 % (45 % on dark), corners 3 px (Leo,
+   19 Nov: "in tab bar use same half ink as on text"). The page's line is the font's box (1.18em of the system face),
+   centred in the name's line: so the band starts .03em below the middle and is .52em high. Behind the letters, no
+   room taken. The page's ink has no lighter kind, so new and updated wear the same. */
+.sb-t { position: relative; isolation: isolate; --_sbi: 30%; }
+.sb-t::before { content: ''; position: absolute; z-index: -1; left: 0; right: 0; top: calc(50% + .03em); height: .52em; border-radius: 3px;
+                background-color: transparent; transition: background-color var(--_t-slow) var(--_ease); pointer-events: none; }
+@media (prefers-color-scheme: dark) { .sb-t { --_sbi: 45%; } }
+.sb-chip:is([data-st="new"], [data-st="updated"]) .sb-t::before { background-color: color-mix(in srgb, rgb(36, 160, 70) var(--_sbi), transparent); }
 .sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid rgb(36, 160, 70); }
 .sb-w { color: rgb(36, 160, 70); font-size: 12px; }
 .sb-chip[aria-current] .sb-w { color: rgb(36, 160, 70); }

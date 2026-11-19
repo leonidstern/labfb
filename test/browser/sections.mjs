@@ -99,6 +99,18 @@ try {
     check(eng, 'the page title is on the left', await shadow(() => { return r.querySelector('.sb-title').textContent === 'Plan'; }));
     check(eng, 'the lone h1 is the title, not a section', !(await chips()).some((c) => c.t === 'Plan'));
 
+    // ---- a page written anew (80 % or more new or updated at once): read, no name lights up ----
+    write('rewrite.html', page());
+    const RW = await open(own, '/rewrite');
+    write('rewrite.html', page({ body: sec('speed', 'Speed', 'All new.') + sec('cost', 'Cost', 'All new.') + sec('risk', 'Risk', 'All new.') + sec('plan', 'Next steps', 'All new.') + sec('extra', 'Appendix') }));
+    await until(async () => (await RW.states()).includes('Appendix'));
+    await sleep(600);
+    check(eng, 'a page written anew: no chip new or updated', !(await RW.states()).match(/new|updated/), await RW.states());
+    await RW.p.reload();
+    await sleep(1500);
+    check(eng, '...and it was saved read', (await RW.states()) === 'Speed: Cost: Risk: Next steps: Appendix:', await RW.states());
+    await RW.p.close();
+
     // ---- the agent adds a section and changes one ----
     write('index.html', page({ body: sec('speed', 'Speed', 'Words of Speed, now longer.') + sec('cost', 'Cost') + sec('risk', 'Risk') + sec('plan', 'Next steps') + sec('extra', 'Appendix') }));
     check(eng, 'an added section is "new" and a changed one "updated"', await until(async () => (await states()) === 'Speed:updated Cost: Risk: Next steps: Appendix:new'), await states());
