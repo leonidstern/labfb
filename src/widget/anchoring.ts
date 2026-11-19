@@ -71,13 +71,12 @@ type Deps = {
   host: HTMLElement;
   layer: HTMLElement;
   el: (tag: string, attrs?: Record<string, string>, text?: string) => HTMLElement;
-  store: { get: (k: string) => string; set: (k: string, v: string) => void };
 };
 
 // Set once by the widget at startup (bindAnchoring), so importing this module touches nothing.
-let host: Deps['host'], layer: Deps['layer'], el: Deps['el'], store: Deps['store'];
+let host: Deps['host'], layer: Deps['layer'], el: Deps['el'];
 export function bindAnchoring(deps: Deps) {
-  ({ host, layer, el, store } = deps);
+  ({ host, layer, el } = deps);
 }
 
 // A motion token (--_t-quick, -base, -slow, -loop, -hold, styles.css) in milliseconds, times `times`: for a timer or a
@@ -529,7 +528,9 @@ function sameKind(node, tag) {
   return !classes.length || classes.some((c) => node.classList.contains(c));
 }
 
-export function anchorAt(clientX, clientY) {
+// words: the point is on the word under it (kind text, its quote: the words a Shift-drag quotes). A click or an area is
+// only a point, never a quote, so nothing is highlighted (Leo 18 Nov: "pin pointing on word highlighting word").
+export function anchorAt(clientX, clientY, words = false) {
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
@@ -633,7 +634,9 @@ export function anchorAt(clientX, clientY) {
       anchor.nh = Math.round(r.height);
     }
   } else {
-    const quote = quoteAt(clientX, clientY, shadowRoots);
+    // Code keeps its quote on a plain click: the line and its number are what an agent opens the file at.
+    const inCode = target.closest('pre, [data-file], table[class*="code" i]') || getComputedStyle(target).whiteSpace.startsWith('pre');
+    const quote = words || inCode ? quoteAt(clientX, clientY, shadowRoots) : null;
     if (quote) {
       anchor.kind = 'text';
       anchor.quote = quote;
@@ -986,8 +989,6 @@ export const nameLine = (name, done) => {
   if (done) b.append(el('span', { class: 'mark done', role: 'img', 'aria-label': 'done' }, '✓'));
   return b;
 };
-// Draft mode is parked for now (Leo, 2026-11-15): its button is hidden and new pins post at once.
-export const DRAFT_MODE = false;
 // A block named in a message: its heading in view with room above, and outlined for a moment. On the element itself
 // (the widget's layer is redrawn as comments arrive, which would drop an outline drawn there).
 export function goToBlock(e: Element) {
@@ -997,7 +998,6 @@ export function goToBlock(e: Element) {
   const ring = '2px solid rgb(52, 199, 89)';
   e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: ms('hold', 2) });
 }
-export const drafting = () => DRAFT_MODE && store.get('lab-hold') === '1';
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that
 // id, as a link that goes to it there (an agent names the block it placed: "#speed-deeper").
 // The widget listens for lab-goto and scrolls (src/comments.js, goToBlock).
