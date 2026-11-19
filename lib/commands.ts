@@ -45,7 +45,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     process.exit(0);
   }
 
-    const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
+  const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
   // `labit publish <page.html | folder>`: like publishing an Artifact (Leo 18 Nov: "process is similar to artifacts, can
   // you do it like this"). The page goes into the one pages lab (pagesFolder), named for its topic; that lab starts if
   // it isn't running; the link is printed. Publishing again replaces it, same link. No folder or lab of its own.
@@ -61,48 +61,18 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const slug = topic.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
     if (!dir && !/\.html?$/i.test(src)) die(`${src}: give an .html file, or a folder of pages`);
     const dest = path.join(root, dir ? slug : `${slug}.html`);
-    if (path.resolve(src) !== dest) {
+    // The page's old copy is removed first, so the source must not be that copy, in it or around it: a folder
+    // published under the name of the folder it sits in (or through a link to the pages folder) used to delete itself.
+    const from = fs.realpathSync(src);
+    const within = (a: string, b: string) => a.startsWith(b + path.sep);
+    if (within(from, dest) || within(dest, from)) die(`${src} and its place in the pages lab (${dest}) are inside one another. Publish it from another folder, or under another --name.`);
+    if (from !== dest) {
       fs.rmSync(dest, { recursive: true, force: true });
       fs.cpSync(src, dest, { recursive: true });
     }
     let lab = runningLabs().find((l) => l.root === root);
     if (!lab) {
-      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, detached: true, stdio: 'ignore' }).unref();
-      for (let i = 0; i < 100 && !lab; i++) {
-        await new Promise((r) => setTimeout(r, 100));
-        lab = runningLabs().find((l) => l.root === root);
-      }
-      if (!lab) die(`The pages lab didn't start. Run it yourself: ${CMD} ${root}`);
-    }
-    const key = keyFor(path.relative(root, dir ? path.join(dest, 'index.html') : dest)); // "/topic", or "/topic/index"
-    console.log(`http://localhost:${lab.port}${key.replace(/\/index$/, '/')}`);
-    console.log(`In the pages lab (${root.replace(os.homedir(), '~')}). Publish again to update it, same link.`);
-    console.log(`Listen for its pins: cd ${root} && ${CMD} wait --bg --pages ${key}`);
-    process.exit(0);
-  }
-
-  // `labit publish <page.html | folder>`: like publishing an Artifact (Leo 18 Nov: "process is similar to artifacts, can
-  // you do it like this"). The page goes into the one pages lab (pagesFolder), named for its topic; that lab starts if
-  // it isn't running; the link is printed. Publishing again replaces it, same link. No folder or lab of its own.
-  if (pos[0] === 'publish') {
-    const src = pos[1] && path.resolve(pos[1]);
-    if (!src || !fs.existsSync(src)) die(`Usage: ${CMD} publish <page.html | folder> [--name "topic"]`);
-    const { loadSettings } = await import('./settings.ts');
-    const home = String(loadSettings(HERE, {}).values.pagesFolder || '~/lab-pages').replace(/^~(?=$|\/)/, os.homedir());
-    fs.mkdirSync(home, { recursive: true });
-    const root = fs.realpathSync(home);
-    const dir = fs.statSync(src).isDirectory();
-    const topic = typeof opts.name === 'string' ? opts.name : path.basename(src).replace(/\.html?$/i, '');
-    const slug = topic.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
-    if (!dir && !/\.html?$/i.test(src)) die(`${src}: give an .html file, or a folder of pages`);
-    const dest = path.join(root, dir ? slug : `${slug}.html`);
-    if (path.resolve(src) !== dest) {
-      fs.rmSync(dest, { recursive: true, force: true });
-      fs.cpSync(src, dest, { recursive: true });
-    }
-    let lab = runningLabs().find((l) => l.root === root);
-    if (!lab) {
-      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, detached: true, stdio: 'ignore' }).unref();
+      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, env: { ...process.env, LABIT_EXIT_WITH_PARENT: '' }, detached: true, stdio: 'ignore' }).unref();
       for (let i = 0; i < 100 && !lab; i++) {
         await new Promise((r) => setTimeout(r, 100));
         lab = runningLabs().find((l) => l.root === root);
@@ -180,8 +150,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const gone = () =>
       die(
         process.env.CODEX_SANDBOX_NETWORK_DISABLED
-          ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Use labit's MCP server instead: ` +
-              `codex mcp add labit -- npx @leonidstern/labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
+          ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Let the sandbox reach it: ` +
+              `-c sandbox_workspace_write.network_access=true`
           : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
       );
     // A lab that goes and comes back (--dev, an update, a crash and a start again) shouldn't end a wait: the command
@@ -296,11 +266,10 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
 
     // A comment by its id (of the thread or of a reply in it) or by the number on its card.
-    // The store: one file per page in .lab/comments/ (or, from a lab not started since 16 Nov, the one comments.json).
+    // The store: one file per page in .lab/comments/.
     const data = {};
     const store = path.join(dir, '.lab/comments');
-    if (!fs.existsSync(store)) Object.assign(data, JSON.parse(fs.readFileSync(path.join(dir, '.lab/comments.json'), 'utf8')));
-    else
+    if (fs.existsSync(store))
       for (const name of fs.readdirSync(store).filter((n) => n.endsWith('.json'))) {
         try {
           const file = JSON.parse(fs.readFileSync(path.join(store, name), 'utf8'));

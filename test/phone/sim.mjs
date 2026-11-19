@@ -262,26 +262,21 @@ if (cmd === 'serve') {
       const end = ss.at(-1);
       return [['scrolling makes no comment box', !ss.some((s) => s.float)], ['the page scrolled', end.sy - s0.sy > 100, `scrollY ${s0.sy} → ${end.sy}`], ['no text got selected', ss.every((s) => !s.sel)]];
     } },
-    // New since you looked: a section with an id is added to the page's file (the lab patches the open page), the pill
-    // comes up by the bar, a tap on it opens the list as a small sheet that fits the screen, a tap on its item goes there.
+    // The section bar: a section is added to the page's file (the lab patches the open page), a chip with "new" comes up in the
+    // bar at the top, a tap on it goes to the section, reads it, and the page does not jump to the top.
     { name: 'tap-new', say: async () => {
       const file = path.join(RUN, 'site', 'index.html');
       fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('</body>', '<section id="v9"><h2>Version nine</h2><p>The agent added this.</p></section></body>'));
       await sleep(3000); // the patch, then the check
       const s = lines().at(-1);
-      return s.pill ? `tap ${fmt(dev(s, s.pill.x + s.pill.w / 2, s.pill.y + s.pill.h / 2))} (the "New · 1" pill above the bar)` : 'no pill came up (was the page opened before the edit?)';
-    }, expect: (ss) => {
+      return s.chip ? `tap ${fmt(dev(s, s.chip.x + s.chip.w / 2, s.chip.y + s.chip.h / 2))} (the "new" chip in the bar at the top)` : 'no chip came up (was the page opened before the edit?)';
+    }, expect: (ss, s0) => {
       const end = ss.at(-1);
-      const sh = end.sheet;
       return [
-        ['the pill is big enough to hit', ss.some((s) => s.pill && s.pill.h >= 32)],
-        ['a tap on it opens the list with the new one', end.news === 1, `${end.news} items`],
-        ['the sheet fits the screen', Boolean(sh) && sh.x >= 0 && sh.x + sh.w <= end.iw && sh.y + sh.h <= end.ih, JSON.stringify(sh)],
+        ['the bar is a tap target', ss.some((s) => s.sbar && s.sbar.h >= 40)],
+        ['the page goes to the section', end.sy > s0.sy, `scrollY ${s0.sy} → ${end.sy}`],
+        ['it is read: no new chip', end.chipsNew === 0, `${end.chipsNew} new`],
       ];
-    } },
-    { name: 'go-new', say: (s) => (s.item ? `tap ${fmt(dev(s, s.item.x + s.item.w / 2, s.item.y + s.item.h / 2))} (the item in the sheet)` : 'no item on screen'), expect: (ss, s0) => {
-      const end = ss.at(-1);
-      return [['the sheet closes and the page goes to the section', !end.sheet && end.sy > s0.sy, `scrollY ${s0.sy} → ${end.sy}`], ['it drops off the list: no pill', !end.pill]];
     } },
   ];
   const fmt = (p) => (p ? `(${p.x}, ${p.y})` : '(not on screen)');

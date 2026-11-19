@@ -16,8 +16,9 @@ const pw = (() => {
     try {
       return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
     } catch {
-      console.log('playwright is not installed: skipped');
-      process.exit(0);
+      // On CI a missing browser is a failure: a skip there would pass with nothing run.
+      console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+      process.exit(process.env.CI ? 1 : 0);
     }
   }
 })();
@@ -114,7 +115,7 @@ try {
       p = await open(ctx, '<p id="t" style="width:400px">Some words here and the target word sits in the middle of this line of text.</p>');
       r = await p.evaluate(() => {
         const w = wordAt('target');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         document.getElementById('t').firstChild.data = 'Lots of brand new words came first, pushing everything on. ' + document.getElementById('t').firstChild.data;
         return { kind: a.kind, at: A.position(a), word: wordAt('target') };
       });
@@ -125,7 +126,7 @@ try {
       p = await open(ctx, '<div id="top"></div>Loose text with a findme word in it.');
       r = await p.evaluate(() => {
         const w = wordAt('findme');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         document.getElementById('top').style.height = '300px';
         const at = A.position(a);
         const word = wordAt('findme');
@@ -218,7 +219,7 @@ try {
       p = await open(ctx, '<div id="pad"></div><p class="lede">Intro words, then the special phrase sits here, and more after.</p><p>Elsewhere a phrase too.</p>');
       r = await p.evaluate(() => {
         const w = wordAt('special');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         const swap = (html) => (document.querySelector('.lede, .intro').outerHTML = html);
         document.getElementById('pad').style.height = '200px';
         swap('<div class="intro">Intro words, then the special phrase sits here, and more after.</div>');
@@ -251,6 +252,22 @@ try {
       check(eng, 'a pin found again on another element says its new path and place', r.now && r.now.selector !== r.was && /nth-of-type\(3\)/.test(r.now.selector) && Math.abs(r.now.docY - r.third) < 6 && r.now.eh > 0, JSON.stringify(r.now));
       check(eng, 'once saved, it has nothing more to say', r.healed === null, JSON.stringify(r.healed));
       check(eng, 'a pin that is lost saves nothing', r.lost === null, JSON.stringify(r.lost));
+      await p.close();
+
+      // A long list: the pinned row is past the first 400 of its kind, and a row above it is taken out.
+      p = await open(ctx, `<div id="list">${Array.from({ length: 520 }, (_, i) => `<div class="row">Row number ${i}</div>`).join('')}</div>`);
+      r = await p.evaluate(() => {
+        const row = document.querySelectorAll('.row')[450];
+        row.scrollIntoView();
+        const b = row.getBoundingClientRect();
+        const a = A.anchorAt(b.left + 2, b.top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        document.querySelectorAll('.row')[440].remove();
+        const now = A.foundAt(a);
+        return { now, top: row.getBoundingClientRect().top + scrollY };
+      });
+      check(eng, 'a pin far down a long list is found again when a row above it goes', r.now && Math.abs(r.now.docY - r.top) < 30, JSON.stringify(r.now));
       await p.close();
       await ctx.close();
     } finally {

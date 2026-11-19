@@ -11,8 +11,8 @@ import { VERSION } from '../lib/schema.mjs';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-schema-'));
-const PORT = String(9100 + Math.floor(Math.random() * 100));
-const UP = String(9300 + Math.floor(Math.random() * 100));
+const PORT = String(9200 + Math.floor(Math.random() * 90));
+const UP = String(9350 + Math.floor(Math.random() * 90));
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1>Hi</h1>');
 fs.writeFileSync(path.join(DIR, 'own.html'), '<!doctype html><title>o</title><body><h1>own</h1><script src="/_lab/comments.js" defer></script></body>');

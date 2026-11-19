@@ -18,8 +18,9 @@ const pw = (() => {
       return require(require.resolve('playwright', paths && { paths }));
     } catch {}
   }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
+  // On CI a missing browser is a failure: a skip there would pass with nothing run.
+  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+  process.exit(process.env.CI ? 1 : 0);
 })();
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
@@ -27,7 +28,7 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-conn-'));
 const PORT = String(5960 + Math.floor(Math.random() * 30));
 const B = `http://localhost:${PORT}`;
 // A 1 s grace: once every page is gone, a listening agent's wait ends after a second.
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>c</title><h1 id="t">Connection</h1><p>text</p>');
 const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

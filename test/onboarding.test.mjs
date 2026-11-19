@@ -36,8 +36,8 @@ test('a project whose dev server is not running is refused, not served as files'
 });
 
 test('in a project, a bare run finds the dev server running in that folder', { skip: !hasLsof && 'needs lsof' }, async () => {
-  const devPort = 5600 + Math.floor(Math.random() * 300);
-  const labPort = String(4700 + Math.floor(Math.random() * 200));
+  const devPort = 5700 + Math.floor(Math.random() * 90);
+  const labPort = String(5800 + Math.floor(Math.random() * 90));
   // A stand-in dev server, running in the project like `npm run dev` would.
   const dev = spawn(process.execPath, ['-e', `require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');s.end('<h1>dev page</h1>')}).listen(${devPort},'127.0.0.1')`], { cwd: DIR });
   kids.push(dev);
@@ -67,7 +67,7 @@ test('a folder with no index.html at the top lists its pages, not its folders, a
   fs.writeFileSync(path.join(dir, 'lib/x.js'), '');
   fs.writeFileSync(path.join(dir, 'site/index.html'), '<title>Home</title><h1>home</h1>');
   fs.writeFileSync(path.join(dir, 'site/about/team.html'), '<h1>team</h1>');
-  const port = String(4900 + Math.floor(Math.random() * 90));
+  const port = String(6700 + Math.floor(Math.random() * 90));
   const lab = spawn(process.execPath, [LAB, '--no-open', '--port', port], { cwd: dir });
   kids.push(lab);
   let out = '';
@@ -95,6 +95,7 @@ test('a running lab is listed for the Lab panel: a registry file while it runs, 
   fs.writeFileSync(path.join(dir, 'index.html'), '<title>Start</title><h1>start</h1>');
   const port = String(4990 + Math.floor(Math.random() * 9));
   const lab = spawn(process.execPath, [LAB, '--no-open', '--port', port], { cwd: dir, env: { ...process.env, LABIT_HOME: home } });
+  kids.push(lab); // stopped by after() also when an assertion below fails
   let info = null;
   for (let i = 0; i < 50 && !info; i++) {
     try {
@@ -125,7 +126,7 @@ test('a folder that a running lab already serves opens that lab instead of start
   fs.writeFileSync(path.join(dir, 'index.html'), '<title>Top</title>');
   fs.writeFileSync(path.join(dir, 'sub', 'index.html'), '<title>Sub</title>');
   const env = { ...process.env, LABIT_HOME: home };
-  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(5300 + Math.floor(Math.random() * 200))], { cwd: dir, env });
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(6800 + Math.floor(Math.random() * 90))], { cwd: dir, env });
   kids.push(lab);
   // The lab moves up a port when its first pick is busy: read the one it took from its registry file.
   const reg = path.join(home, 'servers');
@@ -154,7 +155,7 @@ test('pages lists this folder\'s labs only, unless --all', async () => {
     return d;
   };
   const [a, b] = [mk('alpha'), mk('beta')];
-  for (const [d, p] of [[a, 5600], [b, 5650]]) kids.push(spawn(process.execPath, [LAB, '--no-open', '--port', String(p + Math.floor(Math.random() * 40))], { cwd: d, env }));
+  for (const [d, p] of [[a, 6900], [b, 6950]]) kids.push(spawn(process.execPath, [LAB, '--no-open', '--port', String(p + Math.floor(Math.random() * 40))], { cwd: d, env }));
   const reg = path.join(home, 'servers');
   for (let i = 0; i < 50 && !(fs.existsSync(reg) && fs.readdirSync(reg).length === 2); i++) await new Promise((r) => setTimeout(r, 100));
   const pagesIn = (cwd, extra = []) => new Promise((resolve) => execFile(process.execPath, [LAB, 'pages', ...extra], { cwd, env }, (err, stdout) => resolve(fs.readFileSync(stdout.trim(), 'utf8'))));
@@ -193,7 +194,7 @@ test('a newer version on npm is announced as the lab starts', async () => {
   const env = { ...process.env, LABIT_HOME: home };
   delete env.CI;
   delete env.LABIT_NO_UPDATE_CHECK;
-  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(5500 + Math.floor(Math.random() * 90))], { cwd: dir, env });
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(7600 + Math.floor(Math.random() * 90))], { cwd: dir, env });
   kids.push(lab);
   let out = '';
   lab.stdout.on('data', (d) => (out += d));

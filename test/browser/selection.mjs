@@ -18,15 +18,16 @@ const pw = (() => {
       return require(require.resolve('playwright', paths && { paths }));
     } catch {}
   }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
+  // On CI a missing browser is a failure: a skip there would pass with nothing run.
+  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+  process.exit(process.env.CI ? 1 : 0);
 })();
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-selection-'));
-const PORT = String(5800 + Math.floor(Math.random() * 300));
+const PORT = String(5800 + Math.floor(Math.random() * 190)); // below 6000: browsers refuse that port (X11), and the page never loads
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const PAGE = `<!doctype html><meta charset="utf-8"><title>selection</title>
 <style>body{margin:30px;max-width:420px;font:18px/1.6 Georgia,serif}</style>
 <p id="t">Plain words to drag across in this paragraph of text, quite a few of them.</p>
@@ -141,7 +142,7 @@ try {
         const s = await dragWords(p, '#t', 'words to drag', true);
         await barUp(p);
         const l = await look(p);
-        check(eng, 'Shift-drag over words shows the actions bar, no area', l.bar && !l.zone && !l.draftPin, JSON.stringify(l));
+        check(eng, 'Shift-drag over words opens the dialog at once (no bar), no area', l.dlg && !l.bar && !l.zone && !l.draftPin, JSON.stringify(l));
         await p.keyboard.type('shifted');
         await dlgUp(p);
         await p.keyboard.press('Enter');
@@ -154,7 +155,7 @@ try {
         const s = await span(p, '#t', 'drag across');
         const x = s.first.left + 20;
         const y = s.first.top + s.first.height / 2;
-        const IBEAM = 'data:image/svg+xml'; // the drawn I-beam with the green pin tip, falling back to text
+        const IBEAM = 'data:image/svg+xml'; // the drawn I-beam with a low ink band at its foot (C3), falling back to text
         const cursor = () => p.evaluate(([x, y]) => ({ shift: document.documentElement.classList.contains('lab-shift-cur'), selectable: document.documentElement.classList.contains('lab-shift'), cursor: getComputedStyle(document.elementFromPoint(x, y)).cursor }), [x, y]);
         await p.mouse.move(x - 5, y);
         await p.mouse.move(x, y);
@@ -164,7 +165,7 @@ try {
         await p.keyboard.down('Shift');
         await until(p, ([x, y]) => document.documentElement.classList.contains('lab-shift-cur') && getComputedStyle(document.elementFromPoint(x, y)).cursor.includes('data:image/svg+xml'), [x, y], 400);
         const on = await cursor();
-        check(eng, 'Shift held over words: the drawn I-beam with the pin tip (text as fallback)', on.shift && on.cursor.includes(IBEAM) && on.cursor.includes('%2324a046') && /,\s*text$/.test(on.cursor), JSON.stringify(on));
+        check(eng, 'Shift held over words: the drawn I-beam with the ink band at its foot, no pin tip (text as fallback)', on.shift && on.cursor.includes(IBEAM) && on.cursor.includes('%23f0b70a') && !on.cursor.includes('%2324a046') && /,\s*text$/.test(on.cursor), JSON.stringify(on));
         await p.keyboard.up('Shift');
         const quick = await cursor(); // no waiting: the cursor follows the key at once, the text stays selectable a moment longer
         check(eng, '…right after Shift is let go the cursor is no longer the I-beam (text still selectable for the selection)', !quick.shift && !quick.cursor.includes(IBEAM) && quick.selectable, JSON.stringify(quick));
@@ -220,7 +221,27 @@ try {
         await p.keyboard.press('Enter');
         await untilSent('point', 700);
         const c = (await comments()).find((x) => x.text === 'point');
-        check(eng, '…saved as a point (no quote selected)', Boolean(c) && !c.anchor.quote?.selected && c.anchor.zw === undefined, JSON.stringify(c?.anchor?.kind));
+        check(eng, '…saved as a point (no quote selected)', Boolean(c) && !c.anchor.quote && c.anchor.kind !== 'text' && c.anchor.zw === undefined, JSON.stringify(c?.anchor?.kind));
+      });
+      // A click on a word, the mouse moving a pixel or two between down and up: still a point pin, never a quote, nothing lit
+      await scene(browser, async (p) => {
+        const s = await span(p, '#t', 'paragraph');
+        const [x, y] = [(s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2];
+        for (const [dx, dy] of [[0, 0], [2, 1], [-2, 0], [1, -2]]) {
+          await p.mouse.move(x, y);
+          await p.mouse.down();
+          await p.mouse.move(x + dx, y + dy);
+          await p.mouse.up();
+          await sleep(600);
+          const lit = await p.evaluate(() => Boolean(CSS.highlights?.get('lab-quote')?.size));
+          const l = await look(p);
+          check(eng, `a click on a word with ${dx},${dy} px of jitter is a point pin: no quote lit, no dialog row`, !lit && l.box === 1 && !l.dlg && !l.bar, JSON.stringify([lit, l]));
+          await p.keyboard.type(`jit${dx}${dy}`);
+          await p.keyboard.press('Enter');
+          await sleep(700);
+          const c = (await comments()).find((q) => q.text === `jit${dx}${dy}`);
+          check(eng, '…saved with no quote', Boolean(c) && !c.anchor.quote && c.anchor.kind !== 'text', JSON.stringify(c?.anchor?.kind));
+        }
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'paragraph');
@@ -243,7 +264,7 @@ try {
         await p.keyboard.up('Shift');
         await barUp(p, 900);
         const l = await look(p);
-        check(eng, 'Shift + double-click on a word shows the actions bar (no box left from the first click)', l.bar && !l.box && !l.draftPin, JSON.stringify(l));
+        check(eng, 'Shift + double-click on a word opens the dialog (one box, none left from the first click)', l.dlg && !l.bar && l.box === 1 && !l.draftPin, JSON.stringify(l));
         await p.keyboard.type('word');
         await dlgUp(p);
         await p.keyboard.press('Enter');
@@ -256,9 +277,9 @@ try {
         await p.keyboard.down('Shift');
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await p.keyboard.up('Shift');
-        await barUp(p, 900);
+        await untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.classList.contains('settled'); }, 1500);
         const l = await look(p);
-        check(eng, 'Shift + triple-click selects the paragraph and shows the actions bar', l.bar && !l.box, JSON.stringify(l));
+        check(eng, 'Shift + triple-click selects the paragraph and opens the dialog at once', l.dlg && !l.bar, JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const f = await p.locator('#field').boundingBox();

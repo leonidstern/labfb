@@ -15,26 +15,6 @@ export function bindMessages(deps: Deps) {
   d = deps;
 }
 
-// What a comment is on, in a few words, so the list reads without the page: the quoted words, else the text of the
-// pinned element or, when that says too little ("4", an icon), of the nearest box around it; else its section.
-export const onWhat = (c: any): string => {
-  const a = c.anchor || {};
-  let w = a.quote?.exact || '';
-  let n = null;
-  try {
-    n = !w && a.selector ? document.querySelector(a.selector) : null;
-  } catch {}
-  for (let up = 0; n && n !== document.body && up < 5; n = n.parentElement, up++) {
-    const t = n.innerText?.replace(/\s+/g, ' ').trim() || '';
-    if (t.length >= 12) {
-      w = t;
-      break;
-    }
-  }
-  w = (w || a.text || a.section || '').replace(/\s+/g, ' ').trim();
-  return w ? `"${w.length > 40 ? `${w.slice(0, 39)}…` : w}"` : '';
-};
-
 export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
   const { el, mine, repliesOf, lineUp, ord } = d;
   const at = new Date(m.createdAt);
@@ -60,6 +40,7 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
       const got = root?.handedAt && root.handedAt >= m.createdAt;
       stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, role: 'img', 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
       if (sg?.s === 'wait') stamp.firstChild!.textContent = `waiting · ${ord(sg.n)} in line · ${prefix}${time}`;
+      if (sg?.s === 'missed') stamp.firstChild!.textContent = `not answered · ${prefix}${time}`;
     }
   }
   return stamp;

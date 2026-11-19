@@ -134,7 +134,7 @@ const Q = await lab({ flags: { inkOnText: true }, quietInk: true, inkColors: { s
 // "color(srgb 0.94 0.72 0.04 / 0.34)" or "rgba(240, 183, 10, 0.34)" → [r, g, b] in 0-255 and the alpha.
 const colour = (s) => {
   const n = (s.match(/-?[\d.]+(?:e-?\d+)?/g) || []).map(Number);
-  const k = /^color\(/.test(s) ? 255 : 1;
+  const k = s.startsWith('color(') ? 255 : 1;
   return { rgb: n.slice(0, 3).map((v) => v * k), a: n[3] ?? 1 };
 };
 const is = (s, hex, alpha, tol = 0.03) => {
@@ -196,7 +196,7 @@ try {
     await L.clear();
 
     // ---- Seed: one note in each state, a clicked word, and a read done one
-    const sent = await L.say(words('a', 'delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi'), 'sent');
+    await L.say(words('a', 'delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi'), 'sent');
     const working = await L.say(words('p1', 'paragraph here'), 'working');
     await L.reply(working.id, 'on it', 'working');
     const asks = await L.say(words('p2', 'second paragraph'), 'asks');
@@ -331,13 +331,14 @@ try {
       await c2.close();
     }
 
-    // ---- Words removed: the pin comes back; restored: ink again
+    // ---- Words removed: no ink, the note is off the page in the ⋯ menu ("moved · 1", as any pin whose spot is gone); restored: ink again
     {
       const [c2, q] = await open(browser, L.base + '/');
       await q.evaluate(() => { const e = document.getElementById('p1'); window.__p1 = e; e.replaceWith(document.createComment('gone')); window.__hole = document.body.childNodes; });
       await sleep(1500);
       const gone = await look(q);
-      check(eng, 'words removed: the pin is back', gone.pins.some((x) => x.moved) && !gone.inks.some((i) => i.end?.label.includes('paragraph here')), JSON.stringify(gone.pins));
+      const movedBtn = await q.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.moved-btn')?.textContent);
+      check(eng, 'words removed: no ink, the ⋯ menu lists it as moved', movedBtn === 'moved · 1' && !gone.inks.some((i) => i.end?.label.includes('paragraph here')), `${movedBtn} ${JSON.stringify(gone.pins)}`);
       await q.evaluate(() => { const c = [...document.body.childNodes].find((n) => n.nodeType === 8 && n.data === 'gone'); c.replaceWith(window.__p1); });
       await sleep(1500);
       const back = await look(q);
@@ -406,7 +407,7 @@ try {
       await c3.close();
     }
 
-    // ---- Real flow: select words (the actions bar shows; the words wear the sent ink's band), type, send: the sent
+    // ---- Real flow: select words (the dialog opens at once; the words wear the draft's grey band), type, send: the sent
     // note is yellow ink, nothing saved but the words
     {
       await L.clear();
@@ -417,8 +418,8 @@ try {
       await q.keyboard.up('Shift');
       await sleep(600);
       const d = await look(q);
-      const bar = await q.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.ink.sel.quote[data-st=next] .ln'));
-      check(eng, 'selecting words: the bar shows, the words wear the sent band, no pin', Boolean(bar) && d.inks.length === 0 && d.pins.length === 0, `${d.inks.length} inks, ${d.pins.length} pins`);
+      const band = await q.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.ink[data-st=draft] .ln'));
+      check(eng, 'selecting words: the words wear the draft band, no pin', Boolean(band) && d.pins.length === 0, `${d.inks.length} inks, ${d.pins.length} pins`);
       await q.keyboard.type('a note on words');
       await q.keyboard.press('Enter');
       await sleep(1000);
@@ -463,7 +464,7 @@ try {
       const green = (c) => is(c, '#34c759', 0.3);
       check(eng, 'Shift-drag: the band shows while dragging', during > 0, `${during} pieces`);
       check(eng, 'Shift-drag let go: no full-height green on the words (selection or quote)', !green(after.sel) && !green(after.quote), `selection ${after.sel}, quote ${after.quote}, quote set ${after.lit}`);
-      check(eng, 'Shift-drag let go: the words keep the low band in the ink look (the bar: sent green)', after.bands.length > 0 && after.bands.every((b) => Math.abs(b.height / b.h - 0.44) < 0.03) && after.bands.some((b) => b.st === 'next' && (is(b.bg, '#24a046', 0.3) || is(b.bg, '#24a046', 0.45))), JSON.stringify(after.bands));
+      check(eng, 'Shift-drag let go: the words keep the low band in the ink look (the draft: grey)', after.bands.length > 0 && after.bands.every((b) => Math.abs(b.height / b.h - 0.44) < 0.03) && after.bands.some((b) => b.st === 'draft' && is(b.bg, '#8e8a82', 0.16)), JSON.stringify(after.bands));
       check(eng, 'Shift-drag let go: one band on the words, not two stacked', after.bands.length === 1, `${after.bands.length} bands`);
       await c2.close();
     }
@@ -536,8 +537,8 @@ try {
     // ---- Overlapping notes: the newest keeps its band, the others are hairlines under it
     {
       await L.clear();
-      const older = await L.say(words('a', 'delta epsilon zeta eta theta'), 'older');
-      const newer = await L.say(words('a', 'epsilon zeta'), 'inside');
+      await L.say(words('a', 'delta epsilon zeta eta theta'), 'older');
+      await L.say(words('a', 'epsilon zeta'), 'inside');
       const [c2, q] = await open(browser, L.base + '/');
       const w = await look(q);
       const [o, n] = [w.inks.find((i) => i.end?.label.includes('delta epsilon')), w.inks.find((i) => i.end?.label.includes('on "epsilon zeta"'))];

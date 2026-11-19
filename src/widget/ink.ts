@@ -165,8 +165,10 @@ export function drawInks(items: { c?: any; anchor?: any; lines: Lines; pin?: HTM
   }
   // Each note's newer neighbours' lines: the draft counts as newest, then by when each was written.
   const newer = new Map<string, Line[]>();
+  // Two written in the same millisecond: the later in the list is the newer.
   const age = (x: { c?: any }) => (x.c ? x.c.createdAt : '\uffff');
-  for (const x of items) newer.set(x.c ? x.c.id : 'draft', items.filter((y) => age(y) > age(x)).flatMap((y) => y.lines));
+  const later = (y: (typeof items)[number], x: (typeof items)[number]) => age(y) > age(x) || (age(y) === age(x) && items.indexOf(y) > items.indexOf(x));
+  for (const x of items) newer.set(x.c ? x.c.id : 'draft', items.filter((y) => later(y, x)).flatMap((y) => y.lines));
   const boxes = items.map(({ c, anchor, lines, pin }) => {
     const id = c ? c.id : 'draft';
     let d = drawn.get(id);
