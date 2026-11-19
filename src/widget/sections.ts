@@ -84,14 +84,16 @@ export function startSections() {
     edgeR.dataset.st = any && past('r') ? '1' : '';
   };
   nav.addEventListener('scroll', () => requestAnimationFrame(edges), { passive: true });
-  // A tap on a green edge slides the line to the nearest new or updated chip past it (Leo, 19 Nov: "clicking on green
-  // in tabs should scroll to new"); the chip itself then takes you to its section.
+  // A tap on a green edge slides the line to the nearest new or updated chip past it and goes to that section (Leo,
+  // 19 Nov: "clicking on green in tabs should scroll to new").
   for (const [edge, side] of [[edgeL, 'l'], [edgeR, 'r']] as const) edge.addEventListener('click', () => {
     if (!edge.dataset.st) return;
     const l = nav.scrollLeft, r = l + nav.clientWidth;
     const past = chips().filter((c) => !c.hidden && c.dataset.st && (side === 'l' ? c.offsetLeft + c.offsetWidth <= l + 4 : c.offsetLeft >= r - 4));
     const c = side === 'l' ? past[past.length - 1] : past[0];
-    if (c) nav.scrollTo({ left: Math.max(0, c.offsetLeft - 12), behavior: still() ? 'auto' : 'smooth' });
+    if (!c) return;
+    nav.scrollTo({ left: Math.max(0, c.offsetLeft - 12), behavior: still() ? 'auto' : 'smooth' });
+    c.click(); // and the page goes there, as a tap on that chip does (Leo: "also scroll to new as well")
   });
   bar.hidden = true;
   menu.hidden = more.hidden = true;
