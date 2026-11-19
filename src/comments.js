@@ -30,7 +30,7 @@ import {
   zoneEl,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
-import { bindPinHold, flushPins, heldPin, holdPin, letPin } from './widget/pinhold.ts';
+import { flushPins, heldPin, holdPin, letPin, newPass } from './widget/pinhold.ts';
 import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
@@ -841,6 +841,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   /** @type {WeakMap<Element, any>} */
   const pinData = new WeakMap();
   function render() {
+    newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
     if (S.selDraft && S.draft !== S.selDraft) pick(null, false); // the picked block's box closed: the block is let go
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
@@ -2257,16 +2258,21 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   // ...and, with the flag nativePins, held there by the browser (pinhold.ts): tied to its element, so scrolling needs no
   // script. True when it is held.
+  // Held, its place is the browser's: the script writes none (it would make the next pin's reading lay the page out again);
+  // a drawing still gets its size.
   const placePin = (pin, c, zone, left, top, moved) => {
-    inkAt(pin, zone, left, top);
     const node = flag('nativePins') && !moved && c.anchor?.kind !== 'board' ? findTarget(c.anchor || {}) : null;
-    return holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
+    const held = holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
+    if (!held) inkAt(pin, zone, left, top);
+    else if (zone) inkAt(pin, zone, zone.left, zone.top);
+    return held;
   };
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   // After a scroll, the pins the browser holds are left alone.
   const movePins = (scrolled = false) => {
     if (!S.on || S.openId) return render();
+    newPass();
     const all = threads().filter((c) => c.anchor?.kind !== 'page');
     const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
     const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
@@ -2292,7 +2298,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     });
   };
   addEventListener('resize', reflow);
-  bindPinHold(() => reflow()); // the browser hides clipped pins after all: those in boxes are held too (pinhold.ts)
   // A question's card in the margin (thread.ts) that no longer fits a narrower window goes back where cards go.
   addEventListener('resize', () => {
     const card = layer.querySelector('.card.margin');

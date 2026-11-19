@@ -1,64 +1,41 @@
 // Part of the comment widget (src/comments.js bundles it).
 //
 // Pins the browser holds (flag nativePins): a pin on an element of the page is tied to that element with CSS anchor
-// positioning, so the browser keeps it on its spot through scrolling (the page, a box that scrolls, a sticky header, a
-// parent that moves), and hides it while a box it is inside cuts its spot off. No script runs for that. The script still
+// positioning, so the browser keeps it on its spot through scrolling the page, on a sticky header, and on a parent that
+// moves. No script runs for that. The script still
 // finds the spot (anchoring.ts, position) when the pins are drawn or the page changes size, and writes it here as an
 // offset from the element's corner: on words, in a gap between two blocks, on an area or a share of the element alike.
 //
 // Two things make it reach the page:
 // - the pin is fixed: an absolute pin's containing block is the widget's own host, which no element of the page is in;
 // - its rule is in the page's style sheet, by ::part: anchor names given in the page are not seen from the shadow root.
-// A browser without anchor positioning (or without position-visibility) keeps the pins the script places, as before.
+// A browser without anchor positioning keeps the pins the script places, as before.
 // So does a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
 // dialog, popover or full screen (the top layer is laid out after the pin, so it can't be its anchor). An element whose
 // anchor attribute a live patch took away parks its pins off screen (anchor()'s fallback) until they are placed again.
-// Safari takes position-visibility but doesn't hide a pin whose spot a box cuts off (asked once, hidesClipped): there a
-// pin inside a box that clips is placed by the script, which hides it; the others are held all the same.
+// A pin inside a box that cuts off what overflows it (a box that scrolls, a carousel) is placed by the script too: the
+// browser hides a held pin only once its whole element is cut off, so a pin low on a tall element would float outside
+// its box; the script hides it by its spot (anchoring.ts, clippedAt). A box that covers the whole screen (a board's)
+// cuts nothing the screen doesn't.
 let sheet: HTMLStyleElement | null = null;
 const names = new WeakMap<Element, string>(); // an element's anchor name, kept while it lives
 const rules = new Map<HTMLElement, string>(); // a held pin and its rule
 let count = 0;
 let dirty = false;
 let able: boolean | null = null;
-let hides = false; // until the probe says so, a pin inside a box that clips is the script's
-let again = () => {}; // places the pins again (comments.js): once the probe has answered yes
-/** What places the pins again when the browser turns out to hide clipped ones. */
-export const bindPinHold = (redraw: () => void) => (again = redraw);
-const can = () => {
-  if (able === null) {
-    able = typeof CSS !== 'undefined' && CSS.supports('anchor-name: --a') && CSS.supports('position-visibility: anchors-visible');
-    if (able) hidesClipped();
+const can = () => (able ??= typeof CSS !== 'undefined' && CSS.supports('anchor-name: --a'));
+// What an element is, read once per placing of the pins (newPass): whether a box cuts it off, it sits in the top layer,
+// or the page gives it an anchor name of its own. Read before any pin is written, so placing many pins lays out once.
+let pass = 0;
+const seen = new WeakMap<Element, { pass: number; no: boolean }>();
+/** A new placing of the pins: what was read about their elements is read again. */
+export const newPass = () => void pass++;
+const cutOff = (node: Element) => {
+  for (let el = node.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    if (getComputedStyle(el).overflow === 'visible') continue;
+    const r = el.getBoundingClientRect();
+    if (r.left > 0.5 || r.top > 0.5 || r.right < innerWidth - 0.5 || r.bottom < innerHeight - 0.5) return true;
   }
-  return able;
-};
-// Whether the browser really hides a fixed element whose anchor a box cuts off: a 4 px probe at the screen's corner,
-// unseen and let through, tied to an anchor scrolled out of a 4 px box that scrolls. The browser decides at its next rendering
-// update, so it is read two frames on: not found at that point, it is hidden.
-function hidesClipped() {
-  // As pins meet it: a box that scrolls (overflow auto), its anchor scrolled out of it.
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:auto;scrollbar-width:none;opacity:0;pointer-events:none;z-index:2147483647';
-  box.append(Object.assign(document.createElement('div'), { style: 'height:4px;anchor-name:--lab-probe' }), Object.assign(document.createElement('div'), { style: 'height:80px' }));
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--lab-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) + 40px)';
-  document.body.append(box, probe);
-  box.scrollTop = 40;
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      const r = probe.getBoundingClientRect();
-      const seen = document.elementFromPoint(1, 1) === probe;
-      box.remove();
-      probe.remove();
-      hides = Math.abs(r.left) < 1 && Math.abs(r.top) < 1 && !seen;
-      if (hides) again();
-    }),
-  );
-}
-// A box between the element and the page that cuts what overflows it.
-const clips = (node: Element) => {
-  for (let el = node.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement)
-    if (getComputedStyle(el).overflow !== 'visible') return true;
   return false;
 };
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
@@ -79,8 +56,12 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
   }
   let name = names.get(node);
   if (!name) names.set(node, (name = `lab${(++count).toString(36)}`));
-  const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
-  if ((own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || (!hides && clips(node))) {
+  let read = seen.get(node);
+  if (read?.pass !== pass) {
+    const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
+    seen.set(node, (read = { pass, no: Boolean(own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || cutOff(node) }));
+  }
+  if (read.no) {
     letPin(pin);
     return false;
   }

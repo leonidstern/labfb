@@ -2,7 +2,8 @@
 // Pins placed the usual way (a click on an element, one on a sticky header, one in the gap between two blocks, Shift +
 // double-click on words, one in a box that scrolls) are tied to their element with CSS anchor positioning: through
 // scrolling (the page, the box), the page growing above them and words moving in their line, each stays where it is on
-// its element; a box that cuts its spot off hides it; a scroll measures nothing; a drag still moves one.
+// its element; a drag still moves one. A pin inside a box that cuts it off (a box that scrolls) is the script's: the
+// browser only hides a held pin once its whole element is cut off, so the script hides it by its spot.
 // Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/nativepins.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
@@ -35,7 +36,7 @@ fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="ut
 #gapsec{padding:1px 0} #shifted{transform:translateX(40px)}</style>
 <header id="sticky"><b>Sticky header with words on it</b></header>
 <p id="grow">The page grows here.</p>
-<div id="box">${FILLER}<p id="inbox">A paragraph inside the box that scrolls.</p>${FILLER}${FILLER}</div>
+<div id="box">${FILLER}<p id="inbox">A paragraph inside the box that scrolls.</p><p id="tall" style="height:300px;background:#f4f4f4">A tall paragraph in the box.</p>${FILLER}${FILLER}</div>
 <section id="gapsec"><p id="ga">The block above the gap.</p><p id="gb">The block below the gap.</p></section>
 <p id="words"><span id="before">Some words before</span> the <span id="q">quoted</span> words and more after them.</p>
 <div id="shifted"><p id="tp">A paragraph whose parent is moved by a transform.</p></div>
@@ -86,24 +87,6 @@ const where = (p) =>
     return out;
   }, PINS);
 const same = (a, b, names) => names.filter((n) => !a[n] || !b[n] || Math.abs(a[n].dx - b[n].dx) > 1 || Math.abs(a[n].dy - b[n].dy) > 1);
-// Does the browser really hide a pin whose spot a box cuts off? The same probe as the widget's (pinhold.ts).
-const hidesClipped = (p) =>
-  p.evaluate(() => {
-        const box = document.createElement('div');
-        box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:auto;scrollbar-width:none;opacity:0;pointer-events:none;z-index:2147483647';
-        box.append(Object.assign(document.createElement('div'), { style: 'height:4px;anchor-name:--t-probe' }), Object.assign(document.createElement('div'), { style: 'height:80px' }));
-        const probe = document.createElement('div');
-        probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--t-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) + 40px)';
-        document.body.append(box, probe);
-        box.scrollTop = 40;
-        return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => {
-          const r = probe.getBoundingClientRect();
-          const seen = document.elementFromPoint(1, 1) === probe;
-          box.remove();
-          probe.remove();
-          res(Math.abs(r.left) < 1 && Math.abs(r.top) < 1 && !seen);
-        })));
-      });
 const settle = (p) => p.evaluate(() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 60)))));
 
 try {
@@ -120,8 +103,6 @@ try {
       check(eng, 'the browser has anchor positioning and position-visibility', can.anchor && can.visibility, JSON.stringify(can));
       // Does it really hide a pin whose spot a box cuts off? (Safari takes the property but doesn't, pinhold.ts:
       // there the pin in the box is placed by the script.) The same probe as the widget's.
-      const hides = await hidesClipped(p);
-      console.log(`info ${eng.padEnd(8)} hides a pin its box cuts off: ${hides}`);
       // Pins put the usual way: a click and Enter; words by Shift + double-click.
       let n = 0;
       const send = async (text) => {
@@ -174,22 +155,12 @@ try {
         check(eng, 'every pin was placed', false, `missing: ${missing.join(', ')}`);
         continue;
       }
-      check(eng, hides ? 'five pins and a drawing, all held by the browser' : 'four pins and a drawing held; the one in the box placed by the script', names.every((k) => rest[k]?.shown && rest[k]?.held === (k !== 'inbox' || hides)), JSON.stringify(rest));
-      // A scroll measures nothing: no element or words are measured by the widget while the box and the page scroll.
-      await p.evaluate(() => {
-        window.labMeasured = 0;
-        for (const [proto, fn] of [[Element.prototype, 'getBoundingClientRect'], [Range.prototype, 'getClientRects'], [Range.prototype, 'getBoundingClientRect']]) {
-          const was = proto[fn];
-          proto[fn] = function (...a) { window.labMeasured++; return was.apply(this, a); };
-        }
-      });
+      check(eng, 'four pins and a drawing held by the browser; the one in the box that scrolls placed by the script', names.every((k) => rest[k]?.shown && rest[k]?.held === (k !== 'inbox')), JSON.stringify(rest));
       await p.evaluate(() => (document.getElementById('box').scrollTop = 60));
       await settle(p);
-      const measured = await p.evaluate(() => window.labMeasured);
       const boxed = await where(p);
       check(eng, 'the box scrolls: every pin stays on its spot', same(rest, boxed, names).length === 0, JSON.stringify({ rest: rest.inbox, now: boxed.inbox }));
       check(eng, '…the pin in the box moved with it', Math.abs(boxed.inbox.y - rest.inbox.y - 70) <= 1, `${rest.inbox.y} → ${boxed.inbox.y}`);
-      if (hides) check(eng, '…and the widget measured nothing for it', measured === 0, `${measured} measurements`);
       await p.evaluate(() => scrollTo(0, 220));
       await settle(p);
       const paged = await where(p);
@@ -207,7 +178,7 @@ try {
       const moved = await p.evaluate(() => { const q = document.getElementById('q').getBoundingClientRect(); return { x: q.left, y: q.top }; });
       const follow = await where(p);
       check(eng, 'words move in their line: the pin on them follows', (Math.abs(moved.x - before.x) > 20 || Math.abs(moved.y - before.y) > 10) && Math.abs(follow.words.dx - rest.words.dx) <= 2 && Math.abs(follow.words.dy - rest.words.dy) <= 2, JSON.stringify({ rest: rest.words, now: follow.words }));
-      // The box cuts the pin's spot off (the box itself still on screen): the browser hides it, and shows it again.
+      // The box cuts the pin's spot off (the box itself still on screen): hidden, and shown again.
       await p.evaluate(() => (document.getElementById('box').scrollTop = 900));
       await settle(p);
       const cut = await where(p);
@@ -234,6 +205,18 @@ try {
       await send('on an element the page anchors');
       const own = (await where(p)).own;
       check(eng, 'a pin on an element the page anchors itself is placed by the script, on its spot', own && !own.held && own.shown && Math.abs(own.dy + 15) <= 2, JSON.stringify(own));
+      // A pin low on a tall element in the box: when the box shows the element's top but cuts the pin's spot off, the pin
+      // is hidden (a held pin would float outside the box: the browser hides one only once its whole element is cut off).
+      await p.evaluate(() => { const b = document.getElementById('box'); b.scrollIntoView({ block: 'center' }); const t = document.getElementById('tall'); b.scrollTop = t.offsetTop - b.offsetTop + t.offsetHeight - b.clientHeight + 20; });
+      await settle(p);
+      await clickAt('#tall', 0.5, 0.85);
+      await send('low on a tall paragraph');
+      const tallPin = () => p.evaluate(() => { const r = document.querySelector('[data-lab-comments]').shadowRoot; const pin = [...r.querySelectorAll('button.pin')].find((b) => /^comment 8 by/.test(b.getAttribute('aria-label') || '')); if (!pin) return null; const q = pin.getBoundingClientRect(); return { held: getComputedStyle(pin).position === 'fixed', shown: document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2) === r.host }; });
+      const tall1 = await tallPin();
+      await p.evaluate(() => { const b = document.getElementById('box'); const t = document.getElementById('tall'); b.scrollTop = t.offsetTop - b.offsetTop - 20; });
+      await settle(p);
+      const tall2 = await tallPin();
+      check(eng, 'a pin low on a tall element in the box: hidden when the box cuts its spot off though the element shows', tall1?.shown && !tall2?.shown && tall2 && !tall2.held, JSON.stringify({ tall1, tall2 }));
       await ctx.close();
 
       // The same pins on a phone: Safari's engine as an iPhone, Chrome's as a Pixel (touch, a phone's screen and pixels).
@@ -245,28 +228,16 @@ try {
       await m.goto(B + '/');
       await m.waitForFunction(() => document.querySelector('[data-lab-comments]')?.shadowRoot?.querySelectorAll('button.pin').length >= 7, null, { timeout: 8000 }).catch(() => {});
       await sleep(600);
-      const mHides = await hidesClipped(m);
-      console.log(`info ${tag.padEnd(8)} ${phone}: hides a pin its box cuts off: ${mHides}`);
       const phoneNames = ['inbox', 'sticky', 'gap', 'words', 'shifted', 'drawing'];
       await m.evaluate(() => document.getElementById('box').scrollIntoView({ block: 'center' }));
       await settle(m);
       const mRest = await where(m);
-      check(tag, 'on a phone: the pins held by the browser, the one in the box where it hides clipped ones', phoneNames.every((k) => mRest[k]?.held === (k !== 'inbox' || mHides)), JSON.stringify(mRest));
-      await m.evaluate(() => {
-        window.labMeasured = 0;
-        for (const [proto, fn] of [[Element.prototype, 'getBoundingClientRect'], [Range.prototype, 'getClientRects'], [Range.prototype, 'getBoundingClientRect']]) {
-          const was = proto[fn];
-          proto[fn] = function (...a) { window.labMeasured++; return was.apply(this, a); };
-        }
-      });
+      check(tag, 'on a phone: the pins held by the browser, the one in the box that scrolls the script\'s', phoneNames.every((k) => mRest[k]?.held === (k !== 'inbox')), JSON.stringify(mRest));
       const boxTop = await m.evaluate(() => document.getElementById('box').scrollTop);
       await m.evaluate((t) => (document.getElementById('box').scrollTop = t + 50), boxTop);
       await settle(m);
-      const mMeasured = await m.evaluate(() => window.labMeasured);
       const mBoxed = await where(m);
       check(tag, 'on a phone, the box scrolls: every pin stays on its spot', same(mRest, mBoxed, phoneNames).length === 0, JSON.stringify(same(mRest, mBoxed, phoneNames)));
-      // The one pin the script places (on the element the page anchors itself) is measured; none of the held ones.
-      if (mHides) check(tag, '…and the widget measured only the pin it does not hold', mMeasured <= 1, `${mMeasured} measurements`);
       const top0 = await m.evaluate(() => scrollY);
       await m.evaluate((y) => scrollTo(0, y + 160), top0);
       await settle(m);
