@@ -25,6 +25,7 @@ const PORT = 7930 + Math.floor(Math.random() * 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'ask.html'), '<!doctype html><meta charset="utf-8"><title>a</title><h1 id="h">Pick</h1><p>text</p>');
+fs.writeFileSync(path.join(DIR, 'anim.html'), '<!doctype html><meta charset="utf-8"><title>m</title><style>@keyframes spin { to { rotate: 1turn } } #s { width: 40px; height: 40px; background: red; animation: spin 2s linear infinite }</style><h1>Moving</h1><div id="s"></div><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, shortcuts: { toggle: 'h', chat: 'x' } }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
@@ -149,6 +150,35 @@ try {
       check(eng, 'Keep sends the row ticked', got.length === 1 && got[0].picked.n === 2 && got[0].picked.of === q.id, JSON.stringify(got.map((c) => c.picked)));
       await a.close();
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/ask', action: 'delete', id: c.id }) });
+      // Pause (P): a page with an animation shows the pause button; P stops the page's animation and says play, and a
+      // comment written while paused tells the agent so (anchor.paused); P again plays.
+      await p.evaluate(() => localStorage.removeItem('lab-cursor')); // the steps above leave the pointer on (key 1 toggles it)
+      await p.goto(B + '/anim');
+      await untilRoot(p, (r) => r.querySelector('.pause-btn') && !r.querySelector('.pause-btn').hidden, 2500);
+      const pause = () => p.evaluate(() => {
+        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+        const b = r?.querySelector('.pause-btn');
+        return { shown: Boolean(b && !b.hidden), words: b?.textContent, anim: document.getElementById('s').getAnimations()[0]?.playState };
+      });
+      check(eng, 'a page with an animation shows the pause button', (await pause()).shown, JSON.stringify(await pause()));
+      await p.keyboard.press('p');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'paused', null, 600);
+      const paused = await pause();
+      check(eng, 'P pauses the page\'s animation and the button says play', paused.anim === 'paused' && paused.words === 'play', JSON.stringify(paused));
+      const h = await p.evaluate(() => document.querySelector('h1').getBoundingClientRect().toJSON());
+      await p.mouse.click(h.left + 20, h.top + h.height / 2);
+      await untilRoot(p, (r) => Boolean(r.querySelector('textarea')), 900);
+      await p.keyboard.type('still');
+      await p.keyboard.press('Enter');
+      const pinned = async () => (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.find((c) => c.text === 'still');
+      for (let i = 0; i < 20 && !(await pinned()); i++) await sleep(100);
+      check(eng, 'a comment written while paused says so', (await pinned())?.anchor?.paused === true, JSON.stringify((await pinned())?.anchor?.paused));
+      await p.keyboard.press('Escape');
+      await p.keyboard.press('p');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'running', null, 600);
+      const played = await pause();
+      check(eng, 'P again plays it and the button says pause', played.anim === 'running' && played.words === 'pause', JSON.stringify(played));
+      for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/anim', action: 'delete', id: c.id }) });
       await p.goto('about:blank');
       await ctx.close();
     } finally {

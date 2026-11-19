@@ -29,7 +29,7 @@ import {
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
@@ -59,6 +59,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get composer() { return composer; },
     get contentEnd() { return contentEnd; },
     get doneBtn() { return doneBtn; },
+    get movedBtn() { return movedBtn; },
     get drawList() { return drawList; },
     get el() { return el; },
     get fonts() { return fonts; },
@@ -120,7 +121,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -218,7 +219,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <style>${styles}</style>
     <div class="scrim"></div>
     <div class="layer"></div>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new${flag('sinceLooked') ? ` · ${KEYS.added} added` : ''} · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -227,8 +228,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
+      <button class="secondary pause-btn" type="button" hidden aria-pressed="false" title="pause the page's videos and animations (P); a comment on a paused video says which second">pause</button>
+      <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
-      <button class="secondary go-btn" type="button" hidden title="1 comment · 3 pointer: clicks are the page's own">mode</button>
+      <button class="secondary go-btn" type="button" hidden title="1 switches between comment and pointer (clicks are the page's own)">mode</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
@@ -249,6 +252,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const goBtn = $('.go-btn');
   const newPrev = $('.new-prev');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
+  const pauseBtn = /** @type {HTMLButtonElement} */ ($('.pause-btn'));
+  const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
   const overBtn = $('.over-btn');
   const tabTitle = { base: '' };
   // Done pins show unless hidden (Leo, 17 Nov): closed ones are faded on the page, and D hides them.
@@ -389,7 +394,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
   }, 10000);
 
-  // Pointer (3): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
+  // Pointer (key 1 switches to it and back): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
   // Option-click still pins. 1 comment leaves it.
   S.cursorMode = store.get('lab-cursor') === '1';
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
@@ -441,6 +446,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
+    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true } }; // paused when written: the agent is told
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
@@ -481,6 +487,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }
   // Option-click on a pin: its thread is resolved, or opened again, without opening its card (Leo, 17 Nov). For whoever
   // may resolve it, as in the card: this computer, and whoever started the thread (its key is kept in their browser).
+  const autoShut = new Set();
   const mayResolve = (c) => S.isAdmin || Boolean(store.get(`lab-edit:${c.id}`));
   function toggleResolved(c) {
     const ownKey = store.get(`lab-edit:${c.id}`);
@@ -578,7 +585,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     });
   }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
@@ -593,13 +600,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (!b.hidden) first = false;
     }
   }
-  // The switch shows what a click will place: 1 your comment pin (your initial), 3 nothing (the pointer).
+  // The switch shows what a click will place: your comment pin (your initial) or nothing (the pointer); key 1 (or a click) flips it.
   function goFace() {
     const gp = goBtn.querySelector('.gp');
     if (gp) gp.textContent = initial(store.get('lab-name')) || '+';
     // Read out as what a click places, not the letter on it.
     goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (pointer)' : 'a comment'}`);
-    goBtn.setAttribute('aria-keyshortcuts', [KEYS.comment, KEYS.pointer].join(' '));
+    goBtn.setAttribute('aria-keyshortcuts', KEYS.comment);
   }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
@@ -793,6 +800,15 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
       const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
+      // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
+      // new spot (drag) or close. The agent finishing one closes it.
+      if (moved) {
+        if (!c.resolved && !autoShut.has(c.id) && workState(c)[0] === 'done' && mayResolve(c)) {
+          autoShut.add(c.id);
+          send({ action: 'resolve', id: c.id, edit: store.get(`lab-edit:${c.id}`) || undefined }).then(({ comment }) => (Object.assign(c, comment), render()), () => {});
+        }
+        if (S.openId !== c.id) return;
+      }
       if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
@@ -1066,7 +1082,48 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }, true);
   goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
   newPrev.addEventListener('click', () => stepNew(-1));
+  // Pause (Leo, 18 Nov): a page with video or animation always has a pause here. Paused, the videos and the page's
+  // animations stand still (the widget's own keep moving), and a comment on a video says which second (anchoring.ts).
+  const stopped = { anims: new Set(), videos: new Set(), style: null };
+  const pageAnims = () => document.getAnimations().filter((a) => {
+    const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
+    return !(t && root.contains(t));
+  });
+  const moving = () => Boolean(document.querySelector('video')) || pageAnims().some((a) => a.playState === 'running');
+  const sayPause = () => {
+    pauseBtn.textContent = S.paused ? 'play' : 'pause';
+    pauseBtn.setAttribute('aria-pressed', String(Boolean(S.paused)));
+    pauseBtn.hidden = !S.on || !(S.paused || moving());
+  };
+  const setPause = (on) => {
+    S.paused = on;
+    if (on) {
+      stopped.style = document.createElement('style');
+      stopped.style.textContent = '*, *::before, *::after { animation-play-state: paused !important; }';
+      document.head.append(stopped.style);
+      for (const a of pageAnims()) {
+        if (a.playState !== 'running') continue;
+        a.pause();
+        stopped.anims.add(a);
+      }
+      for (const v of document.querySelectorAll('video')) {
+        if (v.paused) continue;
+        v.pause();
+        stopped.videos.add(v);
+      }
+    } else {
+      stopped.style?.remove();
+      for (const a of stopped.anims) a.play();
+      for (const v of stopped.videos) v.play?.().catch(() => {});
+      stopped.anims.clear();
+      stopped.videos.clear();
+    }
+    sayPause();
+  };
+  pauseBtn.addEventListener('click', () => setPause(!S.paused));
+  setInterval(sayPause, 1000);
   doneBtn.addEventListener('click', toggleDone);
+  movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
   overBtn.addEventListener('click', () => setOver(!S.overControls));
   newNext.addEventListener('click', () => stepNew(1));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
@@ -1149,22 +1206,24 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
       return stepNew(e.shiftKey ? -1 : 1);
     }
-    // 1 comment, 3 pointer (2 is free): like picking a tool (the keys are settings).
+    // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
-    if (S.on && ['comment', 'pointer'].includes(act) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if (S.on && act === 'comment' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
-      setCursor(act === 'pointer');
+      setCursor(!S.cursorMode);
       return;
     }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
-    // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment,
-    // 3 pointer, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
+    // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment / pointer,
+    // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act)) {
       const k = act;
       e.preventDefault();
+      if (k === 'pause') return pauseBtn.click();
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
+      if (k === 'added') return dispatchEvent(new CustomEvent('lab-added')); // the Added list (changes.ts, flag sinceLooked)
       if (k === 'done') return toggleDone();
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
@@ -1616,14 +1675,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   const movePins = () => {
-    const list = threads().filter((c) => c.anchor?.kind !== 'page');
-    if (!S.on || S.openId || list.length !== pinsById.size) return render();
-    const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
-    if (places.some(([pin]) => !pin)) return render();
-    for (const [pin, { left, top, moved }] of places) {
+    if (!S.on || S.openId) return render();
+    const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {})]).filter(([, at]) => !at.moved);
+    if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
+    for (const [pin, { left, top }] of places) {
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
-      pin.classList.toggle('moved', Boolean(moved));
     }
   };
   S.frame = 0;

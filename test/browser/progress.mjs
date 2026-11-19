@@ -140,6 +140,14 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     // it would still read as old: the stored line is what's checked).
     await L.cli('reply', ids[1], '--progress', 'drawing W1–W6 · 4 of 4');
     check(eng, 'the next line replaces the last on the thread', (await L.comments()).find((c) => c.id === ids[1]).progress?.text === 'drawing W1–W6 · 4 of 4');
+    // A named session: the pill has no name in its words; the name is in its tooltip.
+    for (const id of ids) await L.cli('reply', id, 'Done', '--done');
+    const named = L.cli('wait', '--name', 'ooze', '--timeout', '4');
+    const pillTip = () => shadow(() => { const w = r.querySelector('.listener'); return { words: w?.querySelector('.lbl')?.textContent || '', title: w?.title || '' }; });
+    await until(async () => /session: ooze/.test((await pillTip()).title), 3000);
+    const nm = await pillTip();
+    check(eng, 'a named session: the pill has no name in its words, the tooltip has it', /session: ooze/.test(nm.title) && !/ooze/.test(nm.words), JSON.stringify(nm));
+    await named;
     await p.close();
   } finally {
     await browser.close();

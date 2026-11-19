@@ -99,7 +99,7 @@ came from.
 
 | Flag | What it is |
 | --- | --- |
-| `sinceLooked` | a "New · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
+| `sinceLooked` | a "Added · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
 
 `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
@@ -147,13 +147,14 @@ win over yours, key by key.
 | Action | Default | Does |
 | --- | --- | --- |
 | `toggle` | `m` | Show or hide comments |
-| `comment` | `1` | A click places a comment |
-| `pointer` | `3` | A click is just a click |
+| `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
 | `chat` | `c` | Open the chat |
 | `next` | `w` | The next new comment (with Shift: the one before) |
+| `pause` | `p` | Pause or play the page's videos and animations (the button shows on a page that has them) |
 | `done` | `d` | Hide or show done threads (shown, faded, at first) |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
+| `added` | `a` | With the `sinceLooked` flag on: open the Added list; press again to go to the next added item |
 
 Letters follow the key's place on non-Latin layouts (the C key is C in Russian too), and digits work with Shift or
 on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat` is `x`.

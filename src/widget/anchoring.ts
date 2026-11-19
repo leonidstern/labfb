@@ -52,6 +52,8 @@ type Anchor = {
   imgX?: number;
   imgY?: number;
   time?: number;
+  /** The page's videos and animations were paused when this was written. */
+  paused?: boolean;
   duration?: number;
   transform?: string;
   /** An area dragged out, and what was inside it. */
