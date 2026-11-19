@@ -63,7 +63,7 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       });
     });
   // The command line's own hint ("Answer each: … reply …") becomes the tools to use here.
-  const forTools = (t: string) => t.replace(/^Answer each: .*$/m, 'Answer each with the `reply` tool (id, text, intent: done when it is done, question when you need the person), then call `wait` again. While you work on a long one, `reply` with `progress` alone (one short line) keeps the person informed.');
+  const forTools = (t: string) => t.replace(/^Work that takes more than a minute .*$/m, 'Work that takes more than a minute (a build, a restart, a PR): first `reply` with intent working on each, then start.').replace(/^Answer each: .*$/m, 'Answer each with the `reply` tool (id, text, intent: done when it is done, question when you need the person), then call `wait` again. While you work on a long one, `reply` with `progress` alone (one short line) keeps the person informed.');
   const text = (t: string, isError = false): ToolResult => ({ content: [{ type: 'text', text: forTools(t).trim() || '(nothing)' }], ...(isError ? { isError } : {}) });
   const tools = [
     {
