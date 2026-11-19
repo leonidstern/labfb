@@ -44,7 +44,7 @@ export const labAck = (server: Server, delivery: string, session: Session) =>
 /** What a wait that ended without pins says, by the lab's answer. */
 export const WAIT_SAID: Record<number, string> = {
   204: 'No new comments yet. Run wait again to keep listening.',
-  409: 'Another session is listening now; this one stopped.',
+  409: 'Another session is listening on these pages now; this one stopped. Leave them to that session: two sessions waiting on one page take turns ending each other\'s wait, and its pins go to whichever is open.',
   410: 'The page was closed, so this stopped listening. Wait again only when the person asks or opens the page.',
   423: 'The person stopped listening from the page (labs & pages). Don\'t wait again until they ask you to.',
 };

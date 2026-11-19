@@ -8,9 +8,7 @@
 import styles from './widget/styles.css';
 import {
   bindAnchoring,
-  DRAFT_MODE,
   anchorAt,
-  drafting,
   drawZone,
   foundAt,
   goToBlock,
@@ -48,8 +46,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
     get $() { return $; },
-    get DRAFT_MODE() { return DRAFT_MODE; },
-    get LIST_WINDOW() { return LIST_WINDOW; },
     get OFF() { return OFF; },
     get S() { return S; },
     get agentOf() { return agentOf; },
@@ -63,15 +59,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get composer() { return composer; },
     get contentEnd() { return contentEnd; },
     get doneBtn() { return doneBtn; },
-    get drafting() { return drafting; },
     get drawList() { return drawList; },
     get el() { return el; },
     get fonts() { return fonts; },
     get goBtn() { return goBtn; },
     get goFace() { return goFace; },
     get goTo() { return goTo; },
-    get held() { return held; },
-    get holdBtn() { return holdBtn; },
     get host() { return host; },
     get isDone() { return isDone; },
     get isNew() { return isNew; },
@@ -81,8 +74,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get keyLabel() { return keyLabel; },
     get layer() { return layer; },
     get listBtn() { return listBtn; },
-    get listEl() { return listEl; },
-    get listed() { return listed; },
     get load() { return load; },
     get loadChanges() { return loadChanges; },
     get ease() { return ease; },
@@ -108,9 +99,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get scrim() { return scrim; },
     get script() { return script; },
     get send() { return send; },
-    get sendBtn() { return sendBtn; },
     get sheetMode() { return sheetMode; },
-    get showDoneBtn() { return showDoneBtn; },
     get stampOf() { return stampOf; },
     get stamped() { return stamped; },
     get still() { return still; },
@@ -230,11 +219,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <div class="scrim"></div>
     <div class="layer"></div>
     <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
-    <div class="list" hidden><div class="agentline" hidden></div><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
-      <button class="secondary send-all" type="button" hidden></button>
       <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
       <button class="secondary new-prev" type="button" hidden aria-label="previous new comment">‹</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
@@ -257,28 +244,23 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const moreBtn = $('.more');
   const moreMenu = $('.more-menu');
   const copyBtn = $('.copy-all');
-  // The comments list (new / open / resolved / mine; J/K step, R reply, E resolve, L shows it), and drafts: with
-  // "drafts" on, new pins wait in this browser until "send 3 drafts", so nothing starts on pin 1 of 10.
+  // The bar's "new" pill: J/K step through the new comments, R replies, E resolves.
   const listBtn = /** @type {HTMLButtonElement} */ ($('.list-btn'));
   const goBtn = $('.go-btn');
   const newPrev = $('.new-prev');
-  const showDoneBtn = $('.show-done');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
   const overBtn = $('.over-btn');
-  // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
-  // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
-  const LIST_WINDOW = false;
   const tabTitle = { base: '' };
   // Done pins show unless hidden (Leo, 17 Nov): closed ones are faded on the page, and D hides them.
   S.showDone = store.get('lab-hide-done') !== '1';
+  const toggleDone = () => {
+    S.showDone = !S.showDone;
+    store.set('lab-hide-done', S.showDone ? '' : '1');
+    render();
+  };
   const newNext = $('.new-next');
-  const sendBtn = $('.send-all');
-  const listEl = $('.list');
-  const holdBtn = $('.hold', listEl);
   const chatEl = $('.chatwin');
   const chatBtn = /** @type {HTMLElement} */ (root.querySelector('.chat-btn'));
-  S.listOpen = false;
-  S.filter = 'open';
   S.refit = () => {}; // phones: fit the sheets to the keyboard again (below)
   S.chatOpen = false;
 
@@ -291,7 +273,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
 
   // ---------- anchoring (src/widget/anchoring.ts) ----------
-  bindAnchoring({ host, layer, el, store });
+  bindAnchoring({ host, layer, el });
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
   bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
@@ -433,7 +415,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
   const setPinning = () => {
-    const placing = S.on && !S.cursorMode && !anyWriting();
+    const placing = S.on && !S.cursorMode && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
     document.documentElement.classList.toggle('lab-pinning', placing);
     // "Pin over controls" on: the page's own links, buttons and clickable cards show the pin too, not their hand: a click
     // there pins, so the pointer says so (Leo, 17 Nov: "still controls giving me hand").
@@ -495,7 +477,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
     if (S.openId === id) S.openId = null;
     render();
-    say(`took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
+    say(`took back a pin · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
   }
   // Option-click on a pin: its thread is resolved, or opened again, without opening its card (Leo, 17 Nov). For whoever
   // may resolve it, as in the card: this computer, and whoever started the thread (its key is kept in their browser).
@@ -563,25 +545,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Everyone sees done threads the same way (a guest's resolved pin vanished at once, with the answer in it unread):
   // done ones with nothing new step aside, and show done brings them back.
   const threads = () => S.comments.filter((c) => !c.parent);
-  const heldKey = () => `lab-held:${S.page}`;
-  const held = () => {
-    try {
-      return JSON.parse(store.get(heldKey()) || '[]');
-    } catch {
-      return [];
-    }
-  };
-  // Being worked on: handed to the agent and not answered or resolved since (a comment, a chat message).
-  const listed = () =>
-    threads()
-      .filter((c) => c.anchor?.kind !== 'page')
-      .filter((c) => (S.filter === 'new' ? unread(c).length : S.filter === 'open' ? !c.resolved : S.filter === 'resolved' ? c.resolved : mine(c)))
-      .sort((a, b) => rank(a) - rank(b) || a.createdAt.localeCompare(b.createdAt));
-  // The list: the ones the agent works on first, then those waiting, in their order in line, then the rest.
-  const rank = (c) => {
-    const e = lineUp().get(c.id);
-    return e?.s === 'now' || e?.s === 'stale' ? 0 : e?.s === 'got' ? 1 : e?.s === 'wait' ? 1 + e.n : 1e6;
-  };
   const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;
@@ -789,8 +752,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (coarse && prev?.classList.contains('float') && !prev.classList.contains('out') && !root.querySelector('.float:not(.out)')) setTimeout(backFromReveal, ms('slow'));
       // Phones: a sheet that opens grows out of what was tapped (sheets.ts).
       if (coarse) {
-        const sheet = /** @type {HTMLElement | null} */ (root.querySelector('.card:not(.out), .float:not(.out)')) || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
-        const key = sheet && (S.draft ? 'draft' : S.openId || (S.listOpen ? 'list' : S.chatOpen ? 'chat' : ''));
+        const sheet = /** @type {HTMLElement | null} */ (root.querySelector('.card:not(.out), .float:not(.out)')) || (S.chatOpen ? chatEl : null);
+        const key = sheet && (S.draft ? 'draft' : S.openId || (S.chatOpen ? 'chat' : ''));
         if (sheet && key !== S.sheetKey) fromTap(sheet);
         S.sheetKey = key;
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
@@ -811,7 +774,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     );
     toggleBtn.classList.toggle('secondary', S.on);
     host.toggleAttribute('data-labs', Boolean(!coarse && S.labsOpen)); // the page dims behind labs & pages (the widget's .scrim)
-    host.toggleAttribute('data-sheet', Boolean((coarse && S.labsOpen) || (S.on && (S.draft || S.openId || S.listOpen || S.chatOpen)))); // phones: the sheet has the screen's bottom
+    host.toggleAttribute('data-sheet', Boolean((coarse && S.labsOpen) || (S.on && (S.draft || S.openId || S.chatOpen)))); // phones: the sheet has the screen's bottom
     if (coarse && appear && now) { // a sheet opening slides in once its first frame is drawn (see data-opening in styles.css)
       host.setAttribute('data-opening', '');
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
@@ -825,15 +788,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     drawList();
     drawChat();
     if (!S.on) return done();
-    for (const h of held()) {
-      const { left, top } = position(h.anchor);
-      const p = el('div', { class: 'pin held', title: `${h.name}: ${h.text} · draft, not sent yet` }, initial(h.name));
-      p.style.left = `${left}px`;
-      p.style.top = `${top}px`;
-      layer.append(p);
-      next.push(p);
-    }
-
     list.forEach((c) => {
       if (isPage(c)) return; // in the chat, not on the page
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
@@ -845,7 +799,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
       const state = sg.s;
       const tip = coarse || (state !== 'now' && state !== 'stale') ? '' : lineOf(sg); // hovering a working ring says what it is doing
-      const isGo = /^go$/i.test(c.text.trim());
       const born = !old.has(c.id);
       const pin = old.get(c.id) || el('button', { type: 'button' });
       const info = pinData.get(pin) || {};
@@ -853,18 +806,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // Its state as classes and words (the ring, the tick and the new dot are only seen). Set one by one: the
       // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
       for (const [cls, on] of Object.entries({
-        go: isGo, resolved: c.resolved, done: state === 'done', new: news.length, moved,
+        resolved: c.resolved, done: state === 'done', new: news.length, moved,
         grab: movable, open: S.openId === c.id, dragging: false,
       })) pin.classList.toggle(cls, Boolean(on));
       pin.classList.add('pin');
       if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
       if (tip) pin.removeAttribute('title');
       else pin.title = `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`;
-      pin.setAttribute('aria-label', `${isGo ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
-      // Done wins over every face: a go that has been answered or resolved is a pin like any other,
-      // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
-      const mark = state !== 'done' && !c.resolved && !isGo && byAgent(c);
-      const key = state === 'done' || c.resolved ? '✓' : isGo ? 'go' : mark ? '\0mark' : initial(c.name);
+      pin.setAttribute('aria-label', `comment${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
+      // Done wins over every face: a pin that has been answered or resolved wears the tick.
+      const mark = state !== 'done' && !c.resolved && byAgent(c);
+      const key = state === 'done' || c.resolved ? '✓' : mark ? '\0mark' : initial(c.name);
       if (info.face !== key) {
         const node = mark ? agentMark() : document.createTextNode(key);
         if (info.node) info.node.replaceWith(node);
@@ -1026,13 +978,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         autofocus: !(draft.fluid && coarse),
         draftKey: `lab-typing:${S.page}:new`,
         onSubmit: async (name, said) => {
-          if (drafting()) {
-            store.set(heldKey(), JSON.stringify([...held(), { name, text: said, anchor }]));
-            if (fluid) fluidDrop();
-            S.draft = null;
-            keepSpot(null);
-            return render();
-          }
           const { comment, edit } = await send({ name, text: said, anchor });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
           S.comments.push(comment);
@@ -1121,13 +1066,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }, true);
   goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
   newPrev.addEventListener('click', () => stepNew(-1));
-  doneBtn.addEventListener('click', () => showDoneBtn.click());
+  doneBtn.addEventListener('click', toggleDone);
   overBtn.addEventListener('click', () => setOver(!S.overControls));
-  showDoneBtn.addEventListener('click', () => {
-    S.showDone = !S.showDone;
-    store.set('lab-hide-done', S.showDone ? '' : '1');
-    render();
-  });
   newNext.addEventListener('click', () => stepNew(1));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
   const showAgain = () => {
@@ -1144,16 +1084,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (coarse) {
       S.openId = null;
       S.chatOpen = false;
-      S.listOpen = false;
       render();
     }
     setTimeout(() => goToBlock(target), coarse ? 60 : 0); // after the sheet has started closing
   });
-  listBtn.addEventListener('click', () => (LIST_WINDOW ? ((S.listOpen = !S.listOpen), S.listOpen && (S.filter = 'new'), (S.chatOpen = false), (hint.hidden = true), render()) : stepNew(1)));
-  listEl.querySelector('.x').addEventListener('click', () => slideAway(listEl, () => ((S.listOpen = false), render())));
+  listBtn.addEventListener('click', () => stepNew(1));
   chatBtn.addEventListener('click', () => {
     S.chatOpen = !S.chatOpen;
-    S.listOpen = false;
     // On a computer, opening the chat closes an open thread, and a new comment with nothing typed in it.
     if (S.chatOpen && !coarse) {
       S.openId = null;
@@ -1186,24 +1123,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     e.preventDefault();
     e.stopImmediatePropagation();
   }, true);
-  for (const b of /** @type {NodeListOf<HTMLElement>} */ (listEl.querySelectorAll('[data-f]'))) b.addEventListener('click', () => ((S.filter = b.dataset.f), drawList()));
-  holdBtn.addEventListener('click', () => (store.set('lab-hold', drafting() ? '' : '1'), drawList()));
-  sendBtn.addEventListener('click', async () => {
-    const list = held();
-    for (let i = 0; i < list.length; i++) {
-      try {
-        const { comment, edit } = await send(list[i]);
-        if (edit) store.set(`lab-edit:${comment.id}`, edit);
-        S.comments.push(comment);
-        markSeen([comment]);
-        store.set(heldKey(), JSON.stringify(list.slice(i + 1)));
-      } catch {
-        sendBtn.textContent = 'send failed, try again';
-        return;
-      }
-    }
-    render();
-  });
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
@@ -1246,7 +1165,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       e.preventDefault();
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'done') return showDoneBtn.click();
+      if (k === 'done') return toggleDone();
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
@@ -1262,9 +1181,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       S.draft = null;
       S.openId = null;
       render();
-    } else if (e.key === 'Escape' && (S.chatOpen || S.listOpen)) {
-      if (S.chatOpen) S.chatOpen = false;
-      else S.listOpen = false;
+    } else if (e.key === 'Escape' && S.chatOpen) {
+      S.chatOpen = false;
       render();
     }
   });
@@ -1319,7 +1237,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const draftHasText = () => Boolean(S.draft) && [.../** @type {NodeListOf<HTMLTextAreaElement>} */ (root.querySelectorAll('.float textarea'))].some((t) => t.value.trim());
   function startDrag(e) {
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
     if (e.composedPath().includes(host)) return;
     if (!e.altKey && control(e.target)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -1426,12 +1344,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
   /** @returns {HTMLElement | null} */
-  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
+  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.chatOpen ? chatEl : null);
   const closeAll = () => {
     if (S.labsOpen) return closeSwitcher(); // labs & pages sits over the others: only it goes
     S.draft = null;
     S.openId = null;
-    S.listOpen = false;
     S.chatOpen = false;
     render();
   };
@@ -1461,7 +1378,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.stick = true;
   msgsEl.addEventListener('scroll', () => (S.stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48), { passive: true });
   if ('ResizeObserver' in window) new ResizeObserver(() => S.stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
-  swipeDown(listEl, () => ((S.listOpen = false), render()));
   swipeDown(chatEl, () => ((S.chatOpen = false), render()), true);
   S.press = null;
   const stopPress = () => S.press && (clearTimeout(S.press.timer), (S.press = null));
@@ -1536,11 +1452,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   //     (sheets.ts: fromTap / revealDraft / leave all as before), with no keyboard until the box is tapped.
   //  3. Phones: holding a finger still pins (hold-to-comment): untouched, it never makes a selection.
   //  4. The anchor: pinned on the last selected letter, quoting exactly the words with a few either side (below).
-  //  5. Draft mode (held drafts): a comment on words sent in draft mode waits with the other drafts, as before.
-  //  6. keepSpot: the spot and the typed words are kept while writing, so a reload gives them back (as a plain box).
-  //  7. Keys (KEYS): all as before, except while the bar shows, when a letter is the comment's first letter; Escape
+  //  5. keepSpot: the spot and the typed words are kept while writing, so a reload gives them back (as a plain box).
+  //  6. Keys (KEYS): all as before, except while the bar shows, when a letter is the comment's first letter; Escape
   //     lets the bar go; a click elsewhere only lets it go (as with an open comment).
-  //  8. The hint's words ("shift-drag to quote words", phones "hold to comment"): unchanged.
+  //  7. The hint's words ("shift-drag to quote words", phones "hold to comment"): unchanged.
   const dropOffer = () => {
     fluidDrop();
     markQuote(null);
@@ -1635,9 +1550,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   // The actions row of a comment on selected words or a spot (the box is the comment, so no button for it): every button sends at
   // once on a click, nothing to type: rewrite sends `Rewrite: “…”` (the agent proposes the new wording), cut sends
-  // `Cut: “…”`, go is a go pin on the words (the text "go"), and your own (labit.json `actions`) send their text. They go
-  // through the box's own send, so a missing name is asked for there, a lab that can't be reached keeps them, and draft
-  // mode holds them. ⌥ + 1…4 runs the nth button (holding ⌥ shows the numbers). Long quotes (the first 300 characters are kept)
+  // `Cut: “…”`, go is an ordinary comment that says "go", and your own (labit.json `actions`) send their text. They go
+  // through the box's own send, so a missing name is asked for there, a lab that can't be reached keeps them. ⌥ + 1…4 runs the nth button (holding ⌥ shows the numbers). Long quotes (the first 300 characters are kept)
   // have no cut or rewrite: the words said aren't all there; nor do words the page no longer has (the row is dimmed then).
   const quickRow = (draft, box) => {
     const row = el('div', { class: 'quick' });
@@ -1676,19 +1590,20 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go opens the comment dialog.
   document.addEventListener('mouseup', (e) => {
-    if (S.on && !S.cursorMode && e.shiftKey && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
+    if (S.on && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
-    if (fluidState() === 'bar' && !e.shiftKey) return dropOffer(); // the first click elsewhere only lets the bar go
+    if (fluidState() === 'bar' && !(e.shiftKey && !S.shiftUp)) return dropOffer(); // the first click elsewhere only lets the bar go
     if (S.draft || S.openId) {
-      if ([...root.querySelectorAll('textarea')].some((t) => t.value.trim())) return; // typed text stays; Escape discards it
+      // Typed text doesn't keep it open (Leo, 18 Nov): the click closes it and the words stay as a draft (the box saves them as
+      // they are typed, and the spot is kept, so it comes back); Escape discards them.
       S.draft = null;
       S.openId = null;
       render();
       return;
     }
-    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
     if (S.lastTouch && Date.now() - S.lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || S.ctlClick) return;
@@ -1854,7 +1769,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
     recheck();
   };
+  // Shift's own key events are the truth for "is Shift held": right after a Shift keyup, Linux WebKit can still send the
+  // next press with shiftKey set, which kept text selectable for a plain click (a CI-only flake). Shift pressed in
+  // another window (no keydown seen here) still counts, as shiftUp stays false.
+  S.shiftUp = false;
   const shiftKey = (e) => {
+    if (e.key === 'Shift') S.shiftUp = e.type === 'keyup';
     clearTimeout(S.shiftOff);
     shiftCur(e.shiftKey);
     if (e.shiftKey) document.documentElement.classList.add('lab-shift');
@@ -1862,19 +1782,26 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   addEventListener('keydown', shiftKey, true);
   addEventListener('keyup', shiftKey, true);
-  addEventListener('pointermove', (e) => shiftCur(e.shiftKey), { capture: true, passive: true }); // Shift pressed or let go while another window had focus
+  addEventListener('pointermove', (e) => shiftCur(e.shiftKey && !S.shiftUp), { capture: true, passive: true }); // Shift pressed or let go while another window had focus
   document.addEventListener('visibilitychange', () => shiftCur(false));
   // A press without Shift is never a selection: drop the Shift state at once, not 400 ms later (a click right after typing
   // a capital letter, or after a screenshot shortcut, used to select the page's text).
   addEventListener('pointerdown', (e) => {
     // A Shift press on the page starts new words: the caret a box of the widget leaves (at the widget, the page's end)
     // stretched the selection from there instead, and the next quote after a comment came to nothing.
-    if (e.shiftKey) return S.on && !typing(e) && getSelection()?.removeAllRanges(), shiftKey(e);
+    if (e.shiftKey && !S.shiftUp) return S.on && !typing(e) && getSelection()?.removeAllRanges(), shiftKey(e);
     clearTimeout(S.shiftOff);
     document.documentElement.classList.remove('lab-shift');
     shiftCur(false);
   }, true);
-  addEventListener('blur', () => (document.documentElement.classList.remove('lab-shift'), shiftCur(false)));
+  addEventListener('blur', () => ((S.shiftUp = false), document.documentElement.classList.remove('lab-shift'), shiftCur(false)));
+  // The same, for engines that start a selection before restyling after the press (Linux WebKit kept one now and then):
+  // in comment mode, a selection on the page starts only with Shift; fields and the widget select as always.
+  addEventListener('selectstart', (e) => {
+    const de = document.documentElement;
+    const t = /** @type {Element | null} */ (e.target instanceof Element ? e.target : /** @type {Node} */ (e.target)?.parentElement ?? null);
+    if (de.classList.contains('lab-pinning') && !de.classList.contains('lab-shift') && !t?.closest('input, textarea, select, [contenteditable], [data-lab-comments]')) e.preventDefault();
+  }, true);
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
@@ -1926,7 +1853,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   if (LABS) bindSwitcher({
       root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
         setMenu(false);
-        if (coarse) S.listOpen = S.chatOpen = false; // one sheet at a time on a phone
+        if (coarse) S.chatOpen = false; // one sheet at a time on a phone
       },
       // Phones: labs & pages is a sheet like the list and the chat (see openSheet); a computer keeps its box over the page.
       sheet: (open) => {

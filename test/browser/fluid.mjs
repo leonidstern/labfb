@@ -200,6 +200,12 @@ try {
         await p.mouse.move(c.x + c.w / 2, c.y + c.h / 2);
         await sleep(300);
         check(eng, 'resting the mouse on it changes nothing', Boolean((await fd(p))?.dlg));
+        // No scrollbar while the box can still grow; one only once it is at its tallest (Leo, 18 Nov).
+        await p.keyboard.type('a short note');
+        const short = await inRoot(p, (r) => getComputedStyle(r.querySelector('.p-dlg textarea')).overflowY);
+        await p.keyboard.type(' and more words'.repeat(40));
+        const long = await inRoot(p, (r) => { const t = r.querySelector('.p-dlg textarea'); return { o: getComputedStyle(t).overflowY, h: t.clientHeight }; });
+        check(eng, 'the box shows no scrollbar until it is at its tallest', short === 'hidden' && long.o === 'auto' && long.h >= 190, JSON.stringify({ short, long }));
       });
       // Comment preopened (Leo, 18 Nov): the dialog and the sheet open as a comment (the row has rewrite · cut · go, no pill for comment) with the box open; computers have the cursor in it
       await scene(eng, browser, {}, async (p) => {
@@ -238,8 +244,8 @@ try {
         await sleep(700);
         await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].pop().click());
         await sleep(1500);
-        const pinned = await inRoot(p, (r) => r.querySelectorAll('button.pin.go').length);
-        check(eng, 'go in the dialog sends a go pin on the words at once', Boolean(await sent('go')) && (await sent('go')).anchor?.quote?.exact === 'kilo lima' && pinned === 1 && (await fd(p)) === null, `${pinned} ${JSON.stringify(await sent('go'))}`);
+        const pinned = await inRoot(p, (r) => r.querySelectorAll('button.pin').length);
+        check(eng, 'go in the dialog sends a comment saying go on the words at once', Boolean(await sent('go')) && (await sent('go')).anchor?.quote?.exact === 'kilo lima' && pinned === 1 && (await fd(p)) === null, `${pinned} ${JSON.stringify(await sent('go'))}`);
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'golf hotel');

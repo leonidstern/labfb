@@ -117,7 +117,7 @@ once. The defaults:
 ```
 
 - **Built in:** `rewrite` sends `Rewrite: “…”` at once (the agent proposes the new wording), `cut` sends `Cut: “…”` at once,
-  `go` sends a go pin on the words (or the spot) at once, nothing to type, `remove` sends `Remove this` and `fix` sends
+  `go` sends a comment that says "go" on the words (or the spot) at once, nothing to type, `remove` sends `Remove this` and `fix` sends
   `Fix this`. `rewrite` and `cut` need words, so a spot's row leaves them out.
 - **Your own:** `{ "label": "tighter", "send": "Tighter: less space" }` sends that text on the words or the spot at once, with whatever you
   typed after it.

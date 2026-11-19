@@ -26,7 +26,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-selection-'));
 const PORT = String(5800 + Math.floor(Math.random() * 300));
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const PAGE = `<!doctype html><meta charset="utf-8"><title>selection</title>
 <style>body{margin:30px;max-width:420px;font:18px/1.6 Georgia,serif}</style>
 <p id="t">Plain words to drag across in this paragraph of text, quite a few of them.</p>
@@ -276,9 +276,9 @@ try {
         await p.keyboard.down('Shift');
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await p.keyboard.up('Shift');
-        await barUp(p, 900);
+        await sleep(900);
         const l = await look(p);
-        check(eng, 'Shift + triple-click selects the paragraph and shows the actions bar', l.bar && !l.box, JSON.stringify(l));
+        check(eng, 'Shift + triple-click selects the paragraph and opens the dialog at once', l.dlg && !l.bar, JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const f = await p.locator('#field').boundingBox();

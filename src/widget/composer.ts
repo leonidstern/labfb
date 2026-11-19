@@ -41,7 +41,7 @@ const saysWriting = (field: HTMLTextAreaElement) => {
 const ARROW = '<i class="arr" aria-hidden="true"></i>';
 
 // One field that grows: a pill while empty, a box with a divider and the name row once you type.
-// empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a go pin from someone with no name
+// empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a "go" comment from someone with no name
 // yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
 // opened: the box is open from the start (selected words' dialog and sheet: "comment preopened", Leo 18 Nov).
 export function composer({ placeholder, onSubmit, autofocus = false, empty = '', nameFirst = false, opened = false, draftKey = '' }: {
@@ -129,6 +129,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
     text.style.height = 'auto';
     text.style.height = `${text.scrollHeight}px`;
+    text.style.overflowY = text.scrollHeight > 200 ? 'auto' : 'hidden'; // a scrollbar only once the box is at its tallest (max-height 200)
     if (glide) {
       const to = sendBtn.getBoundingClientRect();
       const timing = { duration: d.ms('base'), easing: d.ease() };

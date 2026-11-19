@@ -26,7 +26,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-browser-'));
 const PORT = String(5100 + Math.floor(Math.random() * 300));
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const paras = Array.from({ length: 80 }, (_, i) => `<p id="p${i}">paragraph ${i} with some words</p>`).join('');
 const PAGE = `<!doctype html><meta charset="utf-8"><title>T1</title><link rel="stylesheet" href="s.css"><body>
 <div id="top"></div><input id="i" value="typed"><details id="d"><summary>more</summary>inside</details>
@@ -151,6 +151,12 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
 
   // Text selection
   const lede = await p.locator('#p5').boundingBox();
+  // Comment mode is back first: after Escape the closed box is still going out, and with it comment mode is off for a
+  // moment (the page's own pointer shows while one is open), so a drag then selects text on purpose (CI said: text "a",
+  // no Shift, lab-shift off).
+  await until(p, () => document.documentElement.classList.contains('lab-pinning'), null, 2000);
+  // What the press saw, so a failure says why (Linux WebKit only, now and then).
+  await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { const c = document.documentElement.classList; const us = (n) => getComputedStyle(n).webkitUserSelect + '/' + getComputedStyle(n).userSelect; window.__press ??= { shift: e.shiftKey, labShift: c.contains('lab-shift'), pinning: c.contains('lab-pinning'), lit: c.contains('lab-lit'), us: us(document.getElementById('p5')) }; }, { capture: true, once: true }); window.__ss = []; addEventListener('selectstart', (e) => window.__ss.push(e.defaultPrevented ? 'blocked' : 'allowed'), true); });
   await p.keyboard.down('Shift');
   await p.keyboard.up('Shift');
   await p.mouse.move(lede.x + 10, lede.y + 8);
@@ -158,7 +164,8 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.mouse.move(lede.x + 16, lede.y + 9);
   await p.mouse.up();
   await sleep(100);
-  check(eng, 'a click right after Shift selects no text', (await p.evaluate(() => getSelection().toString())) === '');
+  const sel = await p.evaluate(() => { const g = getSelection(); const n = g.anchorNode; return { text: g.toString(), at: n ? (n.nodeType === 3 ? n.parentElement : n)?.closest('[id]')?.id ?? n.nodeName : null, labShift: document.documentElement.classList.contains('lab-shift'), press: window.__press, selectstart: window.__ss }; });
+  check(eng, 'a click right after Shift selects no text', sel.text === '', JSON.stringify(sel));
   await p.keyboard.press('Escape');
   await sleep(200);
 
@@ -215,19 +222,30 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.keyboard.press('1');
   check(eng, 'there is no go mode: 2 does nothing, 3 is cursor (a click pins nothing)', !goLeft && /\(?1\/3\)?$/.test(keys) && !pinnedIn3, keys);
 
-  // A go pin is a pin like any other: resolved, it wears the tick rather than saying "go" for ever.
+  // A "go" comment is a pin like any other: your initial, and the tick once resolved.
   const admin = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
   const post = (body) =>
     fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': admin, 'x-lab-agent': '1' }, body: JSON.stringify(body) }).then((r) => r.json());
   const page = await p.evaluate(() => document.querySelector('script[src*="comments.js"]').dataset.page);
   const placed = await post({ page, name: 'leo', text: 'go', anchor: { kind: 'element', selector: '#p3', x: 0.5, y: 0.5, element: '<p>', text: 'paragraph 3 with some words', section: '' } });
-  await untilShadow(p, (r) => Boolean(r.querySelector('.pin.go')), null, 1200);
-  const goFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
-  if (!placed.comment) throw new Error(`could not place the go pin: ${JSON.stringify(placed)}`);
+  const ticks = () => shadow(() => { return [...r.querySelectorAll('.pin')].filter((n) => n.textContent.trim() === '✓').length; });
+  await untilShadow(p, (r) => r.querySelectorAll('.pin').length > 0, null, 1200);
+  const goFace = await ticks();
+  const goClass = await shadow(() => { return r.querySelectorAll('.pin.go').length; });
+  if (!placed.comment) throw new Error(`could not place the go comment: ${JSON.stringify(placed)}`);
   await post({ page, action: 'resolve', id: placed.comment.id });
-  await untilShadow(p, (r) => r.querySelector('.pin.go')?.textContent.trim() === '✓', null, 1500);
-  const doneFace = await shadow(() => { return r.querySelector('.pin.go')?.textContent.trim(); });
-  check(eng, 'a go pin says go, and wears the tick once it is done', goFace === 'go' && doneFace === '✓', `${goFace} → ${doneFace}`);
+  await untilShadow(p, (r) => [...r.querySelectorAll('.pin')].filter((n) => n.textContent.trim() === '✓').length > 0, null, 1500);
+  const doneFace = await ticks();
+  check(eng, 'a go comment is an ordinary pin (no go look), and wears the tick once it is done', !goClass && doneFace === goFace + 1, `${goClass} go-looks; ticks ${goFace} → ${doneFace}`);
+  // A done pin is as big as an open one, only faded (once its face change has played).
+  await untilShadow(p, (r) => { const d = [...r.querySelectorAll('button.pin.resolved')]; return d.length > 0 && d.every((b) => b.getAnimations({ subtree: true }).every((a) => a.playState !== 'running')); }, null, 1500);
+  const sizes = await shadow(() => {
+    const w = (b) => b && Math.round(b.getBoundingClientRect().width * 10) / 10;
+    const pins = [...r.querySelectorAll('button.pin')];
+    const done = pins.find((b) => b.classList.contains('resolved'));
+    return { done: w(done), open: w(pins.find((b) => !b.classList.contains('resolved') && !b.classList.contains('moved'))), fade: done && getComputedStyle(done).opacity };
+  });
+  check(eng, 'a done pin is the same size as an open one, only faded', sizes.done > 0 && sizes.done === sizes.open && Number(sizes.fade) < 1, JSON.stringify(sizes));
   await post({ page, action: 'delete', id: placed.comment.id });
   // Option-click on a pin resolves its thread without opening it; again opens it again
   const elsewhere = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'from elsewhere');
