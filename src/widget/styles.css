@@ -588,6 +588,28 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .msg button :is(svg, svg *) { color: inherit; } /* the widget gives every element its text colour, the icon parts too */
 /* The ⋯ menu opens with which lab this is (labs & pages, ⌘K, is switcher.ts, its styles in switcher.css). */
 .more-menu .lab-head { margin: 2px 10px 4px; padding-bottom: 6px; border-bottom: var(--_hair); font-size: 12px; font-weight: 600; color: var(--_fg); }
+/* Experiments (lib/flags.ts) in the ⋯ menu: the item with how many are on, then its list in the menu's place: a back
+   row, a switch a flag (its one line, and why it can't be switched when the project sets it), a note for guests. */
+.more-menu .exp-cnt { font-size: 12px; letter-spacing: 0; font-variant-numeric: tabular-nums; color: rgb(36, 160, 70); }
+.more-menu .exp-cnt.zero { color: var(--_muted); }
+.more-menu button.exp-back { color: var(--_muted); font-weight: 500; margin-bottom: 2px; border-bottom: var(--_hair); border-radius: var(--_r-s) var(--_r-s) 0 0; }
+.more-menu button.exp { white-space: normal; max-width: 280px; align-items: center; }
+.more-menu .exp-words { display: grid; gap: 2px; color: inherit; }
+.more-menu .exp-why { font-size: 11px; letter-spacing: .006em; color: var(--_muted); }
+.more-menu .exp-sw { flex: none; position: relative; width: 28px; height: 16px; border-radius: 8px; background: var(--_line);
+  transition: background-color var(--_t-quick) var(--_ease-out); }
+.more-menu .exp-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--_bg); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform var(--_t-quick) var(--_ease); }
+.more-menu button.exp[aria-checked='true'] .exp-sw { background: rgb(36, 160, 70); }
+.more-menu button.exp[aria-checked='true'] .exp-sw::after { transform: translateX(12px); }
+.more-menu button.exp:disabled .exp-sw { opacity: .5; }
+.more-menu .exp-note { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px; color: var(--_muted); max-width: 260px; }
+@media (pointer: coarse) {
+  .more-menu .exp-sw { width: 40px; height: 24px; border-radius: 12px; }
+  .more-menu .exp-sw::after { width: 20px; height: 20px; }
+  .more-menu button.exp[aria-checked='true'] .exp-sw::after { transform: translateX(16px); }
+  .more-menu .exp-why { font-size: 13px; }
+}
 
 /* The section bar (sections.ts): the page's sections along the top, the current one filled; new = a filled green dot,
    updated = a ring. Above the dimmed page of a sheet (the scrim is 2), so it stays lit and tappable. Drawn inside .ui, so a
