@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.
 - A long comment's scrollbar sits at the box's right edge. With your name already set the box keeps one row (text, name, arrow); once the words scroll, the name and arrow drop to a row of their own so the scrollbar is no longer left of them.
 - Holding Shift over words (to quote them) shows the drawn I-beam with a low ink band at its foot, in place of the I-beam with a green pin tip.
 - One key for the mode: `1` (or a click on the switch) toggles between comment and pointer: once for the pointer, again for the comment. The switch reads "(1)" and the hint "1 comment / pointer". Key `3` and the `pointer` shortcut are gone; a `pointer` key left in a settings file is ignored without a message.
