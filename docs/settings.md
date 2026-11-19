@@ -77,7 +77,7 @@ Your `~/.config/labit/settings.json`:
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
 | `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
-| `actions` | below | | The buttons in the comment dialog: on words you select, and on a spot or an area. | both |
+| `actions` | yours, seeded once | | Your one list of actions: the chips of the comment box and of select mode, in order. See **Actions** below. | yours |
 | `flags` | everything off | the ⋯ menu's **experiments** | What this lab is trying: `{ "<flag>": true }`. See **Experiments** below. | both |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
@@ -115,36 +115,35 @@ otherwise ignored, so an old file never stops a lab from running.
 
 ## Actions
 
-Select words (hold Shift and drag) and the comment dialog opens at once, the cursor in its box; a click on a spot or an area
-opens the same dialog there. Its row has the actions only, since the box itself is the comment; clicking one sends it at
-once. The defaults:
-
-```json
-{ "actions": { "words": ["rewrite", "cut", "go"], "spot": ["go", "remove", "fix"] } }
-```
-
-- **Built in:** `rewrite` sends `Rewrite: “…”` at once (the agent proposes the new wording), `cut` sends `Cut: “…”` at once,
-  `go` sends a comment that says "go" on the words (or the spot) at once, nothing to type, `remove` sends `Remove this` and `fix` sends
-  `Fix this`. `rewrite` and `cut` need words, so a spot's row leaves them out.
-- **Your own:** `{ "label": "tighter", "send": "Tighter: less space" }` sends that text on the words or the spot at once, with whatever you
-  typed after it.
-- **Order** is the order shown. `comment` is always there first, so it isn't listed (listed anyway, it is ignored). Up to 5
-  actions beside it, labels up to 16 characters. A name that isn't one, a repeat or a bad label is said when labit starts and
-  left out; the rest still counts.
-- **Keys:** ⌥ + 1 to 4 run the buttons in the order they show (the key's place, so Option's own characters don't matter); holding ⌥
-  while the dialog is open shows the number on each button. Up to the number of actions (4 at most).
-- **`spot`** is the row of the regular dialog on a spot or an area (phones: the same row in the sheet); `words` is the row
-  on selected words. Each is its own list.
+Your actions are one ordered list in your own `~/.config/labit/settings.json`. Each has a `name` (the chip, 7
+characters at most) and a `prompt` (the full text your agent gets):
 
 ```json
 {
-  "actions": {
-    "words": ["go", { "label": "tighter", "send": "Tighter: less space" }, { "label": "shorter", "send": "Shorter: half the words" }]
-  }
+  "actions": [
+    { "name": "go", "prompt": "Go ahead: do what is proposed here." },
+    { "name": "fix", "prompt": "Fix this: it is broken or wrong." },
+    { "name": "remove", "prompt": "Remove this." },
+    { "name": "like", "prompt": "Make this look like the one I name: same size, spacing, colour and type." },
+    { "name": "move", "prompt": "Move this to where I say." },
+    { "name": "states", "prompt": "Show this in its states (hover, loading, empty, error) so I can review each one." },
+    { "name": "variant", "prompt": "Make 3 variants of this, shown in place as a / b / c tabs on it, so I can pick one." }
+  ]
 }
 ```
 
-The project's list for `words` wins over yours, list by list.
+- **Where:** the comment box on a spot or an area shows the first 3 as chips, then **…**, which opens the rest in
+  their order. One line on a phone: what doesn't fit (long names) goes behind **…** too. Select mode (`V`, flag `select`) opens
+  the same box on the picked block, with **done** (leave select) on the line; no pin shows on the page while it is open, and what you send is a pin on the block.
+- **What is sent:** a chip sends at once, as `<name>: <what you typed>` (just the name with nothing typed); your agent
+  reads the full prompt for that name as `action: …`.
+- **Yours:** the list is written into your settings.json the first time a lab starts without one (from labit's own,
+  above, plus any `{ "label", "send" }` buttons you had), and from then on it is yours: there is no default to reset
+  to. Order and prompts are edited here, in the file; a lab reads it when it starts. `labit settings` lists them.
+- **Checked:** a name over 7 characters, a repeat or an item without a name and a prompt (300 characters at most) is
+  said when labit starts and left out; the rest still counts. Only your own file holds the list: a project's
+  `labit.json` can't set it.
+- On selected words the row stays **rewrite · cut · go**. ⌥ + 1 to 4 run the chips in the order they show.
 
 ## Shortcuts
 
