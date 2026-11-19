@@ -99,6 +99,7 @@ came from.
 
 | Flag | What it is |
 | --- | --- |
+| `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
 | `sinceLooked` | a "Added · 3" pill by the listening pill: the elements with an `id` that the agent added since you last looked (a section, a version, a card), each a link that goes there; one drops off when you go to it or it has been in view for a second. Off by default: set it in `labit.json` |
 
 `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
@@ -154,6 +155,7 @@ win over yours, key by key.
 | `done` | `d` | Hide or show done threads (shown, faded, at first) |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
+| `select` | `v` | With the `select` flag on: select mode on or off |
 | `added` | `a` | With the `sinceLooked` flag on: open the Added list; press again to go to the next added item |
 
 Letters follow the key's place on non-Latin layouts (the C key is C in Russian too), and digits work with Shift or

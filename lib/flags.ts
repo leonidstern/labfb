@@ -6,6 +6,7 @@
 
 // agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
 export const FLAGS: Record<string, { name: string; since: string }> = {
+  select: { name: 'select mode (V): pick a block and ask the agent to remove, restyle, move or vary it', since: '0.6.3' },
   sinceLooked: { name: 'a "New" pill: what was added since you looked', since: '0.6.3' },
 };
 
