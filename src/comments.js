@@ -669,6 +669,25 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     } catch {}
     location.href = `/_lab/board/${name}?of=${encodeURIComponent(location.pathname)}`;
   };
+  // A link on the page to a board keeps the scroll too, under the same key: the board's back lands where you were.
+  // A page the browser gives back whole (bfcache) has its scroll already, so the key goes, or a later reload would jump.
+  if (!S.board && self === top) {
+    const scrollKey = 'lab-scroll:' + location.pathname;
+    document.addEventListener('click', (e) => {
+      const a = /** @type {HTMLAnchorElement | null} */ (e.target instanceof Element ? e.target.closest('a[href]') : null);
+      if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (a.target && a.target !== '_self')) return;
+      try {
+        const u = new URL(a.href, location.href);
+        if (u.origin === location.origin && u.pathname.startsWith('/_lab/board/')) sessionStorage.setItem(scrollKey, JSON.stringify({ y: scrollY }));
+      } catch {}
+    });
+    addEventListener('pageshow', (e) => {
+      if (!e.persisted) return;
+      try {
+        sessionStorage.removeItem(scrollKey);
+      } catch {}
+    });
+  }
   if (boardBtn) {
     boardBtn.append(S.board ? 'back to page' : 'side by side', el('kbd', { 'aria-hidden': 'true' }, '⇧B'));
     boardBtn.addEventListener('click', () => (S.board ? /** @type {any} */ (window).__labBoard?.back() : toBoard()));

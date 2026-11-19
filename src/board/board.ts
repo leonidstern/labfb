@@ -501,9 +501,22 @@ addEventListener('gesturechange', (e) => {
 
 // ---------- keys (after the widget's own: an Esc it used is not ours) ----------
 const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(n.tagName) || n.hasAttribute('data-lab-comments')));
-// Back to the page this board is about; the page puts its scroll back from the key ⇧B left (the one a reload uses).
+// Back to the page this board is about. Opened from that page in this tab: the browser's own back, which gives the page
+// back where it was (bfcache / scroll restoration; Leo, 19 Nov: "closing board should back me from where i opened").
+// Otherwise a plain visit, and the page puts its scroll back from the key it left on its way here (the one a reload uses).
+const cameFromOf = () => {
+  try {
+    const r = document.referrer && new URL(document.referrer);
+    const o = new URL(of, location.href);
+    return !!r && r.origin === location.origin && r.pathname === o.pathname && history.length > 1;
+  } catch {
+    return false;
+  }
+};
 const back = () => {
-  if (of) location.href = of;
+  if (!of) return;
+  if (cameFromOf()) history.back();
+  else location.href = of;
 };
 // A board you came to from a page has a plain way back, on phones too: "‹ back" at the top left (Leo, 19 Nov: "no way
 // back"). ⇧B, Esc on an empty board and the browser's own back still work.
