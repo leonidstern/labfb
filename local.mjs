@@ -1281,7 +1281,7 @@ const CLAIM_MS = 1800000;
 const claims = new Map(
   Object.entries(isObj(labState.claims) ? labState.claims : {}).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS),
 ); // page -> last time a wait for it was open
-// page -> the session (whoOf) whose wait claimed it last. That session's own wait for every page still hears it: the
+// page -> the session id (an agent's own, never a bare name) whose wait claimed it last. That session's own wait for every page still hears it: the
 // wake's turn tells it to run `wait` with no --pages, and that wait must get the pins on the pages it named before.
 const claimOwner = new Map(Object.entries(isObj(labState.claimOwners) ? labState.claimOwners : {}).filter(([p, who]) => claims.has(p) && typeof who === 'string'));
 const claim = (pages, who = '') => {
@@ -1306,12 +1306,12 @@ const claimed = (who = '') => {
   for (const w of waiters) {
     for (const p of w.pages || []) {
       claims.set(p, now);
-      claimOwner.set(p, w.who);
+      claimOwner.set(p, w.sid);
     }
   }
   return new Set([...claims].filter(([p, at]) => now - at < CLAIM_MS && !(who && claimOwner.get(p) === who)).map(([p]) => p));
 };
-const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed(w.who).has(p)));
+const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed(w.sid).has(p)));
 // Which pages a comment is heard on right now, for the page to say so: a wait for every page hears all of them but
 // the ones another session has claimed; a wait with --page hears its own. Without this, a lab with one listener on
 // /a told every other page "talking to Claude" while their pins went nowhere (Leo, 18 Nov).
@@ -2082,14 +2082,14 @@ const handler = async (req, res) => {
       // "Claude", not "session 87f84735": a session with no name of its own is said by what it is.
       const me = sessionFrom(req);
       const named = me?.name && !/^session [0-9a-f]+$/i.test(me.name) && me.name !== me.agent;
-      const w = { res, pages: want, key, who: whoOf(session), ack: ack === true, label: named ? `${me.agent || 'Claude'} (${me.name})` : me?.agent || 'Claude' };
+      const w = { res, pages: want, key, who: whoOf(session), sid: session?.id || '', ack: ack === true, label: named ? `${me.agent || 'Claude'} (${me.name})` : me?.agent || 'Claude' };
       lastWait.set(key, { who: w.who, label: w.label, at: Date.now() });
       const heads = other
         ? `Heads up: ${other.label} also listened on ${want ? want.join(', ') : 'every page'} ${Date.now() - other.at < 60000 ? 'just now' : `${Math.round((Date.now() - other.at) / 60000)} min ago`}. Two sessions on one page take turns at its pins (each wait ends the other's). Leave the page to one of you.\n\n`
         : '';
       // The same session waiting again before it said it got the last hand-off never saw it: those pins go out again.
       for (const [id, d] of unacked) if (d.who === w.who && d.key === key) takeBack(id);
-      claim(want, w.who);
+      claim(want, w.sid);
       const got = await unseen(scopeOf(w), w.who);
       // Cancelled while that was read: its close has come and gone, so nothing below would ever take it off the list.
       if (res.destroyed) return;
@@ -2113,7 +2113,7 @@ const handler = async (req, res) => {
       }, Math.min(Number(timeout) || 1500, 7000) * 1000);
       if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
       waiters.push(w);
-      claim(want, w.who);
+      claim(want, w.sid);
       setMode('listening');
       pagesChanged();
       persist().catch(() => {}); // comments.md's note about unheard pins follows who is listening
