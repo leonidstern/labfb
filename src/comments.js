@@ -85,6 +85,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     get loadChanges() { return loadChanges; },
     get markSeen() { return markSeen; },
     get ms() { return ms; },
+    get ease() { return ease; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
     get actions() { return ACTIONS.words; },
@@ -204,7 +205,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   S.isAdmin = false;
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   S.on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
-  // A board page (src/board/): its clicks are the board's.
+  // A board page (src/board/): a tap selects a frame; 1 (comment mode) pins the board.
   S.board = /^\/_board\/[^/]+$/.test(S.page);
   S.openId = null;
   S.closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
@@ -255,6 +256,19 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const $ = (sel, box = root) => /** @type {HTMLElement} */ (box.querySelector(sel));
   const layer = $('.layer');
   const hint = $('.hint');
+  // Leaving: the card's exit (lab-out: fades and sinks 2 px, quick, in curve) for a card closing at once, the ⋯ menu,
+  // ⌘K and the hint, as they all come in with lab-in / lab-fade; then `hide`. With reduced motion quick is 0 ms.
+  const goOut = (/** @type {HTMLElement | null} */ node, /** @type {() => void} */ hide) => {
+    if (!node || node.classList.contains('out')) return;
+    if (node.hidden) return hide();
+    node.classList.remove('in');
+    node.classList.add('out');
+    setTimeout(() => {
+      if (!node.classList.contains('out')) return; // shown again meanwhile
+      node.classList.remove('out');
+      hide();
+    }, ms('quick'));
+  };
   if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'hold to comment';
   const toggleBtn = $('.toggle');
   const bar = /** @type {HTMLElement} */ (root.querySelector('.bar'));
@@ -542,13 +556,14 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   function say(words) {
     said.was ??= hint.textContent;
     hint.textContent = words;
+    hint.classList.remove('out');
     hint.hidden = false;
     clearTimeout(said.t);
-    said.t = setTimeout(() => {
+    said.t = setTimeout(() => goOut(hint, () => {
       hint.hidden = true;
       hint.textContent = said.was;
       said.was = undefined;
-    }, 1800);
+    }), 1800);
   }
 
   // ---------- copy for an agent ----------
@@ -621,6 +636,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         render();
       },
       swipe: swipeDown,
+      leave: goOut,
     });
     return (labs = m);
   }).catch(() => (S.switcher = null))); // couldn't load: nothing opens, and the next ask tries again
@@ -862,9 +878,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         S.closeFast = false;
         prev.inert = true;
         layer.append(prev);
-        const gone = () => prev.remove();
-        if (still.matches || !prev.animate) gone();
-        else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms('quick'), easing: ease('out'), fill: 'forwards' }).finished.then(gone, gone);
+        goOut(prev, () => prev.remove());
       } else if (coarse && !now && S.shown && prev && !still.matches && !prev.style.transform) { // phones slide the sheet away; computers close at once, like the chat // not when it already slid away (phones)
         prev.classList.remove('in');
         prev.classList.add('out');
@@ -1173,9 +1187,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // ---------- events ----------
   const showHint = () => {
     if (store.get('lab-hint-seen') === '1') return;
+    hint.classList.remove('out');
     hint.hidden = false;
     store.set('lab-hint-seen', '1');
-    setTimeout(() => (hint.hidden = true), 5000);
+    setTimeout(() => goOut(hint, () => (hint.hidden = true)), 5000);
   };
   const setOn = (value) => {
     S.on = value;
@@ -1194,7 +1209,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // or a pick gives focus back to the button.
   function setMenu(open, refocus = false) {
     if (open && LABS) void switcher().then((m) => m?.preloadSwitcher()); // the box and its list, ready by the time it is picked
-    moreMenu.hidden = !open;
+    if (open) {
+      moreMenu.classList.remove('out');
+      moreMenu.hidden = false;
+    } else if (!moreMenu.hidden) goOut(moreMenu, () => (moreMenu.hidden = true));
     moreBtn.setAttribute('aria-expanded', String(open));
     if (!open && expOpen) {
       expOpen = false; // it opens on its first page again
@@ -1205,7 +1223,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   }
   moreBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    setMenu(moreMenu.hidden);
+    setMenu(moreMenu.hidden || moreMenu.classList.contains('out')); // leaving counts as closed
   });
   moreMenu.addEventListener('click', () => setTimeout(() => setMenu(false, true), 0));
   addEventListener('pointerdown', (e) => {
@@ -1357,7 +1375,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       S.openId = null;
       if (S.draft && !/** @type {HTMLTextAreaElement | null} */ (root.querySelector('.float textarea'))?.value.trim()) S.draft = null;
     }
-    hint.hidden = true;
+    goOut(hint, () => (hint.hidden = true));
     render();
     // Computers: the cursor goes in the message box (phones wait for a tap, so the keyboard doesn't cover the chat).
     if (S.chatOpen && !coarse) /** @type {HTMLElement | null} */ (chatEl.querySelector('.chat textarea'))?.focus({ preventScroll: true });
@@ -1412,7 +1430,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
-      if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
+      if (typed?.value.trim()) return shake(typed.closest('.card, .float'));
       return stepNew(e.shiftKey ? -1 : 1);
     }
     // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
@@ -1631,12 +1649,14 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     S.chatOpen = false;
     render();
   };
-  // Text typed in a thread or a new comment would be lost, so the sheet stays and nudges instead; the chat's box keeps
+  // Unsent words: the card or sheet shakes sideways ("no") instead of closing, on a computer (⌥W) and a phone alike.
+  const shake = (/** @type {Element | null | undefined} */ node) => node?.animate?.([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
+  // Text typed in a thread or a new comment would be lost, so the sheet stays and shakes instead; the chat's box keeps
   // its text when closed, so the chat always closes.
   const closeOrNudge = () => {
     const node = openSheet();
     if (![...root.querySelectorAll('textarea')].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
-    node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease('out') });
+    shake(node);
   };
   // A tap on the dimmed page closes the sheet; a pull on it moves the sheet with the finger (see swipeDown), and the
   // click that ends such a pull isn't a tap.
@@ -2145,6 +2165,12 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
+  // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
+  // and where a pin sits), and the pins are drawn again as the camera moves.
+  if (S.board) {
+    Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
+    addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+  }
   startLive();
   // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads
   // labs & pages and opens it once it is there.

@@ -500,6 +500,8 @@ function sameKind(node, tag) {
 // onto: the element the caller knows is there (selected words' own). Chrome now and then finds nothing but <html>
 // under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
 export function anchorAt(clientX, clientY, words = false, onto = null) {
+  const onBoard = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor } }).__labBoard?.anchor; // a board page: the board says what is there
+  if (onBoard) return onBoard(clientX, clientY);
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
   if (onto && !stack.length) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
@@ -818,6 +820,7 @@ function onWords(range, anchor, rect) {
 }
 // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
 function spotOf(anchor): Spot {
+  if (anchor.kind === 'board') return (window as unknown as { __labBoard: { spot: (a: unknown) => Spot } }).__labBoard.spot(anchor);
   const node = findTarget(anchor);
   const hasWords = anchor.quote?.exact;
   // Words straight in the page (findTarget never returns the page itself): looked for in the whole page.
@@ -1000,7 +1003,7 @@ export function goToBlock(e: Element) {
   const r = e.getBoundingClientRect();
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   scrollTo({ top: Math.max(0, r.top + scrollY - 24 - (parseFloat(host.style.getPropertyValue('--lab-sbb')) || 0)), behavior: still ? 'auto' : 'smooth' });
-  const ring = '2px solid rgb(52, 199, 89)';
+  const ring = `2px solid ${getComputedStyle(host).getPropertyValue('--_green').trim()}`;
   e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: ms('hold', 2) });
 }
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that

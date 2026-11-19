@@ -33,7 +33,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       const args = ['.', '--no-open', ...(typeof opts.proxy === 'string' ? ['--proxy', opts.proxy] : opts.proxy ? ['--proxy'] : [])];
       // Under npx this script sits in npx's cache, which moves with every version: name the package, not the path.
       return CMD.startsWith('npx')
-        ? { name: 'lab', runtimeExecutable: 'npx', runtimeArgs: ['--yes', '@leonidstern/labit', ...args], port: 4400, autoPort: true }
+        ? { name: 'lab', runtimeExecutable: 'npx', runtimeArgs: ['--yes', '@leonidstern/labit@latest', ...args], port: 4400, autoPort: true }
         : { name: 'lab', program: ME, args, port: 4400, autoPort: true };
     }
     config.configurations = [...(config.configurations || []).filter((c) => c.name !== 'lab'), entry()];
@@ -101,7 +101,13 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       // what tells a lab left running for days (serving old code) from a fresh one.
       const age = lab.startedAt ? Date.now() - Date.parse(lab.startedAt) : NaN;
       const since = !Number.isFinite(age) ? '' : age < 36e5 ? `${Math.max(1, Math.round(age / 6e4))} min` : age < 864e5 ? `${Math.round(age / 36e5)} h` : `${Math.round(age / 864e5)} days`;
-      const what = `${lab.version ? ` · labit ${lab.version}` : ''}${since ? `, up ${since}` : ''}`;
+      // A lab started through a link to a build (the edge script's) that points at a newer one now: it moves onto it
+      // by itself once no agent is working on its pins.
+      let newer = false;
+      try {
+        newer = Boolean(lab.entry && lab.me && fs.realpathSync(lab.entry) !== lab.me);
+      } catch {}
+      const what = `${lab.version ? ` · labit ${lab.version}${lab.edge ? ` (${lab.edge})` : ''}` : ''}${since ? `, up ${since}` : ''}${newer ? ' · newer build installed' : ''}`;
       console.log(`${lab.name}  http://localhost:${lab.port}  ${lab.root}${lab.proxy ? ` (on ${lab.proxy})` : ''}${what}${pages}`);
     }
     process.exit(0);
@@ -161,7 +167,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   if (['wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
     const [cmd, ref, ...words] = pos;
     const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
-    const { dir, server } = lab;
+    const { dir } = lab;
+    let { server } = lab;
     const session = mySession(opts.name, opts.model);
     const gone = () =>
       die(
@@ -173,9 +180,14 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // A lab that goes and comes back (--dev, an update, a crash and a start again) shouldn't end a wait: the command
     // holds on for a few seconds and carries on. The clock starts when the lab first goes, not when the call began --
     // a wait sits open for 25 minutes, so a deadline set up front would already have passed by then.
+    // A lab started again has a new key in its .lab/server.json (this folder's, not a lab above): each try reads it again, so the old key isn't refused
+    // (before, a wait outlived the restart and then ended on "forbidden", and the lab showed nobody listening).
     const call = async (pathname: string, body: object, seconds = 5) => {
       let until = 0;
       for (;;) {
+        try {
+          server = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8'));
+        } catch {} // mid-write or gone: the last one read
         try {
           return await labCall(server, pathname, body, session);
         } catch {

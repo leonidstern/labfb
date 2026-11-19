@@ -80,7 +80,7 @@ export function drawChat() {
         const to = W.$(`[data-id="${root.id}"]`, box);
         if (!to) return;
         box.scrollTo({ top: to.offsetTop - box.offsetTop - 12, behavior: W.still.matches ? 'auto' : 'smooth' });
-        to.animate?.([{ boxShadow: '0 0 0 2px rgb(52,199,89)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: W.ms('hold') });
+        to.animate?.([{ boxShadow: `0 0 0 2px ${getComputedStyle(to).getPropertyValue('--_green').trim()}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: W.ms('hold') });
       });
       b.append(q);
     }

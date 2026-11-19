@@ -108,7 +108,7 @@ whose each is: `flags  select (yours)`.
 | `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
 | `inkOnText` | a comment on selected words shows no pin: the words carry its state as ink under them. Turn it on in `labit.json`: `{ "flags": { "inkOnText": true } }` |
 
-`sectionBar` was kept, so the section bar is always on a page with two or more sections; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
+`sectionBar` was kept, so the section bar is always on a page with two or more sections; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.
