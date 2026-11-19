@@ -2389,8 +2389,15 @@ const handler = async (req, res) => {
         const args = [...p.argv.filter((a) => a !== '--no-open'), '--no-open'];
         // From npm: the newest release, not the version it parked on. Otherwise the path it was started by: through the
         // edge script's link, that is the newest build.
-        if (p.npx) spawn('npx', ['--yes', '@leonidstern/labit@latest', ...args.slice(1)], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
-        else spawn(process.execPath, [...p.execArgv, ...args], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
+        const asParked = () => spawn(process.execPath, [...p.execArgv, ...args], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
+        if (p.npx) {
+          // Offline, or npm can't be reached: npx gives up at once, and the lab starts on the version it parked on.
+          const since = Date.now();
+          const npx = spawn('npx', ['--yes', '@leonidstern/labit@latest', ...args.slice(1)], { cwd: p.root, env, detached: true, stdio: 'ignore' });
+          npx.on('error', asParked);
+          npx.on('exit', (code) => code && Date.now() - since < 30000 && asParked());
+          npx.unref();
+        } else asParked();
         // The lab takes its parked record itself once it runs (and with it the session that listened last).
         console.log(`[lab] started ${p.name} again on ${n}`);
         return answer(res, { ok: true });
