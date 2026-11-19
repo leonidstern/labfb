@@ -1018,30 +1018,6 @@ export function goToBlock(e: Element) {
   const r = e.getBoundingClientRect();
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   scrollTo({ top: Math.max(0, r.top + scrollY - 24 - (parseFloat(host.style.getPropertyValue('--lab-sbb')) || 0)), behavior: still ? 'auto' : 'smooth' });
-  // A heading wears the half ink of words for a moment, as the bar's names do, not a box (Leo, 19 Nov: "green ink on
-  // header not green box after click"): a band under the lower 44 % of each line of its words, green at 30 % (45 % on
-  // dark), corners 3 px. In the page's own coordinates, so it scrolls with the heading; gone when it has faded.
-  if (/^H[1-6]$/.test(e.tagName)) {
-    const range = document.createRange();
-    range.selectNodeContents(e);
-    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-    const ink = document.createElement('div');
-    ink.setAttribute('data-lab-comments', '');
-    ink.setAttribute('aria-hidden', 'true');
-    ink.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2147483646';
-    for (const l of range.getClientRects()) {
-      if (!l.width || !l.height) continue;
-      const b = document.createElement('i');
-      b.style.cssText = `position:absolute;left:${l.left + scrollX}px;top:${l.top + scrollY + l.height * 0.526}px;width:${l.width}px;height:${l.height * 0.44}px;border-radius:3px;background:rgba(36,160,70,${dark ? 0.45 : 0.3})`;
-      ink.append(b);
-    }
-    if (ink.childElementCount) {
-      document.documentElement.append(ink);
-      const a = ink.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration: ms('hold', 2) });
-      a.onfinish = a.oncancel = () => ink.remove();
-      return;
-    }
-  }
   const ring = '2px solid rgb(52, 199, 89)';
   e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: ms('hold', 2) });
 }
