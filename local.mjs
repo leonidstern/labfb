@@ -1287,7 +1287,10 @@ const claimOwner = new Map(Object.entries(isObj(labState.claimOwners) ? labState
 const claim = (pages, who = '') => {
   if (!pages?.length) return;
   const now = Date.now();
-  for (const p of pages) claims.set(p, now), claimOwner.set(p, who);
+  for (const p of pages) {
+    claims.set(p, now);
+    claimOwner.set(p, who);
+  }
   writeState();
 };
 stateParts.claims = () => Object.fromEntries([...claims].filter(([, at]) => Date.now() - at < CLAIM_MS));
@@ -1300,7 +1303,12 @@ const lastWait = new Map(); // key -> { who, label, at }
 // The pages claimed now; with `who`, only those another session claimed (a session's own claims don't keep it out).
 const claimed = (who = '') => {
   const now = Date.now();
-  for (const w of waiters) for (const p of w.pages || []) claims.set(p, now), claimOwner.set(p, w.who);
+  for (const w of waiters) {
+    for (const p of w.pages || []) {
+      claims.set(p, now);
+      claimOwner.set(p, w.who);
+    }
+  }
   return new Set([...claims].filter(([p, at]) => now - at < CLAIM_MS && !(who && claimOwner.get(p) === who)).map(([p]) => p));
 };
 const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed(w.who).has(p)));
