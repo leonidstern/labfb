@@ -679,6 +679,25 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
+  // A newer release (a lab from npm, on this computer): "update" in the menu. It asks the agent in the chat, as an
+  // action: the agent says what's new and runs labit update. Nothing changes on its own (Leo, 19 Nov).
+  let update = null;
+  try {
+    update = script?.dataset.admin && script.dataset.update ? JSON.parse(script.dataset.update) : null;
+  } catch {}
+  // A small "update" beside the version line (Leo, 19 Nov), not a menu item of its own.
+  const updateBtn = update && versionLine && el('button', { type: 'button', class: 'update-btn', title: `update to labit ${update.version}` }, 'update');
+  if (updateBtn) versionLine.append(' · ', updateBtn);
+  updateBtn?.addEventListener('click', async () => {
+    setMenu(false);
+    const act = `update labit to ${update.version}`;
+    try {
+      const { comment } = await send({ name: store.get('lab-name') || '', text: act, anchor: { kind: 'page', width: innerWidth, height: innerHeight, act } });
+      S.comments.push(comment);
+      S.chatOpen = true;
+      render();
+    } catch {}
+  });
   // Labs & pages (⌘K, src/widget/switcher.ts): local labs only. The menu opens with which lab this is, then the item.
   const LABS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'labs') : '';
   // Labs & pages is its own file, loaded and set up the first time it is asked for (⌘K, or the ⋯ menu opening); labs:
