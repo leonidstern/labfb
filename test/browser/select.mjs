@@ -1,5 +1,7 @@
-// Select mode (flag select) in a real browser: V picks blocks, the bar sends the agent what to do as a pin on the block,
-// Esc lets go and leaves. Not part of `npm test`; CI runs it in the `browser` job.
+// Select mode (flag select) and your actions (lib/actions.ts) in a real browser: a pin's box shows as many actions as
+// fit on one line and "…", "…" grows the line into the whole list, a right-click (or a hold) edits a row in place,
+// + add (saved in your settings; here every save and send is caught, nothing is written); V picks blocks, and a picked block opens the same box (no pin drawn) whose
+// chips send a pin on the block with the action's prompt for the agent; Esc lets go and leaves. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/select.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -53,8 +55,6 @@ const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
 };
-const pins = (p) => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).length);
-const texts = () => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).map((c) => c.text));
 
 try {
   for (const eng of (process.env.ENGINES || 'chromium').split(',')) {
@@ -62,38 +62,75 @@ try {
     try {
       reset();
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
-      await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+      await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tess'));
+      // Nothing is saved: a comment is answered here (the lab never sees it).
+      const posts = [];
+      await ctx.route('**/_lab/api/comments**', (r) => {
+        if (r.request().method() !== 'POST') return r.continue();
+        const body = r.request().postDataJSON();
+        posts.push(body);
+        return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ comment: { id: `m${posts.length}`, page: '/index', name: body.name, text: body.text, anchor: body.anchor, created: new Date().toISOString(), replies: [] }, edit: 'k1' }) });
+      });
+      const texts = async () => posts.map((b) => b.text);
       const p = await ctx.newPage();
       await p.goto(B + '/');
       await sleep(600);
       const mode = () => p.evaluate(() => document.documentElement.classList.contains('lab-selecting'));
       const picked = () => p.evaluate(() => document.querySelector('[data-lab-picked]')?.textContent || '');
-      const bar = (name) => p.locator(`.selbar button[data-a="${name}"]`);
+      const chip = (name) => p.locator(`.float button[data-k="${name}"]`);
+      const line = () => p.evaluate(() => {
+        const r = document.querySelector('[data-lab-comments]').shadowRoot;
+        const row = r.querySelector('.float > .quick');
+        const more = r.querySelector('.float > .acts');
+        const shown = row ? [...row.children].filter((b) => !b.hidden) : [];
+        return { names: shown.map((b) => b.textContent).join(' '), tops: new Set(shown.map((b) => Math.round(b.getBoundingClientRect().top))).size, fits: row ? row.scrollWidth <= row.clientWidth + 1 : false, more: more ? [...more.querySelectorAll('[data-act]')].map((b) => b.dataset.act).join(' ') : '', open: more ? !more.hidden : false, pin: Boolean(r.querySelector('.pin.draft')) };
+      });
+      const last = async () => posts.at(-1);
+      const all = 'go fix remove like move states variant';
+      // A pin's box: as many as fit, in order, on one line; … opens the rest first, then the ones on the line
+      await p.locator('h1').click();
+      await until(async () => (await line()).names !== '');
+      let l = await line();
+      const wide = l.names.split(' ').length - 1;
+      check(eng, "a pin's box: the line fills with actions in order, then …", wide > 3 && all.startsWith(l.names.slice(0, -2)) && l.names.endsWith(' …') && l.tops === 1 && l.fits && !l.open && l.pin, JSON.stringify(l));
+      await chip('…').click();
+      l = await line();
+      check(eng, '… grows the line into the whole list, in order', l.open && l.more === all, JSON.stringify(l));
+      await p.locator('.float .acts .fold').click();
+      check(eng, 'done folds it back to the line', await until(async () => !(await line()).open));
+      await p.locator('.float .composer textarea').click();
+      await p.keyboard.type('the gap');
+      await chip('fix').click();
+      check(eng, 'a chip sends "<name>: <your words>"', await until(async () => (await texts()).includes('fix: the gap')));
+      check(eng, "…and the agent reads the action's prompt", (await last())?.anchor?.act === 'Fix this: it is broken or wrong.');
+      await until(async () => !(await line()).names); // the sent box has gone
       await p.keyboard.press('v');
-      check(eng, 'V turns select mode on', await mode());
-      check(eng, 'the bar shows, its actions wait for a pick', (await bar('remove').isVisible()) && (await bar('remove').isDisabled()));
+      check(eng, 'V turns select mode on, no box until a pick', (await mode()) && !(await line()).names);
       await p.locator('h1').click();
-      check(eng, 'a click picks the block and drops no pin', (await picked()) === 'Ship faster' && (await pins(p)) === 0);
-      await p.locator('a[href="/other.html"]').click();
-      check(eng, 'a click on a link picks it, the page does not leave', p.url() === B + '/' && (await picked()) === 'go away');
-      await p.locator('h1').click();
+      l = await line();
+      check(eng, 'a click picks the block, drops no pin, and opens the same box with done on its line (one action fewer)', (await picked()) === 'Ship faster' && l.names.endsWith('… done') && l.names.split(' ').length - 2 < wide && l.tops === 1 && !l.pin, JSON.stringify(l));
       await p.keyboard.press('Tab');
       check(eng, 'Tab picks the next block', (await picked()) === 'Second block of words');
       await p.keyboard.press('Shift+Tab');
       check(eng, 'Shift+Tab picks the one before', (await picked()) === 'Ship faster');
-      await bar('remove').click();
-      check(eng, 'remove sends a pin on the block', await until(async () => (await texts()).includes('Remove this.')));
-      await bar('make like').click();
+      await chip('…').click();
+      await p.locator('.float .acts [data-act="states"]').click();
+      check(eng, 'a chip sends a pin on the block', await until(async () => (await texts()).includes('states')));
+      const c = await last();
+      check(eng, '…with its prompt, on the picked block', /states/.test(c?.anchor?.act || '') && /h1/.test(c?.anchor?.element || ''), JSON.stringify(c?.anchor));
+      check(eng, 'sent: the box closes and the block is let go, the mode stays', await until(async () => !(await picked()) && !(await line()).names && (await mode())));
       await p.locator('p').first().click();
-      check(eng, 'make like asks for a second block, then sends', await until(async () => (await texts()).some((t) => t.startsWith('Make this look like p "Second block of words"'))));
-      check(eng, 'the first block stays picked', (await picked()) === 'Ship faster');
       await p.keyboard.press('Escape');
-      check(eng, 'Esc lets go of the block, the mode stays', !(await picked()) && (await mode()));
+      check(eng, 'Esc lets go of the block and closes its box, the mode stays', !(await picked()) && !(await line()).names && (await mode()));
       await p.keyboard.press('Escape');
-      check(eng, 'Esc again leaves the mode, the bar goes', !(await mode()) && !(await bar('remove').isVisible()));
-      const before = await pins(p);
+      check(eng, 'Esc again leaves the mode', !(await mode()));
+      await p.setViewportSize({ width: 390, height: 700 });
+      await p.reload(); // the pins sent above were only answered here: a fresh page has none over the heading
+      await sleep(600);
       await p.locator('h1').click();
-      check(eng, 'out of select mode a click pins again', await until(async () => (await p.evaluate(() => document.documentElement.classList.contains('lab-pinning'))) || (await pins(p)) > before || (await p.locator('textarea').count()) > 0));
+      await until(async () => (await line()).names !== '');
+      l = await line();
+      check(eng, 'at 390 px the line is still one line', l.tops === 1 && l.fits, JSON.stringify(l));
     } finally {
       await browser.close();
     }

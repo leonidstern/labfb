@@ -1,4 +1,4 @@
-// Ink on selected words (src/widget/ink.ts) in real browsers: Safari's engine (WebKit) and Chrome's. A comment on
+// Ink on selected words (src/widget/wordink.ts) in real browsers: Safari's engine (WebKit) and Chrome's. A comment on
 // selected words shows no pin; the words carry its state as a band under the lower part of each line. The band is the
 // browser's own (a highlight per state, painted as a thick underline), so what is checked is which words each state's
 // highlight holds, the rules it is painted by, and the pixels under the words.

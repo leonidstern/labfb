@@ -23,6 +23,7 @@ import {
   rectsOf,
   readable,
   readComponents,
+  openingTag,
   short,
   wholeWords,
   zoneAnchor,
@@ -39,10 +40,12 @@ import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
-import { bindSelect, selectMode } from './widget/select.ts';
+import { inkAnchor, inkSvg, liveInk } from './widget/ink.ts';
+import { bindSelect, pick, selectChips, selectMode } from './widget/select.ts';
+import { SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
-import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget/ink.ts';
+import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget/wordink.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -88,7 +91,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     get ease() { return ease; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
-    get actions() { return ACTIONS.words; },
+    get actions() { return WORDS; },
     get numberOf() { return numberOf; },
     get openSheet() { return openSheet; },
     get patchKids() { return patchKids; },
@@ -137,12 +140,13 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
-  // The actions on selected words, beside the comment itself (labit.json or your settings.json `actions`, passed as
-  // data-actions; docs/settings.md): the built-in rewrite, cut, go, remove and fix, and your own { label, send }. `words`
-  // is the selected words' dialog, `spot` the regular dialog on a spot or an area.
-  const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] };
+  // The row on selected words: rewrite, cut and go. Everywhere else, your one list of actions (settings.json `actions`,
+  // passed as data-actions; lib/actions.ts, docs/settings.md): as many chips as fit, the rest behind "…".
+  const WORDS = ['rewrite', 'cut', 'go'];
+  let LIST = SEED;
   try {
-    Object.assign(ACTIONS, JSON.parse(script?.dataset.actions || '{}'));
+    const l = JSON.parse(script?.dataset.actions || 'null');
+    if (Array.isArray(l)) LIST = l;
   } catch {}
   // The key pressed, as the settings name it: a digit by its place (Shift or AZERTY don't matter), a letter as typed
   // when it's Latin (QWERTZ and AZERTY move letters), else by its place (Cyrillic and other layouts).
@@ -327,7 +331,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // further down are read when called.
   bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
-  startInk(); // comments on selected words show as ink on them, not a pin (src/widget/ink.ts)
+  startInk(); // comments on selected words show as ink on them, not a pin (src/widget/wordink.ts)
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -491,8 +495,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
-    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: pausedAt(payload.anchor) } }; // paused when written: the agent is told, with the moment
-    if (S.slow && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
+    // Paused when written: the agent is told, with the paused thing's time in ms.
+    // The page stays paused after (Leo, 19 Nov: "dont need to play again"): pause, pin, pin again, play when you like.
+    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: msOf(pausedEl(payload.anchor)) } };
+    if ((S.slow || slowEls.size > 0) && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
@@ -711,7 +717,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
-    if (name === 'inkOnText' && S.loaded) render(); // switched on from the ⋯ menu: the notes on words turn to ink (ink.ts)
+    if (name === 'inkOnText' && S.loaded) render(); // switched on from the ⋯ menu: the notes on words turn to ink (wordink.ts)
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
   S.syncFlags = (on, reload) => {
@@ -839,6 +845,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   /** @type {WeakMap<Element, any>} */
   const pinData = new WeakMap();
   function render() {
+    if (S.selDraft && S.draft !== S.selDraft) pick(null, false); // the picked block's box closed: the block is let go
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
     // A question's choice tried in the page (thread.ts): the page's own words are back before anything is read or drawn;
@@ -902,7 +909,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
       fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
-      if (quoted && inkRange(quoted)) quoted = null; // words that wear their own ink are lit already (ink.ts)
+      if (quoted && inkRange(quoted)) quoted = null; // words that wear their own ink are lit already (wordink.ts)
       if (!isTrying()) markQuote(quoted); // a tried choice wears the green itself
       S.quoted = quoted;
       S.shown = now;
@@ -946,8 +953,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         }
         if (S.openId !== c.id) return;
       }
-      const ink = !moved && !zone && inkRange(c.anchor); // its words are where they were: ink, the pin unseen at their end
-      if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
+      const ink = zone && c.anchor.ink; // a drawing is its own pin: its lines, no marker (draw.ts)
+      const words = !moved && !zone && inkRange(c.anchor); // its words are where they were: ink, the pin unseen at their end (wordink.ts)
+      if (S.openId === c.id && !ink) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
       const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
@@ -961,7 +969,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
       for (const [cls, on] of Object.entries({
         resolved: c.resolved, done: state === 'done', new: news.length, moved,
-        grab: movable, open: S.openId === c.id, dragging: false, 'on-ink': ink,
+        grab: movable, open: S.openId === c.id, dragging: false, 'on-ink': words,
       })) pin.classList.toggle(cls, Boolean(on));
       pin.classList.add('pin');
       if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
@@ -1022,8 +1030,12 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       else if (oldTip) { if (oldTip.textContent !== tip) oldTip.textContent = tip; }
       else pin.append(el('span', { class: 'tip', 'aria-hidden': 'true' }, tip));
       if (coarse && !pin.querySelector(':scope > .hit')) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
+      pin.classList.toggle('ink', Boolean(ink));
+      if (ink) {
+        pin.querySelector(':scope > svg')?.remove();
+        pin.append(inkSvg(ink, { left: 0, top: 0, width: zone.width, height: zone.height }));
+      }
+      inkAt(pin, ink && zone, left, top);
       pin.style.visibility = clipped && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position)
       if (born) {
         // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
@@ -1033,7 +1045,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           const d = pinData.get(pin);
           d.hot = true;
           if (coarse || S.openId === d.c.id) return;
-          if (d.zone) d.shown = drawZone(d.zone, 'saved');
+          if (d.zone && !d.c.anchor.ink) d.shown = drawZone(d.zone, 'saved');
           else if (d.c.anchor?.quote) markQuote(d.c.anchor);
         });
         pin.addEventListener('pointerleave', () => {
@@ -1060,10 +1072,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       // Pointing at it while the page is redrawn: what it shows for being pointed at is drawn again with it.
       info.shown = null;
       if (info.hot && !coarse && S.openId !== c.id) {
-        if (zone) info.shown = add(drawZone(zone, 'saved'));
+        if (zone && !ink) info.shown = add(drawZone(zone, 'saved'));
         else if (c.anchor?.quote && !quoted) quoted = c.anchor;
       }
-      if (ink) inkNow.push({ c, r: ink, pin }); // a click on the words is a click on it (ink.ts)
+      if (words) inkNow.push({ c, r: words, pin }); // a click on the words is a click on it (wordink.ts)
       next.push(pin);
       pinsById.set(c.id, pin);
       if (S.openId === c.id) {
@@ -1111,7 +1123,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // goes out). Phones: the usual sheet, which the bar grows into, with no keyboard until the box is tapped.
     const rects = S.draft?.fluid && !sheetMode.matches && quoteRects(S.draft.anchor);
     const fluid = Boolean(rects?.length); // words not found: the plain box
-    // Words selected with ink on words (ink.ts): the band in the draft's grey while you write, the dialog open or not;
+    // Words selected with ink on words (wordink.ts): the band in the draft's grey while you write, the dialog open or not;
     // a plain box's pin stays, unseen, for the sheet to aim at.
     const draftInk = S.draft && !position(S.draft.anchor).zone && inkRange(S.draft.anchor);
     if (draftInk) inkNow.push({ r: draftInk });
@@ -1122,9 +1134,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       const draft = S.draft;
       const { anchor } = draft;
       const { left, top, zone } = position(anchor);
-      add(drawZone(zone, 'draft'));
+      if (zone && anchor.ink) add(inkSvg(anchor.ink, zone)); // a drawing shows its lines, with no draft pin
+      else add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
-      if (!fluid) {
+      if (!fluid && !draft.select && !anchor.ink) {
         const pin = el('div', { class: `pin draft${anim}${draftInk ? ' on-ink' : ''}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
@@ -1137,7 +1150,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
         // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
         // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
-        autofocus: !(draft.fluid && coarse) && !S.pinnedByHold,
+        autofocus: !(draft.fluid && coarse) && !S.pinnedByHold && !draft.select, // select: the keys (Tab, Esc, Enter) stay with the page until the box is tapped
         draftKey: `lab-typing:${S.page}:new`,
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });
@@ -1236,114 +1249,325 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     }
   }, true);
   goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
-  // Pause (Leo, 19 Nov): each video and each moving thing on the page has its own pause / play just beyond its top right
-  // corner, over the page (nothing moves), shown with the comments; P pauses them all, or plays what labit paused.
-  // The widget's own animations keep moving, and a comment on a paused video says which second (anchoring.ts).
+  // Pause (Leo, 19 Nov: "not in menu", "maybe with option pressed"): a small control on the moving thing itself, in
+  // labit's layer over the page (nothing moves): pause / play · ¼ · its moment in ms, for that element and what is
+  // inside it. Computers: on the video or loop under the pointer while ⌥ is held (⌥ is Measure's key too; a click on the
+  // control never pins); let go and a paused one keeps a small ▶. Phones: in the top right corner of each one at least
+  // half in view, quiet, gone while scrolling or while a sheet is open. P pauses all, S slows all. The widget's own
+  // animations keep moving, and a comment on a paused video says which second (anchoring.ts).
   const held = new Set(); // the videos and elements labit paused
-  // Only what never ends moves on its own: a transition, or an animation with a finite end (a fade, a highlight, the section
-  // bar's jump ring) is skipped, unless labit paused it.
-  const pageAnims = () => document.getAnimations().filter((a) => {
+  const slowEls = new Set(); // the elements labit slowed to ¼ (S slows all, S.slow)
+  let animsNow = null; // one drawMotion's list: asked once per draw, not once per control
+  const pageAnims = () => animsNow || document.getAnimations().filter((a) => {
     const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
-    return t && !root.contains(t) && (held.has(t) || (!(a instanceof CSSTransition) && a.effect?.getComputedTiming().endTime === Infinity));
+    if (!t || root.contains(t)) return false;
+    if (held.has(t)) return true;
+    // Only motion that goes on (a loop) gets a pause: a transition, or an animation that ends, is a moment, like the
+    // highlight on a heading you just went to (Leo, 19 Nov: "what's with the animation pause thing on headers").
+    if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) return false;
+    const end = a.effect?.getComputedTiming().endTime;
+    return !(typeof end === 'number' && Number.isFinite(end));
   });
-  const animsOf = (el) => pageAnims().filter((a) => /** @type {KeyframeEffect} */ (a.effect).target === el);
-  const moving = () => [...new Set([...document.querySelectorAll('video'), ...held, ...pageAnims().filter((a) => a.playState === 'running').map((a) => /** @type {KeyframeEffect} */ (a.effect).target)])].filter((el) => el?.isConnected);
-  const isStill = (el) => (el instanceof HTMLVideoElement ? el.paused : animsOf(el).every((a) => a.playState !== 'running'));
+  const targetOf = (a) => /** @type {KeyframeEffect} */ (a.effect).target;
+  // An element's own animations first, then those inside it.
+  const animsOf = (el) => pageAnims().filter((a) => el.contains(targetOf(a))).sort((a, b) => Number(targetOf(b) === el) - Number(targetOf(a) === el));
+  const videosIn = (el) => (el instanceof HTMLVideoElement ? [el] : [...el.querySelectorAll('video')]);
+  const moving = () => [...new Set([...document.querySelectorAll('video'), ...held, ...pageAnims().filter((a) => a.playState === 'running').map(targetOf)])].filter((el) => el?.isConnected);
+  // One control for a moving thing and what moves inside it: only the outermost get one.
+  const outermost = (els) => els.filter((t) => !els.some((o) => o !== t && o.contains(t)));
+  const isStill = (el) => videosIn(el).every((v) => v.paused) && animsOf(el).every((a) => a.playState !== 'running');
   const setItem = (el, stop) => {
-    if (el instanceof HTMLVideoElement) {
-      if (stop) el.pause();
-      else el.play?.().catch(() => {});
-    } else {
-      for (const a of animsOf(el)) {
-        if (stop && a.playState === 'running') a.pause();
-        else if (!stop && a.playState === 'paused') a.play();
-      }
+    for (const v of videosIn(el)) {
+      if (stop) v.pause();
+      else v.play?.().catch(() => {});
     }
+    for (const a of animsOf(el)) {
+      if (stop && a.playState === 'running') a.pause();
+      else if (!stop && a.playState === 'paused') a.play();
+    }
+    if (!stop) for (const h of held) if (el.contains(h)) held.delete(h); // played from around it: what is inside plays too
     held[stop ? 'add' : 'delete'](el);
     S.paused = held.size > 0; // a comment written now says the page was paused
   };
-  // The moment a paused thing shows, in ms: the one the pin is on or in, else the first paused (a pin carries it).
-  const pausedAt = (anchor) => {
+  // The paused thing a pin is about: the one that holds the pinned element or sits in it, else the first paused.
+  const pausedEl = (anchor) => {
     let at = null;
     try {
       at = anchor?.selector ? document.querySelector(anchor.selector) : null;
     } catch {}
     const all = [...held].filter((el) => el.isConnected);
-    const el = all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+    return all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+  };
+  const msOf = (el) => {
     if (!el) return undefined;
     const t = el instanceof HTMLVideoElement ? el.currentTime * 1000 : Number(animsOf(el)[0]?.currentTime);
     return Number.isFinite(t) ? Math.round(t) : undefined;
   };
-  // ¼ speed (Leo, 19 Nov): every page animation and video at a quarter of its speed, S or the ¼ beside a pause; a pin
-  // made now says so. Motion that starts later is slowed as it starts (and by the 1 s redraw, for script animations).
+  // ¼ speed (Leo, 19 Nov): S slows every page animation and video to a quarter of its speed, a control's ¼ only its own
+  // element's; a pin made now says so. Motion that starts later is slowed as it starts (and by the 1 s redraw, for
+  // script animations).
   const rates = new WeakMap(); // each animation's own rate, to go back to
+  const wantSlow = (t) => S.slow || [...slowEls].some((e) => e.isConnected && e.contains(t));
   const slowAll = () => {
     for (const a of document.getAnimations()) {
       const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
       if (!t || root.contains(t)) continue;
-      if (S.slow && !rates.has(a)) {
+      const slow = wantSlow(t);
+      if (slow && !rates.has(a)) {
         rates.set(a, a.playbackRate);
         a.updatePlaybackRate(a.playbackRate / 4);
-      } else if (!S.slow && rates.has(a)) {
+      } else if (!slow && rates.has(a)) {
         a.updatePlaybackRate(rates.get(a));
         rates.delete(a);
       }
     }
-    for (const v of document.querySelectorAll('video')) v.playbackRate = S.slow ? 0.25 : 1;
+    for (const v of document.querySelectorAll('video')) v.playbackRate = wantSlow(v) ? 0.25 : 1;
   };
   const setSlow = (on) => {
     S.slow = on;
+    if (!on) slowEls.clear();
     slowAll();
     drawMotion();
   };
-  for (const type of ['animationstart', 'transitionrun', 'play']) addEventListener(type, () => S.slow && slowAll(), true);
-  const shown = new Map();
-  const drawMotion = () => {
-    const now = S.on ? moving() : [];
-    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); b.slowBtn.remove(); shown.delete(el); }
-    for (const el of now) {
-      const r = el.getBoundingClientRect();
-      let b = shown.get(el);
-      if (!b) {
-        b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'motion';
-        b.addEventListener('click', () => (setItem(el, !isStill(el)), drawMotion()));
-        const q = document.createElement('button');
-        q.type = 'button';
-        q.className = 'motion-slow';
-        q.textContent = '¼';
-        q.setAttribute('aria-label', q.title = `quarter speed, all motion (${KEYS.slow.toUpperCase()})`);
-        q.addEventListener('click', () => setSlow(!S.slow));
-        b.slowBtn = q;
-        motions.append(b, q);
-        shown.set(el, b);
-      }
-      b.slowBtn.setAttribute('aria-pressed', String(Boolean(S.slow)));
-      const stopped = isStill(el);
-      const what = el instanceof HTMLVideoElement ? 'video' : 'animation';
-      if (b.dataset.state !== String(stopped)) {
-        b.dataset.state = String(stopped);
-        b.innerHTML = stopped ? '<svg viewBox="0 0 12 12"><path d="M3.5 2.2v7.6L9.8 6z"/></svg>' : '<svg viewBox="0 0 12 12"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
-        b.setAttribute('aria-label', b.title = `${stopped ? 'play' : 'pause'} this ${what} (P: all)`);
-      }
-      // From its middle and its own size, so a spinning or growing thing's control stays put.
-      const w = el instanceof HTMLElement ? el.offsetWidth : r.width;
-      const h = el instanceof HTMLElement ? el.offsetHeight : r.height;
-      b.hidden = !w || !h;
-      b.style.left = `${Math.min(r.left + (r.width + w) / 2 + 6, document.documentElement.clientWidth - 30) + scrollX}px`;
-      b.style.top = `${r.top + (r.height - h) / 2 + scrollY}px`;
-      b.slowBtn.hidden = b.hidden;
-      b.slowBtn.style.left = b.style.left;
-      b.slowBtn.style.top = `${r.top + (r.height - h) / 2 + scrollY + 28}px`;
+  for (const type of ['animationstart', 'transitionrun', 'play']) addEventListener(type, () => (S.slow || slowEls.size > 0) && slowAll(), true);
+  // The controls: one per element shown, in .motions (page coordinates, like the pins).
+  const PLAY = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 2.2v7.6L9.8 6z"/></svg>';
+  const PAUSE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
+  const ctls = new Map();
+  const ctlFor = (target) => {
+    let c = ctls.get(target);
+    if (c) return c;
+    const play = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', class: 'motion-play' }));
+    const slow = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', class: 'motion-slow', 'aria-pressed': 'false' }, '¼'));
+    const ms = el('span', { class: 'motion-ms' });
+    const box = el('div', { class: 'motion-ctl', role: 'group' });
+    box.append(play, slow, ms);
+    play.addEventListener('click', (e) => (e.stopPropagation(), setItem(target, !isStill(target)), drawMotion()));
+    slow.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (slowEls.has(target) || S.slow) slowEls.delete(target);
+      else slowEls.add(target);
+      if (S.slow && !slowEls.has(target)) S.slow = false; // the page was all slowed: this one goes back, the rest stay slowed
+      slowAll();
+      drawMotion();
+    });
+    for (const type of ['pointerdown', 'mousedown', 'touchstart']) box.addEventListener(type, (e) => e.stopPropagation()); // the control's, never a pin or a hold
+    motions.append(box);
+    c = { box, play, slow, ms, state: '' };
+    ctls.set(target, c);
+    return c;
+  };
+  // Its box from its middle and its own size, so a spinning or growing thing's control stays put.
+  const boxOf = (t) => {
+    const r = t.getBoundingClientRect();
+    const w = t instanceof HTMLElement ? t.offsetWidth : r.width;
+    const h = t instanceof HTMLElement ? t.offsetHeight : r.height;
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    return { left: x - w / 2, right: x + w / 2, top: y - h / 2, bottom: y + h / 2, w, h };
+  };
+  let altMotion = false; // computers: ⌥ held
+  let pointerAt = null;
+  let scrolling = 0; // phones: the time the last scroll ended its quiet wait
+  let hot = null; // computers: the one whose full control shows
+  let hotSeen = 0; // when the pointer was last on it or its control
+  let hotBox = null; // its box when its control showed, in page coordinates
+  let cand = null; // a neighbour the pointer is on while still in that box, and since when
+  let candSince = 0;
+  // An element's box at rest, without its animated transform (a sliding loop, a pulsing dot), on screen: where its
+  // control goes and what counts as on it. From the layout offsets; where those can't say (SVG, a transformed or
+  // sticky ancestor puts them far off), its drawn box.
+  const restBox = (t) => {
+    const drawn = boxOf(t);
+    if (!(t instanceof HTMLElement) || !t.offsetParent && getComputedStyle(t).position !== 'fixed') return drawn;
+    let x = 0, y = 0, fixed = false;
+    for (let n = t; n; n = /** @type {HTMLElement | null} */ (n.offsetParent)) {
+      x += n.offsetLeft + (n === t ? 0 : n.clientLeft);
+      y += n.offsetTop + (n === t ? 0 : n.clientTop);
+      if (!n.offsetParent && getComputedStyle(n).position === 'fixed') fixed = true;
     }
+    for (let a = t.parentElement; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
+      x -= a.scrollLeft;
+      y -= a.scrollTop;
+    }
+    if (!fixed) {
+      x -= scrollX;
+      y -= scrollY;
+    }
+    const w = t.offsetWidth, h = t.offsetHeight;
+    const far = Math.max(200, 2 * (w + h));
+    if (Math.abs(x + w / 2 - (drawn.left + drawn.w / 2)) > far || Math.abs(y + h / 2 - (drawn.top + drawn.h / 2)) > far) return drawn;
+    return { left: x, top: y, right: x + w, bottom: y + h, w, h };
+  };
+  const under = () => {
+    if (!pointerAt) return null;
+    // On its control (wider than a small thing, so it can stick out past it): still that one.
+    const own = hot && ctls.get(hot)?.box.getBoundingClientRect();
+    if (own && hot.isConnected && pointerAt.x >= own.left && pointerAt.x <= own.right && pointerAt.y >= own.top && pointerAt.y <= own.bottom) return hot;
+    // Where it was when its control showed (its box at rest, page coordinates): a thing sliding out from under the
+    // pointer stays the one, and a neighbour sliding in doesn't take over. A moving thing inside a box that has the
+    // control does (Leo, 19 Nov: "still random sometimes": the box between things kept the control from them).
+    const was = hot?.isConnected && hotBox;
+    const inWas = Boolean(was && pointerAt.x >= was.left - scrollX && pointerAt.x <= was.right - scrollX && pointerAt.y >= was.top - scrollY && pointerAt.y <= was.bottom - scrollY);
+    const outer = outermost(moving());
+    // The thing under the mouse is a moving one or inside one (the "Buy" text in a pressed button): that one.
+    const at = document.elementFromPoint(pointerAt.x, pointerAt.y);
+    const page = at && at !== host && at !== document.documentElement && at !== document.body && !root.contains(at) ? at : null;
+    let direct = page && outer.find((t) => t.contains(page));
+    if (!direct) {
+      let best = null;
+      for (const t of outer) {
+        const b = restBox(t);
+        if (!b.w || !b.h || pointerAt.x < b.left || pointerAt.x > b.right || pointerAt.y < b.top || pointerAt.y > b.bottom) continue;
+        if (!best || b.w * b.h < best.a) best = { t, a: b.w * b.h };
+      }
+      direct = best?.t;
+    }
+    if (direct && hot?.isConnected && direct !== hot) {
+      // One control at a time: on its way to it the pointer crosses a neighbour (its control can lie over one), or a
+      // thing inside the box that has it; another thing takes over only once the pointer rests on it (250 ms).
+      const now = performance.now();
+      if (cand !== direct) {
+        cand = direct;
+        candSince = now;
+      }
+      return now - candSince >= 250 ? direct : hot;
+    }
+    cand = null;
+    if (direct) return direct;
+    if (inWas) return hot;
+    // Or it holds moving things (the demo box around a pressed button and its toast):
+    // its control, for all that moves inside; not the page's whole body or a box as big as half the screen.
+    // A box with one moving thing in it (a track and its loop) is that thing.
+    const r = page?.getBoundingClientRect();
+    const inside = r && r.width * r.height <= (innerWidth * innerHeight) / 2 ? outer.filter((t) => page.contains(t)) : [];
+    return inside.length === 1 ? inside[0] : inside.length ? page : null;
+  };
+  let motionLoop = 0;
+  const drawMotion = () => {
+    cancelAnimationFrame(motionLoop);
+    animsNow = null;
+    animsNow = pageAnims();
+    try {
+      drawMotionNow();
+    } finally {
+      animsNow = null;
+    }
+  };
+  const drawMotionNow = () => {
+    const vw = document.documentElement.clientWidth;
+    const vh = innerHeight;
+    /** @type {Map<Element, 'full' | 'mini'>} */
+    const want = new Map();
+    if (S.on) {
+      if (!coarse) {
+        // Reachable (Leo, 19 Nov: "sometimes menu with pause is out of reach"): crossing the gap to the control, or the
+        // thing moving out from under the pointer, keeps it for 300 ms.
+        const next = altMotion ? under() : null;
+        const now = performance.now();
+        if (next) {
+          if (next !== hot) {
+            const b = restBox(next);
+            hotBox = { left: b.left + scrollX, right: b.right + scrollX, top: b.top + scrollY, bottom: b.bottom + scrollY };
+          }
+          hot = next;
+          hotSeen = now;
+        } else if (!(altMotion && hot?.isConnected && now - hotSeen < 300)) hot = null;
+            for (const h of outermost([...held].filter((h) => h.isConnected))) want.set(h, 'mini');
+        if (hot) want.set(hot, 'full');
+      } else if (!scrolling && !host.hasAttribute('data-sheet')) {
+        for (const t of outermost(moving())) {
+          const b = boxOf(t);
+          const seen = Math.max(0, Math.min(b.right, vw) - Math.max(b.left, 0)) * Math.max(0, Math.min(b.bottom, vh) - Math.max(b.top, 0));
+          if (b.w && b.h && seen >= (b.w * b.h) / 2) want.set(t, 'full');
+        }
+      }
+    }
+    for (const [t, c] of ctls) {
+      if (want.has(t)) continue;
+      if (!c.box.classList.contains('on')) {
+        if (!t.isConnected) {
+          c.box.remove();
+          ctls.delete(t);
+        }
+        continue;
+      }
+      c.spot = null; // shown again later: where the thing is then
+      c.box.classList.remove('on'); // fades out, and stays in the layer for next time
+    }
+    for (const [t, kind] of want) {
+      const c = ctlFor(t);
+      const stopped = isStill(t);
+      const state = `${stopped}${kind}`;
+      if (c.state !== state) {
+        c.state = state;
+        c.play.innerHTML = stopped ? PLAY : PAUSE;
+        const what = t instanceof HTMLVideoElement ? 'video' : 'animation';
+        c.play.setAttribute('aria-label', (c.play.title = `${stopped ? 'play' : 'pause'} this ${what} (${KEYS.pause.toUpperCase()}: all)`));
+        c.box.setAttribute('aria-label', `${what} controls`);
+      }
+      const slowed = S.slow || slowEls.has(t);
+      c.slow.setAttribute('aria-pressed', String(slowed));
+      c.slow.setAttribute('aria-label', (c.slow.title = `${slowed ? 'full' : 'quarter'} speed (${KEYS.slow.toUpperCase()}: all)`));
+      const ms = msOf(t);
+      c.ms.textContent = ms === undefined ? '' : `${ms} ms`;
+      c.box.classList.toggle('mini', kind === 'mini');
+      c.box.classList.toggle('quiet', coarse);
+      const b = kind === 'full' && !coarse ? restBox(t) : boxOf(t); // ⌥: from its box at rest, not where its animation has it
+      // A small paused thing (a dot, an icon) would be all under its ▶, so a click to pin it played it instead: its ▶
+      // sits just outside, at its top right.
+      const small = kind === 'mini' && (b.w < c.box.offsetWidth * 2 || b.h < c.box.offsetHeight * 2);
+      // A computer's full control stays where it first showed while the pointer is on it (a moving thing would carry it
+      // away from the pointer), in page coordinates; always on screen.
+      const keep = !coarse && kind === 'full' && c.spot?.t === t ? c.spot : null;
+      const x = keep ? keep.x - scrollX : small ? b.right + 4 + c.box.offsetWidth : b.right - 4;
+      const y = keep ? keep.y - scrollY : small ? b.top - 4 : b.top + 4;
+      const left = Math.min(Math.max(x, c.box.offsetWidth + 4), vw - 4); // a thing at the screen's edge keeps its control on screen
+      const top = Math.min(Math.max(y, 4), vh - c.box.offsetHeight - 4);
+      c.spot = kind === 'full' ? { t, x: (keep ? keep.x - scrollX : x) + scrollX, y: (keep ? keep.y - scrollY : y) + scrollY } : null;
+      c.box.style.left = `${left + scrollX}px`;
+      c.box.style.top = `${top + scrollY}px`;
+      if (!c.box.classList.contains('on')) requestAnimationFrame(() => c.box.classList.add('on')); // in the next frame: it fades in
+    }
+    // The ms and the place follow the motion, every frame, only while a full control shows (⌥, phones). Paused things
+    // keep only their ▶, which stays put: no loop (Leo, 19 Nov: "when i paused here its became laggy"); a scroll inside
+    // a box, a resize or the 1 s redraw move it.
+    if ([...want.values()].includes('full')) motionLoop = requestAnimationFrame(drawMotion);
   };
   const setPause = (on) => {
     for (const el of on ? moving().filter((el) => !isStill(el)) : [...held]) setItem(el, on);
     drawMotion();
   };
-  setInterval(() => (S.slow && slowAll(), drawMotion()), 1000);
-  addEventListener('scroll', () => requestAnimationFrame(drawMotion), { capture: true, passive: true });
+  const altMotionSet = (on) => {
+    if (altMotion === on) return;
+    altMotion = on;
+    drawMotion();
+  };
+  addEventListener('keydown', (e) => e.key === 'Alt' && !coarse && altMotionSet(!e.metaKey && !e.ctrlKey && !e.shiftKey), true);
+  addEventListener('keydown', (e) => altMotion && e.key !== 'Alt' && altMotionSet(false), true); // ⌥W, ⌥1…: a shortcut
+  addEventListener('keyup', (e) => e.key === 'Alt' && altMotionSet(false), true);
+  addEventListener('blur', () => altMotionSet(false));
+  addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    pointerAt = { x: e.clientX, y: e.clientY };
+    if (altMotion && !e.altKey) altMotionSet(false); // its keyup went to another window
+    else if (altMotion) drawMotion();
+  }, { capture: true, passive: true });
+  let scrollQuiet = 0;
+  let motionAgain = 0;
+  const redrawMotionSoon = () => motionAgain || (motionAgain = requestAnimationFrame(() => ((motionAgain = 0), drawMotion())));
+  addEventListener('resize', () => held.size && redrawMotionSoon(), { passive: true });
+  addEventListener('scroll', (e) => {
+    if (!coarse) return void (held.size && e.target !== document && redrawMotionSoon()); // a box scrolled: the ▶s in it move
+    clearTimeout(scrollQuiet);
+    if (!scrolling) {
+      scrolling = 1;
+      drawMotion();
+    }
+    scrollQuiet = window.setTimeout(() => ((scrolling = 0), drawMotion()), 250);
+  }, { capture: true, passive: true });
+  setInterval(() => ((S.slow || slowEls.size > 0) && slowAll(), drawMotion()), 1000);
+  if (coarse) new MutationObserver(() => drawMotion()).observe(host, { attributeFilter: ['data-sheet'] }); // a sheet opens: the controls go
   doneBtn.addEventListener('click', toggleDone);
   movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
   overBtn.addEventListener('click', () => setOver(!S.overControls));
@@ -1459,7 +1683,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (k === 'slow') return setSlow(!S.slow);
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'done') return toggleDone();
+      if (k === 'done') return void ((S.dKey = true), (S.drew = false), part('draw')); // on release (below): held, D draws (draw.ts)
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
@@ -1500,7 +1724,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   S.recheckCtl = () => S.mouse && sayCtl(document.elementFromPoint(S.mouse.x, S.mouse.y));
   const control = (t) => {
     if (S.overControls) return false; // with the switch on, nothing on the page keeps its click
-    const hand = !document.documentElement.classList.contains('lab-ink-over'); // over inked words the hand is ours (ink.ts)
+    const hand = !document.documentElement.classList.contains('lab-ink-over'); // over inked words the hand is ours (wordink.ts)
     for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
       if (n.matches(INTERACTIVE) || (hand && getComputedStyle(n).cursor === 'pointer')) return true;
     return false;
@@ -1538,7 +1762,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (e.composedPath().includes(host)) return;
     if (!e.altKey && control(e.target)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
-    S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
+    S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false, ink: S.dKey };
+    if (S.dKey) clearTimeout(S.inkTimer); // another stroke of the same drawing
   }
   document.addEventListener('pointerdown', (e) => !e.altKey && startDrag(e), true); // Option presses are taken earlier (see optionPress)
   document.addEventListener(
@@ -1551,11 +1776,14 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         S.drag.active = true;
         getSelection?.()?.removeAllRanges();
         document.documentElement.classList.add('lab-dragging');
-        S.liveZone = zoneEl('draft live');
-        layer.append(S.liveZone);
+        if (S.drag.ink) {
+          if (!S.inking) layer.append((S.inking = liveInk()).svg);
+          S.inking.strokes.push([{ x: S.drag.x0, y: S.drag.y0 }]);
+        } else layer.append((S.liveZone = zoneEl('draft live')));
       }
       if (!S.drag.active) return;
       e.preventDefault();
+      if (S.drag.ink) return void (S.inking.strokes.at(-1).push({ x: e.clientX, y: e.clientY }), S.inking.paint());
       S.zoneFrame ||= requestAnimationFrame(paintZone);
     },
     true,
@@ -1574,6 +1802,13 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     S.afterDrag = true;
     setTimeout(() => (S.afterDrag = false), 0);
     getSelection?.()?.removeAllRanges();
+    // A stroke of a drawing: more may follow while D is held. It is done when D is let go, or a second after the last.
+    if (d.ink) {
+      S.drew = true;
+      clearTimeout(S.inkTimer);
+      S.inkTimer = setTimeout(endInk, 1000);
+      return;
+    }
     // A thin drag (a line of text, a small icon) still makes an area: it keeps the size it was drawn at,
     // ZONE_MIN each way around its middle, instead of silently doing nothing.
     for (const [a, b] of [['x0', 'x1'], ['y0', 'y1']]) {
@@ -1586,6 +1821,28 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     S.openId = null;
     begin(zoneAnchor(d));
   };
+  S.dKey = false;
+  S.inking = null;
+  async function endInk() {
+    clearTimeout(S.inkTimer);
+    const ink = S.inking;
+    S.inking = null;
+    if (!ink) return;
+    const { readInk } = await part('draw').catch(() => ({ readInk: null }));
+    ink.svg.remove();
+    if (!readInk) return;
+    showAgain();
+    S.openId = null;
+    begin(inkAnchor(readInk(ink.strokes, (e) => e && short(`${openingTag(e)} "${short(e.textContent, 40)}"`, 160)), ZONE_MIN));
+  }
+  // D let go: the drawing is done, or, when nothing was drawn, done pins show or hide (KEYS.done).
+  addEventListener('keyup', (e) => {
+    if (!S.dKey || actionOf(e) !== 'done') return;
+    S.dKey = false;
+    if (S.inking && !S.drag) endInk();
+    else if (!S.drew) toggleDone();
+  }, true);
+  addEventListener('blur', () => (S.dKey = false));
   document.addEventListener('pointerup', endDrag, true);
   document.addEventListener('pointercancel', endDrag, true);
   // Don't let images and videos start a native drag while comments are on: a press there marks an area.
@@ -1817,7 +2074,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       exact: short(exact, 300),
       prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, '').slice(-40),
       suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
-      selected: true, // picked by selecting, not the word under a click: shown as ink on the words (ink.ts)
+      selected: true, // picked by selecting, not the word under a click: shown as ink on the words (wordink.ts)
       // Saved at 300 characters; a longer selection also keeps its last words, so the ink reaches them (anchoring.ts).
       ...(exact.length > 300 && { tail: exact.slice(-40) }),
     };
@@ -1855,31 +2112,117 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
     const exact = draft.anchor.quote?.exact || '';
     const fill = (v) => ((field.value = v), field.dispatchEvent(new Event('input')));
-    for (const a of acts(draft.fluid ? exact.length : 1e9, false, draft.fluid ? ACTIONS.words : ACTIONS.spot)) {
-      const k = actName(a);
-      const b = actButton(a, false);
+    const go = (said, prompt = '') => {
+      if (prompt) draft.anchor.act = prompt; // the agent reads the whole prompt: "action: …"
+      else delete draft.anchor.act;
+      fill(said);
+      /** @type {HTMLElement} */ (box.querySelector('.send')).click();
+    };
+    const chip = (a) => {
+      const b = actButton(a.name, false);
+      b.title = a.prompt;
       b.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box
-      b.addEventListener('click', () => {
-        if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
-        const typed = field.value.trim();
-        const own = typeof a === 'string' ? null : a;
-        const said = own ? `${own.send}${typed ? ` ${typed}` : ''}` : k === 'rewrite' ? `Rewrite: “${exact}”` : k === 'cut' ? `Cut: “${exact}”` : k === 'go' ? 'go' : k === 'remove' ? 'Remove this' : 'Fix this';
-        fill(said);
-        /** @type {HTMLElement} */ (box.querySelector('.send')).click();
+      b.addEventListener('click', () => go(field.value.trim() ? `${a.name}: ${field.value.trim()}` : a.name, a.prompt));
+      return b;
+    };
+    if (draft.fluid)
+      for (const k of acts(exact.length, false, WORDS).map(actName)) {
+        const b = actButton(k, false);
+        b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.addEventListener('click', () => {
+          if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
+          go(k === 'rewrite' ? `Rewrite: “${exact}”` : k === 'cut' ? `Cut: “${exact}”` : 'go');
+        });
+        row.append(b);
+      }
+    else {
+      // Your list, in its order: as many chips as fit on one line (measured; select's ↑ ↓ go first), then "…". "…"
+      // grows the line into the whole list (tap = use it).
+      const menu = el('div', { class: 'acts', hidden: '' });
+      const spill = el('div', { class: 'quick' }); // select's ↑ ↓ when the line has no room for them
+      const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
+      const chips = LIST.map(chip);
+      let shown = LIST.length;
+      const quiet = (b) => (b.addEventListener('mousedown', (e) => e.preventDefault()), b);
+      const btn = (text, attrs = {}) => el('button', { type: 'button', ...attrs }, text);
+      // Growing sheet (Leo, 19 Nov, "c"): "…" grows the line itself into the whole list, in the same sheet or box, the
+      // text field staying where it is below it. Each row is the action's name over its prompt on one muted line, tap =
+      // use it; "done" (or "…" again) folds it back to the line. Editing the list from here comes next; until then it is
+      // edited in settings.json.
+      function fill() {
+        menu.replaceChildren(...(spill.children.length ? [spill] : []));
+        const list = el('div', { class: 'act-list' });
+        for (const i of LIST.keys()) {
+          const a = LIST[i];
+          const line = el('div', { class: 'act' });
+          const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
+          use.append(el('b', {}, a.name), el('span', {}, a.prompt));
+          use.addEventListener('click', () => (openMenu(false, true), chips[i].click()));
+          line.append(use);
+          list.append(line);
+        }
+        const foot = el('div', { class: 'act-foot' });
+        const fold = quiet(btn('done', { class: 'fold' }));
+        fold.addEventListener('click', () => openMenu(false));
+        foot.append(fold);
+        list.append(foot);
+        menu.append(list);
+      }
+      // The height eases from the line's to the list's (and back) over --_t-base, none with reduced motion; the sheet sits on
+      // the bottom on a phone, so it grows upward, and the page under it never moves.
+      let anim = null;
+      const fit = (from, to, then) => {
+        anim?.cancel();
+        anim = null;
+        if (still.matches || !from || !to || from === to) return void then?.();
+        anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ms('base'), easing: ease('out') });
+        anim.onfinish = () => ((anim = null), then?.());
+      };
+      let lineH = 0; // the line's height when it grew, to fold back to
+      const openMenu = (open, now = false) => {
+        if (open === !menu.hidden) return;
+        dots.setAttribute('aria-expanded', String(open));
+        if (!open) {
+          const shut = () => ((menu.hidden = true), (row.hidden = false));
+          return now ? shut() : fit(menu.offsetHeight, lineH, shut);
+        }
+        lineH = row.offsetHeight;
+        fill();
+        row.hidden = true;
+        menu.hidden = false;
+        if (!now) fit(lineH, menu.offsetHeight);
+      };
+      quiet(dots).addEventListener('click', () => {
+        const now = dots.dataset.still === '1';
+        delete dots.dataset.still;
+        openMenu(menu.hidden, now);
       });
-      row.append(b);
+      menu.addEventListener('keydown', (e) => e.key === 'Escape' && !(/** @type {Element} */ (e.target)).closest('.act-edit') && (e.stopPropagation(), openMenu(false)));
+      row.append(...chips, dots, ...(draft.select ? selectChips() : []));
+      let tries = 0;
+      const measure = () => {
+        if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
+        row.after(menu);
+        const over = () => row.scrollWidth > row.clientWidth + 1;
+        let at = null; // ↑ before ↓, however many go
+        for (const b of [...row.querySelectorAll('.sel:not([data-a=done])')].reverse()) if (over()) at = spill.insertBefore(b, at);
+        while (over() && shown) chips[--shown].remove();
+        dots.hidden = shown === LIST.length && !spill.children.length;
+        [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
+      };
+      queueMicrotask(measure);
     }
     // ⌥ + 1…4 (by the key's place, so Option's own characters don't matter) runs the nth button; holding ⌥ shows the numbers.
-    const buttons = [...row.children];
-    buttons.forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
+    [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
     const alt = (on) => row.classList.toggle('alt', on);
     box.addEventListener('keydown', (e) => {
       if (e.key === 'Alt') alt(true);
       const n = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey ? /^Digit([1-4])$/.exec(e.code)?.[1] : '';
-      if (!n || !buttons[+n - 1]) return;
+      const b = row.isConnected && n ? row.children[+n - 1] : null; // a line saved over (✎) answers no more
+      if (!b) return;
       e.preventDefault();
       e.stopPropagation();
-      buttons[+n - 1].click();
+      /** @type {HTMLElement} */ (b).click();
     }, true);
     box.addEventListener('keyup', (e) => e.key === 'Alt' && alt(false), true);
     box.addEventListener('focusout', () => alt(false));
@@ -1910,6 +2253,13 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     begin(anchorAt(e.clientX, e.clientY));
   }
 
+  // A pin at its spot; a drawing (draw.ts) over its whole area, its lines stretched to it.
+  const inkAt = (pin, zone, left, top) => {
+    const svg = zone && pin.querySelector(':scope > svg');
+    if (svg) Object.assign(svg.style, { width: `${zone.width}px`, height: `${zone.height}px` });
+    pin.style.left = `${zone ? zone.left : left}px`;
+    pin.style.top = `${zone ? zone.top : top}px`;
+  };
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   const movePins = () => {
@@ -1918,9 +2268,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
     // A pin whose words show again (back after an edit) turns into ink again.
     if (places.some(([pin, { zone }, c]) => !zone && !pin.classList.contains('on-ink') && inkRange(c.anchor))) return render();
-    for (const [pin, { left, top, clipped }] of places) {
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
+    for (const [pin, { left, top, clipped, zone }] of places) {
+      inkAt(pin, pin.classList.contains('ink') && zone, left, top);
       pin.style.visibility = clipped ? 'hidden' : '';
     }
   };
@@ -2050,7 +2399,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
-  // Fields and editable text stay selectable. With ink on words (lab-ink-on, ink.ts) the text stays selectable and only
+  // Fields and editable text stay selectable. With ink on words (lab-ink-on, wordink.ts) the text stays selectable and only
   // selectstart (below) keeps a drag from selecting: Safari paints a highlight over whole blocks of text that can't be
   // selected, and the ink is a highlight.
   fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit, .lab-ink-on) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit, .lab-ink-on) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
@@ -2110,7 +2459,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
-  // Over inked words (a click opens their comment, ink.ts) the page shows a hand.
+  // Over inked words (a click opens their comment, wordink.ts) the page shows a hand.
   fonts.textContent += 'html.lab-ink-over body, html.lab-ink-over body * { cursor: pointer !important; }';
   // The agent's ring draws its arc in (lab C2): an arc length that can animate has to be registered on the page itself.
   fonts.textContent += '@property --lab-arc { syntax: "<percentage>"; inherits: false; initial-value: 66%; }';
@@ -2151,7 +2500,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
-    fonts.textContent += inkCss(); // ink on words: the bands, and the selection drawn as sent ink (ink.ts)
+    fonts.textContent += inkCss(); // ink on words: the bands, and the selection drawn as sent ink (wordink.ts)
     if (flag('select')) startFlag('select');
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();

@@ -70,6 +70,8 @@ type Anchor = {
   /** An area dragged out, and what was inside it. */
   zoneItems?: string[];
   zoneText?: string;
+  /** A drawing (hold D and drag, draw.ts): what its lines read as, and the lines in 0–1000 of the area. */
+  ink?: { mark: string; from?: string; to?: string; pts: number[][] };
   shownFor?: number;
   build?: string;
 };
@@ -473,7 +475,7 @@ function quoteAt(cx, cy, shadowRoots = []) {
   return quote;
 }
 
-function openingTag(node) {
+export function openingTag(node) {
   const attrs = [...node.attributes]
     .filter((a) => /^(id|class|alt|role|aria-label|href|data-[\w-]+)$/.test(a.name))
     .map((a) => [a.name, a.name === 'class' ? a.value.split(/\s+/).filter((c) => c && !generated(c)).join(' ') : a.name === 'id' && generated(a.value) ? '' : a.value])
@@ -503,7 +505,8 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
   const onBoard = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor } }).__labBoard?.anchor; // a board page: the board says what is there
   if (onBoard) return onBoard(clientX, clientY);
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
-  if (onto && !stack.length) stack = [onto];
+  // ...and when the point is on something else (scrolled away, under the bar), the element the caller names wins.
+  if (onto && !(stack[0] && (stack[0] === onto || onto.contains(stack[0])))) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
   let shadowHost = null;
@@ -984,7 +987,7 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
   return stale && !fresh ? quoteRange(anchor, from, strict, true) : null;
 }
 // A text comment's words where its pin finds them (as spotOf does: strictly on the page itself or a big container),
-// for the ink drawn on them (ink.ts). Null when they're gone: the pin shows instead.
+// for the ink drawn on them (wordink.ts). Null when they're gone: the pin shows instead.
 export function wordsRange(anchor) {
   const node = findTarget(anchor);
   const box = node || (/^<(body|html)[\s>]/.test(anchor.element || '') ? document.body : null);
@@ -1074,7 +1077,7 @@ export const rectsOf = (range?: Range | null) => {
 export const quoteRects = (anchor) => rectsOf(quoteRange(anchor));
 // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
 // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters. Letters, digits, marks,
-// apostrophes and _ are a word's. The quote (comments.js) and the ink drawn while selecting (ink.ts) both use it.
+// apostrophes and _ are a word's. The quote (comments.js) and the ink drawn while selecting (wordink.ts) both use it.
 const grow = (node: Node, i: number, step: number) => {
   const d = node.nodeType === 3 ? (node as Text).data : '';
   while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
