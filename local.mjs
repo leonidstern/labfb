@@ -23,6 +23,25 @@ const ME = fileURLToPath(import.meta.url);
 // How to call this again: `npx @leonidstern/labit` once installed from npm, else the script's own path.
 const CMD = REPO.split(path.sep).includes('node_modules') ? 'npx @leonidstern/labit@latest' : `node ${ME}`;
 const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
+// Which build of main this is, when a script built it (the edge script writes .edge-built into the build, "main ab303fa"):
+// every build between releases says the same version. The file wins over LABIT_EDGE, which a lab started again inherits.
+const EDGE = (() => {
+  try {
+    return fs.readFileSync(path.join(REPO, '.edge-built'), 'utf8').trim();
+  } catch {
+    return process.env.LABIT_EDGE || '';
+  }
+})();
+// How this was started: the path node was given, which may be a link to a build (the edge script's .labit-current).
+// When the link points somewhere else now, a newer build is installed (see "following the install" below).
+const ENTRY = process.argv[1] ? path.resolve(process.argv[1]) : ME;
+const newerBuild = () => {
+  try {
+    return fs.realpathSync(ENTRY) !== ME;
+  } catch {
+    return false;
+  }
+};
 const HELP = `labit ${VERSION}: comment on local pages, your agent (Claude, Codex, Cursor…) answers on the pins.
 Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 
@@ -106,6 +125,24 @@ const die = (msg) => {
   process.exit(1);
 };
 if (unknownFlags.length) die(`Unknown option ${unknownFlags[0]}. See: ${CMD} --help`);
+
+// A lab moving onto a newer build starts this one in its place: say it loaded (it parsed, its imports resolved), then
+// wait for that lab to be gone, so its folder and port are free. A build that can't load never says so: the lab stays.
+if (process.env.LABIT_TAKEOVER) {
+  const was = Number(process.env.LABIT_TAKEOVER);
+  delete process.env.LABIT_TAKEOVER;
+  try {
+    process.kill(was, 'SIGUSR2');
+  } catch {}
+  for (let i = 0; i < 150; i++) {
+    try {
+      process.kill(was, 0);
+    } catch {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
 
 // The project this is run for (a session's folder): pages lists its labs, not every lab.
 const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
@@ -1098,7 +1135,7 @@ const register = () => {
   try {
     fs.mkdirSync(REGISTRY, { recursive: true });
     registeredListener = session?.id || '';
-    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: STARTED, ...(registeredListener ? { listener: registeredListener, listenedAt: new Date().toISOString() } : {}) }, null, 2));
+    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, ...(EDGE ? { edge: EDGE } : {}), entry: ENTRY, me: ME, startedAt: STARTED, ...(registeredListener ? { listener: registeredListener, listenedAt: new Date().toISOString() } : {}) }, null, 2));
   } catch {}
 };
 // Written again as the mode and the session change. A write that fails then (a full disk) is said once and the lab
@@ -1778,8 +1815,8 @@ const flagsAttr = () => {
   return ` data-flags='${json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
 };
 // Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
-// of main (LABIT_EDGE, set by a script that builds one, e.g. "main + #89 #91").
-const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? ` · edge: ${process.env.LABIT_EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
+// of main (EDGE, from a script that builds one, e.g. "main ab303fa").
+const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${EDGE ? ` · edge: ${EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
 const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
@@ -2408,7 +2445,18 @@ const handler = async (req, res) => {
         if (!p) return res.writeHead(404).end('not parked');
         if (runningLabs().some((l) => l.port === n)) return res.writeHead(409).end('already running');
         const env = { ...process.env, LABIT_EXIT_WITH_PARENT: '', ...(p.edge ? { LABIT_EDGE: p.edge } : {}) }; // a lab started again outlives the one that started it
-        spawn(process.execPath, [...p.execArgv, ...p.argv.filter((a) => a !== '--no-open'), '--no-open'], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
+        const args = [...p.argv.filter((a) => a !== '--no-open'), '--no-open'];
+        // From npm: the newest release, not the version it parked on. Otherwise the path it was started by: through the
+        // edge script's link, that is the newest build.
+        const asParked = () => spawn(process.execPath, [...p.execArgv, ...args], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
+        if (p.npx) {
+          // Offline, or npm can't be reached: npx gives up at once, and the lab starts on the version it parked on.
+          const since = Date.now();
+          const npx = spawn('npx', ['--yes', '@leonidstern/labit@latest', ...args.slice(1)], { cwd: p.root, env, detached: true, stdio: 'ignore' });
+          npx.on('error', asParked);
+          npx.on('exit', (code) => code && Date.now() - since < 30000 && asParked());
+          npx.unref();
+        } else asParked();
         // The lab takes its parked record itself once it runs (and with it the session that listened last).
         console.log(`[lab] started ${p.name} again on ${n}`);
         return answer(res, { ok: true });
@@ -2766,8 +2814,9 @@ server.on('listening', async () => {
 const park = (archived = false, why = '') => {
   try {
     fs.mkdirSync(PARKED, { recursive: true });
-    const edge = process.env.LABIT_EDGE;
-    writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(archived ? { archived: true } : {}), ...(why ? { why } : {}), ...(session ? { session } : {}), at: new Date().toISOString() }, null, 2));
+    // Run from npm: started again as npx @latest, not from this version's folder in npx's cache.
+    const npx = CMD.startsWith('npx');
+    writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(EDGE ? { edge: EDGE } : {}), ...(npx ? { npx } : {}), ...(archived ? { archived: true } : {}), ...(why ? { why } : {}), ...(session ? { session } : {}), at: new Date().toISOString() }, null, 2));
   } catch {}
 };
 // A lab nobody uses parks itself after an hour (LABIT_IDLE_MS; 0 keeps it running): no page open on it, no agent
@@ -2798,6 +2847,45 @@ if (process.env.LABIT_EXIT_WITH_PARENT === '1') {
   const parent = process.ppid;
   setInterval(() => process.ppid !== parent && bye(), 1000).unref();
 }
+// ---------- following the install ----------
+// Started through a link to a build (the edge script's .labit-current) that now points at a newer one: the lab starts
+// that build in its place, on the same folder and port, once no agent is working on its pins. Open pages catch up in
+// place, a draft stays in its box, a comment sent meanwhile is retried, and a wait reads the new key. The new build
+// says when it loaded (SIGUSR2); one that doesn't within 20 s is left alone and this lab stays. Its output goes to
+// .lab/lab.log. Not under --dev (node --watch restarts it), not on Windows, or with LABIT_NO_FOLLOW=1.
+let followTried = '';
+let followed = false;
+process.on('SIGUSR2', () => {
+  followed = true;
+});
+if (!process.env.LAB_DEV && !process.env.LABIT_NO_FOLLOW && process.platform !== 'win32')
+  setInterval(() => {
+    if (mode === 'working' || !newerBuild()) return;
+    const next = fs.realpathSync(ENTRY);
+    if (next === followTried) return; // that build didn't load: wait for another one
+    followTried = next;
+    console.log(`[lab] a newer labit is installed (${next}): starting it in this lab's place`);
+    /** @type {number | 'ignore'} */
+    let out = 'ignore';
+    try {
+      out = fs.openSync(path.join(LAB, 'lab.log'), 'a');
+    } catch {}
+    const args = process.argv.slice(2).filter((a) => a !== '--no-open');
+    spawn(process.execPath, [...process.execArgv, ENTRY, ...args, '--no-open', '--port', String(PORT)], {
+      cwd: process.cwd(),
+      env: { ...process.env, LABIT_TAKEOVER: String(process.pid), LABIT_EXIT_WITH_PARENT: '', LABIT_EDGE: '' },
+      detached: true,
+      stdio: ['ignore', out, out],
+    }).unref();
+    const since = Date.now();
+    const check = setInterval(() => {
+      if (followed) bye();
+      else if (Date.now() - since > Number(process.env.LABIT_FOLLOW_WAIT_MS || 20000)) {
+        clearInterval(check);
+        console.log(`[lab] the newer labit didn't start (see ${path.join(LAB, 'lab.log')}): this lab keeps running`);
+      }
+    }, 100);
+  }, Number(process.env.LABIT_FOLLOW_MS || 30000)).unref();
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed
