@@ -124,6 +124,17 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     await ringIs(0, 'ring asks');
     check(eng, 'a question: an amber ring, and the pill has no line', (await ringOf(0)) === 'ring asks' && (await pillIs(/is working · 1 waiting/)) && !/drawing/.test(await pill()), `${await ringOf(0)} | ${await pill()}`);
     check(eng, 'the progress line is gone from the thread (cleared by the answer)', (await L.comments()).find((c) => c.id === ids[0]).progress === undefined);
+    // Read: opening the question's thread calms its ring (a pale amber) once it closes; a new question makes it amber again.
+    const amber = () => shadow(() => { const g = [...r.querySelectorAll('button.pin')][0]?.querySelector('.ring'); return g ? getComputedStyle(g).getPropertyValue('--rc').trim() : ''; });
+    const loud = await amber();
+    await shadow(() => { [...r.querySelectorAll('button.pin')][0].click(); });
+    await until(() => shadow(() => { return !!r.querySelector('.card .msg.asks'); }));
+    await p.keyboard.press('Escape');
+    await ringIs(0, 'ring asks read');
+    check(eng, 'a read question: the ring stays a question but calm, and it is not counted new', (await ringOf(0)) === 'ring asks read' && (await amber()) !== loud && !/new/.test(await shadow(() => { return [...r.querySelectorAll('button.pin')][0].getAttribute('aria-label'); })), `${await ringOf(0)} | ${loud} → ${await amber()}`);
+    await L.cli('reply', ids[0], 'and which shade?', '--question');
+    await ringIs(0, 'ring asks');
+    check(eng, 'a new question: amber again', (await ringOf(0)) === 'ring asks', await ringOf(0));
     await L.cli('reply', ids[0], 'Done: red', '--done');
     await ringsAre(['', 'ring got', 'ring wait']);
     check(eng, 'done: no ring; the next is picked up and the last is first in line', (await ringOf(0)) === '' && (await ringOf(1)) === 'ring got' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));

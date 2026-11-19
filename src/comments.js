@@ -1007,7 +1007,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
       if (tip) pin.removeAttribute('title');
       else pin.title = `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`;
-      pin.setAttribute('aria-label', `comment${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
+      pin.setAttribute('aria-label', `comment${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}${state === 'asks' && !news.length ? ', read' : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
       // Done wins over every face: a pin that has been answered or resolved wears the tick.
       const mark = state !== 'done' && !c.resolved && byAgent(c);
       const key = state === 'done' || c.resolved ? '✓' : mark ? '\0mark' : initial(c.name);
@@ -1036,12 +1036,15 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       S.rings.set(c.id, state);
       const ring = (/** @type {string | null} */ st, extra = '') => el('i', { class: `ring${RINGS[st] ?? ''}${extra}`, 'aria-hidden': 'true' });
       const shifted = changed && before !== state;
+      // A question you have read (its thread opened, so nothing in it is new) stays a question but goes calm: a muted
+      // amber, until the agent writes again (Leo, 19 Nov: "make orange pins read after i read them").
+      const calm = state === 'asks' && (!news.length || S.openId === c.id) ? ' read' : '';
       let r = /** @type {HTMLElement | null} */ (pin.querySelector(':scope > .ring:not(.gone)'));
       if (state in RINGS) {
         pin.querySelector(':scope > .ring.gone')?.remove();
-        const to = ring(state).className;
+        const to = ring(state, calm).className;
         if (!r) {
-          r = ring(state, shifted ? (state === 'now' ? ' come' : ' off') : '');
+          r = ring(state, calm + (shifted ? (state === 'now' ? ' come' : ' off') : ''));
           pin.append(r);
           const nr = r;
           if (shifted && state !== 'now') requestAnimationFrame(() => requestAnimationFrame(() => nr.classList.remove('off')));

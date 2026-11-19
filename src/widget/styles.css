@@ -105,13 +105,15 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
    that crossfades in over 300 ms: picked up pale green, waiting in line muted, no sign for 5 min grey, a question amber.
    Sent and done wear none. The turning arc stops (paused) once it has faded out. */
 .ring { --rc: transparent; }
-.ring::after { content: ''; position: absolute; inset: 0; opacity: 0; background: var(--rc); transition: opacity var(--_t-slow) var(--_ease-out); }
+.ring::after { content: ''; position: absolute; inset: 0; opacity: 0; background: var(--rc); transition: opacity var(--_t-slow) var(--_ease-out), background-color var(--_t-slow) var(--_ease-out); }
 .ring:is(.got, .wait, .stale, .asks)::before { opacity: 0; animation-play-state: paused; }
 .ring:is(.got, .wait, .stale, .asks)::after { opacity: 1; }
 .ring.got { --rc: rgba(52, 199, 89, .35); }
 .ring.wait { --rc: color-mix(in srgb, var(--_muted) 45%, transparent); }
 .ring.stale { --rc: var(--_muted); }
 .ring.asks { --rc: var(--_amber); }
+/* A question you've read: still amber, but calm (a pale outline) until the agent writes again. */
+.ring.asks.read { --rc: color-mix(in srgb, var(--_amber) 38%, transparent); }
 .pin .ring.off { opacity: 0; }
 /* Hovering a working pin shows what it is doing (a phone has no hover: its sheet's head says it). */
 .pin .tip { position: absolute; left: -4px; bottom: calc(100% + 10px); width: max-content; max-width: 240px; padding: 6px 9px; border-radius: var(--_r-s);
