@@ -18,6 +18,7 @@
     "switcher.ts": "labs & pages (⌘K): a box on a computer, one of the sheets on a phone; built as its own file (public/_lab/switcher.js), loaded on the first ⌘K or ⋯ open",
     "switcher.css": "the styles of switcher.ts, which brings them with it",
     "thread.ts": "a pin's thread card",
+    "trial.ts": "a question's choices tried in the sentence: the differing words swapped in place, the block's height held, the page put back exactly",
     "types.d.ts": "types shared by the modules"
   },
   "animations": [

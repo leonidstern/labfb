@@ -1,10 +1,12 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { bindTrial, keptRow, onReshow, triesInPlace, tryRow, untry } from './trial.ts';
 import { stickToEnd } from './stick.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
 export function bindThread(w: unknown) {
   W = w;
+  bindTrial(w);
 }
 
 export function placeCard(card, left, top) {
@@ -109,7 +111,8 @@ export function grab(pin, now) {
 //   replies that arrive in place, so the reply box keeps its focus;
 // - keys: R reply, E resolve, Escape closes, Ctrl-D / W next new (comments.js);
 // - phones: the bottom sheet (drag by its handle, swipe down to close: sheets.ts), "new · N ›" to the next one.
-// A question with choices adds its rows in its bubble (choicesEl, below). No keys on its rows: tap, Keep.
+// A question with choices adds its rows in its bubble (choicesEl, below); on quoted words the card opens in the margin
+// (placeAsk) and the rows are tried in the page. No keys on its rows: point, tap, Keep.
 export function threadCard(c, fresh = new Set(), focus = false) {
   const asking = openAsk(c);
   const card = W.el('div', { class: `card${asking ? ' asking' : ''}` }); // phones: an open question's sheet is half the screen
@@ -177,7 +180,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     box.append(...W.readable(item.text));
     if (item.session && Array.isArray(item.choices) && item.choices.length) {
       box.classList.add('asks');
-      box.append(choicesEl(c, item));
+      box.append(choicesEl(c, item, card));
     }
     if (item.session && /kept|undone/.test(item.suggest?.state)) box.append(ruleLine(item));
     const stamp = W.stampOf(item, c, item === c && !c.resolved ? `#${W.numberOf(c)} · ` : '');
@@ -323,6 +326,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
 // V1 "plain list" (Leo, 18 Nov): no bubble, no letters, no tags. The question, then the versions as a plain list of rows
 // (the page's own words "· now", a tick on the one shown), then one Keep. Keep sends the pick as a reply, "Picked B: …"
 // (the letter is for the agent, who listed them), with picked: { of, n } (lib/schema.mjs). No keys on the card.
+// With quoted words on the page the rows are also tried in it (trial.ts).
 // The open question in a thread: the agent's last message with choices that nobody has picked on yet.
 const pickOf = (c, ask) => W.repliesOf(c.id).filter((r) => r.picked?.of === ask.id).pop();
 export function openAsk(c) {
@@ -332,29 +336,42 @@ export function openAsk(c) {
 }
 const LETTER = (n: number) => String.fromCharCode(65 + n);
 // The rows of a question, under it. Answered (or an older one): the rows as they were, the pick ticked. Open: rows to
-// pick, Keep under them.
-function choicesEl(c, ask) {
+// try and pick, Keep under them. card: the thread's card (its tie is drawn again as words change).
+function choicesEl(c, ask, card) {
   const box = W.el('div', { class: 'choices' });
   const list = W.el('div', { class: 'rows' });
   box.append(list);
   const pick = pickOf(c, ask);
   const live = !pick && openAsk(c) === ask;
+  const inPlace = live && triesInPlace(c);
+  const exact = c.anchor?.quote?.exact || '';
+  // The quoted words as they are now: their own row ("· now") when trying in place, unless a choice is the same words.
+  const same = (a: string, b: string) => a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim();
+  const nowIs = inPlace ? ask.choices.findIndex((t) => same(t, exact)) : -1;
   const rows: { n: number; el: HTMLButtonElement }[] = [];
   const row = (n: number, text: string) => {
     const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement;
     b.append(W.el('span', { class: 'tx', dir: 'auto' }, text));
+    if (inPlace && (n < 0 || n === nowIs)) {
+      b.classList.add('now');
+      b.append(W.el('span', { class: 'nw' }, ' · now'));
+    }
     if (pick && pick.picked.n === n) b.classList.add('picked');
     rows.push({ n, el: b });
     return b;
   };
+  if (inPlace && nowIs < 0) list.append(row(-1, exact));
   ask.choices.forEach((t, n) => list.append(row(n, t)));
   if (pick && pick.picked.n < 0) box.append(W.el('span', { class: 'note' }, `kept as it was · ${pick.name}`));
   if (!live) return box;
 
-  // The row picked (tapped): the agent's own pick at first.
-  let cur = ask.recommend ?? -1;
-  // Always "Keep", always on (Leo, 18 Nov: "just keep all the time"); with no row ticked it keeps the words as they are.
+  // The row picked (tapped), and the one shown in the page (the row pointed at, or the picked one).
+  const back = keptRow(ask);
+  let cur = back ?? (inPlace ? (nowIs >= 0 ? nowIs : -1) : ask.recommend ?? -1);
+  // Always "Keep", always on (Leo, 18 Nov: "just keep all the time"): on the page's own words it keeps them as they are.
   const keep = W.el('button', { class: 'keep', type: 'button' }, 'Keep') as HTMLButtonElement;
+  const words = (n: number) => (n < 0 ? exact : ask.choices[n]);
+  const show = (n: number) => inPlace && tryRow(c, ask, n, n < 0 || n === nowIs ? null : words(n), card);
   const select = (n: number) => {
     cur = n;
     for (const r of rows) {
@@ -362,8 +379,13 @@ function choicesEl(c, ask) {
       r.el.setAttribute('aria-pressed', String(r.n === n));
     }
     if (!keep.disabled) keep.textContent = 'Keep'; // after "your name first" or "failed, try again"
+    show(n);
   };
-  for (const r of rows) r.el.addEventListener('click', () => select(r.n));
+  for (const r of rows) {
+    r.el.addEventListener('click', () => select(r.n));
+    if (!W.coarse) r.el.addEventListener('pointerenter', () => show(r.n));
+  }
+  if (!W.coarse) list.addEventListener('pointerleave', () => show(cur));
   box.append(keep);
   keep.addEventListener('click', async () => {
     if (keep.disabled) return;
@@ -377,6 +399,7 @@ function choicesEl(c, ask) {
     keep.disabled = true;
     try {
       const { comment } = await W.send({ name, text, parent: ask.id, to: ask.id, picked: n });
+      untry(); // the agent writes the pick into the file; the page shows its own words till then
       W.S.comments.push(comment);
       W.markSeen([comment]);
       W.render();
@@ -386,6 +409,8 @@ function choicesEl(c, ask) {
     }
   });
   select(cur);
+  // After a hot save the words may be gone (or be back): the card is drawn again so its rows and place match them.
+  onReshow(() => box.isConnected && (triesInPlace(c) === inPlace ? show(cur) : W.render()));
   return box;
 }
 

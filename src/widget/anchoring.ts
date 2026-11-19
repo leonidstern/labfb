@@ -912,7 +912,9 @@ export function foundAt(anchor) {
 
 // An element's letters without spaces, each with its text piece and place in it; read once per moment and shared by
 // the pins in it (pins on the page itself each read the whole page).
-const letters = new WeakMap<Node, { when: number; text: string; at: [Text, number][] }>();
+let letters = new WeakMap<Node, { when: number; text: string; at: [Text, number][] }>();
+/** The page's words were changed by the widget itself (a question's choice tried in place, thread.ts): read them again. */
+export const forgetLetters = () => void (letters = new WeakMap());
 function lettersOf(node, fresh = false) {
   const had = letters.get(node);
   if (had && !fresh && performance.now() - had.when < 400) return had;
@@ -964,6 +966,10 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
   }
   return stale && !fresh ? quoteRange(anchor, from, strict, true) : null;
 }
+// The quoted words of a text comment as a Range in the page now, or null (a question's choices are tried in their place:
+// src/widget/thread.ts). Found as the pin and the highlight find them.
+export const quoteRangeOf = (anchor) =>
+  quoteRange(anchor) || (anchor?.quote?.exact && /^<(body|html)[\s>]/.test(anchor.element || '') ? quoteRange(anchor, document.body, true) : null);
 // A message's name with its small marks: ↩ replied, ✅ done.
 // A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
 export const nameLine = (name) => el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));

@@ -66,7 +66,7 @@ const check = (eng, name, ok, detail = '') => {
 
 start();
 await up();
-for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+for (const eng of ['webkit', 'chromium']) {
   write('index.html', PAGE);
   write('s.css', 'h1{color:rgb(255,0,0)} body{margin:30px}');
   const browser = await pw[eng].launch();
@@ -368,6 +368,194 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     }
   }
   await post({ page, action: 'delete', id: work.comment.id });
+  // Every comment on a page of ours goes, so each engine starts from nothing.
+  const wipe = async (pg) => { for (const c of (await (await fetch(`${B}/_lab/api/comments?page=${pg}`)).json()).comments.filter((x) => !x.parent)) await post({ page: pg, action: 'delete', id: c.id }); };
+  // A question with choices, tried in the sentence (src/widget/thread.ts, trial.ts): a page of its own, so the checks above
+  // and the reload below keep their counts.
+  {
+    const body = (a) => `<!doctype html><meta charset="utf-8"><title>Ask</title><style>body{margin:30px;font:18px/1.6 serif}main{max-width:520px}</style><main>${a}</main>`;
+    const para = '<p id="a">First line. labit puts the <a id="lnk" href="#g">full guide</a> on the page, not in chat. Then more words after it.</p><p id="b">Second paragraph with <em>quiet</em> words.</p><p id="c">Third paragraph of filler words.</p>';
+    const fill = Array.from({ length: 14 }, (_, i) => `<p>Filler ${i} with some words so the page has a length.</p>`).join('');
+    const quote = { exact: 'the full guide on the page', prefix: 'labit puts ', suffix: ', not in chat' };
+    const choices = ['this short guide on the page', 'the guide right on the page', 'the full guide, on the page, right beside every sentence you write and every word you weigh'];
+    write('ask.html', body(para + fill));
+    await wipe('/ask');
+    const q = await ctx.newPage();
+    await q.goto(B + '/ask');
+    await sleep(1200);
+    const sq = (fn, arg) => q.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
+    const anchor = { kind: 'text', selector: '#a', x: 0.3, y: 0.2, docX: 0.3, docY: 80, width: 1000, element: '<p id="a">', text: '…labit puts [the full guide on the page], not in chat…', quote };
+    const root = (await post({ page: '/ask', name: 'leo', text: 'which reads best?', anchor })).comment;
+    const asked = (await post({ page: '/ask', name: 'Claude', text: 'Which reads best?', parent: root.id, choices, recommend: 0 })).comment;
+    await sleep(1200);
+    const html = () => q.evaluate(() => document.querySelector('#a').innerHTML);
+    const nodes = () => q.evaluate(() => { let n = 0; for (const w = document.createTreeWalker(document.querySelector('#a'), NodeFilter.SHOW_ALL); w.nextNode(); ) n++; return n; });
+    const quoteRects = () => q.evaluate(() => {
+      const b = document.querySelector('#a').getBoundingClientRect();
+      const l = document.querySelector('#lnk').getBoundingClientRect();
+      return { para: { right: b.right, top: b.top }, link: { top: l.top, bottom: l.bottom } };
+    });
+    const card = () => sq(() => {
+      const c = r.querySelector('.card');
+      if (!c) return null;
+      const b = c.getBoundingClientRect();
+      const rows = [...r.querySelectorAll('.choice')];
+      return { cls: c.className, left: b.left, top: b.top, right: b.right, bottom: b.bottom, tie: Boolean(r.querySelector('.tie')), keys: Boolean(r.querySelector('.keys, .keeprow, .tag, .lt')), bubble: getComputedStyle(r.querySelector('.msg.asks')).backgroundColor, name: getComputedStyle(r.querySelector('.msg.asks > b')).display, rows: rows.map((x) => x.textContent), on: rows.findIndex((x) => x.classList.contains('on')), disabled: rows.every((x) => x.disabled), keep: r.querySelector('.keep')?.textContent, keepOff: r.querySelector('.keep')?.disabled, picked: rows.findIndex((x) => x.classList.contains('picked')) };
+    });
+    const original = await html();
+    await q.evaluate(() => (window.__lnk = document.querySelector('#lnk')));
+    const pinsAt = () => sq(() => { return [...r.querySelectorAll('button.pin')].map((b) => b.style.left + '/' + b.style.top).join(' '); });
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(700);
+    let c = await card();
+    const geo = await quoteRects();
+    check(eng, 'a question opens in the margin, clear of the words', c && /margin/.test(c.cls) && c.tie && c.left >= geo.para.right + 28 && c.right <= 1000 - 8 && c.right - c.left === 280 && Math.abs(c.top - geo.para.top) <= 10, JSON.stringify([c?.cls, c?.tie, c?.left, c?.right, c?.top, geo.para]));
+    check(eng, 'a question (V1 plain list): no bubble, plain rows, the page\'s words "· now" ticked, no letters, tags or hint, one Keep that always says Keep', c && c.rows.length === 4 && c.rows[0] === 'the full guide on the page · now' && c.rows.slice(1).every((t, i) => t === choices[i]) && !c.keys && /rgba\(0, 0, 0, 0\)|transparent/.test(c.bubble) && c.name === 'none' && c.on === 0 && c.keep === 'Keep' && !c.keepOff, JSON.stringify(c));
+    const pinsBefore = await pinsAt();
+    const countBefore = await nodes();
+    const belowAt = () => q.evaluate(() => Math.round(document.querySelector('#b').getBoundingClientRect().top + scrollY));
+    const tap = (i) => sq(() => { r.querySelectorAll('.choice')[a].click(); }, i);
+    await tap(1); // from the words now to the first version, the agent's pick
+    await sleep(250);
+    c = await card();
+    check(eng, 'tapping a version ticks it and Keep says Keep', c.on === 1 && c.keep === 'Keep', JSON.stringify([c.on, c.keep]));
+    const tried = await q.evaluate(() => ({ text: document.querySelector('#a').textContent, link: document.querySelector('#lnk') === window.__lnk, linkText: document.querySelector('#lnk')?.textContent, linkIn: document.querySelector('#a').contains(document.querySelector('#lnk')) }));
+    check(eng, 'trying B swaps only the differing words; the link keeps its word', /labit puts this short guide on the page, not in chat/.test(tried.text) && tried.linkIn && tried.linkText === 'guide', JSON.stringify(tried));
+    // Stepping through versions of different lengths never moves the page below: the block holds its tallest height
+    // from the first try (one settle), then stays.
+    const below = await belowAt();
+    await tap(3); // the third, much longer: it wraps to more lines
+    await sleep(250);
+    const atC = await belowAt();
+    await tap(1); // back on the first
+    await sleep(250);
+    check(eng, 'stepping to a longer version and back never moves the paragraph below', atC === below && (await belowAt()) === below, `${below} → ${atC} → ${await belowAt()}`);
+    check(eng, 'a try adds and removes no node, and moves no pin', pinsBefore.length > 3 && (await nodes()) === countBefore && (await pinsAt()) === pinsBefore, `${countBefore} → ${await nodes()}; ${pinsBefore} → ${await pinsAt()}`);
+    // A script error on the page leaves a try as it is.
+    await q.evaluate(() => setTimeout(() => { throw new Error('boom'); }, 0));
+    await sleep(200);
+    check(eng, 'a script error elsewhere does not drop the try', /this short guide/.test(await q.evaluate(() => document.querySelector('#a').textContent)));
+    await q.keyboard.press('Escape');
+    await sleep(400);
+    check(eng, 'Escape puts the paragraph back exactly, and closes the card', (await html()) === original && (await card()) === null, (await html()).slice(0, 120));
+
+    // Keep on the page's own words (the "now" row, as the card opens) keeps them as they are.
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(600);
+    await sq(() => { r.querySelector('button.keep').click(); });
+    await sleep(900);
+    const asIs = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
+    check(eng, 'Keep on the page\'s own words keeps them as they are', asIs.length === 1 && asIs[0].picked.n === -1 && asIs[0].text.startsWith('Keep as is') && (await html()) === original, JSON.stringify(asIs.map((x) => [x.picked, x.text])));
+    for (const x of asIs) await post({ page: '/ask', action: 'delete', id: x.id });
+    await q.keyboard.press('Escape');
+    await sleep(400);
+
+    // Keep B sends the pick; the words are the page's until the agent writes the file.
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(600);
+    await tap(2);
+    await sleep(150);
+    await sq(() => { r.querySelector('button.keep').click(); });
+    await sleep(900);
+    const got = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
+    c = await card();
+    check(eng, 'Keep B sends the pick', got.length === 1 && got[0].picked.of === asked.id && got[0].picked.n === 1 && got[0].text.startsWith('Picked B: ') && (await html()) === original, JSON.stringify(got.map((x) => [x.picked, x.text])));
+    check(eng, 'after the pick the rows are disabled and the pick is marked', c && c.disabled && c.picked === 1 && c.cls.includes('margin'), JSON.stringify(c && [c.disabled, c.picked, c.cls]));
+    await post({ page: '/ask', action: 'delete', id: got[0].id });
+    await q.keyboard.press('Escape');
+    await sleep(300);
+
+    // A save of the page's file while a choice is tried: the choice is tried again; words gone: rows only.
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(600);
+    await tap(1);
+    await sleep(250);
+    write('ask.html', body(para.replace('Third paragraph of filler words.', 'Third paragraph, edited.') + fill));
+    await sleep(1800);
+    const after = await q.evaluate(() => ({ text: document.querySelector('#a').textContent, third: document.querySelector('#c').textContent }));
+    c = await card();
+    check(eng, 'an HTML save mid-try: patch applied, same row tried in the new words', /Third paragraph, edited\./.test(after.third) && /this short guide on the page/.test(after.text) && c && /margin/.test(c.cls) && c.on === 1, JSON.stringify([after, c?.on]));
+    write('ask.html', body(para.replace('labit puts the <a id="lnk" href="#g">full guide</a> on the page, not in chat.', 'Nothing of it is left.') + fill));
+    await sleep(1800);
+    c = await card();
+    check(eng, 'words gone after a save: rows only, out of the margin, no "now" row', c && !/margin|under/.test(c.cls) && !c.tie && c.rows.length === 3 && !c.rows[0]?.endsWith('now'), JSON.stringify(c));
+    await q.keyboard.press('Escape');
+    write('ask.html', body(para + fill));
+    await sleep(1800);
+
+    // A pick from elsewhere (another device) while a choice is tried: the words go back, the rows are disabled.
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(600);
+    await tap(1);
+    await sleep(200);
+    const trying = await q.evaluate(() => document.querySelector('#a').textContent);
+    await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/ask', name: 'Sam', text: 'Picked C: the guide right on the page', parent: asked.id, to: asked.id, picked: 2 }) });
+    await sleep(1200);
+    c = await card();
+    check(eng, 'a pick from elsewhere puts the words back', trying !== (await q.evaluate(() => document.querySelector('#a').textContent)) && (await html()) === original && c && c.disabled && c.picked === 2, JSON.stringify(c && [c.disabled, c.picked]));
+    await q.keyboard.press('Escape');
+    await sleep(300);
+    await post({ page: '/ask', action: 'delete', id: (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.find((x) => x.picked)?.id });
+    await sleep(800);
+
+    // The window too narrow for the margin: the card goes under the quote's last line, never over the words.
+    await q.setViewportSize({ width: 700, height: 700 });
+    await sleep(300);
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(800);
+    c = await card();
+    const g2 = await quoteRects();
+    check(eng, 'narrow window: card under the quote', c && /under/.test(c.cls) && !/margin/.test(c.cls) && c.top >= g2.link.bottom - 1, JSON.stringify([c?.cls, c?.top, g2.link.bottom]));
+    await q.keyboard.press('Escape');
+    // Wide again with the card open: a card that fits goes back to the margin only when drawn again; the other way round it moves.
+    await q.setViewportSize({ width: 1000, height: 700 });
+    await sleep(300);
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(700);
+    await q.setViewportSize({ width: 700, height: 700 });
+    await sleep(900);
+    c = await card();
+    check(eng, 'the window narrowed with a margin card open: it is placed again', c && !/margin/.test(c.cls) && c.right <= 700, JSON.stringify([c?.cls, c?.right]));
+    await q.keyboard.press('Escape');
+    await q.setViewportSize({ width: 1000, height: 700 });
+    await q.close();
+  }
+
+  // Words that look like HTML are text; a quote across two paragraphs shows rows only.
+  {
+    const body = (a) => `<!doctype html><meta charset="utf-8"><title>Ask2</title><style>body{margin:30px;font:18px/1.6 serif}main{max-width:520px}</style><main>${a}</main>`;
+    write('ask2.html', body('<p id="a">One sentence ends here.</p><p id="b">The next one starts here and goes on.</p><p id="c">Alone <b>bold</b> words here.</p>' + Array.from({ length: 10 }, (_, i) => `<p>Filler ${i}.</p>`).join('')));
+    await wipe('/ask2');
+    const q = await ctx.newPage();
+    await q.goto(B + '/ask2');
+    await sleep(1200);
+    const sq = (fn, arg) => q.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
+    const across = (await post({ page: '/ask2', name: 'leo', text: 'across', anchor: { kind: 'text', selector: 'body', x: 0.3, y: 0.2, docX: 0.3, docY: 80, width: 1000, element: '<body>', text: '…One [sentence ends here. The next one] starts here…', quote: { exact: 'sentence ends here. The next one', prefix: 'One ', suffix: ' starts here' } } })).comment;
+    await post({ page: '/ask2', name: 'Claude', text: 'Which?', parent: across.id, choices: ['sentence ends here. The next one', 'sentence stops. The next two'], recommend: 1 });
+    await sleep(1200);
+    const mine = () => q.evaluate(() => document.querySelector('#a').innerHTML + document.querySelector('#b').innerHTML);
+    const before = await mine();
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(700);
+    await sq(() => { r.querySelectorAll('.choice')[1].click(); });
+    await sleep(200);
+    const row = await sq(() => { return { cls: r.querySelector('.card').className, rows: [...r.querySelectorAll('.choice')].map((x) => x.textContent) }; });
+    check(eng, 'a quote across two blocks: rows only, no "now" row, nothing changed in the page', !/margin/.test(row.cls) && row.rows.length === 2 && !row.rows.some((t) => t?.endsWith('now')) && (await mine()) === before, JSON.stringify(row));
+    await q.keyboard.press('Escape');
+    await post({ page: '/ask2', action: 'delete', id: across.id });
+    const text = (await post({ page: '/ask2', name: 'leo', text: 'tags', anchor: { kind: 'text', selector: '#c', x: 0.3, y: 0.2, docX: 0.3, docY: 200, width: 1000, element: '<p id="c">', text: '…Alone [bold] words…', quote: { exact: 'Alone', prefix: '', suffix: ' bold words here' } } })).comment;
+    await post({ page: '/ask2', name: 'Claude', text: 'Which?', parent: text.id, choices: ['Alone', '<b>Lonely</b><img src=x onerror="window.__x=1"> שלום'], recommend: 1 });
+    await sleep(1200);
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(700);
+    await sq(() => { r.querySelectorAll('.choice')[1].click(); });
+    await sleep(250);
+    const raw = await sq(() => { return { tx: [...r.querySelectorAll('.choice .tx')].map((x) => [x.textContent, x.getAttribute('dir'), x.children.length]) }; });
+    const inPage = await q.evaluate(() => ({ c: document.querySelector('#c').textContent, imgs: document.querySelectorAll('#c img').length, bs: document.querySelectorAll('#c b').length, x: window.__x }));
+    check(eng, 'a choice with tags shows as text, in the row and in the sentence (dir auto)', raw.tx[1][0].startsWith('<b>Lonely</b><img') && raw.tx.every(([, d, k]) => d === 'auto' && k === 0) && inPage.c.startsWith('<b>Lonely</b>') && inPage.imgs === 0 && inPage.bs === 1 && inPage.x === undefined, JSON.stringify([raw, inPage]));
+    await q.keyboard.press('Escape');
+    await q.close();
+  }
 
   // A save the page has nothing to do with leaves it alone; one it may fetch reloads it; a lab restart doesn't.
   // (A page with its own <script> is not used here: such a page never patches in place, it reloads on every HTML
