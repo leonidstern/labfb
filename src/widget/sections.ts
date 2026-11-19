@@ -93,6 +93,7 @@ export function startSections() {
   const api = () => W.script.dataset.live?.replace(/live$/, 'api/sections') || '';
   const who = () => W.store.get('lab-name').trim();
   const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const born = performance.now(); // the first placing (a load, a reload) jumps straight there: a slide then reads as the bar glitching
 
   let secs: Sec[] = [];
   let marks: Marks | null = null; // null: never read anything here
@@ -180,7 +181,7 @@ export function startSections() {
   // Sideways only: the bar moves, the page does not.
   const glide = (c: HTMLElement | undefined, always = false) => {
     if (!c || (nav.scrollWidth <= nav.clientWidth)) return;
-    if (always || c.offsetLeft < nav.scrollLeft || c.offsetLeft + c.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: Math.max(0, c.offsetLeft - 12), behavior: still() ? 'auto' : 'smooth' });
+    if (always || c.offsetLeft < nav.scrollLeft || c.offsetLeft + c.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: Math.max(0, c.offsetLeft - 12), behavior: still() || performance.now() - born < 1500 ? 'auto' : 'smooth' });
   };
   // Folds what does not fit into "…" (a computer; a phone's line scrolls).
   const fold = () => {
