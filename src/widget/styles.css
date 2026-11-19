@@ -146,7 +146,7 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .choices { display: grid; gap: 8px; margin: 8px 0 2px; }
 .choices .rows { display: grid; gap: 2px; }
 button.choice { display: flex; align-items: baseline; gap: 8px; width: 100%; margin: 0; padding: 7px 10px; border: 0; border-radius: var(--_r-s);
-                background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background var(--_t-quick); }
+                background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background var(--_fade); }
 button.choice::before { content: ''; flex: none; width: 14px; text-align: center; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--_fg); }
 button.choice.on { background: var(--_soft); } button.choice.on::before { content: '✓'; } /* on: the rows' soft wash, and the tick of a pick-several list */
 button.choice:hover:not(:disabled) { background: var(--_soft); }
@@ -159,7 +159,7 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .choice .nw { flex: none; margin-left: -8px; white-space: pre; } /* " · now" right after the words, not a flex gap away */
 .choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); }
 button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding: 6px 12px; background: var(--_accent); color: var(--_accent-fg);
-              font-size: 12px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_t-quick); }
+              font-size: 12px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_fade); }
 button.keep:hover:not(:disabled) { opacity: .9; }
 button.keep:disabled { opacity: .4; cursor: default; }
 .card.margin { width: 280px; }
@@ -210,8 +210,8 @@ button.btn.danger, button.btn.danger:hover { color: var(--_red); }
 .box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
 .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
         background: var(--_hover); color: var(--_muted); display: grid; place-items: center; transition: background var(--_t-quick) var(--_ease-out), color var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease); }
-.send.ready:hover { transform: scale(1.02); }
-.send.ready:active { transform: scale(1.02); }
+.send.ready:hover { transform: scale(1.03); } /* one hover growth: the pin's */
+.send.ready:active { transform: scale(1.03); }
 .send.ready { background: var(--_accent); color: var(--_accent-fg); animation: lab-ready var(--_t-quick) var(--_ease-out); }
 /* The first letter typed: the arrow turns dark with a tiny pop, so you see it's ready (lab A5, Leo 16 Nov). */
 @keyframes lab-ready { 50% { transform: scale(1.04); } }
@@ -351,7 +351,7 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
 .bar .cnt.zero { color: var(--_muted); }
 .bar .cnt:not(.zero) { color: var(--_green-fg); } /* something new: green, the go pin's green (Leo, 17 Nov) */
 .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
-      color: var(--_green-fg); box-shadow: inset 0 0 0 1.25px var(--_green-fg); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
+      color: var(--_green-fg); box-shadow: inset 0 0 0 1.25px var(--_green-fg); transition: background-color var(--_fade), color var(--_fade); }
 /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
 .go-btn:not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
 /* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
@@ -514,8 +514,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
    card does (.in / .out, above); a copy of the bar goes out as the dialog comes in. */
 .fd { position: absolute; z-index: 4; overflow: hidden; background: var(--_bg); border-radius: var(--_radius);
       box-shadow: var(--_shadow); }
-.pane { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; transition: opacity var(--_t-quick); }
-.pane.on { opacity: 1; pointer-events: auto; transition: opacity var(--_t-base) var(--_t-base); }
+.pane { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; transition: opacity var(--_fade); }
+.pane.on { opacity: 1; pointer-events: auto; transition: opacity var(--_fade-base) var(--_t-base); }
 .settled .p-dlg { position: relative; }
 .fd .p-bar { width: max-content; margin: 0; padding: 6px; }
 .p-dlg { padding: 8px; }
@@ -631,7 +631,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar .sb-chip[aria-current] { background: var(--_soft); font-weight: inherit; color: var(--_fg); } /* on: the rows' soft wash */
 .sbar .sb-chip:hover, .sbar .sb-more:hover { background: none; color: var(--_fg); }
 .sbar .sb-chip, .sbar .sb-more { -webkit-tap-highlight-color: transparent; }
-.sbar .sb-t { border-radius: var(--_r-s); transition: background-color var(--_t-slow) var(--_ease); }
+.sbar .sb-t { border-radius: var(--_r-s); transition: background-color var(--_fade); }
 .sbar .sb-chip[data-st="new"] .sb-t { background-color: color-mix(in srgb, var(--_green) 30%, transparent); }
 .sbar .sb-chip[data-st="updated"] .sb-t { background-color: color-mix(in srgb, var(--_green) 15%, transparent); }
 .sbar .sb-more[data-st="1"] { color: var(--_green); }

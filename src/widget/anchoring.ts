@@ -982,7 +982,7 @@ export function goToBlock(e: Element) {
   const r = e.getBoundingClientRect();
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   scrollTo({ top: Math.max(0, r.top + scrollY - 24 - (parseFloat(host.style.getPropertyValue('--lab-sbb')) || 0)), behavior: still ? 'auto' : 'smooth' });
-  const ring = '2px solid rgb(52, 199, 89)';
+  const ring = `2px solid ${getComputedStyle(host).getPropertyValue('--_green').trim()}`;
   e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: ms('hold', 2) });
 }
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that

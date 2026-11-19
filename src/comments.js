@@ -80,6 +80,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get loadChanges() { return loadChanges; },
     get markSeen() { return markSeen; },
     get ms() { return ms; },
+    get ease() { return ease; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
     get actions() { return ACTIONS.words; },
