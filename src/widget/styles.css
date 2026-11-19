@@ -204,6 +204,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
    The text grows upward; the name and arrow stay on its last line. Only a first comment, with no name yet, opens
    the second row to ask for it. */
 .box.one, .box.one.open { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "text who send"; align-items: end; row-gap: 0; padding: 7px 7px 7px 14px; }
+.box.one.tall { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "text text" "who send"; row-gap: 8px; align-items: end; } /* scrolling text: the scrollbar at the box's right edge */
 .box.one .line { display: none !important; }
 .box.one .who { align-self: end; line-height: 20px; padding-bottom: 2px; max-width: 40%; } /* the text's last line box, so they share a line */
 .box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
