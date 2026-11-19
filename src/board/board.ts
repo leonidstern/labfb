@@ -17,7 +17,7 @@ let of = new URLSearchParams(location.search).get('of') || ''; // the page this 
 const coarse = matchMedia('(pointer: coarse)').matches;
 const CAP = coarse ? 3 : 8; // frames alive at once (a phone draws them at 390 wide, so three side by side stay light)
 const AT_ONCE = coarse ? 1 : 2; // frames loading at once
-const WAKE = coarse ? 80 : 120; // a frame is woken when it is in view and at least this many screen px wide (a phone: all three fitted)
+const WAKE = coarse ? 56 : 120; // a frame is woken when it is in view and at least this many screen px wide (a phone: every frame fitted, live)
 
 const css = `
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#e9e8e4;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif}
