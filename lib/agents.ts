@@ -12,7 +12,7 @@ export const AGENTS: Record<string, { name: string; env: string[] }> = {
   copilot: { name: 'Copilot', env: [] },
   claude: { name: 'Claude', env: ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID'] },
 };
-// A name or id to a known agent: "codex", "Codex", "codex-mcp-client", "claude-code", "cursor-agent", "agy".
+// A name or id to a known agent: "codex", "Codex", "claude-code", "cursor-agent", "agy".
 export const agentKind = (word: unknown = ''): string => {
   const w = String(word).toLowerCase();
   if (/\bagy\b/.test(w)) return 'antigravity';
@@ -21,7 +21,7 @@ export const agentKind = (word: unknown = ''): string => {
 // Which agent runs this command: LAB_AGENT (any name), then each agent's own
 // variables (Claude's last, as other agents run inside its shells), then AGENT / AI_AGENT when they name a known
 // agent (inherited more easily: Claude Code sets AI_AGENT). Unknown: Claude, as before.
-export function agentNow(env: NodeJS.ProcessEnv = process.env): { kind: string; name: string } {
+function agentNow(env: NodeJS.ProcessEnv = process.env): { kind: string; name: string } {
   const own = (env.LAB_AGENT || '').trim().slice(0, 30);
   if (own) return { kind: agentKind(own), name: AGENTS[agentKind(own)]?.name || own };
   const kind = Object.keys(AGENTS).find((k) => AGENTS[k].env.some((v) => env[v])) || agentKind(env.AGENT) || agentKind(env.AI_AGENT);
