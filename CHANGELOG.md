@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Lighter page script (−1.6 KB gzipped, 59.2 → 57.6 KB): the `?kbdebug` phone logger no longer ships, and a few unused pieces are gone (the chat's never-used "reply to a message" path, the hidden prev/next new-comment buttons, helpers nothing called, two comment-box options nobody set, the second copy of the labit mark, a long licence banner). Nothing changes on a page.
+- A comment box that has closed stops watching the page. Each redraw built a new box that kept a page-wide observer for good, so with a thread open the observers piled up and every change to the page ran all of them.
 - The npm package is 122 KB packed, down from 133: the command line is one minified file (`dist/local.mjs`), and `dist/` is cleaned before each build, so chunks from an older build no longer ship. Nothing changes in how labit runs. A dead second copy of the `publish` code is gone.
 - A long comment's scrollbar sits at the box's right edge. With your name already set the box keeps one row (text, name, arrow); once the words scroll, the name and arrow drop to a row of their own so the scrollbar is no longer left of them.
 - Holding Shift over words (to quote them) shows the drawn I-beam with a low ink band at its foot, in place of the I-beam with a green pin tip.
