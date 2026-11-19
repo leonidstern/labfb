@@ -1889,7 +1889,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
     else {
       // Your list, in its order: as many chips as fit on one line (measured; select's ↑ ↓ go first), then "…". "…"
-      // grows the line into the whole list (tap = use it) and, on this computer, ✎ on every action and "+ add"
+      // grows the line into the whole list (tap = use it) and, on this computer, hold or right-click a row to edit it, "+ add"
       // (saved in your settings through the lab, PUT /_lab/api/actions; a new one goes at the end).
       const mayEdit = Boolean(adminToken && ACTSAPI);
       const menu = el('div', { class: 'acts', hidden: '' });
@@ -1947,13 +1947,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       };
       // Growing sheet (Leo, 19 Nov, "c"): "…" grows the line itself into the whole list, in the same sheet or box, the
       // text field staying where it is below it. Each row is the action's name over its prompt on one muted line, tap =
-      // use it; a quiet pencil at the right edits it; "+ add" is the last row, "done" (or "…" again) folds it back to the line.
+      // use it; holding it (450 ms) or right-clicking it edits it, no pencil (Leo, 19 Nov: "i dont like pencil remove it");
+      // "+ add" is the last row, "done" (or "…" again) folds it back to the line. Until you have edited once, the bottom
+      // line says how, muted, in the room between "+ add" and "done" (so nothing moves when it goes).
       const icon = (d) => {
         const s = el('span', { class: 'ico', 'aria-hidden': 'true' });
         s.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
         return s;
       };
-      const PEN = 'M10.5 2.5l3 3L6 13H3v-3z M9 4l3 3';
       const PLUS = 'M8 3v10 M3 8h10';
       function fill() {
         menu.replaceChildren(...(spill.children.length ? [spill] : []));
@@ -1963,13 +1964,29 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           const line = el('div', { class: 'act' });
           const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
           use.append(el('b', {}, a.name), el('span', {}, a.prompt));
-          use.addEventListener('click', () => (openMenu(false, true), chips[i].click()));
+          let held = false; // a hold opened the editor: the click that follows the release is not a use
+          use.addEventListener('click', () => (held ? (held = false) : (openMenu(false, true), chips[i].click())));
           line.append(use);
           if (mayEdit) {
-            const pen = btn('', { class: 'pen', 'aria-label': `edit ${a.name}` });
-            pen.append(icon(PEN));
-            pen.addEventListener('click', () => line.replaceWith(editor(i)));
-            line.append(pen);
+            const edit = () => {
+              if (!line.isConnected) return;
+              store.set('lab-act-edited', '1');
+              line.replaceWith(editor(i));
+            };
+            use.addEventListener('contextmenu', (e) => (e.preventDefault(), edit()));
+            /** @type {ReturnType<typeof setTimeout> | undefined} */
+            let t;
+            let at = [0, 0];
+            const stop = () => clearTimeout(t);
+            use.addEventListener('pointerdown', (e) => {
+              if (e.button) return;
+              held = false;
+              at = [e.clientX, e.clientY];
+              stop();
+              t = setTimeout(() => ((held = true), edit()), 450);
+            });
+            use.addEventListener('pointermove', (e) => Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 8 && stop());
+            for (const k of ['pointerup', 'pointercancel', 'pointerleave']) use.addEventListener(k, stop);
           }
           list.append(line);
         }
@@ -1979,6 +1996,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           add.append(icon(PLUS), 'add');
           add.addEventListener('click', () => foot.replaceWith(editor(LIST.length)));
           foot.append(add);
+          if (!store.get('lab-act-edited')) foot.append(el('span', { class: 'act-hint' }, coarse ? 'hold to edit' : 'right-click to edit'));
         }
         const fold = quiet(btn('done', { class: 'fold' }));
         fold.addEventListener('click', () => openMenu(false));
