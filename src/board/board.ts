@@ -398,7 +398,10 @@ addEventListener('pointermove', (e) => {
     return;
   }
   pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) (down.far = true), clearTimeout(holdTimer);
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) {
+    down.far = true;
+    clearTimeout(holdTimer);
+  }
   if (down?.held) return; // the hold made a pin: the finger lifting off doesn't pan
   if (down?.far && down.mv) {
     // Positions round to 8 px; an edge within 6 screen px of another frame's edge takes that edge.
