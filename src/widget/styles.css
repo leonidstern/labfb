@@ -574,7 +574,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .p-bar button { min-height: 44px; padding: 0 14px; font-size: 14px; letter-spacing: -.011em; }
   .float > .quick { flex: none; gap: 8px; margin: 0; padding: 2px 12px 10px; }
   .float > .quick button { min-height: 36px; padding: 0 12px; font-size: 14px; letter-spacing: -.011em; }
-  .float > .quick button, .float > .composer .box { border-radius: max(0px, calc(var(--_card-r) - 12px)); } /* the sheet's corners (--_card-r), the box and buttons 12 px in */
+  .float > .composer .box { border-radius: max(0px, calc(var(--_card-r) - 12px)); } /* the sheet's corners (--_card-r), the box 12 px in */
+  /* The action buttons keep the computer's corner (Leo, 19 Nov: from the sheet's they read as pills on a phone). */
+  .float > .quick button { border-radius: max(0px, calc(var(--_radius) - 8px)); }
 }
 /* Phones: the listening label is the mark on the "chat" button (dark and blinking now and then: listening,
    green with twitching ears: working, grey: nobody), the bar goes back to the bottom, and the send button is big
