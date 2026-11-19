@@ -992,7 +992,7 @@ export function goToBlock(e: Element) {
     const range = document.createRange();
     range.selectNodeContents(e);
     const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-    const green = getComputedStyle(host).getPropertyValue('--_green-fg').trim() || 'rgb(36, 160, 70)';
+    const green = getComputedStyle(host).getPropertyValue('--_green-fg').trim();
     const ink = document.createElement('div');
     ink.setAttribute('data-lab-comments', '');
     ink.setAttribute('aria-hidden', 'true');
