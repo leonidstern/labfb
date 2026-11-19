@@ -98,6 +98,29 @@ try {
         await p.mouse.move(5, 650);
         await sleep(300);
       }
+      // Running away (Leo, 19 Nov: "option and move cursor makes controls run away"): ⌥ on the loop, then the pointer
+      // in the gap between its track and the dot. The row holds them all, but its control (at the row's far corner) doesn't
+      // take over: the loop's stays where it was, then fades.
+      {
+        await p.keyboard.up('Alt');
+        await sleep(400);
+        const tr = await p.evaluate(() => document.getElementById('track').getBoundingClientRect().toJSON());
+        const dt = await p.evaluate(() => document.getElementById('dot').getBoundingClientRect().toJSON());
+        await p.mouse.move(tr.left + 20, tr.top + 40);
+        await p.keyboard.down('Alt');
+        await p.mouse.move(tr.left + 21, tr.top + 40);
+        let g0 = null;
+        for (let i = 0; i < 20 && !(g0 = await ctl(p)); i++) await sleep(50);
+        const gap = [];
+        for (let i = 0; i < 6; i++) {
+          await p.mouse.move((tr.right + dt.left) / 2, tr.top + 40 + (i % 2));
+          await sleep(60);
+          gap.push(await ctl(p));
+        }
+        await p.keyboard.up('Alt');
+        await sleep(300);
+        check(eng, 'the gap between moving things: the control there stays put, the box around them takes none', Boolean(g0) && gap.every((c) => !c || (Math.abs(c.x - g0.x) < 2 && Math.abs(c.y - g0.y) < 2)), JSON.stringify({ g0, gap }));
+      }
       // Jumping (Leo, 19 Nov: "its jumping yeah"): two moving things side by side; ⌥ on the first, the pointer passes
       // over the second on the way to the first's control: the control stays the first's, in one place.
       await p.evaluate(() => {
