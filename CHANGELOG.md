@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The listening pill drops the session name: "talking to Claude · Opus 5.5", not "… (labit for writing)". The name is in the pill's tooltip, and still in the labs & pages list.
 - On computers a comment on a spot or an area is one card like the dialog on words: the page's colour, the card's shadow, and the box (and its actions row, where there is one) 8 px in, its corners concentric with the card's.
 - The listening mark's colours: green while an agent listens or works, amber while the page reconnects to the lab (it was faded green), muted grey when no agent listens (it was black). Its tooltip names the state first (Listening, Working, Away), then the resume command.
 - Done pins are as big as open ones, only faded (50%). Before, a done pin also shrank to 80% (64% on phones); a pin whose spot is gone still does.
