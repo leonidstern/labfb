@@ -200,7 +200,8 @@ try {
       await until(async () => !(await line()).names); // the sent box has gone
       await p.keyboard.press('v');
       check(eng, 'V turns select mode on, no box until a pick', (await mode()) && !(await line()).names);
-      await p.locator('h1').click();
+      // The pin sent above still sits on the heading's middle (where the first click was), and a click on it is the widget's, not a pick: aim elsewhere on the heading.
+      await p.locator('h1').click({ position: { x: 40, y: 20 } });
       l = await line();
       check(eng, 'a click picks the block, drops no pin, and opens the same box with done on its line (one action fewer)', (await picked()) === 'Ship faster' && l.names.endsWith('… done') && l.names.split(' ').length - 2 < wide && l.tops === 1 && !l.pin, JSON.stringify(l));
       await p.keyboard.press('Tab');
