@@ -1886,7 +1886,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
     else {
       // Your list, in its order: as many chips as fit on one line (measured; select's ↑ ↓ go first), then "…". "…"
-      // opens a small menu under the line: the rest (tap = use it) and, on this computer, ✎ on every action and "+ add"
+      // grows the line into the whole list (tap = use it) and, on this computer, ✎ on every action and "+ add"
       // (saved in your settings through the lab, PUT /_lab/api/actions; a new one goes at the end).
       const mayEdit = Boolean(adminToken && ACTSAPI);
       const menu = el('div', { class: 'acts', hidden: '' });
@@ -1903,7 +1903,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         const fresh = quickRow(draft, box); // the line again, measured, with its menu open
         row.replaceWith(fresh);
         menu.remove();
-        queueMicrotask(() => /** @type {HTMLElement | null} */ (fresh.querySelector('[data-k="…"]'))?.click());
+        queueMicrotask(() => {
+          const d = /** @type {HTMLElement | null} */ (fresh.querySelector('[data-k="…"]'));
+          if (!d) return;
+          d.dataset.still = '1'; // open again as it was, no growing
+          d.click();
+        });
       };
       const editor = (i) => {
         const a = LIST[i] || { name: '', prompt: '' };
@@ -1937,9 +1942,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         queueMicrotask(() => name.focus());
         return form;
       };
-      // A calm list floating under the line (above it on a phone, so the sheet doesn't grow): each row the action's name
-      // and its prompt on one muted line, tap = use it; a quiet pencil at the right edits it. On this computer the ones
-      // on the line come first under "on the line", then "more"; elsewhere only the rest. "+ add" is the last row.
+      // Growing sheet (Leo, 19 Nov, "c"): "…" grows the line itself into the whole list, in the same sheet or box, the
+      // text field staying where it is below it. Each row is the action's name over its prompt on one muted line, tap =
+      // use it; a quiet pencil at the right edits it; "+ add" is the last row, "done" (or "…" again) folds it back to the line.
       const icon = (d) => {
         const s = el('span', { class: 'ico', 'aria-hidden': 'true' });
         s.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
@@ -1949,40 +1954,65 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       const PLUS = 'M8 3v10 M3 8h10';
       function fill() {
         menu.replaceChildren(...(spill.children.length ? [spill] : []));
-        const keys = [...LIST.keys()];
-        const groups = [['on the line', mayEdit ? keys.slice(0, shown) : []], ['more', keys.slice(shown)]].filter(([, g]) => g.length);
-        for (const [label, g] of groups) {
-          if (groups.length > 1) menu.append(el('div', { class: 'act-h' }, label));
-          for (const i of g) {
-            const a = LIST[i];
-            const line = el('div', { class: 'act' });
-            const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
-            use.append(el('b', {}, a.name), el('span', {}, a.prompt));
-            use.addEventListener('click', () => chips[i].click());
-            line.append(use);
-            if (mayEdit) {
-              const pen = btn('', { class: 'pen', 'aria-label': `edit ${a.name}` });
-              pen.append(icon(PEN));
-              pen.addEventListener('click', () => line.replaceWith(editor(i)));
-              line.append(pen);
-            }
-            menu.append(line);
+        const list = el('div', { class: 'act-list' });
+        for (const i of LIST.keys()) {
+          const a = LIST[i];
+          const line = el('div', { class: 'act' });
+          const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
+          use.append(el('b', {}, a.name), el('span', {}, a.prompt));
+          use.addEventListener('click', () => (openMenu(false, true), chips[i].click()));
+          line.append(use);
+          if (mayEdit) {
+            const pen = btn('', { class: 'pen', 'aria-label': `edit ${a.name}` });
+            pen.append(icon(PEN));
+            pen.addEventListener('click', () => line.replaceWith(editor(i)));
+            line.append(pen);
           }
+          list.append(line);
         }
-        if (!mayEdit) return;
-        const add = btn('', { class: 'add' });
-        add.append(icon(PLUS), 'add');
-        add.addEventListener('click', () => add.replaceWith(editor(LIST.length)));
-        menu.append(add);
+        const foot = el('div', { class: 'act-foot' });
+        if (mayEdit) {
+          const add = btn('', { class: 'add' });
+          add.append(icon(PLUS), 'add');
+          add.addEventListener('click', () => foot.replaceWith(editor(LIST.length)));
+          foot.append(add);
+        }
+        const fold = quiet(btn('done', { class: 'fold' }));
+        fold.addEventListener('click', () => openMenu(false));
+        foot.append(fold);
+        list.append(foot);
+        menu.append(list);
       }
-      const openMenu = (open) => {
-        if (open && menu.hidden) fill();
-        menu.hidden = !open;
-        dots.setAttribute('aria-expanded', String(open));
+      // The height eases from the line's to the list's (and back) in 180 ms, none with reduced motion; the sheet sits on
+      // the bottom on a phone, so it grows upward, and the page under it never moves.
+      let anim = null;
+      const ease = (from, to, then) => {
+        anim?.cancel();
+        anim = null;
+        if (still.matches || !from || !to || from === to) return void then?.();
+        anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 180, easing: 'cubic-bezier(.2, 0, 0, 1)' });
+        anim.onfinish = () => ((anim = null), then?.());
       };
-      quiet(dots).addEventListener('click', () => openMenu(menu.hidden));
-      // It floats over the box: a press anywhere else in the composer closes it.
-      box.addEventListener('pointerdown', (e) => !menu.hidden && !e.composedPath().some((n) => n === menu || n === dots) && openMenu(false));
+      let lineH = 0; // the line's height when it grew, to fold back to
+      const openMenu = (open, now = false) => {
+        if (open === !menu.hidden) return;
+        dots.setAttribute('aria-expanded', String(open));
+        if (!open) {
+          const shut = () => ((menu.hidden = true), (row.hidden = false));
+          return now ? shut() : ease(menu.offsetHeight, lineH, shut);
+        }
+        lineH = row.offsetHeight;
+        fill();
+        row.hidden = true;
+        menu.hidden = false;
+        if (!now) ease(lineH, menu.offsetHeight);
+      };
+      quiet(dots).addEventListener('click', () => {
+        const now = dots.dataset.still === '1';
+        delete dots.dataset.still;
+        openMenu(menu.hidden, now);
+      });
+      menu.addEventListener('keydown', (e) => e.key === 'Escape' && !(/** @type {Element} */ (e.target)).closest('.act-edit') && (e.stopPropagation(), openMenu(false)));
       row.append(...chips, dots, ...(draft.select ? selectChips() : []));
       let tries = 0;
       const measure = () => {
