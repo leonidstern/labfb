@@ -940,11 +940,7 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
 }
 // A message's name with its small marks: ↩ replied, ✅ done.
 // A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
-export const nameLine = (name, done) => {
-  const b = el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
-  if (done) b.append(el('span', { class: 'mark done', role: 'img', 'aria-label': 'done' }, '✓'));
-  return b;
-};
+export const nameLine = (name) => el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
 // A block named in a message: its heading in view with room above, and outlined for a moment. On the element itself
 // (the widget's layer is redrawn as comments arrive, which would drop an outline drawn there).
 export function goToBlock(e: Element) {
