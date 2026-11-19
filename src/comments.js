@@ -41,7 +41,7 @@ import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { inkAnchor, inkSvg, liveInk } from './widget/ink.ts';
 import { bindSelect, pick, selectChips, selectMode } from './widget/select.ts';
-import { SEED } from '../lib/actions.ts';
+import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
@@ -190,6 +190,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
   const flag = (name) => FLAGS[name]?.on === true;
   const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
+  const ACTSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'api/actions') : ''; // your actions, from the "…" menu
   let meSent = ME;
   const rememberMe = (name) => {
     if (!MEAPI || !name || name === meSent) return;
@@ -2098,6 +2099,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // `Cut: “…”`, go is an ordinary comment that says "go", and your own (labit.json `actions`) send their text. They go
   // through the box's own send, so a missing name is asked for there, a lab that can't be reached keeps them. ⌥ + 1…4 runs the nth button (holding ⌥ shows the numbers). Long quotes (the first 300 characters are kept)
   // have no cut or rewrite: the words said aren't all there; nor do words the page no longer has (the row is dimmed then).
+  /** @type {{ i: number, a: { name: string, prompt: string }, until: number } | null} */
+  let ACT_GONE = null; // the action just deleted from a "…" list, while its "deleted · undo" is on offer (4 s)
   const quickRow = (draft, box) => {
     const row = el('div', { class: 'quick' });
     const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
@@ -2128,7 +2131,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
     else {
       // Your list, in its order: as many chips as fit on one line (measured; select's ↑ ↓ go first), then "…". "…"
-      // grows the line into the whole list (tap = use it).
+      // grows the line into the whole list (tap = use it) and, on this computer, hold or right-click a row to edit it, "+ add"
+      // (saved in your settings through the lab, PUT /_lab/api/actions; a new one goes at the end).
+      const mayEdit = Boolean(adminToken && ACTSAPI);
       const menu = el('div', { class: 'acts', hidden: '' });
       const spill = el('div', { class: 'quick' }); // select's ↑ ↓ when the line has no room for them
       const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
@@ -2136,11 +2141,131 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       let shown = LIST.length;
       const quiet = (b) => (b.addEventListener('mousedown', (e) => e.preventDefault()), b);
       const btn = (text, attrs = {}) => el('button', { type: 'button', ...attrs }, text);
+      const save = async (next, why) => {
+        const r = await fetch(ACTSAPI, { method: 'PUT', headers: headers(), body: JSON.stringify({ actions: next }) }).catch(() => null);
+        if (!r?.ok) return void (why.textContent = r ? await r.text() : 'the lab is not answering');
+        LIST = (await r.json()).actions;
+        editing?.close();
+        const top = menu.scrollTop;
+        const fresh = quickRow(draft, box); // the line again, measured, with its menu open where it was
+        row.replaceWith(fresh);
+        menu.remove();
+        queueMicrotask(() => {
+          const d = /** @type {HTMLElement | null} */ (fresh.querySelector('[data-k="…"]'));
+          if (!d) return;
+          d.dataset.still = '1'; // open again as it was, no growing
+          d.click();
+          const m = fresh.nextElementSibling;
+          if (m?.classList.contains('acts')) m.scrollTop = top;
+        });
+        return true;
+      };
+      // Edit in place (Leo, 19 Nov, "C" of the preset editor page): a held or right-clicked row turns editable where it
+      // is, on soft grey, no form and no boxes. The name is plain text (7 letters just stop; "6/7" shows near the end),
+      // the prompt under it unfolds to its full length and grows as you type, a muted "delete" sits at the row's end
+      // (no confirm: "deleted · undo" stands in its place for 4 s). Enter in the name goes to the prompt, Enter in the
+      // prompt saves (Shift+Enter is a new line), Escape or a tap anywhere else cancels. "+ add" opens an empty row the
+      // same way, at the end. Phones: the row is kept in view above the keyboard, inside the sheet's list.
+      /** @type {{ line: HTMLElement, close: () => void } | null} */
+      let editing = null;
+      const keepInView = (line) => {
+        if (!line.isConnected) return;
+        const m = menu.getBoundingClientRect();
+        const r = line.getBoundingClientRect();
+        const vv = window.visualViewport;
+        const bottom = Math.min(m.bottom, vv ? vv.offsetTop + vv.height : innerHeight);
+        if (r.bottom > bottom) menu.scrollTop += r.bottom - bottom + 4;
+        else if (r.top < m.top) menu.scrollTop -= m.top - r.top;
+      };
+      const editRow = (line, i, focus = true) => {
+        if (editing?.line === line) return null;
+        editing?.close();
+        const fresh = i >= LIST.length;
+        const a = LIST[i] || { name: '', prompt: '' };
+        const kept = /** @type {HTMLElement[]} */ ([...line.children]); // hidden while edited: a hold's touch still ends on it
+        for (const k of kept) k.hidden = true;
+        line.classList.add('act-edit');
+        const name = /** @type {HTMLInputElement} */ (el('input', { class: 'nm', maxlength: String(NAME_MAX), placeholder: 'name', 'aria-label': 'name', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'next' }));
+        const cnt = el('span', { class: 'cnt', 'aria-live': 'polite' });
+        const del = btn('delete', { class: 'del' });
+        del.hidden = fresh;
+        const prompt = /** @type {HTMLTextAreaElement} */ (el('textarea', { class: 'p', rows: '1', maxlength: '300', placeholder: 'what the agent does', 'aria-label': 'prompt', enterkeyhint: 'done' }));
+        const why = el('span', { class: 'why', role: 'status' });
+        const fields = el('div', { class: 'act-fields' });
+        fields.append(name, cnt, del, prompt, el('span', { class: 'k' }, coarse ? 'return saves · tap outside cancels' : 'Enter saves · Esc cancels'), why);
+        line.append(fields);
+        name.value = a.name;
+        prompt.value = a.prompt;
+        const count = () => (cnt.textContent = name.value.length >= NAME_MAX - 1 ? `${name.value.length}/${NAME_MAX}` : '');
+        const fit = () => {
+          prompt.style.height = 'auto';
+          prompt.style.height = `${prompt.scrollHeight}px`;
+          keepInView(line);
+        };
+        name.addEventListener('input', () => ((why.textContent = ''), count()));
+        prompt.addEventListener('input', () => ((why.textContent = ''), fit()));
+        const commit = () => {
+          const next = [...LIST];
+          next[i] = { name: name.value.trim(), prompt: prompt.value.trim() };
+          if (fresh && !next[i].name && !next[i].prompt) return close();
+          if (!fresh && next[i].name === a.name && next[i].prompt === a.prompt) return close();
+          save(next, why);
+        };
+        del.addEventListener('click', async () => {
+          ACT_GONE = { i, a, until: Date.now() + 4000 };
+          if (!(await save(LIST.filter((_, j) => j !== i), why))) ACT_GONE = null;
+        });
+        fields.addEventListener('keydown', (e) => {
+          if (e.isComposing) return;
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+          } else if (e.key === 'Enter' && e.target === name) {
+            e.preventDefault();
+            prompt.focus();
+          } else if (e.key === 'Enter' && e.target === prompt && !e.shiftKey) {
+            e.preventDefault();
+            commit();
+          }
+        });
+        fields.addEventListener('focusin', () => requestAnimationFrame(() => keepInView(line)));
+        const vv = window.visualViewport;
+        const onView = () => keepInView(line);
+        vv?.addEventListener('resize', onView);
+        // A tap anywhere else cancels, and is only that: a tap on another row (or done, + add) doesn't also use it.
+        const eat = (e) => (e.preventDefault(), e.stopPropagation());
+        const outside = (e) => {
+          if (e.composedPath().includes(line)) return;
+          close();
+          if (!e.composedPath().includes(menu)) return;
+          menu.addEventListener('click', eat, { capture: true, once: true });
+          setTimeout(() => menu.removeEventListener('click', eat, true), 800);
+        };
+        document.addEventListener('pointerdown', outside, true);
+        function close() {
+          if (editing?.line !== line) return;
+          editing = null;
+          document.removeEventListener('pointerdown', outside, true);
+          vv?.removeEventListener('resize', onView);
+          if (fresh) return void line.remove();
+          fields.remove();
+          line.classList.remove('act-edit');
+          for (const k of kept) k.hidden = false;
+        }
+        editing = { line, close };
+        count();
+        requestAnimationFrame(fit);
+        if (focus) name.focus();
+        return name;
+      };
       // Growing sheet (Leo, 19 Nov, "c"): "…" grows the line itself into the whole list, in the same sheet or box, the
       // text field staying where it is below it. Each row is the action's name over its prompt on one muted line, tap =
-      // use it; "done" (or "…" again) folds it back to the line. Editing the list from here comes next; until then it is
-      // edited in settings.json.
+      // use it; holding it (450 ms) or right-clicking it edits it in place, no pencil (Leo, 19 Nov: "i dont like pencil remove it");
+      // "+ add" is the last row, "done" (or "…" again) folds it back to the line. Until you have edited once, the bottom
+      // line says how, muted, in the room between "+ add" and "done" (so nothing moves when it goes).
       function fill() {
+        editing?.close();
         menu.replaceChildren(...(spill.children.length ? [spill] : []));
         const list = el('div', { class: 'act-list' });
         for (const i of LIST.keys()) {
@@ -2148,11 +2273,71 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           const line = el('div', { class: 'act' });
           const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
           use.append(el('b', {}, a.name), el('span', {}, a.prompt));
-          use.addEventListener('click', () => (openMenu(false, true), chips[i].click()));
+          let held = false; // a hold opened the editor: the click that follows the release is not a use
+          use.addEventListener('click', () => (held ? (held = false) : (openMenu(false, true), chips[i].click())));
           line.append(use);
+          if (mayEdit) {
+            /** @type {HTMLInputElement | null} */
+            let focusOnLift = null; // a finger's hold: the keyboard comes up on the lift (iOS raises it only for a touch)
+            const edit = (focus) => {
+              if (!line.isConnected) return;
+              store.set('lab-act-edited', '1');
+              const name = editRow(line, i, focus);
+              if (name && !focus) focusOnLift = name;
+            };
+            use.addEventListener('contextmenu', (e) => (e.preventDefault(), (held = true), edit(e.pointerType !== 'touch' && !coarse)));
+            /** @type {ReturnType<typeof setTimeout> | undefined} */
+            let t;
+            let at = [0, 0];
+            const stop = () => clearTimeout(t);
+            use.addEventListener('pointerdown', (e) => {
+              if (e.button) return;
+              held = false;
+              focusOnLift = null;
+              at = [e.clientX, e.clientY];
+              stop();
+              t = setTimeout(() => ((held = true), edit(e.pointerType === 'mouse')), 450);
+            });
+            use.addEventListener('pointermove', (e) => Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 8 && stop());
+            for (const k of ['pointercancel', 'pointerleave']) use.addEventListener(k, stop);
+            const lift = () => {
+              stop();
+              focusOnLift?.focus();
+              focusOnLift = null;
+            };
+            use.addEventListener('pointerup', lift);
+            use.addEventListener('touchend', lift);
+          }
           list.append(line);
         }
+        // Just deleted: "deleted · undo" stands in its place for 4 s; undo puts it back where it was.
+        const g = ACT_GONE && ACT_GONE.until > Date.now() ? ACT_GONE : null;
+        if (g) {
+          const line = el('div', { class: 'act gone' });
+          const why = el('span', { class: 'why', role: 'status' });
+          const undo = quiet(btn('undo', { class: 'undo' }));
+          undo.addEventListener('click', () => {
+            if (ACT_GONE !== g) return;
+            ACT_GONE = null;
+            const next = [...LIST];
+            next.splice(Math.min(g.i, next.length), 0, g.a);
+            save(next, why);
+          });
+          line.append(el('span', {}, 'deleted ·'), undo, why);
+          list.insertBefore(line, list.children[g.i] || null);
+          setTimeout(() => line.remove(), g.until - Date.now());
+        }
         const foot = el('div', { class: 'act-foot' });
+        if (mayEdit) {
+          const add = btn('+ add', { class: 'add' });
+          add.addEventListener('click', () => {
+            const line = el('div', { class: 'act' });
+            list.insertBefore(line, foot);
+            editRow(line, LIST.length);
+          });
+          foot.append(add);
+          if (!store.get('lab-act-edited')) foot.append(el('span', { class: 'act-hint' }, coarse ? 'hold to edit' : 'right-click to edit'));
+        }
         const fold = quiet(btn('done', { class: 'fold' }));
         fold.addEventListener('click', () => openMenu(false));
         foot.append(fold);
@@ -2198,7 +2383,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         let at = null; // ↑ before ↓, however many go
         for (const b of [...row.querySelectorAll('.sel:not([data-a=done])')].reverse()) if (over()) at = spill.insertBefore(b, at);
         while (over() && shown) chips[--shown].remove();
-        dots.hidden = shown === LIST.length && !spill.children.length;
+        dots.hidden = shown === LIST.length && !spill.children.length && !mayEdit;
         [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
       };
       queueMicrotask(measure);
