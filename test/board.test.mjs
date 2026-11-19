@@ -264,3 +264,11 @@ test('flag off: the command says how to turn boards on', async () => {
   assert.notEqual(r.code, 0);
   assert.match(r.out, /Boards are off/);
 });
+
+test('add takes the home page "/" and a path that is a file below the lab folder, never read from the disk root', async () => {
+  await cli(DIR, 'new', 'Home flow', '--flow', '/pricing,/cart');
+  const home = await cli(DIR, 'add', 'home-flow', '/', '--width', '1440');
+  assert.match(home.out, /Added c \(\/\)\./, home.out);
+  const disk = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/boards/home-flow.json'), 'utf8'));
+  assert.deepEqual(disk.frames.find((x) => x.id === 'c'), { id: 'c', src: '/', w: 1440, h: 900, state: 'live' });
+});
