@@ -1,6 +1,8 @@
 /* Labs & pages (⌘K, src/widget/switcher.ts, which brings this sheet with it into the shadow root, after the widget's
    own styles): a box over the page on a computer, a card sheet on a phone. */
 .switch { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+/* Flag native, a computer: a popover covering the screen as before, without the browser's own box. */
+.switch[popover] { inset: 0; width: auto; height: auto; max-width: none; max-height: none; margin: 0; border: 0; padding: 0; background: none; color: inherit; overflow: visible; }
 .sw-box { pointer-events: auto; }
 /* The page behind dims with the widget's own .scrim (a click there closes it, as it closes a sheet). */
 :host([data-labs]) .scrim { display: block; background: rgba(0, 0, 0, .18); }

@@ -174,15 +174,18 @@ button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding:
 button.keep:hover:not(:disabled) { opacity: .9; }
 button.keep:disabled { opacity: .4; cursor: default; }
 .card.margin { width: 280px; }
-/* Tied to its pin (flag native, thread.ts tieToPin): the browser keeps it there. Below the pin, as the script places it;
-   above it, or in from the screen's right edge, when there is no room. */
-@position-try --lab-above { top: auto; bottom: calc(anchor(top) + 12px); }
+/* Tied to its pin (flag native, thread.ts tieToPin): the browser keeps it there. Where the script puts it, from the pin's
+   corner (--lab-cx / --lab-cy; a box's other place --lab-ux / --lab-uy); above (its bottom at --lab-ay), or in from the
+   screen's right edge, when there is no room. */
+@position-try --lab-above { top: auto; bottom: var(--lab-up); }
 @position-try --lab-edge { left: auto; right: 12px; }
-@position-try --lab-edge-above { left: auto; right: 12px; top: auto; bottom: calc(anchor(top) + 12px); }
-@position-try --lab-under { left: max(12px, calc(anchor(left) - 14px)); top: calc(anchor(bottom) + 10px); }
-@position-try --lab-under-above { left: max(12px, calc(anchor(left) - 14px)); top: auto; bottom: calc(anchor(top) + 12px); }
-.tied-card { position: fixed !important; left: max(12px, calc(anchor(left) - 14px)); top: calc(anchor(bottom) + 10px); position-try-fallbacks: --lab-above, --lab-edge, --lab-edge-above; }
-.tied-beside { position: fixed !important; left: calc(anchor(right) + 8px); top: calc(anchor(top) - 9px); position-try-fallbacks: --lab-under, --lab-under-above; }
+@position-try --lab-edge-above { left: auto; right: 12px; top: auto; bottom: var(--lab-up); }
+@position-try --lab-under { left: var(--lab-uleft); top: calc(anchor(top) + var(--lab-uy)); }
+@position-try --lab-under-above { left: var(--lab-uleft); top: auto; bottom: var(--lab-up); }
+.tied-card, .tied-beside { position: fixed !important; top: calc(anchor(top) + var(--lab-cy)); /* the shared places, written once: */
+  --lab-up: calc(anchor(top) - var(--lab-ay)); --lab-uleft: max(12px, calc(anchor(left) + var(--lab-ux))); }
+.tied-card { left: max(12px, calc(anchor(left) + var(--lab-cx))); position-try-fallbacks: --lab-above, --lab-edge, --lab-edge-above; }
+.tied-beside { left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above; }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .fd.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */

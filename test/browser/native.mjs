@@ -109,7 +109,7 @@ try {
         await tap(mid.x, mid.y);
         await untilRoot(p, (r) => Boolean(r.querySelector('.box textarea')));
         if (!phone && can.anchor) {
-          const beside = await inRoot(p, (r) => { const f = r.querySelector('.float'), d = r.querySelector('.pin.draft'); const a = f.getBoundingClientRect(), b = d.getBoundingClientRect(); return { tied: f.classList.contains('tied-beside'), dx: Math.round(a.left - b.right), pos: getComputedStyle(f).position }; });
+          const beside = await inRoot(p, (r) => { const f = r.querySelector('.float'), d = r.querySelector('.pin.draft'); const a = f.getBoundingClientRect(), l = d.offsetParent.getBoundingClientRect().left + d.offsetLeft + d.offsetWidth; return { tied: f.classList.contains('tied-beside'), dx: Math.round(a.left - l), pos: getComputedStyle(f).position }; /* the pin's layout box: a pressed pin is scaled */ });
           check(tag, "a new comment's box is tied to its pin, just right of it", beside.tied && beside.pos === 'fixed' && Math.abs(beside.dx - 8) <= 2, JSON.stringify(beside));
         }
         const h1 = await inRoot(p, (r) => r.querySelector('.box textarea').getBoundingClientRect().height);
@@ -151,6 +151,53 @@ try {
           const c3 = await card();
           const pin3 = await pinAt();
           check(tag, '…near the bottom of the screen it opens above its pin', c3.bottom <= Math.round(pin3.top) && c3.top >= 0, JSON.stringify({ card: c3, pin: pin3 }));
+          await p.keyboard.press('Escape');
+          await sleep(300);
+        }
+
+        // Labs & pages (⌘K) on a computer: a popover, closed by Esc and by a press elsewhere.
+        if (!phone && can.popover) {
+          await p.keyboard.press('Control+k');
+          await untilRoot(p, (r) => r.querySelector('.switch')?.matches(':popover-open'), null, 4000);
+          const sw = await inRoot(p, (r) => { const b = r.querySelector('.switch'); return { pop: Boolean(b?.matches(':popover-open')), hidden: b?.hidden }; });
+          check(tag, 'labs & pages (ctrl K) opens as a popover', sw.pop && sw.hidden === false, JSON.stringify(sw));
+          await p.keyboard.press('Escape');
+          await sleep(500);
+          const swEsc = await inRoot(p, (r) => { const b = r.querySelector('.switch'); return { pop: b.matches(':popover-open'), hidden: b.hidden }; });
+          check(tag, '…Esc closes it', !swEsc.pop && swEsc.hidden, JSON.stringify(swEsc));
+          await p.keyboard.press('Control+k');
+          await untilRoot(p, (r) => r.querySelector('.switch')?.matches(':popover-open'), null, 4000);
+          await p.mouse.click(40, 640);
+          await sleep(500);
+          const swOut = await inRoot(p, (r) => { const b = r.querySelector('.switch'); return { pop: b.matches(':popover-open'), hidden: b.hidden }; });
+          check(tag, '…and so does a press elsewhere', !swOut.pop && swOut.hidden, JSON.stringify(swOut));
+          if (await inRoot(p, (r) => r.querySelectorAll('.pin.draft').length)) await p.keyboard.press('Escape');
+          await sleep(300);
+        }
+
+        // A drawing's card (computers): tied below its drawing, not below a pin.
+        if (!phone && can.anchor) {
+          await p.evaluate(() => document.getElementById('mid').scrollIntoView({ block: 'center' }));
+          await settle(p);
+          const c = await at('#mid', 0.5, 0.5);
+          await p.keyboard.down('d');
+          await p.mouse.move(c.x + 120, c.y);
+          await p.mouse.down();
+          for (let i = 1; i <= 22; i++) await p.mouse.move(c.x + 120 * Math.cos((i / 20) * 2 * Math.PI), c.y + 30 * Math.sin((i / 20) * 2 * Math.PI), { steps: 2 });
+          await p.mouse.up();
+          await p.keyboard.up('d');
+          await untilRoot(p, (r) => Boolean(r.querySelector('.box textarea')));
+          await p.keyboard.type('this, circled');
+          await p.keyboard.press('Enter');
+          await untilRoot(p, (r) => Boolean(r.querySelector('.pin.ink')));
+          await p.keyboard.press('Escape');
+          await sleep(500);
+          await p.mouse.click(c.x + 120, c.y); // on its line
+          await untilRoot(p, (r) => Boolean(r.querySelector('.card:not(.out)')));
+          await settle(p);
+          const ink = await inRoot(p, (r) => { const card = r.querySelector('.card:not(.out)'), svg = r.querySelector('.pin.ink.open svg') || r.querySelector('.pin.ink svg'); const a = card.getBoundingClientRect(), z = svg.getBoundingClientRect(); return { tied: card.classList.contains('tied-card') || card.hasAttribute('part'), pos: getComputedStyle(card).position, cardTop: Math.round(a.top), cardBottom: Math.round(a.bottom), zoneTop: Math.round(z.top), zoneBottom: Math.round(z.bottom) }; });
+          const below = Math.abs(ink.cardTop - ink.zoneBottom - 10) <= 3, above = Math.abs(ink.cardBottom - ink.zoneTop + 12) <= 3;
+          check(tag, "a drawing's card is tied below its drawing (or above it, without room)", ink.tied && ink.pos === 'fixed' && (below || above), JSON.stringify(ink));
           await p.keyboard.press('Escape');
           await sleep(300);
         }

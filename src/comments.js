@@ -640,6 +640,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       },
       swipe: swipeDown,
       leave: goOut,
+      native: () => flag('native'),
     });
     return (labs = m);
   }).catch(() => (S.switcher = null))); // couldn't load: nothing opens, and the next ask tries again
@@ -1082,7 +1083,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         S.stepping = S.keepKeys = false;
         next.push(card);
-        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top, nativeTie(zone) ? pin : null);
+        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top, nativeTie() ? pin : null, zone ? zone.top - 12 : top - 40);
         // A question with choices on quoted words: by its quote, in the margin or under it (thread.ts). Drawn again after
         // the pick, it stays where it was instead of jumping back under its pin.
         if (!zone && (openAsk(c) || (!appear && prev?.matches('.margin, .under')))) placeAsk(card, c);
@@ -1168,7 +1169,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       else {
         next.push(float);
         if (zone) placeCard(float, left + 14, zone.top + zone.height);
-        else placeBeside(float, left, top, nativeTie(zone) ? layer.querySelector(':scope > .pin.draft') : null);
+        else placeBeside(float, left, top, nativeTie() ? layer.querySelector(':scope > .pin.draft') : null);
       }
       // Phones: the sheet the bar grows into. Computers whose words can't be found again: the plain box, the bar lets go.
       if (draft.fluid && !fluid) (sheetMode.matches ? fluidSheet : fluidDrop)(float);
@@ -2284,8 +2285,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   // ...and, with the flag native, held there by the browser (pinhold.ts): tied to its element, so scrolling needs no
   // script. True when it is held.
-  // A card or box tied to its pin by the browser (thread.ts tieToPin): a point's pin on a computer; phones keep their sheets.
-  const nativeTie = (zone) => flag('native') && !zone && !sheetMode.matches;
+  // A card or box tied to its pin by the browser (thread.ts tieToPin): on a computer; phones keep their sheets.
+  const nativeTie = () => flag('native') && !sheetMode.matches;
   const placePin = (pin, c, zone, left, top, moved) => {
     inkAt(pin, zone, left, top);
     const node = flag('native') && !moved && c.anchor?.kind !== 'board' ? findTarget(c.anchor || {}) : null;

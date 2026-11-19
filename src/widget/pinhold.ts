@@ -18,14 +18,14 @@
 let sheet: HTMLStyleElement | null = null;
 const names = new WeakMap<Element, string>(); // an element's anchor name, kept while it lives
 const rules = new Map<HTMLElement, string>(); // a held pin and its rule
-const spots = new Map<HTMLElement, { name: string; dx: number; dy: number }>(); // a held pin's element and offset
+const spots = new Map<HTMLElement, { name: string; node: Element }>(); // a held pin's element and its anchor name
 const boxes = new Map<HTMLElement, string>(); // a card tied to the element its held pin is on, and its rule
-// A card's places, in the page's sheet (tree-scoped names): below its pin as the script puts it, above it or in from the
-// screen's right edge when there is no room. --lab-dx / --lab-dy: its pin's tip from the element's corner.
+// A card's places, in the page's sheet (tree-scoped names): where the script puts it, above or in from the screen's
+// right edge when there is no room. --lab-cx / --lab-cy / --lab-ay: from the element's corner (thread.ts tieToPin).
 const TRIES =
-  '@position-try --lab-c-above{top:auto;bottom:calc(anchor(top) - var(--lab-dy) + 40px)}' +
+  '@position-try --lab-c-above{top:auto;bottom:calc(anchor(top) - var(--lab-ay))}' +
   '@position-try --lab-c-edge{left:auto;right:12px}' +
-  '@position-try --lab-c-edge-above{left:auto;right:12px;top:auto;bottom:calc(anchor(top) - var(--lab-dy) + 40px)}';
+  '@position-try --lab-c-edge-above{left:auto;right:12px;top:auto;bottom:calc(anchor(top) - var(--lab-ay))}';
 let count = 0;
 let dirty = false;
 let able: boolean | null = null;
@@ -104,31 +104,30 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
     rules.set(pin, rule);
     dirty = true;
   }
-  spots.set(pin, { name, dx: left - scrollX - r.left, dy: top - scrollY - r.top });
+  spots.set(pin, { name, node });
   return true;
 }
 
 /** Ties a card to the element its pin is held on (not to the pin: anchor positioning reads a held pin's place from before
- *  the browser follows a scroll, so a card on the pin would trail by the scroll). False when the pin isn't held. */
-export function holdBox(node: HTMLElement, pin: HTMLElement | null | undefined): boolean {
+ *  the browser follows a scroll, so a card on the pin would trail by the scroll). The element, or null when the pin isn't
+ *  held. Where on it: the card's --lab-cx / --lab-cy / --lab-ay (thread.ts tieToPin). */
+export function holdBox(node: HTMLElement, pin: HTMLElement | null | undefined): Element | null {
   const at = pin && rules.has(pin) ? spots.get(pin) : null;
   if (!at) {
     letBox(node);
-    return false;
+    return null;
   }
   const part = node.getAttribute('part') || `lb${(++count).toString(36)}`;
   node.setAttribute('part', part);
-  node.style.setProperty('--lab-dx', px(at.dx));
-  node.style.setProperty('--lab-dy', px(at.dy));
   const rule =
     `[data-lab-comments]::part(${part}){position:fixed;position-anchor:--${at.name};` +
-    `left:max(12px,calc(anchor(left, -10000px) + var(--lab-dx) - 14px));top:calc(anchor(top, -10000px) + var(--lab-dy) + 10px);` +
+    'left:max(12px,calc(anchor(left, -10000px) + var(--lab-cx)));top:calc(anchor(top, -10000px) + var(--lab-cy));' +
     'position-try-fallbacks:--lab-c-above,--lab-c-edge,--lab-c-edge-above}';
   if (boxes.get(node) !== rule) {
     boxes.set(node, rule);
     dirty = true;
   }
-  return true;
+  return at.node;
 }
 
 /** The card is placed another way again (in the margin, a sheet, untied). */
