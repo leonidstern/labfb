@@ -567,7 +567,12 @@ function rehome() {
     homes.delete(page);
     homes.set(to, [fileIndex.get(to), fid]);
     for (const mine of Object.values(reads)) if (mine[page]) mine[to] = [...(mine[to] || []), ...mine[page]];
-    for (const mine of Object.values(sections)) if (mine[page]) ((mine[to] ||= mine[page]), delete mine[page], saveSections());
+    for (const mine of Object.values(sections)) {
+      if (!mine[page]) continue;
+      mine[to] ||= mine[page];
+      delete mine[page];
+      saveSections();
+    }
     // The looks go with the page, in a file named for the new page.
     if (looked.has(page)) {
       if (!looked.has(to)) looked.set(to, looked.get(page));
