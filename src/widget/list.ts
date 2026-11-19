@@ -12,7 +12,6 @@ export const goTo = (c, keys = false) => {
   W.S.keepKeys = W.S.stepping && (keys || W.root.activeElement?.localName === 'textarea');
   W.S.openId = c.id;
   W.S.draft = null;
-  if (W.coarse) W.S.listOpen = false;
   W.render();
   // The pin comes into view: on phones in the middle of what the sheet leaves free above it; on a computer the pin
   // and its open card together, in the middle of the window when they fit, else from the pin down.
@@ -30,36 +29,28 @@ export function drawList() {
   const all = W.threads();
   W.paintWho?.(); // the pill's words and a phone sheet's line follow the agent's work
   paintLines();
-  W.listBtn.hidden = !W.S.on || (!W.coarse && !all.length && !W.held().length); // on phones it carries the agent's light
   W.goBtn.hidden = !W.S.on;
-  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, '+'), W.el('kbd', { 'aria-hidden': 'true' }, [W.KEYS.comment, W.KEYS.pointer].join('/')));
+  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, '+'), W.el('kbd', { 'aria-hidden': 'true' }, W.KEYS.comment));
   W.goFace();
-    W.goBtn.classList.toggle('cursor', W.S.cursorMode);
+  W.goBtn.classList.toggle('cursor', W.S.cursorMode);
   W.goBtn.setAttribute('aria-pressed', String(!W.S.cursorMode));
   const freshAll = all.filter((c) => !W.isPage(c)).reduce((n, c) => n + W.unread(c).length, 0); // a new message in a done thread counts too
-  W.listBtn.replaceChildren(document.createTextNode(freshAll ? `list · ${freshAll} new` : 'list'), W.el('kbd', { 'aria-hidden': 'true' }, 'l'));
-  // ‹ › around it step through the new ones, top to bottom of the page, without opening the list.
-  W.newPrev.hidden = W.newNext.hidden = !W.S.on || !all.some((c) => !W.isPage(c) && W.unread(c).length);
-  if (!W.LIST_WINDOW) {
-    // Without the list window the middle shows how many are new (a click goes to the next one). The pills keep their
-    // place whatever the counts: with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
-    W.newPrev.hidden = W.newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
-    W.listBtn.hidden = !W.S.on;
-    {
-      W.listBtn.replaceChildren(W.coarse ? 'new' : W.keyLabel('new', W.KEYS.next), W.el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll))); // phones: no keys
-      W.listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);
-      W.listBtn.setAttribute('aria-keyshortcuts', W.KEYS.next);
-    }
-    W.listBtn.title = 'next new comment: W, or ⌥W while typing (Shift for the one before)';
-    W.listBtn.disabled = !freshAll;
-    W.listBtn.classList.toggle('quiet', !freshAll);
-    const doneCount = all.filter((c) => !W.isPage(c) && (c.resolved || workState(c)[0] === 'done') && !W.unread(c).length).length;
-    W.doneBtn.hidden = !W.S.on;
-    W.doneBtn.disabled = !doneCount && !W.S.showDone;
-    W.doneBtn.classList.toggle('quiet', W.doneBtn.disabled);
-    W.doneBtn.replaceChildren(W.S.showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`, W.el('kbd', { 'aria-hidden': 'true' }, W.KEYS.done));
-    W.doneBtn.setAttribute('aria-keyshortcuts', W.KEYS.done);
-  }
+  // The middle shows how many are new (a click goes to the next one). The pills keep their place whatever the counts:
+  // with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
+  W.newPrev.hidden = W.newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
+  W.listBtn.hidden = !W.S.on;
+  W.listBtn.replaceChildren(W.coarse ? 'new' : W.keyLabel('new', W.KEYS.next), W.el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll))); // phones: no keys
+  W.listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);
+  W.listBtn.setAttribute('aria-keyshortcuts', W.KEYS.next);
+  W.listBtn.title = 'next new comment: W, or ⌥W while typing (Shift for the one before)';
+  W.listBtn.disabled = !freshAll;
+  W.listBtn.classList.toggle('quiet', !freshAll);
+  const doneCount = all.filter((c) => !W.isPage(c) && (c.resolved || workState(c)[0] === 'done') && !W.unread(c).length).length;
+  W.doneBtn.hidden = !W.S.on;
+  W.doneBtn.disabled = !doneCount && !W.S.showDone;
+  W.doneBtn.classList.toggle('quiet', W.doneBtn.disabled);
+  W.doneBtn.replaceChildren(W.S.showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`, W.el('kbd', { 'aria-hidden': 'true' }, W.KEYS.done));
+  W.doneBtn.setAttribute('aria-keyshortcuts', W.KEYS.done);
   W.placeBar();
   // The browser tab shows how many new messages there are, as "(3) Page title".
   const tabNew = all.reduce((n, c) => n + W.unread(c).length, 0);
@@ -67,33 +58,8 @@ export function drawList() {
   const want = tabNew ? `(${tabNew}) ${W.tabTitle.base}` : W.tabTitle.base;
   if (document.title !== want) document.title = want;
   W.listBtn.classList.toggle('has-new', freshAll > 0);
-  const h = W.held().length;
-  W.sendBtn.hidden = !h;
-  W.sendBtn.textContent = `send ${h} draft${h === 1 ? '' : 's'}`;
-  W.listEl.hidden = !W.S.on || !W.S.listOpen;
-  if (W.listEl.hidden) return;
-  for (const b of (W.listEl.querySelectorAll('[data-f]') as NodeListOf<HTMLElement>)) b.classList.toggle('on', b.dataset.f === W.S.filter);
-  const fresh = all.filter((c) => !W.isPage(c) && W.unread(c).length).length; // chat messages count in the chat
-  W.listEl.querySelector('[data-f="new"]').textContent = fresh ? `new · ${fresh}` : 'new';
-  // Just new and open for now; work, resolved, mine and draft mode stay in the code, hidden.
-  for (const f of ['work', 'resolved', 'mine']) W.$(`[data-f="${f}"]`, W.listEl).hidden = true;
-  W.holdBtn.hidden = !W.DRAFT_MODE;
-  const doneCount = all.filter((c) => !W.isPage(c) && (c.resolved || workState(c)[0] === 'done') && !W.unread(c).length).length;
-  W.showDoneBtn.hidden = !doneCount;
-  W.showDoneBtn.textContent = W.S.showDone ? `hide done · ${doneCount}` : `show done · ${doneCount}`;
-  W.holdBtn.classList.toggle('on', W.drafting());
-  if (W.S.filter === 'work') return W.listEl.querySelector('.items').replaceChildren(...workItems());
-  const items = W.listed().map((c) => {
-    const b = W.el('button', { class: `it${W.S.openId === c.id ? ' cur' : ''}`, type: 'button' });
-    b.append(document.createTextNode(`${c.resolved ? '✓' : W.numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), ...(W.onWhat(c) ? [W.el('span', {}, `on ${W.onWhat(c)} `)] : []), W.el('span', {}, `· ${c.name}${!c.resolved && W.isDone(c) ? ' · ✅ done' : ''}${sayOf(lineUp().get(c.id))}`), ...(W.unread(c).length ? [' ', W.el('span', { class: 'tag' }, `${W.unread(c).length} new`)] : []));
-    b.addEventListener('click', () => goTo(c));
-    return b;
-  });
-  W.listEl.querySelector('.items').replaceChildren(...(items.length ? items : [W.el('div', { class: 'none' }, 'nothing here')]));
 }
 
-const SAYS = { now: 'working', stale: 'no update', got: 'picked up' };
-const sayOf = (e) => (e?.s === 'wait' ? ` · waiting · ${ord(e.n)} in line` : SAYS[e?.s] ? ` · ${SAYS[e.s]}` : '');
 // A thread's state for the agent: ['now' | 'got' | 'asks' | 'next' | 'done' | null, since when]. now: it said it is on it
 // (--on-it) or gave a progress line; got: handed to it, nothing from it yet; asks: it asked a question (--question) and
 // waits for the person; next: sent, not handed yet. "since" is its latest sign.
@@ -165,33 +131,6 @@ export const lineWords = () => {
 export function paintLines() {
   const words = lineWords();
   for (const n of W.root.querySelectorAll('.agentline')) Object.assign(n, { hidden: !words, textContent: words });
-}
-
-function workItems() {
-  const today = new Date().toDateString();
-  const now = [];
-  const next = [];
-  const done = [];
-  for (const c of W.S.comments.filter((x) => !x.parent)) {
-    const [state, at] = workState(c);
-    if (state === 'now' || state === 'got') now.push([c, at]);
-    else if (state === 'next') next.push([c, at]);
-    else if (state === 'done' && new Date(at).toDateString() === today) done.push([c, at]);
-  }
-  const row = ([c, at], when) => {
-    const b = W.el('button', { class: `it${W.S.openId === c.id ? ' cur' : ''}`, type: 'button' });
-    b.append(document.createTextNode(`${W.isPage(c) ? 'chat' : c.resolved ? '✓' : W.numberOf(c)}  ${c.text.replace(/\s+/g, ' ').slice(0, 70)} `), W.el('span', {}, `· ${when(at)}`));
-    b.addEventListener('click', () => (W.isPage(c) ? ((W.S.chatOpen = true), (W.S.listOpen = false), W.render()) : goTo(c)));
-    return b;
-  };
-  const part = (title, list, when, newest = false) =>
-    list.length ? [W.el('div', { class: 'group' }, `${title} · ${list.length}`), ...list.sort((a, b) => (newest ? -1 : 1) * a[1].localeCompare(b[1])).map((x) => row(x, when))] : [];
-  const out = [
-    ...part('Now', now, (at) => `on it ${W.ago(at)}`.replace('on it just now', 'just started')),
-    ...part('Next', next, (at) => `sent ${W.ago(at)} ago`.replace('just now ago', 'just now')),
-    ...part('Done today', done, (at) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), true),
-  ];
-  return out.length ? out : [W.el('div', { class: 'none' }, 'nothing in progress on this page')];
 }
 
 export const stepNew = (dir) => {

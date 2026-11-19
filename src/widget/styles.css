@@ -71,7 +71,8 @@ button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius
 .pin.resolved { color: rgb(36, 160, 70); }
 /* Statuses. A pin: your initial, the stroke while the agent is on it, then a green tick. A "go" comment is a pin like any other. */
 button.pin.done { color: rgb(36, 160, 70); }
-.pin:is(.resolved, .moved) { opacity: .5; scale: .8; }
+.pin:is(.resolved, .moved) { opacity: .5; } /* a done pin is as big as an open one, only faded (Leo, 18 Nov) */
+.pin.moved:not(.resolved) { scale: .8; }
 button.pin:is(.resolved, .moved):is(:hover, .open) { opacity: 1; }
 .pin.grab { touch-action: none; }
 button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
@@ -183,6 +184,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* The new comment box on a computer floats over the page: the page's colour, the pins' 1 px edge in the text colour
    (it shows on white and black pages alike) and a soft shadow. */
 .float { --_box-bg: var(--_bg); --_box-edge: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
+/* A comment on a spot or an area looks as the dialog on words does: one card, the buttons and box in it (Leo, 18 Nov). */
+@media (pointer: fine) { .float { --_box-bg: var(--_soft); --_box-edge: none; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); padding: 8px; } }
 /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
 /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
@@ -226,18 +229,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .list { position: fixed; right: 16px; bottom: 66px; width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: hidden;
         display: flex; flex-direction: column; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; }
 .list .tabs { display: flex; flex-wrap: wrap; gap: 2px; flex: none; padding: 12px 8px 6px; }
-.list .items, .msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.list .items { padding: 0 6px 6px; }
-.list .tabs button { border: 0; border-radius: var(--_r-s); padding: 4px 8px; white-space: nowrap; background: none; color: var(--_muted); cursor: pointer; font: inherit; }
-.list .tabs button.on { background: var(--_fg); color: var(--_bg); }
-.list .tabs .hold { margin-left: auto; }
-.list .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: var(--_r-s); cursor: pointer; font: inherit; }
-.list .it:hover, .list .it.cur { background: var(--_hover); }
-.list .it { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line per pin; the rest is in its thread */
-.list .it span, .list .none { color: var(--_muted); }
-.list .it .tag { display: inline-block; padding: 0 7px; border-radius: var(--_r-s); background: var(--_accent); color: var(--_accent-fg);
-                 font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 18px; vertical-align: 1px; white-space: nowrap; }
-.list .none { padding: 8px; }
+.msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.list .none { padding: 8px; color: var(--_muted); }
 /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
 @supports not (scrollbar-width: thin) {
@@ -245,18 +238,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--_fg) 24%, transparent); border-radius: 999px; }
 }
-.list .group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--_muted); padding: 10px 8px 2px; }
-.pin.held { border: 1.5px dashed var(--_muted); opacity: .85; }
-/* Close: a round, quiet button with a drawn cross (not the ✕ character), darker on hover. */
-.list .tabs .show-done { color: var(--_muted); }
 .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
-.list .tabs .x { margin-left: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
-                 font-size: 0; color: var(--_muted); background: transparent; }
-/* The cross is drawn with CSS: two thin bars, no picture. */
-.list .tabs .x::before, .list .tabs .x::after { content: ''; grid-area: 1 / 1; width: 12px; height: 1.6px; border-radius: 1px; background: currentColor; transform: rotate(45deg); }
-.list .tabs .x::after { transform: rotate(-45deg); }
-.list .tabs .x:hover { color: var(--_fg); } /* hover: the cross darkens, nothing drawn behind it */
-.list .tabs .x:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; }
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
 .chatwin .replying { flex: none; }
 .chatwin .tabs b { padding: 4px 8px; font-weight: 600; margin-right: auto; }
@@ -339,8 +321,9 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .mark .eye { fill: var(--_bg); }
 .listener .mark { margin: -2px 0 -1px -3px; }
 .listener .mark { fill: rgb(36, 160, 70); }
-.listener.idle .mark { fill: var(--_fg); }
-.listener.stale .mark { opacity: .4; }
+.listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
+.listener.stale .mark { fill: rgb(217, 139, 0); } /* reconnecting: amber */
+.listener.stale.idle .mark { fill: var(--_muted); }
 .mark :is(.e1, .e2, .eye) { transform-box: fill-box; transform-origin: 35% 100%; }
 .mark .eye { transform-origin: 50% 50%; }
 .listener.working .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
@@ -354,7 +337,7 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
       color: var(--_muted) !important; opacity: .45; transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar:hover kbd { opacity: .75; }
 .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
-.bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1/3) reads like (c)hat and ne(w) */
+.bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1) reads like (c)hat and ne(w) */
 /* One bar of segments, a hairline between them; the less used ones in the ⋯ menu above it (phones too: same bar, bigger to tap). */
 @media all {
   .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
@@ -423,7 +406,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @supports (corner-shape: squircle) {
   :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
   *, *::before, *::after { corner-shape: squircle; }
-  .pin, .pin .ring, .pin.new::after, .dot, .send, .list .tabs .x, .bar .toggle:not(.secondary)::before,
+  .pin, .pin .ring, .pin.new::after, .dot, .send, .bar .toggle:not(.secondary)::before,
   .msg :is(.stamp, .stamp-room) .ring, .gp { corner-shape: round; } /* circles stay circles */
 }
 @keyframes lab-pin { from { transform: scale(1.1); } }
@@ -485,8 +468,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .list .tabs::before { content: ''; position: absolute; left: 0; right: 0; top: -60px; height: 60px; }
   .list .tabs { touch-action: pan-x; }
   .chatwin .tabs { touch-action: none; }
-  .list .items, .msgs, .card > .body { touch-action: pan-y; }
-  .list .tabs .x { display: none; } /* the handle, a swipe down or a tap on the dimmed page closes it */
+  .msgs, .card > .body { touch-action: pan-y; }
 
   :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
   /* The bar steps down under the screen's edge while a sheet is open and comes back as the sheet goes: --lab-p is
@@ -515,7 +497,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
   .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
                 background: var(--_bg); }
-  .list .items { padding: 0 12px calc(10px + var(--_safe)); }
   .chatwin .msgs { padding: 4px 12px 8px; }
   .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
   .chatwin .chat { padding: 6px 12px var(--_pb); }
@@ -532,18 +513,17 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
           --_box-edge: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
   .float { --_box-bg: inherit; --_box-edge: inherit; } /* phones: the new comment sheet's box is the same glass */
   .box { -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); }
-  .list .it { padding: 11px 8px; }
   /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Closed ones smaller still. */
   .pin { scale: .8; }
   /* …but a 44 pt place to tap (iOS 44 pt, Leo 16 Nov: hard to hit at 22): an invisible circle round the pin, so it
-     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a closed pin (.64) gets 70 px. */
+     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a moved pin (.64) gets 70 px. */
   .pin .hit { display: block; position: absolute; inset: -14px; border-radius: 50%; }
-  .pin:is(.resolved, .moved) .hit { inset: -21px; }
+  .pin.moved:not(.resolved) .hit { inset: -21px; }
   /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
   .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }
   .msg b, .msg .quote b { font-size: 12px; letter-spacing: 0; }
-  .pin:is(.resolved, .moved) { scale: .64; }
+  .pin.moved:not(.resolved) { scale: .64; }
   /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
   .bar > button { padding: 12px 14px; min-height: 44px; }
   .more-menu { bottom: 72px; min-width: 200px; }
@@ -560,16 +540,16 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .settled .p-dlg { position: relative; }
 .fd .p-bar { width: max-content; margin: 0; padding: 6px; }
 .p-dlg { padding: 8px; }
-.fd .float { position: static; width: auto; max-width: none; --_box-bg: var(--_soft); --_box-edge: none; }
+.fd .float { position: static; width: auto; max-width: none; --_box-bg: var(--_soft); --_box-edge: none; background: none; border-radius: 0; box-shadow: none; padding: 0; }
 .quick { display: flex; gap: 4px; margin: 0 0 6px; }
 .quick button { border: 0; border-radius: var(--_r-s); padding: 5px 8px; background: var(--_soft); font-size: 12px; letter-spacing: 0; cursor: pointer; }
 .quick button:hover { background: var(--_hover); }
 .quick button.on { background: var(--_fg); color: var(--_bg); font-weight: 600; }
-.quick button.hl { box-shadow: 0 0 0 1.5px var(--_fg); } /* the action a typed / names: Enter runs it */
+.quick.alt button::after { content: attr(data-n); margin-left: 6px; opacity: .55; font-variant-numeric: tabular-nums; } /* ⌥ held: the key for each */
 /* Corners inside corners (Leo, 18 Nov): an inner radius is the outer one less the gap between them, so they run
    concentric: the bar's buttons sit 6 px in, the dialog's quick buttons and box 8 px in. */
 .p-bar button { border-radius: max(0px, calc(var(--_radius) - 6px)); }
-.fd .p-dlg .quick button, .fd .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
+.fd .p-dlg .quick button, .fd .box, .float .quick button, .float .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
 .fd.gone .quick [data-k=rewrite], .fd.gone .quick [data-k=cut] { opacity: .4; pointer-events: none; } /* its words are gone: cut and rewrite have nothing to act on */
 .fd.still .pane { transition: none; } /* back after a reload: nothing moves */
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {

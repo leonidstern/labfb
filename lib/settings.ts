@@ -7,11 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e', added: 'a' };
-// The actions row on selected words ("words") and, once the regular dialog has one, on a spot ("spot"). The comment itself is
-// always there, first and unlisted; the list holds the built-in rewrite, cut and go, and your own: { label, send, ask? }.
-const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go'];
-const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go'] };
+const SHORTCUTS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e', added: 'a' };
+// The actions row on selected words ("words") and on a spot ("spot"). The comment itself is
+// always there, first and unlisted; the list holds the built-in rewrite, cut, go, remove and fix, and your own: { label, send }.
+const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go', 'remove', 'fix'];
+const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] };
 const MAX_ACTIONS = 5; // with comment, 6 in all
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
@@ -75,7 +75,7 @@ const read = (file: string | null, problems: string[]): Record<string, unknown> 
   return {};
 };
 
-// One list of actions, checked: the built-in names and { label, send, ask? } of your own, in the order given. comment is
+// One list of actions, checked: the built-in names and { label, send } of your own, in the order given. comment is
 // implied (listed, it is dropped); a name that isn't one, a label over 16 characters, a repeat, or more than 5 are said and left out.
 const actionList = (list: unknown[], bad: (why: string) => void): unknown[] => {
   const out: unknown[] = [];
@@ -98,11 +98,10 @@ const actionList = (list: unknown[], bad: (why: string) => void): unknown[] => {
     if (!o || typeof o !== 'object' || Array.isArray(o) || !label || !send) bad(`an action of your own needs a "label" and the text to "send"; ignored`);
     else if (label.length > 16) bad(`"${label}": a label is 16 characters at most; ignored`);
     else if (send.length > 300) bad(`"${label}": the text to send is 300 characters at most; ignored`);
-    else if (o.ask !== undefined && typeof o.ask !== 'boolean') bad(`"${label}": ask must be true or false; ignored`);
     else if (seen.has(label.toLowerCase())) bad(`"${label}" is listed twice; ignored`);
     else {
       seen.add(label.toLowerCase());
-      out.push(o.ask ? { label, send, ask: true } : { label, send });
+      out.push({ label, send });
     }
   }
   if (out.length > MAX_ACTIONS) {
@@ -120,6 +119,7 @@ const check = (key: string, v: unknown, file: string, problems: string[]): unkno
     if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object of action → key');
     const out: Record<string, string> = {};
     for (const [action, key1] of Object.entries(v)) {
+      if (action === 'pointer') continue; // the old key 3: key 1 now switches between comment and pointer; a leftover setting is ignored, not said
       if (!(action in SHORTCUTS)) bad(`.${action} is not an action (${Object.keys(SHORTCUTS).join(', ')})`);
       else if (typeof key1 !== 'string' || !/^[a-z0-9]$/i.test(key1)) bad(`.${action} must be one letter or digit`);
       else out[action] = key1.toLowerCase();

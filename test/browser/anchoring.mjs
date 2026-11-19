@@ -114,7 +114,7 @@ try {
       p = await open(ctx, '<p id="t" style="width:400px">Some words here and the target word sits in the middle of this line of text.</p>');
       r = await p.evaluate(() => {
         const w = wordAt('target');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         document.getElementById('t').firstChild.data = 'Lots of brand new words came first, pushing everything on. ' + document.getElementById('t').firstChild.data;
         return { kind: a.kind, at: A.position(a), word: wordAt('target') };
       });
@@ -125,7 +125,7 @@ try {
       p = await open(ctx, '<div id="top"></div>Loose text with a findme word in it.');
       r = await p.evaluate(() => {
         const w = wordAt('findme');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         document.getElementById('top').style.height = '300px';
         const at = A.position(a);
         const word = wordAt('findme');
@@ -218,7 +218,7 @@ try {
       p = await open(ctx, '<div id="pad"></div><p class="lede">Intro words, then the special phrase sits here, and more after.</p><p>Elsewhere a phrase too.</p>');
       r = await p.evaluate(() => {
         const w = wordAt('special');
-        const a = A.anchorAt(w.x, w.y);
+        const a = A.anchorAt(w.x, w.y, true);
         const swap = (html) => (document.querySelector('.lede, .intro').outerHTML = html);
         document.getElementById('pad').style.height = '200px';
         swap('<div class="intro">Intro words, then the special phrase sits here, and more after.</div>');
