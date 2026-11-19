@@ -58,6 +58,9 @@ type Anchor = {
   atMs?: number;
   /** The page's motion ran at ¼ speed. */
   slow?: boolean;
+  /** A data-lab-action button's words, and whether the agent confirms before doing it. */
+  act?: string;
+  confirm?: boolean;
   duration?: number;
   transform?: string;
   /** An area dragged out, and what was inside it. */
