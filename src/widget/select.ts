@@ -59,6 +59,33 @@ const screenRects = (e: Element) => {
   const z = r.width / (f.clientWidth || r.width);
   return rs.map((q) => new DOMRect(r.left + q.left * z, r.top + q.top * z, q.width * z, q.height * z));
 };
+// The low ink behind every picked block's words, not only the last one's (multiselect had dropped it from the others),
+// and a board frame's blocks in the frame's own page, which has its own highlights and its own stylesheet (Leo, 19 Nov:
+// "also half ink is disappeared from selection?").
+const PICK_INK = '::highlight(lab-pick) { background-color: rgba(52, 199, 89, .18); color: inherit; }';
+let inked: Document[] = [];
+function inkPicks(list: HTMLElement[]) {
+  if (!canInk) return;
+  const docs = [...new Set(list.map((e) => e.ownerDocument))];
+  for (const d of inked) if (!docs.includes(d)) (d.defaultView as (Window & typeof globalThis) | null)?.CSS.highlights?.delete('lab-pick');
+  inked = docs;
+  for (const d of docs) {
+    const w = d.defaultView as (Window & typeof globalThis) | null;
+    if (!w?.CSS?.highlights || typeof w.Highlight !== 'function') continue;
+    if (d !== document && !d.querySelector('style[data-lab-pick]')) {
+      const st = d.createElement('style');
+      st.setAttribute('data-lab-pick', '');
+      st.textContent = PICK_INK;
+      (d.head || d.documentElement).append(st);
+    }
+    const ranges = list.filter((e) => e.ownerDocument === d).map((e) => {
+      const r = d.createRange();
+      r.selectNodeContents(e);
+      return r;
+    });
+    w.CSS.highlights.set('lab-pick', new w.Highlight(...ranges));
+  }
+}
 let unring = () => {};
 function rings() {
   unring();
@@ -142,7 +169,7 @@ function picks(list: HTMLElement[], draw = true) {
   const el = T.set[T.set.length - 1] || null;
   T.pick = el;
   for (const e of T.set) e.setAttribute('data-lab-picked', ''); // a green ring as well as the ink, so a phone shows what is picked (Leo, 19 Nov)
-  ink('lab-pick', S.editing || (el && frameOf(el)) ? null : el);
+  inkPicks(S.editing ? [] : T.set);
   rings();
   hold();
   if (el && !frameOf(el)) el.scrollIntoView({ block: 'nearest' }); // a frame's would scroll the board
@@ -214,9 +241,12 @@ async function drop() {
 export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.close) {
   W = w;
   [T.open, T.close] = [open, close];
-  W.fonts.textContent += '::highlight(lab-pick) { background-color: rgba(52, 199, 89, .18); color: inherit; } [data-lab-picked] { outline: 2px solid rgb(52, 199, 89); outline-offset: 3px; border-radius: 3px; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }' +
+  W.fonts.textContent += PICK_INK + ' [data-lab-picked] { outline: 2px solid rgb(52, 199, 89); outline-offset: 3px; border-radius: 3px; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }' +
     // In select mode a long tap picks a block, so the page's own text selection and iOS's menu stay off; the block
-    // being edited keeps both (Leo, 19 Nov: a long tap called two menus, iOS's and ours).
+    // being edited keeps both (Leo, 19 Nov: a long tap called two menus, iOS's and ours). Safari paints no highlight on
+    // words that can't be selected, so on a computer (presses are the widget's there: no selection can start) the
+    // picked blocks stay selectable and keep their ink; phones keep the ring.
+    ' @media (pointer: fine) { html.lab-editing [data-lab-picked] { -webkit-user-select: text; user-select: text; } }' +
     ' html.lab-editing body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } html.lab-editing [data-lab-editing], html.lab-editing [data-lab-editing] * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }';
   const quiet = (e: Event) => (e.preventDefault(), e.stopImmediatePropagation());
   const mine = (e: MouseEvent) => T.on && !e.altKey && !e.composedPath().includes(W.host);
