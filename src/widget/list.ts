@@ -62,9 +62,9 @@ export function drawList() {
   W.listBtn.classList.toggle('has-new', freshAll > 0);
 }
 
-// A thread's state for the agent: ['now' | 'got' | 'asks' | 'next' | 'done' | null, since when]. now: it said it is on it
+// A thread's state for the agent: ['now' | 'got' | 'missed' | 'asks' | 'next' | 'done' | null, since when]. now: it said it is on it
 // (--on-it) or gave a progress line; got: handed to it, nothing from it yet; asks: it asked a question (--question) and
-// waits for the person; next: sent, not handed yet. "since" is its latest sign.
+// waits for the person; missed: handed to a session that never answered; next: sent, not handed yet. "since" is its latest sign.
 export const workState = (c) => {
   const thread = [c, ...W.repliesOf(c.id)];
   const lastPerson = thread.filter((m) => !m.session).map((m) => m.createdAt).sort().at(-1) || '';
@@ -76,6 +76,8 @@ export const workState = (c) => {
   if (c.resolved || said === 'done') return ['done', answered ? answer.createdAt : c.createdAt];
   if (said === 'question') return ['asks', answer.createdAt];
   if (said === 'working' || c.progress) return ['now', [said === 'working' && answer.createdAt, c.progress?.at].filter(Boolean).sort().at(-1)];
+  // Handed over and nothing came back within the lab's two minutes (local.mjs ANSWER_MS): it goes to the next wait.
+  if (!answered && c.unanswered && c.unanswered >= lastPerson && !(c.handedAt > c.unanswered)) return ['missed', c.unanswered];
   if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['got', c.handedAt];
   return answered ? [null, ''] : ['next', lastPerson];
 };

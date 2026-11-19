@@ -212,6 +212,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <style>${styles}</style>
     <div class="scrim"></div>
     <div class="layer"></div>
+    <div class="motions"></div>
     <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new${flag('sinceLooked') ? ` · ${KEYS.added} added` : ''} · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
@@ -219,7 +220,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
-      <button class="secondary pause-btn" type="button" hidden aria-pressed="false" title="pause the page's videos and animations (P); a comment on a paused video says which second">pause</button>
       <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
       <button class="secondary go-btn" type="button" hidden title="1 switches between comment and pointer (clicks are the page's own)">mode</button>
@@ -242,7 +242,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const listBtn = /** @type {HTMLButtonElement} */ ($('.list-btn'));
   const goBtn = $('.go-btn');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
-  const pauseBtn = /** @type {HTMLButtonElement} */ ($('.pause-btn'));
+  const motions = $('.motions');
   const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
   const overBtn = $('.over-btn');
   const tabTitle = { base: '' };
@@ -674,8 +674,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const pinsById = new Map(); // the pins on the layer now, by thread id, for movePins()
   S.faces = new Map(); // each pin's last drawn state, so a change can ease in
   S.rings = new Map(); // and its state with the agent, for the ring
-  const RINGS = { now: '', got: ' got', wait: ' wait', stale: ' stale', asks: ' asks' }; // the ring each state wears (none: sent, done)
-  const SAY = { now: 'agent working on it', got: 'picked up by the agent', wait: 'waiting', stale: 'no update from the agent', asks: 'agent asked a question' };
+  const RINGS = { now: '', got: ' got', wait: ' wait', stale: ' stale', missed: ' stale', asks: ' asks' }; // the ring each state wears (none: sent, done)
+  const SAY = { now: 'agent working on it', got: 'picked up by the agent', wait: 'waiting', stale: 'no update from the agent', missed: 'not answered', asks: 'agent asked a question' };
   // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
   S.dropDrag = null;
   // What each pin on the layer was drawn from, so a redraw can keep the pin itself and only update it.
@@ -1031,6 +1031,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
     render();
+    drawMotion(); // the pause / play beside each moving thing goes and comes with the comments
   };
   toggleBtn.addEventListener('click', () => setOn(!S.on));
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
@@ -1057,46 +1058,66 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
   }, true);
   goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
-  // Pause (Leo, 18 Nov): a page with video or animation always has a pause here. Paused, the videos and the page's
-  // animations stand still (the widget's own keep moving), and a comment on a video says which second (anchoring.ts).
-  const stopped = { anims: new Set(), videos: new Set(), style: null };
+  // Pause (Leo, 19 Nov): each video and each moving thing on the page has its own pause / play just beyond its top right
+  // corner, over the page (nothing moves), shown with the comments; P pauses them all, or plays what labit paused.
+  // The widget's own animations keep moving, and a comment on a paused video says which second (anchoring.ts).
+  const held = new Set(); // the videos and elements labit paused
   const pageAnims = () => document.getAnimations().filter((a) => {
     const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
-    return !(t && root.contains(t));
+    return t && !root.contains(t);
   });
-  const moving = () => Boolean(document.querySelector('video')) || pageAnims().some((a) => a.playState === 'running');
-  const sayPause = () => {
-    pauseBtn.textContent = S.paused ? 'play' : 'pause';
-    pauseBtn.setAttribute('aria-pressed', String(Boolean(S.paused)));
-    pauseBtn.hidden = !S.on || !(S.paused || moving());
+  const animsOf = (el) => pageAnims().filter((a) => /** @type {KeyframeEffect} */ (a.effect).target === el);
+  const moving = () => [...new Set([...document.querySelectorAll('video'), ...held, ...pageAnims().filter((a) => a.playState === 'running').map((a) => /** @type {KeyframeEffect} */ (a.effect).target)])].filter((el) => el?.isConnected);
+  const isStill = (el) => (el instanceof HTMLVideoElement ? el.paused : animsOf(el).every((a) => a.playState !== 'running'));
+  const setItem = (el, stop) => {
+    if (el instanceof HTMLVideoElement) {
+      if (stop) el.pause();
+      else el.play?.().catch(() => {});
+    } else {
+      for (const a of animsOf(el)) {
+        if (stop && a.playState === 'running') a.pause();
+        else if (!stop && a.playState === 'paused') a.play();
+      }
+    }
+    held[stop ? 'add' : 'delete'](el);
+    S.paused = held.size > 0; // a comment written now says the page was paused
+  };
+  const shown = new Map();
+  const drawMotion = () => {
+    const now = S.on ? moving() : [];
+    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); shown.delete(el); }
+    for (const el of now) {
+      const r = el.getBoundingClientRect();
+      let b = shown.get(el);
+      if (!b) {
+        b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'motion';
+        b.addEventListener('click', () => (setItem(el, !isStill(el)), drawMotion()));
+        motions.append(b);
+        shown.set(el, b);
+      }
+      const stopped = isStill(el);
+      const what = el instanceof HTMLVideoElement ? 'video' : 'animation';
+      if (b.dataset.state !== String(stopped)) {
+        b.dataset.state = String(stopped);
+        b.innerHTML = stopped ? '<svg viewBox="0 0 12 12"><path d="M3.5 2.2v7.6L9.8 6z"/></svg>' : '<svg viewBox="0 0 12 12"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
+        b.setAttribute('aria-label', b.title = `${stopped ? 'play' : 'pause'} this ${what} (P: all)`);
+      }
+      // From its middle and its own size, so a spinning or growing thing's control stays put.
+      const w = el instanceof HTMLElement ? el.offsetWidth : r.width;
+      const h = el instanceof HTMLElement ? el.offsetHeight : r.height;
+      b.hidden = !w || !h;
+      b.style.left = `${Math.min(r.left + (r.width + w) / 2 + 6, document.documentElement.clientWidth - 30) + scrollX}px`;
+      b.style.top = `${r.top + (r.height - h) / 2 + scrollY}px`;
+    }
   };
   const setPause = (on) => {
-    S.paused = on;
-    if (on) {
-      stopped.style = document.createElement('style');
-      stopped.style.textContent = '*, *::before, *::after { animation-play-state: paused !important; }';
-      document.head.append(stopped.style);
-      for (const a of pageAnims()) {
-        if (a.playState !== 'running') continue;
-        a.pause();
-        stopped.anims.add(a);
-      }
-      for (const v of document.querySelectorAll('video')) {
-        if (v.paused) continue;
-        v.pause();
-        stopped.videos.add(v);
-      }
-    } else {
-      stopped.style?.remove();
-      for (const a of stopped.anims) a.play();
-      for (const v of stopped.videos) v.play?.().catch(() => {});
-      stopped.anims.clear();
-      stopped.videos.clear();
-    }
-    sayPause();
+    for (const el of on ? moving().filter((el) => !isStill(el)) : [...held]) setItem(el, on);
+    drawMotion();
   };
-  pauseBtn.addEventListener('click', () => setPause(!S.paused));
-  setInterval(sayPause, 1000);
+  setInterval(drawMotion, 1000);
+  addEventListener('scroll', () => requestAnimationFrame(drawMotion), { capture: true, passive: true });
   doneBtn.addEventListener('click', toggleDone);
   movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
   overBtn.addEventListener('click', () => setOver(!S.overControls));
@@ -1194,7 +1215,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act)) {
       const k = act;
       e.preventDefault();
-      if (k === 'pause') return pauseBtn.click();
+      if (k === 'pause') return setPause(!S.paused);
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
       if (k === 'added') return dispatchEvent(new CustomEvent('lab-added')); // the Added list (changes.ts, flag sinceLooked)
