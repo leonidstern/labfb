@@ -329,10 +329,6 @@ addEventListener('gesturechange', (e) => {
 
 // ---------- keys (after the widget's own: an Esc it used is not ours) ----------
 const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(n.tagName) || n.hasAttribute('data-lab-comments')));
-// Back to the page this board is about; the page puts its scroll back from the key ⇧B left (the one a reload uses).
-const back = () => {
-  if (of) location.href = of;
-};
 const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
   if (e.metaKey || e.ctrlKey || e.altKey) return false;
   const digit = /^Digit(\d)$/.exec(e.code)?.[1];
@@ -347,14 +343,12 @@ const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 
   else if (e.shiftKey && digit === '2') go(zoomAt(cam, view.w / 2, view.h / 2, 1, boxes(), view));
   else if (e.shiftKey && digit === '0') go(find(selected) ? fitFrame(find(selected)!.f, view) : fitAll(boxes(), view));
   else if (!e.shiftKey && (e.key === '+' || e.key === '=' || e.key === '-') && !fromFrame) go(zoomAt(cam, view.w / 2, view.h / 2, cam.z * (e.key === '-' ? 0.8 : 1.25), boxes(), view));
-  else if (e.shiftKey && e.code === 'KeyB' && !entered) back();
   else if (e.key === 'Enter' && !e.shiftKey && selected && !entered) enter(selected);
   else if (e.key === 'Tab' && !entered && cards.length) step(e.shiftKey ? -1 : 1);
   else if (e.key === 'Escape') {
     // Heard in the frame, which keeps an Esc its page used (a menu closing) to itself: this one is ours.
     if (entered) leave();
     else if (selected) select('');
-    else if (of && !coarse) back(); // an empty board's Esc goes back to the page, as ⇧B does
     else return false;
   } else return false;
   return true;
@@ -370,7 +364,6 @@ void space;
 // ---------- what the frames and the widget see ----------
 Object.assign(window, {
   __labBoard: {
-    back,
     busy: () => performance.now() - lastDown < 1500,
     key: (k: Parameters<typeof press>[0]) => press(k, true),
     frame: (id: string) => find(id)?.frame,

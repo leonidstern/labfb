@@ -43,20 +43,6 @@ const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
 };
-const OFFDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-boardoff-'));
-fs.writeFileSync(path.join(OFFDIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Off</h1>');
-const POFF = PORT + 1;
-fs.writeFileSync(path.join(OFFDIR, 'labit.json'), JSON.stringify({ port: POFF }));
-const off = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: OFFDIR, env });
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(`http://localhost:${POFF}/`);
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-const root = (p) => p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')) ? true : false);
 try {
   for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
@@ -67,31 +53,14 @@ try {
       await p.goto(B + '/pricing');
       await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 5000 });
       await sleep(500);
-      await p.evaluate(() => scrollTo(0, 600));
-      await sleep(200);
-      // The ⋯ menu has the entry, with its key
-      const menu = () => p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot; r.querySelector('.more').click(); return [...r.querySelectorAll('.more-menu button')].map((b) => b.textContent); });
-      const items = await menu();
-      check(eng, 'the ⋯ menu offers "open as board" with its key', items.some((t) => /open as board.*⇧B/.test(t)), JSON.stringify(items));
+      // a page stays a page: no key and no menu entry turns it into a canvas
+      await p.keyboard.press('Shift+KeyB');
+      await sleep(500);
+      check(eng, 'Shift+B does nothing: a page stays a normal page', new URL(p.url()).pathname === '/pricing');
+      const items = await p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot; r.querySelector('.more').click(); return [...r.querySelectorAll('.more-menu button')].map((b) => b.textContent); });
+      check(eng, 'the ⋯ menu has no "open as board"', !items.some((t) => /board/.test(t)), JSON.stringify(items));
       await p.keyboard.press('Escape');
-      await p.keyboard.press('Shift+KeyB');
-      await p.waitForURL(/_lab\/board\/pricing/, { timeout: 5000 });
-      await sleep(2500);
-      const b = await p.evaluate(() => ({ url: location.pathname + location.search, cards: document.querySelectorAll('#lab-board .f').length, live: __labBoard.live() }));
-      check(eng, 'Shift+B opens this page as a board named after it, one frame (an unsaved board)', b.url === '/_lab/board/pricing?of=%2Fpricing' && b.cards === 1 && b.live[0] === 'a', JSON.stringify(b));
-      await p.keyboard.press('Escape'); // nothing selected: back to the page
-      await p.waitForURL(/\/pricing$/, { timeout: 5000 });
-      await sleep(1200);
-      const y = await p.evaluate(() => scrollY);
-      check(eng, 'Esc on an empty board goes back to the page, scrolled where it was', Math.abs(y - 600) < 5, String(y));
-      // Shift+B on a board goes back too
-      await p.keyboard.press('Shift+KeyB');
-      await p.waitForURL(/_lab\/board\/pricing/, { timeout: 5000 });
-      await sleep(1500);
-      await p.keyboard.press('Shift+KeyB');
-      await p.waitForURL(/\/pricing$/, { timeout: 5000 });
-      check(eng, 'Shift+B on a board goes back to the page', true);
-      // the board is saved by the first change; here the agent's CLI-made board shows as a ⌘K row
+      // a board the agent made (labit board new, or the API) shows as a ⌘K row
       await fetch(`${B}/_lab/api/board?name=checkout`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ v: 1, rev: 0, frames: [{ id: 'a', src: '/pricing', w: 390, h: 844 }], of: '/pricing' }) });
       await sleep(800);
       await p.keyboard.press('Control+KeyK');
@@ -99,14 +68,6 @@ try {
       const rows = await p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot; return [...r.querySelectorAll('.sw-row[data-kind="board"]')].map((x) => x.textContent); });
       check(eng, '⌘K lists the board: name, frames, no comment count', rows.length === 1 && /board checkout/.test(rows[0]) && /1 frame/.test(rows[0]) && !/comment|open/i.test(rows[0]), JSON.stringify(rows));
       await p.keyboard.press('Escape');
-      // flag off: no key, no menu entry
-      const q = await ctx.newPage();
-      await q.goto(`http://localhost:${POFF}/`);
-      await q.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 5000 });
-      await sleep(400);
-      await q.keyboard.press('Shift+KeyB');
-      await sleep(600);
-      check(eng, 'flag off: Shift+B does nothing', new URL(q.url()).pathname === '/');
       await ctx.close();
     } finally {
       await browser.close();
@@ -114,9 +75,7 @@ try {
   }
 } finally {
   server.kill();
-  off.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
-  fs.rmSync(OFFDIR, { recursive: true, force: true });
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);
