@@ -7,7 +7,7 @@ import { holdEditing } from './hold.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
-const T = { on: false, pick: null as HTMLElement | null, open: (_el: HTMLElement, _at?: MouseEvent) => {}, close: () => {} };
+const T = { on: false, pick: null as HTMLElement | null, set: [] as HTMLElement[], open: (_el: HTMLElement, _at?: MouseEvent) => {}, close: () => {} };
 const canInk = typeof Highlight === 'function' && Boolean(CSS.highlights);
 /** Low ink behind a block's words (CSS Custom Highlight: nothing in the page's DOM is touched): pick, sent, kept. */
 export const ink = (name: string, el: HTMLElement | null) => {
@@ -25,13 +25,17 @@ const blockAt = (t: EventTarget | null) => {
   return null;
 };
 /** The next (1) or previous (-1) block after the picked one, in reading order. */
-export function step(dir: 1 | -1) {
+const blocks = () => {
   const all: HTMLElement[] = [];
   const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n = walk.nextNode(); n; n = walk.nextNode()) {
     const e = n.parentElement;
     if (e && all[all.length - 1] !== e && isBlock(e)) all.push(e);
   }
+  return all;
+};
+export function step(dir: 1 | -1) {
+  const all = blocks();
   const at = T.pick ? all.indexOf(T.pick) : -1;
   return all[at < 0 ? (dir > 0 ? 0 : all.length - 1) : (at + dir + all.length) % all.length] || null;
 }
@@ -52,8 +56,9 @@ const pointOn = (e: HTMLElement) => {
   return W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2, false, e);
 };
 /** ↑ higher, ↓ deeper and done, for the picked block's chips line. */
-export const selectChips = () =>
-  ([
+export const selectChips = () => [
+  ...(T.set.length > 1 ? [W.el('span', { class: 'sel', 'data-a': 'n', role: 'status' }, `${T.set.length} picked`) as HTMLElement] : []),
+  ...([
     ['↑', 'higher: what holds it (Shift+Enter)', () => T.pick && higher(T.pick)],
     ['↓', 'deeper: inside it (Enter)', () => T.pick && !isBlock(T.pick) && deeper(T.pick)],
     ['done', 'leave select', null],
@@ -63,19 +68,26 @@ export const selectChips = () =>
     x.addEventListener('mousedown', (e: Event) => e.preventDefault());
     x.addEventListener('click', (e: Event) => (e.stopPropagation(), to ? pick(to() || T.pick) : selectMode(false)));
     return x;
-  });
+  }),
+];
 /** The page holds its reloads while a block is picked or being edited. */
 export const hold = () => holdEditing(Boolean(T.on || W.S.editing));
 /** Pick a block (or none); draw: false from inside the widget's own redraw. */
-export function pick(el: HTMLElement | null, draw = true) {
+export const pick = (el: HTMLElement | null, draw = true) => picks(el ? [el] : [], draw);
+// Several picked (Leo, 19 Nov: "select should have multiselect"): Shift (or Command/Control) + click adds or drops a
+// block, a drag from empty space (or with Shift) boxes the blocks it touches; the last one added holds the sheet.
+const toggle = (e: HTMLElement) => picks(T.set.includes(e) ? T.set.filter((x) => x !== e) : [...T.set, e]);
+function picks(list: HTMLElement[], draw = true) {
   const S = W.S;
-  T.pick?.removeAttribute('data-lab-picked');
+  for (const e of T.set) e.removeAttribute('data-lab-picked');
+  T.set = [...new Set(list)];
+  const el = T.set[T.set.length - 1] || null;
   T.pick = el;
-  el?.setAttribute('data-lab-picked', ''); // a green ring as well as the ink, so a phone shows what is picked (Leo, 19 Nov)
+  for (const e of T.set) e.setAttribute('data-lab-picked', ''); // a green ring as well as the ink, so a phone shows what is picked (Leo, 19 Nov)
   ink('lab-pick', S.editing ? null : el);
   hold();
   el?.scrollIntoView({ block: 'nearest' });
-  if (el && !S.editing) S.draft = S.selDraft = { anchor: pointOn(el), select: true };
+  if (el && !S.editing) S.draft = S.selDraft = { anchor: pointOn(el), select: true, n: T.set.length };
   else if (S.selDraft) {
     if (S.draft === S.selDraft) S.draft = null;
     S.selDraft = null;
@@ -91,6 +103,55 @@ export function selectMode(on = !T.on) {
   pick(null);
 }
 export const selectOn = () => T.on;
+// Delete (or Backspace) hides the picked blocks here at once (the DOM stays, to put back) and sends one pin, so the agent
+// takes them out of the file; "undo" (or Command-Z) for 5 s shows them again and takes the pin back. A reload shows them
+// until the agent has edited the file. Not the "remove" action, which stays an ordinary chip (Leo, 19 Nov).
+async function drop() {
+  const list = [...T.set].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  if (!list.length) return;
+  const said = (e: HTMLElement) => {
+    const t = (e.textContent || '').replace(/\s+/g, ' ').trim();
+    return `${pointOn(e).selector || e.localName} “${t.length > 40 ? `${t.slice(0, 40)}…` : t}”`;
+  };
+  const anchor = pointOn(list[0]);
+  const text = `delete these ${list.length} block${list.length > 1 ? 's' : ''}: ${list.map(said).join(' · ')}`;
+  const was = list.map((e) => e.style.display);
+  pick(null);
+  for (const e of list) e.style.display = 'none';
+  let id = '';
+  let key = '';
+  let undone = false;
+  const note = W.el('div', { class: 'hint', role: 'status', style: 'pointer-events: auto; bottom: 108px; display: flex; gap: 12px; align-items: center' }, `removed ${list.length} here; I'll make it real`) as HTMLElement;
+  const undo = W.el('button', { class: 'btn', type: 'button' }, 'undo') as HTMLButtonElement;
+  const back = async () => {
+    if (undone) return;
+    undone = true;
+    list.forEach((e, i) => (e.style.display = was[i]));
+    note.remove();
+    if (id) await take();
+  };
+  const take = async () => {
+    await W.send({ action: 'delete', id, ...(key && !W.S.isAdmin ? { edit: key } : {}) }).catch(() => W.say("couldn't take the pin back"));
+    W.S.comments = W.S.comments.filter((c: { id: string; parent?: string }) => c.id !== id && c.parent !== id);
+    W.render();
+  };
+  W.placed.push(back);
+  undo.onclick = () => (W.placed.includes(back) && W.placed.splice(W.placed.indexOf(back), 1), back());
+  note.append(undo);
+  W.root.append(note);
+  setTimeout(() => note.remove(), 5000);
+  const r = await W.send({ page: W.S.page, name: W.store.get('lab-name') || 'me', text, anchor }).catch(() => (W.say("couldn't send it"), null));
+  if (!r?.comment) return;
+  ({ id } = r.comment);
+  key = r.edit || '';
+  if (key) W.store.set(`lab-edit:${id}`, key);
+  const at = W.placed.indexOf(id); // Command-Z undoes the whole delete (back), not just the pin
+  if (at >= 0) W.placed.splice(at, 1);
+  if (undone) return void take();
+  W.S.comments.push(r.comment);
+  W.markSeen([r.comment]);
+  W.render();
+}
 export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.close) {
   W = w;
   [T.open, T.close] = [open, close];
@@ -99,24 +160,48 @@ export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.clos
     // being edited keeps both (Leo, 19 Nov: a long tap called two menus, iOS's and ours).
     ' html.lab-editing body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } html.lab-editing [data-lab-editing], html.lab-editing [data-lab-editing] * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }';
   const quiet = (e: Event) => (e.preventDefault(), e.stopImmediatePropagation());
-  const mine = (e: MouseEvent) => T.on && !e.altKey && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.composedPath().includes(W.host);
+  const mine = (e: MouseEvent) => T.on && !e.altKey && !e.composedPath().includes(W.host);
+  let drag: { x: number; y: number; add: boolean; on: HTMLElement | null; box: HTMLElement | null } | null = null;
   // Before the page and the pins see them (window, capture): a click picks a block instead of pinning.
   for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick'])
     addEventListener(type, (e) => {
       const m = e as MouseEvent;
       if (!mine(m) || (W.S.editing && (m.target as Element).closest?.('[data-lab-editing]'))) return; // inside the words being edited: the browser's own
       quiet(m);
+      const on = blockAt(m.target);
+      const add = m.shiftKey || m.metaKey || m.ctrlKey;
       if (type === 'pointerdown') {
         T.close();
-        pick(blockAt(m.target));
+        // A phone: once something is picked, a tap on another block adds it and a tap on a picked one drops it.
+        if ((e as PointerEvent).pointerType === 'touch') return void (on && T.set.length ? toggle(on) : pick(on));
+        if (on && !add) return void pick(on);
+        drag = { x: m.clientX, y: m.clientY, add, on, box: null };
       } else if (type === 'dblclick' && T.pick && T.pick === blockAt(m.target)) T.open(T.pick, m);
     }, true);
+  addEventListener('pointermove', (e) => {
+    if (!drag || (!drag.box && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 5)) return;
+    drag.box ??= W.root.appendChild(W.el('div', { 'data-lab-box': '', style: 'position: fixed; pointer-events: none; z-index: 2147483647; border: 1px solid rgb(52, 199, 89); background: rgba(52, 199, 89, .08); border-radius: 2px' })) as HTMLElement;
+    Object.assign(drag.box.style, { left: `${Math.min(e.clientX, drag.x)}px`, top: `${Math.min(e.clientY, drag.y)}px`, width: `${Math.abs(e.clientX - drag.x)}px`, height: `${Math.abs(e.clientY - drag.y)}px` });
+  }, true);
+  addEventListener('pointerup', () => {
+    const d = drag;
+    drag = null;
+    if (!d) return;
+    if (d.box) {
+      const r = d.box.getBoundingClientRect();
+      d.box.remove();
+      const got = blocks().filter((b) => [...b.getClientRects()].some((q) => q.right > r.left && q.left < r.right && q.bottom > r.top && q.top < r.bottom));
+      picks(d.add ? [...T.set, ...got] : got);
+    } else if (d.on) toggle(d.on);
+    else if (!d.add) pick(null);
+  }, true);
   addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
     if (!T.on || W.S.editing || e.metaKey || e.ctrlKey || e.altKey || e.composedPath().includes(W.host) || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName) || t?.isContentEditable) return;
     const pickOn = T.pick;
-    if (e.key === 'Escape' || e.key === 'Tab' || (pickOn && e.key === 'Enter')) quiet(e);
+    if (e.key === 'Escape' || e.key === 'Tab' || (pickOn && /^(Enter|Delete|Backspace)$/.test(e.key))) quiet(e);
     else return;
+    if (e.key === 'Delete' || e.key === 'Backspace') return void drop();
     if (e.key === 'Escape') {
       if (pickOn) pick(null);
       else selectMode(false);

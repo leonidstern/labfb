@@ -2041,7 +2041,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         row.after(menu);
         const over = () => row.scrollWidth > row.clientWidth + 1;
         let at = null; // ↑ before ↓, however many go
-        for (const b of [...row.querySelectorAll('.sel:not([data-a=done])')].reverse()) if (over()) at = spill.insertBefore(b, at);
+        for (const b of [...row.querySelectorAll('.sel:not([data-a=done], [data-a=n])')].reverse()) if (over()) at = spill.insertBefore(b, at);
         while (over() && shown) chips[--shown].remove();
         dots.hidden = shown === LIST.length && !spill.children.length && !mayEdit;
         [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
