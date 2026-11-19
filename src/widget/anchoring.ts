@@ -634,7 +634,9 @@ export function anchorAt(clientX, clientY, words = false) {
       anchor.nh = Math.round(r.height);
     }
   } else {
-    const quote = words ? quoteAt(clientX, clientY, shadowRoots) : null;
+    // Code keeps its quote on a plain click: the line and its number are what an agent opens the file at.
+    const inCode = target.closest('pre, [data-file], table[class*="code" i]') || getComputedStyle(target).whiteSpace.startsWith('pre');
+    const quote = words || inCode ? quoteAt(clientX, clientY, shadowRoots) : null;
     if (quote) {
       anchor.kind = 'text';
       anchor.quote = quote;
