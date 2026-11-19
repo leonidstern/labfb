@@ -494,7 +494,8 @@ function sameKind(node, tag) {
 // under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
 export function anchorAt(clientX, clientY, words = false, onto = null) {
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
-  if (onto && !stack.length) stack = [onto];
+  // ...and when the point is on something else (scrolled away, under the bar), the element the caller names wins.
+  if (onto && !(stack[0] && (stack[0] === onto || onto.contains(stack[0])))) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
   let shadowHost = null;

@@ -42,9 +42,19 @@ const label = (e: HTMLElement) => {
   const t = (e.textContent || '').replace(/\s+/g, ' ').trim();
   return `${e.localName}${e.id ? `#${e.id}` : ''} "${t.length > 50 ? `${t.slice(0, 49)}…` : t}"`;
 };
-const pinOn = async (e: HTMLElement, text: string) => {
+// One tap, one pin (19 Nov: a phone's "states" sent the same pin twice in a second, and once on <body>). The same ask on
+// the same block is left alone while it is on its way and for 2s after; the anchor is built onto the block itself, so a
+// block scrolled away or under the bar no longer lands on whatever is at that point (body).
+const lastAsk = new WeakMap<HTMLElement, { text: string; at: number }>();
+const pointOn = (e: HTMLElement) => {
   const r = e.getBoundingClientRect();
-  const anchor = W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2);
+  return W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2, false, e);
+};
+const pinOn = async (e: HTMLElement, text: string) => {
+  const was = lastAsk.get(e);
+  if (was && was.text === text && Date.now() - was.at < 2000) return void W.say?.('already sent');
+  lastAsk.set(e, { text, at: Date.now() });
+  const anchor = pointOn(e);
   let name = '';
   try {
     name = (W.store.get('lab-name') || '').trim();
@@ -56,6 +66,7 @@ const pinOn = async (e: HTMLElement, text: string) => {
     W.render();
     W.say?.('sent to the agent');
   } catch {
+    lastAsk.delete(e); // not sent: a second tap may try again
     W.say?.("couldn't send it: is the lab running?");
   }
 };
@@ -74,9 +85,9 @@ const ACTS: Array<[string, () => void]> = [
   ['pin', () => {
     const p = T.pick;
     if (!p) return;
-    const r = p.getBoundingClientRect();
+    const anchor = pointOn(p);
     selectMode(false);
-    W.begin(W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2));
+    W.begin(anchor);
   }],
 ];
 const drawBar = () => {
