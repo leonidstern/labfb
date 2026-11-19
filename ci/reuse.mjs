@@ -65,8 +65,44 @@ for (const [f, css] of sheets) for (const block of css.matchAll(/([^{}]+)\{([^{}
   }
 }
 
+// 6. Tokens: a colour, corner, font size or motion comes from the design system (the :host tokens in styles.css, the
+//    --lab-* ones in lab.css, docs/motion.md), not a value written into a rule (Leo, 19 Nov: the design census). Custom
+//    properties are where tokens are made, so they're not checked; a value a part really needs is listed in
+//    ci/parts.json "values" with why.
+const allowed = (kind, v) => (parts.values[kind] || {})[v] !== undefined;
+const COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\([^)]*\)/gi;
+const RADIUS = /^(0|50%|inherit|var\(--[\w-]+\)( var\(--[\w-]+\)| 0)*|max\(0px, calc\(var\(--[\w-]+\) - \d+px\)\))( !important)?$/;
+const SIZES = /^((10|11|12|13|14|15|16|17|24)px|inherit)( !important)?$/;
+const lab = ['lab.css', read(path.join(ROOT, 'public/_lab/lab.css')).replace(/\/\*[\s\S]*?\*\//g, '')];
+for (const [f, css] of [...sheets, lab]) for (const block of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  for (const d of block[2].matchAll(/([\w-]+)\s*:\s*([^;]+)/g)) {
+    const [p, v] = [d[1], d[2].trim().replace(/\s+/g, ' ')];
+    if (p.startsWith('--')) continue;
+    const at = `${f}:${lineOf(css, block.index)}`;
+    // Black washes in shadows and masks are the same in both schemes; any other colour is a token.
+    for (const c of v.match(COLOUR) || []) {
+      const k = c.replace(/\s/g, '');
+      if (!/^rgba\(0,0,0,[\d.]+\)$|^#000$/.test(k) && !allowed('colours', k)) say(`${at} writes the colour ${c} (${p})`, 'use a colour token (--_green, --_green-fg, --_red, --_amber, --_fg, --_muted, …), or list it in ci/parts.json "values"');
+    }
+    if (/radius$/.test(p) && !RADIUS.test(v) && !allowed('radii', v)) say(`${at} writes the corner ${v}`, 'use var(--_radius) / var(--_r-s) (lab: --lab-corner, --lab-corner-s), max(0px, calc(<token> - gap)) inside a box, or 50% for a circle');
+    if (p === 'font-size' && !SIZES.test(v)) say(`${at} uses the font size ${v}`, 'use one of 10, 11, 12, 13, 14, 15, 16, 17 or 24 px');
+    if (/^(transition|animation)/.test(p) && /\d(m?s)\b|cubic-bezier|\bease(-in|-out|-in-out)?\b/.test(v.replace(/var\([^()]*\)|calc\([^()]*(\([^()]*\)[^()]*)*\)/g, '')) && !allowed('motion', v)) {
+      say(`${at} writes its own motion: ${p}: ${v}`, 'use the duration and curve tokens (--_t-quick/-base/-slow, --_ease, --_ease-out, …, --_fade); docs/motion.md');
+    }
+  }
+}
+// In scripts: a Web Animation or a timer takes ms('…') and ease('…'); a colour comes from a token.
+for (const f of code) {
+  const t = read(f);
+  for (const m of t.matchAll(/cubic-bezier\(|duration:\s*\d|\b\d+ms\b(?=[^\n]*transition)|#[0-9a-fA-F]{3,8}\b(?=['`;) ])|\brgba?\([^)]*\)/g)) {
+    const line = t.slice(0, m.index).split('\n').length, src = t.split('\n')[line - 1];
+    if (/^\s*(\/\/|\*)/.test(src) || (parts.values.code || {})[`${path.basename(f)}: ${m[0]}`] !== undefined) continue;
+    say(`${rel(f)}:${line} writes ${m[0]} itself`, "use ms('…') / ease('…') (anchoring.ts) or read the token: getComputedStyle(host).getPropertyValue('--_green'), or list it in ci/parts.json \"values\".code");
+  }
+}
+
 if (problems.length) {
   console.error(`Reuse check: ${problems.length} new part${problems.length === 1 ? '' : 's'} where an existing one would do.\n\n${problems.join('\n\n')}\n`);
   process.exit(1);
 }
-console.log('Reuse check: one drawer, one dimmed page, shared gestures, keyboard fit, animations and styles.');
+console.log('Reuse check: one drawer, one dimmed page, shared gestures, keyboard fit, animations and styles; colours, corners, sizes and motion from tokens.');
