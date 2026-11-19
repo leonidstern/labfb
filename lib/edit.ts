@@ -24,7 +24,7 @@ const pat = (s: string) =>
     .replace(/\s+/g, '(?:\\s|&nbsp;|\\{\\s*[\'"] [\'"]\\s*\\})+');
 
 /** A path inside the project that may be written: a real file under root, not in a dot folder or node_modules, a text type, small. */
-function inside(root: string, rel: string): string | null {
+export function inside(root: string, rel: string): string | null {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) return null;
   const file = path.resolve(root, rel);
   if (file !== root && !file.startsWith(root + path.sep)) return null;
@@ -166,3 +166,6 @@ export function undo(root: string, labDir: string, id: string): Out {
   log(labDir, back);
   return { ok: true, edit: back };
 }
+
+/** An edit's words are no longer in the file: said once, to the agent. */
+export const overwritten = (labDir: string, rec: Rec) => log(labDir, { ...rec, state: 'overwritten' });

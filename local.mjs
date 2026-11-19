@@ -613,8 +613,27 @@ const agentText = async (page) => {
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   const file = fileFor(page);
-  const lines = [file && `file: ${file}`, ...lookLines(page, file)].filter(Boolean);
+  const lines = [file && `file: ${file}`, ...(await editLines(page)), ...lookLines(page, file)].filter(Boolean);
   return lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
+};
+// The words a person changed in the source from the page (flag editText), the last five: already in the file, nothing to do.
+// An agent reads them when it reads the page or is handed a pin on it; no wait carries one on its own. A change an agent or
+// an editor has since undone or written over is said once, as overwritten (checked here: a dev server has no file watcher).
+const editLines = async (page) => {
+  if (SET.flags.editText !== true) return [];
+  const { edits, inside, overwritten } = await import('./lib/edit.ts');
+  const out = [];
+  const one = (t) => t.replace(/\s+/g, ' ');
+  for (const e of edits(LAB).filter((x) => x.page === page && x.state !== 'undone').slice(-5)) {
+    if (e.state === 'overwritten') continue;
+    const abs = inside(ROOT, e.file);
+    if (abs && fs.readFileSync(abs, 'utf8').includes(e.wrote)) out.push(`edit (already in the file, keep it): "${one(e.was)}" now "${one(e.now)}" · file ${e.file}:${e.line}`);
+    else {
+      overwritten(LAB, e);
+      out.push(`edit overwritten: "${one(e.now)}" is no longer in ${e.file}. Put it back or say why.`);
+    }
+  }
+  return out;
 };
 // Who last looked (the last three, newest first), and whether before or after the file's last save (what they saw
 // may be older than the agent's latest edit): `looked: Leo 14:02 (before the last save)`. Then, for an HTML file, the
@@ -1320,7 +1339,7 @@ setInterval(pagesChanged, Math.min(60000, TAB_TTL)).unref();
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
 async function threadsText(page, threads) {
   const text = await agentText(page);
-  const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file|unseen by .*):/.test(l)).join('\n');
+  const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file|edit .*|unseen by .*):/.test(l)).join('\n');
   // Lean: details an agent rarely needs (computed looks, colours, window size, the CSS path) stay in the full text at
   // /_lab/agent/<page>; the pin's words, element, text, section and file stay here.
   const RARE = /^(looks|colours|viewport|selector \(at comment time\)):/;
