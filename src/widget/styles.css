@@ -71,7 +71,8 @@ button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius
 .pin.resolved { color: rgb(36, 160, 70); }
 /* Statuses. A pin: your initial, the stroke while the agent is on it, then a green tick. A "go" comment is a pin like any other. */
 button.pin.done { color: rgb(36, 160, 70); }
-.pin:is(.resolved, .moved) { opacity: .5; scale: .8; }
+.pin:is(.resolved, .moved) { opacity: .5; } /* a done pin is as big as an open one, only faded (Leo, 18 Nov) */
+.pin.moved:not(.resolved) { scale: .8; }
 button.pin:is(.resolved, .moved):is(:hover, .open) { opacity: 1; }
 .pin.grab { touch-action: none; }
 button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
@@ -512,14 +513,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Closed ones smaller still. */
   .pin { scale: .8; }
   /* …but a 44 pt place to tap (iOS 44 pt, Leo 16 Nov: hard to hit at 22): an invisible circle round the pin, so it
-     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a closed pin (.64) gets 70 px. */
+     looks the same and a finger near it still opens it. 56 px at .8 is 44.8 pt; a moved pin (.64) gets 70 px. */
   .pin .hit { display: block; position: absolute; inset: -14px; border-radius: 50%; }
-  .pin:is(.resolved, .moved) .hit { inset: -21px; }
+  .pin.moved:not(.resolved) .hit { inset: -21px; }
   /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
   .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }
   .msg b, .msg .quote b { font-size: 12px; letter-spacing: 0; }
-  .pin:is(.resolved, .moved) { scale: .64; }
+  .pin.moved:not(.resolved) { scale: .64; }
   /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
   .bar > button { padding: 12px 14px; min-height: 44px; }
   .more-menu { bottom: 72px; min-width: 200px; }
