@@ -22,6 +22,7 @@ import {
   quoteRects,
   rectsOf,
   readable,
+  readComponents,
   short,
   zoneAnchor,
   zoneEl,
@@ -115,6 +116,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   bindSheets(W);
   bindFluid(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
+  // Parts loaded only when they are used: each is its own file beside this script (scripts/build-widget.mjs), its
+  // styles with it. Asked for once; a module that can't load leaves the rest of the widget as it is.
+  const parts = {};
+  /** @param {string} name */
+  const part = (name) => (parts[name] ??= import(new URL(`${name}.js`, script?.src || location.href).href));
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
   const KEYS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
@@ -272,6 +278,24 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
 
   // ---------- anchoring (src/widget/anchoring.ts) ----------
   bindAnchoring({ host, layer, el });
+  // Which component drew what a pin is on (components.ts, React, Vue, Svelte): its own file, loaded once the page shows
+  // it was drawn by one of them: at start, at load, or the first element the pointer goes over that says so. A pin
+  // reads it at once (anchorAt doesn't wait), so it is there before the first click.
+  /** @param {any} n */
+  const drawnByFramework = (n) => Boolean(n && (n.__vueParentComponent || n.__svelte_meta || Object.keys(n).some((k) => k.startsWith('__react'))));
+  /** @param {Iterable<Element | EventTarget | null>} nodes */
+  const lookForFramework = (nodes) => {
+    if (S.components) return;
+    for (const n of nodes) {
+      if (!drawnByFramework(n)) continue;
+      removeEventListener('pointerover', overFramework, true);
+      S.components = part('components').then((m) => readComponents(m.componentAt), () => (S.components = null));
+      return;
+    }
+  };
+  /** @param {PointerEvent} e */
+  const overFramework = (e) => lookForFramework([e.target]);
+  const scanForFramework = () => lookForFramework([document.body, ...document.querySelectorAll('body > *, body > * > *, body > * > * > *')]);
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
   bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
@@ -1978,6 +2002,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (flag('select')) bindSelect(W);
     load();
     if (flag('sectionBar')) startSections(); // the section bar: what is new or updated on the page since you read it
+    scanForFramework();
+    if (!S.components) {
+      addEventListener('load', scanForFramework, { once: true });
+      addEventListener('pointerover', overFramework, { capture: true, passive: true });
+    }
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);

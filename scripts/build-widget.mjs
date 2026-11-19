@@ -1,4 +1,5 @@
-// Builds the page script: src/comments.js and its modules, bundled and minified into public/_lab/comments.js. The
+// Builds the page script: src/comments.js and its modules, bundled and minified into public/_lab/comments.js (and the
+// parts it loads later, below). The
 // stylesheet (src/widget/styles.css) goes in as text, minified too: esbuild's command line can't minify CSS it loads
 // as text, so this runs esbuild's API instead.
 //
@@ -41,5 +42,13 @@ const options = {
   plugins: [minifiedCss],
   define: { 'globalThis.__LAB_DEBUG__': 'false' },
 };
-if (watch) await (await esbuild.context(options)).watch();
-else await esbuild.build(options);
+// Parts the page script loads only when they are used (part(name) in src/comments.js): each one an ES module beside
+// it, <name>.js, with its own styles in it. The lab serves them with the script (public/_lab/*.js), and its widget
+// version covers them (widgetRev in local.mjs), so a change to one reloads open pages too.
+const PARTS = { components: 'src/widget/components.ts' };
+const builds = [
+  options,
+  ...Object.entries(PARTS).map(([name, entry]) => ({ ...options, entryPoints: [entry], format: 'esm', outfile: path.join(path.dirname(outfile), `${name}.js`) })),
+];
+if (watch) for (const o of builds) await (await esbuild.context(o)).watch();
+else await Promise.all(builds.map((o) => esbuild.build(o)));

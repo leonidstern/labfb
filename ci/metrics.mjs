@@ -10,9 +10,9 @@
 // Fails closed: if a tool can't run, that's an error, never "0 problems".
 
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdtempSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 
 const OXLINT = "oxlint@1.93.0"; // pinned, so the count only changes when the code or the rules do
@@ -124,7 +124,9 @@ function collect() {
     const fresh = join(mkdtempSync(join(tmpdir(), "build-")), "comments.js");
     const b = run(build.replace(`--outfile=${PAGE_SCRIPT}`, `--outfile=${fresh}`));
     if (!existsSync(fresh)) fail(`npm run build did not run:\n${b.out}${b.err}`);
-    m.staleBuild = readFileSync(fresh).equals(readFileSync(PAGE_SCRIPT)) ? 0 : 1;
+    // …and so must the parts it loads later, built beside it (public/_lab/<part>.js).
+    const parts = readdirSync(dirname(fresh)).filter((f) => f !== "comments.js");
+    m.staleBuild = [readFileSync(fresh).equals(readFileSync(PAGE_SCRIPT)), ...parts.map((f) => existsSync(join(dirname(PAGE_SCRIPT), f)) && readFileSync(join(dirname(fresh), f)).equals(readFileSync(join(dirname(PAGE_SCRIPT), f))))].every(Boolean) ? 0 : 1;
   }
 
   m.readmeClaims = checkReadme(m);
