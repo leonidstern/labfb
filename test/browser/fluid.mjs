@@ -224,9 +224,11 @@ try {
           getSelection().removeAllRanges();
           getSelection().addRange(r);
         });
-        await sleep(1200);
+        // Wait for the real conditions, not fixed times (a CI run in Linux WebKit read the box still closed after 1.2 s).
+        await untilRoot(p, (r) => Boolean(r.querySelector('.p-bar [data-k=comment]')), null, 4000);
         await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
-        await sleep(1200);
+        await untilRoot(p, (r) => r.querySelector('.float:not(.p-dlg *) .box')?.classList.contains('open'), null, 4000);
+        await sleep(300); // a keyboard that would wrongly come up has its moment to (the check below says none does)
         const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.float:not(.p-dlg *) .quick .on')].map((b) => b.dataset.k), open: r.querySelector('.float:not(.p-dlg *) .box')?.classList.contains('open'), focus: r.activeElement?.localName || null, n: r.querySelectorAll('.float:not(.p-dlg *) .quick button').length }));
         check(eng, 'phones: the sheet opens as a comment with the box open, no keyboard until it is tapped', st.on.length === 0 && st.open && st.focus !== 'textarea' && st.n === 3, JSON.stringify(st));
       });
@@ -477,7 +479,15 @@ try {
         const before = await fd(p);
         // Moved without a change of layout: the page keeps its scroll place for a paragraph added above, so the words would stay.
         save(PAGE.replace('<p id="a">', '<p id="a" style="position:relative;left:60px;top:40px">'));
-        await sleep(2000);
+        // Wait for the real condition, not a fixed time: the save reaches the page, the page is patched (in WebKit the View
+        // Transition makes that slow on CI) and the dialog's glide to the moved words ends (a read mid-glide is its start).
+        await p
+          .waitForFunction(([y0]) => {
+            const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.fd'))?.shadowRoot;
+            const e = r?.querySelector('.fd');
+            return Boolean(e) && !e.hidden && e.getBoundingClientRect().y > y0 + 30 && e.getAnimations().length === 0;
+          }, [before.y], { timeout: 8000, polling: 'raf' })
+          .catch(() => {});
         const after = await fd(p);
         const s = await span(p, '#a', 'delta echo');
         check(eng, 'an HTML save moves the dialog with its words, text and focus kept', Boolean(after?.dlg) && after.y > before.y + 30 && after.x > before.x + 40 && near(after.y, s.last.bottom + 8, 4) && after.text === 'moves' && (await inRoot(p, (r) => r.activeElement?.localName === 'textarea')), JSON.stringify([before, after, s.last]));
