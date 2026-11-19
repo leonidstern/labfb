@@ -218,11 +218,23 @@ try {
       const pinned = async () => (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.find((c) => c.text === 'still');
       for (let i = 0; i < 20 && !(await pinned()); i++) await sleep(100);
       check(eng, 'a comment written while paused says so', (await pinned())?.anchor?.paused === true, JSON.stringify((await pinned())?.anchor?.paused));
+      check(eng, 'and carries the moment showing, in ms', Number.isInteger((await pinned())?.anchor?.atMs), JSON.stringify((await pinned())?.anchor?.atMs));
       await p.keyboard.press('Escape');
       await p.keyboard.press('p');
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'running', null, 600);
       const played = await pause();
       check(eng, 'P again plays them and the controls say pause', played.anim === 'running' && played.other === 'running' && played.words.startsWith('pause'), JSON.stringify(played));
+      // S: every page animation at a quarter of its speed, the ¼ beside a pause shows it on; S again: full speed.
+      const rate = () => p.evaluate(() => ({ s: document.getElementById('s').getAnimations()[0]?.playbackRate, t: document.getElementById('t').getAnimations()[0]?.playbackRate,
+        on: [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot.querySelector('.motion-slow')?.getAttribute('aria-pressed') }));
+      await p.keyboard.press('s');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playbackRate === 0.25, null, 600);
+      const slow = await rate();
+      check(eng, 'S plays the page\'s animations at ¼ speed and the ¼ shows it', slow.s === 0.25 && slow.t === 0.25 && slow.on === 'true', JSON.stringify(slow));
+      await p.keyboard.press('s');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playbackRate === 1, null, 600);
+      const full = await rate();
+      check(eng, 'S again: full speed', full.s === 1 && full.t === 1 && full.on === 'false', JSON.stringify(full));
       await p.keyboard.press('h'); // hide comments (this lab's toggle key): the controls go with them
       await untilRoot(p, (r) => !r.querySelector('.motion'), 1500);
       check(eng, 'hidden comments hide the pause controls too', !(await pause()).shown);
