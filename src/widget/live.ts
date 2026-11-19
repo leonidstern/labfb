@@ -6,6 +6,11 @@ let W: any;
 export function bindLive(w: unknown) {
   W = w;
 }
+export const MARK_PATHS = '<g transform="translate(-1 -.5)" fill="currentColor">' +
+  '<path class="e1" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
+  '<path class="e2" d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
+  '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
+  '<circle class="eye" cx="31" cy="45" r="6.2"/></g>';
 const span = (t: string, className = '') => Object.assign(document.createElement('span'), { textContent: t, className });
 
 // Local mode (local.mjs sets data-live): one event stream for all of a lab's tabs (see startLive), so many tabs
@@ -78,12 +83,7 @@ export function startLive() {
     // gap and a bigger dot, so neither closes up at 16 px). Its parts are separate so the styles can move them: the
     // dot blinks now and then while an agent listens, the ears twitch while one works. The words sit in .lbl, so
     // changing them never rebuilds (and restarts) the mark.
-    const MARK =
-      '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><g transform="translate(-1 -.5)">' +
-      '<path class="e1" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
-      '<path class="e2" d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
-      '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
-      '<circle class="eye" cx="31" cy="45" r="6.2"/></g></svg>';
+    const MARK = '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">' + MARK_PATHS + '</svg>';
     who.innerHTML = MARK + '<div class="lbl"></div>';
     const lbl = who.querySelector('.lbl') as HTMLElement;
     who.hidden = true;
