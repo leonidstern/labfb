@@ -2271,13 +2271,18 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // "when comment still 'undo' clicking outside opening another comment"): no new pin there; the sent one stays, and the
   // next click pins as usual. A link or the page's own control still acts (onPageClick prevents nothing).
   S.undoLetGo = 0; // when a press let a sent pin's undo card go: that press's click starts no pin
-  document.addEventListener('pointerdown', (e) => {
-    S.undoLetGo = 0;
-    if (S.draft || !S.undo || S.openId !== S.undo.id || S.undo.touched || e.composedPath().includes(host)) return;
+  // Select mode takes a press on the page before this sees it (select.ts): its pick lets the card go the same way, so the
+  // card's reply box doesn't keep the keys (Tab steps the picks).
+  S.letUndoGo = (e, draw = true) => {
+    if (S.draft || !S.undo || S.openId !== S.undo.id || S.undo.touched || e.composedPath().includes(host)) return false;
     S.undo = null;
     S.openId = null;
-    S.undoLetGo = Date.now();
-    render();
+    if (draw) render();
+    return true;
+  };
+  document.addEventListener('pointerdown', (e) => {
+    S.undoLetGo = 0;
+    if (S.letUndoGo(e)) S.undoLetGo = Date.now();
   }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
