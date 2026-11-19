@@ -106,6 +106,7 @@ whose each is: `flags  select (yours)`.
 | Flag | What it is |
 | --- | --- |
 | `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
+| `nativePins` | pins held by the browser: a pin on an element of the page is tied to it with CSS anchor positioning (Chromium, Safari 26), so it stays on its spot through any scrolling, a sticky header included, with no script, and hides while a box that scrolls cuts its spot off. Browsers without it place pins as before. Off by default |
 
 `sectionBar` was kept, so the section bar is always on a page with two or more sections; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 

@@ -1,6 +1,7 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 import { bindTrial, keptRow, onReshow, triesInPlace, tryRow, untry } from './trial.ts';
 import { stickToEnd } from './stick.ts';
+import { heldPin } from './pinhold.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -44,7 +45,9 @@ export function grab(pin, now) {
     const c = now();
     const r = pin.getBoundingClientRect();
     const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
-    const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+    // A pin the browser holds keeps no place of its own (pinhold.ts): its tip, the lower left corner, is where it shows.
+    const held = heldPin(pin);
+    const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: held ? r.left + scrollX : parseFloat(pin.style.left), top: held ? r.bottom + scrollY : parseFloat(pin.style.top) };
     let moving = false;
     let last = e;
     W.S.grabbing = true;
@@ -59,6 +62,7 @@ export function grab(pin, now) {
       if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
       moving = true;
       pin.classList.add('dragging');
+      W.letPin(pin); // the browser no longer holds it (pinhold.ts): the drag places it
       place();
     };
     const scrolled = () => moving && place();

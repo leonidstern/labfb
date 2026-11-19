@@ -1,0 +1,106 @@
+// Part of the comment widget (src/comments.js bundles it).
+//
+// Pins the browser holds (flag nativePins): a pin on an element of the page is tied to that element with CSS anchor
+// positioning, so the browser keeps it on its spot through scrolling the page, on a sticky header, and on a parent that
+// moves. No script runs for that. The script still
+// finds the spot (anchoring.ts, position) when the pins are drawn or the page changes size, and writes it here as an
+// offset from the element's corner: on words, in a gap between two blocks, on an area or a share of the element alike.
+//
+// Two things make it reach the page:
+// - the pin is fixed: an absolute pin's containing block is the widget's own host, which no element of the page is in;
+// - its rule is in the page's style sheet, by ::part: anchor names given in the page are not seen from the shadow root.
+// A browser without anchor positioning keeps the pins the script places, as before.
+// So does a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
+// dialog, popover or full screen (the top layer is laid out after the pin, so it can't be its anchor). An element whose
+// anchor attribute a live patch took away parks its pins off screen (anchor()'s fallback) until they are placed again.
+// A pin inside a box that cuts off what overflows it (a box that scrolls, a carousel) is placed by the script too: the
+// browser hides a held pin only once its whole element is cut off, so a pin low on a tall element would float outside
+// its box; the script hides it by its spot (anchoring.ts, clippedAt). A box that covers the whole screen (a board's)
+// cuts nothing the screen doesn't.
+let sheet: HTMLStyleElement | null = null;
+const names = new WeakMap<Element, string>(); // an element's anchor name, kept while it lives
+const rules = new Map<HTMLElement, string>(); // a held pin and its rule
+let count = 0;
+let dirty = false;
+let able: boolean | null = null;
+const can = () => (able ??= typeof CSS !== 'undefined' && CSS.supports('anchor-name: --a'));
+// What an element is, read once per placing of the pins (newPass): whether a box cuts it off, it sits in the top layer,
+// or the page gives it an anchor name of its own. Read before any pin is written, so placing many pins lays out once.
+let pass = 0;
+const seen = new WeakMap<Element, { pass: number; no: boolean }>();
+/** A new placing of the pins: what was read about their elements is read again. */
+export const newPass = () => void pass++;
+const cutOff = (node: Element) => {
+  for (let el = node.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    if (getComputedStyle(el).overflow === 'visible') continue;
+    const r = el.getBoundingClientRect();
+    if (r.left > 0.5 || r.top > 0.5 || r.right < innerWidth - 0.5 || r.bottom < innerHeight - 0.5) return true;
+  }
+  return false;
+};
+const px = (n: number) => `${Math.round(n * 100) / 100}px`;
+const inTopLayer = (node: Element) => {
+  try {
+    return Boolean(node.closest('dialog[open], :popover-open, :fullscreen'));
+  } catch {
+    return true;
+  }
+};
+
+/** Ties a pin to node, its spot at (left, top) in page coordinates. False, and the pin let go, when the script places it. */
+export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, left: number, top: number): boolean {
+  // The page itself, or a big container placed by a share of its size, keeps the script's place (anchoring.ts, spotOf).
+  if (!on || !node || !can() || /^(html|body|main)$/.test(node.localName) || pin.classList.contains('dragging')) {
+    letPin(pin);
+    return false;
+  }
+  let name = names.get(node);
+  if (!name) names.set(node, (name = `lab${(++count).toString(36)}`));
+  let read = seen.get(node);
+  if (read?.pass !== pass) {
+    const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
+    seen.set(node, (read = { pass, no: Boolean(own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || cutOff(node) }));
+  }
+  if (read.no) {
+    letPin(pin);
+    return false;
+  }
+  if (node.getAttribute('data-lab-anchor') !== name) node.setAttribute('data-lab-anchor', name); // put back after a live patch
+  const part = pin.getAttribute('part') || `lp${(++count).toString(36)}`;
+  pin.setAttribute('part', part);
+  const r = node.getBoundingClientRect();
+  const rule =
+    `[data-lab-anchor="${name}"]{anchor-name:--${name}}` +
+    `[data-lab-comments]::part(${part}){position:fixed!important;position-anchor:--${name};position-visibility:anchors-visible;` +
+    `left:calc(anchor(left, -10000px) + ${px(left - scrollX - r.left)})!important;top:calc(anchor(top, -10000px) + ${px(top - scrollY - r.top)})!important}`;
+  if (rules.get(pin) !== rule) {
+    rules.set(pin, rule);
+    dirty = true;
+  }
+  return true;
+}
+
+/** The script places this pin again (it is dragged, or it can't be held). */
+export function letPin(pin: HTMLElement) {
+  if (!rules.delete(pin)) return;
+  pin.removeAttribute('part');
+  dirty = true;
+  flushPins();
+}
+
+/** Whether the browser holds this pin: a scroll needs nothing from the script for it. */
+export const heldPin = (pin?: HTMLElement) => Boolean(pin && rules.has(pin));
+
+/** Writes the rules once the pins are drawn; pins gone from the page let go of theirs. */
+export function flushPins() {
+  for (const pin of rules.keys()) {
+    if (pin.isConnected) continue;
+    rules.delete(pin);
+    dirty = true;
+  }
+  if (!dirty) return;
+  dirty = false;
+  if (!sheet) sheet = Object.assign(document.createElement('style'), { id: 'lab-pinhold' });
+  if (!sheet.isConnected) document.head.append(sheet);
+  sheet.textContent = [...rules.values()].join('');
+}

@@ -8,6 +8,7 @@
 // sinceLooked (an "Added" pill) was replaced by sectionBar, and sectionBar was kept (the section bar is always there). board was kept (boards are always there). agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
 export const FLAGS: Record<string, { name: string; since: string }> = {
   select: { name: 'select mode (V): pick a block and ask the agent to remove, restyle, move or vary it', since: '0.6.3' },
+  nativePins: { name: 'pins held by the browser: on their spot through any scrolling, with no script (Chromium, Safari)', since: '0.6.3' },
 };
 
 /** Every flag, off. */
