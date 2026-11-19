@@ -562,7 +562,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // ---------- render ----------
   // Everyone sees done threads the same way (a guest's resolved pin vanished at once, with the answer in it unread):
   // done ones with nothing new step aside, and show done brings them back.
-  const threads = () => S.comments.filter((c) => !c.parent);
+  // A declaration, not a const: on a board page the live state arrives while the widget is still setting up, and the
+  // pill's line reads the threads then (it threw "Cannot access 'threads' before initialization" and the board stopped).
+  function threads() { return (S.comments || []).filter((c) => !c.parent); }
   const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;

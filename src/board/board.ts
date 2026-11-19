@@ -445,6 +445,19 @@ const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof H
 const back = () => {
   if (of) location.href = of;
 };
+// A board you came to from a page has a plain way back, on phones too: "‹ back" at the top left (Leo, 19 Nov: "no way
+// back"). ⇧B, Esc on an empty board and the browser's own back still work.
+if (of) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = '‹ back';
+  b.setAttribute('aria-label', 'back to the page');
+  b.style.cssText = 'position:fixed;top:calc(10px + env(safe-area-inset-top, 0px));left:10px;z-index:2147482000;font:500 15px/1 system-ui,-apple-system,sans-serif;border:0;border-radius:999px;padding:10px 14px;background:#141414;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);-webkit-tap-highlight-color:transparent;cursor:pointer';
+  b.addEventListener('click', (e) => (e.stopPropagation(), back()));
+  b.setAttribute('data-uncommentable', '');
+  addEventListener('DOMContentLoaded', () => document.body.append(b));
+  if (document.body) document.body.append(b);
+}
 // The next (1) or previous (-1) frame in board order, the camera on it.
 const step = (by: number) => {
   if (!cards.length) return;
