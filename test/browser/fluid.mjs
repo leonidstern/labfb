@@ -54,6 +54,7 @@ for (let i = 0; i < 80; i++) {
   }
 }
 let failed = 0;
+const missed = []; // changes to what the page shows that no redraw followed (window.__labDebug)
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
@@ -173,12 +174,17 @@ async function scene(eng, browser, opts, run) {
   PG = `/s${++scenes}`;
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 }, ...opts });
   await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+  // Debug: every change to what the page shows must be followed by a redraw (window.__labDebug in src/comments.js);
+  // a miss is reported here as it happens, so a reload doesn't lose it.
+  await ctx.exposeFunction('__labMiss', (s) => missed.push(s));
+  await ctx.addInitScript(() => Object.assign(window, { __labDebug: true, __labMissed: { push: (s) => window.__labMiss(s) } }));
   const p = await ctx.newPage();
   await p.goto(B + PG);
   await sleep(1100);
   try {
     await run(p, ctx);
   } finally {
+    await sleep(100); // two frames for the last change
     await ctx.close();
   }
 }
@@ -585,6 +591,7 @@ try {
         const c = await fd(p);
         check(eng, 'reduced motion: the dialog is there at once, nothing animates', Boolean(c?.dlg) && c.anims === 0 && near(c.x, s.last.right - 70, 4) && c.opacity === 1, JSON.stringify(c));
       });
+      check(eng, 'every change to what the page shows was redrawn', !missed.length, missed.splice(0).join('\n'));
     } finally {
       await browser.close();
     }

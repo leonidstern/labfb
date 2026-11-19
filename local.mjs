@@ -13,6 +13,7 @@ import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
 import { pageIds } from './lib/ids.ts';
+import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
@@ -1311,8 +1312,9 @@ const hotSaved = new Map(); // served path -> kind
 // Files that can't be swapped in place. They're sent with the update, and each page reloads only if it uses one of
 // them: a README, another page's script or the project's server code leaves your page where it is.
 const otherSaved = new Set(); // served paths
-if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
-  if (!file || file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules')) return;
+const hidden = (file) => file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules');
+if (!PROXY) watchTree(ROOT, (event, file) => {
+  if (!file || hidden(file)) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
   // event's name can't tell; a CSS or JS save leaves the index alone.)
   if (/\.html?$/i.test(file) || !path.extname(file)) indexStale = true;
@@ -1341,7 +1343,7 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
     // While the agent works it often saves several files for one fix: wait for 400 ms of quiet so the page updates
     // once. A person saving by hand gets it after 80 ms.
   }, mode === 'working' ? 400 : 80);
-});
+}, hidden);
 
 // The widget's own files: a changed script reloads open pages (they need the new one); lab.css is swapped in place.
 let widgetTimer;
@@ -1381,7 +1383,7 @@ const watchBoards = () => {
   const hot = new Set();
   let timer;
   try {
-    fs.watch(B.dirOf(ROOT), { recursive: true }, (event, file) => {
+    watchTree(B.dirOf(ROOT), (event, file) => {
       const m = /^([a-z0-9][a-z0-9_-]*)(?:\.json|[\\/]([a-z][a-z0-9]*)\.html)$/.exec(file || '');
       if (!m) return; // a half-written .tmp, a file that is not a board's
       names.add(m[1]);
@@ -1828,7 +1830,7 @@ const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${actionsAttr()}${flagsAttr()}${LABIT_ATTR}${updateAttr()} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${actionsAttr()}${flagsAttr()}${LABIT_ATTR}${updateAttr()}${PROXY ? ' data-proxied="1"' : ''} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -1851,14 +1853,20 @@ const withIcon = (html) => {
   return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
 };
 // The section bar keeps its own room at the top of the page, so it never covers the page's first lines.
-// Kept here, from the first paint, when the page has sections (an h2 or h3, or more than one h1): kept by the widget
+// Kept here, from the first paint, when the page has sections: kept by the widget
 // alone, it came a frame or two after the page had painted, and the page jumped down. 38 px, 44 on a phone, as the bar
 // (src/widget/styles.css .sbar); not with comments hidden (lab-on). The widget takes it over (src/widget/sections.ts).
-const ROOM = '<style data-lab="section-bar">html { padding-top: 38px !important; } @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { html { padding-top: 44px !important; } }</style>' +
+// Only on a lab page (links /_lab/lab.css, not switched off by <meta name="lab-sections"> or data-lab-sections) with 3 or
+// more headings of one level: elsewhere the bar floats and keeps no room. Screens only (no strip in a print), and with
+// scroll-padding, so a #link in the address lands below the bar from the first paint.
+const ROOM = '<style data-lab="section-bar">@media screen { html { padding-top: 38px !important; scroll-padding-top: 46px; } } @media screen and (pointer: coarse) and (max-width: 560px), screen and (pointer: coarse) and (max-height: 500px) { html { padding-top: 44px !important; scroll-padding-top: 52px; } }</style>' +
   `<script data-lab="section-bar">try{localStorage.getItem('lab-on')==='0'&&document.currentScript.previousElementSibling.remove()}catch{}</script>`;
 const withRoom = (html) => {
   const body = html.replace(/<(script|style|template|svg)\b[\s\S]*?<\/\1>/gi, '');
-  if (!/<h[23][\s>]/i.test(body) && (body.match(/<h1[\s>]/gi) || []).length < 2) return html;
+  const said = (/<meta\b(?=[^>]*\bname=["']?lab-sections\b)[^>]*\bcontent=["']?\s*(on|off)\b/i.exec(html) || /<(?:html|body)\b[^>]*\bdata-lab-sections=["']?\s*(on|off)\b/i.exec(html) || [])[1]?.toLowerCase();
+  if (said === 'off' || !/<link\b[^>]*\bhref=["']?\/_lab\/lab\.css\b/i.test(html)) return html;
+  const n = (t) => (body.replace(/<(nav|aside|dialog|footer)\b[\s\S]*?<\/\1>/gi, '').match(new RegExp(`<${t}[\\s>]`, 'gi')) || []).length;
+  if (n('h2') < 3 && n('h3') < 3 && n('h1') < 3) return html;
   const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + ROOM + html.slice(at.index + at[0].length) : ROOM + html;
 };
