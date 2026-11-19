@@ -496,7 +496,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const placed = [];
   // Undo, 3 s after a new pin is sent (Leo, 19 Nov): its card opens with "undo" in the resolve key's place (thread.ts).
   // A tap deletes it (this computer as admin, anyone else with the pin's own key, which the lab takes for a fresh pin
-  // nobody answered) and opens the comment box again at the same spot with the words in it, to fix and send again.
+  // nobody answered) and closes the card: no comment box, no words kept anywhere.
   // An agent may have been handed it already (the lab hands pins after batchSeconds, 2 s): it is gone on its next look.
   async function takeBack(c) {
     const u = S.undo;
@@ -508,9 +508,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (ownKey) store.set(`lab-edit:${c.id}`, '');
     const at = placed.indexOf(c.id);
     if (at >= 0) placed.splice(at, 1);
+    // Gone for good (Leo, 19 Nov: "undo should not leave text in input"): the card closes, no box, no kept words.
     S.openId = null;
-    store.set(`lab-typing:${S.page}:new`, u.text); // the new box reads its words from here (composer.ts)
-    begin(u.anchor);
+    S.draft = null;
+    store.set(`lab-typing:${S.page}:new`, '');
+    keepSpot(null);
+    render();
   }
   // Command-Z (Control-Z elsewhere), not in a text box: the last pin or go placed from this tab goes away. This
   // computer deletes it; a guest, who can't delete, resolves it (it steps aside).

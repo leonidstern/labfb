@@ -1,5 +1,5 @@
 // Undo after sending (Leo, 19 Nov): for 3 s a new pin's card shows "undo" in the resolve key's place, at resolve's
-// width; a tap deletes the pin and opens the comment box again with the words in it. Left alone, the card closes and the
+// width; a tap deletes the pin and closes the card, with no words left anywhere. Left alone, the card closes and the
 // key is resolve again. Its own lab on a free port, its own LABIT_HOME (never the owner's lab or settings).
 // Not part of `npm test`. Run: node test/browser/undo.mjs (needs playwright; NODE_PATH can point at a node_modules that
 // has it; ENGINES=webkit,chromium for both). One line per check; exits 1 if any fails.
@@ -84,14 +84,19 @@ for (const [n, eng] of (process.env.ENGINES || 'chromium').split(',').entries())
     check(eng, 'undo keeps resolve\'s width', Math.abs(widths[0] - widths[1]) < 0.5, widths.join(' vs '));
     await shadow(() => { r.querySelector('.card .btn.undo').click(); });
     const gone = await until(async () => (await L.comments()).length === 0, 2000);
-    const box = await until(() => shadow(() => { return r.querySelector('.float textarea')?.value === 'fix this typo'; }), 2000);
+    const shut = await until(() => shadow(() => { return !r.querySelector('.float textarea') && !r.querySelector('.card:not(.out)') && !r.querySelector('.pin.draft'); }), 2000);
     const pins = await shadow(() => { return r.querySelectorAll('.pin:not(.draft)').length; });
+    const kept = await p.evaluate(() => Object.keys(localStorage).filter((k) => /^lab-(typing|spot):/.test(k) && localStorage.getItem(k)).join(','));
     check(eng, 'undo deletes the pin (no comment left on the lab)', gone);
-    check(eng, 'the comment box is open again with the words in it', box && pins === 0, `pins ${pins}`);
+    check(eng, 'the card closes with no comment box and no pin', shut && pins === 0, `pins ${pins}`);
+    check(eng, 'no draft kept in localStorage', kept === '', kept);
+    await p.reload();
+    await until(() => p.evaluate(() => [...document.querySelectorAll('*')].some((x) => x.shadowRoot?.querySelector('.scrim'))));
+    await sleep(400);
+    check(eng, 'after a reload no comment box comes back', await shadow(() => { return !r.querySelector('.float textarea'); }));
 
-    // Fixed and sent again, then left alone: after 3 s the card closes and the pin stays.
-    await shadow(() => { r.querySelector('.float textarea').focus(); });
-    await p.keyboard.press('Enter');
+    // Sent again, then left alone: after 3 s the card closes and the pin stays.
+    await write('fix this typo');
     await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
     await sleep(3600);
     const after = await shadow(() => { return { card: Boolean(r.querySelector('.card:not(.out)')), undo: Boolean(r.querySelector('.btn.undo')) }; });
