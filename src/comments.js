@@ -129,7 +129,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   if (inFrame()) return startFrame(script);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', edit: 'e', select: 'v' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', edit: 'e', select: 'v' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -455,7 +455,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
-    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true } }; // paused when written: the agent is told
+    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: pausedAt(payload.anchor) } }; // paused when written: the agent is told, with the moment
+    if (S.slow && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
@@ -1205,10 +1206,40 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     held[stop ? 'add' : 'delete'](el);
     S.paused = held.size > 0; // a comment written now says the page was paused
   };
+  // The moment a paused thing shows, in ms: the one the pin is on or in, else the first paused (a pin carries it).
+  const pausedAt = (anchor) => {
+    let at = null;
+    try {
+      at = anchor?.selector ? document.querySelector(anchor.selector) : null;
+    } catch {}
+    const all = [...held].filter((el) => el.isConnected);
+    const el = all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+    if (!el) return undefined;
+    const t = el instanceof HTMLVideoElement ? el.currentTime * 1000 : Number(animsOf(el)[0]?.currentTime);
+    return Number.isFinite(t) ? Math.round(t) : undefined;
+  };
+  // ¼ speed (Leo, 19 Nov): every page animation and video at a quarter of its speed, S or the ¼ beside a pause; a pin
+  // made now says so. Motion that starts later is slowed as it starts (and by the 1 s redraw, for script animations).
+  const rates = new WeakMap(); // each animation's own rate, to go back to
+  const slowAll = () => {
+    for (const a of document.getAnimations()) {
+      const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
+      if (!t || root.contains(t)) continue;
+      if (S.slow && !rates.has(a)) rates.set(a, a.playbackRate), a.updatePlaybackRate(a.playbackRate / 4);
+      else if (!S.slow && rates.has(a)) a.updatePlaybackRate(rates.get(a)), rates.delete(a);
+    }
+    for (const v of document.querySelectorAll('video')) v.playbackRate = S.slow ? 0.25 : 1;
+  };
+  const setSlow = (on) => {
+    S.slow = on;
+    slowAll();
+    drawMotion();
+  };
+  for (const type of ['animationstart', 'transitionrun', 'play']) addEventListener(type, () => S.slow && slowAll(), true);
   const shown = new Map();
   const drawMotion = () => {
     const now = S.on ? moving() : [];
-    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); shown.delete(el); }
+    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); b.slowBtn.remove(); shown.delete(el); }
     for (const el of now) {
       const r = el.getBoundingClientRect();
       let b = shown.get(el);
@@ -1217,9 +1248,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         b.type = 'button';
         b.className = 'motion';
         b.addEventListener('click', () => (setItem(el, !isStill(el)), drawMotion()));
-        motions.append(b);
+        const q = document.createElement('button');
+        q.type = 'button';
+        q.className = 'motion-slow';
+        q.textContent = '¼';
+        q.setAttribute('aria-label', q.title = `quarter speed, all motion (${KEYS.slow.toUpperCase()})`);
+        q.addEventListener('click', () => setSlow(!S.slow));
+        b.slowBtn = q;
+        motions.append(b, q);
         shown.set(el, b);
       }
+      b.slowBtn.setAttribute('aria-pressed', String(Boolean(S.slow)));
       const stopped = isStill(el);
       const what = el instanceof HTMLVideoElement ? 'video' : 'animation';
       if (b.dataset.state !== String(stopped)) {
@@ -1233,13 +1272,16 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       b.hidden = !w || !h;
       b.style.left = `${Math.min(r.left + (r.width + w) / 2 + 6, document.documentElement.clientWidth - 30) + scrollX}px`;
       b.style.top = `${r.top + (r.height - h) / 2 + scrollY}px`;
+      b.slowBtn.hidden = b.hidden;
+      b.slowBtn.style.left = b.style.left;
+      b.slowBtn.style.top = `${r.top + (r.height - h) / 2 + scrollY + 28}px`;
     }
   };
   const setPause = (on) => {
     for (const el of on ? moving().filter((el) => !isStill(el)) : [...held]) setItem(el, on);
     drawMotion();
   };
-  setInterval(drawMotion, 1000);
+  setInterval(() => (S.slow && slowAll(), drawMotion()), 1000);
   addEventListener('scroll', () => requestAnimationFrame(drawMotion), { capture: true, passive: true });
   doneBtn.addEventListener('click', toggleDone);
   movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
@@ -1347,10 +1389,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
     // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || !e.shiftKey)) {
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || !e.shiftKey)) {
       const k = act;
       e.preventDefault();
       if (k === 'pause') return setPause(!S.paused);
+      if (k === 'slow') return setSlow(!S.slow);
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
       if (k === 'done') return toggleDone();

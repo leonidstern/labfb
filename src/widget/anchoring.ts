@@ -54,6 +54,10 @@ type Anchor = {
   time?: number;
   /** The page's videos and animations were paused when this was written. */
   paused?: boolean;
+  /** Then: the moment showing, in ms. */
+  atMs?: number;
+  /** The page's motion ran at ¼ speed. */
+  slow?: boolean;
   duration?: number;
   transform?: string;
   /** An area dragged out, and what was inside it. */
