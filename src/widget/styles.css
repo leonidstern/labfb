@@ -685,6 +685,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-dot { flex: none; width: 0; height: 7px; margin-right: -6px; opacity: 0; border-radius: 50%; box-sizing: border-box; background: rgb(36, 160, 70);
           transition: width var(--_t-slow) var(--_ease), margin var(--_t-slow) var(--_ease), opacity var(--_t-quick); }
 .sb-chip:is([data-st="new"], [data-st="updated"]) .sb-dot { width: 7px; margin-right: 0; opacity: 1; }
+/* New and updated names wear the same green ink as quoted or kept words on the page (comments.js paint), lighter for
+   updated (Leo, 19 Nov: "make new tab also color like we do for texts"). */
+.sb-t { border-radius: 3px; transition: background-color var(--_t-slow) var(--_ease); }
+.sb-chip[data-st="new"] .sb-t { background-color: rgba(52, 199, 89, .3); }
+.sb-chip[data-st="updated"] .sb-t { background-color: rgba(52, 199, 89, .15); }
 .sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid rgb(36, 160, 70); }
 .sb-more[data-st="1"]::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: rgb(36, 160, 70); }
 .sb-w { color: rgb(36, 160, 70); font-size: 12px; }
