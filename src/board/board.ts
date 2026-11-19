@@ -15,7 +15,7 @@ const script = document.currentScript as HTMLScriptElement;
 const name = script.dataset.name || '';
 let of = new URLSearchParams(location.search).get('of') || ''; // the page this board is about: Esc on an empty board goes back to it
 const coarse = matchMedia('(pointer: coarse)').matches;
-const CAP = coarse ? 3 : 8; // frames alive at once
+const CAP = coarse ? 2 : 8; // frames alive at once (a phone: the one you see and the next, so it doesn't lag)
 const AT_ONCE = coarse ? 1 : 2; // frames loading at once
 const WAKE = 120; // a frame is woken when it is in view and at least this many screen px wide
 
@@ -340,7 +340,11 @@ const at = (e: { clientX: number; clientY: number }) => {
 };
 const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
 const pts = new Map<number, { x: number; y: number }>();
-let down: { x: number; y: number; id: string; far: boolean; at: number; mv?: Card; fx: number; fy: number; before?: Frame[] } | null = null;
+let down: { x: number; y: number; id: string; far: boolean; at: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean } | null = null;
+let holdTimer = 0;
+// A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
+// put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
+const boardWidget = () => (window as unknown as { __labBoardWidget?: { pinning: () => boolean; place: (x: number, y: number) => void } }).__labBoardWidget;
 let tap = { at: 0, x: 0, y: 0 };
 let pinch = 0;
 let space = false;
@@ -363,6 +367,17 @@ addEventListener('pointerdown', (e) => {
     const id = at(e);
     const mv = e.pointerType === 'mouse' && id && id === selected && !entered && editable() ? find(id) : undefined; // a selected frame is moved by its body (a finger only pans)
     down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined };
+    clearTimeout(holdTimer);
+    if (e.pointerType === 'touch') {
+      const d = down;
+      holdTimer = window.setTimeout(() => {
+        const w = boardWidget();
+        if (down !== d || d.far || pts.size !== 1 || !w?.pinning()) return;
+        d.held = true;
+        navigator.vibrate?.(8);
+        w.place(d.x, d.y);
+      }, 400);
+    }
   }
 }, true);
 addEventListener('pointermove', (e) => {
@@ -380,7 +395,8 @@ addEventListener('pointermove', (e) => {
     return;
   }
   pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.far = true;
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) (down.far = true), clearTimeout(holdTimer);
+  if (down?.held) return; // the hold made a pin: the finger lifting off doesn't pan
   if (down?.far && down.mv) {
     // Positions round to 8 px; an edge within 6 screen px of another frame's edge takes that edge.
     const f = down.mv.f;
@@ -402,13 +418,15 @@ const up = (e: PointerEvent) => {
   eat(e);
   pinch = 0;
   const d = down;
+  clearTimeout(holdTimer);
   if (pts.size || !d) return;
   down = null;
+  if (d.held) return; // a hold already pinned
   if (d.mv && d.far && d.before && board) return void save(copy(board.frames), d.before);
   if (d.far && !d.mv && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
   if (d.far || e.type === 'pointercancel') return;
-  const widget = (window as unknown as { __labBoardWidget?: { pinning: () => boolean; place: (x: number, y: number) => void } }).__labBoardWidget;
-  if (widget?.pinning()) return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
+  const widget = boardWidget();
+  if (widget?.pinning() && e.pointerType !== 'touch') return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
   // A tap selects the frame under it (or nothing); a second one close by and soon enters it.
   const again = performance.now() - tap.at < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24;
   tap = { at: performance.now(), x: e.clientX, y: e.clientY };
