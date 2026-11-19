@@ -129,6 +129,14 @@ export function composer({ placeholder, onSubmit, autofocus = false, empty = '',
     saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
     text.style.height = 'auto';
     text.style.height = `${text.scrollHeight}px`;
+    // Once the words scroll, the box goes to the wide layout (name and arrow on a row of their own) so the scrollbar sits at
+    // the box's right edge, not left of the name; it stays wide until the words are clearly shorter (no flapping at the edge).
+    const tall = one && (text.scrollHeight > 200 || (box.classList.contains('tall') && text.scrollHeight > 160));
+    if (tall !== box.classList.contains('tall')) {
+      box.classList.toggle('tall', tall);
+      text.style.height = 'auto';
+      text.style.height = `${text.scrollHeight}px`;
+    }
     text.style.overflowY = text.scrollHeight > 200 ? 'auto' : 'hidden'; // a scrollbar only once the box is at its tallest (max-height 200)
     if (glide) {
       const to = sendBtn.getBoundingClientRect();
