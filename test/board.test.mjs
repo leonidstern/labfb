@@ -369,4 +369,10 @@ test('git stays clean: a repo that ignores .lab sees nothing of boards', async (
   await cli(DIR, 'new', 'Clean', '--of', '/pricing', '--variants', '3');
   await cli(DIR, 'pick', 'clean', 'a');
   assert.equal(g('status', '--porcelain').trim(), '');
+test('add takes the home page "/" and a path that is a file below the lab folder, never read from the disk root', async () => {
+  await cli(DIR, 'new', 'Home flow', '--flow', '/pricing,/cart');
+  const home = await cli(DIR, 'add', 'home-flow', '/', '--width', '1440');
+  assert.match(home.out, /Added c \(\/\)\./, home.out);
+  const disk = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/boards/home-flow.json'), 'utf8'));
+  assert.deepEqual(disk.frames.find((x) => x.id === 'c'), { id: 'c', src: '/', w: 1440, h: 900, state: 'live' });
 });
