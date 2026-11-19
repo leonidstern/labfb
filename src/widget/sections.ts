@@ -322,10 +322,13 @@ export function startSections() {
     ready = true;
     draw();
     // Opens at the first with a status, and glides to one that has just got one.
+    // A reload partway down the page (a live update keeps your place) opens at where you are instead: placing it at
+    // the first status and then at the current one a moment later read as the bar jumping (Leo, 19 Nov).
     const fresh = secs.find((s) => status(s) && (first || !had.has(s.key)));
-    if (fresh) glide(find(fresh.key), true);
+    const jump = fresh && !(first && scrollY > innerHeight / 2);
+    if (jump) glide(find(fresh.key), true);
     current = '';
-    watch(!fresh);
+    watch(!jump);
   };
   W.S.checkSections = check;
   W.S.syncSections = check; // another device read something
