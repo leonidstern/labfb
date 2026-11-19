@@ -276,7 +276,7 @@ try {
         await p.keyboard.down('Shift');
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await p.keyboard.up('Shift');
-        await sleep(900);
+        await untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.classList.contains('settled'); }, 1500);
         const l = await look(p);
         check(eng, 'Shift + triple-click selects the paragraph and opens the dialog at once', l.dlg && !l.bar, JSON.stringify(l));
       });

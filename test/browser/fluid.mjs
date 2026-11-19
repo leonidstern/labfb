@@ -95,6 +95,11 @@ const inRoot = (p, fn, arg) =>
     return new Function('r', 'a', `return (${src})(r, a)`)(r, a);
   }, [fn.toString(), arg]);
 // The one element now: null when it isn't showing; else which pane, where it is on screen, what runs on it.
+// The dialog is up and still: on a slow machine 700 ms is not always enough for its animation.
+const dlgUp = async (p, ms = 1500) => {
+  await p.waitForFunction(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot; const e = r?.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg')?.classList.contains('on') && e.classList.contains('settled'); }, null, { timeout: ms, polling: 'raf' }).catch(() => {});
+  await sleep(350); // and its last settling in place
+};
 const fd = (p) =>
   inRoot(p, (r) => {
     const e = r.querySelector('.fd');
@@ -192,7 +197,7 @@ try {
       // Selecting opens the dialog
       await scene(eng, browser, {}, async (p) => {
         const s = await drag(p, '#a', 'delta echo foxtrot');
-        await sleep(700);
+        await dlgUp(p);
         const c = await fd(p);
         check(eng, 'shift-drag opens the dialog at once at the words\' end: no bar, the cursor in its box', Boolean(c?.dlg && !c.bar) && c.text === '' && near(c.x, s.last.right - 70, 4) && near(c.y, s.last.bottom + 8, 4) && (await inRoot(p, (r) => r.activeElement?.localName === 'textarea')), JSON.stringify([c, s.last]));
         const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '));
@@ -210,7 +215,7 @@ try {
       // Comment preopened (Leo, 18 Nov): the dialog and the sheet open as a comment (the row has rewrite · cut · go, no pill for comment) with the box open; computers have the cursor in it
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('x');
         await sleep(800);
         const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.p-dlg .quick .on')].map((b) => b.dataset.k), others: [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.dataset.k).join(' '), open: r.querySelector('.p-dlg .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
@@ -234,14 +239,14 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=cut]').click());
         await sleep(1500);
         check(eng, 'cut in the dialog sends at once', Boolean(await sent('Cut: “delta echo”')) && (await fd(p)) === null, JSON.stringify((await comments()).map((x) => x.text)));
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'kilo lima');
-        await sleep(700);
+        await dlgUp(p);
         await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].pop().click());
         await sleep(1500);
         const pinned = await inRoot(p, (r) => r.querySelectorAll('button.pin').length);
@@ -249,14 +254,14 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'golf hotel');
-        await sleep(700);
+        await dlgUp(p);
         await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=rewrite]').click());
         await sleep(1500);
         check(eng, 'rewrite in the dialog sends Rewrite: “words” at once', Boolean(await sent('Rewrite: “golf hotel”')) && (await fd(p)) === null, JSON.stringify((await comments()).map((x) => x.text)));
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#long', LONG.slice(0, 340));
-        await sleep(700);
+        await dlgUp(p);
         const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '));
         check(eng, 'over 300 characters the dialog has no cut or rewrite', names === 'go', names);
       });
@@ -272,7 +277,7 @@ try {
         await p.evaluate(() => (document.querySelector('#box').scrollTop = 80)); // the phrase near the box's top: a drag near its bottom edge scrolls it in Chrome
         await sleep(100);
         await drag(p, '#in', 'target phrase');
-        await sleep(700);
+        await dlgUp(p);
         const was = await fd(p);
         await p.evaluate(() => (document.querySelector('#box').scrollTop = 100));
         await sleep(600);
@@ -283,7 +288,7 @@ try {
       // The box joins: a typed letter, Tab, Space, keys that are not ours
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('q');
         await sleep(800);
         const c = await fd(p);
@@ -295,7 +300,7 @@ try {
       // Action keys
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         const before = await inRoot(p, (r) => r.querySelector('.p-dlg .quick').classList.contains('alt'));
         await p.keyboard.down('Alt');
         await sleep(200);
@@ -310,14 +315,14 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'golf hotel');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.press('Alt+Digit1');
         await sleep(1000);
         check(eng, 'Option+1 sends Rewrite: “words” at once', Boolean(await sent('Rewrite: “golf hotel”')), JSON.stringify((await comments()).map((x) => x.text)));
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'india juliet');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('/etc');
         await p.keyboard.press('Alt+Digit9');
         await sleep(300);
@@ -327,7 +332,7 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'kilo lima');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.press('Alt+Digit3');
         await sleep(1000);
         check(eng, 'Option+3 sends go', Boolean(await sent('go')));
@@ -336,7 +341,7 @@ try {
       // Escape
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('words I will drop');
         await p.keyboard.press('Escape');
         await sleep(500);
@@ -357,7 +362,7 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.press('Escape');
         await sleep(40);
         const leave = await motion(p, "r.querySelector('.fd')", 'out');
@@ -369,7 +374,7 @@ try {
       // Corners inside corners: inner radius + gap = outer radius (computers: the dialog's buttons and box 8 px in)
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         const dlg = await concentric(p, '.fd:not(.out)', '.p-dlg .quick button, .p-dlg .box');
         check(eng, 'the dialog\'s buttons and its box are concentric with its corners (radius + gap = outer radius)', dlg.n === 4 && dlg.bad.length === 0, JSON.stringify(dlg));
       });
@@ -397,7 +402,7 @@ try {
       // Actions of your own (labit.json `actions`: go, tighter, shorter): the row and its keys follow them
       await withLab2(() => scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '));
         check(eng, 'actions in labit.json: the row is the listed ones in their order', names === 'go tighter shorter', names);
         await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=tighter]').click());
@@ -407,7 +412,7 @@ try {
       }));
       await withLab2(() => scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'foxtrot golf');
-        await sleep(700);
+        await dlgUp(p);
         await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=shorter]').click());
         await sleep(1500);
         const c = await sent('Shorter: half the words');
@@ -415,7 +420,7 @@ try {
       }));
       await withLab2(() => scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'india juliet');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.press('Alt+Digit2');
         await sleep(1500);
         check(eng, 'Option+2 runs the second of your own actions: tighter', Boolean(await sent('Tighter: less space')));
@@ -444,7 +449,7 @@ try {
       await scene(eng, browser, {}, async (p) => {
         const s = await span(p, '#a', 'delta echo');
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('nice');
         await sleep(800);
         const open = await fd(p);
@@ -459,7 +464,7 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('first');
         await sleep(800);
         await p.keyboard.press('Enter');
@@ -473,7 +478,7 @@ try {
       // Reload and saved files
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('half a thought');
         await sleep(800);
         await p.reload();
@@ -484,7 +489,7 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('moves');
         await sleep(800);
         const before = await fd(p);
@@ -497,7 +502,7 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('still here');
         await sleep(800);
         save(PAGE.replace(/<p id="a">.*?<\/p>/, '<p id="a">Nothing of the old words is left.</p>'));
@@ -517,14 +522,14 @@ try {
       await scene(eng, browser, {}, async (p) => {
         const toggle = (re) => inRoot(p, (r, src) => [...r.querySelectorAll('button')].find((b) => new RegExp(src).test(b.textContent || ''))?.click(), re);
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await toggle('hide comments');
         await sleep(500);
         check(eng, 'hiding comments lets the dialog go', (await fd(p)) === null);
         await toggle('^comments');
         await sleep(300);
         await drag(p, '#a', 'delta echo');
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('kept');
         await sleep(800);
         await toggle('hide comments');
@@ -539,7 +544,7 @@ try {
       // Where the words are
       await scene(eng, browser, {}, async (p) => {
         const s = await drag(p, '#same2', 'exact words', { nth: 0 });
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('x');
         await sleep(800);
         const c = await fd(p);
@@ -553,7 +558,7 @@ try {
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#long', LONG.slice(0, 340));
-        await sleep(700);
+        await dlgUp(p);
         await p.keyboard.type('x');
         await sleep(800);
         const c = await fd(p);
