@@ -2,7 +2,7 @@
 // world (-x, -y)). Zoom about a point keeps the world point under it still. Pure functions: nothing here touches the page.
 export type Cam = { x: number; y: number; z: number };
 export type Box = { x: number; y: number; w: number; h: number };
-export const MAX_Z = 4;
+const MAX_Z = 4;
 const PAD = 96; // room left round everything when it is all fitted into the view
 
 const extent = (b: Box[]) => {
@@ -10,12 +10,12 @@ const extent = (b: Box[]) => {
   return { ...lo, w: Math.max(...b.map((f) => f.x + f.w)) - lo.x, h: Math.max(...b.map((f) => f.y + f.h)) - lo.y };
 };
 /** The zoom that fits all of them with room round, never above 100%. */
-export const fitZ = (b: Box[], v: { w: number; h: number }) => {
+const fitZ = (b: Box[], v: { w: number; h: number }) => {
   if (!b.length) return 1;
   const e = extent(b);
   return Math.min(1, (v.w - PAD) / e.w, (v.h - PAD) / e.h);
 };
-export const minZ = (b: Box[], v: { w: number; h: number }) => Math.min(fitZ(b, v), 1) * 0.999;
+const minZ = (b: Box[], v: { w: number; h: number }) => Math.min(fitZ(b, v), 1) * 0.999;
 export const fitAll = (b: Box[], v: { w: number; h: number }): Cam => {
   if (!b.length) return { x: 0, y: 0, z: 1 };
   const e = extent(b);
