@@ -4,7 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- A fade is not motion: a transition, or an animation that ends within 2 seconds, no longer gets a pause button (a short fade on a heading lit one). Infinite and long animations still do, and so does anything labit paused.
+- Only what never ends counts as motion: a transition, or any animation with an end (a fade, a highlight ring), no longer gets a pause button. Infinite animations and videos still do, and so does anything labit paused.
 - MCP is parked (kept whole on the `park/mcp` branch); agents use the command line: `wait`, `reply`, `resolve`, `pin`. Gone: `labit mcp` and `lib/mcp.ts`, `mcp.json`, the MCP part of the skill, README and help, the MCP permissions in `examples/claude-settings.json`, and its tests. In Codex's sandbox a blocked `wait` now says to allow the sandbox network (`-c sandbox_workspace_write.network_access=true`).
 - Phones: a comment made by holding the page always gets the cursor and the keyboard. The box used to focus itself during the hold, which Safari could do without a keyboard; now the finger's lift focuses it, once.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.

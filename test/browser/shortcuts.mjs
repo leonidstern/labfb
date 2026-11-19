@@ -26,7 +26,7 @@ const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'ask.html'), '<!doctype html><meta charset="utf-8"><title>a</title><h1 id="h">Pick</h1><p>text</p>');
 // Fades are not motion: a transition and a short animation get no pause button; an infinite one and a long one do.
-fs.writeFileSync(path.join(DIR, 'fades.html'), '<!doctype html><meta charset="utf-8"><title>f</title><style>@keyframes spin { to { rotate: 1turn } } div { width: 40px; height: 40px; margin: 20px; background: red } #inf { animation: spin 2s linear infinite } #long { animation: spin 5s linear 1 } #short { animation: spin 1.5s linear 1 } #tr { transition: width 1.5s linear }</style><h1>Fades</h1><div id="inf"></div><div id="long"></div><div id="short"></div><div id="tr"></div><script>setTimeout(() => (document.getElementById("tr").style.width = "100px"), 100)</script>');
+fs.writeFileSync(path.join(DIR, 'fades.html'), '<!doctype html><meta charset="utf-8"><title>f</title><style>@keyframes spin { to { rotate: 1turn } } div { width: 40px; height: 40px; margin: 20px; background: red } #inf { animation: spin 2s linear infinite } #long { animation: spin 5s linear 1 } #short { animation: spin 1.5s linear 1 } #tr { transition: width 1.5s linear }</style><h1>Fades</h1><div id="inf"></div><div id="long"></div><div id="short"></div><div id="tr"></div><div id="web"></div><script>setTimeout(() => (document.getElementById("tr").style.width = "100px"), 100); document.getElementById("web").animate([{ opacity: 1 }, { opacity: .5 }], { duration: 2000 })</script>');
 fs.writeFileSync(path.join(DIR, 'anim.html'), '<!doctype html><meta charset="utf-8"><title>m</title><style>@keyframes spin { to { rotate: 1turn } } #s, #t { width: 40px; height: 40px; background: red; animation: spin 2s linear infinite }</style><h1>Moving</h1><div id="s"></div><div id="t"></div><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, shortcuts: { toggle: 'h', chat: 'x' } }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
@@ -235,10 +235,10 @@ try {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
         const kinds = document.getAnimations().filter((a) => a.playState === 'running').map((a) => a.constructor.name + ':' + a.effect.target.id);
         const at = [...(r?.querySelectorAll('.motion') || [])].map((b) => b.getBoundingClientRect().top);
-        const tops = Object.fromEntries(['inf', 'long', 'short', 'tr'].map((id) => [id, (e => e.offsetTop + e.offsetHeight / 2 - 20 - scrollY)(document.getElementById(id))]));
+        const tops = Object.fromEntries(['inf', 'long', 'short', 'tr', 'web'].map((id) => [id, (e => e.offsetTop + e.offsetHeight / 2 - 20 - scrollY)(document.getElementById(id))]));
         return { n: at.length, kinds, near: Object.entries(tops).filter(([, t]) => at.some((a) => Math.abs(a - t - 20) < 8)).map(([id]) => id) };
       });
-      check(eng, 'a transition and a short animation get no pause; an infinite and a long one do', fades.n === 2 && fades.near.sort().join() === 'inf,long' && fades.kinds.some((k) => k.startsWith('CSSTransition')) && fades.kinds.some((k) => k.endsWith(':short')), JSON.stringify(fades));
+      check(eng, 'only the infinite animation gets a pause: not a transition, a 5 s or 1.5 s animation, or a 2 s Web Animation', fades.n === 1 && fades.near.join() === 'inf' && fades.kinds.some((k) => k.startsWith('CSSTransition')) && fades.kinds.some((k) => k.endsWith(':short')), JSON.stringify(fades));
       await p.goto('about:blank');
       await ctx.close();
     } finally {
