@@ -595,6 +595,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }
   // Board mode on request (flag board): this page as a board, from ⇧B or here; on a board, back to the page.
   // The page's scroll waits under the key a reload uses (live.ts), so coming back lands where you were.
+  // The board's tools on the page itself, no canvas (Leo, 19 Nov): select (V) from the ⋯ menu too, so a phone has it.
+  const toolsBtn = flag('editText') ? el('button', { type: 'button', class: 'board-btn' }) : null;
+  if (toolsBtn) {
+    toolsBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, 'V'));
+    toolsBtn.addEventListener('click', () => selectMode(true));
+  }
   const boardBtn = flag('board') ? el('button', { type: 'button', class: 'board-btn' }) : null;
   const toBoard = () => {
     const page = location.pathname.replace(/\.html?$/i, '').replace(/\/+$/, '') || '/';
@@ -605,7 +611,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     location.href = `/_lab/board/${name}?of=${encodeURIComponent(location.pathname)}`;
   };
   if (boardBtn) {
-    boardBtn.append(S.board ? 'back to page' : 'open as board', el('kbd', { 'aria-hidden': 'true' }, '⇧B'));
+    boardBtn.append(S.board ? 'back to page' : 'side by side', el('kbd', { 'aria-hidden': 'true' }, '⇧B'));
     boardBtn.addEventListener('click', () => (S.board ? /** @type {any} */ (window).__labBoard?.back() : toBoard()));
   }
   // Experiments (lib/flags.ts) in the ⋯ menu: "experiments" with how many are on; a click turns the menu into the list,
@@ -679,7 +685,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   function placeBar() {
     const inMenu = !S.on ? (boardBtn ? [boardBtn] : [])
       : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
+      : [...(labHead ? [labHead, labsBtn] : []), ...(toolsBtn && !S.board ? [toolsBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
