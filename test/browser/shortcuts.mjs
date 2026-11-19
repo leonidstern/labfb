@@ -15,8 +15,9 @@ const pw = (() => {
       return require(require.resolve('playwright', paths && { paths }));
     } catch {}
   }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
+  // On CI a missing browser is a failure: a skip there would pass with nothing run.
+  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+  process.exit(process.env.CI ? 1 : 0);
 })();
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
@@ -24,8 +25,12 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-keys-'));
 const PORT = 7930 + Math.floor(Math.random() * 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
+fs.writeFileSync(path.join(DIR, 'ask.html'), '<!doctype html><meta charset="utf-8"><title>a</title><h1 id="h">Pick</h1><p>text</p>');
+// Fades are not motion: a transition and a short animation get no pause button; an infinite one and a long one do.
+fs.writeFileSync(path.join(DIR, 'fades.html'), '<!doctype html><meta charset="utf-8"><title>f</title><style>@keyframes spin { to { rotate: 1turn } } div { width: 40px; height: 40px; margin: 20px; background: red } #inf { animation: spin 2s linear infinite } #long { animation: spin 5s linear 1 } #short { animation: spin 1.5s linear 1 } #tr { transition: width 1.5s linear }</style><h1>Fades</h1><div id="inf"></div><div id="long"></div><div id="short"></div><div id="tr"></div><div id="web"></div><script>setTimeout(() => (document.getElementById("tr").style.width = "100px"), 100); document.getElementById("web").animate([{ opacity: 1 }, { opacity: .5 }], { duration: 2000 })</script>');
+fs.writeFileSync(path.join(DIR, 'anim.html'), '<!doctype html><meta charset="utf-8"><title>m</title><style>@keyframes spin { to { rotate: 1turn } } #s, #t { width: 40px; height: 40px; background: red; animation: spin 2s linear infinite }</style><h1>Moving</h1><div id="s"></div><div id="t"></div><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, shortcuts: { toggle: 'h', chat: 'x' } }));
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 for (let i = 0; i < 80; i++) {
@@ -36,6 +41,13 @@ for (let i = 0; i < 80; i++) {
     await sleep(100);
   }
 }
+// Waits on the condition the next step needs; `ms` is the longest it waits, and it never throws (the check after it reports the real failure).
+const until = (p, fn, arg, ms) => p.waitForFunction(fn, arg, { timeout: ms, polling: 'raf' }).catch(() => {});
+const untilRoot = (p, fn, ms) =>
+  until(p, (src) => {
+    const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+    return Boolean(r) && new Function('r', `return (${src})(r)`)(r);
+  }, fn.toString(), ms);
 let failed = 0;
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
@@ -54,33 +66,192 @@ const look = (p) =>
   });
 
 try {
-  for (const eng of ['webkit', 'chromium']) {
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+      // How many MutationObservers are watching now (observe adds one, disconnect takes it away): a comment box that has
+      // closed must stop watching the page.
+      await ctx.addInitScript(() => {
+        const Real = window.MutationObserver;
+        const live = new Set();
+        window.__watching = () => live.size;
+        window.MutationObserver = class extends Real {
+          observe(...a) { live.add(this); return super.observe(...a); }
+          disconnect() { live.delete(this); return super.disconnect(); }
+        };
+      });
       const p = await ctx.newPage();
       await p.goto(B + '/');
-      await sleep(1200);
+      await untilRoot(p, () => true, 1200);
       const start = await look(p);
       await p.keyboard.press('m');
-      await sleep(300);
+      await sleep(250);
       check(eng, 'the old toggle key (m) does nothing', (await look(p)).on === start.on);
       await p.keyboard.press('h');
-      await sleep(300);
+      await until(p, ([src, on]) => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot; return Boolean(r) && [...r.querySelectorAll('button')].some((b) => /hide comments/.test(b.textContent || '')) !== on; }, [0, start.on], 300);
       const on = await look(p);
       check(eng, 'the new toggle key (h) shows and hides comments', on.on !== start.on);
       if (!on.on) {
         await p.keyboard.press('h');
-        await sleep(300);
+        await untilRoot(p, (r) => [...r.querySelectorAll('button')].some((b) => /hide comments/.test(b.textContent || '')), 300);
       }
       check(eng, 'the chat button shows the new key', /\(x\)/.test((await look(p)).chatWords), (await look(p)).chatWords);
       await p.keyboard.press('c');
-      await sleep(400);
+      await sleep(250);
       check(eng, 'the old chat key (c) does nothing', !(await look(p)).chat);
       await p.keyboard.press('x');
-      await sleep(600);
+      await untilRoot(p, (r) => { const c = r.querySelector('.chatwin'); return Boolean(c && !c.hidden && c.offsetHeight); }, 600);
       check(eng, 'the new chat key (x) opens the chat', (await look(p)).chat);
+      // With the bar showing (words selected with Shift-drag), a key that is a shortcut elsewhere is a letter: the
+      // changed toggle key (h) starts the comment, it doesn't hide the comments.
+      await p.keyboard.press('Escape');
+      await untilRoot(p, (r) => { const c = r.querySelector('.chatwin'); return !c || c.hidden || !c.offsetHeight; }, 300);
+      const word = await p.evaluate(() => {
+        const t = document.querySelector('p').firstChild;
+        const r = document.createRange();
+        r.setStart(t, 0);
+        r.setEnd(t, 4);
+        return r.getBoundingClientRect().toJSON();
+      });
+      const onBefore = (await look(p)).on;
+      await p.keyboard.down('Shift');
+      await p.mouse.move(word.left + 1, word.top + word.height / 2);
+      await p.mouse.down();
+      await p.mouse.move(word.right - 1, word.top + word.height / 2, { steps: 6 });
+      await p.mouse.up();
+      await p.keyboard.up('Shift');
+      await untilRoot(p, (r) => Boolean(r.querySelector('.fd .p-bar.on')) && r.querySelector('.fd').getAnimations().length === 0, 700);
+      await p.keyboard.press('h');
+      await untilRoot(p, (r) => r.querySelector('.fd textarea')?.value === 'h', 900);
+      const typed = await p.evaluate(() => {
+        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+        return r?.querySelector('.fd textarea')?.value;
+      });
+      check(eng, 'with the bar showing, the changed toggle key (h) is a letter, not a shortcut', typed === 'h' && (await look(p)).on === onBefore, `${typed}`);
+      // A question's rows (src/widget/thread.ts, V1 plain list): no keys on the card. J K, the arrows, 1 to 6 and Enter move
+      // nothing and keep nothing; a tap picks a row and Keep sends it.
+      const key = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
+      const send = (body, agent) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, ...(agent ? { 'x-lab-admin': key, 'x-lab-agent': '1' } : {}) }, body: JSON.stringify({ page: '/ask', ...body }) }).then((r) => r.json());
+      const asked = (await send({ name: 'leo', text: 'which?', anchor: { kind: 'element', selector: '#h', x: 0.5, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="h">' } })).comment;
+      const q = (await send({ name: 'Claude', text: 'Which?', parent: asked.id, choices: ['one', 'two', 'three'], recommend: 1 }, true)).comment;
+      const a = await ctx.newPage();
+      await a.goto(B + '/ask');
+      await sleep(1200);
+      const sh = (fn) => a.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot), fn);
+      const row = () => sh('return [...r.querySelectorAll(".choice")].findIndex((x) => x.classList.contains("on"))');
+      const picks = async () => (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => c.picked);
+      await sh('r.querySelector("button.pin").click()');
+      await sleep(600);
+      check(eng, 'a question with no quoted words opens on its pick, the reply box focused (no keys on its rows)', (await row()) === 1 && (await sh('return r.activeElement?.localName === "textarea"')));
+      // In the reply box they type as usual and move nothing.
+      await a.keyboard.type('jk26');
+      await a.keyboard.press('Enter');
+      await sleep(300);
+      const sent = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.some((c) => c.text === 'jk26' && !c.picked);
+      check(eng, 'in the reply box J, K, 2 and 6 are typed, and Enter sends the words, not a pick', sent && (await row()) === 1 && (await picks()).length === 0);
+      await sh('r.querySelectorAll(".choice")[1].focus()'); // the focus on a row: still no keys
+      for (const k of ['j', 'k', 'ArrowDown', 'ArrowUp', '3', '1']) await a.keyboard.press(k);
+      await sleep(300);
+      check(eng, 'J K, the arrows and 1 to 6 do nothing on the card', (await row()) === 1 && (await picks()).length === 0, String(await row()));
+      await sh('r.querySelectorAll(".choice")[2].click()');
+      await sleep(150);
+      check(eng, 'a tap ticks its row; Keep reads Keep and is on', (await row()) === 2 && (await sh('const k = r.querySelector("button.keep"); return k.textContent === "Keep" && !k.disabled')));
+      await sh('r.querySelector("button.keep").click()');
+      await sleep(800);
+      const got = await picks();
+      check(eng, 'Keep sends the row ticked', got.length === 1 && got[0].picked.n === 2 && got[0].picked.of === q.id, JSON.stringify(got.map((c) => c.picked)));
+      await a.close();
+      for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/ask', action: 'delete', id: c.id }) });
+      // Pause: each moving thing has its own pause / play beside it, over the page, that stops only that one; P stops
+      // them all and the controls say play, a comment written while paused tells the agent so (anchor.paused); P again plays.
+      await p.evaluate(() => localStorage.removeItem('lab-cursor')); // the steps above leave the pointer on (key 1 toggles it)
+      await p.goto(B + '/anim');
+      await untilRoot(p, (r) => r.querySelectorAll('.motion:not([hidden])').length === 2, 2500);
+      // A long comment scrolls inside its box: the scrollbar sits at the box's right edge, not left of the name and arrow.
+      const h2 = await p.evaluate(() => document.querySelector('h1').getBoundingClientRect().toJSON());
+      await p.mouse.click(h2.left + 20, h2.top + h2.height / 2);
+      await untilRoot(p, (r) => Boolean(r.querySelector('textarea')), 900);
+      await p.keyboard.insertText(Array.from({ length: 14 }, (_, i) => `line ${i} of a long comment`).join('\n'));
+      await sleep(300);
+      const sb = await p.evaluate(() => { const deep = (root) => { for (const n of root.querySelectorAll('*')) { if (n.localName === 'textarea') return n; const f = n.shadowRoot && deep(n.shadowRoot); if (f) return f; } return null; }; const t = deep(document); const b = t.closest('.box').getBoundingClientRect(); const x = t.getBoundingClientRect(); return { scrolls: t.scrollHeight > t.clientHeight, gap: Math.round(b.right - x.right), tall: t.closest('.box').classList.contains('tall') }; });
+      check(eng, 'a long comment scrolls with its scrollbar at the box\'s right edge', sb.scrolls && sb.tall && sb.gap <= 16, JSON.stringify(sb));
+      await p.keyboard.press('Escape');
+      // Opening and closing a comment box again and again leaves no observers behind.
+      const watching = () => p.evaluate(() => window.__watching());
+      const before = await watching();
+      for (let i = 0; i < 5; i++) {
+        await p.mouse.click(h2.left + 20, h2.top + h2.height / 2);
+        await untilRoot(p, (r) => Boolean(r.querySelector('textarea')), 900);
+        await p.keyboard.insertText('x');
+        await p.keyboard.press('Escape');
+        await sleep(150);
+      }
+      const after = await watching();
+      check(eng, 'boxes opened and closed again leave no observers behind', after - before <= 1, `${before} → ${after}`);
+      const pause = () => p.evaluate(() => {
+        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+        const [b] = r?.querySelectorAll('.motion') || [];
+        const s = document.getElementById('s').getBoundingClientRect();
+        const at = b?.getBoundingClientRect();
+        return { shown: Boolean(b && !b.hidden), words: b?.getAttribute('aria-label'), beside: Boolean(at && Math.abs(at.top - (s.top + s.height / 2 - 20)) < 2 && Math.abs(at.left - (s.left + s.width / 2 + 26)) < 2), bar: Boolean(r?.querySelector('.bar .pause-btn')),
+          anim: document.getElementById('s').getAnimations()[0]?.playState, other: document.getElementById('t').getAnimations()[0]?.playState };
+      });
+      const first = await pause();
+      check(eng, 'each animation has its own pause beside it, none in the bar', first.shown && first.beside && !first.bar && first.words === 'pause this animation (P: all)', JSON.stringify(first));
+      await p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.motion').click());
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'paused', null, 600);
+      const one = await pause();
+      check(eng, 'its pause stops only that one and then says play', one.anim === 'paused' && one.other === 'running' && one.words === 'play this animation (P: all)', JSON.stringify(one));
+      await p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.motion').click());
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'running', null, 600);
+      await p.keyboard.press('p');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'paused', null, 600);
+      const paused = await pause();
+      check(eng, 'P pauses all the page\'s animations and the controls say play', paused.anim === 'paused' && paused.other === 'paused' && paused.words.startsWith('play'), JSON.stringify(paused));
+      const h = await p.evaluate(() => document.querySelector('h1').getBoundingClientRect().toJSON());
+      await p.mouse.click(h.left + 20, h.top + h.height / 2);
+      await untilRoot(p, (r) => Boolean(r.querySelector('textarea')), 900);
+      await p.keyboard.type('still');
+      await p.keyboard.press('Enter');
+      const pinned = async () => (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.find((c) => c.text === 'still');
+      for (let i = 0; i < 20 && !(await pinned()); i++) await sleep(100);
+      check(eng, 'a comment written while paused says so', (await pinned())?.anchor?.paused === true, JSON.stringify((await pinned())?.anchor?.paused));
+      check(eng, 'and carries the moment showing, in ms', Number.isInteger((await pinned())?.anchor?.atMs), JSON.stringify((await pinned())?.anchor?.atMs));
+      await p.keyboard.press('Escape');
+      await p.keyboard.press('p');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'running', null, 600);
+      const played = await pause();
+      check(eng, 'P again plays them and the controls say pause', played.anim === 'running' && played.other === 'running' && played.words.startsWith('pause'), JSON.stringify(played));
+      // S: every page animation at a quarter of its speed, the ¼ beside a pause shows it on; S again: full speed.
+      const rate = () => p.evaluate(() => ({ s: document.getElementById('s').getAnimations()[0]?.playbackRate, t: document.getElementById('t').getAnimations()[0]?.playbackRate,
+        on: [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot.querySelector('.motion-slow')?.getAttribute('aria-pressed') }));
+      await p.keyboard.press('s');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playbackRate === 0.25, null, 600);
+      const slow = await rate();
+      check(eng, 'S plays the page\'s animations at ¼ speed and the ¼ shows it', slow.s === 0.25 && slow.t === 0.25 && slow.on === 'true', JSON.stringify(slow));
+      await p.keyboard.press('s');
+      await until(p, () => document.getElementById('s').getAnimations()[0]?.playbackRate === 1, null, 600);
+      const full = await rate();
+      check(eng, 'S again: full speed', full.s === 1 && full.t === 1 && full.on === 'false', JSON.stringify(full));
+      await p.keyboard.press('h'); // hide comments (this lab's toggle key): the controls go with them
+      await untilRoot(p, (r) => !r.querySelector('.motion'), 1500);
+      check(eng, 'hidden comments hide the pause controls too', !(await pause()).shown);
+      for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/anim', action: 'delete', id: c.id }) });
+      // Fades are not motion.
+      await p.evaluate(() => localStorage.setItem('lab-on', '1'));
+      await p.goto(B + '/fades');
+      await untilRoot(p, (r) => r.querySelectorAll('.motion:not([hidden])').length >= 1, 2500);
+      await sleep(300);
+      const fades = await p.evaluate(() => {
+        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+        const kinds = document.getAnimations().filter((a) => a.playState === 'running').map((a) => a.constructor.name + ':' + a.effect.target.id);
+        const at = [...(r?.querySelectorAll('.motion') || [])].map((b) => b.getBoundingClientRect().top);
+        const tops = Object.fromEntries(['inf', 'long', 'short', 'tr', 'web'].map((id) => [id, (e => e.offsetTop + e.offsetHeight / 2 - 20 - scrollY)(document.getElementById(id))]));
+        return { n: at.length, kinds, near: Object.entries(tops).filter(([, t]) => at.some((a) => Math.abs(a - t - 20) < 8)).map(([id]) => id) };
+      });
+      check(eng, 'only the infinite animation gets a pause: not a transition, a 5 s or 1.5 s animation, or a 2 s Web Animation', fades.n === 1 && fades.near.join() === 'inf' && fades.kinds.some((k) => k.startsWith('CSSTransition')) && fades.kinds.some((k) => k.endsWith(':short')), JSON.stringify(fades));
       await p.goto('about:blank');
       await ctx.close();
     } finally {

@@ -239,6 +239,22 @@ if (cmd === 'serve') {
       const end = ss.at(-1);
       return [['scrolling makes no comment box', !ss.some((s) => s.float)], ['the page scrolled', end.sy - s0.sy > 100, `scrollY ${s0.sy} → ${end.sy}`], ['no text got selected', ss.every((s) => !s.sel)]];
     } },
+    // The section bar: a section is added to the page's file (the lab patches the open page), a chip with "new" comes up in the
+    // bar at the top, a tap on it goes to the section, reads it, and the page does not jump to the top.
+    { name: 'tap-new', say: async () => {
+      const file = path.join(RUN, 'site', 'index.html');
+      fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('</body>', '<section id="v9"><h2>Version nine</h2><p>The agent added this.</p></section></body>'));
+      await sleep(3000); // the patch, then the check
+      const s = lines().at(-1);
+      return s.chip ? `tap ${fmt(dev(s, s.chip.x + s.chip.w / 2, s.chip.y + s.chip.h / 2))} (the "new" chip in the bar at the top)` : 'no chip came up (was the page opened before the edit?)';
+    }, expect: (ss, s0) => {
+      const end = ss.at(-1);
+      return [
+        ['the bar is a tap target', ss.some((s) => s.sbar && s.sbar.h >= 40)],
+        ['the page goes to the section', end.sy > s0.sy, `scrollY ${s0.sy} → ${end.sy}`],
+        ['it is read: no new chip', end.chipsNew === 0, `${end.chipsNew} new`],
+      ];
+    } },
   ];
   const fmt = (p) => (p ? `(${p.x}, ${p.y})` : '(not on screen)');
 
@@ -252,7 +268,7 @@ if (cmd === 'serve') {
     if (!s) { console.log('the recorder has sent nothing yet: open the page first'); process.exit(1); }
     if (st.step === 0) st.count0 = (await comments()).length;
     st.mark = Date.now();
-    console.log(`${st.as} · step ${st.step + 1}/${steps.length} ${step.name}: ${step.say(s)}`);
+    console.log(`${st.as} · step ${st.step + 1}/${steps.length} ${step.name}: ${await step.say(s)}`);
     save(st);
   } else if (cmd === 'check') {
     const step = steps[st.step];

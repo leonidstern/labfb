@@ -10,7 +10,9 @@ const W = path.join(ROOT, 'src/widget');
 const parts = JSON.parse(fs.readFileSync(path.join(ROOT, 'ci/parts.json'), 'utf8'));
 const read = (f) => fs.readFileSync(f, 'utf8');
 const code = [path.join(ROOT, 'src/comments.js'), ...fs.readdirSync(W).filter((f) => /\.(ts|js)$/.test(f) && !f.endsWith('.d.ts')).map((f) => path.join(W, f))];
-const css = read(path.join(W, 'styles.css')).replace(/\/\*[\s\S]*?\*\//g, '');
+// Every stylesheet: styles.css, and the ones a part loaded later brings with it (<part>.css), checked as one.
+const sheets = fs.readdirSync(W).filter((f) => f.endsWith('.css')).sort((a, b) => (a === 'styles.css' ? -1 : b === 'styles.css' ? 1 : a.localeCompare(b)))
+  .map((f) => [f, read(path.join(W, f)).replace(/\/\*[\s\S]*?\*\//g, '')]);
 const problems = [];
 const say = (what, fix) => problems.push(`✗ ${what}\n  → ${fix}`);
 const lineOf = (text, i) => text.slice(0, i).split('\n').length;
@@ -22,15 +24,15 @@ for (const f of fs.readdirSync(W)) {
 }
 
 // 2. Animations: one set of motions. A new @keyframes is listed, or an existing one is used.
-for (const m of css.matchAll(/@keyframes\s+([\w-]+)/g)) {
+for (const [, css] of sheets) for (const m of css.matchAll(/@keyframes\s+([\w-]+)/g)) {
   if (!parts.animations.includes(m[1])) say(`@keyframes ${m[1]} is a new animation`, `use one of ${parts.animations.join(', ')}, or add it to "animations" in ci/parts.json`);
 }
 
 // 3. Overlays: one dimmed page, .scrim. A panel shows it (data-sheet on phones, data-labs for labs & pages) instead
 //    of drawing its own.
-for (const m of css.matchAll(/([^{}]+)\{/g)) {
+for (const [f, css] of sheets) for (const m of css.matchAll(/([^{}]+)\{/g)) {
   for (const sel of m[1].split(',').map((s) => s.trim())) {
-    if (/scrim|backdrop|overlay/i.test(sel.replace(/\.scrim\b/g, ''))) say(`"${sel}" (styles.css:${lineOf(css, m.index)}) is a new dimmed page`, 'show the widget\'s own .scrim (see :host([data-sheet]) .scrim)');
+    if (/scrim|backdrop|overlay/i.test(sel.replace(/\.scrim\b/g, ''))) say(`"${sel}" (${f}:${lineOf(css, m.index)}) is a new dimmed page`, 'show the widget\'s own .scrim (see :host([data-sheet]) .scrim)');
   }
 }
 
@@ -52,13 +54,13 @@ for (const f of code) {
 // 5. Copied styles: the same long declaration (a shadow, a curve, a mask) in two rules is a copy of a look. Share
 //    the rule (add the selector to it) instead.
 const seen = new Map();
-for (const block of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+for (const [f, css] of sheets) for (const block of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
   for (const d of block[2].matchAll(/([\w-]+)\s*:\s*([^;]+)/g)) {
     const val = d[2].trim().replace(/\s+/g, ' ');
     if (val.length < 40 || d[1].startsWith('--')) continue;
     const key = `${d[1]}: ${val}`;
-    const at = lineOf(css, block.index);
-    if (seen.has(key) && seen.get(key) !== at) say(`"${key}" is in two rules (styles.css lines ${seen.get(key)} and ${at})`, 'put both selectors on one rule');
+    const at = `${f}:${lineOf(css, block.index)}`;
+    if (seen.has(key) && seen.get(key) !== at) say(`"${key}" is in two rules (${seen.get(key)} and ${at})`, 'put both selectors on one rule');
     else seen.set(key, at);
   }
 }

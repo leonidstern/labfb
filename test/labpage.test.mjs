@@ -109,7 +109,8 @@ const get = async (p) => {
 
 test('the person\'s own page is served as it is (with the comment layer); a lab page gets the shell', async () => {
   const own = await get('/own.html');
-  assert.ok(own.startsWith(OWN.slice(0, 40)), 'unchanged from the start');
+  // Unchanged but for labit's tab icon, which any page without its own gets (local.mjs, withIcon).
+  assert.ok(own.replace('<link rel="icon" href="/_lab/favicon.svg">', '').startsWith(OWN.slice(0, 40)), 'unchanged from the start');
   assert.doesNotMatch(own, /\/_lab\/lab\.css/);
   assert.match(own, /_lab\/comments\.js/, 'the widget still comes on');
   const kit = await get('/kit');

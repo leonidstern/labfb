@@ -1,5 +1,6 @@
 // Where a pin points: the element, words, picture pixel, code line or video second under it, and how to find
 // that spot again when the page changes. Part of the comment widget (src/comments.js bundles it).
+import { GENERATED } from '../../lib/ids.ts';
 
 /** Words a pin quotes, with what comes before and after so they can be found again. */
 type Quote = {
@@ -51,6 +52,12 @@ type Anchor = {
   imgX?: number;
   imgY?: number;
   time?: number;
+  /** The page's videos and animations were paused when this was written. */
+  paused?: boolean;
+  /** Then: the moment showing, in ms. */
+  atMs?: number;
+  /** The page's motion ran at ¼ speed. */
+  slow?: boolean;
   duration?: number;
   transform?: string;
   /** An area dragged out, and what was inside it. */
@@ -70,19 +77,26 @@ type Deps = {
   host: HTMLElement;
   layer: HTMLElement;
   el: (tag: string, attrs?: Record<string, string>, text?: string) => HTMLElement;
-  store: { get: (k: string) => string; set: (k: string, v: string) => void };
 };
 
 // Set once by the widget at startup (bindAnchoring), so importing this module touches nothing.
-let host: Deps['host'], layer: Deps['layer'], el: Deps['el'], store: Deps['store'];
+let host: Deps['host'], layer: Deps['layer'], el: Deps['el'];
 export function bindAnchoring(deps: Deps) {
-  ({ host, layer, el, store } = deps);
+  ({ host, layer, el } = deps);
 }
 
-// Ids and classes a framework or build makes up (React's :r3: and «r3», Radix's radix-:r5:, svelte-1abc2de, CSS-module
-// _card_1x2y3, css-1abc2de): they change between builds and renders, so they say nothing about which element it is.
-// A Tailwind variant (hover:bg-x) has a colon too: it's a state, not identity either.
-const GENERATED = /[:«»]|^_r_\w+_$|[-_](?=[a-z0-9]*\d[a-z])[a-z0-9]{5,}$/i;
+// A motion token (--_t-quick, -base, -slow, -loop, -hold, styles.css) in milliseconds, times `times`: for a timer or a
+// Web Animation, which can't read a var(). It is 0 under reduced motion, as the CSS durations are (hold excepted).
+export function ms(token: 'instant' | 'quick' | 'base' | 'slow' | 'loop' | 'hold', times = 1): number {
+  const v = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(getComputedStyle(host).getPropertyValue(`--_t-${token}`));
+  return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) * times : 0;
+}
+
+// A motion curve (--_ease, -out, -in, -settle, -pop) for a Web Animation's `easing`, which can't read a var() either.
+export const ease = (curve: '' | 'out' | 'in' | 'settle' | 'pop' = ''): string =>
+  getComputedStyle(host).getPropertyValue(`--_ease${curve && `-${curve}`}`).trim() || 'linear';
+
+// Ids and classes a framework or build makes up (lib/ids.ts) say nothing about which element it is.
 const generated = (v) => GENERATED.test(v || '');
 // Names a page gives an element for tests or for comments: the most lasting way to find it again.
 const NAMED = ['data-testid', 'data-lab', 'data-comment-target'];
@@ -178,60 +192,14 @@ function fileSize(img) {
   return { nw, nh };
 }
 
-// Which component drew an element and where, from a framework's dev build (React, Vue 3, Svelte); production
-// builds keep none of it. A small cut of Census's reader (github.com/leonidstern/census).
-const PLAIN_NAME = /^[A-Z][A-Za-z0-9]{2,}$/;
-const PLUMBING = /(Provider|Context|Consumer|Boundary|Slot|Portal|Fragment|Presence|Scope|Trap|Root)$/;
-const variantOf = (p) =>
-  ['variant', 'size', 'tone', 'intent', 'kind']
-    .flatMap((k) => ((typeof p?.[k] === 'string' || typeof p?.[k] === 'number') && /^[\w.-]{1,20}$/.test(String(p[k])) ? [`${k}=${p[k]}`] : []))
-    .join(' ');
-// A served module's address as a repo path: Vite serves /src/x.tsx, webpack and Next say webpack-internal:///./src/x.tsx.
-const repoPath = (url) => !/^[a-z-]+:\/\//i.test(url) ? url : decodeURIComponent(url.replace(/^[a-z-]+:\/\/\/?(\.\/)?/i, '/').replace(/^\/[^/]*:\d+/, '').split('?')[0]).replace(/^\/(@fs)?/, '').replace(/^\(app-pages-browser\)\/\.?\/?/, '');
-function componentAt(el) {
-  const name = (t, d = 0) => (d > 3 ? '' : typeof t === 'function' ? t.displayName || t.name || '' : t && typeof t === 'object' ? t.displayName || name(t.render || t.type, d + 1) : '');
-  const plain = (n) => PLAIN_NAME.test(n) && !PLUMBING.test(n);
-  // React 18 writes the JSX's file and line; React 19 only the stack where the element was made.
-  const srcOf = (f) => {
-    const d = f?._debugSource;
-    if (d?.fileName) return `${repoPath(String(d.fileName))}:${d.lineNumber || 0}`;
-    const st = f?._debugStack?.stack;
-    if (typeof st !== 'string') return '';
-    for (const line of st.split('\n').slice(1)) {
-      const m = /((?:https?|webpack-internal|file):\/\/[^\s()]+?):(\d+):\d+\)?\s*$/.exec(line);
-      if (m && !/node_modules|react-dom|react-jsx|jsx-dev-runtime|react-server|scheduler/.test(m[1])) return `${repoPath(m[1])} (line ${m[2]} as served, may differ from the source)`;
-    }
-    return '';
-  };
-  const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
-  if (key) {
-    const host = el[key];
-    const parts = [];
-    let usedAt = '';
-    // Up through the plain elements around it (a <span> in a <td> in a <tr>…) to the component that rendered it.
-    for (let f = host?.return, i = 0; f && parts.length < 2 && i < 80; f = f.return, i++) {
-      if (typeof f.type === 'string') continue;
-      const n = name(f.type);
-      if (!plain(n)) continue;
-      if (!parts.length) usedAt = srcOf(f);
-      const v = variantOf(f.memoizedProps);
-      parts.push(v ? `${n} ${v}` : n);
-    }
-    if (!parts.length) return srcOf(host) ? { source: srcOf(host) } : {};
-    return { component: parts.length > 1 ? `${parts[0]} (in ${parts[1]})` : parts[0], source: srcOf(host) || undefined, usedAt: usedAt || undefined };
-  }
-  const vue = el.__vueParentComponent;
-  if (vue?.type) {
-    const n = vue.type.name || vue.type.__name || (vue.type.__file || '').replace(/^.*\//, '').replace(/\.vue$/, '');
-    const parent = vue.parent?.type;
-    const pn = parent && (parent.name || parent.__name);
-    const v = variantOf(vue.props);
-    return { component: `${n}${v ? ' ' + v : ''}${pn ? ` (in ${pn})` : ''}`, source: vue.type.__file ? repoPath(vue.type.__file) : undefined, usedAt: parent?.__file ? repoPath(parent.__file) : undefined };
-  }
-  const loc = el.__svelte_meta?.loc;
-  if (loc?.file) return { component: loc.file.replace(/^.*\//, '').replace(/\.svelte$/, ''), source: `${repoPath(loc.file)}:${loc.line ?? 0}` };
-  return {};
-}
+// Which component drew an element and where (React, Vue 3, Svelte dev builds): components.ts, its own file, which
+// src/comments.js loads only on a page made with one of them and hands over here. Until then (and on any other page)
+// nothing is read.
+type Component = { component?: string; source?: string; usedAt?: string };
+let componentAt: (el: any) => Component = () => ({});
+export const readComponents = (read: typeof componentAt) => {
+  componentAt = read;
+};
 
 // How the element looks: fill, text colour, size and weight, corners. A colour that a CSS variable on :root
 // holds is named by it (the page's own tokens).
@@ -520,8 +488,13 @@ function sameKind(node, tag) {
   return !classes.length || classes.some((c) => node.classList.contains(c));
 }
 
-export function anchorAt(clientX, clientY) {
+// words: the point is on the word under it (kind text, its quote: the words a Shift-drag quotes). A click or an area is
+// only a point, never a quote, so nothing is highlighted (Leo 18 Nov: "pin pointing on word highlighting word").
+// onto: the element the caller knows is there (selected words' own). Chrome now and then finds nothing but <html>
+// under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
+export function anchorAt(clientX, clientY, words = false, onto = null) {
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
+  if (onto && !stack.length) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
   let shadowHost = null;
@@ -624,7 +597,9 @@ export function anchorAt(clientX, clientY) {
       anchor.nh = Math.round(r.height);
     }
   } else {
-    const quote = quoteAt(clientX, clientY, shadowRoots);
+    // Code keeps its quote on a plain click: the line and its number are what an agent opens the file at.
+    const inCode = target.closest('pre, [data-file], table[class*="code" i]') || getComputedStyle(target).whiteSpace.startsWith('pre');
+    const quote = words || inCode ? quoteAt(clientX, clientY, shadowRoots) : null;
     if (quote) {
       anchor.kind = 'text';
       anchor.quote = quote;
@@ -711,6 +686,14 @@ function findTarget(anchor) {
   if (!tag || tag === 'body' || tag === 'html') return atPath;
   const flat = (t) => short(t, 400);
   const twin = (n) => !host.contains(n) && sameKind(n, anchor.element);
+  // At most 400 are read, and on a long page those are the ones nearest to where the pin was, not the first 400 on
+  // the page: a pin on the 500th row was never looked for.
+  const some = (all) => {
+    const kin = all.filter(twin);
+    if (kin.length <= 400) return kin;
+    const far = (n) => Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
+    return kin.slice(0, 4000).map((n) => [far(n), n]).sort((a, b) => a[0] - b[0]).slice(0, 400).map((x) => x[1]);
+  };
   const pick = (twins) => {
     let found = null;
     let best = -1;
@@ -746,10 +729,10 @@ function findTarget(anchor) {
   }
   scopes.sort((a, b) => (a.contains(b) ? 1 : b.contains(a) ? -1 : 0)); // the smaller box first
   for (const scope of scopes) {
-    const { found, best } = pick([scope, ...scope.querySelectorAll(tag)].slice(0, 400).filter((n) => n.localName === tag && twin(n)));
+    const { found, best } = pick(some([scope, ...scope.querySelectorAll(tag)].filter((n) => n.localName === tag)));
     if (best > 0) return found;
   }
-  const twins = [...document.querySelectorAll(tag)].slice(0, 400).filter(twin);
+  const twins = some([...document.querySelectorAll(tag)]);
   const { found, best } = pick(twins);
   if (best > 0 || !atPath) return found;
   // Nothing says the same. A lone element of its kind is still it (the words were edited, say). Among several
@@ -799,7 +782,18 @@ function edgeFor(anchor) {
 }
 export function position(anchor) {
   const at = spotOf(anchor);
-  return at.moved ? { ...at, left: edgeFor(anchor) } : at;
+  if (at.moved) return { ...at, left: edgeFor(anchor) };
+  return anchor.kind === 'board' ? at : { ...at, clipped: clippedAt(findTarget(anchor), at.left - scrollX, at.top - scrollY) };
+}
+// A pin whose spot a box with overflow cut off (panned or scrolled out of a canvas, a carousel, a scroll box) hides
+// until its spot is back in view, instead of floating over the page outside that box.
+function clippedAt(node, x, y) {
+  for (let el = node?.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    if (getComputedStyle(el).overflow === 'visible') continue;
+    const r = el.getBoundingClientRect();
+    if (x < r.left - 1 || x > r.right + 1 || y < r.top - 1 || y > r.bottom + 1) return true;
+  }
+  return false;
 }
 // Where a pin on quoted words sits: on the piece of them (one per line) nearest to where it was in its element, at
 // that spot when it's still on the words, else at the nearest point of them. So an unchanged page keeps the pin
@@ -972,23 +966,16 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
 }
 // A message's name with its small marks: ↩ replied, ✅ done.
 // A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
-export const nameLine = (name, done) => {
-  const b = el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
-  if (done) b.append(el('span', { class: 'mark done', role: 'img', 'aria-label': 'done' }, '✓'));
-  return b;
-};
-// Draft mode is parked for now (Leo, 2026-11-15): its button is hidden and new pins post at once.
-export const DRAFT_MODE = false;
+export const nameLine = (name) => el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
 // A block named in a message: its heading in view with room above, and outlined for a moment. On the element itself
 // (the widget's layer is redrawn as comments arrive, which would drop an outline drawn there).
 export function goToBlock(e: Element) {
   const r = e.getBoundingClientRect();
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  scrollTo({ top: Math.max(0, r.top + scrollY - 24), behavior: still ? 'auto' : 'smooth' });
+  scrollTo({ top: Math.max(0, r.top + scrollY - 24 - (parseFloat(host.style.getPropertyValue('--lab-sbb')) || 0)), behavior: still ? 'auto' : 'smooth' });
   const ring = '2px solid rgb(52, 199, 89)';
-  e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: 2000 });
+  e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: ms('hold', 2) });
 }
-export const drafting = () => DRAFT_MODE && store.get('lab-hold') === '1';
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that
 // id, as a link that goes to it there (an agent names the block it placed: "#speed-deeper"); [words](#id) the same,
 // showing the words ("V2 · [plain list](#v2)").
@@ -1046,18 +1033,33 @@ export const readable = (text) => {
     return node;
   });
 };
+/** A range's boxes on screen now, line by line, with how its words sit: reading right to left (their end is then the
+ *  left edge), or in a fixed or sticky part of the page (what is placed by them is held to the screen too). */
+export const rectsOf = (range?: Range | null) => {
+  let n = range ? (range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement) : null;
+  const rtl = n ? getComputedStyle(n).direction === 'rtl' : false;
+  let fixed = false;
+  for (; n && !fixed; n = n.parentElement) fixed = /^(fixed|sticky)$/.test(getComputedStyle(n).position);
+  return Object.assign([...(range?.getClientRects() || [])].filter((r) => r.width > 0), { rtl, fixed });
+};
+/** The quoted words' boxes on screen now (none when the words can't be found). */
+export const quoteRects = (anchor) => rectsOf(quoteRange(anchor));
 const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
 export const markQuote = (anchor) => {
   if (!canMark) return;
   const range = anchor && quoteRange(anchor);
-  if (range) CSS.highlights.set('lab-quote', new Highlight(range));
-  else CSS.highlights.delete('lab-quote');
+  if (!range) return CSS.highlights.delete('lab-quote');
+  // WebKit paints no highlight set while the text can't be selected (comments on, Shift up: lab-pinning in
+  // comments.js), and keeps one set while it can: the page's text is selectable for the frame the words are lit in.
+  document.documentElement.classList.add('lab-lit');
+  CSS.highlights.set('lab-quote', new Highlight(range));
+  requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('lab-lit')));
 };
 
 // The area's outline: round dots with room between them (CSS dotted borders can't space their dots).
 export const zoneEl = (cls) => {
   const z = el('div', { class: `zone ${cls}` });
-  z.innerHTML = '<svg aria-hidden="true"><rect class="ring" width="100%" height="100%"/><rect class="dots" width="100%" height="100%"/></svg>';
+  z.innerHTML = '<svg aria-hidden="true"><rect class="dots" width="100%" height="100%"/></svg>';
   return z;
 };
 export const drawZone = (box, cls) => {

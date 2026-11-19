@@ -1,4 +1,5 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { stickToEnd } from './stick.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -34,9 +35,11 @@ export function placeBeside(node, left, top) {
   }
 }
 
-export function grab(pin, c) {
+// `now` gives the thread the pin shows now: the pin is kept across redraws (src/comments.js, render), so it can't hold one.
+export function grab(pin, now) {
   pin.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !pin.classList.contains('grab')) return;
+    const c = now();
     const r = pin.getBoundingClientRect();
     const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
     const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
@@ -95,8 +98,21 @@ export function grab(pin, c) {
   });
 }
 
+// What a thread card does, kept as it is when a question with choices is in it (choices only add to it):
+// - the thread's messages as chat bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer,
+//   the "new" line above the first unread one, and opening it marks them read (markSeen);
+// - an answer to a later message quotes it (to), and a tap on the quote goes to it;
+// - a rule the agent offered (--suggest-rule): "rule?" on your message, kept with a tap, undo on the answer;
+// - resolve / reopen (admins and the thread's starter), delete with its in-card question (admins);
+// - the reply box (composer) at the foot, its draft kept per thread, focused on a computer when opened by a click;
+// - scroll keeping: at the newest it follows new messages and the keyboard; scrolled back, it stays put; sync() adds
+//   replies that arrive in place, so the reply box keeps its focus;
+// - keys: R reply, E resolve, Escape closes, Ctrl-D / W next new (comments.js);
+// - phones: the bottom sheet (drag by its handle, swipe down to close: sheets.ts), "new · N ›" to the next one.
+// A question with choices adds its rows in its bubble (choicesEl, below). No keys on its rows: tap, Keep.
 export function threadCard(c, fresh = new Set(), focus = false) {
-  const card = W.el('div', { class: 'card' });
+  const asking = openAsk(c);
+  const card = W.el('div', { class: `card${asking ? ' asking' : ''}` }); // phones: an open question's sheet is half the screen
   // The thread scrolls in .body; the step buttons and the reply box stay put in .foot (phones: the sheet's bottom).
   const body = W.el('div', { class: 'body' });
   const foot = W.el('div', { class: 'foot' });
@@ -107,22 +123,17 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   body.classList.add('msgs');
   // At its newest it stays at its newest while it gets shorter (the keyboard coming up as you answer), as the chat does;
   // scrolled back to read, it stays put (Leo, 17 Nov: "when I'm answering, the messages scrolled up").
-  let stick = true;
-  body.addEventListener('scroll', () => (stick = body.scrollHeight - body.scrollTop - body.clientHeight < 48), { passive: true });
-  if ('ResizeObserver' in window) new ResizeObserver(() => stick && (body.scrollTop = body.scrollHeight)).observe(body);
+  const end = stickToEnd(body, !asking); // an open question starts at the question and its rows (on a half-height sheet, not at the newest)
   // Going to answer: the last message comes into view, so you write under what you're answering (Leo, 17 Nov).
-  foot.addEventListener('focusin', (e) => {
-    if ((e.target as Element).localName !== 'textarea') return;
-    stick = true;
-    body.scrollTop = body.scrollHeight;
-  });
+  foot.addEventListener('focusin', (e) => (e.target as Element).localName === 'textarea' && end.pin());
   // A rule the agent offered on its own (--suggest-rule), from your reply about how it answered: on your own message,
   // where the words came from, "make it a rule" (Leo, 17 Nov). Leaving it is a no.
   const STAR = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5l1.7 4.8L14.5 8l-4.8 1.7L8 14.5l-1.7-4.8L1.5 8l4.8-1.7z"/></svg>';
   const offerOn = (mine) => {
     const all = [c, ...W.repliesOf(c.id)];
     const ans = all.slice(all.indexOf(mine) + 1).find((x) => x.session);
-    if (!ans?.suggest || ans.suggest.state) return null;
+    // On this computer only: the lab keeps a rule from nowhere else, so a guest would get a button that says no.
+    if (!W.S.isAdmin || !ans?.suggest || ans.suggest.state) return null;
     const b = W.el('button', { class: 'btn offer', type: 'button', title: ans.suggest.text });
     // The words where the time is, the star where the tick is, each in their size and colour (Leo, 17 Nov).
     b.append(W.el('span', { class: 'tm' }, 'rule?'));
@@ -164,6 +175,10 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       box.append(q);
     }
     box.append(...W.readable(item.text));
+    if (item.session && Array.isArray(item.choices) && item.choices.length) {
+      box.classList.add('asks');
+      box.append(choicesEl(c, item));
+    }
     if (item.session && /kept|undone/.test(item.suggest?.state)) box.append(ruleLine(item));
     const stamp = W.stampOf(item, c, item === c && !c.resolved ? `#${W.numberOf(c)} · ` : '');
     // The offer sits in your message's corner in place of the time and tick, so the bubble keeps its size (Leo, 17 Nov:
@@ -185,6 +200,8 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     shown.add(item.id);
   }
   card.sync = () => {
+    // A new question with choices, or a pick (from another device): the card is drawn again, so the rows are right.
+    if (W.repliesOf(c.id).some((r) => !shown.has(r.id) && (r.choices || r.picked))) return W.render();
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 48;
     for (const r of W.repliesOf(c.id)) {
       if (shown.has(r.id)) continue;
@@ -271,7 +288,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   foot.append(
     W.composer({
       placeholder: 'reply',
-      autofocus: focus,
+      autofocus: focus, // a question with choices too: its rows have no keys, so the reply box keeps the focus
       draftKey: `lab-typing:${W.S.page}:${c.id}`,
       onSubmit: async (name, text) => {
         const { comment } = await W.send({ name, text, parent: c.id });
@@ -301,3 +318,74 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   );
   return card;
 }
+
+// ---------- a question with choices (labit reply --choice …) ----------
+// V1 "plain list" (Leo, 18 Nov): no bubble, no letters, no tags. The question, then the versions as a plain list of rows
+// (the page's own words "· now", a tick on the one shown), then one Keep. Keep sends the pick as a reply, "Picked B: …"
+// (the letter is for the agent, who listed them), with picked: { of, n } (lib/schema.mjs). No keys on the card.
+// The open question in a thread: the agent's last message with choices that nobody has picked on yet.
+const pickOf = (c, ask) => W.repliesOf(c.id).filter((r) => r.picked?.of === ask.id).pop();
+export function openAsk(c) {
+  const asks = W.repliesOf(c.id).filter((r) => r.session && Array.isArray(r.choices) && r.choices.length);
+  const ask = asks[asks.length - 1];
+  return ask && !pickOf(c, ask) && !c.resolved ? ask : null;
+}
+const LETTER = (n: number) => String.fromCharCode(65 + n);
+// The rows of a question, under it. Answered (or an older one): the rows as they were, the pick ticked. Open: rows to
+// pick, Keep under them.
+function choicesEl(c, ask) {
+  const box = W.el('div', { class: 'choices' });
+  const list = W.el('div', { class: 'rows' });
+  box.append(list);
+  const pick = pickOf(c, ask);
+  const live = !pick && openAsk(c) === ask;
+  const rows: { n: number; el: HTMLButtonElement }[] = [];
+  const row = (n: number, text: string) => {
+    const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement;
+    b.append(W.el('span', { class: 'tx', dir: 'auto' }, text));
+    if (pick && pick.picked.n === n) b.classList.add('picked');
+    rows.push({ n, el: b });
+    return b;
+  };
+  ask.choices.forEach((t, n) => list.append(row(n, t)));
+  if (pick && pick.picked.n < 0) box.append(W.el('span', { class: 'note' }, `kept as it was · ${pick.name}`));
+  if (!live) return box;
+
+  // The row picked (tapped): the agent's own pick at first.
+  let cur = ask.recommend ?? -1;
+  // Always "Keep", always on (Leo, 18 Nov: "just keep all the time"); with no row ticked it keeps the words as they are.
+  const keep = W.el('button', { class: 'keep', type: 'button' }, 'Keep') as HTMLButtonElement;
+  const select = (n: number) => {
+    cur = n;
+    for (const r of rows) {
+      r.el.classList.toggle('on', r.n === n);
+      r.el.setAttribute('aria-pressed', String(r.n === n));
+    }
+    if (!keep.disabled) keep.textContent = 'Keep'; // after "your name first" or "failed, try again"
+  };
+  for (const r of rows) r.el.addEventListener('click', () => select(r.n));
+  box.append(keep);
+  keep.addEventListener('click', async () => {
+    if (keep.disabled) return;
+    const name = String(W.store.get('lab-name') || '').trim();
+    if (!name) {
+      keep.textContent = 'your name first';
+      return void W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true });
+    }
+    const n = cur; // -1: the words as they are (a choice that is the same words is picked by its letter)
+    const text = n < 0 ? 'Keep as is: none of these.' : `Picked ${LETTER(n)}: ${ask.choices[n]}`;
+    keep.disabled = true;
+    try {
+      const { comment } = await W.send({ name, text, parent: ask.id, to: ask.id, picked: n });
+      W.S.comments.push(comment);
+      W.markSeen([comment]);
+      W.render();
+    } catch {
+      keep.disabled = false;
+      keep.textContent = 'failed, try again';
+    }
+  });
+  select(cur);
+  return box;
+}
+

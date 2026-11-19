@@ -1,10 +1,17 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { pillLine } from './list.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
 export function bindLive(w: unknown) {
   W = w;
 }
+export const MARK_PATHS = '<g transform="translate(-1 -.5)" fill="currentColor">' +
+  '<path class="e1" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
+  '<path class="e2" d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
+  '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
+  '<circle class="eye" cx="31" cy="45" r="6.2"/></g>';
+const span = (t: string, className = '') => Object.assign(document.createElement('span'), { textContent: t, className });
 
 // Local mode (local.mjs sets data-live): one event stream for all of a lab's tabs (see startLive), so many tabs
 // don't use up the browser's connections. The page reloads when its files change, keeping the scroll position, and the
@@ -18,37 +25,51 @@ export function startLive() {
       if (kept !== null) {
         sessionStorage.removeItem(key);
         if (kept.open) W.S.openId = kept.open;
-        if (kept.list) {
-          W.S.listOpen = true;
-          W.S.filter = ['new', 'open', 'resolved', 'mine'].includes(kept.filter) ? kept.filter : W.S.filter;
-        }
         if (kept.chat) W.S.chatOpen = true;
         addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
       }
     } catch {}
-    // Hold a reload while anything is open (a thread, a new comment, the list) or a box has focus or text: the page
+    // Hold a reload while anything is open (a thread, a new comment) or a box has focus or text: the page
     // reloads once you close it, where you were.
-    // A newer version reloads the page when it's safe: not while you read a thread, the list or the chat (it waits
+    // A newer version reloads the page when it's safe: not while you read a thread or the chat (it waits
     // until they're closed, so nothing moves under you), type, have words in a box, place a new comment, have a phone's
     // keyboard up or have just touched the page.
     let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
     const busy = () =>
-      W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || W.S.listOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
+      W.S.draft || W.S.selecting || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
-        let reloadTimer: any = 0;
+    let reloadTimer: any = 0;
+    // A held reload is invisible otherwise: the page sits old while you read, then jumps the moment you close the
+    // thread. This says one is ready, and takes it now when tapped.
+    const soon = document.createElement('button');
+    soon.className = 'soon';
+    soon.type = 'button';
+    soon.hidden = true;
+    soon.textContent = 'update waiting';
+    soon.title = 'Take the update now';
+    soon.addEventListener('click', () => {
+      clearTimeout(reloadTimer);
+      reloadTimer = 0;
+      now();
+    });
+    const now = () => {
+      try {
+        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, chat: W.S.chatOpen }));
+      } catch {}
+      location.reload();
+    };
     const reload = () => {
       // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
       if (document.hidden) return void (reloadWhenShown = true);
       if (busy()) {
+        soon.hidden = false;
         if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
         return;
       }
-      try {
-        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, list: W.S.listOpen, filter: W.S.filter, chat: W.S.chatOpen }));
-      } catch {}
-      location.reload();
+      soon.hidden = true;
+      now();
     };
     const who = document.createElement('a');
     who.className = 'listener';
@@ -56,16 +77,25 @@ export function startLive() {
     // gap and a bigger dot, so neither closes up at 16 px). Its parts are separate so the styles can move them: the
     // dot blinks now and then while an agent listens, the ears twitch while one works. The words sit in .lbl, so
     // changing them never rebuilds (and restarts) the mark.
-    const MARK =
-      '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><g transform="translate(-1 -.5)">' +
-      '<path class="e1" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
-      '<path class="e2" d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
-      '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
-      '<circle class="eye" cx="31" cy="45" r="6.2"/></g></svg>';
+    const MARK = '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">' + MARK_PATHS + '</svg>';
     who.innerHTML = MARK + '<div class="lbl"></div>';
-    const lbl = who.querySelector('.lbl');
+    const lbl = who.querySelector('.lbl') as HTMLElement;
     who.hidden = true;
     W.root.querySelector('.left').prepend(who);
+    W.root.querySelector('.left').append(soon);
+    // Files a save can mean for this page: the page itself, anything it loads, and data it may fetch as it runs.
+    // Everything else -- a README, another page's script, the project's own server code -- leaves it alone.
+    const FETCHED = /\.(json|wasm|csv|tsv|xml|txt|map|woff2?)$/i;
+    const tidy = (u) => decodeURIComponent(u).replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '');
+    const usedHere = (p) => {
+      if (tidy(location.pathname) === tidy(p) || FETCHED.test(p)) return true;
+      for (const n of document.querySelectorAll('script[src], link[href], iframe[src], object[data], embed[src]')) {
+        if (W.host.contains(n)) continue;
+        const v = n.getAttribute('src') || n.getAttribute('href') || n.getAttribute('data');
+        if (v && samePath(v.split('#')[0], [p])) return true;
+      }
+      return false;
+    };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
     if (!document.querySelector('link[rel~="icon"]')) {
@@ -79,11 +109,41 @@ export function startLive() {
     }
     let stream = null;
     let beat = 0;
+    // The pill's words, from the lab's state (mode, agent) and the agent's work on this page (list.ts
+    // pillLine): while it works on a pin it reads "Claude · drawing W1–W6 · 40 s ago · 2 waiting", and "· no update for
+    // 6 min · last: …" once that one went quiet. The line has a fixed width (styles.css .prog), so nothing beside it moves.
+    let pill = null;
+    const paintWho = () => {
+      if (!pill) return;
+      const { mode, agent, away } = pill;
+      const { text, key, waiting } = mode === 'working' ? pillLine() : { text: '', key: '', waiting: 0 };
+      const more = waiting ? ` · ${waiting} waiting` : '';
+      const sig = [mode, agent, text ? 'p' : more].join('|');
+      if (lbl.dataset.sig !== sig) {
+        lbl.dataset.sig = sig;
+        lbl.replaceChildren(...(mode === 'listening' ? [span('talking to'), agent] : mode === 'quiet' ? [agent, span("isn't answering")] : mode === 'working' ? (text ? [agent, span('', 'prog')] : [agent, span(`is working${more}`)]) : [span(away)]));
+      }
+      const prog = lbl.querySelector('.prog') as HTMLElement | null;
+      if (prog) {
+        const words = `· ${text}${more}`;
+        // Another line fades out and in (200 ms); the age ticking on just changes.
+        if (!prog.dataset.k || prog.dataset.k === key) Object.assign(prog, { textContent: words });
+        else {
+          prog.classList.add('out');
+          setTimeout(() => (prog.classList.remove('out'), (prog.textContent = words)), 200);
+        }
+        prog.dataset.k = key;
+      }
+      who.setAttribute('aria-label', who.textContent);
+    };
+    W.paintWho = paintWho;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
     // A dropped connection isn't "nobody listening": the badge keeps its last state, faded, and says reconnecting
     // (Leo, 18 Nov: the black rabbit came and went at random, from these).
     const showAway = (word) => {
-      lbl.replaceChildren(Object.assign(document.createElement('span'), { textContent: word }));
+      pill = null; // the pill's own words are not painted over it until the next state
+      lbl.dataset.sig = '';
+      lbl.replaceChildren(span(word));
       who.setAttribute('aria-label', word);
       who.classList.add('stale');
       W.chatBtn.classList.add('stale');
@@ -92,6 +152,7 @@ export function startLive() {
     };
     let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
     let readsAt = null;
+    let sectionsAt = null;
     let hotAt = null;
     // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
@@ -277,6 +338,7 @@ export function startLive() {
             if (Math.abs(moved) > 1) scrollBy(0, moved);
           }
           W.reflow();
+          W.S.checkSections?.(); // the section bar follows the new page
         };
         // An error inside the cross-fade would go unseen: any failure falls back to a reload.
         const safe = () => {
@@ -353,8 +415,9 @@ export function startLive() {
       }));
     function onState(v) {
       {
-        // A new widget script: this page needs it, so it reloads (when it's safe, as always).
-        if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) return reload();
+        // A new widget script: this page needs it, so it reloads (when it's safe, as always). While the reload waits
+        // (a chat, a thread or a draft is open) the rest still runs: replies keep arriving and the pill stays true.
+        if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) reload();
         // Comments stored in a new shape (lib/schema.mjs VERSION): this page reads them with the widget that knows it.
         if (v.schema && W.script.dataset.schema && String(v.schema) !== W.script.dataset.schema) return reload();
         // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
@@ -362,12 +425,17 @@ export function startLive() {
         if (v.lab && W.script.dataset.lab && v.lab !== W.script.dataset.lab) {
           W.script.dataset.lab = v.lab;
           W.script.dataset.version = String(v.files);
+          W.script.dataset.hot = String(v.hot || 0);
           hotAt = v.hot;
           commentsRev = v.comments;
           morphPage();
           W.load();
         }
-        if (String(v.files) !== W.script.dataset.version) return reload();
+        if (String(v.files) !== W.script.dataset.version) {
+          // The lab says which files changed (no list: a burst too big to judge, so reload as before).
+          if (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere)) W.script.dataset.version = String(v.files);
+          else reload(); // held while something is open: the comments below still come in (the agent's answer, read marks)
+        }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
         if (hotAt !== null && v.hot !== hotAt) {
@@ -377,6 +445,7 @@ export function startLive() {
         hotAt = v.hot;
         // One version on and it names the pages it changed, none of them this one: nothing to fetch. (An older lab sends
         // no commentPages; more than one version on, the pages in between aren't known.)
+        W.script.dataset.hot = String(v.hot || 0); // what "since you looked" counts saves by
         const elsewhere = v.comments === commentsRev + 1 && Array.isArray(v.commentPages) && !v.commentPages.includes(W.S.page);
         if (commentsRev !== null && v.comments !== commentsRev && !elsewhere) W.loadChanges(commentsRev); // keeps typed text: it adds replies in place
         commentsRev = v.comments;
@@ -385,25 +454,32 @@ export function startLive() {
           readsAt = v.reads;
           W.syncReads();
         }
+        // a section read on another device with your name
+        if (v.sections !== sectionsAt) {
+          sectionsAt = v.sections;
+          W.S.syncSections?.();
+        }
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
         // A lab with listeners can still have none for this page (a wait with --page for another one): this page says
         // so, instead of "talking to Claude" while its pins wait for nobody. An older lab doesn't send heard.
         const h = v.heard;
         const here = !h || h.pages.includes(W.S.page) || (h.all && !h.except.includes(W.S.page));
-        const mode = s && here ? v.mode || 'listening' : 'away';
+        // The session listening here was handed pins and answered none of them (local.mjs silentNow): the pill says
+        // "Claude isn't answering" instead of "talking to Claude", until it answers anything.
+        const quiet = (v.silent || []).find((q) => !q.pages || q.pages.includes(W.S.page));
+        const mode = s && here ? (quiet ? 'quiet' : v.mode || 'listening') : 'away';
         W.S.unheard = mode === 'away';
-        const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
-        // "Codex is working (ooze)": the agent first, the session's name after it in brackets. With the model the
-        // session said it runs on: "talking to Claude · Sonnet 5.5 (ooze)".
-        const agent = s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
-        const tag = s && s.name !== (s.agent || 'Claude') ? [span(`(${s.name})`)] : [];
-        if (mode === 'listening') lbl.replaceChildren(span('talking to'), agent, ...tag);
-        else if (mode === 'working') lbl.replaceChildren(agent, span('is working'), ...tag);
-        else lbl.replaceChildren(span(s && !here ? 'no agent on this page' : 'no agent listening'));
+        // "talking to Claude · Sonnet 5.5": the agent, and the model the session said it runs on. The session's name
+        // isn't in the words (owner, 18 Nov); it is in the pill's tooltip.
+        const agent = quiet && mode === 'quiet' ? quiet.label : s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
+        const name = s && s.name !== (s.agent || 'Claude') ? s.name : '';
+        W.S.agent = s ? agent : '';
+        pill = { mode, agent, away: s && !here ? 'no agent on this page' : 'no agent listening' };
+        paintWho();
         who.classList.remove('stale');
         W.chatBtn.classList.remove('stale');
-        who.classList.toggle('idle', mode === 'away');
+        who.classList.toggle('idle', mode === 'away' || mode === 'quiet');
         who.classList.toggle('working', mode === 'working');
         W.listBtn.dataset.agent = mode;
         W.chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's mark
@@ -414,7 +490,9 @@ export function startLive() {
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
         // How to get one listening again: what to say to the agent, for this page.
-        who.title = mode === 'away' ? `To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : s?.resume || '';
+        // The mark's colour says the state; the tooltip names it (Leo, 18 Nov).
+        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'quiet' ? 'Not answering: pins handed to it got no reply in 2 minutes; they go to the next wait (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
+        who.title = mode === 'away' ? `${state} To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : [state, name && `session: ${name}`, s?.resume].filter(Boolean).join('\n');
         who.hidden = false;
       }
     }

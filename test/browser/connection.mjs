@@ -18,8 +18,9 @@ const pw = (() => {
       return require(require.resolve('playwright', paths && { paths }));
     } catch {}
   }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
+  // On CI a missing browser is a failure: a skip there would pass with nothing run.
+  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+  process.exit(process.env.CI ? 1 : 0);
 })();
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
@@ -27,7 +28,7 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-conn-'));
 const PORT = String(5960 + Math.floor(Math.random() * 30));
 const B = `http://localhost:${PORT}`;
 // A 1 s grace: once every page is gone, a listening agent's wait ends after a second.
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>c</title><h1 id="t">Connection</h1><p>text</p>');
 const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -71,7 +72,7 @@ const post = (text) =>
   }).then((r) => r.json());
 
 try {
-  for (const eng of ['webkit', 'chromium']) {
+  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
     try {
       // ---- one tab: its stream through the background, front, a stall and leaving ----
@@ -88,20 +89,20 @@ try {
       await p.clock.install();
       await p.goto(B + '/');
       await until(() => p.evaluate(() => window.__streams.length === 1 && window.__streams[0].readyState === 1));
-      await sleep(800);
+      await sleep(250);
       const streams = () => p.evaluate(() => window.__streams.map((s) => s.readyState)); // 0 connecting, 1 open, 2 closed
       check(eng, 'one live stream, open', JSON.stringify(await streams()) === '[1]' && seen.live === 1, `${JSON.stringify(await streams())}, ${seen.live} requests`);
 
       await p.evaluate(setHidden, true);
       await p.clock.runFor(90000);
-      await sleep(300);
+      await sleep(250);
       check(eng, 'in the background the stream stays open, no polling', JSON.stringify(await streams()) === '[1]' && seen.state === 0, `${JSON.stringify(await streams())}, ${seen.state} polls`);
       const pinsOf = (t) => t.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot.querySelectorAll('.pin').length ?? -1);
       const hiddenBefore = await pinsOf(p);
       await post(`while hidden in ${eng}`);
       check(eng, 'a comment made while it is in the background shows there at once', await until(async () => (await pinsOf(p)) === hiddenBefore + 1, 4000));
       await p.evaluate(setHidden, false);
-      await sleep(500);
+      await sleep(250);
       check(eng, 'back in front: the same stream, no reconnect', JSON.stringify(await streams()) === '[1]' && seen.live === 1, JSON.stringify(await streams()));
 
       // The server's beat comes every 15 s of real time; 46 s of page time with none looks like a stalled connection.
@@ -134,8 +135,8 @@ try {
         await t.goto(B + '/');
         tabs.push(t);
       }
-      await sleep(1500);
       const open = async (list) => (await Promise.all(list.map((t) => t.evaluate(() => window.__streams.filter((s) => s.readyState === 1).length)))).reduce((a, b) => a + b, 0);
+      await until(async () => (await open(tabs)) === 1, 1500);
       check(eng, '8 tabs share one open stream', (await open(tabs)) === 1, `${await open(tabs)} open`);
       let before = await Promise.all(tabs.map(pinsOf));
       await post(`to all 8 in ${eng}`);

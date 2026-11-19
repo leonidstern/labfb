@@ -3,19 +3,46 @@
   "modules": {
     "anchoring.ts": "where a pin sits on the page and how it finds its spot again",
     "chat.ts": "the chat sheet",
+    "components.ts": "which component drew an element (React, Vue, Svelte), for a pin; its own file (public/_lab/components.js), loaded only on a page a framework drew",
     "composer.ts": "the text box for a comment or a reply, and its send button",
+    "fluid.ts": "selected words: the actions bar and the comment dialog that grows out of it and lands on the words (the dialog is the thread card's box; on phones the bottom sheet)",
     "hold.ts": "a dev server's reload waits while a sheet is open",
     "list.ts": "the list of pins (a sheet on phones)",
     "live.ts": "the live stream: listening badge, mode, who is heard",
     "messages.ts": "one message in a thread or the chat",
+    "select.ts": "select mode (flag select): V picks the block under a click, and its bar sends the agent what to do with it",
+    "sections.ts": "the section bar (flag sectionBar): each section with a heading, current one filled, new and updated marked, read kept per person in the lab",
     "sheets.ts": "THE drawer: every sheet on a phone (handle, swipe down, dimmed page, keyboard fit, back closes). Any new panel on a phone uses it.",
+    "stick.ts": "a message list that stays at its newest while it shrinks (keyboard up) until you scroll back; used by the chat and a thread",
+    "styles.css": "the widget's one stylesheet",
     "switcher.ts": "labs & pages (⌘K): a box on a computer, one of the sheets on a phone",
     "thread.ts": "a pin's thread card",
-    "styles.css": "the widget's one stylesheet",
     "types.d.ts": "types shared by the modules"
   },
-  "animations": ["lab-arrive", "lab-swap", "lab-gone", "lab-turn", "lab-draw", "lab-ready", "lab-rise", "lab-fly", "lab-twitch", "lab-fade", "lab-in", "lab-out", "lab-pin", "lab-halo", "lab-card-in"],
+  "animations": [
+    "lab-arrive",
+    "lab-swap",
+    "lab-gone",
+    "lab-turn",
+    "lab-draw",
+    "lab-ready",
+    "lab-rise",
+    "lab-fly",
+    "lab-twitch",
+    "lab-fade",
+    "lab-in",
+    "lab-out",
+    "lab-pin",
+    "lab-halo",
+    "lab-card-in"
+  ],
   "$where": "Files that may own a part: the drawer's gestures and keyboard fit live in sheets.ts (comments.js wires them up).",
-  "gestures": ["sheets.ts", "comments.js"],
-  "keyboardFit": ["sheets.ts", "comments.js"]
+  "gestures": [
+    "sheets.ts",
+    "comments.js"
+  ],
+  "keyboardFit": [
+    "sheets.ts",
+    "comments.js"
+  ]
 }

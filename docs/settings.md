@@ -77,6 +77,7 @@ Your `~/.config/labit/settings.json`:
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
 | `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
+| `actions` | below | | The buttons in the comment dialog: on words you select, and on a spot or an area. | both |
 | `flags` | everything off | | What this lab is trying: `{ "<flag>": true }`. See **Trying things** below. | either |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
@@ -88,21 +89,56 @@ A new instrument arrives as a flag: off unless you turn it on, tried in a real l
 it is simply labit — or dropped, and the code goes with it. Nothing is in labit because it was built.
 
 ```json
-{ "flags": { "liveUrl": true } }
+{ "flags": { "<flag>": true } }
 ```
 
-You don't have to edit a file: open the ⋯ menu in the lab's bar and there is a **trying** heading at the foot of it
-with a switch for each. A switch writes the project's `labit.json`, so your agent is looking at the same thing you
-are. Only this computer sees those switches — a guest on your wifi reads the page, they don't decide what labit is
-trying. `labit settings` lists which are on and where that came from.
+Put it in the project's `labit.json` (or in your own `~/.config/labit/settings.json`, for every lab you run) and
+start the lab again: flags are read when the lab starts. The page has no switches for them, so the file is the one
+place a flag is set and your agent sees the same thing you do. `labit settings` lists which are on and where that
+came from.
 
 | Flag | What it is |
 | --- | --- |
-| `liveUrl` | a lab in front of a page that is already live, so you pin on what shipped |
-| `agentPins` | a pin the agent left wears labit's own mark, the one the bar shows while an agent listens |
+| `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
+| `sectionBar` | a bar at the top of the page that lists each section (a heading of one level, usually h2) and keeps what is new and what is updated since you read it: a filled dot and "new" for a section that was not there, a ring and "updated" for one whose text changed. A section counts as read after about 3 seconds in it, when you scroll on after a moment, or when you tap it in the bar; the lab keeps that per name, so your Mac and your phone agree. Off by default: set it in `labit.json` |
+
+`agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.
+
+## Actions
+
+Select words (hold Shift and drag) and the comment dialog opens at once, the cursor in its box; a click on a spot or an area
+opens the same dialog there. Its row has the actions only, since the box itself is the comment; clicking one sends it at
+once. The defaults:
+
+```json
+{ "actions": { "words": ["rewrite", "cut", "go"], "spot": ["go", "remove", "fix"] } }
+```
+
+- **Built in:** `rewrite` sends `Rewrite: “…”` at once (the agent proposes the new wording), `cut` sends `Cut: “…”` at once,
+  `go` sends a comment that says "go" on the words (or the spot) at once, nothing to type, `remove` sends `Remove this` and `fix` sends
+  `Fix this`. `rewrite` and `cut` need words, so a spot's row leaves them out.
+- **Your own:** `{ "label": "tighter", "send": "Tighter: less space" }` sends that text on the words or the spot at once, with whatever you
+  typed after it.
+- **Order** is the order shown. `comment` is always there first, so it isn't listed (listed anyway, it is ignored). Up to 5
+  actions beside it, labels up to 16 characters. A name that isn't one, a repeat or a bad label is said when labit starts and
+  left out; the rest still counts.
+- **Keys:** ⌥ + 1 to 4 run the buttons in the order they show (the key's place, so Option's own characters don't matter); holding ⌥
+  while the dialog is open shows the number on each button. Up to the number of actions (4 at most).
+- **`spot`** is the row of the regular dialog on a spot or an area (phones: the same row in the sheet); `words` is the row
+  on selected words. Each is its own list.
+
+```json
+{
+  "actions": {
+    "words": ["go", { "label": "tighter", "send": "Tighter: less space" }, { "label": "shorter", "send": "Shorter: half the words" }]
+  }
+}
+```
+
+The project's list for `words` wins over yours, list by list.
 
 ## Shortcuts
 
@@ -112,17 +148,18 @@ win over yours, key by key.
 | Action | Default | Does |
 | --- | --- | --- |
 | `toggle` | `m` | Show or hide comments |
-| `comment` | `1` | A click places a comment |
-| `go` | `2` | A click places a go pin (do it, no questions) |
-| `pointer` | `3` | A click is just a click |
-| `chat` | `c` | Open the chat |
+| `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
+| `chat` | `t` | Open the chat |
+| `pin` | `c` | Comment mode: a click places a comment. Leaves select mode or the pointer |
 | `next` | `w` | The next new comment (with Shift: the one before) |
-| `pause` | `p` | Pause the page (animations and videos stop) |
-| `done` | `d` | Show or hide done threads |
+| `pause` | `p` | Pause the page's videos and animations, or play what was paused (each one also has its own pause / play beside it) |
+| `slow` | `s` | Play the page's videos and animations at ¼ speed, or back at full speed (the ¼ beside each pause does the same); a pin made while paused carries the moment in ms |
+| `done` | `d` | Hide or show done threads (shown, faded, at first) |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
+| `select` | `v` | With the `select` flag on: select mode on or off |
 
-Letters follow the key's place on non-Latin layouts (the C key is C in Russian too), and digits work with Shift or
+Letters follow the key's place on non-Latin layouts (the T key is T in Russian too), and digits work with Shift or
 on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat` is `x`.
 
 ## Not settings

@@ -1,38 +1,44 @@
 /*!
  * lab comments: click anywhere on a lab page to pin a comment. No login, just a name.
- * https://github.com/leonidstern/labit · PolyForm Perimeter 1.0.0
- * The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
- * link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
- * Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
+ * https://github.com/leonidstern/labit · PolyForm Small Business 1.0.0
  */
+// The lab (local.mjs) puts this script on every page it serves. When comments are on, click anywhere that isn't a
+// link or control to pin one (alt/option-click pins on those too); esc or a click outside closes an open comment.
+// Dragging (mouse/pen) marks an area instead of a point. data-admin (this computer's browser) may resolve, move and delete.
 import styles from './widget/styles.css';
 import {
   bindAnchoring,
-  DRAFT_MODE,
   anchorAt,
-  drafting,
   drawZone,
   foundAt,
   goToBlock,
   inPage,
+  ease,
   markQuote,
+  ms,
   nameLine,
   pageEnd,
   position,
+  quoteRects,
+  rectsOf,
   readable,
+  readComponents,
   short,
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
-import { bindMessages, onWhat, stampOf } from './widget/messages.ts';
+import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
-import { bindThread, grab, placeBeside, placeCard, threadCard } from './widget/thread.ts';
-import { bindLive, startLive } from './widget/live.ts';
+import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
+import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
+import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
+import { bindSelect, selectMode } from './widget/select.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
+import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -40,14 +46,13 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const S = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
+    paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
     get $() { return $; },
-    get DRAFT_MODE() { return DRAFT_MODE; },
-    get LIST_WINDOW() { return LIST_WINDOW; },
     get OFF() { return OFF; },
     get S() { return S; },
     get agentOf() { return agentOf; },
-    get ago() { return ago; },
     get anchorAt() { return anchorAt; },
+    get begin() { return begin; },
     get bar() { return bar; },
     get chatBtn() { return chatBtn; },
     get chatEl() { return chatEl; },
@@ -56,35 +61,28 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     get composer() { return composer; },
     get contentEnd() { return contentEnd; },
     get doneBtn() { return doneBtn; },
-    get drafting() { return drafting; },
+    get movedBtn() { return movedBtn; },
     get drawList() { return drawList; },
     get el() { return el; },
     get fonts() { return fonts; },
     get goBtn() { return goBtn; },
     get goFace() { return goFace; },
     get goTo() { return goTo; },
-    get held() { return held; },
-    get holdBtn() { return holdBtn; },
     get host() { return host; },
-    get isDone() { return isDone; },
     get isNew() { return isNew; },
     get isPage() { return isPage; },
-    get keyWord() { return keyWord; },
     get KEYS() { return KEYS; },
     get keyLabel() { return keyLabel; },
     get layer() { return layer; },
     get listBtn() { return listBtn; },
-    get listEl() { return listEl; },
-    get listed() { return listed; },
     get load() { return load; },
     get loadChanges() { return loadChanges; },
     get markSeen() { return markSeen; },
+    get ms() { return ms; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
-    get newNext() { return newNext; },
-    get newPrev() { return newPrev; },
+    get actions() { return ACTIONS.words; },
     get numberOf() { return numberOf; },
-    get onWhat() { return onWhat; },
     get openSheet() { return openSheet; },
     get patchKids() { return patchKids; },
     get pinCursorStyle() { return pinCursorStyle; },
@@ -97,9 +95,9 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     get root() { return root; },
     get scrim() { return scrim; },
     get script() { return script; },
+    get say() { return say; },
     get send() { return send; },
-    get sendBtn() { return sendBtn; },
-    get showDoneBtn() { return showDoneBtn; },
+    get sheetMode() { return sheetMode; },
     get stampOf() { return stampOf; },
     get stamped() { return stamped; },
     get still() { return still; },
@@ -111,22 +109,37 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     get vv() { return vv; },
   };
   bindLive(W);
+  bindSections(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
   bindSheets(W);
+  bindFluid(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
+  // Parts loaded only when they are used: each is its own file beside this script (scripts/build-widget.mjs), its
+  // styles with it. Asked for once; a module that can't load leaves the rest of the widget as it is.
+  const parts = {};
+  /** @param {string} name */
+  const part = (name) => (parts[name] ??= import(new URL(`${name}.js`, script?.src || location.href).href));
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', go: '2', pointer: '3', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
+  } catch {}
+  // The actions on selected words, beside the comment itself (labit.json or your settings.json `actions`, passed as
+  // data-actions; docs/settings.md): the built-in rewrite, cut, go, remove and fix, and your own { label, send }. `words`
+  // is the selected words' dialog, `spot` the regular dialog on a spot or an area.
+  const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] };
+  try {
+    Object.assign(ACTIONS, JSON.parse(script?.dataset.actions || '{}'));
   } catch {}
   // The key pressed, as the settings name it: a digit by its place (Shift or AZERTY don't matter), a letter as typed
   // when it's Latin (QWERTZ and AZERTY move letters), else by its place (Cyrillic and other layouts).
   const keyOf = (e) => {
     const d = /^(Digit|Numpad)(\d)$/.exec(e.code || '');
-    if (d) return d[2];
+    // Shift and a digit is the board's (⇧1 fit, ⇧2 100%, ⇧0): its key shows another character ("!"), which a plain 1 never does.
+    if (d) return e.shiftKey && e.key !== d[2] ? '' : d[2];
     return /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
   };
   const actionOf = (e) => Object.keys(KEYS).find((a) => KEYS[a] === keyOf(e)) || '';
@@ -163,9 +176,8 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   if (ME && !store.get('lab-name')) store.set('lab-name', ME);
   // Where to tell the lab a new name, so the next lab on this computer starts out knowing it.
   const MEAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'me') : '';
-  // What this lab is trying (lib/flags.ts): flag -> on. The ⋯ menu lists them; only this computer may switch one.
+  // What this lab is trying (lib/flags.ts): flag -> on. Set in labit.json's `flags`, never from the page.
   const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
-  const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
   const flag = (name) => FLAGS[name]?.on === true;
   let meSent = ME;
   const rememberMe = (name) => {
@@ -188,10 +200,14 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // An unsent comment is kept whole — the words (composer.ts) and the spot they were pinned to — so a page that
   // reloads under you, a dev server rebuilding it most of all, gives both back instead of eating them.
   const spotKey = () => `lab-spot:${S.page}`;
-  const keepSpot = (anchor) => store.set(spotKey(), anchor ? JSON.stringify(anchor) : '');
-  const keptSpot = () => {
+  // Kept with it: whether it is on selected words (the dialog, not the plain box) and the action picked. An older
+  // spot, the bare anchor, comes back as a plain box.
+  const keepSpot = (anchor, d) => store.set(spotKey(), anchor ? JSON.stringify({ anchor, fluid: d?.fluid || undefined }) : '');
+  // The unsent comment kept (words and spot), as a draft that comes back with no motion; none when nothing was typed.
+  const keptDraft = () => {
     try {
-      return JSON.parse(store.get(spotKey()) || 'null');
+      const k = JSON.parse(store.get(spotKey()) || 'null');
+      return k && store.get(`lab-typing:${S.page}:new`) ? { ...(k.anchor ? k : { anchor: k }), back: true } : null;
     } catch {
       return null;
     }
@@ -206,25 +222,21 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     <style>${styles}</style>
     <div class="scrim"></div>
     <div class="layer"></div>
-    <button class="sel-chip" type="button" hidden>Comment</button>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.go} go · ${KEYS.pointer} pointer · ${KEYS.pause} pause · ${KEYS.toggle} hide</div>
-    <div class="list" hidden><div class="tabs"><button type="button" data-f="new">new</button><button type="button" data-f="open">open</button><button type="button" data-f="work">work</button><button type="button" data-f="resolved">resolved</button><button type="button" data-f="mine">mine</button><button type="button" class="show-done" title="show or hide done pins on the page"></button><button type="button" class="hold" title="new pins wait here as drafts; send them together">draft mode</button><button type="button" class="x" aria-label="close">✕</button></div><div class="items"></div></div>
-    <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
+    <div class="motions"></div>
+    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
+    <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
-      <button class="secondary send-all" type="button" hidden></button>
-      <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
-      <button class="secondary new-prev" type="button" hidden aria-label="previous new comment">‹</button>
+      <button class="secondary chat-btn" type="button" hidden title="chat (T)">chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
-      <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
-      <button class="secondary pause-btn" type="button" aria-pressed="false" title="stop everything that moves on the page, to pin a moment (${KEYS.pause})">pause motion</button>
+      <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
-      <button class="secondary go-btn" type="button" hidden title="1 comment · 2 go: every click approves what it's on · 3 pointer: clicks are the page's own">go</button>
+      <button class="secondary go-btn" type="button" hidden title="1 switches between comment and pointer (clicks are the page's own)">mode</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
-    <div class="more-menu" id="lab-more" hidden></div>`;
+    <div class="more-menu" id="lab-more" hidden></div></div>`;
   // The widget's own parts, which are always there: typed as HTML elements.
   /** @param {string} sel @param {ParentNode} [box] */
   const $ = (sel, box = root) => /** @type {HTMLElement} */ (box.querySelector(sel));
@@ -236,28 +248,23 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const moreBtn = $('.more');
   const moreMenu = $('.more-menu');
   const copyBtn = $('.copy-all');
-  // The comments list (new / open / resolved / mine; J/K step, R reply, E resolve, L shows it), and drafts: with
-  // "drafts" on, new pins wait in this browser until "send 3 drafts", so nothing starts on pin 1 of 10.
+  // The bar's "new" pill: J/K step through the new comments, R replies, E resolves.
   const listBtn = /** @type {HTMLButtonElement} */ ($('.list-btn'));
   const goBtn = $('.go-btn');
-  const newPrev = $('.new-prev');
-  const showDoneBtn = $('.show-done');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
-  const pauseBtn = $('.pause-btn');
+  const motions = $('.motions');
+  const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
   const overBtn = $('.over-btn');
-  // The list window is parked (Leo, 2026-11-15): new comments are stepped through with ‹ N new › in the bar, and
-  // done pins are shown or hidden with a pill there. Its code stays; LIST_WINDOW brings it back.
-  const LIST_WINDOW = false;
   const tabTitle = { base: '' };
-  S.showDone = store.get('lab-show-done') === '1';
-  const newNext = $('.new-next');
-  const sendBtn = $('.send-all');
-  const listEl = $('.list');
-  const holdBtn = $('.hold', listEl);
+  // Done pins show unless hidden (Leo, 17 Nov): closed ones are faded on the page, and D hides them.
+  S.showDone = store.get('lab-hide-done') !== '1';
+  const toggleDone = () => {
+    S.showDone = !S.showDone;
+    store.set('lab-hide-done', S.showDone ? '' : '1');
+    render();
+  };
   const chatEl = $('.chatwin');
   const chatBtn = /** @type {HTMLElement} */ (root.querySelector('.chat-btn'));
-  S.listOpen = false;
-  S.filter = 'open';
   S.refit = () => {}; // phones: fit the sheets to the keyboard again (below)
   S.chatOpen = false;
 
@@ -270,11 +277,29 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   };
 
   // ---------- anchoring (src/widget/anchoring.ts) ----------
-  bindAnchoring({ host, layer, el, store });
+  bindAnchoring({ host, layer, el });
+  // Which component drew what a pin is on (components.ts, React, Vue, Svelte): its own file, loaded once the page shows
+  // it was drawn by one of them: at start, at load, or the first element the pointer goes over that says so. A pin
+  // reads it at once (anchorAt doesn't wait), so it is there before the first click.
+  /** @param {any} n */
+  const drawnByFramework = (n) => Boolean(n && (n.__vueParentComponent || n.__svelte_meta || Object.keys(n).some((k) => k.startsWith('__react'))));
+  /** @param {Iterable<Element | EventTarget | null>} nodes */
+  const lookForFramework = (nodes) => {
+    if (S.components) return;
+    for (const n of nodes) {
+      if (!drawnByFramework(n)) continue;
+      removeEventListener('pointerover', overFramework, true);
+      S.components = part('components').then((m) => readComponents(m.componentAt), () => (S.components = null));
+      return;
+    }
+  };
+  /** @param {PointerEvent} e */
+  const overFramework = (e) => lookForFramework([e.target]);
+  const scanForFramework = () => lookForFramework([document.body, ...document.querySelectorAll('body > *, body > * > *, body > * > * > *')]);
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
-  bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), workState: (c) => workState(c) });
+  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
+  bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -300,7 +325,9 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const headers = () => ({ 'content-type': 'application/json', ...(adminToken ? { 'x-lab-admin': adminToken } : {}) });
 
   S.loaded = false;
-  const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
+  // A box has the cursor (not a pin: a pin now stays the same element across redraws, so in Chrome, where a clicked
+  // button keeps focus, a clicked pin held every later redraw back).
+  const typed = () => /^(textarea|input)$/.test(root.activeElement?.localName || '') || Boolean(/** @type {HTMLElement | null} */ (root.activeElement)?.isContentEditable) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(S.page)}`, { headers: headers(), cache: 'no-store' });
@@ -314,7 +341,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
         const half = S.comments.find((c) => !c.parent && store.get(`lab-typing:${S.page}:${c.id}`));
         if (half) S.openId = half.id;
         // A comment that was being written but never sent: its words and its spot both come back.
-        else if (!S.draft && store.get(`lab-typing:${S.page}:new`) && keptSpot()) S.draft = { anchor: keptSpot() };
+        else if (!S.draft) S.draft = keptDraft();
       }
       S.loaded = true;
       setTimeout(found, 3000);
@@ -367,23 +394,40 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     }
   }
 
-  // Go mode (V): every new spot (a click, a drawn area, selected words, a hold on phones) is posted at once as "go",
-  // approving what it's on, with no box to type in. In draft mode go pins wait with the other drafts.
-  S.goMode = store.get('lab-go') === '1';
-  // Pointer (3): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
-  // Option-click still pins. 1 comment and 2 go leave it.
+  // While the agent works on something, every 10 s: the ages in the pill, the sheets' lines and the tooltips move on, and a
+  // pin that has gone 5 minutes without a sign turns grey (a pin changing state is drawn again, as with any change).
+  const BUSY = new Set(['now', 'got', 'wait', 'stale']);
+  setInterval(() => {
+    if (document.hidden || !S.on) return;
+    S.line = null;
+    const now = lineUp();
+    if (![...now.values()].some((e) => BUSY.has(e.s))) return;
+    if ([...now].some(([id, e]) => pinsById.has(id) && S.rings.get(id) !== e.s)) return shownAgain();
+    W.paintWho?.();
+    paintLines();
+    for (const [id, pin] of pinsById) {
+      const tip = pin.querySelector('.tip');
+      if (tip) tip.textContent = lineOf(now.get(id));
+    }
+  }, 10000);
+
+  // Pointer (key 1 switches to it and back): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
+  // Option-click still pins. 1 comment leaves it.
   S.cursorMode = store.get('lab-cursor') === '1';
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
   // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
   S.overControls = store.get('lab-over') === '1';
+  // While it is off the item shows how to pin over a control anyway, once: option-click (Leo, 17 Nov).
+  const OPTION = /Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt';
   const sayOver = () => {
-    overBtn.textContent = S.overControls ? 'controls keep clicks' : 'pin over controls';
+    overBtn.replaceChildren(S.overControls ? 'controls keep clicks' : 'pin over controls', ...(S.overControls ? [] : [el('kbd', { 'aria-hidden': 'true' }, `${OPTION} click`)]));
     overBtn.setAttribute('aria-pressed', String(S.overControls));
   };
   const setOver = (v) => {
     S.overControls = v;
     store.set('lab-over', v ? '1' : '');
     sayOver();
+    setPinning(); // the pointer over controls follows the switch (lab-over)
     S.ctlTarget = null; // what the mouse is over is worked out again: the answer has just changed
     S.recheckCtl?.(); // without waiting for the mouse to move
     setPinning();
@@ -393,58 +437,34 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
   const setPinning = () => {
-    const placing = S.on && !S.cursorMode && !anyWriting();
+    const placing = S.on && !S.cursorMode && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
     document.documentElement.classList.toggle('lab-pinning', placing);
-    document.documentElement.classList.toggle('lab-go', placing && S.goMode);
+    // "Pin over controls" on: the page's own links, buttons and clickable cards show the pin too, not their hand: a click
+    // there pins, so the pointer says so (Leo, 17 Nov: "still controls giving me hand").
+    document.documentElement.classList.toggle('lab-over', placing && S.overControls);
     recheck();
   };
   const setCursor = (v) => {
     S.cursorMode = v;
     store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
-    goBtn.classList.toggle('on', S.goMode && !v); // cursor replaces go's green at once
     goFace();
     setPinning();
   };
-  const setGo = (v) => {
-    if (S.cursorMode) setCursor(false);
-    S.goMode = v;
-    queueMicrotask(goFace);
-    store.set('lab-go', v ? '1' : '');
-    goBtn.classList.toggle('on', v);
-    goBtn.setAttribute('aria-pressed', String(v && !S.cursorMode));
-    document.documentElement.classList.toggle('lab-go', S.on && v);
-    ptr.classList.toggle('go', v); // the drawn pointer turns at once, without waiting for the mouse to move
-    recheck();
-  };
-  function begin(anchor) {
-    const name = store.get('lab-name').trim();
-    // Go with no name yet (a guest's first): the card asks only the name; the go is implied (Leo, 16 Nov).
-    if (!S.goMode || !name) {
-      S.draft = { anchor, go: S.goMode };
-      keepSpot(anchor);
-      return render();
-    }
-    const text = 'go';
-    if (drafting()) {
-      store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
-      return render();
-    }
-    send({ name, text, anchor })
-      .then(({ comment, edit }) => {
-        if (edit) store.set(`lab-edit:${comment.id}`, edit);
-        S.comments.push(comment);
-        markSeen([comment]);
-        S.posted = comment.id;
-        render();
-      })
-      .catch(() => ((S.draft = { anchor }), keepSpot(anchor), render())); // couldn't post: the usual box, so nothing is lost
+  // fluid: words that were selected; their box is the one element that grew out of the bar (fluid.ts). act: the bar's
+  // button that was pressed (rewrite, cut, go: run once the dialog's row is there).
+  function begin(anchor, fluid = false, act = '') {
+    S.draft = { anchor, fluid, act };
+    keepSpot(anchor, S.draft);
+    render();
   }
   // Sent once the lab answers: while it can't be reached (restarting, the laptop just woke), the message waits and is
   // tried again every 2 s for up to 5 minutes, instead of failing. Only a lab that answers with an error fails it.
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
+    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: pausedAt(payload.anchor) } }; // paused when written: the agent is told, with the moment
+    if (S.slow && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
@@ -481,7 +501,27 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     }
     if (S.openId === id) S.openId = null;
     render();
-    say(`took back ${/^go$/i.test(c.text.trim()) ? 'a go' : 'a pin'} · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
+    say(`took back a pin · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
+  }
+  // Option-click on a pin: its thread is resolved, or opened again, without opening its card (Leo, 17 Nov). For whoever
+  // may resolve it, as in the card: this computer, and whoever started the thread (its key is kept in their browser).
+  const autoShut = new Set();
+  const mayResolve = (c) => S.isAdmin || Boolean(store.get(`lab-edit:${c.id}`));
+  function toggleResolved(c) {
+    const ownKey = store.get(`lab-edit:${c.id}`);
+    const reopen = Boolean(c.resolved);
+    send({ action: reopen ? 'reopen' : 'resolve', id: c.id, ...(ownKey ? { edit: ownKey } : {}) }).then(
+      ({ comment }) => {
+        Object.assign(c, comment);
+        if (!reopen && S.openId === c.id) { // as its resolve button closes it
+          S.closeFast = true;
+          S.openId = null;
+        }
+        render();
+        say(reopen ? 'open again' : 'resolved');
+      },
+      () => say("couldn't save that, try again"),
+    );
   }
   // A short note in the hint strip (an undo, a copied link), then the strip goes back to its own words.
   const said = { was: undefined, t: undefined };
@@ -530,27 +570,12 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // Everyone sees done threads the same way (a guest's resolved pin vanished at once, with the answer in it unread):
   // done ones with nothing new step aside, and show done brings them back.
   const threads = () => S.comments.filter((c) => !c.parent);
-  const heldKey = () => `lab-held:${S.page}`;
-  const held = () => {
-    try {
-      return JSON.parse(store.get(heldKey()) || '[]');
-    } catch {
-      return [];
-    }
-  };
-  // Being worked on: handed to the agent and not answered or resolved since (a comment, a chat message).
-  const listed = () =>
-    threads()
-      .filter((c) => c.anchor?.kind !== 'page')
-      .filter((c) => (S.filter === 'new' ? unread(c).length : S.filter === 'open' ? !c.resolved : S.filter === 'resolved' ? c.resolved : mine(c)))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;
   S.keepKeys = false;
   // Done: resolved, or answered "Done: …" by someone other than its author (the agent).
   // Done means the same everywhere (the list, the pins, show done): what workState says.
-  const isDone = (c) => c.resolved || workState(c)[0] === 'done';
   // Computers (Leo, 2026-11-15, option 1b): one bar of segments (chat, new, go, ⋯) at the bottom right; the less used
   // ones (show done, copy link, hide) sit in the ⋯ menu. Comments hidden: the bar is just "comments". Phones keep theirs.
   // A word with its key marked inside it, as in menus: (c)hat, ne(w).
@@ -558,32 +583,6 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const w = el('span', { class: 'kw' });
     w.append(before, el('span', { class: 'mn', 'aria-hidden': 'true' }, `(${key})`), after);
     return w;
-  };
-  // What this lab is trying, at the foot of the ⋯ menu: one switch a flag, under a heading of their own. Only this
-  // computer sees them — a guest reads the page, they don't decide what labit is trying — and switching one writes it
-  // into the project's labit.json, so the agent sees the same thing.
-  let tryingMade = null;
-  const tryingBits = () => {
-    if (tryingMade) return tryingMade; // the bar is placed again and again; these are made once
-    const names = Object.keys(FLAGS);
-    if (!names.length || !adminToken || !FLAGSAPI) return (tryingMade = []);
-    const head = el('div', { class: 'trying-head' }, 'trying');
-    const rows = names.map((name) => {
-      // el() takes one child, so the box and the words are appended.
-      const b = el('button', { class: 'trying', type: 'button', role: 'switch', 'aria-checked': String(flag(name)) });
-      b.append(el('span', { class: 'box', 'aria-hidden': 'true' }, flag(name) ? '☑' : '☐'), FLAGS[name].name);
-      b.addEventListener('click', async () => {
-        const on = !flag(name);
-        FLAGS[name].on = on; // the page is about to come back with the new tag; this keeps the tick honest meanwhile
-        b.setAttribute('aria-checked', String(on));
-        b.querySelector('.box').textContent = on ? '☑' : '☐';
-        try {
-          await fetch(FLAGSAPI, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: name, on }) });
-        } catch {}
-      });
-      return b;
-    });
-    return (tryingMade = [head, ...rows]);
   };
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
@@ -602,8 +601,14 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       openSwitcher();
     });
   }
+  // Select (V) from the ⋯ menu too, so a phone, which has no V, can turn it on (Leo, 19 Nov).
+  const selectBtn = flag('select') ? el('button', { type: 'button', class: 'select-btn' }) : null;
+  if (selectBtn) {
+    selectBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, KEYS.select.toUpperCase()));
+    selectBtn.addEventListener('click', () => (setMenu(false), selectMode(true)));
+  }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, pauseBtn, overBtn, copyBtn, toggleBtn, ...tryingBits(), ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), ...(selectBtn ? [selectBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
@@ -618,21 +623,16 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       if (!b.hidden) first = false;
     }
   }
-  // The switch shows what a click will place: 1 your comment pin (your initial), 2 a go pin, 3 nothing (the pointer).
+  // The switch shows what a click will place: your comment pin (your initial) or nothing (the pointer); key 1 (or a click) flips it.
   function goFace() {
     const gp = goBtn.querySelector('.gp');
-    if (gp) gp.textContent = !S.goMode && !S.cursorMode ? initial(store.get('lab-name')) || '+' : 'go';
+    if (gp) gp.textContent = initial(store.get('lab-name')) || '+';
     // Read out as what a click places, not the letter on it.
-    goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (pointer)' : S.goMode ? 'go' : 'a comment'}`);
-    goBtn.setAttribute('aria-keyshortcuts', [KEYS.comment, KEYS.go, KEYS.pointer].join(' '));
+    goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (pointer)' : 'a comment'}`);
+    goBtn.setAttribute('aria-keyshortcuts', KEYS.comment);
   }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
-  const ago = (iso) => {
-    const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-    return m < 1 ? 'just now' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
-  };
-  S.replyTo = null;
   S.newFrom = null;
   // Open comments are numbered 1, 2, 3… in order, the same for everyone, admins and the agent text.
   const numberOf = (c) =>
@@ -684,18 +684,13 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // Pins show who left them: the first letter of the name.
   const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
   // A pin the agent left wears labit's own mark — the same one the bar shows while an agent listens — instead of a
-  // letter, so you can tell at a glance across a page who asked (flag: agentPins).
+  // letter, so you can tell at a glance across a page who asked.
   const agentMark = () => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 64 64');
     svg.setAttribute('class', 'agentmark');
     svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML =
-      '<g transform="translate(-1 -.5)" fill="currentColor">' +
-      '<path d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67Z"/>' +
-      '<path d="M37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02Z"/>' +
-      '<path d="M31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26Z"/>' +
-      '<circle cx="31" cy="45" r="6.2" fill="var(--_bg)"/></g>';
+    svg.innerHTML = MARK_PATHS;
     return svg;
   };
   // An agent's own comment carries the session it was written in; a person's carries where they wrote it from.
@@ -713,9 +708,17 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const still = matchMedia('(prefers-reduced-motion: reduce)');
   const pinsById = new Map(); // the pins on the layer now, by thread id, for movePins()
   S.faces = new Map(); // each pin's last drawn state, so a change can ease in
+  S.rings = new Map(); // and its state with the agent, for the ring
+  const RINGS = { now: '', got: ' got', wait: ' wait', stale: ' stale', missed: ' stale', asks: ' asks' }; // the ring each state wears (none: sent, done)
+  const SAY = { now: 'agent working on it', got: 'picked up by the agent', wait: 'waiting', stale: 'no update from the agent', missed: 'not answered', asks: 'agent asked a question' };
   // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
   S.dropDrag = null;
+  // What each pin on the layer was drawn from, so a redraw can keep the pin itself and only update it.
+  /** @type {WeakMap<Element, any>} */
+  const pinData = new WeakMap();
   function render() {
+    const dragged = S.grabbing;
+    S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
     S.grabbing = false; // a pin being dragged is replaced: its drag ends here
     S.dropDrag?.();
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
@@ -728,44 +731,54 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
-    layer.replaceChildren();
+    // A pin that is still there stays the same element, updated in place, so what runs on it (the agent's ring, a pop, a
+    // swap, a hover or open transition) carries on instead of starting again (Leo, 18 Nov: clicking or leaving a pin
+    // "reloads" its animation). Everything else on the layer (cards, outlines, drafts) is drawn anew, as before; a pin
+    // that was being dragged is drawn anew too.
+    const old = dragged ? new Map() : new Map(pinsById);
+    const keep = new Set(old.values());
+    for (const n of Array.from(layer.children)) if (!keep.has(n)) n.remove();
     pinsById.clear();
+    const next = []; // what the layer holds when this is drawn, in order
+    const add = (n) => (n && next.push(n), n);
     const now = S.on ? S.draft || S.openId : null;
     const appear = now !== S.shown;
     const anim = appear ? ' in' : '';
     let quoted = null;
     const done = () => {
+      patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       if (S.closeFast && !now && prev) {
         S.closeFast = false;
         prev.inert = true;
         layer.append(prev);
         const gone = () => prev.remove();
         if (still.matches || !prev.animate) gone();
-        else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'ease-out', fill: 'forwards' }).finished.then(gone, gone);
+        else prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms('quick'), easing: ease('out'), fill: 'forwards' }).finished.then(gone, gone);
       } else if (coarse && !now && S.shown && prev && !still.matches && !prev.style.transform) { // phones slide the sheet away; computers close at once, like the chat // not when it already slid away (phones)
         prev.classList.remove('in');
         prev.classList.add('out');
         prev.inert = true;
         layer.append(prev);
-        // It shrinks back with the keyboard going (sheets.ts): after a send, into the new pin.
+        // It shrinks back with the keyboard going (sheets.ts); after a send it slides down and the new pin pops in.
         const newPin = S.posted && pinsById.get(S.posted);
-        const sent = newPin?.getBoundingClientRect();
-        if (newPin) newPin.style.animationDelay = '250ms'; // it pops in as the card arrives (lab B2)
-        const dur = leave(prev, 0, sent && { x: sent.left + sent.width / 2, y: sent.top + sent.height / 2 });
+        if (newPin) newPin.style.animationDelay = 'var(--_t-quick)'; // as the card goes (lab option 5)
+        const dur = leave(prev, 0, Boolean(newPin));
         setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
       }
       // Phones: a new comment's sheet has gone (dropped, swiped away; a sent one waits for its card above): the page goes
       // back where it was (sheets.ts).
-      if (coarse && prev?.classList.contains('float') && !prev.classList.contains('out') && !root.querySelector('.float:not(.out)')) setTimeout(backFromReveal, 320);
+      if (coarse && prev?.classList.contains('float') && !prev.classList.contains('out') && !root.querySelector('.float:not(.out)')) setTimeout(backFromReveal, ms('slow'));
       // Phones: a sheet that opens grows out of what was tapped (sheets.ts).
       if (coarse) {
-        const sheet = /** @type {HTMLElement | null} */ (root.querySelector('.card:not(.out), .float:not(.out)')) || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
-        const key = sheet && (S.draft ? 'draft' : S.openId || (S.listOpen ? 'list' : S.chatOpen ? 'chat' : ''));
+        const sheet = /** @type {HTMLElement | null} */ (root.querySelector('.card:not(.out), .float:not(.out)')) || (S.chatOpen ? chatEl : null);
+        const key = sheet && (S.draft ? 'draft' : S.openId || (S.chatOpen ? 'chat' : ''));
         if (sheet && key !== S.sheetKey) fromTap(sheet);
         S.sheetKey = key;
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
+      fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
       markQuote(quoted);
+      S.quoted = quoted;
       S.shown = now;
       S.posted = null;
     };
@@ -779,7 +792,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     );
     toggleBtn.classList.toggle('secondary', S.on);
     host.toggleAttribute('data-labs', Boolean(!coarse && S.labsOpen)); // the page dims behind labs & pages (the widget's .scrim)
-    host.toggleAttribute('data-sheet', Boolean((coarse && S.labsOpen) || (S.on && (S.draft || S.openId || S.listOpen || S.chatOpen)))); // phones: the sheet has the screen's bottom
+    host.toggleAttribute('data-sheet', Boolean((coarse && S.labsOpen) || (S.on && (S.draft || S.openId || S.chatOpen)))); // phones: the sheet has the screen's bottom
     if (coarse && appear && now) { // a sheet opening slides in once its first frame is drawn (see data-opening in styles.css)
       host.setAttribute('data-opening', '');
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
@@ -793,68 +806,135 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     drawList();
     drawChat();
     if (!S.on) return done();
-    for (const h of held()) {
-      const { left, top } = position(h.anchor);
-      const p = el('div', { class: 'pin held', title: `${h.name}: ${h.text} · draft, not sent yet` }, initial(h.name));
-      p.style.left = `${left}px`;
-      p.style.top = `${top}px`;
-      layer.append(p);
-    }
-
     list.forEach((c) => {
       if (isPage(c)) return; // in the chat, not on the page
-      // Done pins with nothing new in them step aside (the list's "done" button shows them again); an open one stays.
+      // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
-      const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
-      if (S.openId === c.id) drawZone(zone, `saved${anim}`); // a drawn area shows its outline while open
+      const { left, top, moved, zone, clipped } = places.get(c.id) || position(c.anchor || {});
+      // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
+      // new spot (drag) or close. The agent finishing one closes it.
+      if (moved) {
+        if (!c.resolved && !autoShut.has(c.id) && workState(c)[0] === 'done' && mayResolve(c)) {
+          autoShut.add(c.id);
+          send({ action: 'resolve', id: c.id, edit: store.get(`lab-edit:${c.id}`) || undefined }).then(({ comment }) => (Object.assign(c, comment), render()), () => {});
+        }
+        if (S.openId !== c.id) return;
+      }
+      if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
-      const [state] = workState(c); // placed (sent), now (the agent is on it) or done
-      const pin = el(
-        'button',
-        {
-          class: `pin${/^go$/i.test(c.text.trim()) ? ' go' : ''}${c.resolved ? ' resolved' : ''}${state === 'done' ? ' done' : ''}${state === 'now' ? ' working' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${S.posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}${S.openId === c.id ? ' open' : ''}`,
-          type: 'button',
-          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
-          // Its state in words too (the ring, the tick and the new dot are only seen).
-          'aria-label': `${/^go$/i.test(c.text.trim()) ? 'go' : 'comment'}${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${state === 'now' ? ', agent working on it' : state === 'done' || c.resolved ? ', done' : ''}${news.length ? `, ${news.length} new` : ''}${moved ? ', moved' : ''}`,
-        },
-        // Done wins over every face: a go that has been answered or resolved is a pin like any other,
-        // and wears the tick. Before this a go pin said "go" for ever, so a finished one looked unfinished.
-        state === 'done' || c.resolved ? '✓' : /^go$/i.test(c.text.trim()) ? 'go' : flag('agentPins') && byAgent(c) ? agentMark() : initial(c.name),
-      );
+      const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
+      const state = sg.s;
+      const tip = coarse || (state !== 'now' && state !== 'stale') ? '' : lineOf(sg); // hovering a working ring says what it is doing
+      const born = !old.has(c.id);
+      const pin = old.get(c.id) || el('button', { type: 'button' });
+      const info = pinData.get(pin) || {};
+      pinData.set(pin, Object.assign(info, { c, zone, hot: info.hot }));
+      // Its state as classes and words (the ring, the tick and the new dot are only seen). Set one by one: the
+      // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
+      for (const [cls, on] of Object.entries({
+        resolved: c.resolved, done: state === 'done', new: news.length, moved,
+        grab: movable, open: S.openId === c.id, dragging: false,
+      })) pin.classList.toggle(cls, Boolean(on));
+      pin.classList.add('pin');
+      if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
+      if (tip) pin.removeAttribute('title');
+      else pin.title = `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${movable ? ' · drag to move' : ''}${!coarse && mayResolve(c) ? ` · option-click to ${c.resolved ? 'open it again' : 'resolve'}` : ''}`;
+      pin.setAttribute('aria-label', `comment${c.resolved ? '' : ` ${numberOf(c)}`} by ${c.name}${c.resolved || state === 'done' ? ', done' : SAY[state] ? `, ${SAY[state]}${state === 'wait' ? ` ${ord(sg.n)} in line` : ''}` : ''}${news.length ? `, ${news.length} new` : ''}`);
+      // Done wins over every face: a pin that has been answered or resolved wears the tick.
+      const mark = state !== 'done' && !c.resolved && byAgent(c);
+      const key = state === 'done' || c.resolved ? '✓' : mark ? '\0mark' : initial(c.name);
+      if (info.face !== key) {
+        const node = mark ? agentMark() : document.createTextNode(key);
+        if (info.node) info.node.replaceWith(node);
+        else pin.prepend(node);
+        Object.assign(info, { face: key, node });
+      }
       // Its face changed since the last drawing (the agent took it, it's done, something new in it): it eases into the
       // new one and the ring fades in or out, instead of a cut (see .swap in styles.css).
-      const face = `${state}${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}`;
+      // A new reply read (the dot goes) is no change of face: it doesn't play (Leo, 18 Nov: closing one made it jump).
+      const face = `${state}${c.resolved ? ' resolved' : ''}`;
       const was = S.faces.get(c.id);
       S.faces.set(c.id, face);
       const changed = was !== undefined && was !== face && !still.matches;
-      if (changed) pin.classList.add('swap');
-      if (state === 'now') pin.append(el('i', { class: `ring${changed && !was.startsWith('now') ? ' come' : ''}`, 'aria-hidden': 'true' }));
-      else if (changed && was.startsWith('now')) pin.append(el('i', { class: 'ring gone', 'aria-hidden': 'true' }));
-      if (coarse) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
+      if (changed) {
+        pin.classList.remove('swap');
+        void pin.offsetWidth; // so it plays again if it played before
+        pin.classList.add('swap');
+      }
+      // The ring is the state (src/widget/styles.css): turning green while it works, still pale green when picked up, muted
+      // while it waits in line, grey when it went quiet, amber when it asks. Moving between them crossfades; none to one fades in.
+      // The pin is kept across redraws, so is its ring: one that stays in its state keeps turning, uninterrupted.
+      const before = S.rings.get(c.id);
+      S.rings.set(c.id, state);
+      const ring = (/** @type {string | null} */ st, extra = '') => el('i', { class: `ring${RINGS[st] ?? ''}${extra}`, 'aria-hidden': 'true' });
+      const shifted = changed && before !== state;
+      let r = /** @type {HTMLElement | null} */ (pin.querySelector(':scope > .ring:not(.gone)'));
+      if (state in RINGS) {
+        pin.querySelector(':scope > .ring.gone')?.remove();
+        const to = ring(state).className;
+        if (!r) {
+          r = ring(state, shifted ? (state === 'now' ? ' come' : ' off') : '');
+          pin.append(r);
+          const nr = r;
+          if (shifted && state !== 'now') requestAnimationFrame(() => requestAnimationFrame(() => nr.classList.remove('off')));
+        } else if (r.className !== to && !r.classList.contains('come')) {
+          const nr = r;
+          if (shifted) requestAnimationFrame(() => requestAnimationFrame(() => (nr.className = to)));
+          else nr.className = to;
+        } else if (r.classList.contains('come') && r.className !== `${to} come`) r.className = to;
+      } else if (r) {
+        if (shifted) {
+          const gone = r;
+          gone.classList.add('gone');
+          gone.addEventListener('animationend', () => gone.remove(), { once: true });
+        } else r.remove();
+      }
+      const oldTip = pin.querySelector(':scope > .tip');
+      if (!tip) oldTip?.remove();
+      else if (oldTip) { if (oldTip.textContent !== tip) oldTip.textContent = tip; }
+      else pin.append(el('span', { class: 'tip', 'aria-hidden': 'true' }, tip));
+      if (coarse && !pin.querySelector(':scope > .hit')) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
-      if (movable) grab(pin, c);
-      // Hovering a pin shows what it's on, as an open one does: a drawn area its outline, selected words their highlight.
-      if (!coarse && zone && S.openId !== c.id) {
-        let shown = null;
-        pin.addEventListener('pointerenter', () => (shown = drawZone(zone, 'saved')));
-        pin.addEventListener('pointerleave', () => (shown?.remove(), (shown = null)));
-      } else if (!coarse && c.anchor?.quote && !zone) {
-        pin.addEventListener('pointerenter', () => markQuote(c.anchor));
-        pin.addEventListener('pointerleave', () => markQuote(quoted));
+      pin.style.visibility = clipped && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position)
+      if (born) {
+        // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
+        grab(pin, () => pinData.get(pin).c);
+        // Hovering a pin shows what it's on, as an open one does: a drawn area its outline, selected words their highlight.
+        pin.addEventListener('pointerenter', () => {
+          const d = pinData.get(pin);
+          d.hot = true;
+          if (coarse || S.openId === d.c.id) return;
+          if (d.zone) d.shown = drawZone(d.zone, 'saved');
+          else if (d.c.anchor?.quote) markQuote(d.c.anchor);
+        });
+        pin.addEventListener('pointerleave', () => {
+          const d = pinData.get(pin);
+          d.hot = false;
+          d.shown?.remove();
+          d.shown = null;
+          if (!d.zone && d.c.anchor?.quote) markQuote(S.quoted);
+        });
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const c = pinData.get(pin).c;
+          if (pin.dataset.dragged) return;
+          if (e.altKey && mayResolve(c)) return toggleResolved(c);
+          // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
+          if (coarse && S.openId !== c.id) return goTo(c);
+          S.openId = S.openId === c.id ? null : c.id;
+          S.draft = null;
+          render();
+        });
       }
-      pin.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (pin.dataset.dragged) return;
-        // Phones: opening it goes through goTo, which moves the page so the pin sits above its sheet, not under it.
-        if (coarse && S.openId !== c.id) return goTo(c);
-        S.openId = S.openId === c.id ? null : c.id;
-        S.draft = null;
-        render();
-      });
-      layer.append(pin);
+      // Pointing at it while the page is redrawn: what it shows for being pointed at is drawn again with it.
+      info.shown = null;
+      if (info.hot && !coarse && S.openId !== c.id) {
+        if (zone) info.shown = add(drawZone(zone, 'saved'));
+        else if (c.anchor?.quote && !quoted) quoted = c.anchor;
+      }
+      next.push(pin);
       pinsById.set(c.id, pin);
       if (S.openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
@@ -866,6 +946,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
         if (appear && !S.stepping) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         S.stepping = S.keepKeys = false;
+        next.push(card);
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
@@ -878,7 +959,9 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
           // message in view, as the chat opens (Leo, 15 Nov: no scroll you can see; the sheet's height is fixed now, so
           // nothing grows after it's set).
           const body = card.querySelector('.body');
-          const first = coarse ? null : body.querySelector('.fresh, .newline');
+          // An open question: at the question and its rows, not below them (thread.ts).
+          const asks = openAsk(c) ? [...body.querySelectorAll('.msg.asks')].pop() : null;
+          const first = asks || (coarse ? null : body.querySelector('.fresh, .newline'));
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
         }
         if (coarse && S.cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
@@ -889,47 +972,66 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       }
     });
 
-    if (S.draft) {
-      const { anchor } = S.draft;
+    // Selected words (fluid.ts): on a computer the box is the one element the bar is, drawn once per draft
+    // so a redraw leaves it and its words alone, with no draft pin (the dialog sits at the words; the pin pops in as it
+    // goes out). Phones: the usual sheet, which the bar grows into, with no keyboard until the box is tapped.
+    const rects = S.draft?.fluid && !sheetMode.matches && quoteRects(S.draft.anchor);
+    const fluid = Boolean(rects?.length); // words not found: the plain box
+    if (S.draft && fluidHas(S.draft)) {
+      quoted = S.draft.anchor; // the words stay lit while it is open
+      if (rects) fluidFollow(rects); // and it stays with them (a saved file moved them); gone, it stays, cut and rewrite off
+    } else if (S.draft) {
+      const draft = S.draft;
+      const { anchor } = draft;
       const { left, top, zone } = position(anchor);
-      drawZone(zone, 'draft');
+      add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
-      const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
-      layer.append(pin);
-      const float = el('div', { class: `float${anim}` });
-      float.append(
-        el('div', { class: 'handle' }),
-        composer({
-          placeholder: S.draft.go ? 'go' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
-          empty: S.draft.go ? 'go' : '',
-          nameFirst: Boolean(S.draft.go),
-          autofocus: true,
-          draftKey: `lab-typing:${S.page}:new`,
-          onSubmit: async (name, text) => {
-            if (drafting()) {
-              store.set(heldKey(), JSON.stringify([...held(), { name, text, anchor }]));
-              S.draft = null;
-            keepSpot(null);
-              return render();
-            }
-            const { comment, edit } = await send({ name, text, anchor });
-            if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
-            S.comments.push(comment);
-            markSeen([comment]);
-            S.draft = null;
-            keepSpot(null);
-            S.openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
-            S.posted = comment.id;
-            holdKeyboard(); // the keyboard waits until the card has flown into its pin (sheets.ts)
-            render();
-          },
-        }),
-      );
+      if (!fluid) {
+        const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
+        pin.style.left = `${left}px`;
+        pin.style.top = `${top}px`;
+        layer.append(pin);
+        next.push(pin);
+      }
+      const float = el('div', { class: `float${draft.fluid ? '' : anim}` });
+      const box = composer({
+        placeholder: S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
+        opened: true, // the comment is already picked and its box open (the actions are one tap away)
+        // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
+        // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
+        autofocus: !(draft.fluid && coarse) && !S.pinnedByHold,
+        draftKey: `lab-typing:${S.page}:new`,
+        onSubmit: async (name, said) => {
+          const { comment, edit } = await send({ name, text: said, anchor });
+          if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
+          S.comments.push(comment);
+          markSeen([comment]);
+          S.draft = null;
+          keepSpot(null);
+          S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
+          S.posted = comment.id;
+          if (fluid) fluidDrop(); // goes out as a card does, as the pin pops in
+          holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
+          render();
+        },
+      });
+      float.append(el('div', { class: 'handle' }));
+      const row = quickRow(draft, box);
+      if (row?.children.length) float.append(row);
+      const act = draft.act;
+      draft.act = '';
+      if (act) queueMicrotask(() => /** @type {HTMLElement | null} */ (float.querySelector(`[data-k="${CSS.escape(act)}"]`))?.click()); // the bar's rewrite, cut or go
+      float.append(box);
       swipeDown(float, () => ((S.draft = null), keepSpot(null), render()));
-      if (zone) placeCard(float, left + 14, zone.top + zone.height);
-      else placeBeside(float, left, top);
+      if (fluid) fluidOpen(float, draft, rects, draft.back); // the float lives in the bar's dialog, not on the layer
+      else {
+        next.push(float);
+        if (zone) placeCard(float, left + 14, zone.top + zone.height);
+        else placeBeside(float, left, top);
+      }
+      // Phones: the sheet the bar grows into. Computers whose words can't be found again: the plain box, the bar lets go.
+      if (draft.fluid && !fluid) (sheetMode.matches ? fluidSheet : fluidDrop)(float);
+      draft.back = false;
     }
     done();
   }
@@ -941,6 +1043,8 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // The open thread's card. New replies (Claude's too) are added to it in place, so the reply box keeps focus.
   S.openCard = null;
   const coarse = matchMedia('(pointer: coarse)').matches;
+  // Where sheets take the screen's bottom (styles.css): a new comment on selected words grows into the sheet there.
+  const sheetMode = matchMedia('(pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px)');
 
   // ---------- events ----------
   const showHint = () => {
@@ -954,10 +1058,12 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
+    S.checkSections?.(); // hidden comments: no section bar
     if (S.on) showHint();
-    S.draft = null;
+    S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
     render();
+    drawMotion(); // the pause / play beside each moving thing goes and comes with the comments
   };
   toggleBtn.addEventListener('click', () => setOn(!S.on));
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
@@ -983,45 +1089,118 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       e.stopPropagation();
     }
   }, true);
-  goBtn.addEventListener('click', () => setGo(!S.goMode));
-  newPrev.addEventListener('click', () => stepNew(-1));
-  doneBtn.addEventListener('click', () => showDoneBtn.click());
-  // Pause motion (p): everything that moves on the page stops where it is, to pin a moment of an animation (Leo,
-  // 16 Nov); again to play on. Animations that start while paused stop too (checked every 100 ms). The widget moves on.
-  S.paused = null;
-  const pageAnim = (a) => { const t = a.effect?.target; return Boolean(t) && t.getRootNode() !== root; };
-  const freeze = () => {
-    for (const a of document.getAnimations()) {
-      if (!pageAnim(a) || a.playState !== 'running') continue;
-      a.pause();
-      S.paused.anims.add(a);
+  goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
+  // Pause (Leo, 19 Nov): each video and each moving thing on the page has its own pause / play just beyond its top right
+  // corner, over the page (nothing moves), shown with the comments; P pauses them all, or plays what labit paused.
+  // The widget's own animations keep moving, and a comment on a paused video says which second (anchoring.ts).
+  const held = new Set(); // the videos and elements labit paused
+  // Only what never ends moves on its own: a transition, or an animation with a finite end (a fade, a highlight, the section
+  // bar's jump ring) is skipped, unless labit paused it.
+  const pageAnims = () => document.getAnimations().filter((a) => {
+    const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
+    return t && !root.contains(t) && (held.has(t) || (!(a instanceof CSSTransition) && a.effect?.getComputedTiming().endTime === Infinity));
+  });
+  const animsOf = (el) => pageAnims().filter((a) => /** @type {KeyframeEffect} */ (a.effect).target === el);
+  const moving = () => [...new Set([...document.querySelectorAll('video'), ...held, ...pageAnims().filter((a) => a.playState === 'running').map((a) => /** @type {KeyframeEffect} */ (a.effect).target)])].filter((el) => el?.isConnected);
+  const isStill = (el) => (el instanceof HTMLVideoElement ? el.paused : animsOf(el).every((a) => a.playState !== 'running'));
+  const setItem = (el, stop) => {
+    if (el instanceof HTMLVideoElement) {
+      if (stop) el.pause();
+      else el.play?.().catch(() => {});
+    } else {
+      for (const a of animsOf(el)) {
+        if (stop && a.playState === 'running') a.pause();
+        else if (!stop && a.playState === 'paused') a.play();
+      }
     }
-    for (const v of document.querySelectorAll('video')) {
-      if (v.paused) continue;
-      v.pause();
-      S.paused.videos.add(v);
+    held[stop ? 'add' : 'delete'](el);
+    S.paused = held.size > 0; // a comment written now says the page was paused
+  };
+  // The moment a paused thing shows, in ms: the one the pin is on or in, else the first paused (a pin carries it).
+  const pausedAt = (anchor) => {
+    let at = null;
+    try {
+      at = anchor?.selector ? document.querySelector(anchor.selector) : null;
+    } catch {}
+    const all = [...held].filter((el) => el.isConnected);
+    const el = all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+    if (!el) return undefined;
+    const t = el instanceof HTMLVideoElement ? el.currentTime * 1000 : Number(animsOf(el)[0]?.currentTime);
+    return Number.isFinite(t) ? Math.round(t) : undefined;
+  };
+  // ¼ speed (Leo, 19 Nov): every page animation and video at a quarter of its speed, S or the ¼ beside a pause; a pin
+  // made now says so. Motion that starts later is slowed as it starts (and by the 1 s redraw, for script animations).
+  const rates = new WeakMap(); // each animation's own rate, to go back to
+  const slowAll = () => {
+    for (const a of document.getAnimations()) {
+      const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
+      if (!t || root.contains(t)) continue;
+      if (S.slow && !rates.has(a)) {
+        rates.set(a, a.playbackRate);
+        a.updatePlaybackRate(a.playbackRate / 4);
+      } else if (!S.slow && rates.has(a)) {
+        a.updatePlaybackRate(rates.get(a));
+        rates.delete(a);
+      }
+    }
+    for (const v of document.querySelectorAll('video')) v.playbackRate = S.slow ? 0.25 : 1;
+  };
+  const setSlow = (on) => {
+    S.slow = on;
+    slowAll();
+    drawMotion();
+  };
+  for (const type of ['animationstart', 'transitionrun', 'play']) addEventListener(type, () => S.slow && slowAll(), true);
+  const shown = new Map();
+  const drawMotion = () => {
+    const now = S.on ? moving() : [];
+    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); b.slowBtn.remove(); shown.delete(el); }
+    for (const el of now) {
+      const r = el.getBoundingClientRect();
+      let b = shown.get(el);
+      if (!b) {
+        b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'motion';
+        b.addEventListener('click', () => (setItem(el, !isStill(el)), drawMotion()));
+        const q = document.createElement('button');
+        q.type = 'button';
+        q.className = 'motion-slow';
+        q.textContent = '¼';
+        q.setAttribute('aria-label', q.title = `quarter speed, all motion (${KEYS.slow.toUpperCase()})`);
+        q.addEventListener('click', () => setSlow(!S.slow));
+        b.slowBtn = q;
+        motions.append(b, q);
+        shown.set(el, b);
+      }
+      b.slowBtn.setAttribute('aria-pressed', String(Boolean(S.slow)));
+      const stopped = isStill(el);
+      const what = el instanceof HTMLVideoElement ? 'video' : 'animation';
+      if (b.dataset.state !== String(stopped)) {
+        b.dataset.state = String(stopped);
+        b.innerHTML = stopped ? '<svg viewBox="0 0 12 12"><path d="M3.5 2.2v7.6L9.8 6z"/></svg>' : '<svg viewBox="0 0 12 12"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
+        b.setAttribute('aria-label', b.title = `${stopped ? 'play' : 'pause'} this ${what} (P: all)`);
+      }
+      // From its middle and its own size, so a spinning or growing thing's control stays put.
+      const w = el instanceof HTMLElement ? el.offsetWidth : r.width;
+      const h = el instanceof HTMLElement ? el.offsetHeight : r.height;
+      b.hidden = !w || !h;
+      b.style.left = `${Math.min(r.left + (r.width + w) / 2 + 6, document.documentElement.clientWidth - 30) + scrollX}px`;
+      b.style.top = `${r.top + (r.height - h) / 2 + scrollY}px`;
+      b.slowBtn.hidden = b.hidden;
+      b.slowBtn.style.left = b.style.left;
+      b.slowBtn.style.top = `${r.top + (r.height - h) / 2 + scrollY + 28}px`;
     }
   };
+  const setPause = (on) => {
+    for (const el of on ? moving().filter((el) => !isStill(el)) : [...held]) setItem(el, on);
+    drawMotion();
+  };
+  setInterval(() => (S.slow && slowAll(), drawMotion()), 1000);
+  addEventListener('scroll', () => requestAnimationFrame(drawMotion), { capture: true, passive: true });
+  doneBtn.addEventListener('click', toggleDone);
+  movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
   overBtn.addEventListener('click', () => setOver(!S.overControls));
-  pauseBtn.addEventListener('click', () => {
-    if (S.paused) {
-      clearInterval(S.paused.timer);
-      for (const a of S.paused.anims) a.play();
-      for (const v of S.paused.videos) v.play().catch(() => {});
-      S.paused = null;
-    } else {
-      S.paused = { anims: new Set(), videos: new Set(), timer: setInterval(freeze, 100) };
-      freeze();
-    }
-    pauseBtn.textContent = S.paused ? 'play motion' : 'pause motion';
-    pauseBtn.setAttribute('aria-pressed', String(Boolean(S.paused)));
-  });
-  showDoneBtn.addEventListener('click', () => {
-    S.showDone = !S.showDone;
-    store.set('lab-show-done', S.showDone ? '1' : '');
-    render();
-  });
-  newNext.addEventListener('click', () => stepNew(1));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
   const showAgain = () => {
     if (S.on) return;
@@ -1032,21 +1211,19 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // The list opens on "new" each time.
   // A #block link in a message: go to that block on the page. A phone's sheet covers the page, so it closes first.
   addEventListener('lab-goto', (e) => {
-    const target = document.getElementById(/** @type {CustomEvent} */ (e).detail);
+    const to = /** @type {CustomEvent} */ (e).detail;
+    const target = typeof to === 'string' ? document.getElementById(to) : to; // an id, or the element itself (the section bar's)
     if (!target) return;
     if (coarse) {
       S.openId = null;
       S.chatOpen = false;
-      S.listOpen = false;
       render();
     }
     setTimeout(() => goToBlock(target), coarse ? 60 : 0); // after the sheet has started closing
   });
-  listBtn.addEventListener('click', () => (LIST_WINDOW ? ((S.listOpen = !S.listOpen), S.listOpen && (S.filter = 'new'), (S.chatOpen = false), (hint.hidden = true), render()) : stepNew(1)));
-  listEl.querySelector('.x').addEventListener('click', () => slideAway(listEl, () => ((S.listOpen = false), render())));
+  listBtn.addEventListener('click', () => stepNew(1));
   chatBtn.addEventListener('click', () => {
     S.chatOpen = !S.chatOpen;
-    S.listOpen = false;
     // On a computer, opening the chat closes an open thread, and a new comment with nothing typed in it.
     if (S.chatOpen && !coarse) {
       S.openId = null;
@@ -1057,7 +1234,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     // Computers: the cursor goes in the message box (phones wait for a tap, so the keyboard doesn't cover the chat).
     if (S.chatOpen && !coarse) /** @type {HTMLElement | null} */ (chatEl.querySelector('.chat textarea'))?.focus({ preventScroll: true });
   });
-  // No close cross on the chat: a click outside it, Escape or C closes it (phones: the handle or the dimmed page).
+  // No close cross on the chat: a click outside it, Escape or T closes it (phones: the handle or the dimmed page).
   // On a computer a click outside the chat closes it (phones have the dimmed page for that); what you typed stays.
   // That click only closes: it doesn't start a comment or press what's under it.
   S.closingClick = false;
@@ -1079,29 +1256,19 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     e.preventDefault();
     e.stopImmediatePropagation();
   }, true);
-  for (const b of /** @type {NodeListOf<HTMLElement>} */ (listEl.querySelectorAll('[data-f]'))) b.addEventListener('click', () => ((S.filter = b.dataset.f), drawList()));
-  holdBtn.addEventListener('click', () => (store.set('lab-hold', drafting() ? '' : '1'), drawList()));
-  sendBtn.addEventListener('click', async () => {
-    const list = held();
-    for (let i = 0; i < list.length; i++) {
-      try {
-        const { comment, edit } = await send(list[i]);
-        if (edit) store.set(`lab-edit:${comment.id}`, edit);
-        S.comments.push(comment);
-        markSeen([comment]);
-        store.set(heldKey(), JSON.stringify(list.slice(i + 1)));
-      } catch {
-        sendBtn.textContent = 'send failed, try again';
-        return;
-      }
-    }
-    render();
-  });
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
     const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
-    if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    // A letter typed while the bar shows starts the comment with it (F4); Escape lets the bar and its words go.
+    // Not while typing in a field of the page or the widget (the chat), nor in another widget.
+    if (!typing(e) && !inOtherWidget && fluidKey(e)) return void (S.draft || dropOffer());
+    // Select mode (flag select): V picks blocks instead of pinning; V again, or Esc twice, leaves it (select.ts).
+    if (flag('select') && S.on && !S.draft && actionOf(e) === 'select' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      return void selectMode();
+    }
+    if (actionOf(e) === 'toggle' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
       return;
@@ -1117,40 +1284,55 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       e.preventDefault();
       // Words typed in a reply box aren't thrown away: it nudges instead, send or clear them first.
       const typed = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('.card textarea, .float textarea'));
-      if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 260 });
+      if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
       return stepNew(e.shiftKey ? -1 : 1);
     }
-    // 1 comment, 2 go, 3 pointer: like picking a tool (the keys are settings).
+    // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
-    if (S.on && ['comment', 'go', 'pointer'].includes(act) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    // C is comment, always (Leo, 19 Nov): out of select mode or the pointer, a click pins again. 1 still switches.
+    if (S.on && act === 'pin' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
-      if (act === 'pointer') setCursor(true);
-      else setGo(act === 'go');
+      if (S.selecting) selectMode(false);
+      if (S.cursorMode) setCursor(false);
       return;
     }
-    // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
+    if (S.on && act === 'comment' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      setCursor(!S.cursorMode);
+      return;
+    }
+    // The list's keys, with comments shown and nothing typed: L list, T chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
-    // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment,
-    // 2 go, 3 pointer, P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
+    // The keys (Leo, 2026-11-15/16), marked in the bar's words: cha(t) (C was chat until 19 Nov; Leo: C is comment), ne(w) (Shift-W: the one before), 1 comment / pointer,
+    // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
+    // Shift is only for next (Shift-W: the one before); ⇧D and the rest stay free.
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || !e.shiftKey)) {
       const k = act;
       e.preventDefault();
-      if (k === 'pause') return pauseBtn.click();
+      if (k === 'pause') return setPause(!S.paused);
+      if (k === 'slow') return setSlow(!S.slow);
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'done') return showDoneBtn.click();
+      if (k === 'done') return toggleDone();
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
     }
     // Escape closes the top one: a thread or new comment first, then the chat, then the list (typed chat text stays).
     if (e.key === 'Escape' && (S.draft || S.openId)) {
+      // A new comment let go with Escape takes its words and its spot with it (a reload would give a box back that was
+      // closed on purpose); a click elsewhere only closes an empty one, and the words wait.
+      if (S.draft) {
+        store.set(`lab-typing:${S.page}:new`, '');
+        keepSpot(null);
+      }
       S.draft = null;
       S.openId = null;
+      e.preventDefault(); // this press was this one's: whatever listens after (the board's Esc) leaves it
       render();
-    } else if (e.key === 'Escape' && (S.chatOpen || S.listOpen)) {
-      if (S.chatOpen) S.chatOpen = false;
-      else S.listOpen = false;
+    } else if (e.key === 'Escape' && S.chatOpen) {
+      S.chatOpen = false;
+      e.preventDefault();
       render();
     }
   });
@@ -1205,25 +1387,13 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const draftHasText = () => Boolean(S.draft) && [.../** @type {NodeListOf<HTMLTextAreaElement>} */ (root.querySelectorAll('.float textarea'))].some((t) => t.value.trim());
   function startDrag(e) {
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
     if (e.composedPath().includes(host)) return;
     if (!e.altKey && control(e.target)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
   }
-  document.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (e.altKey) return; // Option presses are taken earlier (see optionPress)
-      // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-      if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      if (e.composedPath().includes(host)) return;
-      if (!e.altKey && control(e.target)) return;
-      if (e.target instanceof Element && e.target.closest(OFF)) return;
-      S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
-    },
-    true,
-  );
+  document.addEventListener('pointerdown', (e) => !e.altKey && startDrag(e), true); // Option presses are taken earlier (see optionPress)
   document.addEventListener(
     'pointermove',
     (e) => {
@@ -1318,19 +1488,17 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   document.addEventListener('click', (e) => onPageClick(e));
 
   // Phones. A tap only reads (it closes what's open); holding a finger still for half a second pins, anywhere, links
-  // and buttons too (the phone's Option-click). Text selected the phone's way gets a "Comment" chip that pins on it.
+  // and buttons too (the phone's Option-click). Text selected the phone's way gets the actions bar that pins on it.
   S.lastTouch = 0;
   S.pinnedByHold = false; // a hold just made a pin: the lift that ends it puts the cursor in its box (phones open the keyboard only then)
-  const selChip = /** @type {HTMLElement} */ (root.querySelector('.sel-chip'));
   const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
   /** @returns {HTMLElement | null} */
-  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.listOpen ? listEl : S.chatOpen ? chatEl : null);
+  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.chatOpen ? chatEl : null);
   const closeAll = () => {
     if (S.labsOpen) return closeSwitcher(); // labs & pages sits over the others: only it goes
     S.draft = null;
     S.openId = null;
-    S.listOpen = false;
     S.chatOpen = false;
     render();
   };
@@ -1339,7 +1507,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   const closeOrNudge = () => {
     const node = openSheet();
     if (![...root.querySelectorAll('textarea')].some((t) => t.value.trim() && !chatEl.contains(t))) return slideAway(node, closeAll);
-    node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: 260, easing: 'ease-out' });
+    node?.animate?.([{ transform: 'none' }, { transform: 'translateY(12px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease('out') });
   };
   // A tap on the dimmed page closes the sheet; a pull on it moves the sheet with the finger (see swipeDown), and the
   // click that ends such a pull isn't a tap.
@@ -1360,7 +1528,6 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   S.stick = true;
   msgsEl.addEventListener('scroll', () => (S.stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48), { passive: true });
   if ('ResizeObserver' in window) new ResizeObserver(() => S.stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
-  swipeDown(listEl, () => ((S.listOpen = false), render()));
   swipeDown(chatEl, () => ((S.chatOpen = false), render()), true);
   S.press = null;
   const stopPress = () => S.press && (clearTimeout(S.press.timer), (S.press = null));
@@ -1411,7 +1578,8 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     if (e.pointerType === 'touch') S.lastTouch = Date.now();
     stopPress();
     pressing(false);
-    if (S.pinnedByHold) /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
+    // A finger's lift is touchend's (one focus, so the keyboard doesn't close and open again).
+    if (S.pinnedByHold && e.pointerType !== 'touch') /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, true);
   // The lift after a hold: no click follows it (it would land on the dimmed page and take the cursor away), and the
   // touch's own end puts the cursor in the box, so the phone opens its keyboard.
@@ -1420,31 +1588,73 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     if (!S.pinnedByHold) return;
     S.pinnedByHold = false;
     e.preventDefault();
-    /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
+    const box = /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'));
+    if (box && root.activeElement === box) box.blur(); // focused without a keyboard: again from the lift, so it opens
+    box?.focus({ preventScroll: true });
   }, { capture: true, passive: false });
+  // iOS took the touch (its own long press): no lift comes, and a tap in the box opens the keyboard. The next touch's
+  // lift isn't this hold's.
+  document.addEventListener('touchcancel', () => (S.pinnedByHold = false), true);
   document.addEventListener('pointercancel', () => (stopPress(), pressing(false)), true);
   addEventListener('scroll', stopPress, { passive: true, capture: true });
   document.addEventListener('contextmenu', (e) => (S.press || S.afterDrag) && e.preventDefault(), true);
-  S.selRect = null;
+  // Selecting words, and what it did before the one fluid element (fluid.ts) — all of it kept:
+  //  1. Computers: Shift + drag (or Shift + double or triple click) selects words; a plain drag marks an area wherever it
+  //     starts, a click pins, and the page's text can't be selected without Shift (it shows the I-beam cursor, html.lab-shift-cur).
+  //     Letting go opens the dialog at the words' end at once, the cursor in its box (Leo 18 Nov); rewrite and cut
+  //     go as they do in the box.
+  //  2. Phones: words selected the phone's way got a "Comment" chip (selChip); a tap pinned on them. Kept: the bar is
+  //     the fluid element, below the words' end, gone with the selection; comment grows it into the usual bottom sheet
+  //     (sheets.ts: fromTap / revealDraft / leave all as before), with no keyboard until the box is tapped.
+  //  3. Phones: holding a finger still pins (hold-to-comment): untouched, it never makes a selection.
+  //  4. The anchor: pinned on the last selected letter, quoting exactly the words with a few either side (below).
+  //  5. keepSpot: the spot and the typed words are kept while writing, so a reload gives them back (as a plain box).
+  //  6. Keys (KEYS): all as before, except while the bar shows, when a letter is the comment's first letter; Escape
+  //     lets the bar go; a click elsewhere only lets it go (as with an open comment).
+  //  7. The hint's words ("shift-drag to quote words", phones "hold to comment"): unchanged.
+  const dropOffer = () => {
+    fluidDrop();
+    markQuote(null);
+  };
   document.addEventListener('selectionchange', () => {
     const sel = getSelection?.();
     const range = sel?.rangeCount && sel.getRangeAt(0);
     const text = String(sel || '').trim();
     const inside = range && host.contains(range.commonAncestorContainer);
-    S.selRect = coarse && S.on && !S.draft && text && range && !inside ? range.getClientRects()[0] || range.getBoundingClientRect() : null;
-    selChip.hidden = !S.selRect;
-    if (!S.selRect) return;
-    const below = S.selRect.bottom + 52 < innerHeight;
-    selChip.style.left = `${Math.min(Math.max(S.selRect.left + S.selRect.width / 2, 60), innerWidth - 60)}px`;
-    selChip.style.top = `${below ? S.selRect.bottom + 10 : Math.max(S.selRect.top - 46, 8)}px`;
+    clearTimeout(S.selWait);
+    if (!(coarse && S.on && !S.draft && text && range && !inside)) return coarse && fluidState() === 'bar' && fluidDrop(); // gone with the selection
+    // The handles change it many times a second as they are dragged: the bar comes once the selection is still.
+    S.selWait = setTimeout(() => fluidBar(rectsOf(range), (first, act) => (first && store.set(`lab-typing:${S.page}:new`, first), commentOnSelection(act)), text.length), 250);
   });
-  // A comment on the words selected: pinned at their start, quoting exactly them (a few words either side to find them
+  // The words selected, as an anchor: pinned at their end, quoting exactly them (a few words either side to find them
   // again), not just the word under the pin.
-  const commentOnSelection = () => {
+  const selectionAnchor = () => {
     const sel = getSelection?.();
-    const range = sel?.rangeCount && sel.getRangeAt(0);
-    const exact = String(sel || '').replace(/\s+/g, ' ').trim();
-    if (!range || !exact || host.contains(range.commonAncestorContainer)) return false;
+    const range = sel?.rangeCount && sel.getRangeAt(0).cloneRange(); // a copy: moving the selection's own range would take the cursor from a box being typed in
+    if (!range || host.contains(range.commonAncestorContainer)) return;
+    // A double-click takes the word's space with it (Chrome): the quote, and the words each side of it, are read from
+    // the words alone, or the quote would not be found again.
+    /** @param {Node} node @param {number} i @param {number} step */
+    const trim = (node, i, step) => {
+      while (node.nodeType === 3 && /\s/.test(/** @type {Text} */ (node).data[step < 0 ? i - 1 : i] ?? 'x')) i += step;
+      return i;
+    };
+    range.setEnd(range.endContainer, trim(range.endContainer, range.endOffset, -1));
+    range.setStart(range.startContainer, trim(range.startContainer, range.startOffset, 1));
+    // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
+    // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
+    /** @param {Node} node @param {number} i @param {number} step */
+    const grow = (node, i, step) => {
+      const d = node.nodeType === 3 ? /** @type {Text} */ (node).data : '';
+      while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
+      return i;
+    };
+    if (/\s/.test(String(range).trim())) {
+      range.setStart(range.startContainer, grow(range.startContainer, range.startOffset, -1));
+      range.setEnd(range.endContainer, grow(range.endContainer, range.endOffset, 1));
+    }
+    const exact = String(range).replace(/\s+/g, ' ').trim();
+    if (!exact) return;
     // The pin sits on the last selected letter (where the selection ended), when that's in the same element as its
     // first; a selection over several items keeps it on the first, so the pin finds its place again.
     const rects = range.getClientRects();
@@ -1453,8 +1663,8 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
     const endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
     const anchor = startEl && (startEl === endEl || startEl.contains(endEl))
-      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2)
-      : anchorAt(first.left + 2, first.top + first.height / 2);
+      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2, false, endEl)
+      : anchorAt(first.left + 2, first.top + first.height / 2, false, startEl);
     const at = range.commonAncestorContainer;
     const block = /** @type {Element | null} */ (at.nodeType === 1 ? at : at.parentElement)?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div') || document.body;
     /** @param {[Node, number]} a @param {[Node, number]} b */
@@ -1471,30 +1681,85 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
       suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
     };
     sel.removeAllRanges();
-    selChip.hidden = true;
+    return anchor;
+  };
+  // Phones (the bar's comment): straight to the comment on the words.
+  const commentOnSelection = (act = '') => {
+    const anchor = selectionAnchor();
+    if (!anchor) return;
     showAgain();
     S.openId = null;
-    begin(anchor);
-    return true;
+    begin(anchor, true, act);
   };
-  selChip.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (S.selRect) commentOnSelection();
-  });
-  // Computers: Shift + drag selects words (a plain drag marks an area); letting go opens a comment on them.
+  // Computers, a drag over words let go: the dialog opens at once at the words' end, the cursor in its box (Leo 18 Nov).
+  const offerSelection = () => {
+    const got = selectionAnchor();
+    if (!got) return; // a double-click's first mouse-up asks again, after the second one took the selection: keep that dialog
+    if (S.draft) {
+      // an empty box a click, or the first click of a double-click, opened gives way
+      S.draft = null;
+      keepSpot(null);
+    }
+    showAgain();
+    S.openId = null;
+    begin(got, true);
+  };
+  // The actions row of a comment on selected words or a spot (the box is the comment, so no button for it): every button sends at
+  // once on a click, nothing to type: rewrite sends `Rewrite: “…”` (the agent proposes the new wording), cut sends
+  // `Cut: “…”`, go is an ordinary comment that says "go", and your own (labit.json `actions`) send their text. They go
+  // through the box's own send, so a missing name is asked for there, a lab that can't be reached keeps them. ⌥ + 1…4 runs the nth button (holding ⌥ shows the numbers). Long quotes (the first 300 characters are kept)
+  // have no cut or rewrite: the words said aren't all there; nor do words the page no longer has (the row is dimmed then).
+  const quickRow = (draft, box) => {
+    const row = el('div', { class: 'quick' });
+    const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
+    const exact = draft.anchor.quote?.exact || '';
+    const fill = (v) => ((field.value = v), field.dispatchEvent(new Event('input')));
+    for (const a of acts(draft.fluid ? exact.length : 1e9, false, draft.fluid ? ACTIONS.words : ACTIONS.spot)) {
+      const k = actName(a);
+      const b = actButton(a, false);
+      b.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box
+      b.addEventListener('click', () => {
+        if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
+        const typed = field.value.trim();
+        const own = typeof a === 'string' ? null : a;
+        const said = own ? `${own.send}${typed ? ` ${typed}` : ''}` : k === 'rewrite' ? `Rewrite: “${exact}”` : k === 'cut' ? `Cut: “${exact}”` : k === 'go' ? 'go' : k === 'remove' ? 'Remove this' : 'Fix this';
+        fill(said);
+        /** @type {HTMLElement} */ (box.querySelector('.send')).click();
+      });
+      row.append(b);
+    }
+    // ⌥ + 1…4 (by the key's place, so Option's own characters don't matter) runs the nth button; holding ⌥ shows the numbers.
+    const buttons = [...row.children];
+    buttons.forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
+    const alt = (on) => row.classList.toggle('alt', on);
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Alt') alt(true);
+      const n = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey ? /^Digit([1-4])$/.exec(e.code)?.[1] : '';
+      if (!n || !buttons[+n - 1]) return;
+      e.preventDefault();
+      e.stopPropagation();
+      buttons[+n - 1].click();
+    }, true);
+    box.addEventListener('keyup', (e) => e.key === 'Alt' && alt(false), true);
+    box.addEventListener('focusout', () => alt(false));
+    return row;
+  };
+  // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go opens the comment dialog.
   document.addEventListener('mouseup', (e) => {
-    if (S.on && !S.cursorMode && !S.draft && e.shiftKey && e.button === 0 && !e.composedPath().includes(host)) setTimeout(commentOnSelection, 0);
+    if (S.on && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
+    if (fluidState() === 'bar' && !(e.shiftKey && !S.shiftUp)) return dropOffer(); // the first click elsewhere only lets the bar go
     if (S.draft || S.openId) {
-      if ([...root.querySelectorAll('textarea')].some((t) => t.value.trim())) return; // typed text stays; Escape discards it
+      // Typed text doesn't keep it open (Leo, 18 Nov): the click closes it and the words stay as a draft (the box saves them as
+      // they are typed, and the spot is kept, so it comes back); Escape discards them.
       S.draft = null;
       S.openId = null;
       render();
       return;
     }
-    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
     if (S.lastTouch && Date.now() - S.lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || S.ctlClick) return;
@@ -1507,27 +1772,27 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   const movePins = () => {
-    const list = threads().filter((c) => c.anchor?.kind !== 'page');
-    if (!S.on || S.openId || list.length !== pinsById.size) return render();
-    const places = list.map((c) => [pinsById.get(c.id), position(c.anchor || {})]);
-    if (places.some(([pin]) => !pin)) return render();
-    for (const [pin, { left, top, moved }] of places) {
+    if (!S.on || S.openId) return render();
+    const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {})]).filter(([, at]) => !at.moved);
+    if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
+    for (const [pin, { left, top, clipped }] of places) {
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
-      pin.classList.toggle('moved', Boolean(moved));
+      pin.style.visibility = clipped ? 'hidden' : '';
     }
   };
   S.frame = 0;
   const reflow = () => {
     cancelAnimationFrame(S.frame);
     S.frame = requestAnimationFrame(() => {
+      if (fluidState() === 'dlg' && S.draft) fluidFollow(quoteRects(S.draft.anchor)); // so does the open dialog
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (S.draft || root.activeElement || S.grabbing) return;
       movePins();
     });
   };
   addEventListener('resize', reflow);
-  addEventListener('scroll', (e) => e.target !== document && !host.contains(/** @type {Node} */ (e.target)) && reflow(), { capture: true, passive: true });
+  addEventListener('scroll', (e) => (e.target !== document || fluidFixed()) && !host.contains(/** @type {Node} */ (e.target)) && reflow(), { capture: true, passive: true }); // the page's own scroll moves only what is held to the screen
 
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
@@ -1544,6 +1809,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     S.openId = null;
     render();
     load();
+    setTimeout(() => S.checkSections?.(), 400);
   };
   for (const m of ['pushState', 'replaceState']) {
     const original = history[m];
@@ -1572,25 +1838,24 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
 
   // A comment pin as the pointer over everything you can comment on (links and controls keep theirs): the white
   // teardrop with a +, clicking at its point. Holding Shift gives the text cursor back for selecting words.
-  // It looks like your own pin: the white teardrop with your initial (a + before you've given a name). Go mode's is
-  // the same shape in green with a white tick. Both point (bottom left) where the click lands.
+  // It looks like your own pin: the white teardrop with your initial (a + before you've given a name). It points (bottom
+  // left) where the click lands.
   // Drawn once into PNGs (1x and 2x): browsers re-decode SVG pointers when the pointer changes, which flickers (Safari
   // most); a PNG pointer stays put. The SVG one shows only for the moment before the PNGs are ready.
   const pinCursorStyle = document.createElement('style');
   // The pointer itself is drawn (an element styled with CSS that follows the mouse), not an image: so it changes
-  // smoothly, the pin turning green with a tick for go, and fading out where the system pointer takes over (links,
+  // smoothly, and fading out where the system pointer takes over (links,
   // fields, the widget, Shift). Mice only; touch and pens keep what they had.
   const ptr = el('div', { class: 'ptr', 'aria-hidden': 'true' });
-  ptr.append(el('span', { class: 'ini' }, '+'), el('span', { class: 'tick' }, 'go'));
+  ptr.append(el('span', { class: 'ini' }, '+'));
   root.append(ptr);
   // It shows exactly where the system pointer is hidden (cursor: none from the rules above): never two pointers, never
   // none. That's checked on every move, and again when the page scrolls under a still mouse, Shift or Option is pressed,
-  // or go or comments are switched.
+  // or comments are switched.
   S.mouse = null; // the last mouse position
   const place = (x, y, target) => {
     const show = Boolean(target) && target !== host && !host.contains(target) && getComputedStyle(target).cursor === 'none';
     ptr.classList.toggle('show', show);
-    ptr.classList.toggle('go', S.goMode);
     ptr.style.transform = `translate(${x - 1}px, ${y - 27}px)`;
   };
   const recheck = () => S.mouse && requestAnimationFrame(() => S.mouse && place(S.mouse.x, S.mouse.y, document.elementFromPoint(S.mouse.x, S.mouse.y)));
@@ -1612,7 +1877,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   document.documentElement.addEventListener('mouseleave', () => ((S.mouse = null), ptr.classList.remove('show')));
   addEventListener('blur', () => ((S.mouse = null), ptr.classList.remove('show')));
   // No pictures: where the drawn pin can't show (an open dialog or full screen draws above it, or before the mouse first
-  // moves) the system pointer is a plain crosshair for comments and the copy arrow for go.
+  // moves) the system pointer is a plain crosshair for comments.
   S.cursorKey = '';
   function refreshPinCursor() {
     const ch = (initial(store.get('lab-name')) || '+').replace(/[<>&'"]/g, '');
@@ -1623,39 +1888,75 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     const plain = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
     const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
     pinCursorStyle.textContent =
-      `@layer lab-pointer { html.lab-pinning:not(.lab-shift, .lab-ctl) body, html.lab-pinning:not(.lab-shift, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
+      `@layer lab-pointer { html.lab-pinning:not(.lab-shift-cur, .lab-ctl) body, html.lab-pinning:not(.lab-shift-cur, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
       // With the drawn pointer the system one hides over plain parts of the page (not in the top layer, which is above it).
-      `html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
+      `html.lab-drawn.lab-pinning:not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
+      // Holding Shift (drag to quote words): the drawn I-beam with a low ink band at its foot (C3, Leo 18 Nov; text where a cursor image isn't drawn) over the page's content, back to the pin when it's let go.
+      `html.lab-pinning.lab-shift-cur:not(.lab-dragging) body *${plain}:not(img, svg, video, canvas) { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect x='5' y='15.5' width='14' height='5' rx='1.5' fill='%23f0b70a' fill-opacity='.6'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='white' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='%23141414' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") 12 12, text; } ` +
       // The pointer is inherited, so places that aren't commented on name theirs: editable text a text cursor, a part
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
       `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
       // Holding Option (Alt) pins links and controls too: the drawn pin shows over them (the system pointer hides).
-      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
-      `html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }` +
-      `html.lab-go:not(.lab-drawn) body, html.lab-go:not(.lab-drawn) body * { cursor: copy !important; }`;
+      // The same with "pin over controls" on, without the key (lab-over; not while Shift selects words).
+      `html:is(.lab-alt, .lab-over:not(.lab-shift)) body, html:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
+      `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.
-  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   // Letting go of Shift keeps text selectable a moment longer, so a selection made with it isn't dropped before its
   // comment opens.
   /** @type {any} */
   S.shiftOff = 0;
+  // The Shift cursor (lab-shift-cur) follows the key exactly, with no such wait: let go of Shift and the pin pointer is back
+  // at once (Leo, 18 Nov). Browsers repaint a still pointer's cursor only when the page under it changes, so the element
+  // under it gets a same-frame style flip.
+  const shiftCur = (on) => {
+    const de = document.documentElement;
+    if (de.classList.contains('lab-shift-cur') === on) return;
+    de.classList.toggle('lab-shift-cur', on);
+    const t = S.mouse && document.elementFromPoint(S.mouse.x, S.mouse.y);
+    if (t instanceof HTMLElement) {
+      const was = t.style.cursor;
+      t.style.cursor = 'default';
+      void t.offsetWidth;
+      t.style.cursor = was;
+    }
+    recheck();
+  };
+  // Shift's own key events are the truth for "is Shift held": right after a Shift keyup, Linux WebKit can still send the
+  // next press with shiftKey set, which kept text selectable for a plain click (a CI-only flake). Shift pressed in
+  // another window (no keydown seen here) still counts, as shiftUp stays false.
+  S.shiftUp = false;
   const shiftKey = (e) => {
+    if (e.key === 'Shift') S.shiftUp = e.type === 'keyup';
     clearTimeout(S.shiftOff);
+    shiftCur(e.shiftKey);
     if (e.shiftKey) document.documentElement.classList.add('lab-shift');
     else S.shiftOff = setTimeout(() => (document.documentElement.classList.remove('lab-shift'), recheck()), 400);
   };
   addEventListener('keydown', shiftKey, true);
   addEventListener('keyup', shiftKey, true);
+  addEventListener('pointermove', (e) => shiftCur(e.shiftKey && !S.shiftUp), { capture: true, passive: true }); // Shift pressed or let go while another window had focus
+  document.addEventListener('visibilitychange', () => shiftCur(false));
   // A press without Shift is never a selection: drop the Shift state at once, not 400 ms later (a click right after typing
   // a capital letter, or after a screenshot shortcut, used to select the page's text).
   addEventListener('pointerdown', (e) => {
-    if (e.shiftKey) return shiftKey(e);
+    // A Shift press on the page starts new words: the caret a box of the widget leaves (at the widget, the page's end)
+    // stretched the selection from there instead, and the next quote after a comment came to nothing.
+    if (e.shiftKey && !S.shiftUp) return S.on && !typing(e) && getSelection()?.removeAllRanges(), shiftKey(e);
     clearTimeout(S.shiftOff);
     document.documentElement.classList.remove('lab-shift');
+    shiftCur(false);
   }, true);
-  addEventListener('blur', () => document.documentElement.classList.remove('lab-shift'));
+  addEventListener('blur', () => ((S.shiftUp = false), document.documentElement.classList.remove('lab-shift'), shiftCur(false)));
+  // The same, for engines that start a selection before restyling after the press (Linux WebKit kept one now and then):
+  // in comment mode, a selection on the page starts only with Shift; fields and the widget select as always.
+  addEventListener('selectstart', (e) => {
+    const de = document.documentElement;
+    const t = /** @type {Element | null} */ (e.target instanceof Element ? e.target : /** @type {Node} */ (e.target)?.parentElement ?? null);
+    if (de.classList.contains('lab-pinning') && !de.classList.contains('lab-shift') && !t?.closest('input, textarea, select, [contenteditable], [data-lab-comments]')) e.preventDefault();
+  }, true);
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
@@ -1698,7 +1999,14 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    if (flag('select')) bindSelect(W);
     load();
+    if (flag('sectionBar')) startSections(); // the section bar: what is new or updated on the page since you read it
+    scanForFramework();
+    if (!S.components) {
+      addEventListener('load', scanForFramework, { once: true });
+      addEventListener('pointerover', overFramework, { capture: true, passive: true });
+    }
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
@@ -1706,7 +2014,7 @@ import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherShe
   if (LABS) bindSwitcher({
       root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
         setMenu(false);
-        if (coarse) S.listOpen = S.chatOpen = false; // one sheet at a time on a phone
+        if (coarse) S.chatOpen = false; // one sheet at a time on a phone
       },
       // Phones: labs & pages is a sheet like the list and the chat (see openSheet); a computer keeps its box over the page.
       sheet: (open) => {

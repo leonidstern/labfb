@@ -3,12 +3,16 @@ on:
   push:
     branches: [main]
   pull_request:
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  # Node 22 (the oldest labit supports) on every PR; 24 and 26 only on main, where they rarely differ.
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [22, 24, 26]
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '[22]' || '[22, 24, 26]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,20 +21,12 @@ jobs:
       - run: node --check local.mjs && node --check src/comments.js && node --check public/_lab/comments.js && node --check lib/comments-api.mjs
       - run: npm test
 
-  # Dead code: files nothing imports, and exports nothing outside their own file uses. Knip runs from npx,
-  # pinned, so labit keeps zero dependencies; knip.json lists the entry points.
-  dead-code:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm run deadcode
-
-  # Reuse: one drawer, one dimmed page, shared gestures, keyboard fit, animations and styles (ci/reuse.mjs). Something
-  # new is listed in ci/parts.json on purpose, in the same pull request.
-  reuse:
+  # Two quick checks in one job:
+  # - Dead code: files nothing imports, and exports nothing outside their own file uses. Knip runs from npx,
+  #   pinned, so labit keeps zero dependencies; knip.json lists the entry points.
+  # - Reuse: one drawer, one dimmed page, shared gestures, keyboard fit, animations and styles (ci/reuse.mjs).
+  #   Something new is listed in ci/parts.json on purpose, in the same pull request.
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,26 +34,51 @@ jobs:
         with:
           node-version: 22
       - run: npm run reuse
+      - run: npm run deadcode
 
   # The widget in real browsers: Safari's engine (WebKit) and Chrome's. Playwright is installed
-  # only here (--no-save), so labit itself keeps zero dependencies.
+  # only here (--no-save), so labit itself keeps zero dependencies. Split by engine and by file
+  # group so the jobs run side by side: the slowest (fluid.mjs) gets a job of its own.
   browser:
     runs-on: ubuntu-latest
+    timeout-minutes: 12 # a hung browser fails here instead of holding the PR for half an hour
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [webkit, chromium]
+        group:
+          # Selected words: the chip, the dialog it grows into, slash actions, Escape, reload, saved files, right to left, reduced motion.
+          - fluid
+          # behaviours; the live connection; shortcuts from labit.json; pins finding their spot again;
+          # what a drag does (words, an area, a point, fields and links); new since you looked (the pill and list of the
+          # ids the agent added, what drops one off, two names, a phone's sheet, and what must never count).
+          # A phone pinch-zoomed in: the bar and the chat stay their usual size on screen (zoom).
+          # Version links: options get ids, #id and [words](#id) in a message go to them (labversions).
+          - behaviours connection shortcuts anchoring selection flags progress moved zoom shiftkeys select sections labversions
+    name: browser (${{ matrix.engine }}, ${{ matrix.group == 'fluid' && 'fluid' || 'rest' }})
+    # Playwright's own image has both browsers and their system libraries already in it. Installing them with
+    # apt on each run took 30 s on a good day and 33 min on a bad one (#124, #127).
+    container: mcr.microsoft.com/playwright:v1.65.1-noble
+    env:
+      ENGINES: ${{ matrix.engine }}
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
-      - run: npx playwright install --with-deps chromium webkit
-      - run: node test/browser/behaviours.mjs
-      # The live connection: one stream per tab, let go in the background, back in front, replaced when quiet, bye on leaving.
-      - run: node test/browser/connection.mjs
-      # Shortcuts from labit.json: the new keys work, the old ones don't, the bar shows them.
-      - run: node test/browser/shortcuts.mjs
-      # Pins finding their spot again: reordered twins, their own box first, quoted words, made-up ids and classes.
-      - run: node test/browser/anchoring.mjs
-      # Version links: options get ids, #id and [words](#id) in a message go to them, an address with the id outlines it.
-      - run: node test/browser/labversions.mjs
+      - name: Run ${{ matrix.group }}
+        run: for t in ${{ matrix.group }}; do echo "::group::$t"; node test/browser/$t.mjs; echo "::endgroup::"; done
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
-      - run: node bench/run.mjs
+      - if: matrix.engine == 'chromium' && matrix.group != 'fluid'
+        run: node bench/run.mjs
+
+  # One required check name for branch protection, green only when every browser job is.
+  browser-all:
+    if: always()
+    needs: browser
+    runs-on: ubuntu-latest
+    name: browser
+    steps:
+      - run: test "${{ needs.browser.result }}" = success

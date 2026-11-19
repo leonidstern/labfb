@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FOREGROUND_CAP, listenPages, replyIntent, waitSeconds, type Opts } from './args.ts';
+import { FOREGROUND_CAP, letter, listenPages, replyChoices, replyIntent, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
 import { keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
@@ -45,7 +45,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     process.exit(0);
   }
 
-    const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
+  const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
   // `labit publish <page.html | folder>`: like publishing an Artifact (Leo 18 Nov: "process is similar to artifacts, can
   // you do it like this"). The page goes into the one pages lab (pagesFolder), named for its topic; that lab starts if
   // it isn't running; the link is printed. Publishing again replaces it, same link. No folder or lab of its own.
@@ -61,48 +61,18 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const slug = topic.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
     if (!dir && !/\.html?$/i.test(src)) die(`${src}: give an .html file, or a folder of pages`);
     const dest = path.join(root, dir ? slug : `${slug}.html`);
-    if (path.resolve(src) !== dest) {
+    // The page's old copy is removed first, so the source must not be that copy, in it or around it: a folder
+    // published under the name of the folder it sits in (or through a link to the pages folder) used to delete itself.
+    const from = fs.realpathSync(src);
+    const within = (a: string, b: string) => a.startsWith(b + path.sep);
+    if (within(from, dest) || within(dest, from)) die(`${src} and its place in the pages lab (${dest}) are inside one another. Publish it from another folder, or under another --name.`);
+    if (from !== dest) {
       fs.rmSync(dest, { recursive: true, force: true });
       fs.cpSync(src, dest, { recursive: true });
     }
     let lab = runningLabs().find((l) => l.root === root);
     if (!lab) {
-      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, detached: true, stdio: 'ignore' }).unref();
-      for (let i = 0; i < 100 && !lab; i++) {
-        await new Promise((r) => setTimeout(r, 100));
-        lab = runningLabs().find((l) => l.root === root);
-      }
-      if (!lab) die(`The pages lab didn't start. Run it yourself: ${CMD} ${root}`);
-    }
-    const key = keyFor(path.relative(root, dir ? path.join(dest, 'index.html') : dest)); // "/topic", or "/topic/index"
-    console.log(`http://localhost:${lab.port}${key.replace(/\/index$/, '/')}`);
-    console.log(`In the pages lab (${root.replace(os.homedir(), '~')}). Publish again to update it, same link.`);
-    console.log(`Listen for its pins: cd ${root} && ${CMD} wait --bg --pages ${key}`);
-    process.exit(0);
-  }
-
-  // `labit publish <page.html | folder>`: like publishing an Artifact (Leo 18 Nov: "process is similar to artifacts, can
-  // you do it like this"). The page goes into the one pages lab (pagesFolder), named for its topic; that lab starts if
-  // it isn't running; the link is printed. Publishing again replaces it, same link. No folder or lab of its own.
-  if (pos[0] === 'publish') {
-    const src = pos[1] && path.resolve(pos[1]);
-    if (!src || !fs.existsSync(src)) die(`Usage: ${CMD} publish <page.html | folder> [--name "topic"]`);
-    const { loadSettings } = await import('./settings.ts');
-    const home = String(loadSettings(HERE, {}).values.pagesFolder || '~/lab-pages').replace(/^~(?=$|\/)/, os.homedir());
-    fs.mkdirSync(home, { recursive: true });
-    const root = fs.realpathSync(home);
-    const dir = fs.statSync(src).isDirectory();
-    const topic = typeof opts.name === 'string' ? opts.name : path.basename(src).replace(/\.html?$/i, '');
-    const slug = topic.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
-    if (!dir && !/\.html?$/i.test(src)) die(`${src}: give an .html file, or a folder of pages`);
-    const dest = path.join(root, dir ? slug : `${slug}.html`);
-    if (path.resolve(src) !== dest) {
-      fs.rmSync(dest, { recursive: true, force: true });
-      fs.cpSync(src, dest, { recursive: true });
-    }
-    let lab = runningLabs().find((l) => l.root === root);
-    if (!lab) {
-      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, detached: true, stdio: 'ignore' }).unref();
+      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, env: { ...process.env, LABIT_EXIT_WITH_PARENT: '' }, detached: true, stdio: 'ignore' }).unref();
       for (let i = 0; i < 100 && !lab; i++) {
         await new Promise((r) => setTimeout(r, 100));
         lab = runningLabs().find((l) => l.root === root);
@@ -124,10 +94,15 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       let pages = '';
       try {
         const info = await (await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) })).json();
-        const open = info.pages.reduce((n, p) => n + p.open, 0);
-        pages = ` · ${info.pages.length} page${info.pages.length === 1 ? '' : 's'}${open ? `, ${open} open comment${open === 1 ? '' : 's'}` : ''}${info.listening ? ` · ${info.listening} listening` : ''}`;
+        const waiting = info.pages.reduce((n, p) => n + (p.waiting ?? p.open), 0);
+        pages = ` · ${info.pages.length} page${info.pages.length === 1 ? '' : 's'}${waiting ? `, ${waiting} waiting` : ''}${info.listening ? ` · ${info.listening} listening` : ''}`;
       } catch {}
-      console.log(`${lab.name}  http://localhost:${lab.port}  ${lab.root}${lab.proxy ? ` (on ${lab.proxy})` : ''}${pages}`);
+      // What it runs and how long it has been up: between releases every lab says the same version, and the age is
+      // what tells a lab left running for days (serving old code) from a fresh one.
+      const age = lab.startedAt ? Date.now() - Date.parse(lab.startedAt) : NaN;
+      const since = !Number.isFinite(age) ? '' : age < 36e5 ? `${Math.max(1, Math.round(age / 6e4))} min` : age < 864e5 ? `${Math.round(age / 36e5)} h` : `${Math.round(age / 864e5)} days`;
+      const what = `${lab.version ? ` · labit ${lab.version}` : ''}${since ? `, up ${since}` : ''}`;
+      console.log(`${lab.name}  http://localhost:${lab.port}  ${lab.root}${lab.proxy ? ` (on ${lab.proxy})` : ''}${what}${pages}`);
     }
     process.exit(0);
   }
@@ -154,7 +129,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (groups.length > 1) lines.push(`**${group.name}**`, '');
       for (const p of group.pages) {
         const name = (p.title || p.file || p.path).replace(/[[\]]/g, '');
-        lines.push(`- [${name}](${p.url})${p.open ? ` · ${p.open} open` : ''}`);
+        const heard = p.listener ? ` · ${p.listener} listening` : p.waiting ? ' · nobody listening' : '';
+        lines.push(`- [${name}](${p.url})${p.waiting ? ` · ${p.waiting} waiting` : ''}${heard}${p.when ? ` · ${p.when}` : ''}`);
       }
       lines.push('');
     }
@@ -171,15 +147,28 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
     const { dir, server } = lab;
     const session = mySession(opts.name, opts.model);
-    const call = (pathname: string, body: object) =>
-      labCall(server, pathname, body, session).catch(() =>
-        die(
-          process.env.CODEX_SANDBOX_NETWORK_DISABLED
-            ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Use labit's MCP server instead: ` +
-                `codex mcp add labit -- npx @leonidstern/labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
-            : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
-        ),
+    const gone = () =>
+      die(
+        process.env.CODEX_SANDBOX_NETWORK_DISABLED
+          ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Let the sandbox reach it: ` +
+              `-c sandbox_workspace_write.network_access=true`
+          : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
       );
+    // A lab that goes and comes back (--dev, an update, a crash and a start again) shouldn't end a wait: the command
+    // holds on for a few seconds and carries on. The clock starts when the lab first goes, not when the call began --
+    // a wait sits open for 25 minutes, so a deadline set up front would already have passed by then.
+    const call = async (pathname: string, body: object, seconds = 5) => {
+      let until = 0;
+      for (;;) {
+        try {
+          return await labCall(server, pathname, body, session);
+        } catch {
+          if (!until) until = Date.now() + seconds * 1000;
+          if (Date.now() >= until) return gone();
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      }
+    };
 
     // The same words sent again by the same session to the same thing (the agent ran reply again because it never saw
     // the first one's answer) carry the same nonce, so the lab gives back the first comment instead of a second one,
@@ -206,7 +195,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       // A wait sits open for as long as it is allowed to; in an agent's foreground that is the person's whole turn,
       // so without --bg it is held to a minute. See waitSeconds in args.ts for why it can't just be detected.
       const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
-      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true });
+      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true }, 20);
       console.log(WAIT_SAID[out.status] ?? out.text);
       await labAck(server, out.delivery, session);
       if (capped && out.status === 204)
@@ -277,11 +266,10 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
 
     // A comment by its id (of the thread or of a reply in it) or by the number on its card.
-    // The store: one file per page in .lab/comments/ (or, from a lab not started since 16 Nov, the one comments.json).
+    // The store: one file per page in .lab/comments/.
     const data = {};
     const store = path.join(dir, '.lab/comments');
-    if (!fs.existsSync(store)) Object.assign(data, JSON.parse(fs.readFileSync(path.join(dir, '.lab/comments.json'), 'utf8')));
-    else
+    if (fs.existsSync(store))
       for (const name of fs.readdirSync(store).filter((n) => n.endsWith('.json'))) {
         try {
           const file = JSON.parse(fs.readFileSync(path.join(store, name), 'utf8'));
@@ -304,30 +292,46 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       hit = hits[0];
     }
     if (!hit) die(`No open comment ${ref || ''}${want ? ` on ${want}` : ''}. See .lab/comments.md.`);
-    if (cmd === 'reply') {
+    // --progress: the line the page shows while you work, kept on the thread (the latest only), not a message.
+    const progress = cmd === 'reply' && opts.progress !== undefined;
+    if (progress) {
+      if (typeof opts.progress !== 'string' || !opts.progress.trim()) die(`Progress text is missing: ${CMD} reply <id> --progress "what you're on now"`);
+      if (words.length || opts.done || opts['on-it'] || opts.question || opts.resolve) die('--progress is only the line, with no answer text, --done, --on-it, --question or --resolve: those are answers, and an answer clears it.');
+      const out = await call('/_lab/api/comments', { page: hit.page, action: 'progress', id: hit.id, text: opts.progress });
+      if (out.status >= 300) die(`Could not note progress: ${out.text}`);
+    } else if (cmd === 'reply') {
       if (!words.length) die(`Reply text is missing: ${CMD} reply <id> "what you did"`);
-      const intent = replyIntent(opts);
+      let intent = replyIntent(opts);
       if (intent instanceof Error) die(intent.message);
+      // A question with choices (--choice "…" --choice "…" [--recommend B]): the person picks one on the page, and the
+      // pick comes back in a wait as their reply ("Picked B: …"). It is a question, whatever else it says.
+      const choices = replyChoices(opts);
+      if (choices instanceof Error) return die(choices.message);
+      const asked = choices;
+      if (asked && intent && intent !== 'question') die(`A reply with --choice is a question; leave out --${intent === 'working' ? 'on-it' : intent}.`);
+      if (asked && opts.resolve) die('A reply with --choice waits for the person to pick; leave out --resolve.');
+      if (asked) intent = 'question';
       const who = process.env.LAB_AGENT_NAME || session.agent;
       const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
       const said = Object.values(((data as Record<string, object>)[hit.page] || {}) as Record<string, { id: string; parent?: string; session?: unknown; createdAt: string }>)
         .filter((c) => (c.id === hit.id || c.parent === hit.id) && !c.session)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .pop()?.id;
-      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, said, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}) });
+      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, said, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}), ...asked });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
+      if (asked) console.log(`Asked with ${asked.choices.map((c, i) => `${letter(i)}) ${c}`).join('  ')}${asked.recommend !== undefined ? `  (your pick: ${letter(asked.recommend)})` : ''}. The pick comes back in your next wait.`);
     }
     if (cmd === 'resolve' || opts.resolve) {
       const out = await call('/_lab/api/comments', { page: hit.page, action: 'resolve', id: hit.id });
       if (out.status >= 300) die(`Could not resolve: ${out.text}`);
     }
-    console.log(`${cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
+    console.log(`${progress ? 'Progress noted' : cmd === 'reply' ? (opts.resolve ? 'Replied and resolved' : 'Replied') : 'Resolved'} on ${hit.page}.`);
     // --wait: answer and listen again in one command (one round trip less per pin). It listens where --page or
     // --pages says, as wait does: `reply <id> --wait --page /x` used to listen on every page but /x's claim, so a
     // session listening on one page stopped hearing it after its first answer (Leo, 18 Nov).
     if (opts.wait) {
       const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
-      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true });
+      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true }, 20);
       console.log(WAIT_SAID[out.status] ?? out.text);
       await labAck(server, out.delivery, session);
       if (capped && out.status === 204)

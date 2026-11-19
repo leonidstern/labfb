@@ -34,6 +34,9 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
     const up = http.request({ hostname: PROXY.hostname, port: PROXY.port || 80, path: url.pathname + url.search, method: req.method, headers }, (r) => {
       const encoded = r.headers['content-encoding'] && r.headers['content-encoding'] !== 'identity';
       const html = /text\/html/i.test(r.headers['content-type'] || '') && req.method === 'GET' && !encoded;
+      // A redirect to the dev server's own address would take the person off the lab (no widget, no comments).
+      const to = r.headers.location;
+      if (to && (to === PROXY.origin || to.startsWith(PROXY.origin + '/'))) r.headers.location = origin + to.slice(PROXY.origin.length);
       if (!html) {
         res.writeHead(r.statusCode || 502, r.headers);
         return void r.pipe(res);
@@ -77,6 +80,8 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
       if (res.headersSent) return void res.destroy();
       res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' }).end(`[lab] no answer from the dev server at ${PROXY.origin} (${e.code}). Start it, then reload.`);
     });
+    // The person left (a closed tab, a cancelled event stream): the dev server's side ends too, not held open for good.
+    res.on('close', () => res.writableFinished || up.destroy());
     req.pipe(up);
   }
   function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {

@@ -11,7 +11,7 @@ export function listenPages(opts: Opts, forWait = false): string[] | null {
 }
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
-const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--new', '--all', '--md', '--bg', '--fast', '--no-fast', '--done', '--on-it', '--question'];
+const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--new', '--all', '--md', '--bg', '--dev', '--fast', '--no-fast', '--done', '--on-it', '--question'];
 /** What an agent's reply is, from its flag (reply --done / --on-it / --question): the thread's state is read from it.
  *  undefined when none is given; an error when more than one is. */
 export function replyIntent(opts: Opts): 'done' | 'working' | 'question' | undefined | Error {
@@ -19,6 +19,26 @@ export function replyIntent(opts: Opts): 'done' | 'working' | 'question' | undef
   if (given.length > 1) return new Error(`Give one of --done, --on-it, --question, not ${given.map((f) => `--${f}`).join(' and ')}.`);
   return given[0] === 'on-it' ? 'working' : given[0];
 }
+/** The choices of a question (reply --choice "…" --choice "…" [--recommend B]): their words, and which one the agent
+ *  would take (0-based), or an error to show. undefined when no --choice is given. 2 to 6 choices, each one line. */
+const MAX_CHOICES = 6;
+export function replyChoices(opts: Opts): { choices: string[]; recommend?: number } | undefined | Error {
+  const given: unknown[] = Array.isArray(opts.choice) ? opts.choice : [];
+  if (!given.length) return opts.recommend !== undefined ? new Error('--recommend goes with --choice: reply <id> "question" --choice "A" --choice "B" --recommend B') : undefined;
+  if (given.some((c) => typeof c !== 'string' || !c.trim())) return new Error('Each --choice needs its text: --choice "the words of this version"');
+  const choices = (given as string[]).map((c) => c.replace(/\s+/g, ' ').trim());
+  if (choices.length < 2) return new Error('Give at least two choices (--choice "A" --choice "B"), or ask without --choice.');
+  if (choices.length > MAX_CHOICES) return new Error(`At most ${MAX_CHOICES} choices.`);
+  if (choices.some((c) => c.length > 300)) return new Error('A choice is at most 300 characters.');
+  if (opts.recommend === undefined) return { choices };
+  // --recommend B, or b, or 2 (counted from 1, as the letters are).
+  const r = String(opts.recommend).trim();
+  const n = /^[a-z]$/i.test(r) ? r.toUpperCase().charCodeAt(0) - 65 : /^\d+$/.test(r) ? Number(r) - 1 : -1;
+  if (n < 0 || n >= choices.length) return new Error(`--recommend takes the letter of one of the choices (A to ${String.fromCharCode(64 + choices.length)}) or its number.`);
+  return { choices, recommend: n };
+}
+/** The letter of a choice: A, B, C… */
+export const letter = (n: number) => String.fromCharCode(65 + n);
 /** The longest a wait sits open when nobody has said it is running in the background. */
 export const FOREGROUND_CAP = 60;
 /** The wait's own default, when no --timeout is given. */
@@ -41,7 +61,9 @@ export function waitSeconds(opts: Opts, isTTY = false): { seconds: number; cappe
 // --fast / --no-fast switched the quick model, removed 15 Nov: still accepted, so older scripts keep working; they do nothing.
 // How answers should read, said with every pin (the page shows short blocks and '- ' lists as such).
 export const WRITE_SHORT = "Write answers short: they're read in a small window, often on a phone. One point per line or two, a blank line between points, '- ' lines for lists.";
-const VALUED = ['--port', '--name', '--page', '--pages', '--timeout', '--dir', '--proxy', '--model', '--suggest-rule', '--at'];
+const VALUED = ['--port', '--name', '--page', '--pages', '--timeout', '--dir', '--proxy', '--model', '--suggest-rule', '--at', '--progress', '--choice', '--recommend'];
+// Flags given more than once, each time adding one (reply --choice "A" --choice "B"): a list, in the order given.
+const REPEATED = ['--choice'];
 // The command line's words (pos) and options (opts), and any --flag it doesn't know.
 export function parseArgs(argv: string[]): { opts: Opts; pos: string[]; unknownFlags: string[] } {
   const opts: Opts = {};
@@ -60,7 +82,11 @@ export function parseArgs(argv: string[]): { opts: Opts; pos: string[]; unknownF
   else if (VALUED.includes(a)) {
     // --proxy on its own means "find the dev server yourself".
     const v = argv[i + 1];
-    if (v === undefined || v.startsWith('-')) opts[a.slice(2)] = true;
+    if (REPEATED.includes(a)) {
+      // A choice may start with a dash ("-20% off"): whatever follows --choice is its text, unless nothing does.
+      if (v === undefined) opts[a.slice(2)] = [...(opts[a.slice(2)] || []), true];
+      else opts[a.slice(2)] = [...(opts[a.slice(2)] || []), argv[++i]];
+    } else if (v === undefined || v.startsWith('-')) opts[a.slice(2)] = true;
     else opts[a.slice(2)] = argv[++i];
   }
   else pos.push(a);
