@@ -344,7 +344,7 @@ const at = (e: { clientX: number; clientY: number }) => {
 };
 const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
 const pts = new Map<number, { x: number; y: number }>();
-let down: { x: number; y: number; id: string; far: boolean; at: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean } | null = null;
+let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean } | null = null;
 let holdTimer = 0;
 // A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
 // put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
@@ -370,7 +370,7 @@ addEventListener('pointerdown', (e) => {
   } else {
     const id = at(e);
     const mv = e.pointerType === 'mouse' && id && id === selected && !entered && editable() ? find(id) : undefined; // a selected frame is moved by its body (a finger only pans)
-    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined };
+    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), t: e.timeStamp, mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined };
     clearTimeout(holdTimer);
     if (e.pointerType === 'touch') {
       const d = down;
@@ -427,6 +427,12 @@ const up = (e: PointerEvent) => {
   clearTimeout(holdTimer);
   if (pts.size || !d) return;
   down = null;
+  // Right after the page loads, the live frames keep the page busy: the finger's lift can be handled before the 400 ms
+  // timer runs, and the first hold was taken for a tap (Leo, 19 Nov). The touch's own times decide it then.
+  if (!d.held && !d.far && e.type === 'pointerup' && e.pointerType === 'touch' && e.timeStamp - d.t >= 400) {
+    const w = boardWidget();
+    if (w?.holding ? w.holding() : w?.pinning()) d.held = true;
+  }
   if (d.held) {
     const w = boardWidget();
     if (w && e.type === 'pointerup') setTimeout(() => (w.hold || w.place)(d.x, d.y), 0);
