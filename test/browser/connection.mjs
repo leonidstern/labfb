@@ -27,7 +27,7 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-conn-'));
 const PORT = String(5960 + Math.floor(Math.random() * 30));
 const B = `http://localhost:${PORT}`;
 // A 1 s grace: once every page is gone, a listening agent's wait ends after a second.
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>c</title><h1 id="t">Connection</h1><p>text</p>');
 const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
