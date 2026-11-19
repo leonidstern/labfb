@@ -129,7 +129,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
   // The row on selected words: rewrite, cut and go. Everywhere else, your one list of actions (settings.json `actions`,
-  // passed as data-actions; lib/actions.ts, docs/settings.md): the first 3 as chips, the rest behind "…".
+  // passed as data-actions; lib/actions.ts, docs/settings.md): as many chips as fit, the rest behind "…".
   const WORDS = ['rewrite', 'cut', 'go'];
   let LIST = SEED;
   try {
@@ -183,6 +183,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
   const flag = (name) => FLAGS[name]?.on === true;
   const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
+  const ACTSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'api/actions') : ''; // your actions, from the "…" menu
   let meSent = ME;
   const rememberMe = (name) => {
     if (!MEAPI || !name || name === meSent) return;
@@ -1846,34 +1847,110 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         row.append(b);
       }
     else {
-      // Your list: the first 3, then "…" for the rest in their order (a line under this one). What doesn't fit on one
-      // line goes behind "…" too, measured: select's ↑ ↓ first, then the third chip (long names on a phone).
-      const more = el('div', { class: 'quick more', hidden: '' });
+      // Your list, in its order: as many chips as fit on one line (measured; select's ↑ ↓ go first), then "…". "…"
+      // opens a small menu under the line: the rest (tap = use it) and, on this computer, ✎ on every action and "+ add"
+      // (saved in your settings through the lab, PUT /_lab/api/actions; a new one goes at the end).
+      const mayEdit = Boolean(adminToken && ACTSAPI);
+      const menu = el('div', { class: 'acts', hidden: '' });
+      const spill = el('div', { class: 'quick' }); // select's ↑ ↓ when the line has no room for them
       const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
-      dots.addEventListener('mousedown', (e) => e.preventDefault());
-      dots.addEventListener('click', () => dots.setAttribute('aria-expanded', String(!(more.hidden = !more.hidden))));
-      more.append(...LIST.slice(3).map(chip));
-      row.append(...LIST.slice(0, 3).map(chip), dots, ...(draft.select ? selectChips() : []));
-      queueMicrotask(() => {
-        row.after(more);
+      const chips = LIST.map(chip);
+      let shown = LIST.length;
+      const quiet = (b) => (b.addEventListener('mousedown', (e) => e.preventDefault()), b);
+      const btn = (text, attrs = {}) => el('button', { type: 'button', ...attrs }, text);
+      const save = async (next, why) => {
+        const r = await fetch(ACTSAPI, { method: 'PUT', headers: headers(), body: JSON.stringify({ actions: next }) }).catch(() => null);
+        if (!r?.ok) return void (why.textContent = r ? await r.text() : 'the lab is not answering');
+        LIST = (await r.json()).actions;
+        const fresh = quickRow(draft, box); // the line again, measured, with its menu open
+        row.replaceWith(fresh);
+        menu.remove();
+        queueMicrotask(() => /** @type {HTMLElement | null} */ (fresh.querySelector('[data-k="…"]'))?.click());
+      };
+      const editor = (i) => {
+        const a = LIST[i] || { name: '', prompt: '' };
+        const form = el('form', { class: 'act-edit' });
+        const name = /** @type {HTMLInputElement} */ (el('input', { maxlength: '7', placeholder: 'name', 'aria-label': 'name', autocomplete: 'off' }));
+        const cnt = el('span', { class: 'cnt' });
+        const prompt = /** @type {HTMLTextAreaElement} */ (el('textarea', { maxlength: '300', rows: '3', placeholder: 'what the agent does', 'aria-label': 'prompt' }));
+        const why = el('span', { class: 'why', role: 'status' });
+        name.value = a.name;
+        prompt.value = a.prompt;
+        const count = () => (cnt.textContent = `${name.value.length}/7`);
+        name.addEventListener('input', count);
+        count();
+        const del = btn('delete', { class: 'del' });
+        del.hidden = i >= LIST.length;
+        del.addEventListener('click', () => save(LIST.filter((_, j) => j !== i), why));
+        const back = btn('cancel');
+        back.addEventListener('click', fill);
+        form.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const next = [...LIST];
+          next[i] = { name: name.value.trim(), prompt: prompt.value.trim() };
+          save(next, why);
+        });
+        form.addEventListener('keydown', (e) => e.key === 'Escape' && (e.stopPropagation(), fill()));
+        const top = el('div', { class: 'act-name' });
+        const end = el('div', { class: 'act-btns' });
+        top.append(name, cnt);
+        end.append(why, del, back, el('button', { type: 'submit', class: 'ok' }, 'save'));
+        form.append(top, prompt, end);
+        queueMicrotask(() => name.focus());
+        return form;
+      };
+      // The rest first (what "…" is for), then the ones on the line (to edit them).
+      function fill() {
+        menu.replaceChildren(...(spill.children.length ? [spill] : []));
+        for (const i of [...LIST.keys()].slice(shown).concat([...LIST.keys()].slice(0, shown))) {
+          if (i < shown && !mayEdit) continue;
+          const a = LIST[i];
+          const line = el('div', { class: `act${i < shown ? ' on-line' : ''}` });
+          const use = quiet(btn(a.name, { class: 'use', 'data-act': a.name, title: a.prompt }));
+          use.append(el('span', {}, a.prompt));
+          use.addEventListener('click', () => chips[i].click());
+          line.append(use);
+          if (mayEdit) {
+            const pen = btn('✎', { class: 'pen', 'aria-label': `edit ${a.name}` });
+            pen.addEventListener('click', () => line.replaceWith(editor(i)));
+            line.append(pen);
+          }
+          menu.append(line);
+        }
+        if (!mayEdit) return;
+        const add = btn('+ add', { class: 'add' });
+        add.addEventListener('click', () => add.replaceWith(editor(LIST.length)));
+        menu.append(add);
+      }
+      quiet(dots).addEventListener('click', () => {
+        if (menu.hidden) fill();
+        dots.setAttribute('aria-expanded', String(!(menu.hidden = !menu.hidden)));
+      });
+      row.append(...chips, dots, ...(draft.select ? selectChips() : []));
+      let tries = 0;
+      const measure = () => {
+        if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
+        row.after(menu);
         const over = () => row.scrollWidth > row.clientWidth + 1;
         let at = null; // ↑ before ↓, however many go
-        for (const b of [...row.querySelectorAll('.sel:not([data-a=done])')].reverse()) if (over()) at = more.insertBefore(b, at);
-        if (over() && row.children[2] !== dots) more.prepend(row.children[2]);
-        dots.hidden = !more.children.length;
-      });
+        for (const b of [...row.querySelectorAll('.sel:not([data-a=done])')].reverse()) if (over()) at = spill.insertBefore(b, at);
+        while (over() && shown) chips[--shown].remove();
+        dots.hidden = shown === LIST.length && !spill.children.length && !mayEdit;
+        [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
+      };
+      queueMicrotask(measure);
     }
     // ⌥ + 1…4 (by the key's place, so Option's own characters don't matter) runs the nth button; holding ⌥ shows the numbers.
-    const buttons = [...row.children];
-    buttons.forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
+    [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
     const alt = (on) => row.classList.toggle('alt', on);
     box.addEventListener('keydown', (e) => {
       if (e.key === 'Alt') alt(true);
       const n = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey ? /^Digit([1-4])$/.exec(e.code)?.[1] : '';
-      if (!n || !buttons[+n - 1]) return;
+      const b = row.isConnected && n ? row.children[+n - 1] : null; // a line saved over (✎) answers no more
+      if (!b) return;
       e.preventDefault();
       e.stopPropagation();
-      buttons[+n - 1].click();
+      /** @type {HTMLElement} */ (b).click();
     }, true);
     box.addEventListener('keyup', (e) => e.key === 'Alt' && alt(false), true);
     box.addEventListener('focusout', () => alt(false));

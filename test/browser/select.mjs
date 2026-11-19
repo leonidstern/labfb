@@ -1,5 +1,5 @@
-// Select mode (flag select) and your actions (lib/actions.ts) in a real browser: a pin's box shows the first 3 actions
-// and "…" on one line, "…" opens the rest; V picks blocks, and a picked block opens the same box (no pin drawn) whose
+// Select mode (flag select) and your actions (lib/actions.ts) in a real browser: a pin's box shows as many actions as
+// fit on one line and "…", "…" opens the rest with ✎ and + add (saved in your settings); V picks blocks, and a picked block opens the same box (no pin drawn) whose
 // chips send a pin on the block with the action's prompt for the agent; Esc lets go and leaves. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/select.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { SEED } from '../../lib/actions.ts';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -71,20 +72,48 @@ try {
       const chip = (name) => p.locator(`.float button[data-k="${name}"]`);
       const line = () => p.evaluate(() => {
         const r = document.querySelector('[data-lab-comments]').shadowRoot;
-        const row = r.querySelector('.float > .quick:not(.more)');
-        const more = r.querySelector('.float > .quick.more');
+        const row = r.querySelector('.float > .quick');
+        const more = r.querySelector('.float > .acts');
         const shown = row ? [...row.children].filter((b) => !b.hidden) : [];
-        return { names: shown.map((b) => b.textContent).join(' '), tops: new Set(shown.map((b) => Math.round(b.getBoundingClientRect().top))).size, fits: row ? row.scrollWidth <= row.clientWidth + 1 : false, more: more ? [...more.children].map((b) => b.textContent).join(' ') : '', open: more ? !more.hidden : false, pin: Boolean(r.querySelector('.pin.draft')) };
+        return { names: shown.map((b) => b.textContent).join(' '), tops: new Set(shown.map((b) => Math.round(b.getBoundingClientRect().top))).size, fits: row ? row.scrollWidth <= row.clientWidth + 1 : false, more: more ? [...more.querySelectorAll('[data-act]')].map((b) => b.dataset.act).join(' ') : '', open: more ? !more.hidden : false, pin: Boolean(r.querySelector('.pin.draft')) };
       });
       const last = async () => (await fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json())).comments.at(-1);
-      // A pin's box: go fix remove … on one line, … opens the rest in order
+      const mine = () => JSON.parse(fs.readFileSync(path.join(env.XDG_CONFIG_HOME, 'labit', 'settings.json'), 'utf8')).actions.map((a) => a.name).join(' ');
+      const all = 'go fix remove like move states variant';
+      // A pin's box: as many as fit, in order, on one line; … opens the rest first, then the ones on the line (to edit)
       await p.locator('h1').click();
       await until(async () => (await line()).names !== '');
       let l = await line();
-      check(eng, "a pin's box: the first 3 actions and … on one line", l.names === 'go fix remove …' && l.tops === 1 && l.fits && !l.open && l.pin, JSON.stringify(l));
+      const wide = l.names.split(' ').length - 1;
+      check(eng, "a pin's box: the line fills with actions in order, then …", wide > 3 && all.startsWith(l.names.slice(0, -2)) && l.names.endsWith(' …') && l.tops === 1 && l.fits && !l.open && l.pin, JSON.stringify(l));
       await chip('…').click();
       l = await line();
-      check(eng, '… opens the rest, in their order', l.open && l.more === 'like move states variant', JSON.stringify(l));
+      const rest = all.split(' ').slice(wide).join(' ');
+      check(eng, '… opens the rest in order, then the line ones', l.open && l.more === `${rest} ${all.split(' ').slice(0, wide).join(' ')}`.trim(), JSON.stringify(l));
+      await p.locator('.float .acts .pen').last().click();
+      await p.locator('.float .act-edit input').fill('nottoolong');
+      check(eng, '✎: the name stops at 7, the counter says so', (await p.locator('.float .act-edit input').inputValue()) === 'nottool' && (await p.locator('.float .act-edit .cnt').textContent()) === '7/7');
+      await p.locator('.float .act-edit input').fill('look');
+      await p.locator('.float .act-edit textarea').fill('Look at this again.');
+      await p.locator('.float .act-edit .ok').click();
+      check(eng, '…saved in your settings, in its place, the menu stays open', await until(async () => mine().split(' ')[wide - 1] === 'look' && (await line()).open), mine());
+      await p.locator('.float .acts .add').click();
+      await p.locator('.float .act-edit input').fill('look');
+      await p.locator('.float .act-edit textarea').fill('again');
+      await p.locator('.float .act-edit .ok').click();
+      check(eng, '+ add: a name twice is refused, with why', await until(async () => /twice/.test((await p.locator('.float .act-edit .why').textContent()) || '')));
+      await p.locator('.float .act-edit input').fill('ship');
+      await p.locator('.float .act-edit .ok').click();
+      check(eng, '+ add: a new one goes at the end', await until(async () => mine().endsWith(' ship')), mine());
+      await p.locator('.float .acts [aria-label="edit ship"]').click();
+      await p.locator('.float .act-edit .del').click();
+      check(eng, 'delete takes it out', await until(async () => !mine().includes('ship')), mine());
+      await p.locator('.float .acts [aria-label="edit look"]').click();
+      await p.locator('.float .act-edit input').fill(all.split(' ')[wide - 1]);
+      await p.locator('.float .act-edit textarea').fill(SEED.find((a) => a.name === all.split(' ')[wide - 1]).prompt);
+      await p.locator('.float .act-edit .ok').click();
+      check(eng, 'the list is back as it was', await until(async () => mine() === all), mine());
+      await p.locator('.float .composer textarea').click();
       await p.keyboard.type('the gap');
       await chip('fix').click();
       check(eng, 'a chip sends "<name>: <your words>"', await until(async () => (await texts()).includes('fix: the gap')));
@@ -93,13 +122,13 @@ try {
       check(eng, 'V turns select mode on, no box until a pick', (await mode()) && !(await line()).names);
       await p.locator('h1').click();
       l = await line();
-      check(eng, 'a click picks the block, drops no pin, and opens the same box with done on its line', (await picked()) === 'Ship faster' && l.names === 'go fix remove … done' && l.tops === 1 && !l.pin, JSON.stringify(l));
+      check(eng, 'a click picks the block, drops no pin, and opens the same box with done on its line (one action fewer)', (await picked()) === 'Ship faster' && l.names.endsWith('… done') && l.names.split(' ').length - 2 < wide && l.tops === 1 && !l.pin, JSON.stringify(l));
       await p.keyboard.press('Tab');
       check(eng, 'Tab picks the next block', (await picked()) === 'Second block of words');
       await p.keyboard.press('Shift+Tab');
       check(eng, 'Shift+Tab picks the one before', (await picked()) === 'Ship faster');
       await chip('…').click();
-      await chip('states').click();
+      await p.locator('.float .acts [data-act="states"]').click();
       check(eng, 'a chip sends a pin on the block', await until(async () => (await texts()).includes('states')));
       const c = await last();
       check(eng, '…with its prompt, on the picked block', /states/.test(c?.anchor?.act || '') && /h1/.test(c?.anchor?.element || ''), JSON.stringify(c?.anchor));

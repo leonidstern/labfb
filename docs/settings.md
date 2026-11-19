@@ -132,14 +132,16 @@ characters at most) and a `prompt` (the full text your agent gets):
 }
 ```
 
-- **Where:** the comment box on a spot or an area shows the first 3 as chips, then **…**, which opens the rest in
-  their order. One line on a phone: what doesn't fit (long names) goes behind **…** too. Select mode (`V`, flag `select`) opens
+- **Where:** the comment box on a spot or an area shows as many as fit on one line as chips, in order, then **…**,
+  which opens a small menu: the rest (tap one to use it), then the ones on the line. Select mode (`V`, flag `select`) opens
   the same box on the picked block, with **done** (leave select) on the line; no pin shows on the page while it is open, and what you send is a pin on the block.
 - **What is sent:** a chip sends at once, as `<name>: <what you typed>` (just the name with nothing typed); your agent
   reads the full prompt for that name as `action: …`.
 - **Yours:** the list is written into your settings.json the first time a lab starts without one (from labit's own,
   above, plus any `{ "label", "send" }` buttons you had), and from then on it is yours: there is no default to reset
-  to. Order and prompts are edited here, in the file; a lab reads it when it starts. `labit settings` lists them.
+  to. Edit them in the **…** menu (✎ on any action: name, prompt, save or delete; **+ add** puts a new one at the end),
+  saved here at once, or in the file (a lab reads it when it starts). The menu edits only on your own computer, never
+  a wifi guest's. `labit settings` lists them.
 - **Checked:** a name over 7 characters, a repeat or an item without a name and a prompt (300 characters at most) is
   said when labit starts and left out; the rest still counts. Only your own file holds the list: a project's
   `labit.json` can't set it.

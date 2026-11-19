@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadSettings, seedActions } from '../lib/settings.ts';
-import { SEED, NAME_MAX } from '../lib/actions.ts';
+import { SEED, NAME_MAX, PROMPT_MAX, LIST_MAX, listFrom } from '../lib/actions.ts';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const dirs = [];
@@ -191,4 +191,53 @@ test('actions: seeded once into your settings.json from today\'s, the rest of th
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).actions, [{ name: 'go', prompt: 'Go.' }]);
   const none = tmp('seed-none');
   assert.equal(withConfig(none, seedActions), true, 'no file yet: made with the list');
+});
+
+test('actions from the "…" menu: the whole list checked, in its order, or nothing saved', () => {
+  const two = [{ name: 'go', prompt: 'Go.' }, { name: 'ship', prompt: 'Ship it.' }];
+  assert.deepEqual(listFrom({ actions: two }), { actions: two }, 'kept in the order sent');
+  assert.deepEqual(listFrom({ actions: [{ name: ' go ', prompt: ' Go. ', extra: 1 }] }), { actions: [{ name: 'go', prompt: 'Go.' }] }, 'trimmed, nothing else kept');
+  assert.deepEqual(listFrom({ actions: [] }), { actions: [] }, 'an empty list is yours to have');
+  const why = (body) => /** @type {any} */ (listFrom(body)).why || '';
+  assert.match(why({ actions: [{ name: 'x'.repeat(NAME_MAX + 1), prompt: 'p' }] }), /7 at most/);
+  assert.match(why({ actions: [{ name: 'go', prompt: 'p'.repeat(PROMPT_MAX + 1) }] }), /300 characters at most/);
+  assert.match(why({ actions: [{ name: 'go', prompt: 'a' }, { name: 'GO', prompt: 'b' }] }), /listed twice/);
+  assert.match(why({ actions: [{ name: 'go' }] }), /needs a "name" and a "prompt"/);
+  assert.match(why({ actions: Array.from({ length: LIST_MAX + 1 }, (_, i) => ({ name: `a${i}`, prompt: 'p' })) }), /at most/);
+  assert.match(why({ actions: 'go' }), /a list/);
+  assert.match(why(null), /a list/);
+  assert.doesNotMatch(why({ actions: [{ name: 'go' }] }), /ignored/, 'the menu says why, not "ignored"');
+});
+
+test('PUT /_lab/api/actions: this computer with the lab key only; saved in your settings, the page has it at once', async () => {
+  const dir = tmp('put');
+  const cfg = tmp('put-cfg');
+  const port = 7750 + Math.floor(Math.random() * 100);
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1>Hi</h1>');
+  kids.push(spawn(process.execPath, [LAB, '--no-open', '--new', '--port', String(port)], { cwd: dir, env: { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg } }));
+  const B = `http://localhost:${port}`;
+  let html = '';
+  for (let i = 0; i < 80 && !html; i++) {
+    html = await fetch(B + '/').then((r) => r.text(), () => '');
+    if (!html) await new Promise((r) => setTimeout(r, 100));
+  }
+  const key = html.match(/data-admin="([^"]+)"/)?.[1] || '';
+  assert.ok(key, "this computer's page has the key");
+  const put = (actions, k = key) => fetch(B + '/_lab/api/actions', { method: 'PUT', headers: { 'content-type': 'application/json', ...(k ? { 'x-lab-admin': k } : {}) }, body: JSON.stringify({ actions }) });
+  const file = path.join(cfg, 'labit', 'settings.json');
+  const saved = () => JSON.parse(fs.readFileSync(file, 'utf8')).actions;
+  const before = saved(); // seeded when the lab started
+  const mine = [{ name: 'ship', prompt: 'Ship it.' }, { name: 'go', prompt: 'Go.' }];
+  assert.equal((await put(mine, '')).status, 403, 'no key: refused');
+  assert.equal((await put(mine, 'x'.repeat(key.length))).status, 403, 'a wrong key: refused');
+  const bad = await put([{ name: 'toolongname', prompt: 'p' }]);
+  assert.equal(bad.status, 400);
+  assert.match(await bad.text(), /7 at most/);
+  assert.deepEqual(saved(), before, 'nothing written for a refused list');
+  const r = await put(mine);
+  assert.equal(r.status, 200);
+  assert.deepEqual((await r.json()).actions, mine);
+  assert.deepEqual(saved(), mine, 'in your own settings, in order');
+  const attr = (await (await fetch(B + '/')).text()).match(/data-actions='([^']*)'/)?.[1] || '';
+  assert.deepEqual(JSON.parse(attr.replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&amp;/g, '&')), mine, 'the next page load has it, no restart');
 });

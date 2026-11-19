@@ -1,5 +1,5 @@
 // Your actions (Leo, 19 Nov: "one action list for pin and select"): one ordered list in your own settings, each a short
-// name (the chip) and the prompt the agent gets. The comment box shows the first 3 and "…" for the rest; select mode
+// name (the chip) and the prompt the agent gets. The comment box shows as many as fit and "…" for the rest; select mode
 // shows the same. A list nobody wrote yet is seeded once from SEED into your settings.json (lib/settings.ts), so it is
 // yours from then on: there is no default to go back to. The widget bundles SEED for pages served without a list.
 export type Action = { name: string; prompt: string };
@@ -43,4 +43,17 @@ export function seedFrom(old: unknown): Action[] {
     if (name && prompt && !out.some((a) => a.name.toLowerCase() === name.toLowerCase())) out.push({ name, prompt });
   }
   return out;
+}
+
+export const LIST_MAX = 40;
+/** A whole list sent from a comment box's "…" menu (PUT /_lab/api/actions), checked strictly and in its order: every
+ *  action must fit (a name of 1 to NAME_MAX characters, a prompt of 1 to PROMPT_MAX, no name twice), or nothing is
+ *  saved and the first reason is given. */
+export function listFrom(body: unknown): { actions: Action[] } | { why: string } {
+  const list = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>).actions : undefined;
+  if (!Array.isArray(list)) return { why: 'actions: a list of { "name": "…", "prompt": "…" }' };
+  if (list.length > LIST_MAX) return { why: `${LIST_MAX} actions at most` };
+  const whys: string[] = [];
+  const actions = actionItems(list, (w) => whys.push(w));
+  return whys.length ? { why: whys[0].replace(/;? ignored$/, '') } : { actions };
 }

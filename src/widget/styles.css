@@ -674,8 +674,30 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
   button.keep { padding: 10px 16px; font-size: 14px; } }
 
-/* Your actions (lib/actions.ts): the first 3, "…", and select's done on one line; "…" opens the rest under it. */
+/* Your actions (lib/actions.ts): as many as fit, "…", and select's done on one line; "…" opens a small menu under
+   it: the rest, ✎ to edit any, + add. */
 .quick { white-space: nowrap; }
 .quick[hidden] { display: none; }
-.quick.more { flex-wrap: wrap; }
+.acts:not(:where(.row)) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: -2px 0 6px; padding: 2px; border-radius: max(0px, calc(var(--_radius) - 8px)); background: var(--_soft); }
+.acts:not(:where(.row))[hidden] { display: none; } /* not the thread's resolve / delete row (.row.acts) */
+.acts .quick { margin: 0 0 2px; }
+.acts .act { display: flex; min-width: 0; }
+.acts .act.on-line + .act:not(.on-line), .acts .act:not(.on-line) + .act.on-line { border-top: var(--_hair); }
+.acts:not(:where(.row)) button { border: 0; background: none; font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_fg); cursor: pointer; border-radius: max(0px, calc(var(--_radius) - 10px)); padding: 5px 8px; text-align: left; } /* concentric: 2 px inside the menu */
+.acts:not(:where(.row)) button:hover { background: var(--_hover); }
+.acts .use { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.acts .use span { font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--_muted); }
+.acts .on-line .use { color: var(--_muted); }
+.acts .pen, .acts .add { color: var(--_muted); }
+.act-edit { display: grid; gap: 4px; padding: 4px; }
+.act-name { display: flex; align-items: center; gap: 6px; }
+.act-edit input, .act-edit textarea { font: inherit; font-size: 12px; color: var(--_fg); background: var(--_bg); border: var(--_hair); border-radius: var(--_r-s); padding: 4px 6px; }
+.act-edit input { width: 9ch; }
+.act-edit textarea { resize: vertical; min-width: 0; }
+.act-name .cnt { font-size: 11px; color: var(--_muted); font-variant-numeric: tabular-nums; }
+.act-btns { display: flex; justify-content: flex-end; align-items: center; gap: 2px; }
+.act-btns .why { flex: 1; font-size: 11px; color: rgb(200, 60, 60); }
+.act-btns .del { color: rgb(200, 60, 60); }
+.act-btns .ok { background: var(--_fg); color: var(--_bg); font-weight: 600; }
+.act-btns .ok:hover { background: var(--_fg); }
 .quick button.sel { background: none; padding-inline: 6px; margin-left: auto; }

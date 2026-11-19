@@ -411,8 +411,8 @@ try {
       await scene(eng, browser, {}, async (p) => {
         await p.mouse.click(300, 190);
         await sleep(800);
-        const st = await inRoot(p, (r) => ({ names: [...r.querySelectorAll('.float .quick:not(.more) button')].map((b) => b.textContent).join(' '), open: r.querySelector('.float .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
-        check(eng, 'a spot\'s dialog has your first 3 actions and … over the open box, the cursor in it', st.names === 'go fix remove …' && st.open && st.focus === 'textarea', JSON.stringify(st));
+        const st = await inRoot(p, (r) => ({ names: [...r.querySelectorAll('.float > .quick button')].map((b) => b.textContent).join(' '), open: r.querySelector('.float .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
+        check(eng, 'a spot\'s dialog has your actions (as many as fit) and … over the open box, the cursor in it', /^go fix remove( \w+)* …$/.test(st.names) && st.open && st.focus === 'textarea', JSON.stringify(st));
         await inRoot(p, (r) => r.querySelector('.float [data-k=remove]').click());
         await sleep(1500);
         const c = await sent('remove');
