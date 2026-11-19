@@ -49,6 +49,7 @@ for (let i = 0; i < 80; i++) {
   }
 }
 let failed = 0;
+const missed = []; // changes to what the page shows that no redraw followed (window.__labDebug)
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
@@ -111,6 +112,10 @@ async function scene(browser, run) {
   fs.writeFileSync(path.join(DIR, `${PG.slice(1)}.html`), PAGE);
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
   await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+  // Debug: every change to what the page shows must be followed by a redraw (window.__labDebug in src/comments.js);
+  // a miss is reported here as it happens, so a reload doesn't lose it.
+  await ctx.exposeFunction('__labMiss', (s) => missed.push(s));
+  await ctx.addInitScript(() => Object.assign(window, { __labDebug: true, __labMissed: { push: (s) => window.__labMiss(s) } }));
   const p = await ctx.newPage();
   await p.goto(B + PG);
   await untilRoot(p, () => true, 1100);
@@ -118,6 +123,7 @@ async function scene(browser, run) {
   try {
     await run(p);
   } finally {
+    await sleep(100); // two frames for the last change
     await ctx.close();
   }
 }
@@ -302,6 +308,7 @@ try {
         const l = await look(p);
         check(eng, 'a drag that starts on a link leaves the page\'s own drag (no bar, no area)', !l.bar && !l.zone, JSON.stringify(l));
       });
+      check(eng, 'every change to what the page shows was redrawn', !missed.length, missed.splice(0).join('\n'));
     } finally {
       await browser.close();
     }
