@@ -702,7 +702,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .acts:not(:where(.row))[hidden] { display: none; } /* not the thread's resolve / delete row (.row.acts) */
 .acts .quick { margin: 0 0 2px; padding: 2px 0; }
 .acts .act { display: flex; align-items: stretch; min-width: 0; border-radius: max(0px, calc(var(--_radius) - 8px)); }
-.acts .act + .act, .acts .act + .act-foot, .acts .act + .act-edit { border-top: var(--_hair); }
+.acts .act + .act, .acts .act + .act-foot { border-top: var(--_hair); }
 .acts .act + .act { border-radius: 0; } /* hairlines between rows run straight */
 .acts .act:hover { background: var(--_soft); }
 .acts:not(:where(.row)) button { border: 0; background: none; font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_fg); cursor: pointer;
@@ -719,7 +719,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .acts .ico { display: grid; place-items: center; width: 16px; height: 16px; }
 .acts .ico, .acts .ico * { color: inherit; } /* every element gets --_fg (the * rule): the icon takes its button's */
 .acts .ico svg { display: block; }
-.acts .act-edit button:hover { background: var(--_soft); }
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
   .float > .acts:not(:where(.row)) { flex: 0 1 auto; min-height: 0; margin: 0; padding: 0 12px 10px; max-height: min(420px, 55vh); }
   .acts:not(:where(.row)) button { padding: 6px 4px; }
@@ -730,17 +729,30 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .acts:not(:where(.row)) .add, .acts:not(:where(.row)) .fold { min-height: 44px; padding-inline: 4px 12px; font-size: 14px; letter-spacing: -.011em; }
   .acts:not(:where(.row)) .fold { padding-inline: 12px 4px; }
 }
-.act-edit { display: grid; gap: 4px; padding: 4px; }
-.act-name { display: flex; align-items: center; gap: 6px; }
-.act-edit input, .act-edit textarea { font: inherit; font-size: 12px; color: var(--_fg); background: var(--_bg); border: var(--_hair); border-radius: var(--_r-s); padding: 4px 6px; }
-.act-edit input { width: 9ch; }
-.act-edit textarea { resize: vertical; min-width: 0; }
-.act-name .cnt { font-size: 11px; color: var(--_muted); font-variant-numeric: tabular-nums; }
-.act-btns { display: flex; justify-content: flex-end; align-items: center; gap: 2px; }
-.act-btns .why { flex: 1; font-size: 11px; color: rgb(200, 60, 60); }
-.act-btns .del { color: rgb(200, 60, 60); }
-.act-btns .ok { background: var(--_fg); color: var(--_bg); font-weight: 600; }
-.act-btns .ok:hover { background: var(--_fg); }
+.acts .act > [hidden], .act-fields [hidden] { display: none; } /* the row's own button waits, hidden, while it is edited */
+.act-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; row-gap: 2px; }
+.act-fields input, .act-fields textarea { display: block; width: 100%; min-width: 0; box-sizing: border-box; border: 0; margin: 0; padding: 0;
+  background: none; outline: none; font: inherit; font-size: 12px; line-height: 17px; letter-spacing: 0; color: var(--_fg); }
+.act-fields textarea { grid-column: 1 / -1; resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+.act-fields input::placeholder, .act-fields textarea::placeholder { color: var(--_muted); opacity: 1; }
+.act-fields .cnt { font-size: 11px; color: var(--_muted); font-variant-numeric: tabular-nums; }
+.acts:not(:where(.row)) .act-fields .del { padding: 0 2px; font-size: 11px; color: var(--_muted); }
+.acts:not(:where(.row)) .act-fields .del:hover { color: var(--_fg); }
+.act-fields .k, .act-fields .why { grid-column: 1 / -1; font-size: 11px; color: var(--_muted); }
+.act-fields .why:empty { display: none; }
+.act-fields .why { color: rgb(200, 60, 60); }
+.acts .act.gone { align-items: center; gap: 2px; padding: 6px 8px; font-size: 12px; color: var(--_muted); }
+.acts .act.gone:hover { background: none; }
+.acts:not(:where(.row)) .act.gone .undo { padding: 0 2px; color: var(--_fg); text-decoration: underline; text-underline-offset: 2px; }
+.acts .act.gone .why { margin-left: 8px; font-size: 11px; color: rgb(200, 60, 60); }
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
+  .acts .act.act-edit { padding: 8px 4px; }
+  /* 16px fields keep iOS from zooming the page when one is focused */
+  .act-fields input, .act-fields textarea { font-size: 16px; line-height: 21px; letter-spacing: -.019em; }
+  .acts:not(:where(.row)) .act-fields .del { min-height: 32px; font-size: 13px; letter-spacing: -.003em; }
+  .act-fields .cnt, .act-fields .k, .act-fields .why { font-size: 12px; }
+  .acts .act.gone { min-height: 44px; padding: 0 4px; font-size: 14px; }
+}
 .quick button.sel { background: none; padding-inline: 6px; }
 .quick button.sel[data-a="↑"] { margin-left: auto; }
 .quick button:disabled { opacity: .35; cursor: default; }
