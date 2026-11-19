@@ -1,7 +1,7 @@
 // Board pins the browser holds (flag native): a pin on a frame is tied to the frame's box by its share of it (pinhold.ts),
 // so the board's camera carries it. Through a pan and a zoom it stays on its spot of the frame and the same size, with no
-// redraw by the widget; it follows its frame when the frame is moved. In a browser that doesn't really hide a pin its box
-// cuts off (Safari) board pins are the script's, as before, and must still be on their spot. WebKit and Chrome's engine.
+// redraw by the widget; it follows its frame when the frame is moved, and is placed again when a frame is resized. In a
+// browser without anchor positioning board pins are the script's, as before, and must still be on their spot.
 // Run: node test/browser/nativeboard.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -47,23 +47,6 @@ const check = (eng, name, ok, detail = '') => {
 };
 const put = (name, frames, extra = {}) => fetch(`${B}/_lab/api/board?name=${name}`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ v: 1, rev: 0, frames, ...extra }) }).then((r) => r.json());
 await put('pins', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 600 }], { of: '/pricing' });
-const hidesClipped = (p) =>
-  p.evaluate(() => {
-    const box = document.createElement('div');
-    box.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;overflow:auto;scrollbar-width:none;opacity:0;pointer-events:none;z-index:2147483647';
-    box.append(Object.assign(document.createElement('div'), { style: 'height:4px;anchor-name:--t-probe' }), Object.assign(document.createElement('div'), { style: 'height:80px' }));
-    const probe = document.createElement('div');
-    probe.style.cssText = 'position:fixed;width:4px;height:4px;opacity:0;z-index:2147483647;position-anchor:--t-probe;position-visibility:anchors-visible;left:anchor(left);top:calc(anchor(top) + 40px)';
-    document.body.append(box, probe);
-    box.scrollTop = 40;
-    return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => {
-      const r = probe.getBoundingClientRect();
-      const seen = document.elementFromPoint(1, 1) === probe;
-      box.remove();
-      probe.remove();
-      res(Math.abs(r.left) < 1 && Math.abs(r.top) < 1 && !seen);
-    })));
-  });
 try {
   for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     const browser = await pw[eng].launch();
@@ -75,8 +58,7 @@ try {
       await p.goto(B + '/_lab/board/pins');
       await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 5000 });
       await sleep(2000);
-      const hides = await hidesClipped(p);
-      console.log(`info ${eng.padEnd(8)} hides a pin its box cuts off: ${hides}`);
+      const hides = await p.evaluate(() => CSS.supports('anchor-name: --a')); // the board's box covers the screen: its pins are held wherever anchor positioning is
       const sh = (fn) => p.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot), fn);
       const rect = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; }, id);
       const a = await rect('a');
@@ -94,7 +76,7 @@ try {
       const spot = (fr) => ({ x: fr.x + an.fx * (fr.w / 390), y: fr.y + an.fy * (fr.w / 390) });
       const on = (pp, fr) => Math.abs(pp.x - spot(fr).x) < 3 && Math.abs(pp.y - spot(fr).y) < 3;
       const p1 = await pinAt();
-      check(eng, hides ? 'a board pin on a frame is held by the browser, on its spot' : 'a board pin is placed by the script here (this browser shows clipped pins), on its spot', p1.held === hides && on(p1, a), JSON.stringify({ p1, want: spot(a) }));
+      check(eng, hides ? 'a board pin on a frame is held by the browser, on its spot' : 'a board pin is placed by the script here (no anchor positioning), on its spot', p1.held === hides && on(p1, a), JSON.stringify({ p1, want: spot(a) }));
       // Pan: drag the empty board (pointer mode). No redraw by the widget while the camera moves, and the pin stays on its spot.
       await p.keyboard.press('Digit1'); // back to the pointer (1 toggles; Esc on a board goes back to its page)
       await sleep(200);
@@ -113,21 +95,33 @@ try {
       const measured = await p.evaluate(() => window.labMeasured);
       const a2 = await rect('a');
       const p2 = await pinAt();
-      check(eng, 'a pan: the pin stays on its spot of the frame', a2.x < a.x - 50 && on(p2, a2), JSON.stringify({ moved: [a.x, a2.x], p2, want: spot(a2) }));
+      check(eng, 'a pan: the pin stays on its spot of the frame, still held', a2.x < a.x - 50 && on(p2, a2) && p2.held === hides, JSON.stringify({ moved: [a.x, a2.x], p2, want: spot(a2) }));
       if (hides) check(eng, '…and the widget measured nothing while the camera moved', measured === 0, `${measured} measurements`);
       // Zoom to 100%: on its spot and the same size on screen.
       await p.keyboard.press('Shift+Digit2');
       await sleep(800);
       const a3 = await rect('a');
       const p3 = await pinAt();
-      check(eng, 'a zoom: the pin stays on its spot, the same size on screen', on(p3, a3) && Math.abs(p3.w - p1.w) < 1, JSON.stringify({ p3, want: spot(a3), w: p1.w }));
+      check(eng, 'a zoom: the pin stays on its spot, the same size on screen, still held', Math.abs(a3.w / a2.w - 1) > 0.05 && on(p3, a3) && Math.abs(p3.w - p1.w) < 1 && p3.held === hides, JSON.stringify({ zoom: [a2.w, a3.w], p3, want: spot(a3), w: p1.w }));
       // The frame moves in the board file: the pin goes with it.
       const now = await (await fetch(`${B}/_lab/api/board?name=pins`)).json();
       await fetch(`${B}/_lab/api/board?name=pins`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ ...now, frames: now.frames.map((f) => (f.id === 'a' ? { ...f, x: f.x + 80, auto: false } : f)) }) });
       await sleep(1800);
       const a4 = await rect('a');
       const p4 = await pinAt();
-      check(eng, 'the frame is moved: the pin goes with it', a4.x > a3.x + 10 && on(p4, a4), JSON.stringify({ moved: [a3.x, a4.x], p4, want: spot(a4) }));
+      check(eng, 'the frame is moved: the pin goes with it', a4.x > a3.x + 10 && on(p4, a4) && p4.held === hides, JSON.stringify({ moved: [a3.x, a4.x], p4, want: spot(a4) }));
+      // The frame is resized in the board file: the pin is placed again on its point (fx stays in px from the corner).
+      const now5 = await (await fetch(`${B}/_lab/api/board?name=pins`)).json();
+      await fetch(`${B}/_lab/api/board?name=pins`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ ...now5, frames: now5.frames.map((f) => (f.id === 'a' ? { ...f, w: 820, h: 1180, auto: false } : f)) }) });
+      // The board reads its file again on the lab's word that it changed (the live stream); said here directly, so this
+      // checks what follows: the board draws the frame anew and tells the widget the layout changed.
+      await p.evaluate(() => dispatchEvent(new CustomEvent('lab-state', { detail: { boards: 1e6, boardNames: ['pins'] } })));
+      await p.waitForFunction((w) => Math.abs(document.querySelector('#lab-board .f[data-id="a"]').getBoundingClientRect().width - w) > 20, a4.w, { timeout: 8000 }).catch(() => {});
+      await sleep(400);
+      const a5 = await p.evaluate(() => { const r = document.querySelector('#lab-board .f[data-id="a"]').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
+      const p5 = await pinAt();
+      const want5 = { x: a5.x + an.fx * (a5.w / 820), y: a5.y + an.fy * (a5.w / 820) };
+      check(eng, 'the frame is resized: the pin is placed again on its point', Math.abs(p5.x - want5.x) < 3 && Math.abs(p5.y - want5.y) < 3, JSON.stringify({ p5, want5, w: a5.w }));
       await ctx.close();
     } finally {
       await browser.close();

@@ -225,6 +225,8 @@ function show(b: Board) {
   moved = moved || Boolean(hash);
   go(cam, false);
   wake();
+  // The frames themselves changed (added, gone, moved, resized): not only the camera. The widget places its pins again.
+  dispatchEvent(new CustomEvent('lab-board-moved', { detail: { layout: true } }));
 }
 const load = async () => {
   const res = await fetch(`/_lab/api/board?name=${name}${of ? `&page=${encodeURIComponent(of)}` : ''}`);

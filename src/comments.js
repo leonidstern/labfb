@@ -30,7 +30,7 @@ import {
   zoneEl,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
-import { bindPinHold, flushPins, heldPin, holdPin, letPin } from './widget/pinhold.ts';
+import { flushPins, heldPin, holdPin, letPin, newPass } from './widget/pinhold.ts';
 import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
@@ -843,6 +843,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   /** @type {WeakMap<Element, any>} */
   const pinData = new WeakMap();
   function render() {
+    newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
     if (S.selDraft && S.draft !== S.selDraft) pick(null, false); // the picked block's box closed: the block is let go
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
@@ -1213,7 +1214,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // or a pick gives focus back to the button.
   // With the flag native the menu is a popover the ⋯ button opens (read at start): the browser closes it on a press
   // elsewhere or Esc, gives focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
-  const popMenu = flag('native') && typeof moreMenu.showPopover === 'function';
+  const popMenu = flag('native') && !coarse && typeof moreMenu.showPopover === 'function'; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
   if (popMenu) {
     moreMenu.popover = 'auto';
     /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
@@ -2287,23 +2288,32 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // script. True when it is held.
   // A card or box tied to its pin by the browser (thread.ts tieToPin): on a computer; phones keep their sheets.
   const nativeTie = () => flag('native') && !sheetMode.matches;
+  // Held, its place is the browser's: the script writes none (it would make the next pin's reading lay the page out again);
+  // a drawing still gets its size.
   const placePin = (pin, c, zone, left, top, moved) => {
-    inkAt(pin, zone, left, top);
     const a = c.anchor || {};
+    let held;
     if (a.kind === 'board') {
       // A board pin on a frame: tied to the frame's box by its share of it, so the board's camera carries it (pinhold.ts).
       const box = flag('native') && a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null;
       const share = box?.offsetWidth && box.offsetHeight ? { x: a.fx / box.offsetWidth, y: (a.fy || 0) / box.offsetHeight } : null;
-      return holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
+      held = holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
+    } else {
+      const node = flag('native') && !moved ? findTarget(a) : null;
+      held = holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
     }
-    const node = flag('native') && !moved ? findTarget(a) : null;
-    return holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
+    if (!held) inkAt(pin, zone, left, top);
+    else if (zone) inkAt(pin, zone, zone.left, zone.top);
+    return held;
   };
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   // After a scroll, the pins the browser holds are left alone.
   const movePins = (scrolled = false) => {
-    if (!S.on || S.openId) return render();
+    // An open thread is drawn again with its pin; after a scroll, not when the browser holds the pin and its card.
+    const openHeld = () => { const pin = pinsById.get(S.openId); return heldPin(pin) && !pinData.get(pin)?.zone; };
+    if (!S.on || (S.openId && !(scrolled && openHeld()))) return render();
+    newPass();
     const all = threads().filter((c) => c.anchor?.kind !== 'page');
     const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
     const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
@@ -2329,7 +2339,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     });
   };
   addEventListener('resize', reflow);
-  bindPinHold(() => reflow()); // the browser hides clipped pins after all: those in boxes are held too (pinhold.ts)
   // A question's card in the margin (thread.ts) that no longer fits a narrower window goes back where cards go.
   addEventListener('resize', () => {
     const card = layer.querySelector('.card.margin');
@@ -2562,7 +2571,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
     // The camera moved: the pins are drawn again, unless the browser holds every one (flag native: tied to their frames).
     const allHeld = () => !S.openId && !S.draft && pinsById.size > 0 && [...pinsById.values()].every((p) => heldPin(p));
-    addEventListener('lab-board-moved', () => S.on && !allHeld() && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+    // When the frames themselves changed (detail.layout: one gone, replaced or resized), every pin is placed again.
+    addEventListener('lab-board-moved', (e) => S.on && (/** @type {CustomEvent} */ (e).detail?.layout || !allHeld()) && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
   }
   startLive();
   // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads
