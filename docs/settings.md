@@ -144,7 +144,7 @@ characters at most) and a `prompt` (the full text your agent gets):
 - **Checked:** a name over 7 characters, a repeat or an item without a name and a prompt (300 characters at most) is
   said when labit starts and left out; the rest still counts. Only your own file holds the list: a project's
   `labit.json` can't set it.
-- On selected words the row stays **rewrite · cut · go**. ⌥ + 1 to 4 run the chips in the order they show.
+- Selected words get the same list, line and "…" (the pin carries the words, so the agent reads the prompt on them); a phone's bar shows comment, the first 3 and "…". ⌥ + 1 to 4 run the chips in the order they show.
 
 ## Shortcuts
 

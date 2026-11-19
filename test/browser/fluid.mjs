@@ -129,7 +129,7 @@ const fd = (p) =>
       x: box.x, y: box.y, w: box.width, h: box.height, cls: e.className, opacity: +getComputedStyle(e).opacity,
       anims: e.getAnimations().length,
       text: e.querySelector('textarea')?.value ?? null,
-      cut: Boolean(e.querySelector('[data-k=cut]')), rewrite: Boolean(e.querySelector('[data-k=rewrite]')),
+      go: Boolean(e.querySelector('.quick [data-k=go]')),
       lit: e.querySelector('.quick .hl')?.textContent || '',
     };
   });
@@ -190,6 +190,9 @@ async function drag(p, sel, text, { plain = false, nth = 0 } = {}) {
   return s;
 }
 const sent = async (text) => (await comments()).find((c) => c.text === text);
+// The dialog's line on selected words: the chips that fit, then "…" (your list, as on a spot: Leo, 19 Nov).
+const line = (p) => inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].filter((b) => !b.hidden).map((b) => b.dataset.k).join(' '));
+const SEEDED = /^go fix remove( like)?( move)?( states)?( variant)? …$/;
 const typed = (p) => p.evaluate((pg) => localStorage.getItem(`lab-typing:${pg}:new`), PG);
 const spot = (p) => p.evaluate((pg) => localStorage.getItem(`lab-spot:${pg}`), PG);
 
@@ -218,8 +221,8 @@ try {
         await dlgUp(p);
         const c = await fd(p);
         check(eng, 'shift-drag opens the dialog at once at the words\' end: no bar, the cursor in its box', Boolean(c?.dlg && !c.bar) && c.text === '' && near(c.x, s.last.right - 70, 4) && near(c.y, s.last.bottom + 8, 4) && (await inRoot(p, (r) => r.activeElement?.localName === 'textarea')), JSON.stringify([c, s.last]));
-        const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '));
-        check(eng, 'its row is rewrite · cut · go (the box is the comment), no draft pin', names === 'rewrite cut go' && (await draftPin(p)) === 0, names);
+        const names = await line(p);
+        check(eng, 'its row is your list as on a spot: go · fix · remove first, what fits, then … (the box is the comment), no draft pin', SEEDED.test(names) && (await draftPin(p)) === 0, names);
         await p.mouse.move(c.x + c.w / 2, c.y + c.h / 2);
         await sleep(300);
         check(eng, 'resting the mouse on it changes nothing', Boolean((await fd(p))?.dlg));
@@ -230,14 +233,14 @@ try {
         const long = await inRoot(p, (r) => { const t = r.querySelector('.p-dlg textarea'); return { o: getComputedStyle(t).overflowY, h: t.clientHeight }; });
         check(eng, 'the box shows no scrollbar until it is at its tallest', short === 'hidden' && long.o === 'auto' && long.h >= 190, JSON.stringify({ short, long }));
       });
-      // Comment preopened (Leo, 18 Nov): the dialog and the sheet open as a comment (the row has rewrite · cut · go, no pill for comment) with the box open; computers have the cursor in it
+      // Comment preopened (Leo, 18 Nov): the dialog and the sheet open as a comment (the row has your actions, no pill for comment) with the box open; computers have the cursor in it
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
         await dlgUp(p);
         await p.keyboard.type('x');
         await sleep(800);
-        const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.p-dlg .quick .on')].map((b) => b.dataset.k), others: [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.dataset.k).join(' '), open: r.querySelector('.p-dlg .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
-        check(eng, 'the dialog is a comment (no button for it), the box open and the cursor in it, typed letters in it; rewrite, cut, go one tap away', st.on.length === 0 && st.open && st.focus === 'textarea' && st.others === 'rewrite cut go', JSON.stringify(st));
+        const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.p-dlg .quick .on')].map((b) => b.dataset.k), others: [...r.querySelectorAll('.p-dlg .quick button')].filter((b) => !b.hidden).map((b) => b.dataset.k).join(' '), open: r.querySelector('.p-dlg .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
+        check(eng, 'the dialog is a comment (no button for it), the box open and the cursor in it, typed letters in it; your actions one tap away', st.on.length === 0 && st.open && st.focus === 'textarea' && SEEDED.test(st.others), JSON.stringify(st));
       });
       await scene(eng, browser, { viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true }, async (p) => {
         await p.evaluate(() => {
@@ -253,19 +256,44 @@ try {
         await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
         await sleep(1200);
         const st = await inRoot(p, (r) => ({ on: [...r.querySelectorAll('.float:not(.p-dlg *) .quick .on')].map((b) => b.dataset.k), open: r.querySelector('.float:not(.p-dlg *) .box')?.classList.contains('open'), focus: r.activeElement?.localName || null, n: r.querySelectorAll('.float:not(.p-dlg *) .quick button').length }));
-        check(eng, 'phones: the sheet opens as a comment with the box open, no keyboard until it is tapped', st.on.length === 0 && st.open && st.focus !== 'textarea' && st.n === 3, JSON.stringify(st));
+        check(eng, 'phones: the sheet opens as a comment with the box open, no keyboard until it is tapped', st.on.length === 0 && st.open && st.focus !== 'textarea' && st.n >= 4, JSON.stringify(st));
+      });
+      // Phones: the bar on selected words is comment, your first 3 and "…": an action sends with its prompt on the words,
+      // "…" opens the sheet with the whole list grown.
+      for (const k of ['fix', '…']) await scene(eng, browser, { viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true }, async (p) => {
+        await p.evaluate(() => {
+          const n = document.createTreeWalker(document.querySelector('#a'), NodeFilter.SHOW_TEXT).nextNode();
+          const r = document.createRange();
+          r.setStart(n, 0);
+          r.setEnd(n, 11);
+          getSelection().removeAllRanges();
+          getSelection().addRange(r);
+        });
+        await sleep(1200);
+        const bar = await inRoot(p, (r) => [...r.querySelectorAll('.p-bar button')].map((b) => b.dataset.k).join(' '));
+        if (k === 'fix') check(eng, 'phones: the bar is comment · go · fix · remove · …', bar === 'comment go fix remove …', bar);
+        await inRoot(p, (r, k) => r.querySelector(`.p-bar [data-k="${k}"]`).click(), k);
+        await sleep(1500);
+        if (k === 'fix') {
+          const c = await sent('fix');
+          check(eng, '…fix on the bar sends at once, its prompt on the words', c?.anchor?.act === 'Fix this: it is broken or wrong.' && Boolean(c.anchor?.quote?.exact), JSON.stringify(c?.anchor));
+        } else {
+          const grown = await inRoot(p, (r) => [...r.querySelectorAll('.float:not(.p-dlg *) .acts:not([hidden]) .use')].map((b) => b.dataset.act).join(' '));
+          check(eng, '…"…" on the bar opens the sheet with the whole list grown', grown === 'go fix remove like move states variant', grown);
+        }
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
         await dlgUp(p);
-        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=cut]').click());
+        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=fix]').click());
         await sleep(1500);
-        check(eng, 'cut in the dialog sends at once', Boolean(await sent('Cut: “delta echo”')) && (await fd(p)) === null, JSON.stringify((await comments()).map((x) => x.text)));
+        const c = await sent('fix');
+        check(eng, 'fix in the dialog sends at once, its prompt on the words', c?.anchor?.act === 'Fix this: it is broken or wrong.' && c.anchor?.quote?.exact === 'delta echo' && (await fd(p)) === null, JSON.stringify(c?.anchor));
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'kilo lima');
         await dlgUp(p);
-        await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].pop().click());
+        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=go]').click());
         await sleep(1500);
         const pinned = await inRoot(p, (r) => r.querySelectorAll('button.pin').length);
         check(eng, 'go in the dialog sends a comment saying go on the words at once', Boolean(await sent('go')) && (await sent('go')).anchor?.quote?.exact === 'kilo lima' && pinned === 1 && (await fd(p)) === null, `${pinned} ${JSON.stringify(await sent('go'))}`);
@@ -273,15 +301,20 @@ try {
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'golf hotel');
         await dlgUp(p);
-        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=rewrite]').click());
+        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k="…"]').click());
+        await sleep(400);
+        const grown = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .acts .use')].map((b) => b.dataset.act).join(' '));
+        check(eng, '… grows the whole list on selected words too', grown === 'go fix remove like move states variant', grown);
+        await inRoot(p, (r) => r.querySelector('.p-dlg .acts .use[data-act=variant]').click());
         await sleep(1500);
-        check(eng, 'rewrite in the dialog sends Rewrite: “words” at once', Boolean(await sent('Rewrite: “golf hotel”')) && (await fd(p)) === null, JSON.stringify((await comments()).map((x) => x.text)));
+        const c = await sent('variant');
+        check(eng, '…a row sends at once, its prompt on the words', /^Make 3 variants/.test(c?.anchor?.act || '') && c.anchor?.quote?.exact === 'golf hotel' && (await fd(p)) === null, JSON.stringify(c?.anchor));
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#long', LONG.slice(0, 340));
         await dlgUp(p);
-        const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '));
-        check(eng, 'over 300 characters the dialog has no cut or rewrite', names === 'go', names);
+        const names = await line(p);
+        check(eng, 'over 300 characters the dialog has the same list', SEEDED.test(names), names);
       });
       await scene(eng, browser, {}, async (p) => {
         await p.evaluate(() => scrollTo(0, document.querySelector('#end').getBoundingClientRect().top + scrollY - 640));
@@ -310,7 +343,7 @@ try {
         await p.keyboard.type('q');
         await sleep(800);
         const c = await fd(p);
-        check(eng, 'a typed letter adds the box, and is its first', Boolean(c?.dlg) && c.text === 'q' && c.cut && (await draftPin(p)) === 0, JSON.stringify(c));
+        check(eng, 'a typed letter adds the box, and is its first', Boolean(c?.dlg) && c.text === 'q' && c.go && (await draftPin(p)) === 0, JSON.stringify(c));
         await p.keyboard.type('uick');
         check(eng, '…and the next keys go into the box', (await fd(p)).text === 'quick');
       });
@@ -326,17 +359,17 @@ try {
         await p.keyboard.up('Alt');
         await sleep(200);
         const after = await inRoot(p, (r) => r.querySelector('.p-dlg .quick').classList.contains('alt'));
-        check(eng, 'holding Option shows the number on each button, letting go hides them', !before && after === false && nums === '"1" "2" "3"', JSON.stringify([before, nums, after]));
+        check(eng, 'holding Option shows the number on each button, letting go hides them', !before && after === false && nums.startsWith('"1" "2" "3"'), JSON.stringify([before, nums, after]));
         await p.keyboard.press('Alt+Digit2');
         await sleep(1200);
-        check(eng, 'Option+2 runs the second button: cut', Boolean(await sent('Cut: “delta echo”')), JSON.stringify((await comments()).map((x) => x.text)));
+        check(eng, 'Option+2 runs the second button: fix', (await sent('fix'))?.anchor?.quote?.exact === 'delta echo', JSON.stringify((await comments()).map((x) => x.text)));
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'golf hotel');
         await dlgUp(p);
         await p.keyboard.press('Alt+Digit1');
         await sleep(1000);
-        check(eng, 'Option+1 sends Rewrite: “words” at once', Boolean(await sent('Rewrite: “golf hotel”')), JSON.stringify((await comments()).map((x) => x.text)));
+        check(eng, 'Option+1 sends go at once', (await sent('go'))?.anchor?.quote?.exact === 'golf hotel', JSON.stringify((await comments()).map((x) => x.text)));
       });
       await scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'india juliet');
@@ -353,7 +386,7 @@ try {
         await dlgUp(p);
         await p.keyboard.press('Alt+Digit3');
         await sleep(1000);
-        check(eng, 'Option+3 sends go', Boolean(await sent('go')));
+        check(eng, 'Option+3 sends remove', (await sent('remove'))?.anchor?.quote?.exact === 'kilo lima');
       });
 
       // Escape
@@ -394,7 +427,7 @@ try {
         await drag(p, '#a', 'delta echo');
         await dlgUp(p);
         const dlg = await concentric(p, '.fd:not(.out)', '.p-dlg .quick button, .p-dlg .box');
-        check(eng, 'the dialog\'s buttons and its box are concentric with its corners (radius + gap = outer radius)', dlg.n === 4 && dlg.bad.length === 0, JSON.stringify(dlg));
+        check(eng, 'the dialog\'s buttons and its box are concentric with its corners (radius + gap = outer radius)', dlg.n >= 4 && dlg.bad.length === 0, JSON.stringify(dlg));
       });
       // …phones (a touch viewport: bigger corners): the bar, and the sheet the box opens in
       await scene(eng, browser, { viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true }, async (p) => {
@@ -409,7 +442,7 @@ try {
         });
         await sleep(1200);
         const bar = await concentric(p, '.fd:not(.out)', '.p-bar button');
-        check(eng, 'phones: the bar\'s buttons are concentric with its corners', bar.n === 4 && bar.bad.length === 0 && bar.sample.R > 18, JSON.stringify(bar));
+        check(eng, 'phones: the bar\'s buttons are concentric with its corners', bar.n === 5 && bar.bad.length === 0 && bar.sample.R > 18, JSON.stringify(bar));
         await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
         await sleep(1200);
         const sheet = await concentric(p, '.float:not(.out, .p-dlg *)', '.float:not(.p-dlg *) > .composer .box', ['left', 'right']);
@@ -428,13 +461,17 @@ try {
         check(eng, 'a spot\'s comment is one card (background, shadow, 8 px in) with its box concentric inside', card.bg !== 'rgba(0, 0, 0, 0)' && card.pad === '8px' && card.shadow && spot.n === 1 && spot.bad.length === 0, JSON.stringify({ card, spot }));
       });
 
-      // Actions of your own (settings.json `actions`: go, tighter, shorter): selected words keep rewrite · cut · go, a
-      // spot's row is your list in its order; each sends its prompt at once, and ⌥ + a digit runs the nth
+      // Actions of your own (settings.json `actions`: go, tighter, shorter): selected words and a spot's row are your
+      // list in its order; each sends its prompt at once, and ⌥ + a digit runs the nth
       await withLab2(() => scene(eng, browser, {}, async (p) => {
         await drag(p, '#a', 'delta echo');
         await dlgUp(p);
-        const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '));
-        check(eng, 'your own actions: selected words keep rewrite · cut · go', names === 'rewrite cut go', names);
+        const names = await line(p);
+        check(eng, 'your own actions: selected words have your list too', ['go tighter shorter', 'go tighter shorter …'].includes(names), names);
+        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=shorter]').click());
+        await sleep(1500);
+        const c = (await comments()).find((x) => x.anchor?.act === 'Shorter: half the words');
+        check(eng, '…one sends its prompt on the words', c?.anchor?.quote?.exact === 'delta echo', JSON.stringify(c?.anchor));
       }));
       await withLab2(() => scene(eng, browser, {}, async (p) => {
         await p.mouse.click(300, 190);
@@ -537,10 +574,7 @@ try {
         save(PAGE.replace(/<p id="a">.*?<\/p>/, '<p id="a">Nothing of the old words is left.</p>'));
         await sleep(3000);
         const c = await fd(p);
-        check(eng, 'words gone: the dialog stays with its text, cut and rewrite are off', Boolean(c?.dlg) && c.text === 'still here' && c.cls.includes('gone'), JSON.stringify(c));
-        await inRoot(p, (r) => r.querySelector('[data-k=cut]').click());
-        await sleep(300);
-        check(eng, '…a click on cut sends nothing', !(await comments()).some((x) => /^Cut: /.test(x.text) && /delta/.test(x.text)) && (await fd(p))?.text === 'still here');
+        check(eng, 'words gone: the dialog stays with its text', Boolean(c?.dlg) && c.text === 'still here' && c.cls.includes('gone'), JSON.stringify(c));
         await p.keyboard.press('Enter');
         await sleep(900);
         const c2 = (await comments()).find((x) => x.text === 'still here');
@@ -591,7 +625,7 @@ try {
         await p.keyboard.type('x');
         await sleep(800);
         const c = await fd(p);
-        check(eng, 'over 300 characters: no cut, no rewrite', Boolean(c?.dlg) && !c.cut && !c.rewrite, JSON.stringify(c));
+        check(eng, 'over 300 characters: the same actions', Boolean(c?.dlg) && c.go, JSON.stringify(c));
       });
 
       await scene(eng, browser, {}, async (p) => {

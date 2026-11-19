@@ -1,6 +1,6 @@
 // Selected words get one comment element (F1, Leo 18 Nov). Computers: the dialog opens at the end of the words as soon
 // as they are selected ("open this right away"), arriving as the comment card does (.in); a sent dialog leaves as a
-// card does while the pin pops in. Phones: the actions bar (comment · rewrite · cut) at the words' end, which grows
+// card does while the pin pops in. Phones: the actions bar (comment · your first 3 actions · …) at the words' end, which grows
 // into the bottom sheet (the .in / .out classes: lab-in, lab-out).
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 
@@ -23,7 +23,7 @@ let dlg: HTMLElement;
 let pick: (text?: string, act?: string) => void = () => {};
 
 export const fluidState = () => F.state;
-// An action: a built-in name (rewrite, cut, go, remove, fix) or one of your own (labit.json `actions`).
+// An action: a name from your list (settings.json `actions`), "…" for the rest, or an old { label, send }.
 type Act = string | { label: string; send: string };
 export const actName = (a: Act) => (typeof a === 'string' ? a : a.label);
 /** The actions: the bar has comment first, which opens the box; the dialog's row has only the others (the box is the

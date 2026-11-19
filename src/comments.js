@@ -41,7 +41,7 @@ import { bindEdit, editKey } from './widget/edit.ts';
 import { pick, selectChips, selectMode } from './widget/select.ts';
 import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
-import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
+import { actButton, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -87,7 +87,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get ms() { return ms; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
-    get actions() { return WORDS; },
+    // The phone's bar on selected words: comment, the first 3 of your list, "…" (opens the box with the whole list).
+    get actions() { return [...LIST.slice(0, 3).map((a) => a.name), ...(LIST.length > 3 ? ['…'] : [])]; },
     get numberOf() { return numberOf; },
     get openSheet() { return openSheet; },
     get patchKids() { return patchKids; },
@@ -140,9 +141,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
-  // The row on selected words: rewrite, cut and go. Everywhere else, your one list of actions (settings.json `actions`,
-  // passed as data-actions; lib/actions.ts, docs/settings.md): the first 3 as chips, the rest behind "…".
-  const WORDS = ['rewrite', 'cut', 'go'];
+  // Your one list of actions (settings.json `actions`, passed as data-actions; lib/actions.ts, docs/settings.md), the
+  // same on a spot, a pin, in select mode and on selected words (Leo, 19 Nov: "make text selection actions match our
+  // actions"): as many as fit on one line, the rest behind "…".
   let LIST = SEED;
   try {
     const l = JSON.parse(script?.dataset.actions || 'null');
@@ -1210,7 +1211,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (row?.children.length) float.append(row);
       const act = draft.act;
       draft.act = '';
-      if (act) queueMicrotask(() => /** @type {HTMLElement | null} */ (float.querySelector(`[data-k="${CSS.escape(act)}"]`))?.click()); // the bar's rewrite, cut or go
+      if (act) queueMicrotask(() => draft.runAct?.(act)); // the bar's pick: an action (even one the line had no room for) or "…"
       float.append(box);
       swipeDown(float, () => ((S.draft = null), keepSpot(null), render()));
       if (fluid) fluidOpen(float, draft, rects, draft.back); // the float lives in the bar's dialog, not on the layer
@@ -2042,7 +2043,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const quickRow = (draft, box) => {
     const row = el('div', { class: 'quick' });
     const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
-    const exact = draft.anchor.quote?.exact || '';
     const fill = (v) => ((field.value = v), field.dispatchEvent(new Event('input')));
     const go = (said, prompt = '') => {
       if (prompt) draft.anchor.act = prompt; // the agent reads the whole prompt: "action: …"
@@ -2057,17 +2057,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       b.addEventListener('click', () => go(field.value.trim() ? `${a.name}: ${field.value.trim()}` : a.name, a.prompt));
       return b;
     };
-    if (draft.fluid)
-      for (const k of acts(exact.length, false, WORDS).map(actName)) {
-        const b = actButton(k, false);
-        b.addEventListener('mousedown', (e) => e.preventDefault());
-        b.addEventListener('click', () => {
-          if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
-          go(k === 'rewrite' ? `Rewrite: “${exact}”` : k === 'cut' ? `Cut: “${exact}”` : 'go');
-        });
-        row.append(b);
-      }
-    else {
+    {
       // Your list, in its order: as many chips as fit on one line (measured; select's ↑ ↓ go first), then "…". "…"
       // grows the line into the whole list (tap = use it) and, on this computer, hold or right-click a row to edit it, "+ add"
       // (saved in your settings through the lab, PUT /_lab/api/actions; a new one goes at the end).
@@ -2336,6 +2326,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
       };
       queueMicrotask(measure);
+      // The phone bar's pick, run once the box is open: an action by its name (also one the line has no room for), or "…".
+      draft.runAct = (k) => (k === '…' ? dots : chips[LIST.findIndex((a) => a.name === k)])?.click();
     }
     // ⌥ + 1…4 (by the key's place, so Option's own characters don't matter) runs the nth button; holding ⌥ shows the numbers.
     [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
