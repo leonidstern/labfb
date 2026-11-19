@@ -45,7 +45,7 @@ export function bindSwitcher(deps: Deps) {
   foot = el('div', { class: 'sw-foot' });
   panel.append(el('div', { class: 'handle' }), input, list, foot);
   box.append(panel);
-  root.append(box);
+  (root.querySelector('.ui') || root).append(box); // with the bar, so a pinch zoom keeps it on screen (sheets.ts)
   d.swipe(panel, () => closeSwitcher());
   input.addEventListener('input', () => {
     active = 0;
