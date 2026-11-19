@@ -153,6 +153,13 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   const zone = await shadow(() => { const z = r.querySelector('.zone.draft'); return z ? Math.round(z.getBoundingClientRect().width) + 'x' + Math.round(z.getBoundingClientRect().height) : null; });
   check(eng, 'a narrow area can be drawn, even after a stray click', zone === '330x20', String(zone));
   await p.keyboard.type('narrow strip');
+  // Safari sends the Enter that picks a word from an input method after the composition has ended, as key code 229.
+  const picked = await shadow(() => {
+    const e = new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true, composed: true });
+    r.activeElement.dispatchEvent(e);
+    return e.defaultPrevented;
+  });
+  check(eng, 'the Enter that picks a word while typing Japanese or Chinese does not send', picked === false, String(picked));
   await p.keyboard.press('Enter');
   await untilApi((c) => c.text === 'narrow strip', 600);
   const saved = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.text === 'narrow strip');

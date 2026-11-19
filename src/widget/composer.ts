@@ -220,7 +220,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     busy = false;
   };
   const onKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { // 229: Safari's Enter that picks a word
       e.preventDefault();
       go();
     }

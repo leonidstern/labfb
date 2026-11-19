@@ -253,6 +253,22 @@ try {
       check(eng, 'once saved, it has nothing more to say', r.healed === null, JSON.stringify(r.healed));
       check(eng, 'a pin that is lost saves nothing', r.lost === null, JSON.stringify(r.lost));
       await p.close();
+
+      // A long list: the pinned row is past the first 400 of its kind, and a row above it is taken out.
+      p = await open(ctx, `<div id="list">${Array.from({ length: 520 }, (_, i) => `<div class="row">Row number ${i}</div>`).join('')}</div>`);
+      r = await p.evaluate(() => {
+        const row = document.querySelectorAll('.row')[450];
+        row.scrollIntoView();
+        const b = row.getBoundingClientRect();
+        const a = A.anchorAt(b.left + 2, b.top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        document.querySelectorAll('.row')[440].remove();
+        const now = A.foundAt(a);
+        return { now, top: row.getBoundingClientRect().top + scrollY };
+      });
+      check(eng, 'a pin far down a long list is found again when a row above it goes', r.now && Math.abs(r.now.docY - r.top) < 30, JSON.stringify(r.now));
+      await p.close();
       await ctx.close();
     } finally {
       await browser.close();
