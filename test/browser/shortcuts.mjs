@@ -185,6 +185,7 @@ try {
         await p.keyboard.press('Escape');
         await sleep(150);
       }
+      await sleep(2600); // a closed box keeps watching two seconds more, then lets go
       const after = await watching();
       check(eng, 'a comment box that has closed stops watching the page', after - before <= 1, `${before} → ${after}`);
       const pause = () => p.evaluate(() => {

@@ -207,15 +207,20 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
   // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept. The widget's own
   // tree is watched too: a box let go inside it (Escape) changes nothing on the page, and its hold stayed until
   // something there did, keeping the page's text selectable without Shift.
-  // Once it has let go it stops watching: every redraw builds a new box, and an observer left on the whole page for each
-  // one ran on every change to the page.
+  // Once it has let go it stops watching, after two more seconds (the page's own pointer is recomputed as the redraw that
+  // follows settles): every redraw builds a new box, and an observer left on the whole page for each one ran on every
+  // change to the page, for good.
   let seen = false;
+  let ending = false;
   const gone = new MutationObserver(() => {
     if (wrap.isConnected) return void (seen = true);
     writing.delete(text);
     holdReloads(writing.size);
     d?.whileWriting?.();
-    if (seen) gone.disconnect();
+    if (seen && !ending) {
+      ending = true;
+      setTimeout(() => gone.disconnect(), 2000);
+    }
   });
   for (const n of [document.documentElement, root]) gone.observe(n, { childList: true, subtree: true });
   name.addEventListener('input', sync);
