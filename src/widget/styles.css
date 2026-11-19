@@ -377,13 +377,21 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
 /* A pin left by the agent: labit's mark in place of a letter. */
 .pin .agentmark { width: 60%; height: 60%; display: block; }
 .more-menu kbd { margin: 0; }
-/* Motion (comments.js): pause all / play · ¼ speed · the first one's moment in ms, one row between hairlines. */
-.more-menu .motion-row { display: flex; align-items: center; gap: 2px; margin: 2px 0; padding: 2px 0; border-top: var(--_hair); border-bottom: var(--_hair); }
-.more-menu .motion-row[hidden] { display: none; }
-.more-menu .motion-row button { gap: 6px; }
-.more-menu .motion-row button[aria-pressed="true"] { background: var(--_soft); font-weight: 600; }
-.more-menu .motion-ms { margin-left: auto; padding: 0 10px 0 6px; font-size: 11px; color: var(--_muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.more-menu .motion-ms:empty { display: none; }
+/* Motion (comments.js): pause / play · ¼ · the moment in ms, in the moving thing's top right corner, over the page
+   (nothing moves). Computers: while ⌥ is held over it; a paused one keeps only its ▶. Phones: quiet, while in view. */
+.motion-ctl { position: absolute; transform: translateX(-100%); display: flex; align-items: center; gap: 1px; padding: 2px;
+  background: var(--_bg); color: var(--_fg); border-radius: calc(var(--_r-s) + 2px); box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
+  opacity: 0; pointer-events: none; z-index: 5; transition: opacity var(--_t-quick) var(--_ease-out); }
+.motion-ctl.on { opacity: 1; pointer-events: auto; }
+.motion-ctl.quiet > * { opacity: .72; } /* phones: shown all the time, so quieter, but the page doesn't show through */
+.motion-ctl button { width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--_r-s);
+  background: transparent; color: inherit; cursor: pointer; font: 600 11px/1 system-ui, sans-serif; }
+.motion-ctl button:hover { background: var(--_hover); }
+.motion-ctl button[aria-pressed="true"] { background: var(--_fg); color: var(--_bg); }
+.motion-ctl svg { width: 11px; height: 11px; fill: currentColor; }
+.motion-ms { padding: 0 6px 0 4px; font-size: 11px; color: var(--_muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.motion-ms:empty, .motion-ctl.mini .motion-slow, .motion-ctl.mini .motion-ms { display: none; }
+@media (pointer: coarse) { .motion-ctl button { width: 30px; height: 30px; } }
 /* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
 .more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
   color: var(--_muted); user-select: text; overflow-wrap: anywhere; }

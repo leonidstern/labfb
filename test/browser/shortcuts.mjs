@@ -87,7 +87,7 @@ try {
       await sleep(250);
       check(eng, 'the old toggle key (m) does nothing', (await look(p)).on === start.on);
       await p.keyboard.press('h');
-      await until(p, ([src, on]) => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot; return Boolean(r) && [...r.querySelectorAll('button')].some((b) => /hide comments/.test(b.textContent || '')) !== on; }, [0, start.on], 300);
+      await until(p, ([_src, on]) => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot; return Boolean(r) && [...r.querySelectorAll('button')].some((b) => /hide comments/.test(b.textContent || '')) !== on; }, [0, start.on], 300);
       const on = await look(p);
       check(eng, 'the new toggle key (h) shows and hides comments', on.on !== start.on);
       if (!on.on) {
@@ -161,12 +161,12 @@ try {
       check(eng, 'Keep sends the row ticked', got.length === 1 && got[0].picked.n === 2 && got[0].picked.of === q.id, JSON.stringify(got.map((c) => c.picked)));
       await a.close();
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/ask', action: 'delete', id: c.id }) });
-      // Pause: nothing floats on the page; the ⋯ menu has a motion row (pause all · ¼ speed · ms) while the page moves.
-      // P or the row stops them all and the row says play, a comment written while paused tells the agent so
-      // (anchor.paused, atMs); P again plays. S slows to ¼ and a pin says slow.
+      // Pause: no ⋯ menu row; holding ⌥ over a moving thing shows its control (pause · ¼ · ms) in its top right corner,
+      // which stops only that one and never pins; let go and a paused one keeps a ▶. P stops them all, a comment written
+      // while paused tells the agent so (anchor.paused, atMs); P again plays. S slows all to ¼.
       await p.evaluate(() => localStorage.removeItem('lab-cursor')); // the steps above leave the pointer on (key 1 toggles it)
       await p.goto(B + '/anim');
-      await untilRoot(p, (r) => Boolean(r.querySelector('.motion-row:not([hidden])')), 2500);
+      await untilRoot(p, (r) => Boolean(r.querySelector('.motions')), 2500);
       // A long comment scrolls inside its box: the scrollbar sits at the box's right edge, not left of the name and arrow.
       const h2 = await p.evaluate(() => document.querySelector('h1').getBoundingClientRect().toJSON());
       await p.mouse.click(h2.left + 20, h2.top + h2.height / 2);
@@ -191,31 +191,49 @@ try {
       const shadow = "[...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot";
       const pause = () => p.evaluate(() => {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
-        const row = r?.querySelector('.motion-row');
-        return { shown: Boolean(row && !row.hidden), floating: Boolean(r?.querySelector('.motion, .motions')), words: row?.querySelector('.motion-pause')?.textContent, slow: row?.querySelector('.motion-slow')?.getAttribute('aria-pressed'), ms: row?.querySelector('.motion-ms')?.textContent,
+        const on = [...(r?.querySelectorAll('.motion-ctl.on') || [])];
+        const c = on[0];
+        const s = document.getElementById('s').getBoundingClientRect();
+        const at = c?.getBoundingClientRect();
+        return { shown: on.length, mini: on.filter((n) => n.classList.contains('mini')).length, row: Boolean(r?.querySelector('.motion-row')), words: c?.querySelector('.motion-play')?.getAttribute('aria-label'), ms: c?.querySelector('.motion-ms')?.textContent,
+          corner: Boolean(at && Math.abs(at.right - Math.max(s.left + s.width / 2 + 20 - 4, at.width + 4)) < 3 && Math.abs(at.top - (s.top + s.height / 2 - 20 + 4)) < 3),
           anim: document.getElementById('s').getAnimations()[0]?.playState, other: document.getElementById('t').getAnimations()[0]?.playState };
       });
       const first = await pause();
-      check(eng, 'the ⋯ menu has a motion row, nothing floats on the page', first.shown && !first.floating && first.words === 'pause allP' && first.ms === '', JSON.stringify(first));
-      await p.evaluate(`${shadow}.querySelector('.more').click()`);
-      await p.evaluate(`${shadow}.querySelector('.motion-pause').click()`);
+      check(eng, 'no motion row in the ⋯ menu and no control without ⌥', !first.row && first.shown === 0, JSON.stringify(first));
+      const sr = await p.evaluate(() => document.getElementById('s').getBoundingClientRect().toJSON());
+      await p.mouse.move(sr.left + sr.width / 2, sr.top + sr.height / 2 + 10);
+      await p.keyboard.down('Alt');
+      await p.mouse.move(sr.left + sr.width / 2 + 1, sr.top + sr.height / 2 + 10);
+      await untilRoot(p, (r) => r.querySelectorAll('.motion-ctl.on').length === 1, 1500);
+      const alt = await pause();
+      check(eng, '⌥ over a moving thing shows its control in its top right corner', alt.shown === 1 && alt.corner && alt.words === 'pause this animation (P: all)' && /^\d+ ms$/.test(alt.ms), JSON.stringify(alt));
+      const pb = await p.evaluate(`${shadow}.querySelector('.motion-ctl.on .motion-play').getBoundingClientRect().toJSON()`);
+      await p.mouse.click(pb.left + pb.width / 2, pb.top + pb.height / 2, { modifiers: ['Alt'] });
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'paused', null, 600);
-      const viaMenu = await pause();
-      const menuOpen = await p.evaluate(`!${shadow}.querySelector('.more-menu').hidden`);
-      check(eng, 'pause all in the menu stops every animation, says play and shows the ms; the menu stays open', viaMenu.anim === 'paused' && viaMenu.other === 'paused' && viaMenu.words === 'playP' && /^\d+ ms$/.test(viaMenu.ms) && menuOpen, JSON.stringify({ viaMenu, menuOpen }));
-      await p.evaluate(`${shadow}.querySelector('.motion-pause').click()`);
+      await sleep(300);
+      const one = await pause();
+      const noPin = await p.evaluate(`!${shadow}.querySelector('textarea')`);
+      check(eng, 'its pause stops only that one, says play, and drops no pin', one.anim === 'paused' && one.other === 'running' && one.words === 'play this animation (P: all)' && noPin, JSON.stringify({ one, noPin }));
+      await p.keyboard.up('Alt');
+      await untilRoot(p, (r) => r.querySelectorAll('.motion-ctl.on.mini').length === 1, 1000);
+      const let_ = await pause();
+      check(eng, 'letting go of ⌥ leaves only a ▶ on the paused one', let_.shown === 1 && let_.mini === 1 && let_.anim === 'paused', JSON.stringify(let_));
+      const mb = await p.evaluate(`${shadow}.querySelector('.motion-ctl.on .motion-play').getBoundingClientRect().toJSON()`);
+      await p.mouse.click(mb.left + mb.width / 2, mb.top + mb.height / 2);
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'running', null, 600);
-      await p.keyboard.press('Escape');
+      await untilRoot(p, (r) => !r.querySelector('.motion-ctl.on'), 1000);
+      check(eng, 'the ▶ plays it and goes', (await pause()).shown === 0);
       await p.keyboard.press('s');
-      await until(p, () => document.getElementById('s').getAnimations()[0]?.playbackRate === 0.25, null, 600);
-      const slowed = await pause();
-      check(eng, 'S slows everything to ¼ and the row says so', slowed.slow === 'true' && /^\d+ ms$/.test(slowed.ms), JSON.stringify(slowed));
+      await until(p, () => ['s', 't'].every((id) => document.getElementById(id).getAnimations()[0]?.playbackRate === 0.25), null, 1200);
+      check(eng, 'S slows everything to ¼', await p.evaluate(() => document.getElementById('t').getAnimations()[0]?.playbackRate === 0.25));
       await p.keyboard.press('s');
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playbackRate === 1, null, 600);
       await p.keyboard.press('p');
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'paused', null, 600);
+      await untilRoot(p, (r) => r.querySelectorAll('.motion-ctl.on.mini').length === 2, 1000);
       const paused = await pause();
-      check(eng, 'P pauses all the page\'s animations and the row says play', paused.anim === 'paused' && paused.other === 'paused' && paused.words.startsWith('play'), JSON.stringify(paused));
+      check(eng, 'P pauses all the page\'s animations and each keeps a ▶', paused.anim === 'paused' && paused.other === 'paused' && paused.mini === 2, JSON.stringify(paused));
       const h = await p.evaluate(() => document.querySelector('h1').getBoundingClientRect().toJSON());
       await p.mouse.click(h.left + 20, h.top + h.height / 2);
       await untilRoot(p, (r) => Boolean(r.querySelector('textarea')), 900);
@@ -228,10 +246,12 @@ try {
       await p.keyboard.press('p');
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'running', null, 600);
       const played = await pause();
-      check(eng, 'P again plays them and the row says pause all', played.anim === 'running' && played.other === 'running' && played.words.startsWith('pause'), JSON.stringify(played));
+      check(eng, 'P again plays them and the ▶s go', played.anim === 'running' && played.other === 'running' && played.shown === 0, JSON.stringify(played));
+      await p.keyboard.press('p');
+      await untilRoot(p, (r) => r.querySelectorAll('.motion-ctl.on.mini').length === 2, 1500);
       await p.keyboard.press('h'); // hide comments (this lab's toggle key): the controls go with them
-      await untilRoot(p, (r) => !r.querySelector('.motion-row:not([hidden])'), 1500);
-      check(eng, 'hidden comments hide the motion row too', !(await pause()).shown);
+      await untilRoot(p, (r) => !r.querySelector('.motion-ctl.on'), 1500);
+      check(eng, 'hidden comments hide the motion controls too', !(await pause()).shown);
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/anim', action: 'delete', id: c.id }) });
       await p.goto('about:blank');
       await ctx.close();
