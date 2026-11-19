@@ -26,11 +26,14 @@ html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;backgrou
 #lab-board .f{position:absolute}
 #lab-board .b{position:absolute;inset:0;background:#fff;contain:layout paint}
 #lab-board .f.off{content-visibility:hidden}
+#lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
 #lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
+#lab-board .f.in iframe{pointer-events:auto}
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
 #lab-board .none{position:absolute;inset:0;display:grid;place-items:center;opacity:.7}
+#lab-board .done{position:fixed;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
 `;
 document.head.append(Object.assign(document.createElement('style'), { textContent: css }));
 const root = document.createElement('div');
@@ -41,14 +44,22 @@ root.append(world);
 document.body.append(root);
 
 let cards: Card[] = [];
+let edited: Record<string, string> = {}; // page path -> when its file was saved
 let cam: Cam = { x: 0, y: 0, z: 1 };
 let view = { w: innerWidth, h: innerHeight };
 let moved = false; // the person moved the camera: a resize no longer fits everything again
+let selected = '';
+let entered = '';
 let lastDown = 0;
 let checked = { x: 1e9, y: 1e9, z: 0 }; // the camera at the last wake/cull check
 let still: ReturnType<typeof setTimeout> | undefined;
+let hashTimer: ReturnType<typeof setTimeout> | undefined;
 
 const boxes = (): Box[] => cards.map((c) => c.f);
+const ago = (iso?: string) => {
+  const s = iso ? (Date.now() - Date.parse(iso)) / 1000 : NaN;
+  return !(s >= 0) ? '' : s < 60 ? 'edited just now' : s < 3600 ? `edited ${Math.floor(s / 60)}m ago` : s < 86400 ? `edited ${Math.floor(s / 3600)}h ago` : `edited ${Math.floor(s / 86400)}d ago`;
+};
 const text = (tag: string, t: string, to: Node) => to.appendChild(Object.assign(document.createElement(tag), { textContent: t }));
 
 // A title card: what the frame is, as plain text. No screenshot (it would go stale), no count of comments.
@@ -58,12 +69,20 @@ const card = (c: Card) => {
   text('b', c.f.label || c.f.src, el);
   text('div', `${c.f.w} × ${c.f.h}`, el);
   if (c.f.label) text('div', c.f.src, el);
+  const when = ago(edited[c.f.src.replace(/\.html?$/i, '').replace(/\/$/, '') || '/']);
+  if (when) text('div', when, el);
   return el;
 };
 
 const draw = () => {
   world.style.transform = `scale(${cam.z}) translate(${cam.x}px,${cam.y}px)`;
   world.style.setProperty('--iz', String(1 / cam.z));
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => {
+    try {
+      history.replaceState(history.state, '', `#${Math.round(cam.x)},${Math.round(cam.y)},${cam.z.toFixed(3)}`);
+    } catch {}
+  }, 200);
 };
 // While the camera moves the world is its own layer; a layer kept after it stops would stay a blurry bitmap at the new zoom.
 const moving = () => {
@@ -80,7 +99,7 @@ const go = (next: Cam, user = true) => {
 };
 
 // Which frames are alive. Those in view and wide enough, nearest the centre first, up to the cap, two loading at a time;
-// when the cap is reached the one seen longest ago is dropped back to its card.
+// when the cap is reached the one seen longest ago is dropped back to its card (never the selected or entered one).
 const loading = () => cards.filter((c) => c.frame && !c.frame.dataset.ready).length;
 function wake() {
   checked = { ...cam };
@@ -105,7 +124,7 @@ function wake() {
   for (const c of want) {
     if (loading() >= AT_ONCE) break;
     if (alive().length >= CAP) {
-      const old = alive().filter((o) => !seen.includes(o)).sort((a, b) => a.seen - b.seen)[0];
+      const old = alive().filter((o) => o.f.id !== selected && o.f.id !== entered && !seen.includes(o)).sort((a, b) => a.seen - b.seen)[0];
       if (!old) break;
       sleep(old);
     }
@@ -119,6 +138,7 @@ function live(c: Card) {
   fr.title = c.f.label || c.f.src;
   fr.addEventListener('load', () => {
     fr.dataset.ready = '1';
+    if (entered === c.f.id) focusIn(c);
     wake(); // the next one may load now
   }, { once: true });
   fr.src = c.f.src;
@@ -164,9 +184,13 @@ function show(b: { frames: Frame[]; rev: number; of?: string }) {
     Object.assign(c.box.style, { left: `${f.x}px`, top: `${f.y}px`, width: `${f.w}px`, height: `${f.h}px` });
     (c.box.querySelector('.t') as HTMLElement).textContent = label(f);
   }
+  if (selected && !cards.some((c) => c.f.id === selected)) selected = entered = '';
   world.querySelector('.none')?.remove();
   if (!cards.length) text('div', 'No frames on this board.', world).className = 'none';
-  if (!moved) cam = coarse && cards[0] ? fitFrame(cards[0].f, view) : fitAll(boxes(), view);
+  const hash = /^#(-?\d+),(-?\d+),([\d.]+)$/.exec(location.hash);
+  if (hash && !moved) cam = { x: +hash[1], y: +hash[2], z: +hash[3] };
+  else if (!moved) cam = coarse && cards[0] ? fitFrame(cards[0].f, view) : fitAll(boxes(), view);
+  moved = moved || Boolean(hash);
   go(cam, false);
   wake();
 }
@@ -178,15 +202,64 @@ const load = async () => {
   }
   show(await res.json());
 };
+// When each page was saved, for "edited 5m ago" (a variant's file has no such time here: the card says none).
+fetch('/_lab/pages').then((r) => r.json()).then((d) => {
+  edited = Object.fromEntries((d.pages || []).map((p: { path: string; edited: string }) => [p.path, p.edited]));
+  for (const c of cards) if (!c.frame) c.inner.replaceChildren(card(c));
+}).catch(() => {});
+
+// ---------- selecting and entering ----------
+const find = (id: string) => cards.find((c) => c.f.id === id);
+function select(id: string) {
+  if (entered && entered !== id) leave();
+  selected = id;
+  for (const c of cards) c.box.classList.toggle('sel', c.f.id === id);
+}
+function focusIn(c: Card) {
+  c.frame?.focus();
+  c.frame?.contentWindow?.focus();
+}
+function enter(id: string) {
+  const c = find(id);
+  if (!c) return;
+  select(id);
+  entered = id;
+  c.box.classList.add('in');
+  if (!c.frame) live(c); // a card is woken to be entered, cap or not
+  else focusIn(c);
+  if (coarse) done.hidden = false;
+}
+function leave() {
+  const c = find(entered);
+  entered = '';
+  done.hidden = true;
+  if (!c) return;
+  c.box.classList.remove('in');
+  // The keys stay with the frame's document until focus is moved back: M, ⇧B and Esc would go to the wrong one.
+  (c.frame?.contentWindow as unknown as { __labSpot?: { clear?: () => void } } | null | undefined)?.__labSpot?.clear?.();
+  c.frame?.blur();
+  window.focus();
+}
+const done = Object.assign(document.createElement('button'), { className: 'done', type: 'button', textContent: 'done', hidden: true });
+done.addEventListener('click', () => (leave(), select('')));
+root.append(done);
+
 // ---------- input: the board owns its surface (these run before the widget's own listeners) ----------
+const at = (e: { clientX: number; clientY: number }) => {
+  const x = e.clientX / cam.z - cam.x;
+  const y = e.clientY / cam.z - cam.y;
+  return cards.find((c) => x >= c.f.x && x <= c.f.x + c.f.w && y >= c.f.y && y <= c.f.y + c.f.h)?.f.id || '';
+};
 const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
 const pts = new Map<number, { x: number; y: number }>();
-let down: { x: number; y: number; far: boolean } | null = null;
+let down: { x: number; y: number; id: string; far: boolean; at: number } | null = null;
+let tap = { at: 0, x: 0, y: 0 };
 let pinch = 0;
+let space = false;
 const eat = (e: Event) => (e.stopImmediatePropagation(), e.preventDefault());
 
 addEventListener('pointerdown', (e) => {
-  if (!mine(e)) return;
+  if (!mine(e) || entered && e.target instanceof HTMLIFrameElement) return;
   eat(e);
   lastDown = performance.now();
   (document.activeElement as HTMLElement | null)?.blur?.();
@@ -196,7 +269,7 @@ addEventListener('pointerdown', (e) => {
     const [a, b] = [...pts.values()];
     pinch = Math.hypot(a.x - b.x, a.y - b.y);
     if (down) down.far = true; // a second finger: this was no tap
-  } else down = { x: e.clientX, y: e.clientY, far: false };
+  } else down = { x: e.clientX, y: e.clientY, id: at(e), far: false, at: performance.now() };
 }, true);
 addEventListener('pointermove', (e) => {
   const p = pts.get(e.pointerId);
@@ -220,7 +293,15 @@ const up = (e: PointerEvent) => {
   if (!pts.delete(e.pointerId)) return;
   eat(e);
   pinch = 0;
-  if (!pts.size) down = null;
+  const d = down;
+  if (pts.size || !d) return;
+  down = null;
+  if (d.far || e.type === 'pointercancel') return;
+  // A tap selects the frame under it (or nothing); a second one close by and soon enters it.
+  const again = performance.now() - tap.at < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24;
+  tap = { at: performance.now(), x: e.clientX, y: e.clientY };
+  if (again && d.id && d.id === selected) return enter(d.id);
+  select(d.id);
 };
 addEventListener('pointerup', up, true);
 addEventListener('pointercancel', up, true);
@@ -248,25 +329,48 @@ addEventListener('gesturechange', (e) => {
 
 // ---------- keys (after the widget's own: an Esc it used is not ours) ----------
 const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(n.tagName) || n.hasAttribute('data-lab-comments')));
-const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'>): boolean => {
+const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
   if (e.metaKey || e.ctrlKey || e.altKey) return false;
   const digit = /^Digit(\d)$/.exec(e.code)?.[1];
+  const idx = cards.findIndex((c) => c.f.id === selected);
+  const step = (by: number) => {
+    if (!cards.length) return;
+    const c = cards[(idx + by + cards.length) % cards.length];
+    select(c.f.id);
+    go(fitFrame(c.f, view));
+  };
   if (e.shiftKey && digit === '1') go(fitAll(boxes(), view));
   else if (e.shiftKey && digit === '2') go(zoomAt(cam, view.w / 2, view.h / 2, 1, boxes(), view));
-  else return false;
+  else if (e.shiftKey && digit === '0') go(find(selected) ? fitFrame(find(selected)!.f, view) : fitAll(boxes(), view));
+  else if (!e.shiftKey && (e.key === '+' || e.key === '=' || e.key === '-') && !fromFrame) go(zoomAt(cam, view.w / 2, view.h / 2, cam.z * (e.key === '-' ? 0.8 : 1.25), boxes(), view));
+  else if (e.key === 'Enter' && !e.shiftKey && selected && !entered) enter(selected);
+  else if (e.key === 'Tab' && !entered && cards.length) step(e.shiftKey ? -1 : 1);
+  else if (e.key === 'Escape') {
+    // Heard in the frame, which keeps an Esc its page used (a menu closing) to itself: this one is ours.
+    if (entered) leave();
+    else if (selected) select('');
+    else if (of && !coarse) location.href = of; // an empty board's Esc goes back to the page (⇧B does too: the page comes next)
+    else return false;
+  } else return false;
   return true;
 };
 addEventListener('keydown', (e) => {
-  if (e.defaultPrevented || typing(e)) return;
+  if (e.key === ' ') space = true;
+  if (e.defaultPrevented || typing(e) || (entered && document.activeElement instanceof HTMLIFrameElement)) return;
   if (press(e)) e.preventDefault();
 });
+addEventListener('keyup', (e) => e.key === ' ' && (space = false));
+void space;
 
 // ---------- what the frames and the widget see ----------
 Object.assign(window, {
   __labBoard: {
     busy: () => performance.now() - lastDown < 1500,
-    key: press,
+    key: (k: Parameters<typeof press>[0]) => press(k, true),
+    frame: (id: string) => find(id)?.frame,
     camera: () => ({ ...cam }),
+    selected: () => selected,
+    entered: () => entered,
     live: () => cards.filter((c) => c.frame).map((c) => c.f.id),
   },
 });
