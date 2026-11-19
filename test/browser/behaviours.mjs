@@ -151,10 +151,14 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
 
   // Text selection
   const lede = await p.locator('#p5').boundingBox();
-  // Comment mode is back first: after Escape the closed box is still going out, and with it comment mode is off for a
-  // moment (the page's own pointer shows while one is open), so a drag then selects text on purpose (CI said: text "a",
-  // no Shift, lab-shift off).
-  await until(p, () => document.documentElement.classList.contains('lab-pinning'), null, 2000);
+  // Comment mode is back first: while a comment box is open (or still going out) comment mode is off and the page's own
+  // pointer shows, so a drag then selects text on purpose. CI showed it: text "a" selected with lab-pinning off, 2 s
+  // after Escape, in Linux WebKit. Escape until the page is back in comment mode, and say so if it never is.
+  for (let i = 0; i < 4 && !(await p.evaluate(() => document.documentElement.classList.contains('lab-pinning'))); i++) {
+    await p.keyboard.press('Escape');
+    await until(p, () => document.documentElement.classList.contains('lab-pinning'), null, 600);
+  }
+  check(eng, 'comment mode is back before the selection check', await p.evaluate(() => document.documentElement.classList.contains('lab-pinning')), JSON.stringify(await p.evaluate(() => [...document.documentElement.classList].join(' '))));
   // What the press saw, so a failure says why (Linux WebKit only, now and then).
   await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { const c = document.documentElement.classList; const us = (n) => getComputedStyle(n).webkitUserSelect + '/' + getComputedStyle(n).userSelect; window.__press ??= { shift: e.shiftKey, labShift: c.contains('lab-shift'), pinning: c.contains('lab-pinning'), lit: c.contains('lab-lit'), us: us(document.getElementById('p5')) }; }, { capture: true, once: true }); window.__ss = []; addEventListener('selectstart', (e) => window.__ss.push(e.defaultPrevented ? 'blocked' : 'allowed'), true); });
   await p.keyboard.down('Shift');

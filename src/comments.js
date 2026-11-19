@@ -125,9 +125,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
   // The actions on selected words, beside the comment itself (labit.json or your settings.json `actions`, passed as
-  // data-actions; docs/settings.md): the built-in rewrite, cut and go, and your own { label, send, ask }. `spot` is for
-  // the regular dialog's row, which it doesn't have yet.
-  const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go'] };
+  // data-actions; docs/settings.md): the built-in rewrite, cut, go, remove and fix, and your own { label, send }. `words`
+  // is the selected words' dialog, `spot` the regular dialog on a spot or an area.
+  const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] };
   try {
     Object.assign(ACTIONS, JSON.parse(script?.dataset.actions || '{}'));
   } catch {}
@@ -198,7 +198,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const spotKey = () => `lab-spot:${S.page}`;
   // Kept with it: whether it is on selected words (the dialog, not the plain box) and the action picked. An older
   // spot, the bare anchor, comes back as a plain box.
-  const keepSpot = (anchor, d) => store.set(spotKey(), anchor ? JSON.stringify({ anchor, fluid: d?.fluid || undefined, mode: d?.mode }) : '');
+  const keepSpot = (anchor, d) => store.set(spotKey(), anchor ? JSON.stringify({ anchor, fluid: d?.fluid || undefined }) : '');
   // The unsent comment kept (words and spot), as a draft that comes back with no motion; none when nothing was typed.
   const keptDraft = () => {
     try {
@@ -759,7 +759,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
       fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
-      markQuote(quoted || (fluidState() === 'bar' && S.offer));
+      markQuote(quoted);
       S.quoted = quoted;
       S.shown = now;
       S.posted = null;
@@ -886,7 +886,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           d.hot = false;
           d.shown?.remove();
           d.shown = null;
-          if (!d.zone && d.c.anchor?.quote) markQuote(S.quoted || (fluidState() === 'bar' && S.offer));
+          if (!d.zone && d.c.anchor?.quote) markQuote(S.quoted);
         });
         pin.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -971,17 +971,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
       const float = el('div', { class: `float${draft.fluid ? '' : anim}` });
       const box = composer({
-        placeholder: draft.fluid && !coarse ? 'add a comment · / for actions' : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
+        placeholder: S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
         empty: '',
         nameFirst: false,
-        opened: Boolean(draft.fluid), // selected words: the comment is already picked and its box open (rewrite, cut, go one tap away)
+        opened: true, // the comment is already picked and its box open (the actions are one tap away)
         autofocus: !(draft.fluid && coarse),
         draftKey: `lab-typing:${S.page}:new`,
         onSubmit: async (name, said) => {
-          // rewrite: the box held the words to change; what goes is the change.
-          const exact = anchor.quote?.exact || '';
-          const text = draft.mode === 'rewrite' && exact && said !== exact ? `Rewrite “${exact}” → “${said}”` : said;
-          const { comment, edit } = await send({ name, text, anchor });
+          const { comment, edit } = await send({ name, text: said, anchor });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
           S.comments.push(comment);
           markSeen([comment]);
@@ -995,7 +992,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         },
       });
       float.append(el('div', { class: 'handle' }));
-      const row = draft.fluid ? quickRow(draft, box) : null;
+      const row = quickRow(draft, box);
       if (row?.children.length) float.append(row);
       const act = draft.act;
       draft.act = '';
@@ -1448,8 +1445,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Selecting words, and what it did before the one fluid element (fluid.ts) — all of it kept:
   //  1. Computers: Shift + drag (or Shift + double or triple click) selects words; a plain drag marks an area wherever it
   //     starts, a click pins, and the page's text can't be selected without Shift (it shows the I-beam cursor, html.lab-shift-cur).
-  //     Letting go shows the actions bar at the words' end (no chip first, Leo 18 Nov); clicking comment, Tab or
-  //     Enter, or just typing (F4) adds the box; rewrite, cut and go go as they do in the box.
+  //     Letting go opens the dialog at the words' end at once, the cursor in its box (Leo 18 Nov); rewrite and cut
+  //     go as they do in the box.
   //  2. Phones: words selected the phone's way got a "Comment" chip (selChip); a tap pinned on them. Kept: the bar is
   //     the fluid element, below the words' end, gone with the selection; comment grows it into the usual bottom sheet
   //     (sheets.ts: fromTap / revealDraft / leave all as before), with no keyboard until the box is tapped.
@@ -1459,9 +1456,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   //  6. Keys (KEYS): all as before, except while the bar shows, when a letter is the comment's first letter; Escape
   //     lets the bar go; a click elsewhere only lets it go (as with an open comment).
   //  7. The hint's words ("shift-drag to quote words", phones "hold to comment"): unchanged.
-  // S.offer: the words the bar is offering a comment on (computers), set as it shows.
   const dropOffer = () => {
-    S.offer = null;
     fluidDrop();
     markQuote(null);
   };
@@ -1540,94 +1535,60 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.openId = null;
     begin(anchor, true, act);
   };
-  // Computers, a drag over words let go: the actions bar, at the words' end; the box joins it (with the letter typed, if any).
+  // Computers, a drag over words let go: the dialog opens at once at the words' end, the cursor in its box (Leo 18 Nov).
   const offerSelection = () => {
-    const sel = getSelection?.();
-    const live = sel?.rangeCount ? rectsOf(sel.getRangeAt(0)) : []; // read before the anchor lets the selection go
     const got = selectionAnchor();
-    if (!got) return; // a double-click's first mouse-up asks again, after the second one took the selection: keep that offer
-    S.offer = got;
+    if (!got) return; // a double-click's first mouse-up asks again, after the second one took the selection: keep that dialog
     if (S.draft) {
       // an empty box a click, or the first click of a double-click, opened gives way
       S.draft = null;
       keepSpot(null);
-      render();
     }
-    markQuote(got); // the words stay lit while the bar shows (the page's own selection is let go)
-    const found = quoteRects(got);
-    // Words that can't be found again (they run over several paragraphs): the bar sits by the selection as it was.
-    fluidBar(found.length ? found : live, (first = '', act = '') => {
-      const anchor = S.offer;
-      S.offer = null;
-      if (!anchor) return;
-      if (first) store.set(`lab-typing:${S.page}:new`, first);
-      showAgain();
-      S.openId = null;
-      begin(anchor, true, act);
-    }, got.quote.exact.length);
+    showAgain();
+    S.openId = null;
+    begin(got, true);
   };
-  // The actions row of a comment on selected words (the box is the comment, already picked, so no button for it): rewrite (the
-  // words go in the box to be edited, sent as old → new), cut and go (sent at once, nothing to type: go is an ordinary comment on the
-  // words that says "go") and your own (labit.json `actions`): sent at once as their text, or with `ask` put in
-  // the box to finish. Picking the one that is on again goes back to the plain comment. Sent ones go through the box's own
-  // send, so a missing name is asked for there, a lab that can't be reached keeps them. Typing /
-  // first names an action by the start of its label (/c cut, /r rewrite, /g go): it lights up, Enter runs it; with no
-  // match Enter sends what was typed, as it is. Long quotes (the first 300 characters are kept) have no cut or rewrite: the
-  // words said aren't all there; nor do words the page no longer has (the row is dimmed then).
+  // The actions row of a comment on selected words or a spot (the box is the comment, so no button for it): every button sends at
+  // once on a click, nothing to type: rewrite sends `Rewrite: “…”` (the agent proposes the new wording), cut sends
+  // `Cut: “…”`, go is an ordinary comment that says "go", and your own (labit.json `actions`) send their text. They go
+  // through the box's own send, so a missing name is asked for there, a lab that can't be reached keeps them. ⌥ + 1…4 runs the nth button (holding ⌥ shows the numbers). Long quotes (the first 300 characters are kept)
+  // have no cut or rewrite: the words said aren't all there; nor do words the page no longer has (the row is dimmed then).
   const quickRow = (draft, box) => {
     const row = el('div', { class: 'quick' });
     const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
     const exact = draft.anchor.quote?.exact || '';
     const fill = (v) => ((field.value = v), field.dispatchEvent(new Event('input')));
-    let filled = ''; // what an action put in the box, which picking it again (or another) takes out again
-    const by = {};
-    for (const a of acts(exact.length, false)) {
+    for (const a of acts(draft.fluid ? exact.length : 1e9, false, draft.fluid ? ACTIONS.words : ACTIONS.spot)) {
       const k = actName(a);
-      const own = typeof a === 'string' ? null : a;
-      const b = (by[k] = actButton(a, draft.mode === k));
+      const b = actButton(a, false);
       b.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box
       b.addEventListener('click', () => {
-        const was = draft.mode;
         if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
-        const now = was === k ? undefined : k; // picked again: back to the comment
-        const sends = k === 'cut' || k === 'go' || (own && !own.ask);
-        if (filled && field.value === filled) fill('');
-        filled = '';
-        draft.mode = sends ? k : now;
-        keepSpot(draft.anchor, draft);
-        if (sends) {
-          const typed = /^\/\S*$/.test(field.value) ? '' : field.value.trim(); // a / naming this action is not text to add
-          fill(k === 'cut' ? `Cut: “${exact}”` : k === 'go' ? 'go' : `${own?.send}${typed ? ` ${typed}` : ''}`);
-          return /** @type {HTMLElement} */ (box.querySelector('.send')).click();
-        }
-        for (const x of row.children) x.classList.toggle('on', x === b && Boolean(now));
-        if (now) fill((filled = k === 'rewrite' ? exact : own?.send || ''));
-        field.focus({ preventScroll: true }); // the cursor at the end: a value set puts it there
+        const typed = field.value.trim();
+        const own = typeof a === 'string' ? null : a;
+        const said = own ? `${own.send}${typed ? ` ${typed}` : ''}` : k === 'rewrite' ? `Rewrite: “${exact}”` : k === 'cut' ? `Cut: “${exact}”` : k === 'go' ? 'go' : k === 'remove' ? 'Remove this' : 'Fix this';
+        fill(said);
+        /** @type {HTMLElement} */ (box.querySelector('.send')).click();
       });
       row.append(b);
     }
-    const named = () => {
-      const word = /^\/(\S*)$/.exec(field.value)?.[1].toLowerCase();
-      return word ? by[Object.keys(by).find((k) => k.toLowerCase().startsWith(word))] : undefined;
-    };
-    const light = () => {
-      const hit = named();
-      for (const x of Object.values(by)) x.classList.toggle('hl', x === hit);
-    };
-    field.addEventListener('input', light);
-    light(); // a box back after a reload may hold a / already
+    // ⌥ + 1…4 (by the key's place, so Option's own characters don't matter) runs the nth button; holding ⌥ shows the numbers.
+    const buttons = [...row.children];
+    buttons.forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
+    const alt = (on) => row.classList.toggle('alt', on);
     box.addEventListener('keydown', (e) => {
-      if (e.target !== field || e.isComposing) return;
-      const slash = /^\/\S*$/.test(field.value);
-      if (e.key === 'Escape' && slash) fill('');
-      else if (e.key === 'Enter' && !e.shiftKey && slash && named()) named().click();
-      else return;
+      if (e.key === 'Alt') alt(true);
+      const n = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey ? /^Digit([1-4])$/.exec(e.code)?.[1] : '';
+      if (!n || !buttons[+n - 1]) return;
       e.preventDefault();
       e.stopPropagation();
+      buttons[+n - 1].click();
     }, true);
+    box.addEventListener('keyup', (e) => e.key === 'Alt' && alt(false), true);
+    box.addEventListener('focusout', () => alt(false));
     return row;
   };
-  // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go offers them a comment (the bar).
+  // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go opens the comment dialog.
   document.addEventListener('mouseup', (e) => {
     if (S.on && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
@@ -1669,7 +1630,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const reflow = () => {
     cancelAnimationFrame(S.frame);
     S.frame = requestAnimationFrame(() => {
-      if (fluidState() === 'bar' && S.offer) fluidBar(quoteRects(S.offer)); // the bar follows its words
       if (fluidState() === 'dlg' && S.draft) fluidFollow(quoteRects(S.draft.anchor)); // so does the open dialog
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (S.draft || root.activeElement || S.grabbing) return;
