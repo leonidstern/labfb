@@ -361,6 +361,18 @@ test('labit publish puts a page in the one pages lab, starts it once, and publis
     assert.match(await (await fetch(link)).text(), /<h1>two<\/h1>/, 'updated');
     assert.equal(fs.readdirSync(path.join(home, '.labit/servers')).length, 1, 'one lab');
     assert.ok(fs.existsSync(path.join(home, 'lab-pages/heading-options.html')));
+    // A folder published under the name of the folder it sits in would be removed before it is copied: refused, untouched.
+    fs.mkdirSync(path.join(home, 'lab-pages/topic/sub'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'lab-pages/topic/sub/index.html'), '<!doctype html><h1>sub</h1>');
+    const inside = await new Promise((r) => execFile(process.execPath, [LAB, 'publish', path.join(home, 'lab-pages/topic/sub'), '--name', 'topic'], { cwd: home, env }, (err, out, errOut) => r({ code: err?.code, said: String(errOut) })));
+    assert.equal(inside.code, 1);
+    assert.match(inside.said, /inside one another/);
+    assert.ok(fs.existsSync(path.join(home, 'lab-pages/topic/sub/index.html')), 'the source is still there');
+    // The page's own file in the pages lab, published again through a link to that folder: nothing to copy, nothing removed.
+    fs.symlinkSync(path.join(home, 'lab-pages'), path.join(home, 'pages-link'));
+    const linked = await new Promise((r) => execFile(process.execPath, [LAB, 'publish', path.join(home, 'pages-link/heading-options.html')], { cwd: home, env }, (err, out) => r(String(out).split('\n')[0])));
+    assert.equal(linked, link);
+    assert.match(fs.readFileSync(path.join(home, 'lab-pages/heading-options.html'), 'utf8'), /<h1>two<\/h1>/);
   } finally {
     if (pid) process.kill(pid);
     await new Promise((r) => setTimeout(r, 300));
