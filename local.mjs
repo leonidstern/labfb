@@ -87,6 +87,11 @@ For the agent, from the project (any folder under it):
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
+  labit board new|add|move|pick|list ...   (experiment: flags.board in labit.json)
+      Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (the lab copies the page into
+      .lab/boards/<board>/a.html, b.html, c.html: edit those) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
+      frames; you only give an order. add <board> <frame|/page|file.html> [--label] [--width] [--after]; move <board> <frame>
+      --after <frame>; pick <board> <frame>; list [<board>].
 
 Files in .lab/ inside the folder: comments.md (every open comment as text), comments/ (the store, one file per
 page), archive/ (done threads with nothing new in 30 days), looked/ (last looks), server.json (port, keys, session;
@@ -111,7 +116,7 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'skill'];
+const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'mcp', 'settings', 'skill'];
 const { loadSettings, changedShortcuts, changedActions, savePersonal } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -159,7 +164,7 @@ if (pos[0] === 'settings') {
 }
 
 // The commands that answer and exit (publish, preview, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
-if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
+if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
@@ -209,7 +214,7 @@ const alreadyRunning = Boolean(await runningServer());
 
 // A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
 // Two labs on one project split its comments, and each one is another server running.
-if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'pin'].includes(pos[0])) {
+if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve', 'pin', 'board'].includes(pos[0])) {
   const home = runningLabs().find((lab) => ROOT.startsWith(lab.root + path.sep));
   if (home) {
     const url = `http://localhost:${home.port}/${path.relative(home.root, ROOT).split(path.sep).map(encodeURIComponent).join('/')}/`;
@@ -1850,9 +1855,19 @@ const labInfo = () => {
 };
 // GET /_lab/api/board?name=<n> or ?page=/x (the board of that page) is the board with every drawn frame placed (x, y; auto
 // when the lab chose them); no query lists the boards. PUT (this computer, JSON) replaces it: it carries the rev it was
-// made from (409 when the file moved on) and may not drop a frame.
+// made from (409 when the file moved on) and may not drop a frame. POST {action, …} is the agent's (labit board …): new,
+// add, move, pick, list; the answer is {text, board} (what the command prints), or 422 {error, text}.
 const boardApi = async (req, res, url) => {
   const json = (code, data) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+  if (req.method === 'POST') {
+    if (!isAgent(req) && !(isLoopback(req) && keyOk(req))) return plain(res, 403, 'forbidden');
+    const b = await sent(req);
+    const env = { root: ROOT, origin, proxied: Boolean(PROXY), open: (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length, titleOf: (p) => { const f = fileFor(boardPage(p)); return f ? titleOf(path.join(ROOT, f)) : ''; }, fileOf: (p) => fileFor(boardPage(p)) };
+    const out = (await import('./lib/boardact.ts')).act(String(b.action), b, env);
+    boardCache.clear();
+    watchBoards();
+    return json(out.error ? 422 : 200, out);
+  }
   const page = url.searchParams.get('page');
   const name = url.searchParams.get('name') || (page && B.nameOf(page));
   if (req.method === 'GET' && !name) return json(200, { boards: B.names(ROOT).flatMap((n) => boardGet(n) || []).map(({ name, of, frames }) => ({ name, of, frames: frames.length })) });
@@ -1873,6 +1888,8 @@ const boardApi = async (req, res, url) => {
   watchBoards();
   return json(200, { ...B.place(boardGet(name)), exists: true });
 };
+// A page as a board's page key spells it: /pricing.html is /pricing, / is /index.
+const boardPage = (p) => (p === '/' ? '/index' : p.replace(/\.html?$/i, '').replace(/\/$/, ''));
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
 const keyOk = (req) => {
   const got = Buffer.from(String(req.headers['x-lab-admin'] || ''));
