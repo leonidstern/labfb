@@ -35,9 +35,11 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
+import { inFrame, startFrame } from './widget/frame.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSelect, selectMode } from './widget/select.ts';
+import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
@@ -116,6 +118,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   bindSheets(W);
   bindFluid(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
+  // In a board's frame the widget draws nothing and binds nothing (src/widget/frame.ts).
+  if (inFrame()) return startFrame(script);
   // Parts loaded only when they are used: each is its own file beside this script (scripts/build-widget.mjs), its
   // styles with it. Asked for once; a module that can't load leaves the rest of the widget as it is.
   const parts = {};
@@ -195,6 +199,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.isAdmin = false;
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   S.on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
+  // A board page (src/board/): a tap selects a frame; 1 (comment mode) pins the board.
+  S.board = /^\/_board\/[^/]+$/.test(S.page);
   S.openId = null;
   S.closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
   S.cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
@@ -415,7 +421,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
 
   // Pointer (key 1 switches to it and back): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
   // Option-click still pins. 1 comment leaves it.
-  S.cursorMode = store.get('lab-cursor') === '1';
+  S.cursorMode = store.get('lab-cursor') === '1' || S.board; // a board opens as a pointer; 1 is the comment mode, and not remembered
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
   // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
   S.overControls = store.get('lab-over') === '1';
@@ -448,7 +454,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   const setCursor = (v) => {
     S.cursorMode = v;
-    store.set('lab-cursor', v ? '1' : '');
+    if (!S.board) store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
     goFace();
     setPinning();
@@ -571,7 +577,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // ---------- render ----------
   // Everyone sees done threads the same way (a guest's resolved pin vanished at once, with the answer in it unread):
   // done ones with nothing new step aside, and show done brings them back.
-  const threads = () => S.comments.filter((c) => !c.parent);
+  // A declaration, not a const: on a board page the live state arrives while the widget is still setting up, and the
+  // pill's line reads the threads then (it threw "Cannot access 'threads' before initialization" and the board stopped).
+  function threads() { return (S.comments || []).filter((c) => !c.parent); }
   const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;
@@ -681,7 +689,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
-    if (name === 'sectionBar') startSections(); // the section bar: what is new or updated on the page since you read it
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
   S.syncFlags = (on, reload) => {
@@ -1410,7 +1417,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: cha(t) (C was chat until 19 Nov; Leo: C is comment), ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    // Shift is only for next (Shift-W: the one before); ⇧D and the rest stay free.
+    // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
     if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || !e.shiftKey)) {
       const k = act;
       e.preventDefault();
@@ -2110,8 +2117,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     if (flag('select')) startFlag('select');
+    bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
-    for (const name of flagNames) if (flag(name)) startFlag(name); // select, sectionBar (lib/flags.ts)
+    startSections(); // the section bar: what is new or updated on the page since you read it
+    for (const name of flagNames) if (flag(name)) startFlag(name); // select (lib/flags.ts)
     scanForFramework();
     if (!S.components) {
       addEventListener('load', scanForFramework, { once: true });
@@ -2120,6 +2129,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
+  // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
+  // and where a pin sits), and the pins are drawn again as the camera moves.
+  if (S.board) {
+    Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
+    addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+  }
   startLive();
   // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads
   // labs & pages and opens it once it is there.
