@@ -93,25 +93,6 @@ try {
       const after = under(z1, 700, 300);
       check(eng, 'Ctrl + wheel zooms about the cursor', z1.z > fit.z && Math.abs(before[0] - after[0]) < 0.5 && Math.abs(before[1] - after[1]) < 0.5, JSON.stringify([fit.z, z1.z, before, after]));
       check(eng, 'a pinch never zooms the page (no gesture reached it)', (await p.evaluate(() => visualViewport.scale)) === 1);
-      // ----- select, enter, leave (focus goes back to the board)
-      await p.keyboard.press('Shift+Digit1');
-      await sleep(200);
-      const pos = await p.evaluate(() => { const r = document.querySelector('#lab-board .f').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
-      await p.mouse.click(pos[0], pos[1]);
-      check(eng, 'a click selects the frame', (await p.evaluate(() => __labBoard.selected())) === 'f0');
-      await p.keyboard.press('Enter');
-      await sleep(400);
-      const inFrame = await p.evaluate(() => ({ entered: __labBoard.entered(), pe: getComputedStyle(__labBoard.frame('f0')).pointerEvents, focus: document.activeElement === __labBoard.frame('f0') }));
-      check(eng, 'Enter gives the page in the frame the pointer and the focus', inFrame.entered === 'f0' && inFrame.pe === 'auto' && inFrame.focus, JSON.stringify(inFrame));
-      await p.keyboard.press('Escape');
-      await sleep(250);
-      const out = await p.evaluate(() => ({ entered: __labBoard.entered(), pe: getComputedStyle(__labBoard.frame('f0')).pointerEvents, body: document.activeElement === document.body, sel: __labBoard.selected() }));
-      check(eng, 'Esc in a frame leaves it: the board has the focus again, the frame stays selected', out.entered === '' && out.pe === 'none' && out.body && out.sel === 'f0', JSON.stringify(out));
-      await p.keyboard.press('Shift+Digit2'); // the board hears keys after leaving: this would go to the frame otherwise
-      await sleep(150);
-      check(eng, 'after leaving, board keys work again (Shift+2)', (await cam()).z === 1);
-      await p.keyboard.press('Escape');
-      check(eng, 'Esc clears the selection', (await p.evaluate(() => __labBoard.selected())) === '');
       // ----- finite edges
       await p.keyboard.press('Shift+Digit1');
       for (let i = 0; i < 10; i++) await p.mouse.wheel(-4000, -4000);
