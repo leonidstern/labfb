@@ -189,7 +189,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
   // A board page (src/board/): pins on a board come later, so comments stay off here and its clicks are the board's.
   S.board = /^\/_board\/[^/]+$/.test(S.page);
-  if (S.board) S.on = false;
   S.openId = null;
   S.closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
   S.cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
@@ -252,7 +251,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const motions = $('.motions');
   const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
   const overBtn = $('.over-btn');
-  if (S.board) toggleBtn.style.display = overBtn.style.display = 'none'; // no pins on a board yet
   const tabTitle = { base: '' };
   // Done pins show unless hidden (Leo, 17 Nov): closed ones are faded on the page, and D hides them.
   S.showDone = store.get('lab-hide-done') !== '1';
@@ -393,7 +391,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
 
   // Pointer (key 1 switches to it and back): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
   // Option-click still pins. 1 comment leaves it.
-  S.cursorMode = store.get('lab-cursor') === '1';
+  S.cursorMode = store.get('lab-cursor') === '1' || S.board; // a board opens as a pointer (a tap selects a frame); 1 is the comment mode, and not remembered
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
   // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
   S.overControls = store.get('lab-over') === '1';
@@ -426,7 +424,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   const setCursor = (v) => {
     S.cursorMode = v;
-    store.set('lab-cursor', v ? '1' : '');
+    if (!S.board) store.set('lab-cursor', v ? '1' : '');
     goBtn.classList.toggle('cursor', v);
     goFace();
     setPinning();
@@ -1047,7 +1045,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     setTimeout(() => (hint.hidden = true), 5000);
   };
   const setOn = (value) => {
-    S.on = value && !S.board;
+    S.on = value;
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
@@ -1940,6 +1938,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
+  // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
+  // and where a pin sits), and the pins are drawn again as the camera moves.
+  if (S.board) {
+    Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
+    addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+  }
   startLive();
   if (LABS) bindSwitcher({
       root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {

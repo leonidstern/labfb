@@ -84,6 +84,7 @@ const card = (c: Card) => {
 const draw = () => {
   world.style.transform = `scale(${cam.z}) translate(${cam.x}px,${cam.y}px)`;
   world.style.setProperty('--iz', String(1 / cam.z));
+  dispatchEvent(new Event('lab-board-moved')); // the widget draws the pins again
   clearTimeout(hashTimer);
   hashTimer = setTimeout(() => {
     try {
@@ -101,7 +102,8 @@ const go = (next: Cam, user = true, soft = false) => {
   const c = clamp(next, boxes(), view);
   const was = cam.z;
   // Past an edge a drag gives way half as far, and the board settles back when it stops.
-  cam = soft ? { z: c.z, x: Math.abs(next.x - c.x) > 0 ? cam.x + (next.x - cam.x) * 0.4 : c.x, y: Math.abs(next.y - c.y) > 0 ? cam.y + (next.y - cam.y) * 0.4 : c.y } : c;
+  const give = (v: number, to: number, from: number) => (v === to ? to : to + Math.max(-120 / c.z, Math.min(120 / c.z, from + (v - from) * 0.4 - to))); // never far
+  cam = soft ? { z: c.z, x: give(next.x, c.x, cam.x), y: give(next.y, c.y, cam.y) } : c;
   if (user) moved = true;
   if (user && (!soft || Math.abs(c.z - was) > 1e-6)) focus = false;
   draw();
@@ -392,6 +394,7 @@ addEventListener('pointermove', (e) => {
     }
     [f.x, f.y] = [nx, ny];
     Object.assign(down.mv.box.style, { left: `${nx}px`, top: `${ny}px` });
+    dispatchEvent(new Event('lab-board-moved'));
   } else if (down?.far) go(panBy(cam, dx, dy), true, true);
 }, true);
 const up = (e: PointerEvent) => {
@@ -404,6 +407,8 @@ const up = (e: PointerEvent) => {
   if (d.mv && d.far && d.before && board) return void save(copy(board.frames), d.before);
   if (d.far && !d.mv && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
   if (d.far || e.type === 'pointercancel') return;
+  const widget = (window as unknown as { __labBoardWidget?: { pinning: () => boolean; place: (x: number, y: number) => void } }).__labBoardWidget;
+  if (widget?.pinning()) return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
   // A tap selects the frame under it (or nothing); a second one close by and soon enters it.
   const again = performance.now() - tap.at < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24;
   tap = { at: performance.now(), x: e.clientX, y: e.clientY };
@@ -451,9 +456,8 @@ const step = (by: number) => {
 const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
   const [cmd, sel] = [e.metaKey || e.ctrlKey, find(selected)];
   if (cmd && !e.altKey && !e.shiftKey && !entered && editable()) {
-    if (e.code === 'KeyZ' || (e.code === 'KeyD' && sel)) {
-      if (e.code === 'KeyZ') undoLast();
-      else dup(selected);
+    if (e.code === 'KeyZ') {
+      undoLast();
       return true;
     }
   }
@@ -482,6 +486,13 @@ const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 
   } else return false;
   return true;
 };
+// ⌘D / Ctrl D duplicates the selected frame. In capture: Control-D is also the widget's "next new comment".
+addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyD' && selected && !entered && editable() && !typing(e)) {
+    eat(e);
+    dup(selected);
+  }
+}, true);
 addEventListener('keydown', (e) => {
   if (e.key === ' ') space = true;
   if (e.defaultPrevented || typing(e) || (entered && document.activeElement instanceof HTMLIFrameElement)) return;
@@ -497,6 +508,19 @@ Object.assign(window, {
     busy: () => performance.now() - lastDown < 1500,
     key: (k: Parameters<typeof press>[0]) => press(k, true),
     frame: (id: string) => find(id)?.frame,
+    // Where a point on the screen is on the board: the frame under it (else the nearest), by px from its top left, and the point.
+    anchor: (sx: number, sy: number) => {
+      const [wx, wy] = [Math.round(sx / cam.z - cam.x), Math.round(sy / cam.z - cam.y)];
+      const gap = (c: Card) => Math.hypot(Math.max(c.f.x - wx, 0, wx - c.f.x - c.f.w), Math.max(c.f.y - wy, 0, wy - c.f.y - c.f.h));
+      const f = [...cards].sort((a, b) => gap(a) - gap(b))[0]?.f;
+      return { kind: 'board', board: name, ...(f && { frame: f.id, fx: wx - f.x, fy: wy - f.y }), bx: wx, by: wy, selector: '', x: 0, y: 0, docX: 0, docY: 0, width: view.w, height: view.h };
+    },
+    // Where a board pin is on screen: with its frame, else at the point it was put.
+    spot: (a: { frame?: string; fx?: number; fy?: number; bx?: number; by?: number }) => {
+      const f = cards.find((c) => c.f.id === a.frame)?.f;
+      const [wx, wy] = f && a.fx !== undefined ? [f.x + a.fx, f.y + (a.fy || 0)] : [a.bx || 0, a.by || 0];
+      return { left: (wx + cam.x) * cam.z, top: (wy + cam.y) * cam.z, zone: null };
+    },
     camera: () => ({ ...cam }),
     selected: () => selected,
     entered: () => entered,
