@@ -30,7 +30,7 @@ export function drawList() {
   W.paintWho?.(); // the pill's words and a phone sheet's line follow the agent's work
   paintLines();
   W.goBtn.hidden = !W.S.on;
-  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, '+'), W.el('kbd', { 'aria-hidden': 'true' }, [W.KEYS.comment, W.KEYS.pointer].join('/')));
+  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, '+'), W.el('kbd', { 'aria-hidden': 'true' }, W.KEYS.comment));
   W.goFace();
   W.goBtn.classList.toggle('cursor', W.S.cursorMode);
   W.goBtn.setAttribute('aria-pressed', String(!W.S.cursorMode));

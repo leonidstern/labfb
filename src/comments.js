@@ -120,7 +120,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', pointer: '3', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', done: 'd', reply: 'r', resolve: 'e' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -218,7 +218,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <style>${styles}</style>
     <div class="scrim"></div>
     <div class="layer"></div>
-    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment · ${KEYS.pointer} pointer · ${KEYS.toggle} hide</div>
+    <div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="replying" hidden></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -228,7 +228,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       <button class="secondary new-next" type="button" hidden aria-label="next new comment">›</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
-      <button class="secondary go-btn" type="button" hidden title="1 comment · 3 pointer: clicks are the page's own">mode</button>
+      <button class="secondary go-btn" type="button" hidden title="1 switches between comment and pointer (clicks are the page's own)">mode</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
@@ -389,7 +389,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
   }, 10000);
 
-  // Pointer (3): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
+  // Pointer (key 1 switches to it and back): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
   // Option-click still pins. 1 comment leaves it.
   S.cursorMode = store.get('lab-cursor') === '1';
   // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
@@ -593,13 +593,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (!b.hidden) first = false;
     }
   }
-  // The switch shows what a click will place: 1 your comment pin (your initial), 3 nothing (the pointer).
+  // The switch shows what a click will place: your comment pin (your initial) or nothing (the pointer); key 1 (or a click) flips it.
   function goFace() {
     const gp = goBtn.querySelector('.gp');
     if (gp) gp.textContent = initial(store.get('lab-name')) || '+';
     // Read out as what a click places, not the letter on it.
     goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (pointer)' : 'a comment'}`);
-    goBtn.setAttribute('aria-keyshortcuts', [KEYS.comment, KEYS.pointer].join(' '));
+    goBtn.setAttribute('aria-keyshortcuts', KEYS.comment);
   }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
@@ -1149,17 +1149,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (typed?.value.trim()) return typed.closest('.card, .float')?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: ms('base'), easing: ease() });
       return stepNew(e.shiftKey ? -1 : 1);
     }
-    // 1 comment, 3 pointer (2 is free): like picking a tool (the keys are settings).
+    // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
-    if (S.on && ['comment', 'pointer'].includes(act) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    if (S.on && act === 'comment' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
-      setCursor(act === 'pointer');
+      setCursor(!S.cursorMode);
       return;
     }
     // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
-    // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment,
-    // 3 pointer, M hide, D show/hide done. With a thread open: R reply, E resolve.
+    // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment / pointer,
+    // M hide, D show/hide done. With a thread open: R reply, E resolve.
     if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['chat', 'next', 'done', 'reply', 'resolve'].includes(act)) {
       const k = act;
       e.preventDefault();

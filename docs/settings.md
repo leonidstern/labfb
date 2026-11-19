@@ -147,8 +147,7 @@ win over yours, key by key.
 | Action | Default | Does |
 | --- | --- | --- |
 | `toggle` | `m` | Show or hide comments |
-| `comment` | `1` | A click places a comment |
-| `pointer` | `3` | A click is just a click |
+| `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
 | `chat` | `c` | Open the chat |
 | `next` | `w` | The next new comment (with Shift: the one before) |
 | `done` | `d` | Hide or show done threads (shown, faded, at first) |
