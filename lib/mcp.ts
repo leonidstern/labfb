@@ -145,7 +145,12 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       const dir = project(a);
       const file = path.join(labAbove(dir) || dir, '.lab', 'comments.md');
       if (!fs.existsSync(file)) return text(`No lab in ${dir}. Start one there: ${CMD} (or pass \`dir\`, the project folder)`, true);
-      return text(fs.readFileSync(file, 'utf8'));
+      // The file's first lines are written for the command line (`labit wait`, `wait --pages`): here they name the tools.
+      const md = fs.readFileSync(file, 'utf8')
+        .replace(/Claude: wait with `[^`]*`, answer with `[^`]*`\./, 'Claude: wait with the `wait` tool, answer with the `reply` tool.')
+        .replace(/(Those pins wait until a session listens there: )`[^`]*`/, '$1call the `wait` tool (it listens on every page)')
+        .replace(/^to answer: .*$/gm, 'to answer: the `reply` tool (id, text)');
+      return text(md);
     }
     if (name === 'reply') {
       if (typeof a.id !== 'string' || !a.id.trim()) return text('`id` is required: the comment id that `comments` shows.', true);
@@ -181,12 +186,13 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     if (a.model !== undefined && typeof a.model !== 'string') return text('`model` must be a name, e.g. Sonnet 5.5.', true);
     const s = Math.min(Math.max(Math.round(a.seconds ?? 50), 5), 1500);
     const token = m.params?._meta?.progressToken;
-    let n = 0;
-    const tick = token === undefined ? null : setInterval(() => send({ method: 'notifications/progress', params: { progressToken: token, progress: ++n * 20, total: s, message: 'Waiting for the next pin' } }), 20000);
     // The wait is this process's own request to the lab (no child process): a cancel or the client going away aborts
     // it, and the lab sees the wait end at once.
     const lab = findLab(project(a));
     if (!lab) return text(`No lab in ${project(a)}. Start one there: ${CMD} (or pass \`dir\`, the project folder)`, true);
+    // Started only once nothing above can answer first: progress must stop with the answer.
+    let n = 0;
+    const tick = token === undefined ? null : setInterval(() => send({ method: 'notifications/progress', params: { progressToken: token, progress: ++n * 20, total: s, message: 'Waiting for the next pin' } }), 20000);
     const stop = new AbortController();
     running.set(m.id, stop);
     try {

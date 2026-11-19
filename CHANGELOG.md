@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Fixed, in front of a dev server and for agents: a redirect to the dev server's own address now stays on the lab (it took you off it, to a page with no comments); closing a tab ends its event stream at the dev server too (it was held open); more than 50 styles or pictures saved in one go reload the page (the rest were left stale); a lab that crashed no longer leaves a file that sends `wait` and `pin` to whichever lab has its port now; a wait cancelled in its first moment is no longer kept as listening; the MCP `wait` sends no progress after refusing a folder with no lab, and `comments` names the tools, not shell commands.
 - A long comment's scrollbar sits at the box's right edge. With your name already set the box keeps one row (text, name, arrow); once the words scroll, the name and arrow drop to a row of their own so the scrollbar is no longer left of them.
 - Holding Shift over words (to quote them) shows the drawn I-beam with a low ink band at its foot, in place of the I-beam with a green pin tip.
 - One key for the mode: `1` (or a click on the switch) toggles between comment and pointer: once for the pointer, again for the comment. The switch reads "(1)" and the hint "1 comment / pointer". Key `3` and the `pointer` shortcut are gone; a `pointer` key left in a settings file is ignored without a message.

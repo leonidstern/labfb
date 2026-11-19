@@ -108,11 +108,14 @@ test('a cancel for a request already answered is ignored: the same id used again
   s.proc.stdin.end();
 });
 
-test('a wait refused for a bad argument sends no progress after its answer', { timeout: 40000 }, async () => {
+test('a wait refused for a bad argument, or for a folder with no lab, sends no progress after its answer', { timeout: 40000 }, async () => {
   const s = start();
   s.write({ id: 1, method: 'tools/call', params: { name: 'wait', arguments: { seconds: 30, dir: 5 }, _meta: { progressToken: 'p1' } } });
   const r = await s.answer(1);
   assert.equal(r.result.isError, true);
+  // The same for a folder with no lab in it: refused after the arguments were read.
+  s.write({ id: 2, method: 'tools/call', params: { name: 'wait', arguments: { seconds: 30, dir: os.tmpdir() }, _meta: { progressToken: 'p2' } } });
+  assert.match((await s.answer(2)).result.content[0].text, /No lab in/);
   await sleep(21500); // past the first 20 s progress tick
   assert.deepEqual(s.msgs.filter((m) => m.method === 'notifications/progress').map((m) => m.params.progressToken), [], 'no progress for an answered request');
   s.proc.stdin.end();

@@ -1168,7 +1168,7 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (event, file) => {
       const known = pages()[0] ?? [...looked.keys()][0];
       if (known) fileFor(known); // listed again at once, so a renamed page's comments and looks go with it now
     }
-    const hotOnly = !otherSaved.size && hotSaved.size > 0;
+    const hotOnly = !otherSaved.size && hotSaved.size > 0 && hotSaved.size <= 50; // more than the list holds: a reload
     const hot = [...hotSaved].slice(0, 50).map(([p, kind]) => ({ path: p, kind }));
     // A burst too big to list (a branch switch, a build): no list, so every page reloads, as it always did.
     const changed = otherSaved.size && otherSaved.size <= 50 ? [...otherSaved] : null;
@@ -1937,6 +1937,8 @@ const handler = async (req, res) => {
       for (const [id, d] of unacked) if (d.who === w.who && d.key === key) takeBack(id);
       claim(want);
       const got = await unseen(scopeOf(w), w.who);
+      // Cancelled while that was read: its close has come and gone, so nothing below would ever take it off the list.
+      if (res.destroyed) return;
       recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
       if (got?.text) {
         remember(w);

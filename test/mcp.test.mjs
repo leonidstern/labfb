@@ -68,6 +68,9 @@ test('comments shows a pin, reply answers on it', async () => {
   await new Promise((r) => setTimeout(r, 300));
   const list = await ask('tools/call', { name: 'comments', arguments: {} });
   assert.match(list.result.content[0].text, /make the title red/);
+  // The file's first line is written for the command line; here it names the tools.
+  assert.match(list.result.content[0].text, /wait with the `wait` tool, answer with the `reply` tool/);
+  assert.doesNotMatch(list.result.content[0].text, / reply <id> | wait --pages |local\.mjs/);
   const r = await ask('tools/call', { name: 'reply', arguments: { id, text: 'Done: red', resolve: true } });
   assert.ok(!r.result.isError, r.result.content[0].text);
   const all = await (await fetch(B + '/_lab/api/comments?page=/index')).json();
