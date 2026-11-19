@@ -107,7 +107,7 @@ whose each is: `flags  select (yours)`.
 | --- | --- |
 | `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
 
-`sectionBar` was kept, so the section bar is always on a page with two or more sections; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
+`sectionBar` was kept, so the section bar has no switch: it shows by itself on a lab page with three or more sections, and `<meta name="lab-sections" content="on|off">` (or `data-lab-sections` on `<html>` or `<body>`) says so for one page; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.
