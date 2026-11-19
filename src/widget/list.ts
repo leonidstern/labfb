@@ -132,9 +132,10 @@ export const lineWords = () => {
   const words = [text, waiting && `${waiting} waiting`].filter(Boolean).join(' · ');
   return words && `${W.S.agent || 'Claude'} · ${words}`;
 };
+// Off (Leo, 19 Nov: "in comment waiting queue in top near new - remove it, it disrupts modal"): the line pushed the
+// sheet's content down as it came and went. The pin's own ring and the chat still say where the agent is.
 export function paintLines() {
-  const words = lineWords();
-  for (const n of W.root.querySelectorAll('.agentline')) Object.assign(n, { hidden: !words, textContent: words });
+  for (const n of W.root.querySelectorAll('.agentline')) Object.assign(n, { hidden: true, textContent: '' });
 }
 
 export const stepNew = (dir) => {
