@@ -633,7 +633,28 @@ const agentText = async (page) => {
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   const file = fileFor(page);
   const lines = [file && `file: ${file}`, ...lookLines(page, file)].filter(Boolean);
-  return lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
+  const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
+  return B ? boardText(page, out) : out;
+};
+// On a board (flag board): a board's text is its frames then its pins; a scratch frame's has one line saying which frame
+// of which board it is; a pin made on a board says which frame it is near or was made on, with that frame's label and size.
+const boardText = async (page, text) => {
+  if (!page.startsWith('/_board/') && !/^(near|seen on):/m.test(text)) return text;
+  const [, , name, frame] = page.split('/');
+  const act = await import('./lib/boardact.ts');
+  const b = page.startsWith('/_board/') && boardGet(name);
+  if (b) text = text.replace(/^page: .*$/m, `page: ${origin}/_lab/board/${name}${frame ? `/${frame}` : ''}`);
+  const of = (board) => (board.of ? fileFor(boardPage(board.of.split('#')[0])) : null);
+  const f = b && frame && b.frames.find((g) => g.id === frame);
+  if (f) text = text.replace(/^(page: .*)$/m, `$1\n${act.frameLine(b, f, of(b))}`);
+  else if (b && !frame) text = `${act.text(b, { origin, file: of(b), pins: (g) => (g.src.startsWith('/_lab/') ? commentsOf(`/_board/${name}/${g.id}`).filter((c) => !c.parent && !c.resolved).length : 0) })}\n${text}`;
+  return text.replace(/^(near: frame |seen on: board ([^,\n]+), frame )([a-z][a-z0-9]*)(.*)$/gm, (all, lead, named, id, tail) => {
+    const bd = boardGet(named || name);
+    const g = bd?.frames.find((x) => x.id === id);
+    if (!g) return all;
+    const more = lead === 'near: frame ' && g.state === 'picked' ? `\n${act.frameLine(bd, g, of(bd)).split('\n')[1]}` : '';
+    return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${g.src.startsWith('/_lab/') ? `${id}.html` : g.src} at ${g.w}×${g.h})${tail}${more}`;
+  });
 };
 // Who last looked (the last three, newest first), and whether before or after the file's last save (what they saw
 // may be older than the agent's latest edit): `looked: Leo 14:02 (before the last save)`. Then, for an HTML file, the
@@ -1218,6 +1239,7 @@ try {
 // .lab/boards is watched by the lab itself: the project watcher skips dot folders and is off behind a dev server. A saved
 // variant is a hot update of that frame's own page alone; a changed board file is a new `boards` count (with which),
 // and neither touches `files`, so no page reloads for them.
+let boardList = null; // every stored board, kept like the cache below
 const boardCache = new Map(); // name -> the stored board and when it was written (cleared when its file changes)
 const boardGet = (name) => {
   if (!boardCache.has(name)) {
@@ -1243,6 +1265,7 @@ const watchBoards = () => {
       if (!m) return; // a half-written .tmp, a file that is not a board's
       names.add(m[1]);
       boardCache.delete(m[1]);
+      boardList = null;
       if (m[2]) hot.add(`/_lab/board/${m[1]}/${m[2]}`);
       clearTimeout(timer);
       timer = setTimeout(() => {
@@ -1286,13 +1309,21 @@ const claimed = () => {
   for (const w of waiters) for (const p of w.pages || []) claims.set(p, now);
   return new Set([...claims].filter(([, at]) => now - at < CLAIM_MS).map(([p]) => p));
 };
-const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed().has(p)));
+// A wait on a board, or on the page it is about, also hears that board's pins and its variants' (flag board).
+const covers = (listed, key) => {
+  if (listed.includes(key)) return true;
+  const board = B && /^\/_board\/([^/]+)/.exec(key)?.[1];
+  const of = board && boardGet(board)?.of;
+  return Boolean(board) && (listed.includes(`/_board/${board}`) || listed.includes(`/_lab/board/${board}`) || Boolean(of && listed.includes(boardPage(of.split('#')[0]))));
+};
+const scopeOf = (w) => (w.pages ? pages().filter((p) => covers(w.pages, p)) : pages().filter((p) => !covers([...claimed()], p)));
 // Which pages a comment is heard on right now, for the page to say so: a wait for every page hears all of them but
 // the ones another session has claimed; a wait with --page hears its own. Without this, a lab with one listener on
 // /a told every other page "talking to Claude" while their pins went nowhere (Leo, 18 Nov).
 const heard = () => {
   const open = [...waiters, ...recent];
   const named = new Set(open.flatMap((w) => w.pages || []));
+  if (B) for (const b of boardList ??= B.names(ROOT).flatMap((n) => boardGet(n) || [])) if (covers([...named], `/_board/${b.name}`)) for (const k of [`/_board/${b.name}`, ...b.frames.filter((f) => f.src.startsWith('/_lab/')).map((f) => `/_board/${b.name}/${f.id}`)]) named.add(k);
   const all = open.some((w) => !w.pages);
   return { all, pages: [...named], except: all ? [...claimed()].filter((p) => !named.has(p)) : [] };
 };
@@ -1301,7 +1332,7 @@ const remember = (w) => {
 };
 // Who hears this page right now: a wait that named it, else one that named none. Null means a comment here waits
 // until someone listens -- worth saying out loud on a page that has something waiting.
-const listenerOf = (key) => (waiters.find((w) => w.pages?.includes(key)) || waiters.find((w) => !w.pages))?.label || null;
+const listenerOf = (key) => (waiters.find((w) => w.pages && covers(w.pages, key)) || waiters.find((w) => !w.pages))?.label || null;
 // Threads still waiting on someone: nobody answered, or the newest word in them is a person's. An answered thread
 // left unresolved is bookkeeping, not work; counting those made a day-old page read as a backlog of 52 when one
 // comment was waiting, and nothing that cries wolf like that gets read twice.
@@ -1352,9 +1383,15 @@ const pagesChanged = () => {
 };
 setInterval(pagesChanged, Math.min(60000, TAB_TTL)).unref();
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
-async function threadsText(page, threads) {
+const boardTold = new Map(); // session + board -> the frames text it was given (said again only when it changes)
+async function threadsText(page, threads, who = '') {
   const text = await agentText(page);
-  const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file|unseen by .*):/.test(l)).join('\n');
+  const [frames, rest] = text.startsWith('# Board') ? text.split(/\n(?=# Comments)/) : ['', text];
+  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked|unseen by .*):/.test(l)).join('\n');
+  if (frames && boardTold.get(`${who}\n${page}`) !== frames) {
+    boardTold.set(`${who}\n${page}`, frames);
+    head = `${frames.trim()}\n${head}`;
+  }
   // Lean: details an agent rarely needs (computed looks, colours, window size, the CSS path) stay in the full text at
   // /_lab/agent/<page>; the pin's words, element, text, section and file stay here.
   const RARE = /^(looks|colours|viewport|selector \(at comment time\)):/;
@@ -1435,7 +1472,7 @@ async function unseen(scope = pages(), who = '') {
   const replies = fresh.filter(known);
   const whole = fresh.filter((f) => !known(f));
   for (const page of new Set(whole.map((f) => f.page))) {
-    const block = await threadsText(page, [...new Set(whole.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
+    const block = await threadsText(page, [...new Set(whole.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))], who);
     if (block) {
       blocks.push(block.text);
       block.ids.forEach((id) => sent.add(`${page}\n${id}`));
@@ -1865,7 +1902,9 @@ const boardApi = async (req, res, url) => {
     const env = { root: ROOT, origin, proxied: Boolean(PROXY), open: (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length, titleOf: (p) => { const f = fileFor(boardPage(p)); return f ? titleOf(path.join(ROOT, f)) : ''; }, fileOf: (p) => fileFor(boardPage(p)) };
     const out = (await import('./lib/boardact.ts')).act(String(b.action), b, env);
     boardCache.clear();
+    boardList = null;
     watchBoards();
+    if (out.picked) await pickedPin(out.board, out.picked);
     return json(out.error ? 422 : 200, out);
   }
   const page = url.searchParams.get('page');
@@ -1885,8 +1924,23 @@ const boardApi = async (req, res, url) => {
   if (typeof next === 'string') return json(422, { error: next });
   B.save(ROOT, next);
   boardCache.delete(name);
+  boardList = null;
   watchBoards();
   return json(200, { ...B.place(boardGet(name)), exists: true });
+};
+// A pick reaches the agent as a pin from the person on the board, once (a pick that changes nothing posts nothing).
+const pickedPin = async (board, frame) => {
+  const res = await api.POST(new Request('http://localhost/api', {
+    method: 'POST',
+    headers: { host: 'localhost', 'content-type': 'application/json', 'x-lab-agent': '0', 'x-forwarded-for': '127.0.0.1', 'x-lab-stamp-key': process.env.LAB_STAMP_KEY, 'x-lab-stamp': encodeURIComponent(JSON.stringify({ from: 'this computer' })) },
+    body: JSON.stringify({ page: `/_board/${board.name}`, name: myName || 'Someone', text: `Picked ${frame.id}`, anchor: { kind: 'board', board: board.name, frame: frame.id, fx: 0, fy: 0 }, nonce: `pick-${board.rev}-${board.name}-${frame.id}`.slice(0, 40) }),
+  }));
+  if (!res.ok) return;
+  const { comment } = await res.json();
+  announce(`/_board/${board.name}`, comment);
+  persist(`/_board/${board.name}`).catch((e) => console.error('[lab] could not save comments:', e.message));
+  broadcast();
+  wake();
 };
 // A page as a board's page key spells it: /pricing.html is /pricing, / is /index.
 const boardPage = (p) => (p === '/' ? '/index' : p.replace(/\.html?$/i, '').replace(/\/$/, ''));

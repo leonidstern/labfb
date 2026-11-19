@@ -264,3 +264,109 @@ test('flag off: the command says how to turn boards on', async () => {
   assert.notEqual(r.code, 0);
   assert.match(r.out, /Boards are off/);
 });
+
+// ---------- what an agent reads ----------
+import { spawn as spawnProc } from 'node:child_process';
+const pin = (page, body) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page, name: 'Leo', ...body }) }).then((r) => r.json());
+const text = (page) => fetch(`${B}/_lab/agent${page}`).then((r) => r.text());
+const wait = (dir, ...args) => new Promise((resolve) => execFile(process.execPath, [LAB, 'wait', '--timeout', '8', ...args], { cwd: dir, env: process.env }, (e, out, err) => resolve(out + err)));
+
+test('a pin on a variant: its page text names the frame, the board and the file', async () => {
+  const made = await cli(DIR, 'new', 'Hero', '--of', '/pricing', '--variants', '2');
+  const name = /# Board (\S+)/.exec(made.out)[1];
+  await cli(DIR, 'add', name, 'a', '--label', 'price first');
+  const c = await pin(`/_board/${name}/a`, { text: 'bigger price', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5, width: 1280, height: 800 } });
+  assert.ok(c.comment);
+  const t = await text(`/_board/${name}/a`);
+  assert.match(t, new RegExp(`^frame: a of board ${name} \\(variant of /pricing, 1280×800, "price first", beside b\\)$`, 'm'));
+  assert.match(t, new RegExp(`^file: \\.lab/boards/${name}/a\\.html$`, 'm'));
+  assert.match(t, /^page: http:\/\/localhost:\d+\/_lab\/board\/[^/]+\/a$/m);
+});
+
+test('a board pin keeps signed numbers; the board text lists frames in order, then the pin near its frame', async () => {
+  const made = await cli(DIR, 'new', 'Set', '--of', '/pricing', '--widths', '390,1280');
+  const name = /# Board (\S+)/.exec(made.out)[1];
+  await cli(DIR, 'add', name, 'b', '--label', 'Wide');
+  const c = await pin(`/_board/${name}`, { text: 'these should share a header', anchor: { kind: 'board', frame: 'b', fx: -120, fy: 40, bx: -1640, by: 7, board: name } });
+  assert.equal(c.comment.anchor.kind, 'board');
+  assert.deepEqual([c.comment.anchor.fx, c.comment.anchor.fy, c.comment.anchor.bx], [-120, 40, -1640]);
+  const t = await text(`/_board/${name}`);
+  assert.match(t, new RegExp(`^# Board ${name} · Set\\nurl: http://localhost:\\d+/_lab/board/${name}\\nof: /pricing \\(file pricing\\.html\\)\\n`));
+  assert.match(t, /\na {2}\/pricing {2}390×844\n/);
+  assert.match(t, /\nb {2}\/pricing {2}1280×800 {2}"Wide"\n/);
+  assert.match(t, /^on: the board, not a page$/m);
+  assert.match(t, /^near: frame b "Wide" \(\/pricing at 1280×800\), 120 px left of its left edge, 40 px below its top$/m);
+  assert.doesNotMatch(t, /selector \(at comment time\)|where on element/);
+  // a pin on a page, made on a board
+  const p = await pin('/cart', { text: 'x', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5, board: name, frame: 'a' } });
+  assert.match(await text('/cart'), new RegExp(`^seen on: board ${name}, frame a "?`, 'm'));
+  assert.ok(p.comment);
+});
+
+test('the board text for 6 frames is under 900 bytes and a frame line under 120', async () => {
+  const made = await cli(DIR, 'new', 'Six', '--of', '/pricing', '--variants', '6');
+  const name = /# Board (\S+)/.exec(made.out)[1];
+  const t = await text(`/_board/${name}`);
+  assert.ok(Buffer.byteLength(t.split('# Comments')[0]) < 900, String(Buffer.byteLength(t.split('# Comments')[0])));
+  assert.ok(t.split('\n').find((l) => l.startsWith('frame:') || /^a {2}/.test(l)).length < 120);
+});
+
+test('wait with no pages hears a variant\'s pin, with the frame line; --pages on the board or its page covers its frames', async () => {
+  const made = await cli(DIR, 'new', 'Waited', '--of', '/pricing', '--variants', '2');
+  const name = /# Board (\S+)/.exec(made.out)[1];
+  await pin(`/_board/${name}/b`, { text: 'tighten the header', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5 } });
+  const got = await wait(DIR, '--pages', `/_board/${name}`);
+  assert.match(got, /tighten the header/);
+  assert.match(got, new RegExp(`frame: b of board ${name}`));
+  const other = await cli(DIR, 'new', 'Waited too', '--of', '/pricing', '--variants', '2');
+  const n2 = /# Board (\S+)/.exec(other.out)[1];
+  await pin(`/_board/${n2}/a`, { text: 'via the page', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5 } });
+  assert.match(await wait(DIR, '--pages', '/pricing'), /via the page/);
+});
+
+test('a wait on a board is heard by its frames', async () => {
+  const made = await cli(DIR, 'new', 'Heard', '--of', '/pricing', '--variants', '2');
+  const name = /# Board (\S+)/.exec(made.out)[1];
+  const w = spawnProc(process.execPath, [LAB, 'wait', '--timeout', '20', '--pages', `/_board/${name}`], { cwd: DIR, env: process.env });
+  let heard;
+  for (let i = 0; i < 50 && !heard?.pages.includes(`/_board/${name}/b`); i++) {
+    await settle(100);
+    heard = (await (await fetch(`${B}/_lab/state`)).json()).heard;
+  }
+  w.kill();
+  assert.ok(heard.pages.includes(`/_board/${name}`) && heard.pages.includes(`/_board/${name}/a`) && heard.pages.includes(`/_board/${name}/b`), JSON.stringify(heard));
+});
+
+test('pick: one frame is picked and the rest archived, files kept; the pick comes back in the next wait as a pin once', async () => {
+  const made = await cli(DIR, 'new', 'Pick me', '--of', '/pricing', '--variants', '3');
+  const name = /# Board (\S+)/.exec(made.out)[1];
+  const r = await cli(DIR, 'pick', name, 'b');
+  assert.match(r.out, /Picked b\. Archived a, c \(files kept\)\./);
+  const disk = JSON.parse(fs.readFileSync(path.join(DIR, `.lab/boards/${name}.json`), 'utf8'));
+  assert.deepEqual(disk.frames.map((f) => f.state), ['archived', 'picked', 'archived']);
+  for (const id of 'abc') assert.ok(fs.existsSync(path.join(DIR, `.lab/boards/${name}/${id}.html`)));
+  const got = await wait(DIR, '--pages', `/_board/${name}`);
+  assert.match(got, /Picked b/);
+  assert.match(got, /near: frame b \(b\.html at 1280×800\)/);
+  assert.match(got, /picked: a, c archived, files kept\. Put b's change into pricing\.html, then reply --done\./);
+  assert.match((await cli(DIR, 'pick', name, 'b')).out, /already picked/);
+  assert.equal((await (await fetch(`${B}/_lab/api/comments?page=/_board/${name}`)).json()).comments.length, 1, 'a second pick posts nothing');
+  const two = await cli(DIR, 'new', 'Pick two', '--of', '/pricing', '--variants', '3');
+  const n2 = /# Board (\S+)/.exec(two.out)[1];
+  assert.match((await cli(DIR, 'pick', n2, 'a', 'b')).out, /Kept a, b\. Archived c/);
+  const d2 = JSON.parse(fs.readFileSync(path.join(DIR, `.lab/boards/${n2}.json`), 'utf8'));
+  assert.deepEqual(d2.frames.map((f) => f.state), ['live', 'live', 'archived']);
+  assert.match((await cli(DIR, 'pick', n2, 'z')).out, /No frame z/);
+});
+
+test('git stays clean: a repo that ignores .lab sees nothing of boards', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const g = (...a) => execFileSync('git', a, { cwd: DIR, encoding: 'utf8' });
+  fs.writeFileSync(path.join(DIR, '.gitignore'), '.lab/\n');
+  g('init', '-q');
+  g('add', '-A');
+  g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base');
+  await cli(DIR, 'new', 'Clean', '--of', '/pricing', '--variants', '3');
+  await cli(DIR, 'pick', 'clean', 'a');
+  assert.equal(g('status', '--porcelain').trim(), '');
+});
