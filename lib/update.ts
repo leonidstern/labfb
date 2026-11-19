@@ -13,8 +13,8 @@ export function releaseNotes(md: string, from: string, upto: string, max = 5): s
   for (const line of md.split('\n')) {
     const head = /^## (\d+\.\d+\.\d+)/.exec(line);
     if (head) on = newer(head[1], from) && !newer(head[1], upto);
-    else if (/^## /.test(line)) on = false;
-    else if (on && /^- /.test(line)) {
+    else if (line.startsWith('## ')) on = false;
+    else if (on && line.startsWith('- ')) {
       const text = line.slice(2).replace(/`/g, '').replace(/\*\*/g, '');
       const first = /^(.{12,}?[.:;])(\s|$)/.exec(text)?.[1] || text;
       const said = first.replace(/[:;]$/, '');
