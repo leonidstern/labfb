@@ -24,7 +24,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 let DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-'));
 const PORT = String(5500 + Math.floor(Math.random() * 300));
 let B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const LONG = 'This is a very long paragraph meant to be selected whole, it keeps going and going with plenty of words so that the selection runs over several lines of the window, and then it goes on a little more for good measure, with yet more words to be sure that it is over three hundred characters long, until finally it ends.';
 const PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>fluid</title>
 <style>body{margin:30px;max-width:520px;font:18px/1.6 Georgia,serif} #box{height:96px;overflow:auto;border:1px solid #999} #field{width:200px}</style>
@@ -224,6 +224,12 @@ try {
         await dlgUp(p);
         const c = await fd(p);
         check(eng, 'a click on comment adds the box, with the cursor in it', Boolean(c?.dlg) && c.text === '' && (await inRoot(p, (r) => r.activeElement?.localName === 'textarea')), JSON.stringify(c));
+        // No scrollbar while the box can still grow; one only once it is at its tallest (Leo, 18 Nov).
+        await p.keyboard.type('a short note');
+        const short = await inRoot(p, (r) => getComputedStyle(r.querySelector('.fd textarea')).overflowY);
+        await p.keyboard.type(' and more words'.repeat(40));
+        const long = await inRoot(p, (r) => { const t = r.querySelector('.fd textarea'); return { o: getComputedStyle(t).overflowY, h: t.clientHeight }; });
+        check(eng, 'the box shows no scrollbar until it is at its tallest', short === 'hidden' && long.o === 'auto' && long.h >= 190, JSON.stringify({ short, long }));
       });
       // Comment preopened (Leo, 18 Nov): the dialog and the sheet open as a comment (the row has rewrite · cut · go, no pill for comment) with the box open; computers have the cursor in it
       await scene(eng, browser, {}, async (p) => {
