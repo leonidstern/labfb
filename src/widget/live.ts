@@ -20,23 +20,19 @@ export function startLive() {
       if (kept !== null) {
         sessionStorage.removeItem(key);
         if (kept.open) W.S.openId = kept.open;
-        if (kept.list) {
-          W.S.listOpen = true;
-          W.S.filter = ['new', 'open', 'resolved', 'mine'].includes(kept.filter) ? kept.filter : W.S.filter;
-        }
         if (kept.chat) W.S.chatOpen = true;
         addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
       }
     } catch {}
-    // Hold a reload while anything is open (a thread, a new comment, the list) or a box has focus or text: the page
+    // Hold a reload while anything is open (a thread, a new comment) or a box has focus or text: the page
     // reloads once you close it, where you were.
-    // A newer version reloads the page when it's safe: not while you read a thread, the list or the chat (it waits
+    // A newer version reloads the page when it's safe: not while you read a thread or the chat (it waits
     // until they're closed, so nothing moves under you), type, have words in a box, place a new comment, have a phone's
     // keyboard up or have just touched the page.
     let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
     const busy = () =>
-      W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || W.S.listOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
+      W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
     let reloadTimer: any = 0;
@@ -55,7 +51,7 @@ export function startLive() {
     });
     const now = () => {
       try {
-        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, list: W.S.listOpen, filter: W.S.filter, chat: W.S.chatOpen }));
+        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, chat: W.S.chatOpen }));
       } catch {}
       location.reload();
     };
@@ -490,7 +486,9 @@ export function startLive() {
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
         // How to get one listening again: what to say to the agent, for this page.
-        who.title = mode === 'away' ? `To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : s?.resume || '';
+        // The mark's colour says the state; the tooltip names it (Leo, 18 Nov).
+        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
+        who.title = mode === 'away' ? `${state} To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : [state, s?.resume].filter(Boolean).join('\n');
         who.hidden = false;
       }
     }
