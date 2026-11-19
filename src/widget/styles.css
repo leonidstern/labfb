@@ -571,7 +571,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* Sized and set to the word: its ink about 1.3× the text's height, its foot on the baseline, 6 px from "chat" like the count. */
   .chat-btn .mark { align-self: center; width: 13px; height: 13px; margin: 0 -2.5px 0 -2px; translate: 0 -1.5px; }
   .chat-btn[data-agent=listening] .mark { fill: rgb(36, 160, 70); }
-  .chat-btn[data-agent=away] .mark { fill: var(--_fg); }
+  .chat-btn:is([data-agent=away], [data-agent=quiet]) .mark { fill: var(--_fg); }
   .chat-btn.stale .mark { opacity: .4; }
   .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
   .chat-btn[data-agent=working] .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
