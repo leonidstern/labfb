@@ -1572,8 +1572,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
     const endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
     const anchor = startEl && (startEl === endEl || startEl.contains(endEl))
-      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2)
-      : anchorAt(first.left + 2, first.top + first.height / 2);
+      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2, false, endEl)
+      : anchorAt(first.left + 2, first.top + first.height / 2, false, startEl);
     const at = range.commonAncestorContainer;
     const block = /** @type {Element | null} */ (at.nodeType === 1 ? at : at.parentElement)?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div') || document.body;
     /** @param {[Node, number]} a @param {[Node, number]} b */
