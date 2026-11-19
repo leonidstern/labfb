@@ -145,6 +145,12 @@ test('a comment about the page as a whole has no spot in the agent text', async 
   const block = text.split('\n## ').find((b) => b.includes('too airy'));
   assert.match(block, /^on: the page as a whole \(no spot\)$/m);
   assert.doesNotMatch(block, /^(where on element|selector \(at comment time\)):/m);
+  // A link in a comment reaches the agent as written, and the text's own links are the lab's. (Every "http://localhost"
+  // in the text used to be replaced with the lab's address, so :3000 below came out as :<lab port>:3000.)
+  await post({ page: '/index', name: 'Leo', text: 'compare with http://localhost:3000/a please', anchor: { kind: 'page', width: 390, height: 664, dpr: 2 } });
+  const after = await (await fetch(B + '/_lab/agent/index')).text();
+  assert.ok(after.includes('compare with http://localhost:3000/a please'), after.split('\n').find((l) => l.includes('compare with')));
+  assert.ok(after.includes(`page: ${B}/index`));
 });
 
 test('read marks are shared by name: a phone and a Mac with the same name see the same new and read', async () => {
