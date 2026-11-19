@@ -26,7 +26,7 @@
       ae: desc(ae), inner: inner ? desc(inner) + (inner.closest?.('.float') ? '@float' : inner.closest?.('.card') ? '@card' : inner.closest?.('.chatwin') ? '@chat' : '') : null,
       sel: String(getSelection?.() || '').slice(0, 40),
       pins: visible('.pin').map((p) => ({ ...r(p), c: p.className })),
-      pill: r(visible('.since-count')[0]), sheet: r(visible('.since-panel')[0]), item: r(visible('.news-item')[0]), news: visible('.news-item').length, // new since you looked: the pill, its sheet and the list
+      sbar: r(visible('.sbar')[0]), chip: r(visible('.sb-chip[data-st="new"]')[0]), chipsNew: visible('.sb-chip[data-st="new"]').length, // the section bar, and a section in it that is new
       float: r(visible('.float')[0]), card: r(visible('.card')[0]), chat: r(visible('.chatwin')[0]),
       scrimOn: (() => { const s = sr?.querySelector('.scrim'); return Boolean(s && getComputedStyle(s).display !== 'none' && +getComputedStyle(s).opacity > 0); })(),
       bar: r(visible('.fd .p-bar.on')[0]), chatBtn: r(visible('.chat-btn')[0]), toggle: r(visible('.toggle')[0]),
