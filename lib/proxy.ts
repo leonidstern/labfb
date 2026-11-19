@@ -10,7 +10,7 @@ import type { Duplex } from 'node:stream';
 type ProxyOptions = {
   PROXY: URL;
   origin: () => string;
-  widget: (key: string, admin: boolean, me: string) => string;
+  widget: (key: string, admin: boolean, me: string, framed: boolean) => string;
   keyFor: (page: string) => string;
   isLoopback: (req: IncomingMessage) => boolean;
   nameFor: (req: IncomingMessage) => string;
@@ -45,6 +45,7 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
       delete out['content-length'];
       delete out['content-encoding'];
       delete out['content-security-policy']; // it would block the widget's script
+      delete out['x-frame-options']; // it would leave a page blank when it sits in a frame (a board)
       res.writeHead(r.statusCode || 502, out);
       // Streamed through as it arrives (Next, Astro and React stream their pages), so nothing waits for the end.
       // The widget's script goes after the page; a copy of it the page already loads is taken out, even when its
@@ -70,7 +71,7 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
         held = t.slice(cut);
       });
       r.on('end', () => {
-        const tail = strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req));
+        const tail = strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req), req.headers['sec-fetch-dest'] === 'iframe');
         // A page that arrived in one piece never saw a data event with a head in it; dress it here instead.
         res.end(first ? dress(tail) : tail);
       });

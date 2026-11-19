@@ -35,6 +35,7 @@ import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
+import { inFrame, startFrame } from './widget/frame.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSelect, selectMode } from './widget/select.ts';
@@ -118,6 +119,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   bindSheets(W);
   bindFluid(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
+  // In a board's frame the widget draws nothing and binds nothing (src/widget/frame.ts).
+  if (inFrame()) return startFrame(script);
   // Parts loaded only when they are used: each is its own file beside this script (scripts/build-widget.mjs), its
   // styles with it. Asked for once; a module that can't load leaves the rest of the widget as it is.
   const parts = {};
