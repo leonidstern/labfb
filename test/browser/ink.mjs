@@ -503,6 +503,37 @@ try {
       await c2.close();
     }
 
+    // ---- A Shift-drag that crosses a pin: the pin lets the pointer through, so the selection stays on the words
+    // (a pin under the pointer ended it at the page's end, in both engines).
+    {
+      await L.clear();
+      await L.say({ ...words('a', 'gamma'), quote: { exact: 'gamma', prefix: 'Alpha beta ', suffix: ' delta epsilon' } }, 'a pin on a word');
+      const [c2, q] = await open(browser, L.base + '/');
+      const pin = await shadow(q, () => { const b = r.querySelector('button.pin').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; });
+      const at = await q.evaluate(() => {
+        const t = document.getElementById('a').firstChild;
+        const r = document.createRange();
+        const box = (i) => (r.setStart(t, i), r.setEnd(t, i + 1), r.getBoundingClientRect());
+        const [a, z] = [box(1), box(28)];
+        return [a.left + 1, a.top + a.height / 2, z.right - 1, z.top + z.height / 2];
+      });
+      await q.keyboard.down('Shift');
+      await q.mouse.move(at[0], at[1]);
+      await q.mouse.down();
+      await q.mouse.move(at[0] + 30, at[1], { steps: 3 });
+      await q.mouse.move(...pin, { steps: 5 });
+      await sleep(200);
+      const [over, picked] = [await look(q), await q.evaluate(() => String(getSelection()))];
+      await q.mouse.move(at[2], at[3], { steps: 5 });
+      await q.mouse.up();
+      await q.keyboard.up('Shift');
+      await sleep(600);
+      const taps = await shadow(q, () => { return getComputedStyle(r.querySelector('button.pin')).pointerEvents; });
+      check(eng, 'Shift-drag across a pin: the selection stays on the words, banded', picked.length < 40 && over.sel.startsWith('Alpha beta') && over.sel.length < 40, `selected ${picked.length} letters, band "${over.sel.slice(0, 40)}"`);
+      check(eng, 'Shift-drag across a pin, let go: the words are the draft, the pins take clicks again', st(await look(q), 'Alpha beta gamma delta epsilon') === 'draft' && taps !== 'none', `${JSON.stringify((await look(q)).inks)} ${taps}`);
+      await c2.close();
+    }
+
     // ---- A real Shift-drag with the mouse: the band shows while dragging (the selection's), and once let go the words
     // keep the low band (the draft's grey), with no full-height green on them.
     {

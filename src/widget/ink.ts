@@ -150,7 +150,12 @@ export function startInk() {
   const redraw = () => able() && (queued ||= requestAnimationFrame(drawSelection));
   document.addEventListener('selectionchange', redraw);
   addEventListener('selectstart', (e) => {
-    if (takes() && html.classList.contains('lab-shift') && !e.composedPath().includes(W.host) && !(e.target as Element).closest?.('input, textarea, [contenteditable]')) html.classList.add('lab-ink-sel');
+    if (takes() && html.classList.contains('lab-shift') && !e.composedPath().includes(W.host) && !(e.target as Element).closest?.('input, textarea, [contenteditable]')) {
+      html.classList.add('lab-ink-sel');
+      // Until the button is up the pins let the pointer through: a pin under it would end the selection at the page's end.
+      W.layer.style.pointerEvents = 'none';
+      addEventListener('pointerup', () => (W.layer.style.pointerEvents = ''), { once: true, capture: true });
+    }
     redraw();
   }, true);
   addEventListener('pointermove', (e) => {
