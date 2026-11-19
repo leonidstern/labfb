@@ -99,7 +99,7 @@ came from.
 
 | Flag | What it is |
 | --- | --- |
-| `sectionBar` | a bar at the top of the page that lists each section (a heading, h1 to h3) and keeps what is new and what is updated since you read it: a filled dot and "new" for a section that was not there, a ring and "updated" for one whose text changed. A section counts as read after about 3 seconds in it, when you scroll on after a moment, or when you tap it in the bar; the lab keeps that per name, so your Mac and your phone agree. Off by default: set it in `labit.json` |
+| `sectionBar` | a bar at the top of the page that lists each section (a heading of one level, usually h2) and keeps what is new and what is updated since you read it: a filled dot and "new" for a section that was not there, a ring and "updated" for one whose text changed. A section counts as read after about 3 seconds in it, when you scroll on after a moment, or when you tap it in the bar; the lab keeps that per name, so your Mac and your phone agree. Off by default: set it in `labit.json` |
 
 `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 

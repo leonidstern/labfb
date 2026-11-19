@@ -1,7 +1,8 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 //
-// The section bar: a bar at the top of the page that lists each section (a heading, h1 to h3; a lone h1 is the page's
-// title, not a section) with the current one filled, and what you have not read marked:
+// The section bar: a bar at the top of the page that lists each section (a heading of one level: the highest of h1
+// to h3 that occurs twice or more, usually h2; a lone h1 is the page's title; headings inside nav, header, footer and
+// aside are not sections; at most 40) with the current one filled, and what you have not read marked:
 //   new      no mark for it: a filled blue dot and "new"
 //   updated  its text is not what it was when you read it: a ring and "updated"
 //   read     nothing
@@ -25,7 +26,8 @@ type Sec = { key: string; h: Element; label: string; hash: string };
 type Marks = Record<string, string>;
 
 const HEAD = 'h1,h2,h3';
-const SKIP = '[data-lab-comments], script, style, template, noscript, svg';
+const SKIP = '[data-lab-comments], script, style, template, noscript, svg, nav, header, footer, aside';
+const MAX = 40; // a longer list is cut here
 const READ_AFTER = 3000; // as the current section
 const SCROLL_ON_AFTER = 800; // scrolling on from one this long counts as having read it
 
@@ -39,10 +41,12 @@ const words = (t: string | null) => (t || '').replace(/\s+/g, ' ').trim();
 // The page's sections, in order. A section's text runs from its heading to the next one.
 function collect(): Sec[] {
   const heads = [...document.body.querySelectorAll(HEAD)].filter((h) => !h.closest(SKIP) && h.getClientRects().length && words(h.textContent));
-  const list = heads.length === 1 && heads[0].matches('h1') ? [] : heads.filter((h, _, all) => !h.matches('h1') || all.filter((x) => x.matches('h1')).length > 1);
+  // One level only: the highest that occurs at least twice (a lone h1 is the page's title, never a section).
+  const level = [1, 2, 3].find((n) => heads.filter((h) => h.matches(`h${n}`)).length >= 2);
+  const list = heads.filter((h) => h.matches(`h${level}`)).slice(0, MAX);
   const used = new Set<string>();
   return list.map((h) => {
-    const at = heads.indexOf(h);
+    const next = heads.slice(heads.indexOf(h) + 1).find((x) => +x.tagName[1] <= level!); // a smaller heading inside it belongs to it
     let key = '';
     // Its own id, or the nearest element around it that holds no other heading (a <section id>); else its words.
     for (let e: Element | null = h; e && e !== document.body && !key; e = e.parentElement) if (e.id && !noisy(e.id) && e.querySelectorAll(HEAD).length <= 1) key = e.id;
@@ -51,7 +55,7 @@ function collect(): Sec[] {
     used.add(key);
     const r = document.createRange();
     r.setStartBefore(h);
-    if (heads[at + 1]) r.setEndBefore(heads[at + 1]);
+    if (next) r.setEndBefore(next);
     else r.setEndAfter(document.body.lastChild!);
     const label = words(h.textContent);
     return { key, h, label: label.length > 40 ? `${label.slice(0, 39)}…` : label, hash: hash(words(r.toString())) };
@@ -189,7 +193,7 @@ export function startSections() {
       const s = secs.find((x) => x.key === c.dataset.s)!;
       const st = status(s);
       c.dataset.st = st;
-      c.querySelector('.sb-w')!.textContent = st;
+      c.querySelector('.sb-w')!.textContent = st && ` ${st}`; // a space before it, for what reads the chip as text
       if (s.key === current) c.setAttribute('aria-current', 'true');
       else c.removeAttribute('aria-current');
     }
