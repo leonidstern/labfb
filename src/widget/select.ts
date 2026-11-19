@@ -33,7 +33,7 @@ const frameOf = (e: Element) => (e.ownerDocument === document ? null : (e.ownerD
 /** The frame under a screen point and the point inside it, on a board. */
 const frameAt = (x: number, y: number) => {
   if (!onBoard()) return null;
-  for (const f of [...document.querySelectorAll('iframe')].reverse()) {
+  for (const f of [...document.querySelectorAll('#lab-board iframe')].reverse() as HTMLIFrameElement[]) { // the board's own frames, not a page's under its view
     const r = f.getBoundingClientRect();
     if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
     try {

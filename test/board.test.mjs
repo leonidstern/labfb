@@ -294,7 +294,7 @@ test('a board pin keeps signed numbers; the board text lists frames in order, th
   assert.match(t, new RegExp(`^# Board ${name} · Set\\nurl: http://localhost:\\d+/_lab/board/${name}\\nof: /pricing \\(file pricing\\.html\\)\\n`));
   assert.match(t, /\na {2}\/pricing {2}390×844\n/);
   assert.match(t, /\nb {2}\/pricing {2}1280×800 {2}"Wide"\n/);
-  assert.match(t, /^on: the board, not a page$/m);
+  assert.match(t, new RegExp(`^on: the board, not a page: board ${name} · frame b$`, 'm'));
   assert.match(t, /^near: frame b "Wide" \(\/pricing at 1280×800\), 120 px left of its left edge, 40 px below its top$/m);
   assert.doesNotMatch(t, /selector \(at comment time\)|where on element/);
   // a pin on a page, made on a board

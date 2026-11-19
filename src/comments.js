@@ -678,6 +678,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (a.target && a.target !== '_self')) return;
       try {
         const u = new URL(a.href, location.href);
+        // A board the page links opens over this same page, its pins this page's (Leo, 19 Nov: "can board be part of
+        // same page?"). /_lab/board/<name> itself still works as a link from anywhere else.
+        const bn = flag('board') && u.origin === location.origin && /^\/_lab\/board\/([a-z0-9][a-z0-9_-]*)\/?$/i.exec(u.pathname)?.[1];
+        if (bn) {
+          e.preventDefault();
+          return void showBoard(bn, u.searchParams.get('of') || '');
+        }
         if (u.origin === location.origin && u.pathname.startsWith('/_lab/board/')) sessionStorage.setItem(scrollKey, JSON.stringify({ y: scrollY }));
       } catch {}
     });
@@ -2607,7 +2614,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   else document.addEventListener('DOMContentLoaded', start);
   // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
   // and where a pin sits), and the pins are drawn again as the camera moves.
-  if (S.board) {
+  // A board in this page (src/board/overlay.ts, loaded when one is opened): its link, the address's #board=<name> (a
+  // reload, a forward) or a board pin picked in the list opens it. Closing it lets go of a board pin that was open.
+  /** @param {string} name @param {string} [of] @param {boolean} [push] */
+  const showBoard = (name, of = '', push = true) =>
+    part('boardview').then((m) => m.show(name, { page: S.page, of, push, onClose: () => {
+      const open = S.comments.find((c) => c.id === S.openId);
+      if (open?.anchor?.kind === 'board') S.openId = null;
+      if (S.draft?.anchor?.kind === 'board') S.draft = null;
+      render();
+    } }), () => say("the board couldn't load"));
+  if (flag('board') && !S.board && self === top) {
+    Object.assign(window, { __labBoardView: { show: showBoard } });
+    const bn = /^#board=([a-z0-9][a-z0-9_-]*)/i.exec(location.hash)?.[1];
+    if (bn) showBoard(bn, '', false);
+  }
+  if (S.board || flag('board')) {
     Object.assign(window, { __labBoardWidget: { pinning: () => (S.on && !S.cursorMode) || S.selecting /* select mode: its click picks a frame's block, its drag boxes them */, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
     addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
   }
