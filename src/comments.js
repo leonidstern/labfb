@@ -39,6 +39,7 @@ import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSelect, selectMode } from './widget/select.ts';
+import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget/ink.ts';
 
@@ -687,7 +688,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
-    if (name === 'sectionBar') startSections(); // the section bar: what is new or updated on the page since you read it
     if (name === 'inkOnText' && S.loaded) render(); // switched on from the ⋯ menu: the notes on words turn to ink (ink.ts)
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
@@ -2126,8 +2126,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     fonts.textContent += inkCss(); // ink on words: the bands, and the selection drawn as sent ink (ink.ts)
     if (flag('select')) startFlag('select');
+    bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
-    for (const name of flagNames) if (flag(name)) startFlag(name); // select, sectionBar (lib/flags.ts)
+    startSections(); // the section bar: what is new or updated on the page since you read it
+    for (const name of flagNames) if (flag(name)) startFlag(name); // select (lib/flags.ts)
     scanForFramework();
     if (!S.components) {
       addEventListener('load', scanForFramework, { once: true });

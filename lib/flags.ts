@@ -5,10 +5,9 @@
 // Each flag: the key as it is written in labit.json, the one line the ⋯ menu's experiments list shows, and when it was
 // first offered.
 
-// sinceLooked (an "Added" pill) was replaced by sectionBar. agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
+// sinceLooked (an "Added" pill) was replaced by sectionBar, and sectionBar was kept (the section bar is always there). agentPins was kept (an agent's pin always wears labit's mark) and liveUrl was dropped before it had code.
 export const FLAGS: Record<string, { name: string; since: string }> = {
   select: { name: 'select mode (V): pick a block and ask the agent to remove, restyle, move or vary it', since: '0.6.3' },
-  sectionBar: { name: 'a section bar at the top: each section, what is new or updated since you read it', since: '0.6.3' },
   inkOnText: { name: 'ink on selected words, not a pin', since: '0.6.3' },
 };
 
