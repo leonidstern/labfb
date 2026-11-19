@@ -244,7 +244,7 @@ export function swipeDown(node, close, grows = false) {
       if (mode === 'hold') return e.preventDefault();
     }
     e.preventDefault();
-    raw = t.clientY - y0;
+    raw = (t.clientY - y0) * (W.vv?.scale || 1); // pinch-zoomed, the sheet is drawn 1/scale as big: it still keeps up with the finger
     // Up past where it sits: iOS's rubber band (UIScrollView's: offset = (1 − 1 / (pull × 0.55 / size + 1)) × size),
     // so it follows the finger, more and more slowly (it barely moved before: 100 px of pull gave 20 px, now ~50).
     const size = node.offsetHeight || 400;
@@ -377,6 +377,23 @@ export function startSheets() {
       if (kb > 60) W.S.kbSeen = kb; // the keyboard's height, for revealDraft before the next one comes up
     };
     W.S.refit = fit;
+    // Pinch-zoomed: fixed things stay put on the page's unzoomed screen, so they came out magnified and partly off the
+    // screen (Leo, 19 Nov: "on mobile zooms breaks our windows"). The bar, chat and list (.ui) and a thread's or new
+    // comment's sheet are drawn at their usual size where the screen shows now (styles.css, data-zoom); pins stay on the page.
+    const zoomFit = () => {
+      const k = W.vv.scale;
+      W.host.toggleAttribute('data-zoom', Math.abs(k - 1) > 0.01);
+      const set = (n, v) => W.host.style.setProperty(`--lab-z${n}`, `${v}px`);
+      set('x', W.vv.offsetLeft);
+      set('y', W.vv.offsetTop);
+      set('w', W.vv.width * k);
+      set('h', W.vv.height * k);
+      set('b', W.vv.offsetTop + W.vv.height - probe.getBoundingClientRect().height); // a sheet's bottom: the screen's
+      W.host.style.setProperty('--lab-zk', String(1 / k));
+    };
+    W.vv.addEventListener('resize', zoomFit);
+    W.vv.addEventListener('scroll', zoomFit);
+    zoomFit();
     W.root.addEventListener('focusin', () => setTimeout(fit, 50));
     W.root.addEventListener('focusout', () => setTimeout(fit, 50));
     W.vv.addEventListener('resize', fit);
