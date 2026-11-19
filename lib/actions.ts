@@ -44,3 +44,16 @@ export function seedFrom(old: unknown): Action[] {
   }
   return out;
 }
+
+export const LIST_MAX = 40;
+/** A whole list sent from a comment box's "…" menu (PUT /_lab/api/actions), checked strictly and in its order: every
+ *  action must fit (a name of 1 to NAME_MAX characters, a prompt of 1 to PROMPT_MAX, no name twice), or nothing is
+ *  saved and the first reason is given. */
+export function listFrom(body: unknown): { actions: Action[] } | { why: string } {
+  const list = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>).actions : undefined;
+  if (!Array.isArray(list)) return { why: 'actions: a list of { "name": "…", "prompt": "…" }' };
+  if (list.length > LIST_MAX) return { why: `${LIST_MAX} actions at most` };
+  const whys: string[] = [];
+  const actions = actionItems(list, (w) => whys.push(w));
+  return whys.length ? { why: whys[0].replace(/; ignored$/, '') } : { actions };
+}

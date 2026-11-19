@@ -1766,7 +1766,8 @@ function announce(page, c) {
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
 // Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box and of select mode. Names
 // and prompts are yours, so the attribute is escaped as the flags' is.
-const ACTIONS_ATTR = ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
+// Read per page: the "…" menu can change the list while the lab runs (PUT /_lab/api/actions).
+const actionsAttr = () => ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
 // What is being tried in this lab: every flag, its state, and whether the project's labit.json sets it (then the ⋯
 // menu's Experiments list shows it read-only: the project wins over your own settings).
 // The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
@@ -1782,7 +1783,7 @@ const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${ACTIONS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${actionsAttr()}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -2192,6 +2193,21 @@ const handler = async (req, res) => {
       console.log(`[lab] experiment ${flag}: ${on ? 'on' : 'off'} (${file.replace(os.homedir(), '~')})`);
       broadcast();
       return answer(res, { flags: flagsOn(SET.flags) });
+    }
+    // Your actions (lib/actions.ts) from a comment box's "…" menu: the whole list, in its order, saved in your own
+    // settings. This computer with the lab's key only, as the Experiments switch: never a guest, never the agent's key.
+    if (pathname === '/_lab/api/actions' && req.method === 'PUT') {
+      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
+      const out = (await import('./lib/actions.ts')).listFrom(await sent(req));
+      if ('why' in out) return res.writeHead(400).end(out.why);
+      try {
+        savePersonal('actions', out.actions);
+      } catch (e) {
+        return res.writeHead(500).end(`could not save it: ${e.message}`);
+      }
+      SET.actions = out.actions;
+      console.log(`[lab] your actions: ${out.actions.map((a) => a.name).join(' ') || '(none)'} (${SETTINGS.files.personal.replace(os.homedir(), '~')})`);
+      return answer(res, { actions: out.actions });
     }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.
