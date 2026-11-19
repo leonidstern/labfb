@@ -260,6 +260,9 @@ try {
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'paragraph');
         await p.keyboard.down('Shift');
+        // The words must be selectable before the press: WebKit restyles a moment after Shift goes down (reading the style
+        // forces it), and a double-click's first press selects the word at once.
+        await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector('#t')); return c.userSelect !== 'none' && c.webkitUserSelect !== 'none'; }, null, { timeout: 1500, polling: 'raf' }).catch(() => {});
         await p.mouse.dblclick((s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2);
         await p.keyboard.up('Shift');
         await barUp(p, 900);
