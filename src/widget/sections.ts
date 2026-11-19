@@ -207,7 +207,9 @@ export function startSections() {
       const s = secs.find((x) => x.key === c.dataset.s)!;
       const st = status(s);
       c.dataset.st = st;
-      c.querySelector('.sb-w')!.textContent = st;
+      const w = c.querySelector('.sb-w')!;
+      if (st) w.textContent = st; // gone: the old word stays while it folds away
+      w.classList.toggle('off', !st);
       if (s.key === current) c.setAttribute('aria-current', 'true');
       else c.removeAttribute('aria-current');
     }
