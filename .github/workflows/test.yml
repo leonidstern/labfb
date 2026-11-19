@@ -55,6 +55,7 @@ jobs:
           # A phone pinch-zoomed in: the bar and the chat stay their usual size on screen (zoom).
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
           - behaviours connection shortcuts anchoring selection flags progress changes moved zoom shiftkeys
 =======
           - behaviours connection shortcuts anchoring selection flags progress changes moved zoom frame
@@ -62,6 +63,9 @@ jobs:
 =======
           - behaviours connection shortcuts anchoring selection flags progress changes moved zoom framescroll
 >>>>>>> canvas/frame-scroll-key
+=======
+          - behaviours connection shortcuts anchoring selection flags progress changes moved zoom boardreload
+>>>>>>> canvas/board-no-reload
     name: browser (${{ matrix.engine }}, ${{ matrix.group == 'fluid' && 'fluid' || 'rest' }})
     # Playwright's own image has both browsers and their system libraries already in it. Installing them with
     # apt on each run took 30 s on a good day and 33 min on a bad one (#124, #127).
