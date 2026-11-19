@@ -8,6 +8,7 @@
     "fluid.ts": "selected words: the actions bar and the comment dialog that grows out of it and lands on the words (the dialog is the thread card's box; on phones the bottom sheet)",
     "frame.ts": "a page inside a board's frame: draws nothing, binds nothing; keeps live updates and passes keys to the board",
     "hold.ts": "a dev server's reload waits while a sheet is open",
+    "pinhold.ts": "pins the browser holds on their element with CSS anchor positioning (flag native): no script on scroll",
     "ink.ts": "drawing pins (hold D and drag): the lines as they are drawn and over a saved drawing, and the drawing as an area comment",
     "draw.ts": "what a drawing's lines read as (circled, arrow, underlined…); its own file (public/_lab/draw.js), loaded when D is first pressed",
     "list.ts": "the list of pins (a sheet on phones)",
