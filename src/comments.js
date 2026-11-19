@@ -33,6 +33,7 @@ import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, s
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive } from './widget/live.ts';
+import { inFrame, startFrame } from './widget/frame.ts';
 import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
@@ -119,6 +120,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   bindSheets(W);
   bindFluid(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
+  // In a board's frame the widget draws nothing and binds nothing (src/widget/frame.ts).
+  if (inFrame()) return startFrame(script);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
   const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a' };

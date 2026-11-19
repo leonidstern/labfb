@@ -31,8 +31,9 @@ export function startLive() {
     // keyboard up or have just touched the page.
     let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
+    const frame = Boolean(W.S.frame); // a board's frame (frame.ts): the board holds the stream and says when it is busy
     const busy = () =>
-      W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
+      frame ? W.S.busy() || performance.now() - touchedAt < 1500 : W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
     let reloadTimer: any = 0;
@@ -98,7 +99,7 @@ export function startLive() {
     };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
-    if (!document.querySelector('link[rel~="icon"]')) {
+    if (!frame && !document.querySelector('link[rel~="icon"]')) {
       fetch('/favicon.ico', { method: 'HEAD' })
         .then((r) => r.ok && (r.headers.get('content-type') || '').startsWith('image/'))
         .catch(() => false)
@@ -507,7 +508,7 @@ export function startLive() {
       release?.(); // the next tab takes over the stream
       release = null;
       leading = !shared;
-      fetch(W.script.dataset.live.replace(/live$/, 'bye'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab }) }).catch(() => {});
+      if (!frame) fetch(W.script.dataset.live.replace(/live$/, 'bye'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab }) }).catch(() => {});
     });
     addEventListener('pageshow', (e) => e.persisted && start()); // back from the back-forward cache
     // Back from sleep, or the stream went quiet: catch up (the first message after it says what changed). A clock that
@@ -523,8 +524,8 @@ export function startLive() {
     const check = (slept = false) => {
       const stale = Date.now() - beat > 40000;
       if (stream && (slept || stale)) freshStream();
-      else if (!stream && stale) connect();
-      else if (!stream && slept) bc?.postMessage({ t: 'hello' });
+      else if (!stream && stale && !(frame && bc)) connect();
+      else if (!stream && (slept || stale)) bc?.postMessage({ t: 'hello' });
     };
     // Hidden tabs' timers are slowed to about once a minute, which would look like sleep: only a tab in front checks.
     setInterval(() => {
@@ -535,6 +536,7 @@ export function startLive() {
     }, 5000);
     addEventListener('online', () => !document.hidden && check(true));
     const start = () => {
+      if (frame && bc) return bc.postMessage({ t: 'hello' }); // a frame only listens: the board's stream is the one
       if (!shared) return connect();
       beat = Date.now(); // a joining tab waits up to 40 s for the shared stream before opening its own
       lead();
