@@ -868,6 +868,7 @@ const allowedHost = (h = '') => {
   const name = h.toLowerCase().replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
   return ['localhost', '127.0.0.1', '::1'].includes(name) || (WIFI && (name === `${hostName}.local` || wifiAddrs().includes(name)));
 };
+const inFrame = (req) => req.headers['sec-fetch-dest'] === 'iframe';
 const sameOrigin = (req) => {
   if (!req.headers.origin) return !req.headers['sec-fetch-site'] || req.headers['sec-fetch-site'] === 'same-origin';
   try {
@@ -1674,8 +1675,8 @@ const flagsAttr = () => {
 // Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
 // of main (LABIT_EDGE, set by a script that builds one, e.g. "main + #89 #91").
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${process.env.LABIT_EDGE ? ` · edge: ${process.env.LABIT_EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
-const widget = (page, admin, me = '') => {
-  markOpened(page);
+const widget = (page, admin, me = '', framed = false) => {
+  if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
   `${KEYS_ATTR}${ACTIONS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
@@ -2472,7 +2473,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(withIcon(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req))));
+        inject(withIcon(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
     }
     sendFile(req, res, file);
   } catch (e) {

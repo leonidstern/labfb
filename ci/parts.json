@@ -6,6 +6,7 @@
     "components.ts": "which component drew an element (React, Vue, Svelte), for a pin; its own file (public/_lab/components.js), loaded only on a page a framework drew",
     "composer.ts": "the text box for a comment or a reply, and its send button",
     "fluid.ts": "selected words: the actions bar and the comment dialog that grows out of it and lands on the words (the dialog is the thread card's box; on phones the bottom sheet)",
+    "frame.ts": "a page inside a board's frame: draws nothing, binds nothing; keeps live updates and passes keys to the board",
     "hold.ts": "a dev server's reload waits while a sheet is open",
     "list.ts": "the list of pins (a sheet on phones)",
     "live.ts": "the live stream: listening badge, mode, who is heard",
