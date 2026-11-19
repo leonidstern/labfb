@@ -70,10 +70,15 @@ try {
       await p.locator('#b').click({ modifiers: ['Shift'] });
       check(eng, 'Shift-click adds a second block', (await picked()) === 'a,b', await picked());
       check(eng, 'the sheet says "2 picked"', (await label()) === '2 picked', await label());
+      // The half ink (Leo, 19 Nov: "half height yes"): a band under each picked block's line, the lower 44 % of it.
+      const bands = () => p.evaluate(() => [...(document.querySelector('[data-lab-pick-ink]')?.children || [])].map((i) => i.getBoundingClientRect()));
+      const lines = await p.evaluate(() => ['a', 'b'].map((i) => document.getElementById(i).getClientRects()[0]).map((r) => ({ top: r.top, height: r.height })));
+      const bs = await bands();
+      check(eng, 'both picked blocks wear the half ink, under the lower half of their line', bs.length === 2 && bs.every((b, i) => Math.abs(b.top - (lines[i].top + lines[i].height * 0.526)) < 2 && Math.abs(b.height - lines[i].height * 0.44) < 2), JSON.stringify({ bs, lines }));
       await p.locator('#a').click({ modifiers: ['Shift'] });
       check(eng, 'Shift-click on a picked block drops it', (await picked()) === 'b', await picked());
       await p.keyboard.press('Escape');
-      check(eng, 'Esc lets go of them all', (await picked()) === '');
+      check(eng, 'Esc lets go of them all, and of their ink', (await picked()) === '' && (await bands()).length === 0);
       // A box from the empty right margin over b, c, d.
       const bb = await p.locator('#b').boundingBox();
       const db = await p.locator('#d').boundingBox();

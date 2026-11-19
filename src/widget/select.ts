@@ -59,32 +59,97 @@ const screenRects = (e: Element) => {
   const z = r.width / (f.clientWidth || r.width);
   return rs.map((q) => new DOMRect(r.left + q.left * z, r.top + q.top * z, q.width * z, q.height * z));
 };
-// The low ink behind every picked block's words, not only the last one's (multiselect had dropped it from the others),
-// and a board frame's blocks in the frame's own page, which has its own highlights and its own stylesheet (Leo, 19 Nov:
-// "also half ink is disappeared from selection?").
-const PICK_INK = '::highlight(lab-pick) { background-color: rgba(52, 199, 89, .18); color: inherit; }';
-let inked: Document[] = [];
-function inkPicks(list: HTMLElement[]) {
-  if (!canInk) return;
-  const docs = [...new Set(list.map((e) => e.ownerDocument))];
-  for (const d of inked) if (!docs.includes(d)) (d.defaultView as (Window & typeof globalThis) | null)?.CSS.highlights?.delete('lab-pick');
-  inked = docs;
-  for (const d of docs) {
-    const w = d.defaultView as (Window & typeof globalThis) | null;
-    if (!w?.CSS?.highlights || typeof w.Highlight !== 'function') continue;
-    if (d !== document && !d.querySelector('style[data-lab-pick]')) {
-      const st = d.createElement('style');
-      st.setAttribute('data-lab-pick', '');
-      st.textContent = PICK_INK;
-      (d.head || d.documentElement).append(st);
-    }
-    const ranges = list.filter((e) => e.ownerDocument === d).map((e) => {
-      const r = d.createRange();
-      r.selectNodeContents(e);
-      return r;
-    });
-    w.CSS.highlights.set('lab-pick', new w.Highlight(...ranges));
+// The half ink behind every picked block's words, as on words with a comment (feat/ink-on-text, ink.ts): a band under
+// the lower 44 % of each line, from 52.6 % down, the pins' green at 30 % (45 % on a dark page, read from the words'
+// own colour), corners 3 px (Leo, 19 Nov: "half height yes"). Every picked block, not only the last one (multiselect),
+// and a board frame's blocks in the frame's own page. Drawn in a layer of its own over the words' line boxes, translucent
+// and letting every pointer through: the page's DOM isn't touched, Safari draws it on words that can't be selected,
+// and phones get it as well as the ring.
+const lightWords = (color: string) => (([r, g, b]) => 0.299 * r + 0.587 * g + 0.114 * b > 150)((color.match(/[\d.]+/g) || [0, 0, 0]).map(Number));
+type Line = [number, number, number, number];
+/** A block's lines in its page's pixels: its text pieces merged by line inside one block, cut to a box that scrolls. */
+function lines(el: HTMLElement) {
+  const d = el.ownerDocument;
+  const w = d.defaultView!;
+  const out: Line[] = [];
+  const blocks: (Element | null)[] = [];
+  const known = new Map<Element, Element | null>();
+  const blockOf = (e: Element | null): Element | null => {
+    if (!e) return null;
+    if (!known.has(e)) known.set(e, /^(inline|contents)$/.test(w.getComputedStyle(e).display) ? blockOf(e.parentElement) : e);
+    return known.get(e)!;
+  };
+  let [x0, y0, x1, y1] = [-1e9, -1e9, 1e9, 1e9];
+  for (let e: Element | null = el; e && e !== d.body; e = e.parentElement) {
+    if (w.getComputedStyle(e).overflow === 'visible') continue;
+    const b = e.getBoundingClientRect();
+    [x0, y0, x1, y1] = [Math.max(x0, b.left), Math.max(y0, b.top), Math.min(x1, b.right), Math.min(y1, b.bottom)];
   }
+  const walk = d.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let t; (t = walk.nextNode() as Text | null); ) {
+    if (!t.data.trim() || t.parentElement?.closest(OUT)) continue;
+    const r = d.createRange();
+    r.selectNodeContents(t);
+    const block = blockOf(t.parentElement);
+    for (const b of r.getClientRects()) {
+      const mid = (b.top + b.bottom) / 2;
+      const [l, tp, rt, bt] = [Math.max(b.left, x0) + w.scrollX, b.top + w.scrollY, Math.min(b.right, x1) + w.scrollX, b.bottom + w.scrollY];
+      if (rt - l < 1 || b.height < 1 || mid < y0 || mid > y1) continue;
+      // On a line already when they overlap by more than half the shorter's height, in the same block.
+      const on = out.find((x, i) => blocks[i] === block && Math.min(x[3], bt) - Math.max(x[1], tp) > Math.min(x[3] - x[1], bt - tp) / 2);
+      if (on) [on[0], on[1], on[2], on[3]] = [Math.min(on[0], l), Math.min(on[1], tp), Math.max(on[2], rt), Math.max(on[3], bt)];
+      else {
+        out.push([l, tp, rt, bt]);
+        blocks.push(block);
+      }
+    }
+  }
+  return { lines: out, dark: lightWords(w.getComputedStyle(el).color) };
+}
+const bandsOf = new Map<Document, { layer: HTMLElement; off: () => void }>();
+let picksNow: HTMLElement[] = [];
+function inkPicks(list: HTMLElement[]) {
+  picksNow = list;
+  const docs = [...new Set(list.map((e) => e.ownerDocument))];
+  for (const [d, b] of bandsOf) {
+    if (docs.includes(d)) continue;
+    b.off();
+    bandsOf.delete(d);
+  }
+  for (const d of docs) {
+    let b = bandsOf.get(d);
+    if (!b) {
+      const w = d.defaultView!;
+      const layer = d.createElement('div');
+      layer.setAttribute('data-lab-comments', '');
+      layer.setAttribute('data-lab-pick-ink', '');
+      layer.setAttribute('aria-hidden', 'true');
+      layer.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2147482999'; // under the widget (2147483000): its cards and sheets cover the ink
+      d.documentElement.append(layer);
+      // The words move: a box scrolling, the window resizing, the block's own size, a late web font.
+      let queued = 0;
+      const again = () => (queued ||= w.requestAnimationFrame(() => ((queued = 0), drawBands(d))));
+      const ro = new w.ResizeObserver(again);
+      ro.observe(d.documentElement);
+      w.addEventListener('scroll', again, { capture: true, passive: true });
+      w.addEventListener('resize', again);
+      d.fonts?.addEventListener('loadingdone', again);
+      b = { layer, off: () => (layer.remove(), ro.disconnect(), w.removeEventListener('scroll', again, true), w.removeEventListener('resize', again), d.fonts?.removeEventListener('loadingdone', again), w.cancelAnimationFrame(queued)) };
+      bandsOf.set(d, b);
+    }
+    drawBands(d);
+  }
+}
+function drawBands(d: Document) {
+  const b = bandsOf.get(d);
+  if (!b) return;
+  const all = picksNow.filter((e) => e.ownerDocument === d && e.isConnected).map(lines); // all read, then all written
+  b.layer.replaceChildren(...all.flatMap(({ lines: ls, dark }) => ls.map(([l, t, r, bt]) => {
+    const i = d.createElement('i');
+    const h = bt - t;
+    i.style.cssText = `position:absolute;left:${l}px;top:${t + h * 0.526}px;width:${r - l}px;height:${h * 0.44}px;border-radius:3px;background:rgba(36,160,70,${dark ? 0.45 : 0.3})`;
+    return i;
+  })));
 }
 let unring = () => {};
 function rings() {
@@ -241,7 +306,7 @@ async function drop() {
 export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.close) {
   W = w;
   [T.open, T.close] = [open, close];
-  W.fonts.textContent += PICK_INK + ' [data-lab-picked] { outline: 2px solid rgb(52, 199, 89); outline-offset: 3px; border-radius: 3px; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }' +
+  W.fonts.textContent += '[data-lab-picked] { outline: 2px solid rgb(52, 199, 89); outline-offset: 3px; border-radius: 3px; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }' +
     // In select mode a long tap picks a block, so the page's own text selection and iOS's menu stay off; the block
     // being edited keeps both (Leo, 19 Nov: a long tap called two menus, iOS's and ours). Safari paints no highlight on
     // words that can't be selected, so on a computer (presses are the widget's there: no selection can start) the

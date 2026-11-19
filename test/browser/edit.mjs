@@ -54,7 +54,7 @@ const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
 };
-const pins = (p) => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).length);
+const pins = () => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).length);
 
 try {
   for (const eng of (process.env.ENGINES || 'chromium').split(',')) {
@@ -68,7 +68,7 @@ try {
       await sleep(600);
       const h1 = () => p.locator('h1');
       const mode = () => p.evaluate(() => document.documentElement.classList.contains('lab-editing'));
-      const picked = () => p.evaluate(() => CSS.highlights.has('lab-pick'));
+      const picked = () => p.evaluate(() => (document.querySelector('[data-lab-pick-ink]')?.childElementCount || 0) > 0); // the half ink's bands
       await p.keyboard.press('v');
       check(eng, 'V turns select mode on', await mode());
       await h1().click();
