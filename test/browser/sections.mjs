@@ -168,6 +168,20 @@ try {
     await D.tap('Questions');
     check(eng, 'a section read on one device clears on the other (same name)', await until(async () => !(await states()).includes('Questions:new'), 8000), await states());
     await other.close();
+    // A tap on a green name clears its ink at once, with motion on (the ink went over 300 ms), and the heading it goes to
+    // wears the half ink for a moment, not a box (Leo, 19 Nov).
+    write('index.html', page({ body: sec('speed', 'Speed', 'Words of Speed, now longer.') + sec('cost', 'Cost') + sec('risk', 'Risk', 'Risk changed.') + sec('plan', 'Next steps') + sec('extra', 'Appendix') + sec('z', 'Last words') + sec('q', 'Questions') + sec('ans', 'Answers') }));
+    const MO = await open(await context({ reducedMotion: 'no-preference' }));
+    await MO.scrollTo(0);
+    await until(async () => (await MO.states()).includes('Answers:new'));
+    await MO.tap('Answers');
+    await sleep(200);
+    const gone = await MO.shadow(() => { const c = [...r.querySelectorAll('.sb-nav .sb-chip')].find((x) => x.querySelector('.sb-t').textContent === 'Answers'); const bg = getComputedStyle(c.querySelector('.sb-t'), '::before').backgroundColor; return { st: c.dataset.st || '', bg }; });
+    const alpha = (c) => { const m = /rgba?\(([^)]+)\)|color\(srgb ([^)]+)\)/.exec(c) || []; const v = (m[1] || m[2] || '').split(/[ ,/]+/).filter(Boolean); return v.length > 3 ? parseFloat(v[3]) : c === 'transparent' ? 0 : 1; };
+    check(eng, 'a tap on a "new" name clears it within 300 ms: no status, no ink', gone.st === '' && alpha(gone.bg) < 0.02, JSON.stringify(gone));
+    const head = await MO.p.evaluate(() => { const ink = document.querySelector('html > [data-lab-comments] i'); const h = [...document.querySelectorAll('h2')].find((x) => x.textContent === 'Answers'); return { ink: Boolean(ink), outline: getComputedStyle(h).outlineStyle, bg: ink ? getComputedStyle(ink).backgroundColor : '' }; });
+    check(eng, 'the heading it goes to wears a green half ink, no box', head.ink && head.outline === 'none' && /36, 160, 70/.test(head.bg), JSON.stringify(head));
+    await MO.p.context().close();
 
     // ---- the page's own bar, no sections, no flag ----
     const S = await open(await context(), '/sticky');

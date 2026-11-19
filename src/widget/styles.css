@@ -736,9 +736,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
    room taken. The page's ink has no lighter kind, so new and updated wear the same. */
 .sb-t { position: relative; isolation: isolate; --_sbi: 30%; }
 .sb-t::before { content: ''; position: absolute; z-index: -1; left: 0; right: 0; top: calc(50% + .03em); height: .52em; border-radius: 3px;
-                background-color: transparent; transition: background-color var(--_t-slow) var(--_ease); pointer-events: none; }
+                background-color: transparent; transition: background-color var(--_t-quick) ease-out; pointer-events: none; }
 @media (prefers-color-scheme: dark) { .sb-t { --_sbi: 45%; } }
-.sb-chip:is([data-st="new"], [data-st="updated"]) .sb-t::before { background-color: color-mix(in srgb, rgb(36, 160, 70) var(--_sbi), transparent); }
+/* The ink comes in slowly and goes at once: a tap on a green name clears it right away (Leo, 19 Nov: "remove green as
+   read right after click"). */
+.sb-chip:is([data-st="new"], [data-st="updated"]) .sb-t::before { background-color: color-mix(in srgb, rgb(36, 160, 70) var(--_sbi), transparent); transition-duration: var(--_t-slow); }
 .sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid rgb(36, 160, 70); }
 .sb-w { color: rgb(36, 160, 70); font-size: 12px; }
 .sb-chip[aria-current] .sb-w { color: rgb(36, 160, 70); }

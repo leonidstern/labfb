@@ -116,6 +116,7 @@ export function startSections() {
   let pushTimer: ReturnType<typeof setTimeout>;
   let shown = '';
   let gen = 0;
+  let pushes = 0; // marks the lab has taken: a look at its marks begun before one went up is stale
 
   const status = (s: Sec) => (!marks || marks[s.key] === s.hash ? '' : marks[s.key] === undefined ? 'new' : 'updated');
   const load = () => {
@@ -140,6 +141,7 @@ export function startSections() {
       const res = await fetch(api(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, page, sections: Object.fromEntries(sent.filter((k) => k in marks!).map((k) => [k, marks![k]])) }) });
       if (res.ok && page === W.S.page) {
         sent.forEach((k) => dirty.delete(k));
+        pushes++;
         save();
       }
     } catch {} // the lab is down: they go with the next one
@@ -155,11 +157,14 @@ export function startSections() {
     const name = who();
     const page = W.S.page;
     if (api() && name) {
+      const n = pushes;
       try {
         const r = await (await fetch(`${api()}?name=${encodeURIComponent(name)}&page=${encodeURIComponent(page)}`, { cache: 'no-store' })).json();
         if (page !== W.S.page) return false;
-        if (r.sections) marks = { ...r.sections, ...Object.fromEntries([...dirty].filter((k) => marks && k in marks).map((k) => [k, marks![k]])) };
-        else if (marks) dirty = new Set(Object.keys(marks)); // the lab has none yet: it gets ours
+        // Not when marks went up meanwhile: the answer predates them and would light a name just read again (Leo, 19
+        // Nov: "remove green as read right after click").
+        if (r.sections && n === pushes) marks = { ...r.sections, ...Object.fromEntries([...dirty].filter((k) => marks && k in marks).map((k) => [k, marks![k]])) };
+        else if (!r.sections && marks) dirty = new Set(Object.keys(marks)); // the lab has none yet: it gets ours
         save();
       } catch {} // the lab is down: the cache stands
     }
