@@ -335,7 +335,9 @@ const wifiToken = async () => {
   }
   throw new Error('the wifi lab never started');
 };
-const lan = Object.values(os.networkInterfaces()).flat().find((a) => a && a.family === 'IPv4' && !a.internal)?.address;
+// An address the lab counts as the local network (its `nearby`): a cloud container's own (192.0.2.2, say) is not one,
+// and a guest coming in on it is turned away before the gate these tests are about.
+const lan = Object.values(os.networkInterfaces()).flat().find((a) => a && a.family === 'IPv4' && !a.internal && /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address))?.address;
 const wraw = (p, { host = '127.0.0.1', headers = {}, method = 'GET', body } = {}) =>
   new Promise((done) => {
     const req = http.request({ host, port: WPORT, path: p, method, headers: { host: `${host === '127.0.0.1' ? 'localhost' : host}:${WPORT}`, ...headers } }, (res) => {
@@ -365,7 +367,7 @@ test('a link is minted only for the agent on this computer, and only on a --wifi
   assert.ok(links.length && links.every((l) => /^http:\/\/[^/]+:\d+\/_lab\/j\/[0-9a-f]{32}$/.test(l)), links.join(' '));
 });
 
-test('looked: a guest needs a pass, and with one reads and writes like anybody the lab lets in', { skip: !lan && 'no network address to come in on' }, async () => {
+test('looked: a guest needs a pass, and with one reads and writes like anybody the lab lets in', { skip: !lan && 'no local network address to come in on' }, async () => {
   const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
   const cookie = r.cookie.split(';')[0];
   const asGuest = (headers, body) => wraw('/_lab/api/looked' + (body ? '' : '?name=Mira&page=/index'), { host: lan, method: body ? 'POST' : 'GET', body, headers: { origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json', ...headers } });
@@ -386,7 +388,7 @@ test('a one-time link works once, and an unknown one never', async () => {
   assert.equal((await wraw('/_lab/j/' + 'f'.repeat(32), { host: lan || '127.0.0.1' })).status, lan ? 403 : 302, 'a guessed link, from a device that is not in');
 });
 
-test('a guest on the wifi sees the gate until they open a link', { skip: !lan && 'no network address to come in on' }, async () => {
+test('a guest on the wifi sees the gate until they open a link', { skip: !lan && 'no local network address to come in on' }, async () => {
   assert.equal((await wraw('/', { host: lan })).status, 403, 'being on the wifi is not enough');
   assert.equal((await wraw('/_lab/live', { host: lan })).status, 403, 'nor for the comments stream');
   const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
@@ -397,7 +399,7 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
 });
 
-test('two labs on one computer keep their own passes: another lab\'s cookie never pushes this one out, and a used link still lands', { skip: !lan && 'no network address to come in on' }, async () => {
+test('two labs on one computer keep their own passes: another lab\'s cookie never pushes this one out, and a used link still lands', { skip: !lan && 'no local network address to come in on' }, async () => {
   // A browser keeps cookies per host, not per port: a phone that joined a second lab (a try lab on another port) holds
   // that lab's pass too. Before 18 Nov both were "lab_guest", the newer one replaced the other, and this lab met the
   // phone with "That link is used up or too old".
@@ -416,7 +418,7 @@ test('two labs on one computer keep their own passes: another lab\'s cookie neve
   assert.equal((await wraw('/', { host: lan, headers: { cookie: legacy } })).status, 200, 'a pass from before, under the old name, still works');
 });
 
-test('a link can open a page; a used one still does where the lab already lets you in; a guest who keeps using it stays in', { skip: !lan && 'no network address to come in on' }, async () => {
+test('a link can open a page; a used one still does where the lab already lets you in; a guest who keeps using it stays in', { skip: !lan && 'no local network address to come in on' }, async () => {
   const token = await wifiToken();
   const mint = async (page) => {
     const r = await wraw('/_lab/invite', { method: 'POST', body: JSON.stringify({ page }), headers: { 'content-type': 'application/json', 'x-lab-agent': '1', 'x-lab-admin': token } });
