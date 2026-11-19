@@ -34,7 +34,7 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags' | 'actions'; def
   pagesFolder: { type: 'string', def: '~/lab-pages', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
   actions: { type: 'actions', def: ACTIONS },
-  // What is being tried here (lib/flags.ts). Off unless labit.json (or your settings) turns one on.
+  // What is being tried here (lib/flags.ts). Off unless labit.json, your settings or the ⋯ menu's experiments turn one on.
   flags: { type: 'flags', def: flagDefaults() },
 };
 // The environment variables that set a setting (as before), and how their values read.
@@ -50,6 +50,7 @@ const ENV: Record<string, [string, (v: string) => unknown]> = {
 type Settings = {
   values: Record<string, any>;
   from: Record<string, string>; // flag, env PORT, labit.json, ~/.config/labit/settings.json, default
+  flagFrom: Record<string, 'project' | 'personal'>; // each flag a file names: the project's (which wins) or yours
   files: { project: string | null; personal: string };
   problems: string[];
 };
@@ -163,6 +164,7 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
   ];
   const values: Record<string, any> = {};
   const from: Record<string, string> = {};
+  const flagFrom: Settings['flagFrom'] = {};
   for (const [file, data] of layers)
     for (const key of Object.keys(data)) if (!(key in SPEC) && key !== '$schema') problems.push(`${file}: ${key} is not a setting; ignored`);
   for (const key of Object.keys(SPEC)) {
@@ -188,6 +190,7 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       if (v === undefined) continue;
       // Shortcuts and flags add up, one at a time: the project's over yours over the defaults.
       if (s.type === 'shortcuts' || s.type === 'flags' || s.type === 'actions') {
+        if (s.type === 'flags') for (const f of Object.keys(v as object)) flagFrom[f] ??= where;
         values[key] = { ...(v as object), ...values[key] };
         from[key] = from[key] ? `${from[key]} + ${file}` : file;
         continue;
@@ -209,7 +212,7 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       from[key] = 'default';
     }
   }
-  return { values, from, files, problems };
+  return { values, from, flagFrom, files, problems };
 }
 
 /** The shortcuts that differ from the defaults (what the widget needs to hear). */
@@ -217,6 +220,27 @@ export const changedShortcuts = (keys: Record<string, string>) => Object.fromEnt
 
 /** The actions lists that differ from the defaults (what the widget needs to hear). */
 export const changedActions = (actions: Record<string, unknown[]>) => Object.fromEntries(Object.entries(actions).filter(([area, list]) => JSON.stringify(ACTIONS[area as keyof typeof ACTIONS]) !== JSON.stringify(list)));
+
+/** Turns a flag on or off in your own settings file (the Experiments list in the ⋯ menu), keeping the rest of the
+ *  file. Off leaves no trace: off is the absence of a flag. A file that isn't JSON is left alone (it throws) rather than
+ *  written over. Returns the file. */
+export function savePersonalFlag(flag: string, on: boolean): string {
+  if (!(flag in FLAGS)) throw new Error(`${flag} is not something being tried now`);
+  const file = personalFile();
+  let data: Record<string, unknown> = {};
+  if (fs.existsSync(file)) {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${file}: not an object of settings`);
+  }
+  const flags = (data.flags && typeof data.flags === 'object' && !Array.isArray(data.flags) ? data.flags : {}) as Record<string, unknown>;
+  if (on) flags[flag] = true;
+  else delete flags[flag];
+  if (Object.keys(flags).length) data.flags = flags;
+  else delete data.flags;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+  return file;
+}
 
 /** Sets one setting in your own file, keeping the rest. */
 export function savePersonal(key: string, value: unknown) {

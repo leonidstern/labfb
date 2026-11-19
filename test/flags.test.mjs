@@ -1,14 +1,19 @@
-// Flags: what the lab is trying. Off unless labit.json turns one on; the page has no switches of its own.
+// Flags: what the lab is trying. Off unless labit.json, your settings or the ⋯ menu's Experiments list turns one on.
+// A switch in the menu is saved in your own settings; the project's labit.json still wins.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadSettings } from '../lib/settings.ts';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { loadSettings, savePersonalFlag } from '../lib/settings.ts';
 import { FLAGS, flagDefaults, flagsOn } from '../lib/flags.ts';
 
 const dirs = [];
+const kids = [];
 after(() => {
+  for (const k of kids) k.kill();
   for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
 });
 const tmp = () => {
@@ -63,6 +68,124 @@ test('sinceLooked is off until switched on, and the widget starts nothing withou
   assert.deepEqual(flagsOn(read(dir).values.flags), ['sinceLooked']);
   // The widget's only way in: the pill, the kept looks and every request come from startChanges().
   const widget = fs.readFileSync(new URL('../src/comments.js', import.meta.url), 'utf8');
-  assert.match(widget, /flag\('sinceLooked'\)\) startChanges\(\)/);
+  assert.match(widget, /name === 'sinceLooked'\) startChanges\(\)/);
   assert.equal(widget.match(/startChanges\(/g).length, 1, 'started in one place only');
+});
+
+// Your own settings file, in a config home of its own (the switch writes where XDG_CONFIG_HOME says).
+const withConfig = (cfg, fn) => {
+  const was = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = cfg;
+  try {
+    return fn();
+  } finally {
+    process.env.XDG_CONFIG_HOME = was;
+  }
+};
+const mine = (cfg) => path.join(cfg, 'labit', 'settings.json');
+
+test('a switch is saved in your own settings, keeps the rest of the file, and off leaves no trace', () => {
+  const cfg = tmp();
+  fs.mkdirSync(path.join(cfg, 'labit'));
+  fs.writeFileSync(mine(cfg), JSON.stringify({ name: 'Leo', shortcuts: { chat: 'x' } }));
+  const file = withConfig(cfg, () => savePersonalFlag('sinceLooked', true));
+  assert.equal(file, mine(cfg));
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { name: 'Leo', shortcuts: { chat: 'x' }, flags: { sinceLooked: true } });
+  const s = withConfig(cfg, () => loadSettings(tmp(), {}, {}));
+  assert.equal(s.values.flags.sinceLooked, true);
+  assert.equal(s.flagFrom.sinceLooked, 'personal');
+  withConfig(cfg, () => savePersonalFlag('sinceLooked', false));
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { name: 'Leo', shortcuts: { chat: 'x' } });
+  assert.throws(() => withConfig(cfg, () => savePersonalFlag('wasKeptLastYear', true)), /not something being tried/);
+});
+
+test('a switch makes your settings file when there is none, and never writes over one that is not JSON', () => {
+  const cfg = tmp();
+  withConfig(cfg, () => savePersonalFlag('sinceLooked', true));
+  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { sinceLooked: true } });
+  fs.writeFileSync(mine(cfg), '{ "name": "Leo", }');
+  assert.throws(() => withConfig(cfg, () => savePersonalFlag('sinceLooked', false)));
+  assert.equal(fs.readFileSync(mine(cfg), 'utf8'), '{ "name": "Leo", }', 'left as it was');
+});
+
+test("the project's labit.json wins over your switch, and says it is the project's", () => {
+  const dir = tmp();
+  const cfg = tmp();
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sinceLooked: false } }));
+  withConfig(cfg, () => savePersonalFlag('sinceLooked', true));
+  const s = withConfig(cfg, () => loadSettings(dir, {}, {}));
+  assert.equal(s.values.flags.sinceLooked, false);
+  assert.equal(s.flagFrom.sinceLooked, 'project');
+});
+
+// The lab: POST /_lab/flags with the browser's key, from this computer. One lab, started once for these checks.
+const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
+const startLab = async (dir, cfg) => {
+  const port = 7600 + Math.floor(Math.random() * 150);
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hi</h1>');
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--new', '--port', String(port)], { cwd: dir, env: { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg } });
+  kids.push(lab);
+  const B = `http://localhost:${port}`;
+  let html = '';
+  for (let i = 0; i < 80 && !html; i++) {
+    html = await fetch(B + '/').then((r) => r.text(), () => '');
+    if (!html) await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.ok(html, 'the lab answers');
+  const key = html.match(/data-admin="([^"]+)"/)?.[1];
+  const flagsOf = (h) => JSON.parse(h.match(/data-flags='([^']*)'/)[1].replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&amp;/g, '&'));
+  const post = (body, k = key) => fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json', ...(k ? { 'x-lab-admin': k } : {}) }, body: JSON.stringify(body) });
+  return { B, html, key, flagsOf, post };
+};
+
+test('the Experiments switch: owner only, saved in your settings, on the page and the live state at once', async () => {
+  const dir = tmp();
+  const cfg = tmp();
+  const { B, html, key, flagsOf, post } = await startLab(dir, cfg);
+  assert.ok(key, "this computer's page has the key");
+  assert.equal(flagsOf(html).sinceLooked.on, false);
+  assert.equal(flagsOf(html).sinceLooked.project, undefined);
+
+  assert.equal((await post({ flag: 'sinceLooked', on: true }, '')).status, 403, 'no key: refused');
+  assert.equal((await post({ flag: 'sinceLooked', on: true }, 'x'.repeat(key.length))).status, 403, 'a wrong key: refused');
+  assert.equal((await post({ flag: 'wasKeptLastYear', on: true })).status, 400);
+  assert.equal((await post({ flag: 'sinceLooked', on: 'yes' })).status, 400);
+  assert.equal((await post({ flag: '__proto__', on: true })).status, 400);
+  assert.equal(fs.existsSync(mine(cfg)), false, 'nothing written for a refused switch');
+
+  const r = await post({ flag: 'sinceLooked', on: true });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await r.json()).flags, ['sinceLooked']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { sinceLooked: true } }, 'in your own settings');
+  assert.equal(fs.existsSync(path.join(dir, 'labit.json')), false, "the project's file is not touched");
+  assert.equal(flagsOf(await (await fetch(B + '/')).text()).sinceLooked.on, true, 'the next page load has it, no restart');
+  assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, ['sinceLooked'], 'open pages hear it');
+
+  await post({ flag: 'sinceLooked', on: false });
+  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), {});
+  assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, []);
+});
+
+test("a flag the project's labit.json sets: shown as the project's, and the switch is refused", async () => {
+  const dir = tmp();
+  const cfg = tmp();
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sinceLooked: true } }));
+  const { html, flagsOf, post } = await startLab(dir, cfg);
+  assert.deepEqual(flagsOf(html).sinceLooked, { name: FLAGS.sinceLooked.name, on: true, project: true });
+  assert.equal((await post({ flag: 'sinceLooked', on: false })).status, 409);
+  assert.equal(fs.existsSync(mine(cfg)), false);
+});
+
+test('`labit settings` names each flag that is on and whose it is', async () => {
+  const { execFile } = await import('node:child_process');
+  const cli = (cwd, cfg) => new Promise((resolve) => execFile(process.execPath, [LAB, 'settings'], { cwd, env: { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg } }, (err, out) => resolve({ code: err?.code ?? 0, out })));
+  const dir = tmp();
+  const cfg = tmp();
+  withConfig(cfg, () => savePersonalFlag('sinceLooked', true));
+  let r = await cli(dir, cfg);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /^flags\s+sinceLooked \(yours\)\s+your settings$/m);
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sinceLooked: true } }));
+  r = await cli(dir, cfg);
+  assert.match(r.out, /^flags\s+sinceLooked \(labit\.json\)\s+labit\.json \+ your settings$/m);
 });
