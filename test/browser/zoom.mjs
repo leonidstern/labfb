@@ -63,6 +63,13 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
       inside: inside(r.left - v.offsetLeft, r.top - v.offsetTop) || inside(r.left, r.top) };
   }, sel);
   const bar = await seen('.bar');
+  // Playwright's desktop WebKit ignores a page's initial-scale (scale stays 1, on Linux and on a Mac): nothing to check
+  // there. Safari in the iOS simulator does zoom (test/phone).
+  if (Math.abs(bar.scale - 1) < 0.01 && eng === 'webkit') {
+    console.log(`skip ${eng.padEnd(8)} this engine does not zoom a page (scale 1)`);
+    await browser.close();
+    continue;
+  }
   check(eng, 'the page is zoomed in', Math.abs(bar.scale - ZOOM) < 0.05, `scale ${bar.scale}`);
   check(eng, 'the bar keeps its usual size', Math.abs(bar.w * bar.scale - bar.laid) < 2, `${Math.round(bar.w)} px of ${Math.round(bar.vw)} shown, laid out ${bar.laid}`);
   check(eng, 'the bar is inside what the screen shows', bar.inside, JSON.stringify(bar));
