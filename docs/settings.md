@@ -158,7 +158,7 @@ win over yours, key by key.
 | `next` | `w` | The next new comment (with Shift: the one before) |
 | `pause` | `p` | Pause the page's videos and animations, or play what was paused (each one also has its own pause / play beside it) |
 | `slow` | `s` | Play the page's videos and animations at ¼ speed, or back at full speed (the ¼ beside each pause does the same); a pin made while paused carries the moment in ms |
-| `done` | `d` | Hide or show done threads (shown, faded, at first) |
+| `done` | `d` | Tapped: hide or show done threads (shown, faded, at first). Held while you drag: draw a comment (a circle, an arrow, an underline…); the agent is told what it reads as |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
 | `select` | `v` | With the `select` flag on: select mode on or off |

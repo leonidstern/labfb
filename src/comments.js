@@ -23,6 +23,7 @@ import {
   rectsOf,
   readable,
   readComponents,
+  openingTag,
   short,
   zoneAnchor,
   zoneEl,
@@ -38,6 +39,7 @@ import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
+import { inkAnchor, inkSvg, liveInk } from './widget/ink.ts';
 import { bindSelect, pick, selectChips, selectMode } from './widget/select.ts';
 import { SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
@@ -939,7 +941,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         }
         if (S.openId !== c.id) return;
       }
-      if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
+      const ink = zone && c.anchor.ink; // a drawing is its own pin: its lines, no marker (draw.ts)
+      if (S.openId === c.id && !ink) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
       const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
@@ -1014,8 +1017,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       else if (oldTip) { if (oldTip.textContent !== tip) oldTip.textContent = tip; }
       else pin.append(el('span', { class: 'tip', 'aria-hidden': 'true' }, tip));
       if (coarse && !pin.querySelector(':scope > .hit')) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
+      pin.classList.toggle('ink', Boolean(ink));
+      if (ink) {
+        pin.querySelector(':scope > svg')?.remove();
+        pin.append(inkSvg(ink, { left: 0, top: 0, width: zone.width, height: zone.height }));
+      }
+      inkAt(pin, ink && zone, left, top);
       pin.style.visibility = clipped && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position)
       if (born) {
         // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
@@ -1025,7 +1032,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           const d = pinData.get(pin);
           d.hot = true;
           if (coarse || S.openId === d.c.id) return;
-          if (d.zone) d.shown = drawZone(d.zone, 'saved');
+          if (d.zone && !d.c.anchor.ink) d.shown = drawZone(d.zone, 'saved');
           else if (d.c.anchor?.quote) markQuote(d.c.anchor);
         });
         pin.addEventListener('pointerleave', () => {
@@ -1052,7 +1059,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // Pointing at it while the page is redrawn: what it shows for being pointed at is drawn again with it.
       info.shown = null;
       if (info.hot && !coarse && S.openId !== c.id) {
-        if (zone) info.shown = add(drawZone(zone, 'saved'));
+        if (zone && !ink) info.shown = add(drawZone(zone, 'saved'));
         else if (c.anchor?.quote && !quoted) quoted = c.anchor;
       }
       next.push(pin);
@@ -1109,9 +1116,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       const draft = S.draft;
       const { anchor } = draft;
       const { left, top, zone } = position(anchor);
-      add(drawZone(zone, 'draft'));
+      if (zone && anchor.ink) add(inkSvg(anchor.ink, zone)); // a drawing shows its lines, with no draft pin
+      else add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
-      if (!fluid && !draft.select) {
+      if (!fluid && !draft.select && !anchor.ink) {
         const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
@@ -1446,7 +1454,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (k === 'slow') return setSlow(!S.slow);
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'done') return toggleDone();
+      if (k === 'done') return void ((S.dKey = true), (S.drew = false), part('draw')); // on release (below): held, D draws (draw.ts)
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
@@ -1524,7 +1532,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (e.composedPath().includes(host)) return;
     if (!e.altKey && control(e.target)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
-    S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
+    S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false, ink: S.dKey };
+    if (S.dKey) clearTimeout(S.inkTimer); // another stroke of the same drawing
   }
   document.addEventListener('pointerdown', (e) => !e.altKey && startDrag(e), true); // Option presses are taken earlier (see optionPress)
   document.addEventListener(
@@ -1537,11 +1546,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         S.drag.active = true;
         getSelection?.()?.removeAllRanges();
         document.documentElement.classList.add('lab-dragging');
-        S.liveZone = zoneEl('draft live');
-        layer.append(S.liveZone);
+        if (S.drag.ink) {
+          if (!S.inking) layer.append((S.inking = liveInk()).svg);
+          S.inking.strokes.push([{ x: S.drag.x0, y: S.drag.y0 }]);
+        } else layer.append((S.liveZone = zoneEl('draft live')));
       }
       if (!S.drag.active) return;
       e.preventDefault();
+      if (S.drag.ink) return void (S.inking.strokes.at(-1).push({ x: e.clientX, y: e.clientY }), S.inking.paint());
       S.zoneFrame ||= requestAnimationFrame(paintZone);
     },
     true,
@@ -1560,6 +1572,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.afterDrag = true;
     setTimeout(() => (S.afterDrag = false), 0);
     getSelection?.()?.removeAllRanges();
+    // A stroke of a drawing: more may follow while D is held. It is done when D is let go, or a second after the last.
+    if (d.ink) {
+      S.drew = true;
+      clearTimeout(S.inkTimer);
+      S.inkTimer = setTimeout(endInk, 1000);
+      return;
+    }
     // A thin drag (a line of text, a small icon) still makes an area: it keeps the size it was drawn at,
     // ZONE_MIN each way around its middle, instead of silently doing nothing.
     for (const [a, b] of [['x0', 'x1'], ['y0', 'y1']]) {
@@ -1572,6 +1591,28 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.openId = null;
     begin(zoneAnchor(d));
   };
+  S.dKey = false;
+  S.inking = null;
+  async function endInk() {
+    clearTimeout(S.inkTimer);
+    const ink = S.inking;
+    S.inking = null;
+    if (!ink) return;
+    const { readInk } = await part('draw').catch(() => ({ readInk: null }));
+    ink.svg.remove();
+    if (!readInk) return;
+    showAgain();
+    S.openId = null;
+    begin(inkAnchor(readInk(ink.strokes, (e) => e && short(`${openingTag(e)} "${short(e.textContent, 40)}"`, 160)), ZONE_MIN));
+  }
+  // D let go: the drawing is done, or, when nothing was drawn, done pins show or hide (KEYS.done).
+  addEventListener('keyup', (e) => {
+    if (!S.dKey || actionOf(e) !== 'done') return;
+    S.dKey = false;
+    if (S.inking && !S.drag) endInk();
+    else if (!S.drew) toggleDone();
+  }, true);
+  addEventListener('blur', () => (S.dKey = false));
   document.addEventListener('pointerup', endDrag, true);
   document.addEventListener('pointercancel', endDrag, true);
   // Don't let images and videos start a native drag while comments are on: a press there marks an area.
@@ -1990,15 +2031,21 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     begin(anchorAt(e.clientX, e.clientY));
   }
 
+  // A pin at its spot; a drawing (draw.ts) over its whole area, its lines stretched to it.
+  const inkAt = (pin, zone, left, top) => {
+    const svg = zone && pin.querySelector(':scope > svg');
+    if (svg) Object.assign(svg.style, { width: `${zone.width}px`, height: `${zone.height}px` });
+    pin.style.left = `${zone ? zone.left : left}px`;
+    pin.style.top = `${zone ? zone.top : top}px`;
+  };
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   const movePins = () => {
     if (!S.on || S.openId) return render();
     const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {})]).filter(([, at]) => !at.moved);
     if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
-    for (const [pin, { left, top, clipped }] of places) {
-      pin.style.left = `${left}px`;
-      pin.style.top = `${top}px`;
+    for (const [pin, { left, top, clipped, zone }] of places) {
+      inkAt(pin, pin.classList.contains('ink') && zone, left, top);
       pin.style.visibility = clipped ? 'hidden' : '';
     }
   };

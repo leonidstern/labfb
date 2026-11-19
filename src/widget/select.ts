@@ -38,7 +38,7 @@ function step(dir: 1 | -1) {
 // "…" as a pin, with no pin drawn while it is open; what is sent is a pin on the block. done (leave select) joins its line.
 const pointOn = (e: HTMLElement) => {
   const r = e.getBoundingClientRect();
-  return W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2);
+  return W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2, false, e); // built onto the block itself, not what is at that point
 };
 /** done, for the picked block's chips line. */
 export const selectChips = () => {
