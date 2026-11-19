@@ -65,42 +65,6 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
   // The command line's own hint ("Answer each: … reply …") becomes the tools to use here.
   const forTools = (t: string) => t.replace(/^Work that takes more than a minute .*$/m, 'Work that takes more than a minute (a build, a restart, a PR): first `reply` with intent working on each, then start.').replace(/^Answer each: .*$/m, 'Answer each with the `reply` tool (id, text, intent: done when it is done, question when you need the person), then call `wait` again. While you work on a long one, `reply` with `progress` alone (one short line) keeps the person informed.');
   const text = (t: string, isError = false): ToolResult => ({ content: [{ type: 'text', text: forTools(t).trim() || '(nothing)' }], ...(isError ? { isError } : {}) });
-  // Boards are an experiment: the tool (and its words in the instructions) exist only where labit.json turns the flag on.
-  const boards = async () => {
-    try {
-      return (await import('./settings.ts')).loadSettings(project({}), {}).values.flags.board === true;
-    } catch {
-      return false;
-    }
-  };
-  const boardTool = {
-    name: 'board',
-    title: 'Options, widths and flows on a board',
-    description: 'Show options, one page at several widths, or a flow as frames side by side, not as a description in a reply. new: a topic and `of` (a page) with variants (the lab copies the page into .lab/boards/<board>/a.html, b.html…: edit those files; 3 unless asked, 6 at most), or widths ("390,820,1280"), or flow ("/a,/b,/c"). The lab places frames: give an order, never positions. add: a frame to relabel or resize, a page, or an .html file to copy in. move: a frame after another. pick: keep the named frame and archive the rest (files stay). list: boards, or one board as text.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string', enum: ['new', 'add', 'move', 'pick', 'list'] },
-        topic: { type: 'string', description: 'new: what the board is about, e.g. "Pricing hero"' },
-        name: { type: 'string', description: 'The board (add, move, pick, list)' },
-        of: { type: 'string', description: 'new: the page, e.g. /pricing or /pricing#hero' },
-        variants: { type: 'number', description: 'new: how many copies, 1 to 6' },
-        widths: { type: 'string', description: 'new: widths, e.g. "390,820,1280"' },
-        flow: { type: 'string', description: 'new: pages in order, e.g. "/cart,/checkout"' },
-        target: { type: 'string', description: 'add: a frame id, a page like /cart, or an .html file' },
-        frame: { type: 'string', description: 'move: the frame' },
-        frames: { type: 'array', items: { type: 'string' }, description: 'pick: the frame to keep (several keep all of them)' },
-        label: { type: 'string', description: 'add: what differs, in a few words' },
-        width: { type: 'number', description: 'add: the frame\'s width' },
-        after: { type: 'string', description: 'add, move: the frame it goes after' },
-        first: { type: 'boolean', description: 'move: to the start' },
-        dir: { type: 'string', description: 'The project folder, if the server started somewhere else' },
-      },
-      required: ['action'],
-      additionalProperties: false,
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  };
   const tools = [
     {
       name: 'comments',
@@ -169,8 +133,7 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
   const fail = (code: number, message: string, data?: unknown) => Object.assign(new Error(message), { code, data });
   const call = async (m: Msg): Promise<ToolResult> => {
     const { name, arguments: a = {} } = m.params || {};
-    const boardsOn = name === 'board' && (await boards());
-    const tool = [...tools, boardTool].find((t) => t.name === name && (name !== 'board' || boardsOn));
+    const tool = tools.find((t) => t.name === name);
     if (!tool) throw fail(-32602, `Unknown tool: ${name}`);
     // Bad arguments are the tool's error, so the agent can fix them and try again.
     if (a === null || typeof a !== 'object' || Array.isArray(a)) return text('Arguments must be an object.', true);
@@ -202,18 +165,6 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
       if (a.recommend !== undefined && typeof a.recommend !== 'string') return text('`recommend` must be a letter, like "B".', true);
       const asked = [...(a.choices || []).flatMap((c: string) => ['--choice', c]), ...(a.recommend ? ['--recommend', a.recommend] : [])];
       const r = await run(['reply', ...asked, ...(flag ? [flag] : []), ...(a.resolve ? ['--resolve'] : []), '--', a.id, a.text], 30000, project(a));
-      return text(r.text, !r.ok);
-    }
-    if (name === 'board') {
-      const str = (k: string) => a[k] !== undefined && typeof a[k] !== 'string';
-      const bad = ['topic', 'name', 'of', 'widths', 'flow', 'target', 'frame', 'label', 'after', 'dir'].find(str);
-      if (bad) return text(`\`${bad}\` must be a string.`, true);
-      for (const k of ['variants', 'width']) if (a[k] !== undefined && typeof a[k] !== 'number') return text(`\`${k}\` must be a number.`, true);
-      if (a.frames !== undefined && (!Array.isArray(a.frames) || a.frames.some((f) => typeof f !== 'string'))) return text('`frames` must be a list of frame ids.', true);
-      const flags = [['of', a.of], ['variants', a.variants], ['widths', a.widths], ['flow', a.flow], ['label', a.label], ['width', a.width], ['after', a.after]].flatMap(([k, v]) => (v === undefined ? [] : [`--${k}`, String(v)]));
-      const words = { new: [a.topic], add: [a.name, a.target], move: [a.name, a.frame], pick: [a.name, ...(a.frames || [])], list: [a.name] }[a.action as string];
-      if (!words) return text('`action` must be new, add, move, pick or list.', true);
-      const r = await run(['board', a.action, ...flags, ...(a.first ? ['--first'] : []), '--', ...words.filter((w) => w !== undefined)], 30000, project(a));
       return text(r.text, !r.ok);
     }
     if (name === 'pin') {
@@ -254,8 +205,6 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     }
   };
   const handle = async (m: Msg): Promise<unknown> => {
-    const boardsOn = m.method === 'tools/list' || m.method === 'server/discover' || m.method === 'initialize' ? await boards() : false;
-    const instructions = INSTRUCTIONS + (boardsOn ? ' Options, widths and flows go on a board (`board`), not in a reply.' : '');
     const version = m.params?._meta?.[`${META}protocolVersion`];
     const named = m.params?.clientInfo?.name || m.params?._meta?.[`${META}clientInfo`]?.name;
     if (typeof named === 'string' && named.trim()) client = named.trim().slice(0, 40);
@@ -264,16 +213,16 @@ export async function runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agen
     const done = (result: object) => (modern ? { resultType: 'complete', ...result } : result);
     const info = { name: 'labit', title: 'labit pin comments', version: VERSION };
     if (m.method === 'server/discover')
-      return done({ supportedVersions: [...MODERN, ...LEGACY], capabilities: { tools: {} }, _meta: { [`${META}serverInfo`]: info }, instructions });
+      return done({ supportedVersions: [...MODERN, ...LEGACY], capabilities: { tools: {} }, _meta: { [`${META}serverInfo`]: info }, instructions: INSTRUCTIONS });
     if (m.method === 'initialize') {
       const asked = m.params?.protocolVersion;
       // A client with roots says which folder it works in: asked once it says it's ready (notifications/initialized;
       // the spec: no request from the server before that).
       askRoots = Boolean(m.params?.capabilities?.roots);
-      return { protocolVersion: LEGACY.includes(asked) ? asked : LEGACY[0], capabilities: { tools: {} }, serverInfo: info, instructions };
+      return { protocolVersion: LEGACY.includes(asked) ? asked : LEGACY[0], capabilities: { tools: {} }, serverInfo: info, instructions: INSTRUCTIONS };
     }
     if (m.method === 'ping') return done({});
-    if (m.method === 'tools/list') return done({ tools: boardsOn ? [...tools, boardTool] : tools });
+    if (m.method === 'tools/list') return done({ tools });
     if (m.method === 'tools/call') return done(await call(m));
     throw fail(-32601, `Method not found: ${m.method}`);
   };
