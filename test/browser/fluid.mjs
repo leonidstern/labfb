@@ -95,6 +95,12 @@ const inRoot = (p, fn, arg) =>
     return new Function('r', 'a', `return (${src})(r, a)`)(r, a);
   }, [fn.toString(), arg]);
 // The one element now: null when it isn't showing; else which pane, where it is on screen, what runs on it.
+// Waits for fn(root, arg) to be true inside the widget's shadow root.
+const untilRoot = (p, fn, arg, ms) =>
+  p.waitForFunction(([src, a]) => {
+    const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
+    return Boolean(r) && new Function('r', 'a', `return (${src})(r, a)`)(r, a);
+  }, [fn.toString(), arg], { timeout: ms, polling: 'raf' }).catch(() => {});
 // The dialog is up and still: on a slow machine 700 ms is not always enough for its animation.
 const dlgUp = async (p, ms = 1500) => {
   await p.waitForFunction(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot; const e = r?.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg')?.classList.contains('on') && e.classList.contains('settled'); }, null, { timeout: ms, polling: 'raf' }).catch(() => {});
