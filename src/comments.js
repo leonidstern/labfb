@@ -38,7 +38,8 @@ import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { bindEdit, editKey } from './widget/edit.ts';
-import { selectMode } from './widget/select.ts';
+import { pick, selectChips, selectMode } from './widget/select.ts';
+import { SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
@@ -83,7 +84,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get ms() { return ms; },
     get mine() { return mine; },
     get nameLine() { return nameLine; },
-    get actions() { return ACTIONS.words; },
+    get actions() { return WORDS; },
     get numberOf() { return numberOf; },
     get openSheet() { return openSheet; },
     get patchKids() { return patchKids; },
@@ -134,12 +135,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
-  // The actions on selected words, beside the comment itself (labit.json or your settings.json `actions`, passed as
-  // data-actions; docs/settings.md): the built-in rewrite, cut, go, remove and fix, and your own { label, send }. `words`
-  // is the selected words' dialog, `spot` the regular dialog on a spot or an area.
-  const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] };
+  // The row on selected words: rewrite, cut and go. Everywhere else, your one list of actions (settings.json `actions`,
+  // passed as data-actions; lib/actions.ts, docs/settings.md): the first 3 as chips, the rest behind "…".
+  const WORDS = ['rewrite', 'cut', 'go'];
+  let LIST = SEED;
   try {
-    Object.assign(ACTIONS, JSON.parse(script?.dataset.actions || '{}'));
+    const l = JSON.parse(script?.dataset.actions || 'null');
+    if (Array.isArray(l)) LIST = l;
   } catch {}
   // The key pressed, as the settings name it: a digit by its place (Shift or AZERTY don't matter), a letter as typed
   // when it's Latin (QWERTZ and AZERTY move letters), else by its place (Cyrillic and other layouts).
@@ -801,6 +803,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   /** @type {WeakMap<Element, any>} */
   const pinData = new WeakMap();
   function render() {
+    if (S.selDraft && S.draft !== S.selDraft) pick(null, false); // the picked block's box closed: the block is let go
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
     S.grabbing = false; // a pin being dragged is replaced: its drag ends here
@@ -1070,7 +1073,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       const { left, top, zone } = position(anchor);
       add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
-      if (!fluid) {
+      if (!fluid && !draft.select) {
         const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
@@ -1083,7 +1086,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
         // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
         // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
-        autofocus: !(draft.fluid && coarse) && !S.pinnedByHold,
+        autofocus: !(draft.fluid && coarse) && !S.pinnedByHold && !(draft.select && coarse),
         draftKey: `lab-typing:${S.page}:new`,
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });
@@ -1810,19 +1813,46 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
     const exact = draft.anchor.quote?.exact || '';
     const fill = (v) => ((field.value = v), field.dispatchEvent(new Event('input')));
-    for (const a of acts(draft.fluid ? exact.length : 1e9, false, draft.fluid ? ACTIONS.words : ACTIONS.spot)) {
-      const k = actName(a);
-      const b = actButton(a, false);
+    const go = (said, prompt = '') => {
+      if (prompt) draft.anchor.act = prompt; // the agent reads the whole prompt: "action: …"
+      else delete draft.anchor.act;
+      fill(said);
+      /** @type {HTMLElement} */ (box.querySelector('.send')).click();
+    };
+    const chip = (a) => {
+      const b = actButton(a.name, false);
+      b.title = a.prompt;
       b.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box
-      b.addEventListener('click', () => {
-        if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
-        const typed = field.value.trim();
-        const own = typeof a === 'string' ? null : a;
-        const said = own ? `${own.send}${typed ? ` ${typed}` : ''}` : k === 'rewrite' ? `Rewrite: “${exact}”` : k === 'cut' ? `Cut: “${exact}”` : k === 'go' ? 'go' : k === 'remove' ? 'Remove this' : 'Fix this';
-        fill(said);
-        /** @type {HTMLElement} */ (box.querySelector('.send')).click();
+      b.addEventListener('click', () => go(field.value.trim() ? `${a.name}: ${field.value.trim()}` : a.name, a.prompt));
+      return b;
+    };
+    if (draft.fluid)
+      for (const k of acts(exact.length, false, WORDS).map(actName)) {
+        const b = actButton(k, false);
+        b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.addEventListener('click', () => {
+          if (/^(rewrite|cut)$/.test(k) && !quoteRects(draft.anchor).length) return;
+          go(k === 'rewrite' ? `Rewrite: “${exact}”` : k === 'cut' ? `Cut: “${exact}”` : 'go');
+        });
+        row.append(b);
+      }
+    else {
+      // Your list: the first 3, then "…" for the rest in their order (a line under this one). What doesn't fit on one
+      // line goes behind "…" too, measured: select's ↑ ↓ first, then the third chip (long names on a phone).
+      const more = el('div', { class: 'quick more', hidden: '' });
+      const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
+      dots.addEventListener('mousedown', (e) => e.preventDefault());
+      dots.addEventListener('click', () => dots.setAttribute('aria-expanded', String(!(more.hidden = !more.hidden))));
+      more.append(...LIST.slice(3).map(chip));
+      row.append(...LIST.slice(0, 3).map(chip), dots, ...(draft.select ? selectChips() : []));
+      queueMicrotask(() => {
+        row.after(more);
+        const over = () => row.scrollWidth > row.clientWidth + 1;
+        let at = null; // ↑ before ↓, however many go
+        for (const b of [...row.querySelectorAll('.sel:not([data-a=done])')].reverse()) if (over()) at = more.insertBefore(b, at);
+        if (over() && row.children[2] !== dots) more.prepend(row.children[2]);
+        dots.hidden = !more.children.length;
       });
-      row.append(b);
     }
     // ⌥ + 1…4 (by the key's place, so Option's own characters don't matter) runs the nth button; holding ⌥ shows the numbers.
     const buttons = [...row.children];

@@ -666,23 +666,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar[hidden] { display: none; }
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
-@media (pointer: coarse) { :host([data-sheet]) :is(.sbar, .selbar) { visibility: hidden; } } /* the select bar steps out of the chat, a thread or the comment sheet (Leo, 19 Nov: "states overlaying chat") */
-/* Select on a phone (select.ts): edit · pin · done for the picked block, as the comment box's action pills (.quick),
-   on a card above the widget's bar (Leo, 19 Nov: "select pills don't look good"). */
-.selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 3; margin: 0; padding: 8px; gap: 8px;
-          background: var(--_bg); border-radius: var(--_radius); box-shadow: 0 0 0 .5px rgba(20, 20, 20, .14), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .1); }
-.selbar[hidden] { display: none; }
-.selbar button { font: inherit; font-size: 15px; padding: 9px 16px; color: var(--_fg); border-radius: max(0px, calc(var(--_radius) - 8px)); -webkit-tap-highlight-color: transparent; }
-.selbar button:disabled { opacity: .35; }
-.selbar button { flex: none; white-space: nowrap; }
-@media (pointer: coarse) { /* one row the width of the screen that scrolls sideways, not a block of rows */
-  .selbar { left: 12px; right: 12px; transform: none; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px; padding: 6px; }
-  .selbar::-webkit-scrollbar { display: none; }
-  .selbar button { font-size: 14px; padding: 8px 12px; }
-}
-.selsay { align-self: center; padding: 0 8px; color: var(--_muted); font-size: 14px; }
-@media (pointer: fine) { .selbar { bottom: 72px; gap: 4px; padding: 6px; } .selbar button { font-size: 13px; padding: 6px 10px; } }
-
+@media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
+/* Your actions (lib/actions.ts): the first 3, "…", and select's ↑ ↓ done on one line; "…" opens the rest under it. */
+.quick { white-space: nowrap; }
+.quick[hidden] { display: none; }
+.quick.more { flex-wrap: wrap; }
+.quick button.sel { background: none; padding-inline: 6px; }
+.quick button.sel[data-a="↑"] { margin-left: auto; }
+.quick button:disabled { opacity: .35; cursor: default; }
 /* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .sb-wrap .sb-nav { flex: 1; }

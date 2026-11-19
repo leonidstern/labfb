@@ -113,7 +113,13 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands, and the MCP server) reads them as before.
 const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'mcp', 'settings', 'skill'];
-const { loadSettings, changedShortcuts, changedActions, savePersonal, savePersonalFlag } = await import('./lib/settings.ts');
+const { loadSettings, changedShortcuts, seedActions, savePersonal, savePersonalFlag } = await import('./lib/settings.ts');
+// Your list of actions is written into your settings once, when a lab starts (or `labit settings` shows it) with none there yet.
+if (!pos[0] || !COMMANDS.includes(pos[0]) || pos[0] === 'settings') {
+  try {
+    if (seedActions()) console.error('[labit] your actions (go, fix, remove…) are now in your settings.json: edit them there');
+  } catch {}
+}
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
@@ -148,13 +154,15 @@ if (pos[0] === 'settings') {
   const show = (k, v) =>
     k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
       : k === 'flags' ? (flagsOn(v).map((f) => `${f} (${SETTINGS.flagFrom[f] === 'project' ? 'labit.json' : 'yours'})`).join(', ') || 'none on')
-      : k === 'actions' ? (Object.keys(changedActions(v)).length ? Object.entries(changedActions(v)).map(([a, l]) => `${a}: ${/** @type {any[]} */ (l).map((x) => x.label || x).join(' ') || '(none)'}`).join('; ') : 'the defaults')
+      : k === 'actions' ? v.map((a) => a.name).join(' ') || '(none)'
       : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
   const src = (f) => f.split(' + ').map((x) => (x === SETTINGS.files.project ? 'labit.json' : x === SETTINGS.files.personal ? 'your settings' : x)).join(' + ');
   console.log(`Project: ${SETTINGS.files.project ? home(SETTINGS.files.project) : `no labit.json in ${home(HERE)} or above`}\nYours:   ${home(SETTINGS.files.personal)}${fs.existsSync(SETTINGS.files.personal) ? '' : ' (not made yet)'}\n`);
   const w = Math.max(...Object.keys(SET).map((k) => k.length));
   for (const [k, v] of Object.entries(SET)) console.log(`${k.padEnd(w)}  ${show(k, v).padEnd(20)}  ${src(SETTINGS.from[k])}`);
+  console.log(`\nYour actions, in order (edit them in your settings.json):`);
+  for (const a of SET.actions) console.log(`  ${a.name.padEnd(6)}  ${a.prompt}`);
   console.log(`\nA flag or variable wins over labit.json, which wins over your file. See docs/settings.md.`);
   process.exit(SETTINGS.problems.length ? 1 : 0);
 }
@@ -1756,9 +1764,9 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
-// The actions on selected words that differ from the defaults (labit.json / settings.json `actions`). Labels are yours, so
-// the attribute is escaped as the flags' is.
-const ACTIONS_ATTR = Object.keys(changedActions(SET.actions)).length ? ` data-actions='${JSON.stringify(changedActions(SET.actions)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'` : '';
+// Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box and of select mode. Names
+// and prompts are yours, so the attribute is escaped as the flags' is.
+const ACTIONS_ATTR = ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
 // What is being tried in this lab: every flag, its state, and whether the project's labit.json sets it (then the ⋯
 // menu's Experiments list shows it read-only: the project wins over your own settings).
 // The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe

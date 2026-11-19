@@ -7,7 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { loadSettings, changedActions } from '../lib/settings.ts';
+import { loadSettings, seedActions } from '../lib/settings.ts';
+import { SEED, NAME_MAX } from '../lib/actions.ts';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const dirs = [];
@@ -161,28 +162,33 @@ test('a lab started with a labit.json: its port, its shortcuts on the page, its 
   assert.doesNotMatch(out, /^zoom:|zoom skill/m);
 });
 
-test('actions: the defaults, merged area by area (the project over yours), comment implied, bad ones said and left out', () => {
-  let s = setup().load();
-  assert.deepEqual(s.values.actions, { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] });
-  assert.deepEqual(changedActions(s.values.actions), {}, 'nothing to tell the widget');
-  const tighter = { label: 'tighter', send: 'Tighter: less space' };
-  s = setup({ actions: { words: ['go', tighter, 'comment', 'Cut'] } }, { actions: { words: ['rewrite'], spot: ['cut', 'cut', 'nope'] } }).load();
-  assert.deepEqual(s.values.actions.words, ['go', tighter, 'cut'], 'the order given; comment dropped (it is always first); names in any case');
-  assert.deepEqual(s.values.actions.spot, ['cut'], "yours, where the project says nothing: a repeat and an unknown name left out");
-  assert.equal(s.problems.filter((p) => /twice|not an action/.test(p)).length, 2);
-  assert.deepEqual(changedActions(s.values.actions), { words: s.values.actions.words, spot: ['cut'] });
-  assert.equal(s.from.actions.split(' + ').length, 2, 'both files said where it came from');
-  s = setup({ actions: { words: [] } }).load();
-  assert.deepEqual(s.values.actions.words, [], 'an empty list is allowed: just the comment');
-  assert.deepEqual(changedActions(s.values.actions), { words: [] });
+test('actions: one list of yours, in order; names of 7 characters at most; bad ones said and left out', () => {
+  assert.equal(NAME_MAX, 7);
+  assert.ok(SEED.every((a) => a.name.length <= NAME_MAX && a.prompt), 'the seed fits');
+  assert.deepEqual(SEED.map((a) => a.name), ['go', 'fix', 'remove', 'like', 'move', 'states', 'variant']);
+  const mine = [{ name: 'variant', prompt: 'Three variants.' }, { name: 'go', prompt: 'Go.' }];
+  let s = setup(null, { actions: [...mine, { name: 'too long', prompt: 'x' }, { name: 'Go', prompt: 'again' }, { name: 'x' }, 'fix'] }).load();
+  assert.deepEqual(s.values.actions, mine, 'the order given; the rest left out');
+  const said = s.problems.join('\n');
+  for (const re of [/"too long" is 8 characters: a name is 7 at most/, /"Go" is listed twice/, /needs a "name" and a "prompt"/]) assert.match(said, re);
+  s = setup({ actions: mine }).load();
+  assert.match(s.problems.join('\n'), /actions can only be set in your own settings/, "a project can't set your list");
+  assert.equal(setup(null, { actions: { spot: ['go'] } }).load().problems.length, 1, 'the old { words, spot } form: said, until it is seeded');
 });
 
-test('actions: labels of 16 characters at most, text to send, no more than 5 beside comment, only words and spot', () => {
-  const long = { label: 'a label far too long', send: 'x' };
-  const s = setup({ actions: { words: [long, { label: 'ok' }, 7, 'cut', 'rewrite', 'go', ...['a', 'b', 'c'].map((l) => ({ label: l, send: l }))], elsewhere: [], spot: 'cut' } }).load();
-  assert.deepEqual(s.values.actions.words, ['cut', 'rewrite', 'go', { label: 'a', send: 'a' }, { label: 'b', send: 'b' }], 'five kept, in order; the rest said');
-  assert.deepEqual(s.values.actions.spot, ['go', 'remove', 'fix'], 'not a list: the default stays');
-  const said = s.problems.join('\n');
-  for (const re of [/16 characters at most/, /needs a "label" and the text to "send"/, /more than 5 actions/, /elsewhere is not a place/, /spot must be a list/]) assert.match(said, re);
-  assert.equal(setup({ actions: 'cut' }).load().problems.length, 1, 'not an object: said once, the defaults stay');
+test('actions: seeded once into your settings.json from today\'s, the rest of the file kept', () => {
+  const cfg = tmp('seed');
+  const file = path.join(cfg, 'labit', 'settings.json');
+  fs.mkdirSync(path.dirname(file));
+  fs.writeFileSync(file, JSON.stringify({ name: 'someone', actions: { words: ['go', { label: 'tighter', send: 'Tighter: less space' }] } }));
+  assert.equal(withConfig(cfg, seedActions), true);
+  const got = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(got.name, 'someone', 'nothing else changes');
+  assert.deepEqual(got.actions, [...SEED, { name: 'tighter', prompt: 'Tighter: less space' }], 'the seed, then your own old buttons');
+  got.actions = [{ name: 'go', prompt: 'Go.' }];
+  fs.writeFileSync(file, JSON.stringify(got));
+  assert.equal(withConfig(cfg, seedActions), false, 'a list there already: left alone (no reset)');
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).actions, [{ name: 'go', prompt: 'Go.' }]);
+  const none = tmp('seed-none');
+  assert.equal(withConfig(none, seedActions), true, 'no file yet: made with the list');
 });
