@@ -633,7 +633,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar .sb-chip[aria-current] { background: none; font-weight: inherit; color: var(--_fg); }
 .sbar .sb-chip:hover, .sbar .sb-more:hover { background: none; color: var(--_fg); }
 .sbar .sb-chip, .sbar .sb-more { -webkit-tap-highlight-color: transparent; }
-.sbar .sb-t { border-radius: 3px; transition: background-color var(--_t-slow) var(--_ease); }
+.sbar .sb-t { border-radius: var(--_r-s); transition: background-color var(--_t-slow) var(--_ease); }
 .sbar .sb-chip[data-st="new"] .sb-t { background-color: color-mix(in srgb, var(--_green) 30%, transparent); }
 .sbar .sb-chip[data-st="updated"] .sb-t { background-color: color-mix(in srgb, var(--_green) 15%, transparent); }
 .sbar .sb-more[data-st="1"] { color: var(--_green); }
