@@ -101,14 +101,13 @@ to tap. Only the computer running the lab can switch them: a guest on your wifi 
 Or write it in a file: the project's `labit.json` for everyone on the project, or your own settings file. A file you
 edit by hand is read when the lab starts. A flag the project's `labit.json` sets wins over yours, on or off: the menu
 shows that switch greyed, with "set by the project's labit.json" under it. `labit settings` lists which are on and
-whose each is: `flags  sectionBar (yours)`.
+whose each is: `flags  select (yours)`.
 
 | Flag | What it is |
 | --- | --- |
 | `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
-| `sectionBar` | a bar at the top of the page that lists each section (a heading of one level, usually h2) and keeps what is new and what is updated since you read it: a filled dot and "new" for a section that was not there, a ring and "updated" for one whose text changed. A section counts as read after about 3 seconds in it, when you scroll on after a moment, or when you tap it in the bar; the lab keeps that per name, so your Mac and your phone agree. Off by default: switch it in the ⋯ menu's experiments, or set it in `labit.json` |
 
-`agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
+`sectionBar` was kept, so the section bar is always on a page with two or more sections; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.
