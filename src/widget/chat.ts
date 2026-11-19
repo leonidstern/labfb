@@ -89,6 +89,20 @@ export function drawChat() {
   }).map(same));
   if (!box.firstChild) box.append(W.el('div', { class: 'none' }, 'say something about the page as a whole'));
   const chat = W.chatEl.querySelector('.chat');
+  if (!chat.firstChild) {
+    // At its newest it stays at its newest while it gets shorter (the keyboard coming up as you write), as a thread
+    // does; scrolled back to read, it stays put (Leo, 19 Nov: "opening keyboard in chat scrolls content so I can't
+    // see the latest message").
+    let stick = true;
+    box.addEventListener('scroll', () => (stick = box.scrollHeight - box.scrollTop - box.clientHeight < 48), { passive: true });
+    if ('ResizeObserver' in window) new ResizeObserver(() => stick && (box.scrollTop = box.scrollHeight)).observe(box);
+    // Going to write: the last message comes into view, so you write under it.
+    chat.addEventListener('focusin', (e) => {
+      if ((e.target as Element).localName !== 'textarea') return;
+      stick = true;
+      box.scrollTop = box.scrollHeight;
+    });
+  }
   if (!chat.firstChild)
     chat.append(
       W.composer({

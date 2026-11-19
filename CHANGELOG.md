@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Phones: the chat keeps its newest message in view while the keyboard comes up, as a thread already did. Tapping the box used to leave the list where it was, so the sheet getting shorter hid the latest message. Scrolled back to read, it stays where you are.
 - Phones: a comment made by holding the page always gets the cursor and the keyboard. The box used to focus itself during the hold, which Safari could do without a keyboard; now the finger's lift focuses it, once.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.
 - Pause sits beside what moves, not in the bar: each video and each animated element on the page gets a small pause / play just past its top right corner, over the page (nothing shifts), that stops or starts only that one. It shows with the comments and hides with them (M). **P** still pauses everything, or plays what was paused. The bar's pause button is gone.
