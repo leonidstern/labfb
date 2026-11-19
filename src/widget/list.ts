@@ -37,7 +37,6 @@ export function drawList() {
   const freshAll = all.filter((c) => !W.isPage(c)).reduce((n, c) => n + W.unread(c).length, 0); // a new message in a done thread counts too
   // The middle shows how many are new (a click goes to the next one). The pills keep their place whatever the counts:
   // with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
-  W.newPrev.hidden = W.newNext.hidden = true; // no arrows: the pill itself goes to the next new one (J / K step both ways)
   W.listBtn.hidden = !W.S.on;
   W.listBtn.replaceChildren(W.coarse ? 'new' : W.keyLabel('new', W.KEYS.next), W.el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll))); // phones: no keys
   W.listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);

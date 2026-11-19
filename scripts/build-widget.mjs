@@ -39,6 +39,7 @@ const options = {
   logLevel: 'warning',
   outfile,
   plugins: [minifiedCss],
+  define: { 'globalThis.__LAB_DEBUG__': 'false' },
 };
 if (watch) await (await esbuild.context(options)).watch();
 else await esbuild.build(options);
