@@ -173,3 +173,34 @@ test('the edits of a page are listed', async () => {
   const r = await fetch(B + '/_lab/api/edit?page=/index', { headers: { origin: B } }).then((x) => x.json());
   assert.ok(r.edits.length >= 3);
 });
+
+// What the agent reads: the page's text says the last edits, and says once when one was written over.
+const agent = () => fetch(`${B}/_lab/agent/agt`).then((r) => r.text());
+test('the agent text of the page has the edit line, and says once when the words were overwritten', async () => {
+  put('agt.html', '<h1>Alpha beta</h1>\n');
+  const r = await edit({ page: '/agt', was: 'Alpha beta', now: 'Alpha gamma' });
+  assert.equal(r.ok, true);
+  assert.match(await agent(), /^edit \(already in the file, keep it\): "Alpha beta" now "Alpha gamma" · file agt\.html:1$/m);
+  fs.writeFileSync(path.join(DIR, 'agt.html'), '<h1>Something else</h1>\n');
+  assert.match(await agent(), /^edit overwritten: "Alpha gamma" is no longer in agt\.html\. Put it back or say why\.$/m);
+  assert.doesNotMatch(await agent(), /^edit /m);
+});
+
+test('an undone edit is not listed', async () => {
+  put('agt.html', '<h1>Undo me</h1>\n');
+  const r = await edit({ page: '/agt', was: 'Undo me', now: 'Undone' });
+  await edit({ undo: r.edit.id });
+  assert.doesNotMatch(await agent(), /Undone/);
+});
+
+test('a pin on the page brings the edit line along to the agent in its wait, and it is not a wait item on its own', async () => {
+  put('agt.html', '<h1>Wait words</h1>\n');
+  const r = await edit({ page: '/agt', was: 'Wait words', now: 'Waited words' });
+  assert.equal(r.ok, true);
+  const key = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
+  const wait = (timeout) => fetch(B + '/_lab/wait', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ timeout }) }).then((x) => x.text());
+  // The edit alone: the wait finds nothing to hand over.
+  assert.doesNotMatch(await wait(1), /Waited words/);
+  await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/agt', name: 'Leo', text: 'and the colour?', anchor: { kind: 'text', selector: 'h1', quote: { exact: 'Waited words', prefix: '', suffix: '' } } }) });
+  assert.match(await wait(5), /^edit \(already in the file, keep it\): "Wait words" now "Waited words"/m);
+});

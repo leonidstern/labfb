@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Flag `editText`: the agent's text of a page (and the pin it is handed on that page) lists the last five words changed from the page: `edit (already in the file, keep it): "old" now "new" · file src/Hero.tsx:12`. Said once as `edit overwritten` when they are no longer in the file. No wait carries an edit on its own.
 - Flag `editText` (off): the lab can change words in the project's source for a page (`POST /_lab/api/edit`, this computer with the admin key only). It writes only when the old words are in exactly one place in the whole project, keeps the file's own spacing, and undoes. Pins on those words follow them. Nothing in the page uses it yet.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.
 - Pause sits beside what moves, not in the bar: each video and each animated element on the page gets a small pause / play just past its top right corner, over the page (nothing shifts), that stops or starts only that one. It shows with the comments and hides with them (M). **P** still pauses everything, or plays what was paused. The bar's pause button is gone.
