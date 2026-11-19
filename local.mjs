@@ -378,7 +378,7 @@ const writeAtomic = (file, text, mode) => {
   fs.renameSync(file + '.tmp', file);
 };
 // The lab's small state, in one file: .lab/state.json as { name, reads, opened, archived, handed, claims, seen }, each
-// described where it is used below. Saved whole through a .tmp, a moment after its last change, and on exit. A damaged
+// described where it is used below. Saved whole through a .tmp, a moment after its last change. A damaged
 // one is put aside (never read again or written over) and the lab starts without it. Before 19 Nov each part was a
 // file of its own (name, reads.json, opened.json, archived.json, handed.json, claims.json, seen): read once into this
 // one, then removed.
@@ -432,7 +432,6 @@ const writeState = () => {
 const saveState = () => {
   if (!stateTimer) stateTimer = setTimeout(writeState, 300);
 };
-process.on('exit', () => stateTimer && stateReady() && writeState());
 // The lab's name: its topic, given when it starts (labit --name "Lab navigation", Leo 18 Nov: "named as topic on starting
 // lab"), kept in state.json so a restart keeps it. Without one, the folder's name. (wait/add use --name for themselves.)
 const SERVES = !COMMANDS.includes(pos[0]);
@@ -1237,7 +1236,7 @@ const claim = (pages) => {
 };
 stateParts.claims = () => Object.fromEntries([...claims].filter(([, at]) => Date.now() - at < CLAIM_MS));
 // A name just given, or the files of before 19 Nov still there: written now, not at the first change.
-if (oldStateFiles.length || givenName !== (labState.name || '')) saveState();
+if (oldStateFiles.length || givenName !== (labState.name || '')) writeState();
 // The last wait on each set of pages (its key), to tell a second session on the same pages that it isn't alone.
 const OTHER_MS = 600000;
 const lastWait = new Map(); // key -> { who, label, at }
