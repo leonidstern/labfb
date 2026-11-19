@@ -805,7 +805,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @media (prefers-color-scheme: dark) { .sb-t { --_sbi: 45%; } }
 /* The ink comes in slowly and goes at once: a tap on a green name clears it right away (Leo, 19 Nov: "remove green as
    read right after click"). */
-.sb-chip:is([data-st="new"], [data-st="updated"]) .sb-t::before { background-color: color-mix(in srgb, rgb(36, 160, 70) var(--_sbi), transparent); transition-duration: var(--_t-slow); }
+.sb-chip:is([data-st="new"], [data-st="updated"], [data-st="pin"]) .sb-t::before { background-color: color-mix(in srgb, rgb(36, 160, 70) var(--_sbi), transparent); transition-duration: var(--_t-slow); }
 .sb-chip[data-st="updated"] .sb-dot { background: none; border: 1.5px solid rgb(36, 160, 70); }
 .sb-w { color: rgb(36, 160, 70); font-size: 12px; }
 .sb-chip[aria-current] .sb-w { color: rgb(36, 160, 70); }

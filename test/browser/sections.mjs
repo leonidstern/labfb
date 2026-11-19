@@ -206,6 +206,23 @@ try {
     check(eng, 'the heading it goes to wears a green half ink, no box', head.ink && head.outline === 'none' && /36, 160, 70/.test(head.bg), JSON.stringify(head));
     await MO.p.context().close();
 
+    // ---- an unread pin lights its section's chip; a tap opens it; read, the ink goes; no numbers in the bar ----
+    write(`pins-${eng}.html`, page());
+    const PN = await open(await context(), `/pins-${eng}`, `zz-newnav-${eng}`);
+    check(eng, 'pins page: no chip lit before a pin', !(await PN.states()).match(/:\w/), await PN.states());
+    await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: `/pins-${eng}`, name: `zz-other-${eng}`, text: 'a pin in Risk', anchor: { selector: '#risk > p', x: 0.1, y: 0.5, docX: 0.1, docY: 2400, width: 1000, element: '<p>' } }) });
+    check(eng, 'a section with an unread pin gets the ink (and only that one)', await until(async () => (await PN.states()) === 'Speed: Cost: Risk:pin Next steps:'), await PN.states());
+    const lit = await PN.shadow(() => { const c = [...r.querySelectorAll('.sb-nav .sb-chip')].find((x) => x.querySelector('.sb-t').textContent === 'Risk'); return getComputedStyle(c.querySelector('.sb-t'), '::before').backgroundColor; });
+    check(eng, '...the same green half ink', !/rgba\(0, 0, 0, 0\)|transparent/.test(lit), lit);
+    check(eng, 'no digits anywhere in the bar', await PN.shadow(() => { return !/\d/.test(r.querySelector('.sbar').textContent); }), await PN.shadow(() => { return r.querySelector('.sbar').textContent; }));
+    await PN.tap('Risk');
+    await sleep(900);
+    const went = await PN.p.evaluate(() => { const h = document.querySelector('#risk h2').getBoundingClientRect(); return { top: h.top, y: scrollY }; });
+    check(eng, 'tap: the page is at that section', went.y > 1500 && went.top < 700, JSON.stringify(went));
+    check(eng, '...and the pin is open', await PN.shadow(() => { return [...r.querySelectorAll('.card')].some((c) => c.isConnected && /a pin in Risk/.test(c.textContent)); }));
+    check(eng, 'read: the ink is gone', await until(async () => !(await PN.states()).includes('Risk:pin'), 2000), await PN.states());
+    await PN.p.context().close();
+
     // ---- the page's own bar, no sections, no flag ----
     const S = await open(await context(), '/sticky');
     const gap = await S.shadow(() => { return r.querySelector('.sbar').getBoundingClientRect().top; });
