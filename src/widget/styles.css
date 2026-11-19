@@ -240,54 +240,11 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .list .none { padding: 8px; color: var(--_muted); }
 /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
-/* Ink on selected words instead of a pin (ink.ts): a band under the lower 44 % of each line, in the state's colour
-   in the pins' colours (Leo, 19 Nov: sent is the pins' green, not yellow; strong enough to read on dark: 30 % on light
-   pages, 45 % on dark). Working is the working ring's green, pulsing; asks the amber; done drains to a green line.
-   Under the pins and cards, never in the pointer's way.
-   Light or dark by the words' own colour (.dk: light words), not the computer's setting: a dark page on a light
-   computer still gets the dark strengths. */
-.inks { pointer-events: none; }
-.ink { --_iy: var(--u-sent, rgb(36, 160, 70)); --_ib: var(--u-working, rgb(52, 199, 89)); --_ia: var(--u-asks, #e08a1a); --_ig: var(--u-done, rgb(36, 160, 70)); --_i1: 30%; --_i2: 30%; --_i3: 48%; --_ish: rgba(255,255,255,.55);
-       --k: var(--u-draft, #8e8a82); --al: 16%; }
-.ink.dk { --_ia: var(--u-asks, #f0a040); --_ig: var(--u-done, rgb(52, 199, 89)); --_i1: 45%; --_i2: 40%; --_i3: 44%; --_ish: rgba(255,255,255,.22); }
-.ink[data-st=next] { --k: var(--_iy); --al: var(--_i1); }
-.ink[data-st=now] { --k: var(--_ib); --al: var(--_i2); }
-.ink[data-st=asks] { --k: var(--_ia); --al: var(--_i3); }
-.ink[data-st=kept] { --k: var(--_ig); --al: 28%; }
-.ink[data-st=done] { --k: var(--_ig); --al: 40%; }
-.ink .ln { position: absolute; transform-origin: 0 50%; }
-.ink .ln::before { content: ''; position: absolute; left: 0; right: 0; top: 52.6%; height: 44%; border-radius: 3px;
-                   background: no-repeat -40% 0 / 36% 100% color-mix(in srgb, var(--k) var(--al), transparent);
-                   transition: background-color .4s, top .5s cubic-bezier(.4, 0, .2, 1), height .5s cubic-bezier(.4, 0, .2, 1), opacity .3s; }
-/* The fill: each line from its left, one after another (ink.ts sets the pace per line). */
-.ink .ln.fill { animation: lab-ink-fill .3s cubic-bezier(.25, .8, .25, 1) both; }
-@keyframes lab-ink-fill { from { transform: scaleX(0); } }
-/* Working: a soft light runs through the ink. Asks: it breathes, until you have read it (calm). */
-.ink[data-st=now] .ln::before { animation: lab-ink-pulse 1.8s ease-in-out infinite; } /* W2 pulse (Leo, 18 Nov): fades, nothing runs across the words */
-@keyframes lab-ink-pulse { 50% { opacity: .35; } }
-.ink[data-st=asks]:not(.calm) .ln::before { animation: lab-ink-breath 2.2s ease-in-out infinite; }
-@keyframes lab-ink-breath { 0%, 100% { opacity: .7; } }
-/* Done: drains to a hairline (.5 s), waits, fades to 14 % (.8 s) and stays. A transition, not an animation: a page
-   that loads with it done shows the faint line at once, and hovering it can still raise it to full strength. */
-.ink[data-st=done] .ln::before { top: calc(100% - 2px); height: 2px; border-radius: 1px; opacity: .35;
-                                 transition-duration: .4s, .5s, .5s, .8s; transition-delay: 0s, 0s, 0s, 2.4s; }
-/* Under a newer note on the same words: a 2 px line below its band, 3 px apart (--l is how many are above it). */
-.ink.under { --al: 60%; }
-.ink.under .ln::before { top: calc(100% + 1px + (var(--l) - 1) * 3px); height: 2px; border-radius: 1px; background-image: none; animation: none; }
-/* Quiet (setting quietInk): working is a still tint and the drain is at once; only "asks" moves. */
-.inks.quiet .ink[data-st=now] .ln::before { background-image: none; animation: none; }
-.inks.quiet .ink[data-st=done] .ln::before { transition: none; }
-/* Hovered: the band stays where it is and only lightens a touch, quickly (Leo, 18 Nov: "no need for rise"). */
-.ink.over .ln::before { opacity: .75; transition-duration: .4s, .12s, .12s, .12s; transition-delay: 0s; }
-/* The end of the words, raised a little off their last line (like a pin's dot, it doesn't sit on the next word):
-   Tab stops here (it says what the pin said), with the new-reply dot and the agent's ?. */
-.ink-end { position: absolute; min-width: 10px; height: 16px; margin: -11px 0 0 calc(var(--l) * 12px); padding: 0; border: 0; background: none;
-           pointer-events: auto; cursor: pointer; display: flex; align-items: center; border-radius: var(--_r-s); }
-.ink-end.new::after { content: ''; width: 7px; height: 7px; margin-left: 2px; border-radius: 50%; corner-shape: round; background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
-.ink-end .q { font: 700 10px/1 var(--lab-font, system-ui, sans-serif); color: #fff; background: var(--_ia); border-radius: 8px; padding: 2px 5px; }
+/* Ink on selected words instead of a pin (ink.ts): the band is the page's (a highlight). The pin stays, unseen, at the
+   end of the words: only its new-reply dot shows, and Tab shows the pin itself. */
+button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; color: transparent; pointer-events: none; }
+.pin.on-ink:not(:focus-visible) > * { display: none; }
 .pin.draft.on-ink { visibility: hidden; }
-/* Printed, the words wrap anew: ink placed for the screen would mark other words. */
-@media print { .inks { display: none; } }
 /* Close: a round, quiet button with a drawn cross (not the ✕ character), darker on hover. */
 .list .tabs .show-done { color: var(--_muted); }
 .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */

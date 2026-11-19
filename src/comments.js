@@ -40,7 +40,7 @@ import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSelect, selectMode } from './widget/select.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
-import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInks, startInk } from './widget/ink.ts';
+import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget/ink.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -864,7 +864,7 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
         prev.inert = true;
         layer.append(prev);
         // It shrinks back with the keyboard going (sheets.ts); after a send it slides down and the new pin pops in.
-        const newPin = S.posted && (pinsById.get(S.posted) || inkEnd(S.posted));
+        const newPin = S.posted && pinsById.get(S.posted);
         if (newPin) newPin.style.animationDelay = 'var(--_t-quick)'; // as the card goes (lab option 5)
         const dur = leave(prev, 0, Boolean(newPin));
         setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
@@ -881,9 +881,9 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
       fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
+      if (quoted && inkRange(quoted)) quoted = null; // words that wear their own ink are lit already (ink.ts)
       if (!isTrying()) markQuote(quoted); // a tried choice wears the green itself
       S.quoted = quoted;
-      inkQuote(); // with ink on words, the quoted words get a band, not the green (ink.ts)
       S.shown = now;
       S.posted = null;
     };
@@ -925,9 +925,7 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
         }
         if (S.openId !== c.id) return;
       }
-      const lines = !moved && !zone && inkLines(c.anchor); // its words are where they were: ink, no pin
-      const ink = lines && { c, lines, pin: null };
-      if (ink) inkNow.push(ink);
+      const ink = !moved && !zone && inkRange(c.anchor); // its words are where they were: ink, the pin unseen at their end
       if (S.openId === c.id) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
@@ -942,7 +940,7 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
       // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
       for (const [cls, on] of Object.entries({
         resolved: c.resolved, done: state === 'done', new: news.length, moved,
-        grab: movable, open: S.openId === c.id, dragging: false,
+        grab: movable, open: S.openId === c.id, dragging: false, 'on-ink': ink,
       })) pin.classList.toggle(cls, Boolean(on));
       pin.classList.add('pin');
       if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
@@ -1015,10 +1013,7 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
           d.hot = true;
           if (coarse || S.openId === d.c.id) return;
           if (d.zone) d.shown = drawZone(d.zone, 'saved');
-          else if (d.c.anchor?.quote) {
-            markQuote(d.c.anchor);
-            inkQuote();
-          }
+          else if (d.c.anchor?.quote) markQuote(d.c.anchor);
         });
         pin.addEventListener('pointerleave', () => {
           const d = pinData.get(pin);
@@ -1028,7 +1023,6 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
           if (d.zone || !d.c.anchor?.quote) return;
           if (isTrying()) relight(); // a tried choice: its green back
           else markQuote(S.quoted);
-          inkQuote();
         });
         pin.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1048,11 +1042,9 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
         if (zone) info.shown = add(drawZone(zone, 'saved'));
         else if (c.anchor?.quote && !quoted) quoted = c.anchor;
       }
-      if (ink) ink.pin = pin; // not shown: the ink takes its clicks and label (ink.ts)
-      else {
-        next.push(pin);
-        pinsById.set(c.id, pin);
-      }
+      if (ink) inkNow.push({ c, r: ink, pin }); // a click on the words is a click on it (ink.ts)
+      next.push(pin);
+      pinsById.set(c.id, pin);
       if (S.openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
@@ -1100,8 +1092,8 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
     const fluid = Boolean(rects?.length); // words not found: the plain box
     // Words selected with ink on words (ink.ts): the band in the draft's grey while you write, the dialog open or not;
     // a plain box's pin stays, unseen, for the sheet to aim at.
-    const draftInk = S.draft && !position(S.draft.anchor).zone && inkLines(S.draft.anchor);
-    if (draftInk) inkNow.push({ anchor: S.draft.anchor, lines: draftInk });
+    const draftInk = S.draft && !position(S.draft.anchor).zone && inkRange(S.draft.anchor);
+    if (draftInk) inkNow.push({ r: draftInk });
     if (S.draft && fluidHas(S.draft)) {
       quoted = S.draft.anchor; // the words stay lit while it is open
       if (rects) fluidFollow(rects); // and it stays with them (a saved file moved them); gone, it stays, cut and rewrite off
@@ -1894,14 +1886,11 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   const movePins = () => {
-    if (!S.on || S.openId || !moveInks()) return render();
-    const places = threads()
-      .filter((c) => c.anchor?.kind !== 'page' && !inkEnd(c.id))
-      .map((c) => [pinsById.get(c.id), position(c.anchor || {}), c])
-      .filter(([, at]) => !at.moved);
+    if (!S.on || S.openId || inkGone()) return render();
+    const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
     if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
-    // A pin whose words show again (scrolled back into their box, back after an edit) turns into ink again.
-    if (places.some(([, { zone }, c]) => !zone && inkLines(c.anchor))) return render();
+    // A pin whose words show again (back after an edit) turns into ink again.
+    if (places.some(([pin, { zone }, c]) => !zone && !pin.classList.contains('on-ink') && inkRange(c.anchor))) return render();
     for (const [pin, { left, top, clipped }] of places) {
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
@@ -2133,7 +2122,7 @@ import { bindInk, drawInks, inkEnd, inkLines, inkQuote, inkSelectionCss, moveInk
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
-    fonts.textContent += inkSelectionCss(); // with ink on words: the selection is drawn as sent ink instead (ink.ts)
+    fonts.textContent += inkCss(); // ink on words: the bands, and the selection drawn as sent ink (ink.ts)
     if (flag('select')) startFlag('select');
     load();
     for (const name of flagNames) if (flag(name)) startFlag(name); // select, sectionBar (lib/flags.ts)
