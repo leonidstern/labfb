@@ -14,6 +14,7 @@ import {
   goToBlock,
   inPage,
   ease,
+  findTarget,
   markQuote,
   ms,
   nameLine,
@@ -29,6 +30,7 @@ import {
   zoneEl,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
+import { flushPins, heldPin, holdPin, letPin } from './widget/pinhold.ts';
 import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
@@ -96,6 +98,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get position() { return position; },
     get readable() { return readable; },
     get reflow() { return reflow; },
+    letPin,
     get render() { return render; },
     get repliesOf() { return repliesOf; },
     get root() { return root; },
@@ -872,6 +875,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     let quoted = null;
     const done = () => {
       patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
+      flushPins(); // the rules of the pins the browser holds, now they are on the page (pinhold.ts)
       if (S.closeFast && !now && prev) {
         S.closeFast = false;
         prev.inert = true;
@@ -1024,8 +1028,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         pin.querySelector(':scope > svg')?.remove();
         pin.append(inkSvg(ink, { left: 0, top: 0, width: zone.width, height: zone.height }));
       }
-      inkAt(pin, ink && zone, left, top);
-      pin.style.visibility = clipped && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position)
+      const held = placePin(pin, c, ink && zone, left, top, moved);
+      pin.style.visibility = clipped && !held && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position; a held pin: the browser)
       if (born) {
         // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
         grab(pin, () => pinData.get(pin).c);
@@ -2251,25 +2255,40 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     pin.style.left = `${zone ? zone.left : left}px`;
     pin.style.top = `${zone ? zone.top : top}px`;
   };
+  // ...and, with the flag nativePins, held there by the browser (pinhold.ts): tied to its element, so scrolling needs no
+  // script. True when it is held.
+  const placePin = (pin, c, zone, left, top, moved) => {
+    inkAt(pin, zone, left, top);
+    const node = flag('nativePins') && !moved && c.anchor?.kind !== 'board' ? findTarget(c.anchor || {}) : null;
+    return holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
+  };
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
-  const movePins = () => {
+  // After a scroll, the pins the browser holds are left alone.
+  const movePins = (scrolled = false) => {
     if (!S.on || S.openId) return render();
-    const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {})]).filter(([, at]) => !at.moved);
-    if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
-    for (const [pin, { left, top, clipped, zone }] of places) {
-      inkAt(pin, pin.classList.contains('ink') && zone, left, top);
-      pin.style.visibility = clipped ? 'hidden' : '';
+    const all = threads().filter((c) => c.anchor?.kind !== 'page');
+    const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
+    const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
+    if (places.length + all.filter(skip).length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
+    for (const [pin, { left, top, clipped, zone }, c] of places) {
+      const held = placePin(pin, c, pin.classList.contains('ink') && zone, left, top, false);
+      pin.style.visibility = clipped && !held ? 'hidden' : '';
     }
+    flushPins();
   };
   S.frame = 0;
-  const reflow = () => {
+  let reflowAll = false; // something but a scroll asked (a resize, the page's size): every pin is placed again
+  const reflow = (scrolled) => {
+    reflowAll ||= scrolled !== true;
     cancelAnimationFrame(S.frame);
     S.frame = requestAnimationFrame(() => {
+      const scrolledOnly = !reflowAll;
       if (fluidState() === 'dlg' && S.draft) fluidFollow(quoteRects(S.draft.anchor)); // so does the open dialog
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (S.draft || root.activeElement || S.grabbing || isTrying()) return; // words tried in place: the pins stay put
-      movePins();
+      reflowAll = false;
+      movePins(scrolledOnly);
     });
   };
   addEventListener('resize', reflow);
@@ -2278,7 +2297,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const card = layer.querySelector('.card.margin');
     if (card && card.getBoundingClientRect().right > document.documentElement.clientWidth - 12) requestAnimationFrame(render);
   });
-  addEventListener('scroll', (e) => (e.target !== document || fluidFixed()) && !host.contains(/** @type {Node} */ (e.target)) && reflow(), { capture: true, passive: true }); // the page's own scroll moves only what is held to the screen
+  addEventListener('scroll', (e) => (e.target !== document || fluidFixed()) && !host.contains(/** @type {Node} */ (e.target)) && reflow(true), { capture: true, passive: true }); // the page's own scroll moves only what is held to the screen
 
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.

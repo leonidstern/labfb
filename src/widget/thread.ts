@@ -59,6 +59,7 @@ export function grab(pin, now) {
       if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
       moving = true;
       pin.classList.add('dragging');
+      W.letPin(pin); // the browser no longer holds it (pinhold.ts): the drag places it
       place();
     };
     const scrolled = () => moving && place();
