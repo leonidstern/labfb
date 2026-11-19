@@ -140,13 +140,14 @@ try {
       await sleep(1200);
       check(eng, 'a board that does not exist says so', /no board called nothere/i.test(await p.evaluate(() => document.body.textContent)));
       await ctx.close();
-      // ----- a phone: first view is one frame, one-finger pan, no page zoom, a plain "done" to leave
+      // ----- a phone: first view is every frame at a phone's width, side by side, live; no page zoom
       const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
       const q = await ph.newPage();
       await q.goto(B + '/_lab/board/three');
       await sleep(2500);
       const first = await q.evaluate(() => ({ cam: __labBoard.camera(), live: __labBoard.live(), vv: visualViewport.scale }));
-      check(eng, 'phone: the first view is one frame, only it alive', first.live.length === 1 && first.live[0] === 'a' && first.cam.z > 0.9 && first.vv === 1, JSON.stringify(first));
+      const widths = await q.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.offsetWidth));
+      check(eng, 'phone: the first view is every frame, 390 wide, the ones in view alive', widths.length > 1 && widths.every((w) => w === 390) && first.live.length >= 1 && first.cam.z < 0.9 && first.vv === 1, JSON.stringify({ ...first, widths }));
       await ph.close();
     } finally {
       await browser.close();

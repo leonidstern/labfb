@@ -549,7 +549,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // ---------- render ----------
   // Everyone sees done threads the same way (a guest's resolved pin vanished at once, with the answer in it unread):
   // done ones with nothing new step aside, and show done brings them back.
-  const threads = () => S.comments.filter((c) => !c.parent);
+  // A declaration, not a const: on a board page the live state arrives while the widget is still setting up, and the
+  // pill's line reads the threads then (it threw "Cannot access 'threads' before initialization" and the board stopped).
+  function threads() { return (S.comments || []).filter((c) => !c.parent); }
   const isPage = (c) => c.anchor?.kind === 'page'; // about the page as a whole: no pin; it lives in the chat
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;
@@ -1945,7 +1947,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
   // and where a pin sits), and the pins are drawn again as the camera moves.
   if (S.board) {
-    Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
+    Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
     addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
   }
   startLive();

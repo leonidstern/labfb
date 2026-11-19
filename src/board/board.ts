@@ -13,11 +13,11 @@ type Card = { f: Frame; box: HTMLElement; inner: HTMLElement; frame?: HTMLIFrame
 
 const script = document.currentScript as HTMLScriptElement;
 const name = script.dataset.name || '';
-let of = new URLSearchParams(location.search).get('of') || ''; // the page this board is about (only the lab's unsaved default board of that page needs it)
+let of = new URLSearchParams(location.search).get('of') || ''; // the page this board is about: Esc on an empty board goes back to it
 const coarse = matchMedia('(pointer: coarse)').matches;
-const CAP = coarse ? 3 : 8; // frames alive at once
+const CAP = coarse ? 3 : 8; // frames alive at once (a phone draws them at 390 wide, so three side by side stay light)
 const AT_ONCE = coarse ? 1 : 2; // frames loading at once
-const WAKE = 120; // a frame is woken when it is in view and at least this many screen px wide
+const WAKE = coarse ? 56 : 120; // a frame is woken when it is in view and at least this many screen px wide (a phone: every frame fitted, live)
 
 const css = `
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#e9e8e4;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif}
@@ -30,7 +30,7 @@ html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;backgrou
 #lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
 #lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
-#lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
+#lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
 #lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
@@ -179,7 +179,10 @@ const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
 function show(b: Board) {
   board = b;
   of = of || (b.of || '').split('#')[0];
-  const next = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
+  const live = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
+  // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
+  // page). Only how it's drawn here: what is saved is the board as read (save sends board.frames).
+  const next = coarse ? [...live].sort((p, q) => p.y - q.y || p.x - q.x).map((f, i) => ({ ...f, x: i * (390 + 80), y: 0, w: 390, h: 844 })) : live;
   const old = new Map(cards.map((c) => [c.f.id, c]));
   cards = next.map((f) => {
     const was = old.get(f.id);
@@ -214,9 +217,10 @@ function show(b: Board) {
   const hash = /^#(-?\d+),(-?\d+),([\d.]+)$/.exec(location.hash);
   if (hash && !moved) cam = { x: +hash[1], y: +hash[2], z: +hash[3] };
   else if (!moved) {
-    focus = coarse && Boolean(cards[0]);
-    cam = focus ? fitFrame(cards[0].f, view) : fitAll(boxes(), view);
-    if (focus) select(cards[0].f.id);
+    // Every frame in view, as on a computer, phones too (Leo, 19 Nov: one frame at a time read as a slider, "dont like
+    // this view at all"): drag pans, pinch zooms, Tab or a frame's label still fits one.
+    focus = false;
+    cam = fitAll(boxes(), view);
   }
   moved = moved || Boolean(hash);
   go(cam, false);
@@ -323,7 +327,7 @@ function leave() {
   done.hidden = true;
   if (!c) return;
   c.box.classList.remove('in');
-  // The keys stay with the frame's document until focus is moved back: M and Esc would go to the wrong one.
+  // The keys stay with the frame's document until focus is moved back: M, ⇧B and Esc would go to the wrong one.
   (c.frame?.contentWindow as unknown as { __labSpot?: { clear?: () => void } } | null | undefined)?.__labSpot?.clear?.();
   c.frame?.blur();
   window.focus();
@@ -340,7 +344,11 @@ const at = (e: { clientX: number; clientY: number }) => {
 };
 const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
 const pts = new Map<number, { x: number; y: number }>();
-let down: { x: number; y: number; id: string; far: boolean; at: number; mv?: Card; fx: number; fy: number; before?: Frame[] } | null = null;
+let down: { x: number; y: number; id: string; far: boolean; at: number; mv?: Card; fx: number; fy: number; before?: Frame[]; held?: boolean } | null = null;
+let holdTimer = 0;
+// A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
+// put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
+const boardWidget = () => (window as unknown as { __labBoardWidget?: { pinning: () => boolean; holding?: () => boolean; hold?: (x: number, y: number) => void; place: (x: number, y: number) => void } }).__labBoardWidget;
 let tap = { at: 0, x: 0, y: 0 };
 let pinch = 0;
 let space = false;
@@ -363,6 +371,16 @@ addEventListener('pointerdown', (e) => {
     const id = at(e);
     const mv = e.pointerType === 'mouse' && id && id === selected && !entered && editable() ? find(id) : undefined; // a selected frame is moved by its body (a finger only pans)
     down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined };
+    clearTimeout(holdTimer);
+    if (e.pointerType === 'touch') {
+      const d = down;
+      holdTimer = window.setTimeout(() => {
+        const w = boardWidget();
+        if (down !== d || d.far || pts.size !== 1 || !(w?.holding ? w.holding() : w?.pinning())) return;
+        d.held = true; // the comment opens on the lift (below), as a page's hold does: opened now, the lift closed it
+        navigator.vibrate?.(8);
+      }, 400);
+    }
   }
 }, true);
 addEventListener('pointermove', (e) => {
@@ -380,7 +398,8 @@ addEventListener('pointermove', (e) => {
     return;
   }
   pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.far = true;
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) (down.far = true), clearTimeout(holdTimer);
+  if (down?.held) return; // the hold made a pin: the finger lifting off doesn't pan
   if (down?.far && down.mv) {
     // Positions round to 8 px; an edge within 6 screen px of another frame's edge takes that edge.
     const f = down.mv.f;
@@ -402,13 +421,19 @@ const up = (e: PointerEvent) => {
   eat(e);
   pinch = 0;
   const d = down;
+  clearTimeout(holdTimer);
   if (pts.size || !d) return;
   down = null;
+  if (d.held) {
+    const w = boardWidget();
+    if (w && e.type === 'pointerup') setTimeout(() => (w.hold || w.place)(d.x, d.y), 0);
+    return;
+  }
   if (d.mv && d.far && d.before && board) return void save(copy(board.frames), d.before);
   if (d.far && !d.mv && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
   if (d.far || e.type === 'pointercancel') return;
-  const widget = (window as unknown as { __labBoardWidget?: { pinning: () => boolean; place: (x: number, y: number) => void } }).__labBoardWidget;
-  if (widget?.pinning()) return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
+  const widget = boardWidget();
+  if (widget?.pinning() && e.pointerType !== 'touch') return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
   // A tap selects the frame under it (or nothing); a second one close by and soon enters it.
   const again = performance.now() - tap.at < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24;
   tap = { at: performance.now(), x: e.clientX, y: e.clientY };
@@ -441,6 +466,23 @@ addEventListener('gesturechange', (e) => {
 
 // ---------- keys (after the widget's own: an Esc it used is not ours) ----------
 const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(n.tagName) || n.hasAttribute('data-lab-comments')));
+// Back to the page this board is about; the page puts its scroll back from the key ⇧B left (the one a reload uses).
+const back = () => {
+  if (of) location.href = of;
+};
+// A board you came to from a page has a plain way back, on phones too: "‹ back" at the top left (Leo, 19 Nov: "no way
+// back"). ⇧B, Esc on an empty board and the browser's own back still work.
+if (of) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = '‹ back';
+  b.setAttribute('aria-label', 'back to the page');
+  b.style.cssText = 'position:fixed;top:calc(10px + env(safe-area-inset-top, 0px));left:10px;z-index:2147482000;font:500 15px/1 system-ui,-apple-system,sans-serif;border:0;border-radius:999px;padding:10px 14px;background:#141414;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);-webkit-tap-highlight-color:transparent;cursor:pointer';
+  b.addEventListener('click', (e) => (e.stopPropagation(), back()));
+  b.setAttribute('data-uncommentable', '');
+  addEventListener('DOMContentLoaded', () => document.body.append(b));
+  if (document.body) document.body.append(b);
+}
 // The next (1) or previous (-1) frame in board order, the camera on it.
 const step = (by: number) => {
   if (!cards.length) return;
@@ -470,12 +512,14 @@ const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 
   else if (e.shiftKey && digit === '2') go(zoomAt(cam, view.w / 2, view.h / 2, 1, boxes(), view));
   else if (e.shiftKey && digit === '0') go(find(selected) ? fitFrame(find(selected)!.f, view) : fitAll(boxes(), view));
   else if (!e.shiftKey && (e.key === '+' || e.key === '=' || e.key === '-') && !fromFrame) go(zoomAt(cam, view.w / 2, view.h / 2, cam.z * (e.key === '-' ? 0.8 : 1.25), boxes(), view));
+  else if (e.shiftKey && e.code === 'KeyB' && !entered) back();
   else if (e.key === 'Enter' && !e.shiftKey && selected && !entered) enter(selected);
   else if (e.key === 'Tab' && !entered && cards.length) step(e.shiftKey ? -1 : 1);
   else if (e.key === 'Escape') {
     // Heard in the frame, which keeps an Esc its page used (a menu closing) to itself: this one is ours.
     if (entered) leave();
     else if (selected) select('');
+    else if (of && !coarse) back(); // an empty board's Esc goes back to the page, as ⇧B does
     else return false;
   } else return false;
   return true;
@@ -498,6 +542,7 @@ void space;
 // ---------- what the frames and the widget see ----------
 Object.assign(window, {
   __labBoard: {
+    back,
     busy: () => performance.now() - lastDown < 1500,
     key: (k: Parameters<typeof press>[0]) => press(k, true),
     frame: (id: string) => find(id)?.frame,

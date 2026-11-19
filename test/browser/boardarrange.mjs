@@ -120,7 +120,7 @@ try {
       await sleep(900);
       const rest = await edge();
       check(eng, 'past the edge the board gives way, then settles back inside it', over < rest - 5 || Math.abs(over - rest) > 5, JSON.stringify([over, rest]));
-      // ----- phone: a swipe goes to the next frame
+      // ----- phone: every frame in view, a swipe pans the canvas (no stepping frame to frame)
       const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
       const q = await ph.newPage();
       await q.goto(B + '/_lab/board/arr');
@@ -132,8 +132,13 @@ try {
         for (let i = 1; i <= 8; i++) await touch('touchMove', 300 - i * 25, 400);
         await touch('touchEnd');
         await sleep(600);
+        const before = await q.evaluate(() => __labBoard.camera());
+        await touch('touchStart', 300, 400);
+        for (let i = 1; i <= 8; i++) await touch('touchMove', 300 - i * 25, 400);
+        await touch('touchEnd');
+        await sleep(600);
         const sw = await q.evaluate(() => ({ sel: __labBoard.selected(), cam: __labBoard.camera() }));
-        check(eng, 'phone: a swipe goes to the next frame, fitted', sw.sel === 'b' && sw.cam.z > 0.9, JSON.stringify(sw));
+        check(eng, 'phone: a swipe is a pan, not a step to the next frame (nothing picked, same zoom)', !sw.sel && Math.abs(sw.cam.z - before.z) < 1e-6, JSON.stringify([before, sw]));
       } else console.log('skip      phone swipe (no CDP in this engine)');
       await ph.close();
       await ctx.close();
