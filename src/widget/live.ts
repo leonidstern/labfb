@@ -37,7 +37,7 @@ export function startLive() {
     let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
     const busy = () =>
-      W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
+      W.S.draft || W.S.selecting || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
     let reloadTimer: any = 0;

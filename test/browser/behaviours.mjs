@@ -227,11 +227,20 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
 
   // Keys
   const chatOpen = () => shadow(() => { return !r.querySelector('.chatwin').hidden; });
-  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'с', code: 'KeyC', bubbles: true })));
+  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'е', code: 'KeyT', bubbles: true })));
   await untilShadow(p, (r) => !r.querySelector('.chatwin').hidden, null, 300);
-  check(eng, 'C opens the chat, on a Cyrillic layout too', await chatOpen());
+  check(eng, 'T opens the chat, on a Cyrillic layout too', await chatOpen());
   await p.keyboard.press('Escape');
   await sleep(200);
+  // C is comment (Leo, 19 Nov): from the pointer, C brings the comment back; 1 still switches.
+  const pointer = () => shadow(() => { return r.querySelector('.go-btn').classList.contains('cursor'); });
+  await p.keyboard.press('1');
+  await untilShadow(p, (r) => r.querySelector('.go-btn').classList.contains('cursor'), null, 300);
+  const wasPointer = await pointer();
+  await p.keyboard.press('c');
+  await untilShadow(p, (r) => !r.querySelector('.go-btn').classList.contains('cursor'), null, 300);
+  const after = await pointer(), chatAfter = await chatOpen();
+  check(eng, 'C goes back to comment from the pointer, and opens no chat', wasPointer && !after && !chatAfter, JSON.stringify({ wasPointer, after, chatAfter }));
   await p.keyboard.press('2');
   const keys = await shadow(() => { return r.querySelector('.go-btn').textContent.replace(/\s/g, ''); });
   const goLeft = await shadow(() => { return document.documentElement.classList.contains('lab-go') || r.querySelector('.go-btn').classList.contains('cursor'); });
@@ -369,7 +378,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   check(eng, 'a save the page does not use leaves it alone', loads === 1, `loads ${loads}`);
   // With the chat open the reload waits ("update waiting"), and what comes meanwhile still shows: before 19 Nov the
   // held reload cut off every later update, so the agent's answer stayed out of an open chat until it was closed.
-  await p.keyboard.press('c');
+  await p.keyboard.press('t');
   await untilShadow(p, (r) => r.querySelector('.chatwin').hidden === false, null, 1000);
   const said = () => shadow(() => { return [...r.querySelectorAll('.msg')].some((m) => m.textContent.includes('while it waits')); });
   write('data.json', '{"a":2}');

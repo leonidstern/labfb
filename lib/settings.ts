@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a' };
+const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a', select: 'v', pin: 'c' };
 // The actions row on selected words ("words") and on a spot ("spot"). The comment itself is
 // always there, first and unlisted; the list holds the built-in rewrite, cut, go, remove and fix, and your own: { label, send }.
 const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go', 'remove', 'fix'];

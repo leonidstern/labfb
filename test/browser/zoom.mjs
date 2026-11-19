@@ -78,7 +78,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
     return e?.closest('[data-lab-comments]') ? 'widget' : e?.localName;
   });
   check(eng, 'the page between takes taps', free && free !== 'widget', free);
-  await p.keyboard.press('c');
+  await p.keyboard.press('t');
   await p.waitForFunction(() => !document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.chatwin').hidden, null, { timeout: 2000 }).catch(() => {});
   await p.waitForTimeout(500);
   const chat = await seen('.chatwin');
