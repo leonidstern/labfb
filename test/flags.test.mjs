@@ -55,14 +55,15 @@ test('a flag that is not true or false is ignored, with a word about it', { skip
   assert.equal(s.values.flags[one], false);
 });
 
-test('sinceLooked is off until switched on, and the widget starts nothing without it', () => {
-  assert.equal(flagDefaults().sinceLooked, false);
-  assert.ok(FLAGS.sinceLooked.name && FLAGS.sinceLooked.since);
+test('sectionBar is off until switched on, and the widget starts nothing without it', () => {
+  assert.equal(flagDefaults().sectionBar, false);
+  assert.ok(FLAGS.sectionBar.name && FLAGS.sectionBar.since);
+  assert.ok(!('sinceLooked' in FLAGS), 'the Added pill is gone');
   const dir = tmp();
-  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sinceLooked: true } }));
-  assert.deepEqual(flagsOn(read(dir).values.flags), ['sinceLooked']);
-  // The widget's only way in: the pill, the kept looks and every request come from startChanges().
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: true } }));
+  assert.deepEqual(flagsOn(read(dir).values.flags), ['sectionBar']);
+  // The widget's only way in: the bar, the kept marks and every request come from startSections().
   const widget = fs.readFileSync(new URL('../src/comments.js', import.meta.url), 'utf8');
-  assert.match(widget, /flag\('sinceLooked'\)\) startChanges\(\)/);
-  assert.equal(widget.match(/startChanges\(/g).length, 1, 'started in one place only');
+  assert.match(widget, /flag\('sectionBar'\)\) startSections\(\)/);
+  assert.equal(widget.match(/startSections\(/g).length, 1, 'started in one place only');
 });

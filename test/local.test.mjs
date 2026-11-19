@@ -430,6 +430,80 @@ test('a look bumps looked in the live state, so other tabs and devices check aga
   assert.equal(await rev(), before + 1);
 });
 
+// ---------- the section bar: sections read, per person, in their own store ----------
+const sec = (body) => fetch(B + '/_lab/api/sections', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) });
+const secOf = (q) => fetch(`${B}/_lab/api/sections?${q}`).then((r) => r.json());
+
+test('sections read are kept by name and page, apart from the looks', async () => {
+  await up();
+  assert.deepEqual(await secOf('name=Leo&page=/index'), {}, 'nothing yet: a first visit');
+  assert.equal((await sec({ name: 'Leo ', page: '/index', sections: { intro: 'a1', v1: 'b2' } })).status, 204);
+  assert.deepEqual((await secOf('name=leo&page=/index')).sections, { intro: 'a1', v1: 'b2' }, 'same name in any case or spacing');
+  await sec({ name: 'Leo', page: '/index', sections: { v1: 'c3', v2: 'd4' } });
+  assert.deepEqual((await secOf('name=Leo&page=/index')).sections, { intro: 'a1', v1: 'c3', v2: 'd4' }, 'a post sets those sections and leaves the rest');
+  assert.deepEqual(await secOf('name=Mira&page=/index'), {}, 'another name has its own');
+  assert.deepEqual(await secOf('name=Leo&page=/other'), {}, 'per page');
+  assert.deepEqual(await lookOf('name=Leo&page=/index&snap=none'), {}, 'not a look');
+    await new Promise((r) => setTimeout(r, 500));
+  const file = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/state.json'), 'utf8')).sections;
+  assert.deepEqual(file.leo['/index'], { intro: 'a1', v1: 'c3', v2: 'd4' });
+});
+
+test('a section mark never shows up as a person who looked', async () => {
+  await up();
+  await sec({ name: 'Zed Sections', page: '/index', sections: { intro: 'a1' } });
+  const text = await (await fetch(B + '/_lab/agent/index')).text();
+  assert.doesNotMatch(text, /zed sections/i);
+  assert.doesNotMatch((await (await fetch(B + '/_lab/api/looked?name=Zed%20Sections&page=/index')).text()), /zed/i);
+});
+
+test('section marks are checked: a name, a page of this lab, an object, a size', async () => {
+  await up();
+  assert.equal((await sec({ page: '/index', sections: {} })).status, 400, 'no name');
+  assert.equal((await sec({ name: 'Leo', page: '/index', sections: ['x'] })).status, 400, 'not an object');
+  assert.equal((await sec({ name: 'Leo', page: '/nope-not-a-page', sections: {} })).status, 400, 'a page of this lab only');
+  assert.equal((await sec({ name: 'Leo', page: '/index', sections: Object.fromEntries(Array.from({ length: 401 }, (_, i) => [`s${i}`, 'h'])) })).status, 413, 'more than 400 sections');
+  assert.equal((await fetch(B + '/_lab/api/sections', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' })).status, 403, 'other sites cannot post');
+  await sec({ name: '__proto__', page: '/index', sections: { __proto__: 'x', ok: 'y' } });
+  assert.deepEqual((await secOf('name=__proto__&page=/index')).sections?.ok, 'y', 'a name like __proto__ is just a key');
+});
+
+test('a section mark bumps sections in the live state, and only when something changed', async () => {
+  await up();
+  const rev = async () => {
+    const ctl = new AbortController();
+    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+    const { value } = await res.body.getReader().read();
+    ctl.abort();
+    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).sections;
+  };
+  const before = await rev();
+  assert.equal(typeof before, 'number');
+  await sec({ name: 'Leo', page: '/index', sections: { rev: 'one' } });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(await rev(), before + 1);
+  await sec({ name: 'Leo', page: '/index', sections: { rev: 'one' } });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(await rev(), before + 1, 'the same marks again change nothing');
+});
+
+test('a renamed page takes its section marks along', async () => {
+  await up();
+  fs.writeFileSync(path.join(DIR, 'secold.html'), '<!doctype html><h1>Old</h1>');
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal((await sec({ name: 'Leo', page: '/secold', sections: { old: 'h' } })).status, 204);
+  await look({ name: 'Leo', page: '/secold', ids: [['old', 'Old']] }); // a look makes the page's file known by what the disk calls it
+  await new Promise((r) => setTimeout(r, 600));
+  fs.renameSync(path.join(DIR, 'secold.html'), path.join(DIR, 'secnew.html'));
+  let moved = {};
+  for (let i = 0; i < 30 && !moved.sections; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+    moved = await secOf('name=Leo&page=/secnew');
+  }
+  assert.deepEqual(moved.sections, { old: 'h' });
+  assert.deepEqual(await secOf('name=Leo&page=/secold'), {});
+});
+
 test('a renamed page takes its looks along', async () => {
   await up();
   fs.writeFileSync(path.join(DIR, 'old.html'), '<!doctype html><h1>Old</h1>');

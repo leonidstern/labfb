@@ -1,5 +1,6 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 import { lineWords } from './list.ts';
+import { stickToEnd } from './stick.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -123,15 +124,9 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   body.classList.add('msgs');
   // At its newest it stays at its newest while it gets shorter (the keyboard coming up as you answer), as the chat does;
   // scrolled back to read, it stays put (Leo, 17 Nov: "when I'm answering, the messages scrolled up").
-  let stick = !asking; // an open question starts at the question and its rows (on a half-height sheet, not at the newest)
-  body.addEventListener('scroll', () => (stick = body.scrollHeight - body.scrollTop - body.clientHeight < 48), { passive: true });
-  if ('ResizeObserver' in window) new ResizeObserver(() => stick && (body.scrollTop = body.scrollHeight)).observe(body);
+  const end = stickToEnd(body, !asking); // an open question starts at the question and its rows (on a half-height sheet, not at the newest)
   // Going to answer: the last message comes into view, so you write under what you're answering (Leo, 17 Nov).
-  foot.addEventListener('focusin', (e) => {
-    if ((e.target as Element).localName !== 'textarea') return;
-    stick = true;
-    body.scrollTop = body.scrollHeight;
-  });
+  foot.addEventListener('focusin', (e) => (e.target as Element).localName === 'textarea' && end.pin());
   // A rule the agent offered on its own (--suggest-rule), from your reply about how it answered: on your own message,
   // where the words came from, "make it a rule" (Leo, 17 Nov). Leaving it is a no.
   const STAR = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5l1.7 4.8L14.5 8l-4.8 1.7L8 14.5l-1.7-4.8L1.5 8l4.8-1.7z"/></svg>';

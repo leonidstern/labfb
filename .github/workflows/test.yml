@@ -53,7 +53,7 @@ jobs:
           # what a drag does (words, an area, a point, fields and links); new since you looked (the pill and list of the
           # ids the agent added, what drops one off, two names, a phone's sheet, and what must never count).
           # A phone pinch-zoomed in: the bar and the chat stay their usual size on screen (zoom).
-          - behaviours connection shortcuts anchoring selection flags progress changes moved zoom shiftkeys
+          - behaviours connection shortcuts anchoring selection flags progress moved zoom shiftkeys select sections
     name: browser (${{ matrix.engine }}, ${{ matrix.group == 'fluid' && 'fluid' || 'rest' }})
     # Playwright's own image has both browsers and their system libraries already in it. Installing them with
     # apt on each run took 30 s on a good day and 33 min on a bad one (#124, #127).
