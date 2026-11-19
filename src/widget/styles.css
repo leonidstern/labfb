@@ -693,7 +693,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-more[data-st="1"] { color: rgb(36, 160, 70); } /* something new folded into "…": the dots go green */
 .sb-edge.l { left: 0; background: linear-gradient(90deg, rgba(52, 199, 89, .24), transparent); }
 .sb-edge.r { right: 0; background: linear-gradient(270deg, rgba(52, 199, 89, .24), transparent); }
-.sb-edge[data-st="1"] { opacity: 1; }
+.sb-edge[data-st="1"] { opacity: 1; pointer-events: auto; cursor: pointer; width: 44px; } /* green: a tap slides to what is new */
 
 .sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
