@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-stamp-'));
-const PORT = 8900 + Math.floor(Math.random() * 90);
+const PORT = 8500 + Math.floor(Math.random() * 90);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><h1>Hi</h1>');
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], { cwd: DIR, env: { ...process.env, LABIT_NO_UPDATE_CHECK: '1' } });

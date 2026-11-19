@@ -47,7 +47,8 @@ test('an idle session that listened last is woken once for new pins', async ($, 
   await $.session.start({ cwd: '/p/sub', surface: 'terminal', isInteractive: true } as any);
   await clock.advance(4000);
   expect(w.sent.length).toBe(1);
-  expect(w.sent[0]).toContain('2 new pins on /a');
+  expect(w.sent[0]).toContain('2 new pins (');
+  expect(w.sent[0]).not.toContain('/a,'); // page paths are whatever a comment was posted to: not in a turn of its own
   expect(w.sent[0]).toContain('labit wait --timeout 5');
   await clock.advance(12000);
   expect(w.sent.length).toBe(1);
