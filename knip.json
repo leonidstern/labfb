@@ -1,5 +1,20 @@
 {
   "$schema": "https://unpkg.com/knip@5.66.0/schema.json",
-  "entry": ["src/comments.js", "lib/comments-api.mjs", "scripts/*.mjs", "ci/*.mjs", "test/**/*.mjs", "bench/*.mjs"],
-  "project": ["lib/**/*.ts", "lib/**/*.mjs", "src/**/*.{ts,js}", "scripts/**/*.mjs", "ci/**/*.mjs"]
+  "entry": [
+    "src/comments.js",
+    "lib/comments-api.mjs",
+    "scripts/*.mjs",
+    "ci/*.mjs",
+    "test/**/*.mjs",
+    "bench/*.mjs",
+    "lib/board.ts",
+    "lib/boardact.ts"
+  ],
+  "project": [
+    "lib/**/*.ts",
+    "lib/**/*.mjs",
+    "src/**/*.{ts,js}",
+    "scripts/**/*.mjs",
+    "ci/**/*.mjs"
+  ]
 }

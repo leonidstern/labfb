@@ -10,7 +10,7 @@ import type { Duplex } from 'node:stream';
 type ProxyOptions = {
   PROXY: URL;
   origin: () => string;
-  widget: (key: string, admin: boolean, me: string) => string;
+  widget: (key: string, admin: boolean, me: string, framed: boolean) => string;
   keyFor: (page: string) => string;
   isLoopback: (req: IncomingMessage) => boolean;
   nameFor: (req: IncomingMessage) => string;
@@ -68,7 +68,7 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
         held = t.slice(cut);
       });
       r.on('end', () => {
-        const tail = strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req));
+        const tail = strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req), req.headers['sec-fetch-dest'] === 'iframe');
         // A page that arrived in one piece never saw a data event with a head in it; dress it here instead.
         res.end(first ? dress(tail) : tail);
       });
