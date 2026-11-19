@@ -72,6 +72,8 @@ For the agent, from the project (any folder under it):
       --bg says you did: only then does it sit for the full timeout. Without it a wait ends after a minute, because a
       wait left in the foreground holds the person's turn open and they can't say anything to you until it ends.
       An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
+      That loop is the agent's own turns, never a shell loop (while true; do labit wait; done): a shell loop keeps
+      listening after the session is gone, so pins are handed to nobody. A pin with no reply for 2 minutes goes to the next wait.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
   labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --done says the ask is done (the
@@ -1140,7 +1142,7 @@ const saveHanded = saver(HANDED, () => {
 }, 'hand-off marks');
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(readSide(HANDED, 'handed.json') || {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, labit: VERSION, reads: readsRev, looked: lookedRev, mode, heard: heard(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, labit: VERSION, reads: readsRev, looked: lookedRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1449,8 +1451,19 @@ function confirmed(id) {
   clearTimeout(d.timer);
   return true;
 }
+// A hand-off nobody answers: its threads have no reply of any kind from the session (on it, progress, a question, an
+// answer, a resolve) ANSWER_MS after it went out. They count as not answered: the marks go back, so the next wait (any
+// session's) gets them whole, and the page says "not answered" on them and that the session isn't answering, until it
+// replies to anything. Before (Leo, 19 Nov), a shell loop left running by a closed session kept waiting and acking:
+// a pin went to it, sat unanswered, and the page still said "talking to Claude".
+const ANSWER_MS = Number(process.env.LAB_ANSWER_MS ?? 120000);
+const silent = new Map(); // who -> { label, pages (null: every page), at: its last sign of listening }
+// The sessions not answering that the page should name: still listening (a wait open, or one in the last ANSWER_MS),
+// and no answering session's wait open on the same pages.
+const silentNow = () => [...silent].filter(([who, q]) => (waiters.some((w) => w.who === who) || Date.now() - q.at < ANSWER_MS)
+  && !waiters.some((w) => !silent.has(w.who) && w.key === (q.pages ? q.pages.join(',') : '*'))).map(([, q]) => ({ label: q.label, pages: q.pages }));
 // Hand the new comments to a wait; each is marked as handed over only once it is written to it.
-function deliver(res, got, who = '', ack = false, key = '') {
+function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
   // What the marks were, to put back if the agent never confirms.
   const ids = [...new Set([...got.marks.map(([, id]) => id), ...got.handed.map(([, id]) => id)])];
   const before = ids.map((id) => [id, handoff[id] ? [...handoff[id]] : undefined]);
@@ -1491,6 +1504,37 @@ function deliver(res, got, who = '', ack = false, key = '') {
   saveHanded();
   for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
   setMode(waiters.length ? 'listening' : 'working'); // another session still waits: the lab is still listening
+  if (got.handed.length) setTimeout(() => notAnswered(), ANSWER_MS).unref();
+  function notAnswered() {
+    // Threads still as this hand-off left them (not taken back, not handed again), open, with nothing from the session since.
+    const quiet = got.handed.filter(([page, id]) => {
+      const c = commentsOf(page).find((x) => x.id === id);
+      if (!c || c.resolved || c.handedAt !== at || (c.progress?.at || '') >= at) return false;
+      return !commentsOf(page).some((r) => r.parent === id && r.session && r.createdAt >= at);
+    });
+    if (!quiet.length) return;
+    const threads = new Set(quiet.map(([, id]) => id));
+    const threadOf = (id) => {
+      for (const [page] of quiet) {
+        const c = commentsOf(page).find((x) => x.id === id);
+        if (c) return c.parent || c.id;
+      }
+      return null;
+    };
+    for (const [id, was] of before) {
+      if (!threads.has(threadOf(id)) || JSON.stringify(handoff[id]) !== JSON.stringify(wrote[id])) continue;
+      if (was) handoff[id] = was;
+      else delete handoff[id];
+    }
+    const now = new Date().toISOString();
+    for (const [page, id, was] of handedBefore) if (threads.has(id)) setComment(page, id, { handedAt: was, unanswered: now });
+    saveHanded();
+    for (const page of new Set(quiet.map(([page]) => page))) persist(page).catch(() => {});
+    silent.set(who, { label, pages: key && key !== '*' ? key.split(',') : null, at: Date.now() });
+    console.log(`[lab] ${label} did not answer ${quiet.length} pin${quiet.length === 1 ? '' : 's'} in ${Math.round(ANSWER_MS / 1000)} s: they go to the next wait`);
+    broadcast();
+    wake();
+  }
 }
 // A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made one after another go
 // over together, in one round trip, instead of one wake-up each.
@@ -1503,7 +1547,7 @@ function wake() {
   settleTimer = setTimeout(wakeNow, SETTLE_MS);
 }
 async function wakeNow() {
-  for (const w of Array.from(waiters)) {
+  for (const w of [...waiters].sort((a, b) => Number(silent.has(a.who)) - Number(silent.has(b.who)))) { // answering sessions first
     if (!waiters.includes(w)) continue;
     const got = await unseen(scopeOf(w), w.who);
     if (!got?.text || !waiters.includes(w)) continue;
@@ -1511,7 +1555,7 @@ async function wakeNow() {
     waitEnded = Date.now();
     clearTimeout(w.timer);
     remember(w);
-    deliver(w.res, w.heads ? { ...got, text: w.heads + got.text } : got, w.who, w.ack, w.key);
+    deliver(w.res, w.heads ? { ...got, text: w.heads + got.text } : got, w.who, w.ack, w.key, w.label);
   }
 }
 
@@ -1922,7 +1966,11 @@ const handler = async (req, res) => {
       const before = lastWait.get(key);
       const other = before && before.who !== by && Date.now() - before.at < OTHER_MS ? before : null;
       if (other) console.log(`[lab] two sessions listen on ${want ? want.join(' ') : 'every page'}: ${other.label} and a new one. Pins go to whichever wait is open.`);
-      for (const old of waiters.filter((w) => w.key === key)) {
+      // A session that isn't answering doesn't end an answering session's wait (a loop left running re-arms every few
+      // seconds): the two stay open, and pins go to the answering one first.
+      const quietOne = silent.has(by);
+      if (quietOne) silent.get(by).at = Date.now();
+      for (const old of waiters.filter((w) => w.key === key && !(quietOne && w.who !== by && !silent.has(w.who)))) {
         waiters = waiters.filter((w) => w !== old); // before its close handler runs, so it doesn't mark Claude as away
         clearTimeout(old.timer);
         old.res.writeHead(409).end('another session is listening now');
@@ -1942,9 +1990,9 @@ const handler = async (req, res) => {
       claim(want);
       const got = await unseen(scopeOf(w), w.who);
       recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
-      if (got?.text) {
+      if (got?.text && !(quietOne && waiters.some((x) => x.key === key && !silent.has(x.who)))) {
         remember(w);
-        return deliver(res, heads ? { ...got, text: heads + got.text } : got, w.who, w.ack, key);
+        return deliver(res, heads ? { ...got, text: heads + got.text } : got, w.who, w.ack, key, w.label);
       }
       w.heads = heads; // said with its first hand-off
       w.timer = setTimeout(() => {
@@ -2203,6 +2251,7 @@ const handler = async (req, res) => {
       if (req.method === 'POST' && out.ok) {
         // An answer or a resolve from a session is proof it has what it was handed.
         if (agent) for (const [id, d] of unacked) if (d.who === whoOf(sessionFrom(req))) confirmed(id);
+        if (agent) silent.delete(whoOf(sessionFrom(req))); // any word from it: it is answering again
         const { comment } = JSON.parse(text);
         // Who wrote it, its intent and an agent's done closing the thread are saved by the API, in its own write.
         if (out.status === 201 && !agent) {
