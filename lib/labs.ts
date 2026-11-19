@@ -12,7 +12,7 @@ export const keyFor = (rel: string) =>
     [...Buffer.from(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join(''),
   ).join('/');
 
-export type Lab = { port: number; pid: number; root: string; name: string; proxy?: string | null; version?: string; startedAt?: string; listener?: string; listenedAt?: string };
+export type Lab = { port: number; pid: number; root: string; name: string; proxy?: string | null; version?: string; edge?: string; entry?: string; me?: string; startedAt?: string; listener?: string; listenedAt?: string };
 export const runningLabs = (): Lab[] =>
   (fs.existsSync(REGISTRY) ? fs.readdirSync(REGISTRY) : [])
     .filter((n) => n.endsWith('.json'))
@@ -32,7 +32,7 @@ export const runningLabs = (): Lab[] =>
 // ---------- parked labs ----------
 // A lab parked from the switcher stops and leaves ~/.labit/parked/<port>.json: how to start it again, the same way.
 export const PARKED = path.join(path.dirname(REGISTRY), 'parked');
-type Parked = { port: number; root: string; name: string; argv: string[]; execArgv: string[]; edge?: string; archived?: boolean; at: string };
+type Parked = { port: number; root: string; name: string; argv: string[]; execArgv: string[]; edge?: string; npx?: boolean; archived?: boolean; at: string };
 export const parkedLabs = (): Parked[] =>
   (fs.existsSync(PARKED) ? fs.readdirSync(PARKED) : [])
     .filter((n) => n.endsWith('.json'))

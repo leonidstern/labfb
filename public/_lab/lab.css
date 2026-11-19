@@ -25,6 +25,7 @@
   --lab-green-2: rgba(52, 199, 89, .30);  /* hover on green */
   --lab-green-3: rgba(52, 199, 89, .50);  /* outlines, dots */
   --lab-green-4: rgb(36, 160, 70);        /* green: go, done, picks (dark: #34c759) */
+  --lab-amber: #e08a1a;                   /* not ok yet: the agent asks, reconnecting, nobody listening (dark: #f0a040) */
 
   /* What things use (semantic), light. Dark only re-points these. */
   --lab-bg: var(--lab-white);           /* boxes */
@@ -68,14 +69,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --lab-bg: var(--lab-paper-dark); --lab-fg: #f4f4f5; --lab-page: var(--lab-black); --lab-muted: var(--lab-white-4);
-    --lab-line: var(--lab-white-3); --lab-soft: var(--lab-white-1); --lab-hover: var(--lab-white-2); --lab-green: #34c759; --lab-green-soft: var(--lab-green-1);
+    --lab-line: var(--lab-white-3); --lab-soft: var(--lab-white-1); --lab-hover: var(--lab-white-2); --lab-green: #34c759; --lab-amber: #f0a040; --lab-green-soft: var(--lab-green-1);
     --lab-shadow: 0 0 0 1px rgba(244, 244, 245, .16), 0 10px 32px rgba(0, 0, 0, .5);
     color-scheme: dark;
   }
 }
 :root[data-theme='dark'] {
   --lab-bg: var(--lab-paper-dark); --lab-fg: #f4f4f5; --lab-page: var(--lab-black); --lab-muted: var(--lab-white-4);
-  --lab-line: var(--lab-white-3); --lab-soft: var(--lab-white-1); --lab-hover: var(--lab-white-2); --lab-green: #34c759; --lab-green-soft: var(--lab-green-1);
+  --lab-line: var(--lab-white-3); --lab-soft: var(--lab-white-1); --lab-hover: var(--lab-white-2); --lab-green: #34c759; --lab-amber: #f0a040; --lab-green-soft: var(--lab-green-1);
   --lab-shadow: 0 0 0 1px rgba(244, 244, 245, .16), 0 10px 32px rgba(0, 0, 0, .5);
   color-scheme: dark;
 }
@@ -89,7 +90,7 @@ body.lab {
 }
 .lab main, .lab-main { max-width: 680px; margin: 0 auto; display: grid; gap: 20px; }
 .lab h1 { font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
-.lab h2 { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--lab-muted); margin: 0 0 8px; }
+.lab h2 { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--lab-muted); margin: 0 0 8px; }
 .lab p { margin: 0; }
 .lab a { color: inherit; text-underline-offset: 2px; }
 /* The lab's own screens open with the mark and the name. */
@@ -98,7 +99,7 @@ body.lab {
 .lab-muted, .lab .lede { color: var(--lab-muted); }
 /* Someone is listening here / nobody is: said next to a page, where it decides whether a comment is heard. */
 .lab-ok { color: var(--lab-green); font-weight: 600; }
-.lab-warn { color: rgb(200, 110, 0); font-weight: 600; }
+.lab-warn { color: var(--lab-amber); font-weight: 600; }
 .lab .lede { margin-top: 6px; }
 .lab-small { font-size: 13px; }
 
@@ -116,21 +117,21 @@ body.lab {
 .lab-button.go { background: var(--lab-green); color: #fff; }
 
 /* Keys and code: small corners on the soft grey. */
-.lab kbd, .lab code { font: 12.5px var(--lab-mono); background: var(--lab-soft); padding: 1px 5px; border-radius: var(--lab-corner-s); }
+.lab kbd, .lab code { font: 12px var(--lab-mono); background: var(--lab-soft); padding: 1px 5px; border-radius: var(--lab-corner-s); }
 
 /* A list of rows inside a box (the page list, the widget's list). */
 .lab-rows { list-style: none; margin: 0; padding: 6px; }
-.lab-rows a { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; border-radius: var(--lab-corner-s); text-decoration: none; }
-.lab-rows a:hover { background: var(--lab-hover); }
+.lab-rows a { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: var(--lab-corner-s); text-decoration: none; }
+.lab-rows a:hover { background: var(--lab-soft); } /* the widget's rows: 7×10, the soft wash */
 .lab-rows .lab-muted { font-size: 13px; }
 /* The page list: title and when it changed on one line, the file under it; open comments as a green count. */
-.lab-pages a { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 1px; align-items: baseline; padding: 9px 10px; }
+.lab-pages a { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 1px; align-items: baseline; padding: 7px 10px; }
 .lab-page-t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lab-page-f { grid-column: 1; font-size: 12.5px; color: var(--lab-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lab-page-m { grid-row: 1; grid-column: 2; display: inline-flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--lab-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lab-page-f { grid-column: 1; font-size: 13px; color: var(--lab-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab-page-m { grid-row: 1; grid-column: 2; display: inline-flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--lab-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lab-page-m b { font-weight: 600; color: var(--lab-green); }
 .lab-filter { width: 100%; box-sizing: border-box; margin: 0; padding: 9px 12px; border: 0; border-radius: var(--lab-corner); background: var(--lab-soft); color: inherit; font: inherit; outline: none; }
-.lab-filter:focus { box-shadow: 0 0 0 2px var(--lab-green-soft); }
+.lab-filter:focus-visible { outline: 2px solid var(--lab-fg); outline-offset: 2px; } /* the widget's button focus ring */
 .lab-hint { font-size: 13px; margin: 0; }
 
 /* Tables */
