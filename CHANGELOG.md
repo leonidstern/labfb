@@ -4,7 +4,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Fixed: `labit publish` removed the page's old copy before copying, so a source that was that copy (reached through a link to the pages folder), or sat inside it, deleted itself. It is now refused or left alone. The command's code was also in the file twice; the copy that never ran is gone.
 - Phones: a comment made by holding the page always gets the cursor and the keyboard. The box used to focus itself during the hold, which Safari could do without a keyboard; now the finger's lift focuses it, once.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.
 - Pause sits beside what moves, not in the bar: each video and each animated element on the page gets a small pause / play just past its top right corner, over the page (nothing shifts), that stops or starts only that one. It shows with the comments and hides with them (M). **P** still pauses everything, or plays what was paused. The bar's pause button is gone.
@@ -20,6 +19,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - The listening mark's colours: green while an agent listens or works, amber while the page reconnects to the lab (it was faded green), muted grey when no agent listens (it was black). Its tooltip names the state first (Listening, Working, Away), then the resume command.
 - Done pins are as big as open ones, only faded (50%). Before, a done pin also shrank to 80% (64% on phones); a pin whose spot is gone still does.
 - While a new comment is open the page shows its own pointer, empty or not (it used to switch only once you typed, so an empty box still showed the pin cursor).
+- Fixed: `labit publish` removed the page's old copy before copying, so a source that was that copy (reached through a link to the pages folder), or sat inside it, deleted itself. It is now refused or left alone. The command's code was also in the file twice; the copy that never ran is gone.
 - Agents read a pin's or chat message's whole thread before answering, and don't guess from the page, URL or #section what it asks (`wait`, the plugin's wake turn and the skill say so).
 - Removed the parked list window and draft mode (both were off): their code, styles and the held-draft pins. The bar's New pill, J/K and show/hide done work as before.
 - What `wait` hands an agent (and the skill) now says: work that takes more than a minute (a build, a restart, a PR) gets `reply <id> --on-it` on each pin first, then the work. A batch worked through without a word looked lost: picked up, then nothing for 13 minutes.
