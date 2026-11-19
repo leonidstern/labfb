@@ -16,7 +16,7 @@ after(() => {
   for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let nextPort = 7000 + Math.floor(Math.random() * 400); // clear of 5060 and 5061, which fetch refuses ("bad port")
+let nextPort = 7100 + Math.floor(Math.random() * 250); // clear of 5060 and 5061, which fetch refuses ("bad port")
 const folder = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-storage-'));
   dirs.push(d);
@@ -24,9 +24,9 @@ const folder = () => {
   return d;
 };
 // A lab on the folder, once it answers; stop() ends it and waits for it to exit.
-async function start(dir) {
+async function start(dir, env = {}) {
   const port = nextPort++;
-  const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port)], { cwd: dir, env: { ...process.env, PORT: String(port) } });
+  const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port)], { cwd: dir, env: { ...process.env, PORT: String(port), ...env } });
   running.add(server);
   let log = '';
   server.stdout.on('data', (d) => (log += d));
@@ -49,7 +49,7 @@ async function start(dir) {
       server.once('exit', () => (running.delete(server), resolve()));
       server.kill('SIGTERM');
     });
-  return { B, post, list, stop, log: () => log };
+  return { B, post, list, stop, log: () => log, alive: () => server.exitCode === null, agent: () => JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).agent };
 }
 const anchor = { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1>' };
 const until = async (check, what) => {
@@ -326,4 +326,41 @@ test('choices and a pick load unchanged, v stays 2', async () => {
   const saved = readJson(path.join(dir, '.lab/comments/x.json')).comments;
   assert.deepEqual(saved.q1.choices, ['here', 'there', 'over there'], 'still there when the file is written again');
   assert.deepEqual(saved.p1.picked, { of: 'q1', n: 1 });
+});
+
+// A write that fails (a full disk, a folder gone read-only) is played here by a folder standing where the lab's
+// temporary file goes: the write throws, as it would with no space left.
+test('a save that fails is tried again until it works, and the comment is there after a restart', async () => {
+  const dir = folder();
+  fs.writeFileSync(path.join(dir, 'a.html'), '<!doctype html><h1>A</h1>');
+  const lab = await start(dir, { LAB_SAVE_RETRY_MS: '200' });
+  const file = path.join(dir, '.lab/comments/a.json');
+  fs.mkdirSync(path.join(dir, '.lab/comments'), { recursive: true });
+  fs.mkdirSync(file + '.tmp');
+  const { comment } = await lab.post({ page: '/a', name: 'Leo', text: 'kept through a failed save', anchor });
+  assert.ok(comment?.id, 'the comment is taken');
+  await until(() => /could not save comments/.test(lab.log()), 'the lab says the save failed');
+  await lab.post({ page: '/index', name: 'Leo', text: 'another page saves meanwhile', anchor });
+  await until(() => fs.existsSync(path.join(dir, '.lab/comments/index.json')), 'the other page is written');
+  assert.ok(!fs.existsSync(file), 'not written yet');
+  fs.rmdirSync(file + '.tmp'); // the disk has room again
+  await until(() => fs.existsSync(file), 'the failed page is written by the retry, with no new comment to trigger it');
+  await lab.stop();
+  const again = await start(dir);
+  assert.deepEqual((await again.list('/a')).map((c) => c.text), ['kept through a failed save']);
+  await again.stop();
+});
+
+test('a wait while server.json cannot be written is answered, and the lab keeps running', async () => {
+  const dir = folder();
+  const lab = await start(dir);
+  fs.mkdirSync(path.join(dir, '.lab/server.json.tmp'));
+  const res = await fetch(lab.B + '/_lab/wait', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': lab.agent(), 'x-lab-agent': '1' }, body: JSON.stringify({ timeout: 1, pages: null }) });
+  assert.equal(res.status, 204, 'the wait runs out as usual');
+  await sleep(300);
+  assert.ok(lab.alive(), 'the lab is still running');
+  assert.equal((await fetch(lab.B + '/')).status, 200);
+  assert.match(lab.log(), /could not write/);
+  fs.rmdirSync(path.join(dir, '.lab/server.json.tmp'));
+  await lab.stop();
 });

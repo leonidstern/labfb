@@ -14,24 +14,45 @@ const same = (a: string, b: string) => a.toLowerCase().replace(/[\s.]+$/, '') ==
 
 type Rule = { text: string; times: number; at: number };
 
-function read(): Rule[] {
-  let src = '';
+const source = () => {
   try {
-    src = fs.readFileSync(file(), 'utf8');
+    return fs.readFileSync(file(), 'utf8');
   } catch {
-    return [];
+    return '';
   }
-  return src.split('\n').map((l) => LINE.exec(l.trim())).filter(Boolean).map((m, at) => ({ text: m![1], times: Number(m![2] || 1), at }));
-}
+};
+const parse = (src: string): Rule[] => src.split('\n').map((l) => LINE.exec(l.trim())).filter(Boolean).map((m, at) => ({ text: m![1], times: Number(m![2] || 1), at }));
+const read = () => parse(source());
+const line = (r: Rule) => `- ${r.text}${r.times > 1 ? ` (×${r.times})` : ''}`;
+/** A rule's text as it is kept: one line, 200 characters. Adding and undoing both go through it. */
+const norm = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 200);
 
+// The file is yours to edit ("Edit freely"): only its rule lines are rewritten, in place; a note, a heading or a
+// blank line you put there stays where it is. New rules go at the end.
 function write(rules: Rule[]) {
+  const src = source();
+  const left = [...rules];
+  const take = (text: string) => {
+    const i = left.findIndex((r) => r.text === text);
+    return i < 0 ? null : left.splice(i, 1)[0];
+  };
+  const kept = src
+    ? src.replace(/\n$/, '').split('\n').flatMap((l) => {
+        const m = LINE.exec(l.trim());
+        if (!m) return [l];
+        const r = take(m[1]);
+        return r ? [line(r)] : [];
+      })
+    : [HEAD.trimEnd(), ''];
+  const out = [...kept, ...left.map(line)].join('\n') + '\n';
   fs.mkdirSync(path.dirname(file()), { recursive: true });
-  fs.writeFileSync(file(), HEAD + rules.map((r) => `- ${r.text}${r.times > 1 ? ` (×${r.times})` : ''}`).join('\n') + '\n');
+  fs.writeFileSync(file() + '.tmp', out);
+  fs.renameSync(file() + '.tmp', file());
 }
 
 /** A rule from feedback: a new line, or the same rule given again counts once more. */
 export function addRule(text: string) {
-  const t = text.replace(/\s+/g, ' ').trim().slice(0, 200);
+  const t = norm(text);
   if (!t) return;
   const rules = read();
   const had = rules.find((r) => same(r.text, t));
@@ -43,7 +64,7 @@ export function addRule(text: string) {
 /** Undo on the answer that saved it: once less, gone at none. */
 export function dropRule(text: string) {
   const rules = read();
-  const had = rules.find((r) => same(r.text, text));
+  const had = rules.find((r) => same(r.text, norm(text)));
   if (!had) return;
   had.times--;
   write(rules.filter((r) => r.times > 0));
