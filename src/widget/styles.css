@@ -150,7 +150,6 @@ button.choice { display: flex; align-items: baseline; gap: 8px; width: 100%; mar
 button.choice::before { content: ''; flex: none; width: 14px; text-align: center; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--_fg); }
 button.choice.on::before { content: '✓'; }
 button.choice:hover:not(:disabled) { background: var(--_soft); }
-button.choice:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--_accent) 40%, transparent); }
 button.choice:disabled { cursor: default; opacity: .4; }
 button.choice.now { color: var(--_muted); }
 button.choice.picked { opacity: 1; }
