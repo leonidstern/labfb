@@ -385,6 +385,7 @@ export function startLive() {
     const got = (v) => {
       beat = Date.now();
       last = v;
+      dispatchEvent(new CustomEvent('lab-state', { detail: v })); // the board page follows the board file from this
       onState(v);
     };
     if (bc)

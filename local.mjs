@@ -2237,7 +2237,7 @@ const handler = async (req, res) => {
       return answer(res, labInfo());
     }
     // ---------- boards: a variant's page, and the board's data (lib/board.ts). Off: neither exists. ----------
-    // /_lab/board/<name> alone is the board page (another change); only a frame's own page is served here.
+    // /_lab/board/<name> is the board page, /_lab/board/<name>/<frame> a variant's own page.
     if (pathname.startsWith('/_lab/board/') || pathname === '/_lab/api/board') {
       if (!B) return plain(res, 404, 'boards are off: turn them on with {"flags":{"board":true}} in labit.json');
       const m = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]*)\/([a-z][a-z0-9]*)$/.exec(pathname);
@@ -2248,6 +2248,13 @@ const handler = async (req, res) => {
           inject(withIcon(fs.readFileSync(file, 'utf8')), widget(`/_board/${m[1]}/${m[2]}`, isLoopback(req), nameFor(req), inFrame(req))));
       }
       if (pathname === '/_lab/api/board') return boardApi(req, res, url);
+      // The board page itself: a shell that board.js (public/_lab/board.js) fills from /_lab/api/board. The widget rides on it
+      // under the board's key, like any page; it is a page of its own, never one of the lab's pages.
+      const bp = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})$/.exec(pathname);
+      if (bp && (req.method === 'GET' || req.method === 'HEAD')) {
+        const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>board ${bp[1]}</title></head><body><script src="/_lab/board.js" data-name="${bp[1]}"></script></body></html>`;
+        return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, inject(withIcon(html), widget(`/_board/${bp[1]}`, isLoopback(req), nameFor(req), true)));
+      }
     }
     if (pathname.startsWith('/_lab/agent/')) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });

@@ -35,6 +35,8 @@ export function startFrame(script: HTMLScriptElement | null) {
   // A key heard here goes to the board unless the page used it or is typing in it: the board's keys work in a focused frame.
   addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement | null;
+    // Esc is the board's only when nothing in the page has the focus: with a field or a menu focused it is the page's first.
+    if (e.key === 'Escape' && document.activeElement && document.activeElement !== document.body && document.activeElement !== document.documentElement) return;
     if (e.defaultPrevented || t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName || '')) return;
     board()?.key?.({ key: e.key, code: e.code, shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey, repeat: e.repeat });
   });

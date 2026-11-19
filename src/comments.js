@@ -194,6 +194,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.isAdmin = false;
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   S.on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
+  // A board page (src/board/): pins on a board come later, so comments stay off here and its clicks are the board's.
+  S.board = /^\/_board\/[^/]+$/.test(S.page);
+  if (S.board) S.on = false;
   S.openId = null;
   S.closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
   S.cardFull = false; // a comment pulled up to full height (the card is drawn anew on each redraw)
@@ -259,6 +262,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const motions = $('.motions');
   const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
   const overBtn = $('.over-btn');
+  if (S.board) toggleBtn.style.display = overBtn.style.display = 'none'; // no pins on a board yet
   const tabTitle = { base: '' };
   // Done pins show unless hidden (Leo, 17 Nov): closed ones are faded on the page, and D hides them.
   S.showDone = store.get('lab-hide-done') !== '1';
@@ -1050,7 +1054,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     setTimeout(() => (hint.hidden = true), 5000);
   };
   const setOn = (value) => {
-    S.on = value;
+    S.on = value && !S.board;
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');

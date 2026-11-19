@@ -40,5 +40,7 @@ const options = {
   outfile,
   plugins: [minifiedCss],
 };
-if (watch) await (await esbuild.context(options)).watch();
-else await esbuild.build(options);
+// The board page's script (src/board/board.ts) is built beside it: only the board page loads it.
+const board = { ...options, entryPoints: ['src/board/board.ts'], outfile: path.join(path.dirname(outfile), 'board.js') };
+if (watch) for (const o of [options, board]) await (await esbuild.context(o)).watch();
+else for (const o of [options, board]) await esbuild.build(o);

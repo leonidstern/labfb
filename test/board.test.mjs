@@ -142,7 +142,7 @@ test('a variant file is served at /_lab/board/<n>/<f> with the widget; .lab is s
   assert.equal((await fetch(`${B}/.lab/boards/hero/a.html`)).status, 404);
   assert.equal((await fetch(`${B}/_lab/board/hero/z`)).status, 404);
   assert.notEqual((await fetch(`${B}/_lab/board/..%2f/a`)).status, 200);
-  assert.equal((await fetch(`${B}/_lab/board/hero`)).status, 404, 'the board page itself is another change');
+  assert.equal((await fetch(`${B}/_lab/board/hero`)).status, 200, 'the board page itself is served (test/boardpage.test.mjs)');
 });
 
 test('the lab watches .lab/boards: a board file bumps boards, a saved variant is a hot update of its frame alone, a page save is neither', async () => {
