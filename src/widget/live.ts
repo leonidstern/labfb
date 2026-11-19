@@ -121,7 +121,7 @@ export function startLive() {
       const sig = [mode, agent, text ? 'p' : more].join('|');
       if (lbl.dataset.sig !== sig) {
         lbl.dataset.sig = sig;
-        lbl.replaceChildren(...(mode === 'listening' ? [span('talking to'), agent] : mode === 'working' ? (text ? [agent, span('', 'prog')] : [agent, span(`is working${more}`)]) : [span(away)]));
+        lbl.replaceChildren(...(mode === 'listening' ? [span('talking to'), agent] : mode === 'quiet' ? [agent, span("isn't answering")] : mode === 'working' ? (text ? [agent, span('', 'prog')] : [agent, span(`is working${more}`)]) : [span(away)]));
       }
       const prog = lbl.querySelector('.prog') as HTMLElement | null;
       if (prog) {
@@ -465,18 +465,21 @@ export function startLive() {
         // so, instead of "talking to Claude" while its pins wait for nobody. An older lab doesn't send heard.
         const h = v.heard;
         const here = !h || h.pages.includes(W.S.page) || (h.all && !h.except.includes(W.S.page));
-        const mode = s && here ? v.mode || 'listening' : 'away';
+        // The session listening here was handed pins and answered none of them (local.mjs silentNow): the pill says
+        // "Claude isn't answering" instead of "talking to Claude", until it answers anything.
+        const quiet = (v.silent || []).find((q) => !q.pages || q.pages.includes(W.S.page));
+        const mode = s && here ? (quiet ? 'quiet' : v.mode || 'listening') : 'away';
         W.S.unheard = mode === 'away';
         // "talking to Claude · Sonnet 5.5": the agent, and the model the session said it runs on. The session's name
         // isn't in the words (owner, 18 Nov); it is in the pill's tooltip.
-        const agent = s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
+        const agent = quiet && mode === 'quiet' ? quiet.label : s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
         const name = s && s.name !== (s.agent || 'Claude') ? s.name : '';
         W.S.agent = s ? agent : '';
         pill = { mode, agent, away: s && !here ? 'no agent on this page' : 'no agent listening' };
         paintWho();
         who.classList.remove('stale');
         W.chatBtn.classList.remove('stale');
-        who.classList.toggle('idle', mode === 'away');
+        who.classList.toggle('idle', mode === 'away' || mode === 'quiet');
         who.classList.toggle('working', mode === 'working');
         W.listBtn.dataset.agent = mode;
         W.chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's mark
@@ -488,7 +491,7 @@ export function startLive() {
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
         // How to get one listening again: what to say to the agent, for this page.
         // The mark's colour says the state; the tooltip names it (Leo, 18 Nov).
-        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
+        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'quiet' ? 'Not answering: pins handed to it got no reply in 2 minutes; they go to the next wait (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
         who.title = mode === 'away' ? `${state} To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : [state, name && `session: ${name}`, s?.resume].filter(Boolean).join('\n');
         who.hidden = false;
       }
