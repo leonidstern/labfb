@@ -174,6 +174,12 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       history.replaceState(history.state, '', `#${Math.round(cam.x)},${Math.round(cam.y)},${cam.z.toFixed(3)}`);
     } catch {}
   };
+  // A reload before the camera rested still comes back where it was: the address takes the camera as the page goes.
+  if (opts.hash) addEventListener('pagehide', () => {
+    try {
+      history.replaceState(history.state, '', `#${Math.round(cam.x)},${Math.round(cam.y)},${cam.z.toFixed(3)}`);
+    } catch {}
+  });
   const moving = () => {
     movedAt = performance.now();
     if (!layered) {
