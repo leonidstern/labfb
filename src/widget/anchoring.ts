@@ -532,8 +532,11 @@ function sameKind(node, tag) {
 
 // words: the point is on the word under it (kind text, its quote: the words a Shift-drag quotes). A click or an area is
 // only a point, never a quote, so nothing is highlighted (Leo 18 Nov: "pin pointing on word highlighting word").
-export function anchorAt(clientX, clientY, words = false) {
+// onto: the element the caller knows is there (selected words' own). Chrome now and then finds nothing but <html>
+// under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
+export function anchorAt(clientX, clientY, words = false, onto = null) {
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
+  if (onto && !stack.length) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
   let shadowHost = null;
