@@ -415,8 +415,9 @@ export function startLive() {
       }));
     function onState(v) {
       {
-        // A new widget script: this page needs it, so it reloads (when it's safe, as always).
-        if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) return reload();
+        // A new widget script: this page needs it, so it reloads (when it's safe, as always). While the reload waits
+        // (a chat, a thread or a draft is open) the rest still runs: replies keep arriving and the pill stays true.
+        if (v.widget && W.script.dataset.widget && v.widget !== W.script.dataset.widget) reload();
         // Comments stored in a new shape (lib/schema.mjs VERSION): this page reads them with the widget that knows it.
         if (v.schema && W.script.dataset.schema && String(v.schema) !== W.script.dataset.schema) return reload();
         // The lab restarted (its counters start again): catch up in place instead of reloading. The page is fetched
@@ -433,7 +434,7 @@ export function startLive() {
         if (String(v.files) !== W.script.dataset.version) {
           // The lab says which files changed (no list: a burst too big to judge, so reload as before).
           if (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere)) W.script.dataset.version = String(v.files);
-          else return reload();
+          else reload(); // held while something is open: the comments below still come in (the agent's answer, read marks)
         }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
