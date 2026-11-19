@@ -222,6 +222,8 @@ test('a reply goes in the short thread form only to the session that has its thr
   const b = (await waiting).out;
   assert.match(b, /^## /m, 'the whole thread for a session that never had it');
   assert.match(b, /^Answer each: .* reply <id> .* add --wait to the last one/m, 'how to answer, in full the first time a session hears');
+  assert.match(b, /Read each thread whole \(every message and reply/, 'told to read the whole conversation before answering, not to guess from the page');
+  assert.match(b, /^Work that takes more than a minute .*: first .* reply <id> --on-it /m, 'on it first, before long work');
   assert.match(b, /^Write answers short/m);
   assert.match(b, /tighten the spacing under the title/);
   assert.match(b, /a bit more/);

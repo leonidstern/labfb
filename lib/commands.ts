@@ -67,7 +67,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
     let lab = runningLabs().find((l) => l.root === root);
     if (!lab) {
-      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, detached: true, stdio: 'ignore' }).unref();
+      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, env: { ...process.env, LABIT_EXIT_WITH_PARENT: '' }, detached: true, stdio: 'ignore' }).unref();
       for (let i = 0; i < 100 && !lab; i++) {
         await new Promise((r) => setTimeout(r, 100));
         lab = runningLabs().find((l) => l.root === root);
@@ -102,7 +102,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
     let lab = runningLabs().find((l) => l.root === root);
     if (!lab) {
-      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, detached: true, stdio: 'ignore' }).unref();
+      spawn(process.execPath, [ME, root, '--no-open', '--name', 'Pages'], { cwd: root, env: { ...process.env, LABIT_EXIT_WITH_PARENT: '' }, detached: true, stdio: 'ignore' }).unref();
       for (let i = 0; i < 100 && !lab; i++) {
         await new Promise((r) => setTimeout(r, 100));
         lab = runningLabs().find((l) => l.root === root);

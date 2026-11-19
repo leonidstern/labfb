@@ -163,11 +163,11 @@ test('a lab started with a labit.json: its port, its shortcuts on the page, its 
 
 test('actions: the defaults, merged area by area (the project over yours), comment implied, bad ones said and left out', () => {
   let s = setup().load();
-  assert.deepEqual(s.values.actions, { words: ['rewrite', 'cut', 'go'], spot: ['go'] });
+  assert.deepEqual(s.values.actions, { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] });
   assert.deepEqual(changedActions(s.values.actions), {}, 'nothing to tell the widget');
   const tighter = { label: 'tighter', send: 'Tighter: less space' };
-  s = setup({ actions: { words: ['go', { ...tighter, ask: true }, 'comment', 'Cut'] } }, { actions: { words: ['rewrite'], spot: ['cut', 'cut', 'nope'] } }).load();
-  assert.deepEqual(s.values.actions.words, ['go', { ...tighter, ask: true }, 'cut'], 'the order given; comment dropped (it is always first); names in any case');
+  s = setup({ actions: { words: ['go', tighter, 'comment', 'Cut'] } }, { actions: { words: ['rewrite'], spot: ['cut', 'cut', 'nope'] } }).load();
+  assert.deepEqual(s.values.actions.words, ['go', tighter, 'cut'], 'the order given; comment dropped (it is always first); names in any case');
   assert.deepEqual(s.values.actions.spot, ['cut'], "yours, where the project says nothing: a repeat and an unknown name left out");
   assert.equal(s.problems.filter((p) => /twice|not an action/.test(p)).length, 2);
   assert.deepEqual(changedActions(s.values.actions), { words: s.values.actions.words, spot: ['cut'] });
@@ -179,10 +179,10 @@ test('actions: the defaults, merged area by area (the project over yours), comme
 
 test('actions: labels of 16 characters at most, text to send, no more than 5 beside comment, only words and spot', () => {
   const long = { label: 'a label far too long', send: 'x' };
-  const s = setup({ actions: { words: [long, { label: 'ok' }, { label: 'fine', send: 'Fine', ask: 'yes' }, 7, 'cut', 'rewrite', 'go', ...['a', 'b', 'c'].map((l) => ({ label: l, send: l }))], elsewhere: [], spot: 'cut' } }).load();
+  const s = setup({ actions: { words: [long, { label: 'ok' }, 7, 'cut', 'rewrite', 'go', ...['a', 'b', 'c'].map((l) => ({ label: l, send: l }))], elsewhere: [], spot: 'cut' } }).load();
   assert.deepEqual(s.values.actions.words, ['cut', 'rewrite', 'go', { label: 'a', send: 'a' }, { label: 'b', send: 'b' }], 'five kept, in order; the rest said');
-  assert.deepEqual(s.values.actions.spot, ['go'], 'not a list: the default stays');
+  assert.deepEqual(s.values.actions.spot, ['go', 'remove', 'fix'], 'not a list: the default stays');
   const said = s.problems.join('\n');
-  for (const re of [/16 characters at most/, /needs a "label" and the text to "send"/, /ask must be true or false/, /more than 5 actions/, /elsewhere is not a place/, /spot must be a list/]) assert.match(said, re);
+  for (const re of [/16 characters at most/, /needs a "label" and the text to "send"/, /more than 5 actions/, /elsewhere is not a place/, /spot must be a list/]) assert.match(said, re);
   assert.equal(setup({ actions: 'cut' }).load().problems.length, 1, 'not an object: said once, the defaults stay');
 });
