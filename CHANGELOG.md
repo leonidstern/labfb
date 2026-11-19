@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Fixed: a comment whose file could not be written (a full disk, a folder gone read-only) was shown as sent, logged once and never written again, so it was gone at the next start. The lab now keeps it and writes it again every 5 seconds until it works, and says so in its log. A wait started while `.lab/server.json` could not be written no longer answers 500 and ends the lab.
 - Holding Shift over words (to quote them) shows the drawn I-beam with a low ink band at its foot, in place of the I-beam with a green pin tip.
 - One key for the mode: `1` (or a click on the switch) toggles between comment and pointer: once for the pointer, again for the comment. The switch reads "(1)" and the hint "1 comment / pointer". Key `3` and the `pointer` shortcut are gone; a `pointer` key left in a settings file is ignored without a message.
 - The listening pill drops the session name: "talking to Claude · Opus 5.5", not "… (labit for writing)". The name is in the pill's tooltip, and still in the labs & pages list.
