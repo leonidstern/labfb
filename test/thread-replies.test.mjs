@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { choiceSpills } from '../lib/args.ts';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-thread-')); // nobody's real ~/.config
@@ -79,6 +80,15 @@ test('a reply with choices is a question; the pick is stored and shown to the ag
   assert.match(next.out, /Picked B: -Hello there/);
 });
 
+// The page tries each choice in place of the quoted words: a choice that reaches past them gets a note from reply.
+test('a choice that reaches past the quoted words is noted', () => {
+  const quote = { exact: 'the review on the page', prefix: 'labit puts ', suffix: ', not in chat.' };
+  const notes = choiceSpills(quote, ['pins the review to the page', 'the notes on the page', 'puts the review', 'the review on the page, not', 'all of it']);
+  assert.deepEqual(notes.map((n) => n.slice(0, 8)), ['Choice A', 'Choice C', 'Choice D']);
+  assert.match(notes[0], /reads "…labit puts pins the review to the page, not in chat\.…"/);
+  assert.deepEqual(choiceSpills(undefined, ['a', 'b']), []);
+});
+
 // What the page couldn't show as rows is refused (exit 1 from reply, 400 from the server), and nothing is saved.
 test('seven, empty and 301-character choices are refused', async () => {
   const pin = await post({ name: 'leo', text: 'which word?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } });
@@ -119,4 +129,18 @@ test('a second pick: the agent reads the latest', async () => {
   assert.match(await (await fetch(`${B}/_lab/agent/bar`)).text(), /^ {2}picked: none, keep the words as they are \(leo\)$/m);
   const w = await cli('wait', '--timeout', '5');
   assert.match(w.out, new RegExp(`Picked B: Hello.*\\(their pick on your question id ${ask.id}\\)`));
+});
+
+// A note on a spot or an element has no quoted words: the choices show as rows, and the agent is told so.
+test('a note without quoted words gets the note', async () => {
+  const pin = await post({ name: 'leo', text: 'which colour?', anchor: { kind: 'element', selector: '#x', x: 0.5, y: 0.5 } });
+  const r = await cli('reply', pin.id, 'Which?', '--choice', 'red', '--choice', 'blue');
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /Note: this note has no quoted words, so the choices show as rows and nothing is tried in the page\./);
+  assert.match(r.out, /Asked with A\) red {2}B\) blue/);
+  // With quoted words there is no such note.
+  const quoted = await post({ name: 'leo', text: 'tone?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } });
+  const q = await cli('reply', quoted.id, 'Which?', '--choice', 'Hi', '--choice', 'Hey');
+  assert.equal(q.code, 0, q.out);
+  assert.doesNotMatch(q.out, /no quoted words/);
 });

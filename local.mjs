@@ -77,8 +77,8 @@ For the agent, from the project (any folder under it):
   labit reply <id> --progress "what you're on now"
       During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
   labit reply <id> "question" --choice "A words" --choice "B words" [--choice …] [--recommend B]
-      Ask with 2 to 6 choices: the person picks one on the page and the pick comes back in your next wait as
-      "Picked B: …". --recommend marks your own pick.
+      Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each one in the sentence
+      first) and the pick comes back in your next wait as "Picked B: …". --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead

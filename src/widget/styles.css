@@ -136,7 +136,8 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .card > .foot { flex: none; }
 /* A question with choices (labit reply --choice), V1 "plain list" (Leo, 18 Nov): no bubble, no letters, no tags. The
    question, the versions as a plain list of rows (the page's own words muted, "· now"), a tick on the one shown, one
-   Keep at the end. An answered question keeps its rows, the pick ticked in green. */
+   Keep at the end. An answered question keeps its rows, the pick ticked in green. On quoted words the card opens in the
+   margin (.margin) and a thin line (.tie) runs from the words to it. */
 .msg.asks, .msg.asks[data-agent] { max-width: none; align-self: stretch; background: none; padding: 0; border-radius: 0; } /* over the agent's wash */
 .msg.asks > b { display: none; }
 .msg.asks .p { font-weight: 600; }
@@ -150,14 +151,19 @@ button.choice.on::before { content: '✓'; }
 button.choice:hover:not(:disabled) { background: var(--_soft); }
 button.choice:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--_accent) 40%, transparent); }
 button.choice:disabled { cursor: default; opacity: .7; }
+button.choice.now { color: var(--_muted); }
 button.choice.picked { opacity: 1; }
 button.choice.picked::before { content: '✓'; color: rgb(36, 160, 70); }
-.choice .tx { min-width: 0; overflow-wrap: anywhere; color: inherit; }
+.choice .tx { min-width: 0; overflow-wrap: anywhere; }
+.choice .tx, .choice .nw { color: inherit; }
+.choice .nw { flex: none; margin-left: -8px; white-space: pre; } /* " · now" right after the words, not a flex gap away */
 .choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); }
 button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding: 6px 12px; background: var(--_accent); color: var(--_accent-fg);
               font-size: 12.5px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_t-quick); }
 button.keep:hover:not(:disabled) { opacity: .9; }
 button.keep:disabled { opacity: .4; cursor: default; }
+.card.margin { width: 280px; }
+.tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .fd.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; }
 .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }

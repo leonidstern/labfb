@@ -37,6 +37,23 @@ export function replyChoices(opts: Opts): { choices: string[]; recommend?: numbe
   if (n < 0 || n >= choices.length) return new Error(`--recommend takes the letter of one of the choices (A to ${String.fromCharCode(64 + choices.length)}) or its number.`);
   return { choices, recommend: n };
 }
+/** Choices that seem to reach past the quoted words they stand in for (the page tries each one in their place): one
+ *  that repeats the word just before or after the quote, or puts a word of its own in front of the quote's first word
+ *  ("pins the review…" for "the review…" after "puts"). Each as a short note with how its sentence would read. */
+export function choiceSpills(quote: { exact?: string; prefix?: string; suffix?: string } | undefined, choices: string[]): string[] {
+  if (!quote?.exact) return [];
+  const words = (t = ''): string[] => t.toLowerCase().match(/[\p{L}\p{N}'’-]+/gu) || [];
+  const q = words(quote.exact);
+  const before = words(quote.prefix).pop();
+  const next = words(quote.suffix)[0];
+  return choices.flatMap((c, n) => {
+    const w = words(c);
+    const spills = (before && w[0] === before && q[0] !== before) || (next && w[w.length - 1] === next && q[q.length - 1] !== next) || (w.length > 1 && w[1] === q[0] && w[0] !== q[0] && !q.includes(w[0]));
+    if (!spills) return [];
+    const reads = `…${(quote.prefix || '').slice(-30)}${c}${(quote.suffix || '').slice(0, 30)}…`.replace(/\s+/g, ' ');
+    return [`Choice ${letter(n)} goes in place of "${quote.exact}" only, so it reads "${reads}". Give each choice as the quoted words' stand-in.`];
+  });
+}
 /** The letter of a choice: A, B, C… */
 export const letter = (n: number) => String.fromCharCode(65 + n);
 /** The longest a wait sits open when nobody has said it is running in the background. */

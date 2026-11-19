@@ -2,11 +2,12 @@
 // with Chrome's layout and user agent; real Chrome can't be installed in a simulator). Not part of `npm test` or CI:
 // the touches come from outside the page (the simulator's own touch input), one step at a time.
 //
-//   node test/phone/sim.mjs serve            starts a lab on the test page (:4470) and the recorder's sink (:4471)
+//   node test/phone/sim.mjs serve            starts a lab on the test page (:4470, or PHONE_PORT) and the recorder's sink (the next port)
 //   node test/phone/sim.mjs next [--as NAME]  says what to do next, with the screen point to touch, and starts its clock
 //   (touch the simulator as it says)
 //   node test/phone/sim.mjs check            checks what the recorder saw since `next`, prints ok / FAIL lines
 //   node test/phone/sim.mjs report           all results so far, per browser
+//   node test/phone/sim.mjs go <step>         jumps to a step by name (calibrate first, then e.g. ask-open)
 //
 // The page (test/phone/page) has a recorder (probe.js) that logs, every frame while something happens: scroll, what
 // the keyboard covers, what has focus, the selection, the pins and boxes, and where the page's paragraphs sit on screen.
@@ -21,13 +22,25 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const RUN = path.join(os.tmpdir(), 'labit-phone');
 const STATE = path.join(RUN, 'state.json');
 const LOG = path.join(RUN, 'probe.jsonl');
-const LAB = 4470, SINK = 4471, B = `http://127.0.0.1:${LAB}`;
+const LAB = Number(process.env.PHONE_PORT) || 4470, SINK = LAB + 1, B = `http://127.0.0.1:${LAB}`; // PHONE_PORT: when something else sits on 4470 or 4471
 const [cmd, ...args] = process.argv.slice(2);
 const read = () => (fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : { as: 'safari', step: 0, off: null, results: {} });
 const save = (s) => fs.writeFileSync(STATE, JSON.stringify(s, null, 1));
 const lines = (as = read().as) => (fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((l) => !as || l.ua === as) : []); // one browser's lines: another one's tab may still be sending
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const comments = async () => (await (await fetch(`${B}/_lab/api/comments?page=/index`)).json()).comments || [];
+// Runs JavaScript in the open page (probe.js evaluates it, with the widget's shadow root as `shadow`) and returns its answer.
+const inPage = async (js) => {
+  const from = Date.now();
+  fs.writeFileSync(path.join(RUN, 'ask.js'), js);
+  for (let i = 0; i < 30; i++) { await sleep(300); const a = lines().find((l) => l.why === 'answer' && l.at >= from); if (a) return a.answer; }
+  return null;
+};
+// The agent's calls as the lab sees them (the server's own key), for the question the ask steps put on the page.
+const agentPost = (body) => {
+  const key = JSON.parse(fs.readFileSync(path.join(RUN, 'site/.lab/server.json'), 'utf8')).agent;
+  return fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/index', ...body }) }).then((r) => r.json());
+};
 
 if (cmd === 'serve') {
   fs.rmSync(RUN, { recursive: true, force: true });
@@ -278,6 +291,47 @@ if (cmd === 'serve') {
         ['it is read: no new chip', end.chipsNew === 0, `${end.chipsNew} new`],
       ];
     } },
+    // A question with choices (src/widget/thread.ts, trial.ts) on a phone: a sheet of at most half the screen, 44 pt rows,
+    // a tap tries the words in the sentence (which stays in view above the sheet), Keep sends the pick. `go ask-open` after
+    // calibrate. The question sits on words in paragraph p20; the page is scrolled so they are in the lower part of the
+    // screen, where a tall sheet would cover them.
+    { name: 'ask-open', setup: async () => {
+      const quote = { exact: 'the lazy dog while the band', prefix: 'Paragraph 20. The quick brown fox jumps over ', suffix: ' keeps playing' };
+      const pin = (await (await fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'phone-check', text: 'which reads best?', anchor: { kind: 'text', selector: '#p20', x: 0.4, y: 0.3, docX: 0.4, docY: 900, width: 390, element: '<p id="p20">', text: '…over [the lazy dog while the band] keeps…', quote } }) })).json()).comment;
+      const asked = await agentPost({ name: 'Claude', text: 'Which reads best?', parent: pin.id, choices: ['the sleepy dog while the band', 'the lazy cat while the band', 'a lazy dog while the band', 'the lazy dog as the band', 'the lazy dog while the choir'], recommend: 0 });
+      st.asked = asked.comment?.id;
+      await inPage(`(document.querySelector('#p20').scrollIntoView({ block: 'end' }), scrollBy(0, 60), 'scrolled')`);
+      await sleep(2500);
+    }, say: (s) => { const p = s.pins.at(-1); return p ? `tap ${fmt(dev(s, p.x + p.w / 2, p.y + p.h / 2))} (the pin on the quoted words in p20)` : 'no pin on screen'; }, expect: (ss) => {
+      const end = ss.at(-1);
+      const q = end.t.p20;
+      return [
+        ['the question opens as a sheet', Boolean(end.card), JSON.stringify(end.card)],
+        ['the sheet is at most half the screen', Boolean(end.card) && end.card.h <= end.vh / 2 + 2, `${end.card?.h} of ${end.vh}`],
+        ['the rows are 44 pt tall to tap', end.rows.length === 6 && end.rows.every((r) => r.h >= 44), JSON.stringify(end.rows.map((r) => r.h))],
+        ['the quoted line is in view above the sheet', Boolean(q && end.card && q.y >= 0 && q.y + q.h <= end.card.y + 2), JSON.stringify({ p20: q, card: end.card })],
+        ['no keyboard just for reading', kbDown(end), `covers ${kb(end)}px`],
+      ];
+    } },
+    { name: 'ask-try', say: (s) => { const r = s.rows[1]; return r ? `tap ${fmt(dev(s, r.x + r.w / 2, r.y + r.h / 2))} (row A, "the sleepy dog while the band": the first row is the words as they are; the rows below it are partly under the reply box)` : 'no rows on screen'; }, expect: async (ss) => {
+      const end = ss.at(-1);
+      const q = end.t.p20;
+      const words = await inPage(`document.querySelector('#p20').textContent`);
+      return [
+        ['the tapped row\'s words stand in the sentence', /the sleepy dog while the band/.test(words || ''), words],
+        ['the sentence stays in view above the sheet', Boolean(q && end.card && q.y >= 0 && q.y + q.h <= end.card.y + 2), JSON.stringify({ p20: q, card: end.card })],
+        ['the sheet did not move or change size', Boolean(end.card) && end.card.h <= end.vh / 2 + 2, JSON.stringify(end.card)],
+      ];
+    } },
+    { name: 'ask-keep', say: (s) => { const k = s.keep; return k ? `tap ${fmt(dev(s, k.x + k.w / 2, k.y + k.h / 2))} (Keep)` : 'no Keep button on screen'; }, expect: async (ss) => {
+      const cs = await comments();
+      const pick = cs.find((c) => c.picked);
+      const words = await inPage(`document.querySelector('#p20').textContent`);
+      return [
+        ['the pick was sent', Boolean(pick) && pick.picked.of === st.asked && pick.picked.n === 0, JSON.stringify(pick?.picked)],
+        ['the page\'s own words are back until the agent writes the file', /the lazy dog while the band/.test(words || ''), words],
+      ];
+    } },
   ];
   const fmt = (p) => (p ? `(${p.x}, ${p.y})` : '(not on screen)');
 
@@ -290,8 +344,10 @@ if (cmd === 'serve') {
     const s = lines().at(-1);
     if (!s) { console.log('the recorder has sent nothing yet: open the page first'); process.exit(1); }
     if (st.step === 0) st.count0 = (await comments()).length;
+    if (step.setup) await step.setup();
+    const now = lines().at(-1); // after a setup the page has changed
     st.mark = Date.now();
-    console.log(`${st.as} · step ${st.step + 1}/${steps.length} ${step.name}: ${await step.say(s)}`);
+    console.log(`${st.as} · step ${st.step + 1}/${steps.length} ${step.name}: ${await step.say(now)}`);
     save(st);
   } else if (cmd === 'check') {
     const step = steps[st.step];
@@ -317,6 +373,10 @@ if (cmd === 'serve') {
     fs.writeFileSync(path.join(RUN, 'ask.js'), args.join(' '));
     for (let i = 0; i < 20; i++) { await sleep(300); const a = lines().find((l) => l.why === 'answer' && l.at >= from); if (a) { console.log(a.answer); process.exit(0); } }
     console.log('no answer (is the page open?)');
+  } else if (cmd === 'go') {
+    const i = steps.findIndex((x) => x.name === args[0]);
+    if (i < 0) console.log(`no step ${args[0]}: ${steps.map((x) => x.name).join(', ')}`);
+    else (st.step = i, save(st), console.log(`at step ${i + 1}: ${steps[i].name}`));
   } else if (cmd === 'back') { st.step = Math.max(0, st.step - 1); save(st); console.log(`back to step ${st.step + 1}: ${steps[st.step].name}`); }
   else console.log('serve | next [--as safari|chrome] | check [--again] | report [--all] | back');
 }

@@ -1,6 +1,8 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 import { pillLine } from './list.ts';
 
+import { aroundMorph } from './trial.ts';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
 export function bindLive(w: unknown) {
@@ -332,7 +334,7 @@ export function startLive() {
           const news = [...doc.head.querySelectorAll('style')];
           news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
           for (const o of olds.slice(news.length)) o.remove();
-          morphKids(document.body, doc.body);
+          aroundMorph(() => morphKids(document.body, doc.body)); // a choice tried in the page: its words back first (thread.ts)
           if (mark?.isConnected) {
             const moved = mark.getBoundingClientRect().top - markTop;
             if (Math.abs(moved) > 1) scrollBy(0, moved);
