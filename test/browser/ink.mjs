@@ -32,7 +32,7 @@ const check = (eng, name, ok, detail = '') => {
 // scrolls, in sticky content, right to left, and sixty short paragraphs for the busy case.
 const rows = Array.from({ length: 60 }, (_, i) => `<p id="n${i}">note ${i} has a few words to mark</p>`).join('');
 const PAGE = `<!doctype html><meta charset="utf-8"><title>Ink</title><style>
-body{margin:30px;font:18px/1.5 Georgia,serif;width:640px} td{padding:0 40px 0 0} #box{height:56px;width:260px;overflow:auto;border:1px solid #ccc}
+body{margin:30px;font:18px/1.5 Georgia,serif;width:640px} td{padding:0 40px 0 0} #a{width:420px} #box{height:56px;width:260px;overflow:auto;border:1px solid #ccc}
 #stk{position:sticky;top:20px;background:#fff;width:300px} #tall{height:900px} ::selection{background-color:rgb(0,0,255)}
 </style><body>
 <p id="a">Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau</p>

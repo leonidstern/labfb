@@ -225,7 +225,6 @@ export function moveInks(stuck?) {
   for (const [d, l] of all) lay(d, l!, false);
   return true;
 }
-export const inkCount = () => drawn.size - (drawn.has('draft') ? 1 : 0);
 export const inkEnd = (id) => drawn.get(id)?.end;
 
 // The comment whose words are under the pointer, if any: of notes on the same words, the one on the fewest (a note
