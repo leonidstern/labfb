@@ -16,8 +16,9 @@ const pw = (() => {
     try {
       return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
     } catch {
-      console.log('playwright is not installed: skipped');
-      process.exit(0);
+      // On CI a missing browser is a failure: a skip there would pass with nothing run.
+      console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+      process.exit(process.env.CI ? 1 : 0);
     }
   }
 })();

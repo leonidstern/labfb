@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-test-'));
-const PORT = String(4600 + Math.floor(Math.random() * 300));
+const PORT = String(4600 + Math.floor(Math.random() * 100));
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 
@@ -247,7 +247,7 @@ test('one lab per folder: two started at once make one; a dead lock or a silent 
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-lock-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
-  const base = 4950 + Math.floor(Math.random() * 40) * 3;
+  const base = 4700 + Math.floor(Math.random() * 15) * 3;
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
   const start = (port) => {
     const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port)], { cwd: dir, env });
@@ -296,7 +296,7 @@ test('labit --name gives the lab its topic, and later starts keep it', async () 
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-name-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
-  const port = 4870 + Math.floor(Math.random() * 60);
+  const port = 4750 + Math.floor(Math.random() * 50);
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
   const run = async (...more) => {
     const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), ...more], { cwd: dir, env });
@@ -339,7 +339,7 @@ test('a page can be archived and brought back (labs & pages), in .lab/archived.j
 test('labit publish puts a page in the one pages lab, starts it once, and publishing again keeps the link', async () => {
   const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-pub-')));
   const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), LABIT_HOME: path.join(home, '.labit'), LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
-  const port = 4940 + Math.floor(Math.random() * 9);
+  const port = 4800 + Math.floor(Math.random() * 9);
   fs.mkdirSync(path.join(home, '.config/labit'), { recursive: true });
   fs.writeFileSync(path.join(home, '.config/labit/settings.json'), JSON.stringify({ port }));
   fs.writeFileSync(path.join(home, 'Heading options.html'), '<!doctype html><title>Heading options</title><h1>one</h1>');
@@ -538,7 +538,7 @@ test('stale: a pin the agent said it is on, with no sign since, comes back in it
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-stale-')));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
-  const port = String(5300 + Math.floor(Math.random() * 300));
+  const port = String(4810 + Math.floor(Math.random() * 90));
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '1500', LAB_SETTLE_MS: '0' };
   const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', port], { cwd: dir, env });
   const base = `http://localhost:${port}`;
