@@ -32,14 +32,11 @@ export function startLive() {
     // keyboard up or have just touched the page.
     let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
-<<<<<<< HEAD
     const frame = Boolean(W.S.frame); // a board's frame (frame.ts): the board holds the stream and says when it is busy
-=======
     // A board page (its key is /_board/<name>) holds its frames, which name the files it "uses": a save of a page, a .json
     // or anything else is the frames' to follow (they patch or reload themselves), never the board's. It still reloads
     // for a new widget script or comments schema, and follows the lab's comments and the board file.
-    const board = W.S.page.startsWith('/_board/');
->>>>>>> canvas/board-no-reload
+    const board = Boolean(W.S.board); // exactly /_board/<name>: a variant opened by itself is a page like any other
     const busy = () =>
       frame ? W.S.busy() || performance.now() - touchedAt < 1500 : W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
@@ -107,11 +104,7 @@ export function startLive() {
     };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
-<<<<<<< HEAD
-    if (!frame && !document.querySelector('link[rel~="icon"]')) {
-=======
-    if (!board && !document.querySelector('link[rel~="icon"]')) {
->>>>>>> canvas/board-no-reload
+    if (!frame && !board && !document.querySelector('link[rel~="icon"]')) {
       fetch('/favicon.ico', { method: 'HEAD' })
         .then((r) => r.ok && (r.headers.get('content-type') || '').startsWith('image/'))
         .catch(() => false)
