@@ -145,8 +145,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const gone = () =>
       die(
         process.env.CODEX_SANDBOX_NETWORK_DISABLED
-          ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Use labit's MCP server instead: ` +
-              `codex mcp add labit -- npx @leonidstern/labit@latest mcp. Or let the sandbox reach it: -c sandbox_workspace_write.network_access=true`
+          ? `Codex's sandbox blocks this command from reaching the lab on this computer (port ${server.port}). Let the sandbox reach it: ` +
+              `-c sandbox_workspace_write.network_access=true`
           : `The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.',
       );
     // A lab that goes and comes back (--dev, an update, a crash and a start again) shouldn't end a wait: the command
