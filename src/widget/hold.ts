@@ -9,10 +9,11 @@ const holder = (): Holder | null => (window as unknown as { __lab?: Holder }).__
 
 let words = 0;
 let open = false;
+let picking = false;
 const update = () => {
   const L = holder();
   if (!L) return;
-  L.writing = words + (open ? 1 : 0);
+  L.writing = words + (open ? 1 : 0) + (picking ? 1 : 0);
   if (!L.writing) L.flush(); // nothing is being written or read any more: the page can catch up
 };
 
@@ -26,5 +27,12 @@ export function holdReloads(count: number) {
 export function holdWhileOpen(isOpen: boolean) {
   if (open === isOpen) return;
   open = isOpen;
+  update();
+}
+
+/** Select mode is on (select.ts): a reload waits until it is left. */
+export function holdPicked(on: boolean) {
+  if (picking === on) return;
+  picking = on;
   update();
 }

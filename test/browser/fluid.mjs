@@ -16,8 +16,9 @@ const pw = (() => {
       return require(require.resolve('playwright', paths && { paths }));
     } catch {}
   }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
+  // On CI a missing browser is a failure: a skip there would pass with nothing run.
+  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
+  process.exit(process.env.CI ? 1 : 0);
 })();
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
@@ -410,8 +411,14 @@ try {
         check(eng, 'phones: the bar\'s buttons are concentric with its corners', bar.n === 4 && bar.bad.length === 0 && bar.sample.R > 18, JSON.stringify(bar));
         await inRoot(p, (r) => r.querySelector('.p-bar [data-k=comment]').click());
         await sleep(1200);
-        const sheet = await concentric(p, '.float:not(.out, .p-dlg *)', '.float:not(.p-dlg *) > .quick button:first-child, .float:not(.p-dlg *) > .composer .box', ['left', 'right']);
-        check(eng, '…and the sheet\'s first button and box (12 px in from its corners)', sheet.n === 2 && sheet.bad.length === 0 && sheet.sample.R > 24, JSON.stringify(sheet));
+        const sheet = await concentric(p, '.float:not(.out, .p-dlg *)', '.float:not(.p-dlg *) > .composer .box', ['left', 'right']);
+        check(eng, '…and the sheet\'s box (12 px in from its corners)', sheet.n === 1 && sheet.bad.length === 0 && sheet.sample.R > 24, JSON.stringify(sheet));
+        // The sheet's action buttons keep the computer's small corner, not the sheet's (Leo, 19 Nov: they read as pills).
+        const chip = await inRoot(p, (r) => {
+          const b = r.querySelector('.float:not(.p-dlg *) > .quick button');
+          return [parseFloat(getComputedStyle(b).borderTopLeftRadius), b.getBoundingClientRect().height];
+        });
+        check(eng, '…its action buttons are not pills (corner well under half their height)', chip[0] > 0 && chip[0] < chip[1] / 2 - 2, JSON.stringify(chip));
       });
       // …computers: a comment on a spot is one card like the dialog on words, its box 8 px in and concentric with it
       await scene(eng, browser, {}, async (p) => {

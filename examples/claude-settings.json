@@ -5,9 +5,7 @@
       "Bash(npx @leonidstern/labit *)",
       "Bash(npx @leonidstern/labit@latest *)",
       "Bash(npx -y @leonidstern/labit *)",
-      "Bash(npx -y @leonidstern/labit@latest *)",
-      "mcp__labit__*",
-      "mcp__plugin_labit_labit__*"
+      "Bash(npx -y @leonidstern/labit@latest *)"
     ],
     "ask": [
       "Bash(* --wifi *)",

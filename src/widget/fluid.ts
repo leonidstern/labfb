@@ -107,7 +107,7 @@ export function fluidBar(rects: Rects, onPick?: (text?: string, act?: string) =>
   const h = bar.offsetHeight;
   // Phones: clear of the selection's handle, which hangs below the last line.
   const to = by(rects, 4, bar.offsetWidth, h, W.sheetMode.matches ? 14 : 6, 8);
-  put(to, was || null, 160);
+  put(to, was || null, W.ms('base', .8));
 }
 
 /** Any letter typed while the bar shows starts the comment with it (F4), Tab or Enter opens it empty, so does the first key
@@ -164,7 +164,7 @@ export function fluidFollow(rects: Rects) {
   if (!rects.length) return;
   const from = now(), to = by(rects, -70, from.w, from.h, 8, 12);
   if (Math.abs(to.x - from.x) < 1 && Math.abs(to.y - from.y) < 1 && to.f === from.f) return;
-  put(to, from, 160, () => (fd.style.height = ''));
+  put(to, from, W.ms('base', .8), () => (fd.style.height = ''));
 }
 /** Whether the element is held to the screen (words in a fixed or sticky part): the page's scroll moves it then. */
 export const fluidFixed = () => Boolean(fd && !fd.hidden && fd.style.position === 'fixed');
@@ -179,9 +179,9 @@ export function fluidSheet(sheet: HTMLElement) {
     // Held to the screen, as the sheet is: the page may scroll the pin into view under it meanwhile (revealDraft).
     const from = now(true);
     show(null, 'grow');
-    put({ ...at(sheet.getBoundingClientRect(), 0, 0), r: parseFloat(getComputedStyle(sheet).borderTopLeftRadius), f: true }, from, 500, () => {
+    put({ ...at(sheet.getBoundingClientRect(), 0, 0), r: parseFloat(getComputedStyle(sheet).borderTopLeftRadius), f: true }, from, W.ms('base', 2.5), () => {
       F.sheet!.style.visibility = '';
-      for (const kid of F.sheet!.children) kid.animate([{ opacity: 0 }, { opacity: 1 }], 200);
+      for (const kid of F.sheet!.children) kid.animate([{ opacity: 0 }, { opacity: 1 }], W.ms('base'));
       hide();
     });
   }

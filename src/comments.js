@@ -34,8 +34,9 @@ import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, s
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
-import { bindChanges, startChanges } from './widget/changes.ts';
+import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
+import { bindSelect, selectMode } from './widget/select.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
@@ -51,6 +52,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get S() { return S; },
     get agentOf() { return agentOf; },
     get anchorAt() { return anchorAt; },
+    get begin() { return begin; },
     get bar() { return bar; },
     get chatBtn() { return chatBtn; },
     get chatEl() { return chatEl; },
@@ -93,6 +95,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get root() { return root; },
     get scrim() { return scrim; },
     get script() { return script; },
+    get say() { return say; },
     get send() { return send; },
     get sheetMode() { return sheetMode; },
     get stampOf() { return stampOf; },
@@ -106,7 +109,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get vv() { return vv; },
   };
   bindLive(W);
-  bindChanges(W);
+  bindSections(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
@@ -120,7 +123,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const part = (name) => (parts[name] ??= import(new URL(`${name}.js`, script?.src || location.href).href));
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -135,7 +138,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // when it's Latin (QWERTZ and AZERTY move letters), else by its place (Cyrillic and other layouts).
   const keyOf = (e) => {
     const d = /^(Digit|Numpad)(\d)$/.exec(e.code || '');
-    if (d) return d[2];
+    // Shift and a digit is the board's (⇧1 fit, ⇧2 100%, ⇧0): its key shows another character ("!"), which a plain 1 never does.
+    if (d) return e.shiftKey && e.key !== d[2] ? '' : d[2];
     return /^[a-z]$/i.test(e.key || '') ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : '';
   };
   const actionOf = (e) => Object.keys(KEYS).find((a) => KEYS[a] === keyOf(e)) || '';
@@ -219,11 +223,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     <div class="scrim"></div>
     <div class="layer"></div>
     <div class="motions"></div>
-    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new${flag('sinceLooked') ? ` · ${KEYS.added} added` : ''} · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
+    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
-      <button class="secondary chat-btn" type="button" hidden title="chat (C)">chat</button>
+      <button class="secondary chat-btn" type="button" hidden title="chat (T)">chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
@@ -459,7 +463,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
-    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true } }; // paused when written: the agent is told
+    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: pausedAt(payload.anchor) } }; // paused when written: the agent is told, with the moment
+    if (S.slow && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
@@ -596,8 +601,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       openSwitcher();
     });
   }
+  // Select (V) from the ⋯ menu too, so a phone, which has no V, can turn it on (Leo, 19 Nov).
+  const selectBtn = flag('select') ? el('button', { type: 'button', class: 'select-btn' }) : null;
+  if (selectBtn) {
+    selectBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, KEYS.select.toUpperCase()));
+    selectBtn.addEventListener('click', () => (setMenu(false), selectMode(true)));
+  }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), ...(selectBtn ? [selectBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
@@ -718,8 +729,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // …or, read at its newest, stays at its newest, so an answer that just came in is in view (as the chat follows new
     // messages; Leo, 17 Nov: "message scrolled up" on a phone).
     const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
-    // Stepping a question's rows with the keys when it is drawn again (a reply or a pick came in): the keys keep working.
-    const prevRows = Boolean(prev && root.activeElement?.closest?.('.choices') && prev.contains(root.activeElement));
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
     // A pin that is still there stays the same element, updated in place, so what runs on it (the agent's ring, a pop, a
@@ -801,7 +810,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (isPage(c)) return; // in the chat, not on the page
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
-      const { left, top, moved, zone } = places.get(c.id) || position(c.anchor || {});
+      const { left, top, moved, zone, clipped } = places.get(c.id) || position(c.anchor || {});
       // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
       // new spot (drag) or close. The agent finishing one closes it.
       if (moved) {
@@ -888,6 +897,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (coarse && !pin.querySelector(':scope > .hit')) pin.append(el('i', { class: 'hit', 'aria-hidden': 'true' })); // a 44 pt place to tap (styles.css)
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
+      pin.style.visibility = clipped && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position)
       if (born) {
         // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
         grab(pin, () => pinData.get(pin).c);
@@ -938,10 +948,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         S.stepping = S.keepKeys = false;
         next.push(card);
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
-        if (!appear && prevRows) {
-          const rows = card.querySelector('.choices[role="listbox"]');
-          /** @type {HTMLElement | null} */ (rows?.querySelector('.choice.on') || rows?.querySelector('.choice') || rows)?.focus({ preventScroll: true });
-        }
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
         if (!appear && prevScroll != null) {
@@ -1052,7 +1058,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
-    S.checkChanges?.(); // hidden comments: no "New" pill
+    S.checkSections?.(); // hidden comments: no section bar
     if (S.on) showHint();
     S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
@@ -1088,9 +1094,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // corner, over the page (nothing moves), shown with the comments; P pauses them all, or plays what labit paused.
   // The widget's own animations keep moving, and a comment on a paused video says which second (anchoring.ts).
   const held = new Set(); // the videos and elements labit paused
+  // Only what never ends moves on its own: a transition, or an animation with a finite end (a fade, a highlight, the section
+  // bar's jump ring) is skipped, unless labit paused it.
   const pageAnims = () => document.getAnimations().filter((a) => {
     const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
-    return t && !root.contains(t);
+    return t && !root.contains(t) && (held.has(t) || (!(a instanceof CSSTransition) && a.effect?.getComputedTiming().endTime === Infinity));
   });
   const animsOf = (el) => pageAnims().filter((a) => /** @type {KeyframeEffect} */ (a.effect).target === el);
   const moving = () => [...new Set([...document.querySelectorAll('video'), ...held, ...pageAnims().filter((a) => a.playState === 'running').map((a) => /** @type {KeyframeEffect} */ (a.effect).target)])].filter((el) => el?.isConnected);
@@ -1108,10 +1116,45 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     held[stop ? 'add' : 'delete'](el);
     S.paused = held.size > 0; // a comment written now says the page was paused
   };
+  // The moment a paused thing shows, in ms: the one the pin is on or in, else the first paused (a pin carries it).
+  const pausedAt = (anchor) => {
+    let at = null;
+    try {
+      at = anchor?.selector ? document.querySelector(anchor.selector) : null;
+    } catch {}
+    const all = [...held].filter((el) => el.isConnected);
+    const el = all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+    if (!el) return undefined;
+    const t = el instanceof HTMLVideoElement ? el.currentTime * 1000 : Number(animsOf(el)[0]?.currentTime);
+    return Number.isFinite(t) ? Math.round(t) : undefined;
+  };
+  // ¼ speed (Leo, 19 Nov): every page animation and video at a quarter of its speed, S or the ¼ beside a pause; a pin
+  // made now says so. Motion that starts later is slowed as it starts (and by the 1 s redraw, for script animations).
+  const rates = new WeakMap(); // each animation's own rate, to go back to
+  const slowAll = () => {
+    for (const a of document.getAnimations()) {
+      const t = /** @type {KeyframeEffect | null} */ (a.effect)?.target;
+      if (!t || root.contains(t)) continue;
+      if (S.slow && !rates.has(a)) {
+        rates.set(a, a.playbackRate);
+        a.updatePlaybackRate(a.playbackRate / 4);
+      } else if (!S.slow && rates.has(a)) {
+        a.updatePlaybackRate(rates.get(a));
+        rates.delete(a);
+      }
+    }
+    for (const v of document.querySelectorAll('video')) v.playbackRate = S.slow ? 0.25 : 1;
+  };
+  const setSlow = (on) => {
+    S.slow = on;
+    slowAll();
+    drawMotion();
+  };
+  for (const type of ['animationstart', 'transitionrun', 'play']) addEventListener(type, () => S.slow && slowAll(), true);
   const shown = new Map();
   const drawMotion = () => {
     const now = S.on ? moving() : [];
-    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); shown.delete(el); }
+    for (const [el, b] of shown) if (!now.includes(el)) { b.remove(); b.slowBtn.remove(); shown.delete(el); }
     for (const el of now) {
       const r = el.getBoundingClientRect();
       let b = shown.get(el);
@@ -1120,9 +1163,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         b.type = 'button';
         b.className = 'motion';
         b.addEventListener('click', () => (setItem(el, !isStill(el)), drawMotion()));
-        motions.append(b);
+        const q = document.createElement('button');
+        q.type = 'button';
+        q.className = 'motion-slow';
+        q.textContent = '¼';
+        q.setAttribute('aria-label', q.title = `quarter speed, all motion (${KEYS.slow.toUpperCase()})`);
+        q.addEventListener('click', () => setSlow(!S.slow));
+        b.slowBtn = q;
+        motions.append(b, q);
         shown.set(el, b);
       }
+      b.slowBtn.setAttribute('aria-pressed', String(Boolean(S.slow)));
       const stopped = isStill(el);
       const what = el instanceof HTMLVideoElement ? 'video' : 'animation';
       if (b.dataset.state !== String(stopped)) {
@@ -1136,13 +1187,16 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       b.hidden = !w || !h;
       b.style.left = `${Math.min(r.left + (r.width + w) / 2 + 6, document.documentElement.clientWidth - 30) + scrollX}px`;
       b.style.top = `${r.top + (r.height - h) / 2 + scrollY}px`;
+      b.slowBtn.hidden = b.hidden;
+      b.slowBtn.style.left = b.style.left;
+      b.slowBtn.style.top = `${r.top + (r.height - h) / 2 + scrollY + 28}px`;
     }
   };
   const setPause = (on) => {
     for (const el of on ? moving().filter((el) => !isStill(el)) : [...held]) setItem(el, on);
     drawMotion();
   };
-  setInterval(drawMotion, 1000);
+  setInterval(() => (S.slow && slowAll(), drawMotion()), 1000);
   addEventListener('scroll', () => requestAnimationFrame(drawMotion), { capture: true, passive: true });
   doneBtn.addEventListener('click', toggleDone);
   movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
@@ -1157,7 +1211,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // The list opens on "new" each time.
   // A #block link in a message: go to that block on the page. A phone's sheet covers the page, so it closes first.
   addEventListener('lab-goto', (e) => {
-    const target = document.getElementById(/** @type {CustomEvent} */ (e).detail);
+    const to = /** @type {CustomEvent} */ (e).detail;
+    const target = typeof to === 'string' ? document.getElementById(to) : to; // an id, or the element itself (the section bar's)
     if (!target) return;
     if (coarse) {
       S.openId = null;
@@ -1179,7 +1234,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // Computers: the cursor goes in the message box (phones wait for a tap, so the keyboard doesn't cover the chat).
     if (S.chatOpen && !coarse) /** @type {HTMLElement | null} */ (chatEl.querySelector('.chat textarea'))?.focus({ preventScroll: true });
   });
-  // No close cross on the chat: a click outside it, Escape or C closes it (phones: the handle or the dimmed page).
+  // No close cross on the chat: a click outside it, Escape or T closes it (phones: the handle or the dimmed page).
   // On a computer a click outside the chat closes it (phones have the dimmed page for that); what you typed stays.
   // That click only closes: it doesn't start a comment or press what's under it.
   S.closingClick = false;
@@ -1208,7 +1263,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // A letter typed while the bar shows starts the comment with it (F4); Escape lets the bar and its words go.
     // Not while typing in a field of the page or the widget (the chat), nor in another widget.
     if (!typing(e) && !inOtherWidget && fluidKey(e)) return void (S.draft || dropOffer());
-    if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+    // Select mode (flag select): V picks blocks instead of pinning; V again, or Esc twice, leaves it (select.ts).
+    if (flag('select') && S.on && !S.draft && actionOf(e) === 'select' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      return void selectMode();
+    }
+    if (actionOf(e) === 'toggle' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
       return;
@@ -1229,22 +1289,30 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     }
     // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
+    // C is comment, always (Leo, 19 Nov): out of select mode or the pointer, a click pins again. 1 still switches.
+    if (S.on && act === 'pin' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      if (S.selecting) selectMode(false);
+      if (S.cursorMode) setCursor(false);
+      return;
+    }
     if (S.on && act === 'comment' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setCursor(!S.cursorMode);
       return;
     }
-    // The list's keys, with comments shown and nothing typed: L list, C chat, J/K next/previous, R reply, E resolve.
+    // The list's keys, with comments shown and nothing typed: L list, T chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
-    // The keys (Leo, 2026-11-15/16), marked in the bar's words: (c)hat, ne(w) (Shift-W: the one before), 1 comment / pointer,
+    // The keys (Leo, 2026-11-15/16), marked in the bar's words: cha(t) (C was chat until 19 Nov; Leo: C is comment), ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'chat', 'next', 'done', 'reply', 'resolve', 'added'].includes(act)) {
+    // Shift is only for next (Shift-W: the one before); ⇧D and the rest stay free.
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || !e.shiftKey)) {
       const k = act;
       e.preventDefault();
       if (k === 'pause') return setPause(!S.paused);
+      if (k === 'slow') return setSlow(!S.slow);
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'added') return dispatchEvent(new CustomEvent('lab-added')); // the Added list (changes.ts, flag sinceLooked)
       if (k === 'done') return toggleDone();
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
@@ -1260,9 +1328,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
       S.draft = null;
       S.openId = null;
+      e.preventDefault(); // this press was this one's: whatever listens after (the board's Esc) leaves it
       render();
     } else if (e.key === 'Escape' && S.chatOpen) {
       S.chatOpen = false;
+      e.preventDefault();
       render();
     }
   });
@@ -1593,8 +1663,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
     const endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
     const anchor = startEl && (startEl === endEl || startEl.contains(endEl))
-      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2)
-      : anchorAt(first.left + 2, first.top + first.height / 2);
+      ? anchorAt(Math.max(last.left, last.right - 2), last.top + last.height / 2, false, endEl)
+      : anchorAt(first.left + 2, first.top + first.height / 2, false, startEl);
     const at = range.commonAncestorContainer;
     const block = /** @type {Element | null} */ (at.nodeType === 1 ? at : at.parentElement)?.closest('p, li, h1, h2, h3, h4, h5, h6, td, th, figcaption, blockquote, pre, section, article, div') || document.body;
     /** @param {[Node, number]} a @param {[Node, number]} b */
@@ -1705,9 +1775,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (!S.on || S.openId) return render();
     const places = threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [pinsById.get(c.id), position(c.anchor || {})]).filter(([, at]) => !at.moved);
     if (places.length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
-    for (const [pin, { left, top }] of places) {
+    for (const [pin, { left, top, clipped }] of places) {
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
+      pin.style.visibility = clipped ? 'hidden' : '';
     }
   };
   S.frame = 0;
@@ -1738,7 +1809,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     S.openId = null;
     render();
     load();
-    setTimeout(() => S.checkChanges?.(), 400);
+    setTimeout(() => S.checkSections?.(), 400);
   };
   for (const m of ['pushState', 'replaceState']) {
     const original = history[m];
@@ -1928,8 +1999,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    if (flag('select')) bindSelect(W);
     load();
-    if (script?.dataset.live && flag('sinceLooked')) startChanges(); // the ids added since you looked (local labs, where pages change under you)
+    if (flag('sectionBar')) startSections(); // the section bar: what is new or updated on the page since you read it
     scanForFramework();
     if (!S.components) {
       addEventListener('load', scanForFramework, { once: true });

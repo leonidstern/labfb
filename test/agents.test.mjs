@@ -29,7 +29,7 @@ const site = (name) => {
   fs.writeFileSync(path.join(d, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
   return d;
 };
-let port = 6100 + Math.floor(Math.random() * 300);
+let port = 6100 + Math.floor(Math.random() * 250);
 async function lab(dir, args = [], env = {}) {
   const p = port++;
   const child = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(p), ...args], { cwd: dir, env: { ...clean, LABIT_HOME: home, ...env } });
@@ -113,40 +113,13 @@ test("Codex's sandbox: a blocked call says so and how to get around it", async (
   fs.writeFileSync(path.join(dir, '.lab/server.json'), JSON.stringify({ port: 9, token: 'x' }));
   const out = await cli(dir, ['wait', '--timeout', '5'], { CODEX_SANDBOX_NETWORK_DISABLED: '1', CODEX_THREAD_ID: 't' });
   assert.match(out, /Codex's sandbox blocks/);
-  assert.match(out, /codex mcp add labit/);
+  assert.match(out, /network_access=true/);
   const plain = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(plain, /isn't running/);
 });
 
-test('MCP: the client\'s name signs replies when the agent\'s own variables are missing', async () => {
-  const dir = site('mcp');
-  const { B } = await lab(dir);
-  const id = await pin(B, 'hello');
-  const mcp = spawn(process.execPath, [LAB, 'mcp'], { cwd: dir, env: { ...clean, LABIT_HOME: home } });
-  kids.push(mcp);
-  let buf = '';
-  const answers = new Map();
-  mcp.stdout.on('data', (d) => {
-    buf += d;
-    for (let i = buf.indexOf('\n'); i >= 0; i = buf.indexOf('\n')) {
-      const m = JSON.parse(buf.slice(0, i));
-      buf = buf.slice(i + 1);
-      answers.get(m.id)?.(m);
-    }
-  });
-  let n = 1;
-  const ask = (method, params) => new Promise((done) => { const k = n++; answers.set(k, done); mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: k, method, params }) + '\n'); });
-  await ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'codex-mcp-client', version: '1' } });
-  const list = await ask('tools/list', {});
-  assert.match(list.result.tools.find((t) => t.name === 'wait').description, /default 50/);
-  await ask('tools/call', { name: 'reply', arguments: { id, text: 'Done: via MCP' } });
-  const [r] = await replies(B, id);
-  assert.equal(r?.name, 'Codex');
-  mcp.kill();
-});
-
-// ---------- plugin files and the MCP server's folder ----------
-test('the plugin files agree with the package (name, version) and declare the MCP server', () => {
+// ---------- plugin files ----------
+test('the plugin files agree with the package (name, version)', () => {
   const read = (f) => JSON.parse(fs.readFileSync(fileURLToPath(new URL(`../${f}`, import.meta.url)), 'utf8'));
   const { version } = read('package.json');
   for (const f of ['plugin.json', '.claude-plugin/plugin.json', '.cursor-plugin/plugin.json']) {
@@ -154,56 +127,7 @@ test('the plugin files agree with the package (name, version) and declare the MC
     assert.equal(read(f).version, version, `${f} is at ${version}`);
   }
   assert.equal(read('plugin.json').$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json');
-  const mcp = read('mcp.json');
-  assert.equal(mcp.$schema, 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json');
-  assert.deepEqual(mcp.mcpServers.labit, { type: 'stdio', command: 'npx', args: ['-y', '@leonidstern/labit@latest', 'mcp'] });
   assert.equal(read('.agents/plugins/marketplace.json').plugins[0].source.path, './');
-});
-
-test('MCP started in a plugin folder finds the project: by the client root, the shell folder, or dir', async () => {
-  const dir = site('proj');
-  const { B } = await lab(dir);
-  await pin(B, 'project pin');
-  const pluginDir = tmp('plugin');
-  const start = (env) => {
-    const mcp = spawn(process.execPath, [LAB, 'mcp'], { cwd: pluginDir, env: { ...clean, LABIT_HOME: home, ...env } });
-    kids.push(mcp);
-    let buf = '';
-    const answers = new Map();
-    let rootsAsked = null;
-    mcp.stdout.on('data', (d) => {
-      buf += d;
-      for (let i = buf.indexOf('\n'); i >= 0; i = buf.indexOf('\n')) {
-        const m = JSON.parse(buf.slice(0, i));
-        buf = buf.slice(i + 1);
-        if (m.method === 'roots/list') rootsAsked?.(m);
-        else answers.get(m.id)?.(m);
-      }
-    });
-    let n = 1;
-    const ask = (method, params) => new Promise((done) => { const k = n++; answers.set(k, done); mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: k, method, params }) + '\n'); });
-    const roots = new Promise((r) => (rootsAsked = r));
-    return { mcp, ask, roots };
-  };
-  const says = async (ask, args = {}) => (await ask('tools/call', { name: 'comments', arguments: args })).result.content[0].text;
-
-  // 1. The client gives its root.
-  const a = start({ PWD: pluginDir });
-  await a.ask('initialize', { protocolVersion: '2025-06-18', capabilities: { roots: {} }, clientInfo: { name: 'codex-mcp-client', version: '1' } });
-  a.mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n'); // roots are asked for after this
-  const q = await a.roots;
-  a.mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: q.id, result: { roots: [{ uri: `file://${dir}`, name: 'proj' }] } }) + '\n');
-  await new Promise((r) => setTimeout(r, 200));
-  assert.match(await says(a.ask), /project pin/);
-  // 2. No roots: the shell's folder (PWD) has the lab.
-  const b = start({ PWD: dir });
-  await b.ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
-  assert.match(await says(b.ask), /project pin/);
-  // 3. Neither: the tool's dir.
-  const c = start({ PWD: pluginDir });
-  await c.ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
-  assert.match(await says(c.ask), /No lab in/);
-  assert.match(await says(c.ask, { dir }), /project pin/);
 });
 
 test('a pin handed to the agent is marked, so the page can show it as being worked on until the agent answers', async () => {
@@ -228,7 +152,7 @@ test('each comment is marked when handed over: one left out of a batch still com
   const first = (await get()).find((c) => c.id === a);
   assert.ok(!('deliveredAt' in first) && !('deliveredTo' in first), 'the mark is not in the comment (so a wait does not change what pages load)');
   await new Promise((r) => setTimeout(r, 500));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, '.lab/handed.json'), 'utf8'))[a][0], first.createdAt, 'marked beside the comments, with the stamp it was handed over at');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, '.lab/state.json'), 'utf8')).handed[a][0], first.createdAt, 'marked beside the comments, with the stamp it was handed over at');
   const b = await pin(B, 'and bigger');
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
   assert.match(out, new RegExp(`id ${b}`), 'the new one comes');

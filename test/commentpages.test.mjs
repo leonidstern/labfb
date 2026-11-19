@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cp-'));
-const PORT = String(9100 + Math.floor(Math.random() * 300));
+const PORT = String(9500 + Math.floor(Math.random() * 300));
 const B = `http://localhost:${PORT}`;
 const html = (t) => `<!doctype html><title>${t}</title><h1>${t}</h1>`;
 fs.writeFileSync(path.join(DIR, 'index.html'), html('i'));
