@@ -13,6 +13,8 @@ type Deps = {
   rememberMe: (name: string) => void;
   /** Called as boxes fill and empty, so the page's own pointer can come back while you write. */
   whileWriting?: () => void;
+  /** The flag native: the box grows with its words by itself (field-sizing). */
+  native?: () => boolean;
 };
 
 // Set once by the widget at startup (bindComposer), so importing this module touches nothing.
@@ -154,15 +156,22 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     if (one && !CSS.supports?.('field-sizing', 'content')) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
     sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
     saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
-    text.style.height = 'auto';
-    text.style.height = `${text.scrollHeight}px`;
+    // With the flag native the box grows with its words by itself (field-sizing, styles.css .grow); else it is measured.
+    const grows = d.native?.() && CSS.supports?.('field-sizing', 'content');
+    text.classList.toggle('grow', Boolean(grows));
+    if (!grows) {
+      text.style.height = 'auto';
+      text.style.height = `${text.scrollHeight}px`;
+    }
     // Once the words scroll, the box goes to the wide layout (name and arrow on a row of their own) so the scrollbar sits at
     // the box's right edge, not left of the name; it stays wide until the words are clearly shorter (no flapping at the edge).
     const tall = one && (text.scrollHeight > 200 || (box.classList.contains('tall') && text.scrollHeight > 160));
     if (tall !== box.classList.contains('tall')) {
       box.classList.toggle('tall', tall);
-      text.style.height = 'auto';
-      text.style.height = `${text.scrollHeight}px`;
+      if (!grows) {
+        text.style.height = 'auto';
+        text.style.height = `${text.scrollHeight}px`;
+      }
     }
     text.style.overflowY = text.scrollHeight > 200 ? 'auto' : 'hidden'; // a scrollbar only once the box is at its tallest (max-height 200)
     if (glide) {
