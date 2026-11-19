@@ -28,8 +28,9 @@ const writing = new Set<HTMLTextAreaElement>();
 // Drafts whose words are on their way to the lab. A box rebuilt while one is in flight (the widget redraws as the
 // comment lands) must not read them back in, and must not lose them either if the send fails.
 const sending = new Set<string>();
-/** True while any box on the page holds words nobody has sent. */
-export const anyWriting = () => writing.size > 0;
+/** True while any box on the page holds words nobody has sent. A box that has left the page doesn't count, even before
+ *  it has let go of its hold: a stale entry used to keep comment mode off (the page's own pointer) until the page next changed. */
+export const anyWriting = () => [...writing].some((t) => t.isConnected);
 const saysWriting = (field: HTMLTextAreaElement) => {
   if (field.value.trim()) writing.add(field);
   else writing.delete(field);
