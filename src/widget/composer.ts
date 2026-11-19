@@ -63,6 +63,12 @@ const sweep = () => {
 // The send arrow is drawn with CSS (a stem and a chevron), no picture.
 const ARROW = '<i class="arr" aria-hidden="true"></i>';
 
+// The words as sent: a stray space doesn't go with them (Leo, 19 Nov). Safari's no-break space, two spaces where the
+// keyboard's suggestion added one before the next word, and spaces at a line's end become what was meant. A line's
+// leading spaces (indented code) stay.
+const tidy = (v: string) =>
+  v.replace(/\u00a0/g, ' ').replace(/(\S)[ \t]{2,}(?=\S)/g, '$1 ').replace(/[ \t]+$/gm, '').trim();
+
 // One field that grows: a pill while empty, a box with a divider and the name row once you type.
 // empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a "go" comment from someone with no name
 // yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
@@ -170,7 +176,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
   let busy = false;
   const go = async () => {
     if (busy) return;
-    const said = text.value.trim();
+    const said = tidy(text.value);
     if (!said) return text.focus();
     if (!name.value.trim()) {
       box.classList.add('open');
@@ -220,7 +226,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     busy = false;
   };
   const onKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { // 229: Safari's Enter that picks a word
       e.preventDefault();
       go();
     }

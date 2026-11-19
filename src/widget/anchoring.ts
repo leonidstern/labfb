@@ -54,6 +54,10 @@ type Anchor = {
   time?: number;
   /** The page's videos and animations were paused when this was written. */
   paused?: boolean;
+  /** Then: the moment showing, in ms. */
+  atMs?: number;
+  /** The page's motion ran at ¼ speed. */
+  slow?: boolean;
   duration?: number;
   transform?: string;
   /** An area dragged out, and what was inside it. */
@@ -532,8 +536,11 @@ function sameKind(node, tag) {
 
 // words: the point is on the word under it (kind text, its quote: the words a Shift-drag quotes). A click or an area is
 // only a point, never a quote, so nothing is highlighted (Leo 18 Nov: "pin pointing on word highlighting word").
-export function anchorAt(clientX, clientY, words = false) {
+// onto: the element the caller knows is there (selected words' own). Chrome now and then finds nothing but <html>
+// under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
+export function anchorAt(clientX, clientY, words = false, onto = null) {
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
+  if (onto && !stack.length) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
   let shadowHost = null;
@@ -725,6 +732,14 @@ function findTarget(anchor) {
   if (!tag || tag === 'body' || tag === 'html') return atPath;
   const flat = (t) => short(t, 400);
   const twin = (n) => !host.contains(n) && sameKind(n, anchor.element);
+  // At most 400 are read, and on a long page those are the ones nearest to where the pin was, not the first 400 on
+  // the page: a pin on the 500th row was never looked for.
+  const some = (all) => {
+    const kin = all.filter(twin);
+    if (kin.length <= 400) return kin;
+    const far = (n) => Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
+    return kin.slice(0, 4000).map((n) => [far(n), n]).sort((a, b) => a[0] - b[0]).slice(0, 400).map((x) => x[1]);
+  };
   const pick = (twins) => {
     let found = null;
     let best = -1;
@@ -760,10 +775,10 @@ function findTarget(anchor) {
   }
   scopes.sort((a, b) => (a.contains(b) ? 1 : b.contains(a) ? -1 : 0)); // the smaller box first
   for (const scope of scopes) {
-    const { found, best } = pick([scope, ...scope.querySelectorAll(tag)].slice(0, 400).filter((n) => n.localName === tag && twin(n)));
+    const { found, best } = pick(some([scope, ...scope.querySelectorAll(tag)].filter((n) => n.localName === tag)));
     if (best > 0) return found;
   }
-  const twins = [...document.querySelectorAll(tag)].slice(0, 400).filter(twin);
+  const twins = some([...document.querySelectorAll(tag)]);
   const { found, best } = pick(twins);
   if (best > 0 || !atPath) return found;
   // Nothing says the same. A lone element of its kind is still it (the words were edited, say). Among several
@@ -813,7 +828,18 @@ function edgeFor(anchor) {
 }
 export function position(anchor) {
   const at = spotOf(anchor);
-  return at.moved ? { ...at, left: edgeFor(anchor) } : at;
+  if (at.moved) return { ...at, left: edgeFor(anchor) };
+  return anchor.kind === 'board' ? at : { ...at, clipped: clippedAt(findTarget(anchor), at.left - scrollX, at.top - scrollY) };
+}
+// A pin whose spot a box with overflow cut off (panned or scrolled out of a canvas, a carousel, a scroll box) hides
+// until its spot is back in view, instead of floating over the page outside that box.
+function clippedAt(node, x, y) {
+  for (let el = node?.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    if (getComputedStyle(el).overflow === 'visible') continue;
+    const r = el.getBoundingClientRect();
+    if (x < r.left - 1 || x > r.right + 1 || y < r.top - 1 || y > r.bottom + 1) return true;
+  }
+  return false;
 }
 // Where a pin on quoted words sits: on the piece of them (one per line) nearest to where it was in its element, at
 // that spot when it's still on the words, else at the nearest point of them. So an unchanged page keeps the pin
@@ -992,7 +1018,7 @@ export const nameLine = (name) => el('b', {}, String(name || '').replace(/\s*·\
 export function goToBlock(e: Element) {
   const r = e.getBoundingClientRect();
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  scrollTo({ top: Math.max(0, r.top + scrollY - 24), behavior: still ? 'auto' : 'smooth' });
+  scrollTo({ top: Math.max(0, r.top + scrollY - 24 - (parseFloat(host.style.getPropertyValue('--lab-sbb')) || 0)), behavior: still ? 'auto' : 'smooth' });
   const ring = '2px solid rgb(52, 199, 89)';
   e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: ms('hold', 2) });
 }
