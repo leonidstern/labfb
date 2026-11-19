@@ -138,9 +138,7 @@ characters at most) and a `prompt` (the full text your agent gets):
   reads the full prompt for that name as `action: …`.
 - **Yours:** the list is written into your settings.json the first time a lab starts without one (from labit's own,
   above, plus any `{ "label", "send" }` buttons you had), and from then on it is yours: there is no default to reset
-  to. Edit them in the **…** menu (✎ on any action: name, prompt, save or delete; **+ add** puts a new one at the end),
-  saved here at once, or in the file (a lab reads it when it starts). The menu edits only on your own computer, never
-  a wifi guest's. `labit settings` lists them.
+  to. Edit them in the file (a lab reads it when it starts). `labit settings` lists them.
 - **Checked:** a name over 7 characters, a repeat or an item without a name and a prompt (300 characters at most) is
   said when labit starts and left out; the rest still counts. Only your own file holds the list: a project's
   `labit.json` can't set it.

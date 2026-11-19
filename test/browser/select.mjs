@@ -9,7 +9,6 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { SEED } from '../../lib/actions.ts';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -63,17 +62,15 @@ try {
     try {
       reset();
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
-      await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
-      // Nothing is saved: a comment is answered here, a change to your actions refused (the lab never sees either).
+      await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tess'));
+      // Nothing is saved: a comment is answered here (the lab never sees it).
       const posts = [];
-      const puts = [];
       await ctx.route('**/_lab/api/comments**', (r) => {
         if (r.request().method() !== 'POST') return r.continue();
         const body = r.request().postDataJSON();
         posts.push(body);
         return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ comment: { id: `m${posts.length}`, page: '/index', name: body.name, text: body.text, anchor: body.anchor, created: new Date().toISOString(), replies: [] }, edit: 'k1' }) });
       });
-      await ctx.route('**/_lab/api/actions**', (r) => (r.request().method() === 'GET' ? r.continue() : (puts.push(r.request().postDataJSON()), r.abort())));
       const texts = async () => posts.map((b) => b.text);
       const p = await ctx.newPage();
       await p.goto(B + '/');
@@ -89,10 +86,8 @@ try {
         return { names: shown.map((b) => b.textContent).join(' '), tops: new Set(shown.map((b) => Math.round(b.getBoundingClientRect().top))).size, fits: row ? row.scrollWidth <= row.clientWidth + 1 : false, more: more ? [...more.querySelectorAll('[data-act]')].map((b) => b.dataset.act).join(' ') : '', open: more ? !more.hidden : false, pin: Boolean(r.querySelector('.pin.draft')) };
       });
       const last = async () => posts.at(-1);
-      const edit = p.locator('.float .act-edit');
-      const editing = () => p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelectorAll('.act-edit').length);
       const all = 'go fix remove like move states variant';
-      // A pin's box: as many as fit, in order, on one line; … opens the rest first, then the ones on the line (to edit)
+      // A pin's box: as many as fit, in order, on one line; … opens the rest first, then the ones on the line
       await p.locator('h1').click();
       await until(async () => (await line()).names !== '');
       let l = await line();
@@ -101,36 +96,6 @@ try {
       await chip('…').click();
       l = await line();
       check(eng, '… grows the line into the whole list, in order', l.open && l.more === all, JSON.stringify(l));
-      // Edit in place: a right-click turns that row editable where it is (no form, no boxes).
-      await p.locator('.float .acts [data-act="move"]').click({ button: 'right' });
-      check(eng, 'right-click: that row is editable in place, its name focused', (await editing()) === 1 && (await edit.locator('input.nm').inputValue()) === 'move' && (await edit.locator('textarea.p').inputValue()) === SEED[4].prompt && (await p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.activeElement?.className)) === 'nm' && !(await p.locator('.float form, .float .act-btns').count()));
-      await edit.locator('input.nm').fill('nottoolong');
-      check(eng, 'the name stops at 7, the counter shows near the limit', (await edit.locator('input.nm').inputValue()) === 'nottool' && (await edit.locator('.cnt').textContent()) === '7/7');
-      await p.keyboard.press('Escape');
-      check(eng, 'Esc cancels: the row is back, nothing saved, the list stays', (await editing()) === 0 && !puts.length && (await line()).open);
-      await p.locator('.float .acts [data-act="like"]').click({ button: 'right' });
-      await edit.locator('input.nm').fill('look');
-      await p.keyboard.press('Enter');
-      check(eng, 'Enter in the name goes on to the prompt', (await p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.activeElement?.className)) === 'p');
-      await p.keyboard.press('End');
-      await p.keyboard.type(' again');
-      await p.keyboard.press('Shift+Enter');
-      await p.keyboard.type('two');
-      await p.keyboard.press('Enter');
-      check(eng, 'Enter in the prompt saves the whole list, Shift+Enter is a new line', await until(async () => puts.length === 1), JSON.stringify(puts[0]?.actions?.[3]));
-      const put = puts[0]?.actions || [];
-      check(eng, '…the row changed in its place, the rest as they were', put.map((a) => a.name).join(' ') === all.replace('like', 'look') && put[3].prompt === `${SEED[3].prompt} again\ntwo`, JSON.stringify(put[3]));
-      check(eng, 'a lab that does not answer: the row stays open and says so', await until(async () => /not answering/.test((await edit.locator('.why').textContent()) || '')));
-      await p.locator('.float .composer textarea').click();
-      check(eng, 'a tap elsewhere cancels', (await editing()) === 0 && (await line()).open && puts.length === 1);
-      await p.locator('.float .acts .add').click();
-      check(eng, '+ add: an empty row, editable, at the end', (await editing()) === 1 && (await edit.locator('input.nm').inputValue()) === '' && (await p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.act-edit').nextElementSibling?.classList.contains('act-foot'))));
-      await p.keyboard.press('Escape');
-      check(eng, '…Esc takes it away', (await editing()) === 0);
-      await p.locator('.float .acts [data-act="states"]').click({ button: 'right' });
-      await edit.locator('.del').click();
-      check(eng, 'delete saves the list without it, no confirm', await until(async () => puts.length === 2 && puts[1].actions.map((a) => a.name).join(' ') === all.replace(' states', '')), JSON.stringify(puts[1]?.actions?.map((a) => a.name)));
-      await p.locator('.float .composer textarea').click();
       await p.locator('.float .acts .fold').click();
       check(eng, 'done folds it back to the line', await until(async () => !(await line()).open));
       await p.locator('.float .composer textarea').click();

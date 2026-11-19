@@ -2,7 +2,7 @@
 // name (the chip) and the prompt the agent gets. The comment box shows as many as fit and "…" for the rest; select mode
 // shows the same. A list nobody wrote yet is seeded once from SEED into your settings.json (lib/settings.ts), so it is
 // yours from then on: there is no default to go back to. The widget bundles SEED for pages served without a list.
-export type Action = { name: string; prompt: string };
+type Action = { name: string; prompt: string };
 export const NAME_MAX = 7;
 export const PROMPT_MAX = 300;
 export const SEED: Action[] = [
