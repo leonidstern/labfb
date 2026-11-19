@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Flag `editText`: when an edit cannot be written into the file (the words are in more than one place or in none, the file changed, or a wifi guest made it), the typed words stay in yellow and a plain line says why, with two choices: send it to the agent as a pin (`Edit: "old" to "new"`) or put it back. Cmd-Z puts it back too.
 - Flag `editText`: select mode and the text tool. **V** picks blocks (a click picks the block under it, no pin; Tab and Shift+Tab step; Esc lets go, then leaves). **E** (or Enter, or a double click on a picked block) edits it where it is as plain text; Esc writes it into the source file when the old words are in exactly one place, and says so plainly when they are not. **Cmd-Z** takes the edit back, in the same list as taking back a pin. The page's reload waits while you edit.
 - Flag `editText` (off): the lab can change words in the project's source for a page (`POST /_lab/api/edit`, this computer with the admin key only). It writes only when the old words are in exactly one place in the whole project, keeps the file's own spacing, and undoes. Pins on those words follow them. Nothing in the page uses it yet.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.

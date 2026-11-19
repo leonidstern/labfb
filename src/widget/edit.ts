@@ -19,6 +19,7 @@ function start(el: HTMLElement, at?: MouseEvent) {
   const node = [...el.childNodes].find((n) => n.nodeType === 3 && (n as Text).data.trim()) as Text | undefined;
   if (!node) return;
   live = { el, node, was: el.textContent! };
+  away();
   W.S.editing = true;
   pick(el);
   el.setAttribute('contenteditable', 'plaintext-only');
@@ -35,6 +36,34 @@ function start(el: HTMLElement, at?: MouseEvent) {
   getSelection()!.addRange(r);
   el.addEventListener('paste', flat);
   hold();
+}
+// The words could not be written (not in exactly one place, a guest, the file changed): they stay as typed in yellow, a
+// plain line says why, and the person may send the change to the agent as a pin (old and new in its words) or put it back.
+let note: HTMLElement | null = null;
+const away = () => (note?.remove(), (note = null));
+function offer(el: HTMLElement, node: Text, was: string, now: string, why: string) {
+  away();
+  const back = () => {
+    if (node.isConnected) node.data = was;
+    ink('lab-sent', null);
+    away();
+  };
+  const entry = async () => (back(), W.say('put the words back'));
+  W.placed.push(entry);
+  const gone = () => (W.placed.splice(W.placed.indexOf(entry), 1), away());
+  const send = W.el('button', { class: 'btn', type: 'button' }, 'send to the agent');
+  const drop = W.el('button', { class: 'btn', type: 'button' }, 'put it back');
+  send.onclick = async () => {
+    const anchor = W.wordsAnchor(el);
+    if (!anchor) return W.say("couldn't pin these words");
+    gone();
+    ink('lab-sent', null);
+    await W.send({ page: W.S.page, name: W.store.get('lab-name') || 'me', text: `Edit: "${was.trim()}" to "${now}"`, anchor }).catch(() => W.say("couldn't send it"));
+  };
+  drop.onclick = () => (gone(), back());
+  note = W.el('div', { class: 'hint', style: 'pointer-events: auto; bottom: 108px; display: flex; gap: 12px; align-items: center' }, `not saved: ${why}`);
+  note.append(send, drop);
+  W.root.append(note);
 }
 /** The words are written into the file (when they changed). */
 async function commit() {
@@ -58,10 +87,7 @@ async function commit() {
   ink('lab-sent', el);
   const res = await call({ page: W.S.page, was, now, prefix: near(i - 40, i), suffix: near(i + now.length, i + now.length + 40) });
   ink('lab-sent', null);
-  if (!res.ok) {
-    node.data = was; // not written: the page says what the file says
-    return W.say(`not saved: ${res.why}`);
-  }
+  if (!res.ok) return offer(el, node, was, now, res.why);
   ink('lab-kept', el);
   setTimeout(() => ink('lab-kept', null), 3000);
   W.say(`saved to ${res.edit.file}:${res.edit.line}`);

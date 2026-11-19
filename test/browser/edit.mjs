@@ -117,8 +117,22 @@ try {
       const before = file();
       await p.keyboard.press('Escape');
       await sleep(600);
-      check(eng, 'words in two places are not written, the page keeps the file words', file() === before && (await p.locator('div p').nth(1).textContent()) === 'Echo', file() === before ? await p.locator('div p').nth(1).textContent() : 'file changed');
-      check(eng, 'no pin was made on its own', (await pins(p)) === 0);
+      const note = p.locator('.hint', { hasText: 'not saved' });
+      check(eng, 'words in two places are not written, a plain line says why', file() === before && (await until(async () => (await note.count()) > 0)) && /more than one place/.test(await note.textContent()), await note.textContent().catch(() => ''));
+      check(eng, 'the typed words stay on the page, in yellow, and no pin was made on its own', (await p.locator('div p').nth(1).textContent()) === 'Different' && (await pins(p)) === 0);
+      await note.getByText('send to the agent').click();
+      check(eng, 'send to the agent makes a pin with old and new', await until(async () => (await pins(p)) === 1));
+      const text = await fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => d.comments[0]?.text);
+      check(eng, 'the pin says old and new', text === 'Edit: "Echo" to "Different"', text);
+      check(eng, 'the file is still unchanged', file() === before);
+      // Put it back: Cmd-Z restores the page's words.
+      await p.locator('div p').nth(0).click();
+      await p.keyboard.press('Enter');
+      await p.keyboard.press('Control+a');
+      await p.keyboard.type('Other');
+      await p.keyboard.press('Escape');
+      await note.getByText('put it back').click();
+      check(eng, 'put it back restores the words', await until(async () => (await p.locator('div p').nth(0).textContent()) === 'Echo'));
     } finally {
       await browser.close();
     }

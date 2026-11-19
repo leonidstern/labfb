@@ -104,6 +104,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get send() { return send; },
     get sheetMode() { return sheetMode; },
     get stampOf() { return stampOf; },
+    get wordsAnchor() { return wordsAnchor; },
     get placed() { return placed; },
     get say() { return say; },
     get headers() { return headers; },
@@ -1564,6 +1565,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   });
   // The words selected, as an anchor: pinned at their end, quoting exactly them (a few words either side to find them
   // again), not just the word under the pin.
+  // A block's words as a pin's anchor (edit.ts offers a change the file could not take to the agent).
+  const wordsAnchor = (/** @type {Element} */ block) => {
+    const sel = getSelection();
+    const r = document.createRange();
+    r.selectNodeContents(block);
+    sel?.removeAllRanges();
+    sel?.addRange(r);
+    const anchor = selectionAnchor();
+    sel?.removeAllRanges();
+    return anchor;
+  };
   const selectionAnchor = () => {
     const sel = getSelection?.();
     const range = sel?.rangeCount && sel.getRangeAt(0).cloneRange(); // a copy: moving the selection's own range would take the cursor from a box being typed in
