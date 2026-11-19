@@ -1281,24 +1281,29 @@ const CLAIM_MS = 1800000;
 const claims = new Map(
   Object.entries(isObj(labState.claims) ? labState.claims : {}).filter(([p, at]) => typeof p === 'string' && p.startsWith('/') && Number.isFinite(at) && Date.now() - at < CLAIM_MS),
 ); // page -> last time a wait for it was open
-const claim = (pages) => {
+// page -> the session (whoOf) whose wait claimed it last. That session's own wait for every page still hears it: the
+// wake's turn tells it to run `wait` with no --pages, and that wait must get the pins on the pages it named before.
+const claimOwner = new Map(Object.entries(isObj(labState.claimOwners) ? labState.claimOwners : {}).filter(([p, who]) => claims.has(p) && typeof who === 'string'));
+const claim = (pages, who = '') => {
   if (!pages?.length) return;
   const now = Date.now();
-  for (const p of pages) claims.set(p, now);
+  for (const p of pages) claims.set(p, now), claimOwner.set(p, who);
   writeState();
 };
 stateParts.claims = () => Object.fromEntries([...claims].filter(([, at]) => Date.now() - at < CLAIM_MS));
+stateParts.claimOwners = () => Object.fromEntries([...claimOwner].filter(([p, who]) => who && Date.now() - (claims.get(p) || 0) < CLAIM_MS));
 // A name just given, or the files of before 19 Nov still there: written now, not at the first change.
 if (oldStateFiles.length || givenName !== (labState.name || '')) writeState();
 // The last wait on each set of pages (its key), to tell a second session on the same pages that it isn't alone.
 const OTHER_MS = 600000;
 const lastWait = new Map(); // key -> { who, label, at }
-const claimed = () => {
+// The pages claimed now; with `who`, only those another session claimed (a session's own claims don't keep it out).
+const claimed = (who = '') => {
   const now = Date.now();
-  for (const w of waiters) for (const p of w.pages || []) claims.set(p, now);
-  return new Set([...claims].filter(([, at]) => now - at < CLAIM_MS).map(([p]) => p));
+  for (const w of waiters) for (const p of w.pages || []) claims.set(p, now), claimOwner.set(p, w.who);
+  return new Set([...claims].filter(([p, at]) => now - at < CLAIM_MS && !(who && claimOwner.get(p) === who)).map(([p]) => p));
 };
-const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed().has(p)));
+const scopeOf = (w) => (w.pages ? pages().filter((p) => w.pages.includes(p)) : pages().filter((p) => !claimed(w.who).has(p)));
 // Which pages a comment is heard on right now, for the page to say so: a wait for every page hears all of them but
 // the ones another session has claimed; a wait with --page hears its own. Without this, a lab with one listener on
 // /a told every other page "talking to Claude" while their pins went nowhere (Leo, 18 Nov).
@@ -2076,7 +2081,7 @@ const handler = async (req, res) => {
         : '';
       // The same session waiting again before it said it got the last hand-off never saw it: those pins go out again.
       for (const [id, d] of unacked) if (d.who === w.who && d.key === key) takeBack(id);
-      claim(want);
+      claim(want, w.who);
       const got = await unseen(scopeOf(w), w.who);
       // Cancelled while that was read: its close has come and gone, so nothing below would ever take it off the list.
       if (res.destroyed) return;
@@ -2100,7 +2105,7 @@ const handler = async (req, res) => {
       }, Math.min(Number(timeout) || 1500, 7000) * 1000);
       if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
       waiters.push(w);
-      claim(want);
+      claim(want, w.who);
       setMode('listening');
       pagesChanged();
       persist().catch(() => {}); // comments.md's note about unheard pins follows who is listening
