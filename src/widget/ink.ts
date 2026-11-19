@@ -16,7 +16,7 @@
 // - new replies: a dot on the pin → the same dot, alone, at the end of the words.
 // - agent working: a turning ring → the ink pulses.
 // - its words gone or moved → the pin comes back, as before.
-import { markQuote, wordsRange } from './anchoring.ts';
+import { markQuote, wholeWords, wordsRange } from './anchoring.ts';
 import { workState } from './list.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,12 +62,13 @@ export function inkCss() {
     on('rest', band + mix('#e08a1a', '48%')) +
     on('kept', band + green('#24a046', 28)) +
     on('done', `text-decoration-line:underline;text-decoration-thickness:2px;${green('#24a046', 14)}`) +
-    // While commenting, the page's own selection paint is clear and the selected words wear the sent ink's band, so
-    // selecting looks like the ink they will get (Leo, 18 Nov). Fields keep the green. The quoted words of an open
-    // comment or a hovered pin are a fainter green, and so are inked words under the pointer, over their band.
-    `html.lab-pinning.lab-ink-on ::selection{background-color:transparent;color:inherit;${band}${green('#24a046', 30)}}` +
-    'html.lab-ink-on ::highlight(lab-quote){background-color:rgba(52,199,89,.14)}' +
-    'html.lab-pinning.lab-ink-on :is(input,textarea)::selection{background-color:rgba(52,199,89,.3);text-decoration-line:none}'
+    // Words being selected for a comment (Shift-drag) wear the sent ink's band from the first letter, on whole words,
+    // as the quote will be; the page's own selection paint is clear meanwhile, whatever the page says (drawSelection).
+    on('sel', band + green('#24a046', 30)) +
+    'html.lab-ink-sel ::selection{background-color:transparent!important;color:inherit!important}' +
+    // The quoted words of an open comment or a hovered pin are a fainter green, and so are inked words under the
+    // pointer, over their band.
+    'html.lab-ink-on ::highlight(lab-quote){background-color:rgba(52,199,89,.14)}'
   );
 }
 
@@ -128,8 +129,30 @@ function under(e) {
   return hit;
 }
 
+// Words being selected for a comment: a selection begun with Shift held (or in comment mode), outside a field, while
+// comments are on and the pointer pins. It is ours until it is gone: letting go of Shift or a box opening changes
+// nothing. Its band is drawn anew on every change of the selection, a frame later; the page's own paint is clear from
+// the moment the selection starts (selectstart), so no native blue shows first (Leo, 19 Nov).
+let taking = false;
+let queued = 0;
+const takes = () => html.classList.contains('lab-ink-on') && W.S.on && !W.S.cursorMode;
+function drawSelection() {
+  queued = 0;
+  const sel = getSelection();
+  const r = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
+  taking = Boolean(r) && takes() && (taking || html.matches('.lab-shift, .lab-pinning')) && !document.activeElement?.matches('input, textarea') && Boolean(String(r).trim());
+  html.classList.toggle('lab-ink-sel', taking);
+  CSS.highlights.set('lab-ink-sel', new Highlight(...(taking ? [wholeWords(r!.cloneRange())] : [])));
+}
+
 // Before the widget's other page listeners (comments.js), so a click on inked words opens it and places nothing.
 export function startInk() {
+  const redraw = () => able() && (queued ||= requestAnimationFrame(drawSelection));
+  document.addEventListener('selectionchange', redraw);
+  addEventListener('selectstart', (e) => {
+    if (takes() && html.classList.contains('lab-shift') && !e.composedPath().includes(W.host) && !(e.target as Element).closest?.('input, textarea, [contenteditable]')) html.classList.add('lab-ink-sel');
+    redraw();
+  }, true);
   addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
     const now = e.composedPath().includes(W.host) || e.shiftKey || e.altKey ? null : under(e);

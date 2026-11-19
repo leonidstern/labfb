@@ -112,8 +112,9 @@ const look = (p) =>
     const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
     const html = document.documentElement;
     return {
-      inks: [...CSS.highlights].filter(([k]) => k.startsWith('lab-ink-')).flatMap(([k, h]) => [...h].map((range) => ({ st: k.slice(8), text: String(range).replace(/\s+/g, ' ').trim() }))),
+      inks: [...CSS.highlights].filter(([k]) => k.startsWith('lab-ink-') && k !== 'lab-ink-sel').flatMap(([k, h]) => [...h].map((range) => ({ st: k.slice(8), text: String(range).replace(/\s+/g, ' ').trim() }))),
       quote: [...(CSS.highlights.get('lab-quote') || [])].map((range) => String(range).replace(/\s+/g, ' ').trim()),
+      sel: [...(CSS.highlights.get('lab-ink-sel') || [])].map((range) => String(range).replace(/\s+/g, ' ').trim()).join(' | '),
       pins: [...r.querySelectorAll('button.pin')].map((b) => {
         const s = getComputedStyle(b);
         return { label: b.getAttribute('aria-label'), ink: b.classList.contains('on-ink'), seen: !/rgba\(0, 0, 0, 0\)|transparent/.test(s.backgroundColor), taps: s.pointerEvents !== 'none', news: b.classList.contains('new'), dot: getComputedStyle(b, '::after').content !== 'none', open: b.classList.contains('open') };
@@ -301,18 +302,27 @@ try {
     check(eng, 'with words selected a click opens nothing', !(await look(p)).card);
     await p.evaluate(() => getSelection().removeAllRanges());
     await p.keyboard.up('Shift');
-    // Selecting words while commenting shows the ink they will get: the sent band, from the page's own selection,
-    // whose usual paint is clear then. Off comment mode the page's selection is its own.
+    // Selecting words for a comment shows the ink they will get: the sent band, low on each line, drawn on the words
+    // as they are selected; the page's own selection paint is clear then, whatever the page's rules say (this page
+    // paints its selection blue). With comments hidden the page's selection is its own.
     {
-      await p.evaluate(() => document.documentElement.classList.add('lab-shift'));
+      await p.keyboard.down('Shift');
       await sel(p, 'long', 'w001x', 'w004x');
-      await sleep(200);
-      const [own, drawn] = [await rules(p, 'long', '::selection'), await band(p, await gap(p, 'long', 'w002x'))];
-      check(eng, 'selecting while commenting: the page\'s paint is clear, the words wear the sent band', clear(own.bg) && /underline/.test(own.line) && low(drawn) && green(drawn), `${JSON.stringify(own)} ${say(drawn)}`);
-      await p.evaluate(() => document.documentElement.classList.remove('lab-pinning'));
-      const plain = await rules(p, 'long', '::selection');
-      check(eng, 'off comment mode the page keeps its own selection, no band', /0, 0, 255/.test(plain.bg) && !/underline/.test(plain.line), JSON.stringify(plain));
-      await p.evaluate(() => (getSelection().removeAllRanges(), document.documentElement.classList.add('lab-pinning'), document.documentElement.classList.remove('lab-shift')));
+      await sleep(250);
+      const [own, drawn, mid] = [await rules(p, 'long', '::selection'), await band(p, await gap(p, 'long', 'w002x')), await look(p)];
+      check(eng, 'selecting for a comment: the page\'s paint is clear, the words wear the sent band', clear(own.bg) && mid.sel === 'w001x w002x w003x w004x' && low(drawn) && green(drawn), `${own.bg} "${mid.sel}" ${say(drawn)}`);
+      await p.evaluate(() => getSelection().removeAllRanges());
+      await p.keyboard.up('Shift');
+      await sleep(600);
+      await p.keyboard.press('m');
+      await sleep(400);
+      await sel(p, 'long', 'w001x', 'w004x');
+      await sleep(250);
+      const [plain, off2] = [await rules(p, 'long', '::selection'), await look(p)];
+      check(eng, 'with comments hidden the page keeps its own selection, no band', /0, 0, 255/.test(plain.bg) && !off2.sel, `${plain.bg} "${off2.sel}"`);
+      await p.evaluate(() => getSelection().removeAllRanges());
+      await p.keyboard.press('m');
+      await sleep(600);
     }
     const c3 = await L.say(words('lnk', 'two linked words three'), 'link');
     await sleep(1200);
@@ -510,14 +520,34 @@ try {
       await q.mouse.down();
       await q.mouse.move(at[2], at[3], { steps: 8 });
       await sleep(200);
-      const during = await band(q, await gap(q, 'a', 'gamma'));
+      const [during, native, live] = [await band(q, await gap(q, 'a', 'gamma')), await rules(q, 'a', '::selection'), await look(q)];
       await q.mouse.up();
       await q.keyboard.up('Shift');
       await sleep(600);
       const [after, own, lit, kept2] = [await look(q), await rules(q, 'a', '::selection'), await rules(q, 'a', '::highlight(lab-quote)'), await band(q, await gap(q, 'a', 'gamma'))];
-      check(eng, 'Shift-drag: the band shows while dragging', low(during) && green(during), say(during));
+      check(eng, 'Shift-drag: only the band shows while dragging, none of the page\'s own selection paint', low(during) && green(during) && clear(native.bg) && live.sel === 'gamma delta', `${say(during)} ${native.bg} "${live.sel}"`);
       check(eng, 'Shift-drag let go: no full-height green on the words (selection or quote)', !/52, 199, 89|0\.2\d* 0\.78\d* 0\.3/.test(own.bg) && after.quote.length === 0 && alpha(lit.bg) < 0.2, `selection ${own.bg}, quote ${lit.bg}, quote set ${JSON.stringify(after.quote)}`);
-      check(eng, 'Shift-drag let go: the words keep the low band (the draft: grey), one band', st(after, 'gamma delta') === 'draft' && after.inks.length === 1 && low(kept2), `${JSON.stringify(after.inks)} ${say(kept2)}`);
+      check(eng, 'Shift-drag let go: the words keep the low band (the draft: grey), one band', st(after, 'gamma delta') === 'draft' && after.inks.length === 1 && !after.sel && low(kept2), `${JSON.stringify(after.inks)} "${after.sel}" ${say(kept2)}`);
+      // With that box open (comment mode's pointer is off the page then), a second Shift-drag on other words: the
+      // band again from the first letter, never the page's own selection paint (Leo, 19 Nov).
+      const at2 = await q.evaluate(() => {
+        const t = document.getElementById('p1').firstChild;
+        const r = document.createRange();
+        const box = (i) => (r.setStart(t, i), r.setEnd(t, i + 1), r.getBoundingClientRect());
+        const [a, z] = [box(0), box(t.data.length - 1)];
+        return [a.left + 1, a.top + a.height / 2, z.right - 1, z.top + z.height / 2];
+      });
+      await q.keyboard.down('Shift');
+      await q.mouse.move(at2[0], at2[1]);
+      await q.mouse.down();
+      await q.mouse.move(at2[2], at2[3], { steps: 8 });
+      await sleep(200);
+      const [again, native2, live2] = [await band(q, await gap(q, 'p1', 'first')), await rules(q, 'p1', '::selection'), await look(q)];
+      await q.mouse.up();
+      await q.keyboard.up('Shift');
+      await sleep(600);
+      check(eng, 'Shift-drag with a box open: only the band while dragging', low(again) && green(again) && clear(native2.bg) && live2.sel === 'first paragraph here', `${say(again)} ${native2.bg} "${live2.sel}"`);
+      check(eng, 'Shift-drag with a box open, let go: the new words are the draft', st(await look(q), 'first paragraph here') === 'draft', JSON.stringify((await look(q)).inks));
       await c2.close();
     }
 
@@ -550,17 +580,19 @@ try {
         }
         await sleep(150);
         const letters = await q.evaluate(() => String(getSelection()));
+        const live = (await look(q)).sel;
         if (eng === 'chromium') await q.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { shiftKey: true, button: 0, bubbles: true })));
         else await q.mouse.up();
         await q.keyboard.up('Shift');
         await sleep(400);
-        return letters;
+        return [letters, live];
       };
       for (const [name, from, to, want] of [['mid-word to mid-word', 'g1', 'd2', 'gamma delta'], ['mid-word back to mid-word', 'd2', 'g1', 'gamma delta'], ['inside one word', 'g1', 'g3', null]]) {
         await L.clear();
         const [c2, q] = await open(browser, L.base + '/');
         const w = await where(q);
-        const letters = await drag(q, w[from], w[to]);
+        const [letters, live] = await drag(q, w[from], w[to]);
+        check(eng, `whole words, ${name}: the band ${want ? 'is on the whole words' : 'keeps the letters'} while dragging`, live === (want || letters), `band "${live}", dragged "${letters}"`);
         const draft = (await look(q)).inks.find((i) => i.st === 'draft')?.text;
         if (want) check(eng, `whole words, ${name}: the draft's band is on the whole words`, draft === want, `${draft} (dragged "${letters}")`);
         await q.keyboard.type('whole words');
