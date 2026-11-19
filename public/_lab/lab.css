@@ -121,11 +121,11 @@ body.lab {
 
 /* A list of rows inside a box (the page list, the widget's list). */
 .lab-rows { list-style: none; margin: 0; padding: 6px; }
-.lab-rows a { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; border-radius: var(--lab-corner-s); text-decoration: none; }
-.lab-rows a:hover { background: var(--lab-hover); }
+.lab-rows a { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: var(--lab-corner-s); text-decoration: none; }
+.lab-rows a:hover { background: var(--lab-soft); } /* the widget's rows: 7×10, the soft wash */
 .lab-rows .lab-muted { font-size: 13px; }
 /* The page list: title and when it changed on one line, the file under it; open comments as a green count. */
-.lab-pages a { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 1px; align-items: baseline; padding: 9px 10px; }
+.lab-pages a { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 1px; align-items: baseline; padding: 7px 10px; }
 .lab-page-t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lab-page-f { grid-column: 1; font-size: 13px; color: var(--lab-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lab-page-m { grid-row: 1; grid-column: 2; display: inline-flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--lab-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
