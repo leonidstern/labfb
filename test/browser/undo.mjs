@@ -58,7 +58,7 @@ for (const [n, eng] of (process.env.ENGINES || 'chromium').split(',').entries())
   const browser = await pw[eng].launch();
   try {
     const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
-    await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+    await ctx.addInitScript(() => localStorage.setItem('lab-name', 'zz-undo'));
     const p = await ctx.newPage();
     await p.goto(L.B + '/');
     const shadow = (fn) => p.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((x) => x.shadowRoot?.querySelector('.scrim'))?.shadowRoot), fn.toString().replace(/^[^{]*{|}$/g, ''));
@@ -95,12 +95,39 @@ for (const [n, eng] of (process.env.ENGINES || 'chromium').split(',').entries())
     await sleep(400);
     check(eng, 'after a reload no comment box comes back', await shadow(() => { return !r.querySelector('.float textarea'); }));
 
+    // While undo shows, a click outside only closes the card (Leo, 19 Nov): the pin stays sent, no new comment box; the
+    // next click there pins as usual.
+    await write('stays sent');
+    await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
+    const a = await p.locator('#a').boundingBox();
+    await p.mouse.click(a.x + 20, a.y + a.height / 2);
+    await sleep(500);
+    const first = await shadow(() => { return { box: Boolean(r.querySelector('.float textarea')), card: Boolean(r.querySelector('.card:not(.out)')), draft: r.querySelectorAll('.pin.draft').length }; });
+    const kept1 = (await L.comments()).map((c) => c.text);
+    check(eng, 'while undo shows, a click outside only closes the card: no new box, the pin stays sent', !first.box && !first.card && first.draft === 0 && kept1.includes('stays sent'), JSON.stringify([first, kept1]));
+    await p.mouse.click(a.x + 20, a.y + a.height / 2);
+    check(eng, '…and the next click pins as usual', await until(() => shadow(() => { return Boolean(r.querySelector('.float textarea')); }), 1500));
+    await p.keyboard.press('Escape');
+    await sleep(300);
+    // A link clicked while undo shows still acts (only a new pin is held back).
+    await write('before link');
+    await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
+    await p.evaluate(() => { const l = document.createElement('a'); l.id = 'lk'; l.href = '#went'; l.textContent = 'a link'; document.body.prepend(l); });
+    await p.click('#lk');
+    await sleep(300);
+    check(eng, 'while undo shows, a link still acts and no box opens', (await p.evaluate(() => location.hash)) === '#went' && (await shadow(() => { return !r.querySelector('.float textarea'); })));
+    await p.evaluate(() => { document.getElementById('lk').remove(); history.replaceState(null, '', location.pathname); });
+    const had = (await L.comments()).length;
+    await p.reload();
+    await until(() => p.evaluate(() => [...document.querySelectorAll('*')].some((x) => x.shadowRoot?.querySelector('.scrim'))));
+    await sleep(400);
+
     // Sent again, then left alone: after 3 s the card closes and the pin stays.
     await write('fix this typo');
     await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
     await sleep(3600);
     const after = await shadow(() => { return { card: Boolean(r.querySelector('.card:not(.out)')), undo: Boolean(r.querySelector('.btn.undo')) }; });
-    check(eng, 'left alone, after 3 s the card has closed and the pin is kept', !after.card && !after.undo && (await L.comments()).length === 1, JSON.stringify(after));
+    check(eng, 'left alone, after 3 s the card has closed and the pin is kept', !after.card && !after.undo && (await L.comments()).length === had + 1, JSON.stringify(after));
   } finally {
     await browser.close();
     L.stop();

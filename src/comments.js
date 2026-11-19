@@ -1903,17 +1903,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   document.addEventListener('mouseup', (e) => {
     if (S.on && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
-  // A sent pin's card, opened by the send for its undo and not touched since, is not in the way: a press on the page lets it
-  // go at once, so that press (a click, a drag over words it covered) does what it does on a bare page, as before undo:
-  // back to back pins, a new selection while the last one goes.
+  // A sent pin's card, opened by the send for its undo and not touched since, lets go on a press on the page, at once, so a
+  // drag over words it covered still selects them (a4c5ddc). The click that press makes only lets it go (Leo, 19 Nov:
+  // "when comment still 'undo' clicking outside opening another comment"): no new pin there; the sent one stays, and the
+  // next click pins as usual. A link or the page's own control still acts (onPageClick prevents nothing).
+  S.undoLetGo = 0; // when a press let a sent pin's undo card go: that press's click starts no pin
   document.addEventListener('pointerdown', (e) => {
+    S.undoLetGo = 0;
     if (S.draft || !S.undo || S.openId !== S.undo.id || S.undo.touched || e.composedPath().includes(host)) return;
     S.undo = null;
     S.openId = null;
+    S.undoLetGo = Date.now();
     render();
   }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
+    if (S.undoLetGo && Date.now() - S.undoLetGo < 2000) return void (S.undoLetGo = 0); // this click let a sent pin's undo card go (above)
     if (fluidState() === 'bar' && !(e.shiftKey && !S.shiftUp)) return dropOffer(); // the first click elsewhere only lets the bar go
     if (S.draft || S.openId) {
       // Typed text doesn't keep it open (Leo, 18 Nov): the click closes it and the words stay as a draft (the box saves them as
