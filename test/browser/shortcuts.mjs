@@ -68,6 +68,17 @@ try {
     try {
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+      // How many MutationObservers are watching now (observe adds one, disconnect takes it away): a comment box that has
+      // closed must stop watching the page.
+      await ctx.addInitScript(() => {
+        const Real = window.MutationObserver;
+        const live = new Set();
+        window.__watching = () => live.size;
+        window.MutationObserver = class extends Real {
+          observe(...a) { live.add(this); return super.observe(...a); }
+          disconnect() { live.delete(this); return super.disconnect(); }
+        };
+      });
       const p = await ctx.newPage();
       await p.goto(B + '/');
       await untilRoot(p, () => true, 1200);
@@ -164,6 +175,18 @@ try {
       const sb = await p.evaluate(() => { const deep = (root) => { for (const n of root.querySelectorAll('*')) { if (n.localName === 'textarea') return n; const f = n.shadowRoot && deep(n.shadowRoot); if (f) return f; } return null; }; const t = deep(document); const b = t.closest('.box').getBoundingClientRect(); const x = t.getBoundingClientRect(); return { scrolls: t.scrollHeight > t.clientHeight, gap: Math.round(b.right - x.right), tall: t.closest('.box').classList.contains('tall') }; });
       check(eng, 'a long comment scrolls with its scrollbar at the box\'s right edge', sb.scrolls && sb.tall && sb.gap <= 16, JSON.stringify(sb));
       await p.keyboard.press('Escape');
+      // Opening and closing a comment box again and again leaves no observers behind.
+      const watching = () => p.evaluate(() => window.__watching());
+      const before = await watching();
+      for (let i = 0; i < 5; i++) {
+        await p.mouse.click(h2.left + 20, h2.top + h2.height / 2);
+        await untilRoot(p, (r) => Boolean(r.querySelector('textarea')), 900);
+        await p.keyboard.insertText('x');
+        await p.keyboard.press('Escape');
+        await sleep(150);
+      }
+      const after = await watching();
+      check(eng, 'boxes opened and closed again leave no observers behind', after - before <= 1, `${before} → ${after}`);
       const pause = () => p.evaluate(() => {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
         const [b] = r?.querySelectorAll('.motion') || [];
