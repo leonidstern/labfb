@@ -5,6 +5,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 ## Unreleased
 
 - Fixed, in your own files and the agent's text: `replies.md` ("Edit freely") lost every line that wasn't a rule the next time a rule was kept or undone, and now only its rule lines are rewritten, in place; undoing a rule that was offered with a line break works; a `settings.json` that can't be read is no longer written over with one key when your name is saved; a `http://localhost:3000/…` link in a comment reaches the agent as written (it came out as `http://localhost:4400:3000/…`).
+- A long comment's scrollbar sits at the box's right edge. With your name already set the box keeps one row (text, name, arrow); once the words scroll, the name and arrow drop to a row of their own so the scrollbar is no longer left of them.
 - Holding Shift over words (to quote them) shows the drawn I-beam with a low ink band at its foot, in place of the I-beam with a green pin tip.
 - One key for the mode: `1` (or a click on the switch) toggles between comment and pointer: once for the pointer, again for the comment. The switch reads "(1)" and the hint "1 comment / pointer". Key `3` and the `pointer` shortcut are gone; a `pointer` key left in a settings file is ignored without a message.
 - The listening pill drops the session name: "talking to Claude · Opus 5.5", not "… (labit for writing)". The name is in the pill's tooltip, and still in the labs & pages list.
