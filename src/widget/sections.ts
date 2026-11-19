@@ -3,7 +3,7 @@
 // The section bar: a bar at the top of the page that lists each section (a heading of one level: the highest of h1
 // to h3 that occurs twice or more, usually h2; a lone h1 is the page's title; headings inside nav, header, footer and
 // aside are not sections; at most 40) with the current one filled, and what you have not read marked:
-//   new      no mark for it: a filled blue dot and "new"
+//   new      no mark for it: a filled green dot and "new"
 //   updated  its text is not what it was when you read it: a ring and "updated"
 //   read     nothing
 // A section is read after about 3 s as the current one, or when you scroll on from it after a moment (0.8 s), whichever
@@ -209,7 +209,7 @@ export function startSections() {
     more.dataset.st = [...menu.children].some((c) => (c as HTMLElement).dataset.st) ? '1' : '';
     fades();
   };
-  // A phone's line fades at an edge where more sections are hidden, with a small blue dot there when one of them is new or updated.
+  // A phone's line fades at an edge where more sections are hidden, tinted green there when one of them is new or updated.
   const fades = () => {
     const [l, r] = edges;
     const left = nav.scrollLeft;
@@ -217,8 +217,8 @@ export function startSections() {
     const out = chips().filter((c) => c.dataset.st);
     l.classList.toggle('on', left > 1);
     r.classList.toggle('on', right < nav.scrollWidth - 1);
-    l.classList.toggle('dot', out.some((c) => c.offsetLeft + c.offsetWidth <= left + 4));
-    r.classList.toggle('dot', out.some((c) => c.offsetLeft >= right - 4));
+    l.classList.toggle('new', out.some((c) => c.offsetLeft + c.offsetWidth <= left + 4));
+    r.classList.toggle('new', out.some((c) => c.offsetLeft >= right - 4));
   };
   nav.addEventListener('scroll', fades, { passive: true });
   const place = () => {

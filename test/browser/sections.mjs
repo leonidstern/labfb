@@ -234,14 +234,20 @@ try {
     await sleep(900);
     const after = await P.shadow(() => { return { open: !r.querySelector('.chatwin').hidden }; });
     check(eng, 'a tap on a chip with the sheet open goes to that section and closes the sheet', (await P.p.evaluate(() => scrollY)) > 0 && !after.open, JSON.stringify(after));
-    // The line fades at an edge with more past it, and a small blue dot marks a hidden new or updated chip.
-    const fade = await P.shadow(() => { const n = r.querySelector('.sb-nav'); const e = (c) => { const x = r.querySelector('.sb-edge.' + c); const b = getComputedStyle(x); const d = getComputedStyle(x, '::after'); return { on: b.display !== 'none', dot: d.content !== 'none' && d.width === '5px' }; }; return { l: e('l'), r: e('r'), left: n.scrollLeft, max: n.scrollWidth - n.clientWidth }; });
-    check(eng, 'phone: fades on the left (scrolled to a chip), and on the right while more is there', fade.l.on && fade.r.on === fade.left < fade.max - 1, JSON.stringify(fade));
-    check(eng, 'phone: a 5 px blue dot on the left edge, where a new or updated chip is hidden', fade.l.dot === true || fade.r.dot === true, JSON.stringify(fade));
+    // The line fades at an edge with more past it, and the fade is tinted green on the side where a new or updated chip is hidden.
+    const edge = (c) => P.shadow(() => { const x = r.querySelector('.sb-edge.' + a); return { on: getComputedStyle(x).display !== 'none', tint: x.classList.contains('new'), image: getComputedStyle(x).backgroundImage }; }, c);
+    const fade = { l: await edge('l'), r: await edge('r') };
+    check(eng, 'phone: the line fades on both sides (opened at a chip in the middle)', fade.l.on && fade.r.on, JSON.stringify(fade));
     await P.shadow(() => { r.querySelector('.sb-nav').scrollLeft = 0; });
     await sleep(300);
-    const home = await P.shadow(() => { const e = (c) => { const x = r.querySelector('.sb-edge.' + c); return { on: getComputedStyle(x).display !== 'none', dot: x.classList.contains('dot') }; }; return { l: e('l'), r: e('r') }; });
-    check(eng, 'phone: at the start there is no fade on the left, a fade and a dot on the right (the updated chip is out of sight)', !home.l.on && home.r.on && home.r.dot, JSON.stringify(home));
+    const home = { l: await edge('l'), r: await edge('r') };
+    check(eng, 'phone: at the start no fade on the left; the right fade is tinted green (the updated chip is hidden past it)', !home.l.on && home.r.on && home.r.tint, JSON.stringify(home));
+    const plain = await P.shadow(() => { const x = r.querySelector('.sb-edge.r'); const with_ = getComputedStyle(x).backgroundImage; x.classList.remove('new'); const without = getComputedStyle(x).backgroundImage; x.classList.add('new'); return { with_, without }; });
+    check(eng, 'the tint is in the fade (the same edge without it is another image), and no dot is drawn', plain.with_ !== plain.without && (await P.shadow(() => { return getComputedStyle(r.querySelector('.sb-edge.r'), '::after').content === 'none'; })), JSON.stringify(plain));
+    await P.shadow(() => { r.querySelector('.sb-nav').scrollLeft = 99999; });
+    await sleep(300);
+    const far = { l: await edge('l'), r: await edge('r') };
+    check(eng, 'at the end the right fade is gone and the left one is plain (the new chip is in view)', far.l.on && !far.l.tint && !far.r.on, JSON.stringify(far));
     await ph.close();
 
     // ---- pinch-zoomed in (as zoom.mjs: the page starts zoomed): the bar keeps its usual size, inside what the screen shows ----
