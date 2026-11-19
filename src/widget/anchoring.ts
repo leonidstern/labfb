@@ -1080,7 +1080,7 @@ export const markQuote = (anchor) => {
 // The area's outline: round dots with room between them (CSS dotted borders can't space their dots).
 export const zoneEl = (cls) => {
   const z = el('div', { class: `zone ${cls}` });
-  z.innerHTML = '<svg aria-hidden="true"><rect class="ring" width="100%" height="100%"/><rect class="dots" width="100%" height="100%"/></svg>';
+  z.innerHTML = '<svg aria-hidden="true"><rect class="dots" width="100%" height="100%"/></svg>';
   return z;
 };
 export const drawZone = (box, cls) => {
