@@ -117,6 +117,11 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   check(eng, 'a comment from elsewhere shows up, no reload', loads === 1 && (await shadow(() => { return r.querySelectorAll('button.pin').length; })) === pinsBefore + 1);
   // Pages toggle state classes; a pin stays on its element. One whose element is gone waits on the left edge, at its height.
   await p.evaluate(() => document.querySelector('#p2').classList.add('offscreen'));
+  // The lab keeps its comments from the engine before: take that engine's 'gone' pin away, so the count below is this run's one.
+  const adminKey = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
+  for (const c of (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.filter((c) => c.text === 'gone')) {
+    await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': adminKey, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/index', action: 'delete', id: c.id }) });
+  }
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'gone', anchor: { selector: '#nope', x: 0.5, y: 0.5, docX: 0.6, docY: 400, width: 1000, element: '<p id="nope">' } }) });
   await untilShadow(p, (r) => r.querySelector('.moved-btn')?.textContent === 'moved · 1', null, 2000);
   const pins = await shadow(() => { return [...r.querySelectorAll('button.pin')].map((b) => [b.classList.contains('moved'), b.style.left, b.style.top]); });
