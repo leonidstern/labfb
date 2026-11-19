@@ -156,7 +156,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   // no Shift, lab-shift off).
   await until(p, () => document.documentElement.classList.contains('lab-pinning'), null, 2000);
   // What the press saw, so a failure says why (Linux WebKit only, now and then).
-  await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { window.__press ??= { shift: e.shiftKey, labShift: document.documentElement.classList.contains('lab-shift') }; }, { capture: true, once: true }); });
+  await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { const c = document.documentElement.classList; const us = (n) => getComputedStyle(n).webkitUserSelect + '/' + getComputedStyle(n).userSelect; window.__press ??= { shift: e.shiftKey, labShift: c.contains('lab-shift'), pinning: c.contains('lab-pinning'), lit: c.contains('lab-lit'), us: us(document.getElementById('p5')) }; }, { capture: true, once: true }); window.__ss = []; addEventListener('selectstart', (e) => window.__ss.push(e.defaultPrevented ? 'blocked' : 'allowed'), true); });
   await p.keyboard.down('Shift');
   await p.keyboard.up('Shift');
   await p.mouse.move(lede.x + 10, lede.y + 8);
@@ -164,7 +164,7 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   await p.mouse.move(lede.x + 16, lede.y + 9);
   await p.mouse.up();
   await sleep(100);
-  const sel = await p.evaluate(() => { const g = getSelection(); const n = g.anchorNode; return { text: g.toString(), at: n ? (n.nodeType === 3 ? n.parentElement : n)?.closest('[id]')?.id ?? n.nodeName : null, labShift: document.documentElement.classList.contains('lab-shift'), press: window.__press }; });
+  const sel = await p.evaluate(() => { const g = getSelection(); const n = g.anchorNode; return { text: g.toString(), at: n ? (n.nodeType === 3 ? n.parentElement : n)?.closest('[id]')?.id ?? n.nodeName : null, labShift: document.documentElement.classList.contains('lab-shift'), press: window.__press, selectstart: window.__ss }; });
   check(eng, 'a click right after Shift selects no text', sel.text === '', JSON.stringify(sel));
   await p.keyboard.press('Escape');
   await sleep(200);
