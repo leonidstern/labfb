@@ -53,7 +53,8 @@ const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
 };
-const pins = (p) => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).length);
+const pins = () => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).length);
+const anchors = () => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).map((c) => ({ text: c.text, selector: c.anchor?.selector })));
 const texts = () => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).map((c) => c.text));
 
 try {
@@ -66,6 +67,7 @@ try {
       const p = await ctx.newPage();
       await p.goto(B + '/');
       await sleep(600);
+      const start = await pins(p); // the engine before left its pins on this page
       const mode = () => p.evaluate(() => document.documentElement.classList.contains('lab-selecting'));
       const picked = () => p.evaluate(() => document.querySelector('[data-lab-picked]')?.textContent || '');
       const bar = (name) => p.locator(`.selbar button[data-a="${name}"]`);
@@ -73,7 +75,7 @@ try {
       check(eng, 'V turns select mode on', await mode());
       check(eng, 'the bar shows, its actions wait for a pick', (await bar('remove').isVisible()) && (await bar('remove').isDisabled()));
       await p.locator('h1').click();
-      check(eng, 'a click picks the block and drops no pin', (await picked()) === 'Ship faster' && (await pins(p)) === 0);
+      check(eng, 'a click picks the block and drops no pin', (await picked()) === 'Ship faster' && (await pins(p)) === start);
       await p.locator('a[href="/other.html"]').click();
       check(eng, 'a click on a link picks it, the page does not leave', p.url() === B + '/' && (await picked()) === 'go away');
       await p.locator('h1').click();
@@ -91,9 +93,48 @@ try {
       check(eng, 'Esc lets go of the block, the mode stays', !(await picked()) && (await mode()));
       await p.keyboard.press('Escape');
       check(eng, 'Esc again leaves the mode, the bar goes', !(await mode()) && !(await bar('remove').isVisible()));
+      // One tap, one pin: the same ask on the same block, twice in quick succession, sends one POST.
+      const statesBefore = (await texts()).filter((t) => t.startsWith('Show this in its states')).length;
+      let posts = 0;
+      p.on('request', (r) => r.method() === 'POST' && r.url().includes('/_lab/api/comments') && posts++);
+      await p.keyboard.press('v');
+      await p.locator('h1').click();
+      await bar('states').click();
+      await bar('states').click();
+      await sleep(400);
+      check(eng, 'two quick taps on states send one pin', posts === 1 && (await texts()).filter((t) => t.startsWith('Show this in its states')).length === statesBefore + 1, `${posts} POSTs`);
+      // A picked block scrolled out of view: the pin is anchored on the block, not on whatever is at that point (body).
+      await p.evaluate(() => document.body.append(Object.assign(document.createElement('div'), { style: 'height:3000px' })));
+      await p.evaluate(() => scrollTo(0, 2000));
+      await bar('variants').click();
+      const at = await until(async () => (await anchors()).some((a) => a.text.startsWith('Make 3 variants') && a.selector && a.selector !== 'body'));
+      check(eng, 'a block scrolled away keeps its pin', at, JSON.stringify((await anchors()).find((a) => a.text.startsWith('Make 3 variants'))?.selector));
+      await p.evaluate(() => scrollTo(0, 0));
+      await p.keyboard.press('Escape');
+      await p.keyboard.press('Escape');
       const before = await pins(p);
       await p.locator('h1').click();
       check(eng, 'out of select mode a click pins again', await until(async () => (await p.evaluate(() => document.documentElement.classList.contains('lab-pinning'))) || (await pins(p)) > before || (await p.locator('textarea').count()) > 0));
+      // Phones: the select bar steps out of the chat's way and comes back after.
+      if (eng !== 'firefox') {
+        const ph = await browser.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
+        await ph.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+        const q = await ph.newPage();
+        await q.goto(B + '/');
+        await sleep(600);
+        const shown = () => q.evaluate(() => {
+          const b = document.querySelector('[data-lab-comments]')?.shadowRoot?.querySelector('.selbar');
+          return Boolean(b && !b.hidden && getComputedStyle(b).visibility === 'visible');
+        });
+        await q.keyboard.press('v');
+        await q.locator('h1').tap({ force: true });
+        check(eng, 'phone: the select bar shows for a pick', await until(shown));
+        await q.keyboard.press('t');
+        check(eng, 'phone: the chat open hides the select bar', await until(async () => (await q.evaluate(() => document.documentElement.classList.contains('lab-sheet'))) && !(await shown())));
+        await q.keyboard.press('t');
+        check(eng, 'phone: chat closed, the bar is back', await until(shown));
+        await ph.close();
+      }
     } finally {
       await browser.close();
     }
