@@ -66,6 +66,8 @@ type Anchor = {
   /** An area dragged out, and what was inside it. */
   zoneItems?: string[];
   zoneText?: string;
+  /** A drawing (hold D and drag, draw.ts): what its lines read as, and the lines in 0–1000 of the area. */
+  ink?: { mark: string; from?: string; to?: string; pts: number[][] };
   shownFor?: number;
   build?: string;
 };
@@ -469,7 +471,7 @@ function quoteAt(cx, cy, shadowRoots = []) {
   return quote;
 }
 
-function openingTag(node) {
+export function openingTag(node) {
   const attrs = [...node.attributes]
     .filter((a) => /^(id|class|alt|role|aria-label|href|data-[\w-]+)$/.test(a.name))
     .map((a) => [a.name, a.name === 'class' ? a.value.split(/\s+/).filter((c) => c && !generated(c)).join(' ') : a.name === 'id' && generated(a.value) ? '' : a.value])
