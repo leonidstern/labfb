@@ -7,7 +7,7 @@ import { bindLive, startLive } from './live.ts';
 /** True in a board's frame: the name the board gave it, and a board on top (the name alone could be anyone's frame). */
 export const inFrame = (): boolean => {
   try {
-    return /^lab:/.test(window.name) && Boolean((top as unknown as { __labBoard?: unknown }).__labBoard);
+    return window.name.startsWith('lab:') && Boolean((top as unknown as { __labBoard?: unknown }).__labBoard);
   } catch {
     return false;
   }
