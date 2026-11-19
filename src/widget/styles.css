@@ -666,10 +666,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-wrap[data-l="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
 .sb-wrap[data-r="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
 .sb-wrap[data-l="1"][data-r="1"] .sb-nav { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
-.sb-edge { position: absolute; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: #0a84ff; opacity: 0; transition: opacity var(--_t-fast, .15s); pointer-events: none; }
-.sb-edge.l { left: 2px; }
-.sb-edge.r { right: 2px; }
-.sb-edge[data-st="1"] { opacity: .8; }
+/* Something new past an edge: that edge's fade takes a faint blue (Leo, 19 Nov: "slightly colored fade if new there"). */
+.sb-edge { position: absolute; top: 0; bottom: 0; width: 32px; opacity: 0; transition: opacity var(--_t-slow, .3s); pointer-events: none; }
+.sb-edge.l { left: 0; background: linear-gradient(90deg, rgba(10, 132, 255, .22), transparent); }
+.sb-edge.r { right: 0; background: linear-gradient(270deg, rgba(10, 132, 255, .22), transparent); }
+.sb-edge[data-st="1"] { opacity: 1; }
 
 .sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
