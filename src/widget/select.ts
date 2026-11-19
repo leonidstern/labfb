@@ -74,7 +74,7 @@ const pinOn = async (e: HTMLElement, text: string) => {
 const ACTS: Array<[string, () => void]> = [
   ['↑', () => T.pick && pick(higher(T.pick) || T.pick)],
   ['↓', () => T.pick && pick(deeper(T.pick) || T.pick)],
-  ['edit', () => T.pick && isBlock(T.pick) && T.open(T.pick)],
+  // ['edit', …]: text edits parked (Leo, 19 Nov). Enter and double-click still open words while the flag is on.
   ['remove', () => T.pick && pinOn(T.pick, 'Remove this.')],
   ['make like', () => {
     const p = T.pick;
