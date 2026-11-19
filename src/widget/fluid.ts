@@ -59,7 +59,7 @@ function put(to: Box, from: Box | null, ms: number, then = () => {}) {
   Object.assign(fd.style, end, { position: to.f ? 'fixed' : '' });
   const done = () => gen === F.gen && then();
   if (!from || W.still.matches) return done();
-  fd.animate([frame(from), end], { duration: ms, easing: 'cubic-bezier(.2, .8, .2, 1)' }).finished.then(done, () => {});
+  fd.animate([frame(from), end], { duration: ms, easing: W.ease() }).finished.then(done, () => {});
 }
 const show = (pane: HTMLElement | null, state: string) => {
   F.state = state;
@@ -181,7 +181,7 @@ export function fluidSheet(sheet: HTMLElement) {
     show(null, 'grow');
     put({ ...at(sheet.getBoundingClientRect(), 0, 0), r: parseFloat(getComputedStyle(sheet).borderTopLeftRadius), f: true }, from, W.ms('base', 2.5), () => {
       F.sheet!.style.visibility = '';
-      for (const kid of F.sheet!.children) kid.animate([{ opacity: 0 }, { opacity: 1 }], W.ms('base'));
+      for (const kid of F.sheet!.children) kid.animate([{ opacity: 0 }, { opacity: 1 }], { duration: W.ms('base'), easing: W.ease('out') });
       hide();
     });
   }
