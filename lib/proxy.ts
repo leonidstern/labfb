@@ -42,6 +42,7 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
       delete out['content-length'];
       delete out['content-encoding'];
       delete out['content-security-policy']; // it would block the widget's script
+      delete out['x-frame-options']; // it would leave a page blank when it sits in a frame (a board)
       res.writeHead(r.statusCode || 502, out);
       // Streamed through as it arrives (Next, Astro and React stream their pages), so nothing waits for the end.
       // The widget's script goes after the page; a copy of it the page already loads is taken out, even when its
