@@ -42,10 +42,15 @@ export async function apiOn(db: Db): Promise<any> {
   return api;
 }
 
+/** The most a request to the lab may carry. A comment is at most a few KB; the last looks have their own, larger cap. */
+export const BODY_MAX = 256 * 1024;
+
 // Runs a Node request through a Web-style handler (the API's GET / POST).
 export async function callApi(fn: Handler, req: IncomingMessage, url: string, extraHeaders: Record<string, string> = {}): Promise<Response> {
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c);
+  let size = 0;
+  for await (const c of req) if ((size += c.length) <= BODY_MAX) chunks.push(c); // the rest is read and dropped, so the sender gets its answer
+  if (size > BODY_MAX) return new Response('too big', { status: 413 });
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) headers.set(k, String(v));
   for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v);
