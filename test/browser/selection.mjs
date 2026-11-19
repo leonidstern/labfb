@@ -247,6 +247,8 @@ try {
           await sleep(700);
           const c = (await comments()).find((q) => q.text === `jit${dx}${dy}`);
           check(eng, '…saved with no quote', Boolean(c) && !c.anchor.quote && c.anchor.kind !== 'text', JSON.stringify(c?.anchor?.kind));
+          await p.keyboard.press('Escape'); // the sent pin's undo card: a click outside it would only close it (undo.mjs)
+          await sleep(200);
         }
       });
       await scene(browser, async (p) => {

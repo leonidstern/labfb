@@ -26,11 +26,14 @@ import {
   readable,
   readComponents,
   openingTag,
+  selectorFor,
   short,
+  wholeWords,
   zoneAnchor,
   zoneEl,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
+import { momentText } from '../lib/moment.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass } from './widget/pinhold.ts';
 import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
@@ -47,6 +50,7 @@ import { bindSelect, pick, selectChips, selectMode } from './widget/select.ts';
 import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
+import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget/wordink.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -72,6 +76,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           return true;
         },
       });
+  const UNDO_MS = 3000; // a sent pin can be taken back this long (takeBack)
+  S.undo = null; // { id, until, text, anchor, touched }: the pin this tab just sent, while undo is on offer
+  S.quietOpen = false;
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
@@ -88,7 +95,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get coarse() { return coarse; },
     get composer() { return composer; },
     get contentEnd() { return contentEnd; },
+    get control() { return control; },
     get doneBtn() { return doneBtn; },
+    get flag() { return flag; },
     get movedBtn() { return movedBtn; },
     get drawList() { return drawList; },
     get el() { return el; },
@@ -133,6 +142,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get still() { return still; },
     get store() { return store; },
     get syncReads() { return syncReads; },
+    get takeBack() { return takeBack; },
+    UNDO_MS,
     get tabTitle() { return tabTitle; },
     get threads() { return threads; },
     get unread() { return unread; },
@@ -145,6 +156,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   bindThread(W);
   bindSheets(W);
   bindFluid(W);
+  bindInk(W);
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // In a board's frame the widget draws nothing and binds nothing (src/widget/frame.ts).
   if (inFrame()) return startFrame(script);
@@ -351,6 +363,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // further down are read when called.
   bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning(), native: () => flag('native') });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
+  startInk(); // comments on selected words show as ink on them, not a pin (src/widget/wordink.ts)
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
   // back restarts its animations, which showed as a blink), new ones go in where they belong, the rest come out.
@@ -443,6 +456,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       if (S.openCard?.isConnected) S.openCard.sync();
       if (S.chatOpen) drawChat();
       drawList(); // the bar's counts and the tab's "(3)" keep up even while a box has the cursor (a tab left in the background)
+      S.paintSections?.(); // and the section bar's ink for unread pins
     }
   }
 
@@ -507,6 +521,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // fluid: words that were selected; their box is the one element that grew out of the bar (fluid.ts). act: the bar's
   // button that was pressed (rewrite, cut, go: run once the dialog's row is there).
   function begin(anchor, fluid = false, act = '') {
+    if (!anchor.moment) {
+      const moment = S.momentFor?.(anchor); // the moment as the pin goes down, not as it is sent
+      if (moment) anchor = { ...anchor, moment };
+    }
     S.draft = { anchor, fluid, act };
     keepSpot(anchor, S.draft);
     render();
@@ -516,9 +534,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   async function send(payload) {
     let res = null;
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
-    // Paused when written: the agent is told, with the paused thing's time in ms.
+    // Paused when written: the agent is told, with the moment (a loop's pass and second, a video's time, lib/moment.mjs).
     // The page stays paused after (Leo, 19 Nov: "dont need to play again"): pause, pin, pin again, play when you like.
     if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: msOf(pausedEl(payload.anchor)) } };
+    const moment = payload.anchor && !payload.action && !payload.anchor.moment ? momentFor(payload.anchor) : undefined;
+    if (moment) payload = { ...payload, anchor: { ...payload.anchor, moment } };
     if ((S.slow || slowEls.size > 0) && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
@@ -536,6 +556,27 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     return data;
   }
   const placed = [];
+  // Undo, 3 s after a new pin is sent (Leo, 19 Nov): its card opens with "undo" in the resolve key's place (thread.ts).
+  // A tap deletes it (this computer as admin, anyone else with the pin's own key, which the lab takes for a fresh pin
+  // nobody answered) and closes the card: no comment box, no words kept anywhere.
+  // An agent may have been handed it already (the lab hands pins after batchSeconds, 2 s): it is gone on its next look.
+  async function takeBack(c) {
+    const u = S.undo;
+    if (!u || u.id !== c.id) return;
+    const ownKey = store.get(`lab-edit:${c.id}`);
+    await send({ action: 'delete', id: c.id, ...(ownKey && !S.isAdmin ? { edit: ownKey } : {}) });
+    S.undo = null;
+    S.comments = S.comments.filter((x) => x.id !== c.id && x.parent !== c.id);
+    if (ownKey) store.set(`lab-edit:${c.id}`, '');
+    const at = placed.indexOf(c.id);
+    if (at >= 0) placed.splice(at, 1);
+    // Gone for good (Leo, 19 Nov: "undo should not leave text in input"): the card closes, no box, no kept words.
+    S.openId = null;
+    S.draft = null;
+    store.set(`lab-typing:${S.page}:new`, '');
+    keepSpot(null);
+    render();
+  }
   // Command-Z (Control-Z elsewhere), not in a text box: the last pin or go placed from this tab goes away. This
   // computer deletes it; a guest, who can't delete, resolves it (it steps aside).
   async function undoLast() {
@@ -645,6 +686,25 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
+  // A newer release (a lab from npm, on this computer): "update" in the menu. It asks the agent in the chat, as an
+  // action: the agent says what's new and runs labit update. Nothing changes on its own (Leo, 19 Nov).
+  let update = null;
+  try {
+    update = script?.dataset.admin && script.dataset.update ? JSON.parse(script.dataset.update) : null;
+  } catch {}
+  // A small "update" beside the version line (Leo, 19 Nov), not a menu item of its own.
+  const updateBtn = update && versionLine && el('button', { type: 'button', class: 'update-btn', title: `update to labit ${update.version}` }, 'update');
+  if (updateBtn) versionLine.append(' · ', updateBtn);
+  updateBtn?.addEventListener('click', async () => {
+    setMenu(false);
+    const act = `update labit to ${update.version}`;
+    try {
+      const { comment } = await send({ name: store.get('lab-name') || '', text: act, anchor: { kind: 'page', width: innerWidth, height: innerHeight, act } });
+      S.comments.push(comment);
+      S.chatOpen = true;
+      render();
+    } catch {}
+  });
   // Labs & pages (⌘K, src/widget/switcher.ts): local labs only. The menu opens with which lab this is, then the item.
   const LABS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'labs') : '';
   // Labs & pages is its own file, loaded and set up the first time it is asked for (⌘K, or the ⋯ menu opening); labs:
@@ -739,6 +799,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
+    if (name === 'inkOnText' && S.loaded) render(); // switched on from the ⋯ menu: the notes on words turn to ink (wordink.ts)
     if (name === 'native') host.toggleAttribute('data-native', true); // what the widget's CSS does natively (styles.css)
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
@@ -937,7 +998,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const appear = now !== S.shown;
     const anim = appear ? ' in' : '';
     let quoted = null;
+    const inkNow = []; // comments on selected words: ink on them instead of a pin
     const done = () => {
+      drawInks(inkNow);
       patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       flushPins(); // the rules of the pins the browser holds, now they are on the page (pinhold.ts)
       if (S.closeFast && !now && prev) {
@@ -968,6 +1031,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
       }
       fluidSync(S.draft || S.openId, S.on); // here, so hiding comments (which draws nothing more) lets the bar go too; so does a thread opening
+      if (quoted && inkRange(quoted)) quoted = null; // words that wear their own ink are lit already (wordink.ts)
       if (!isTrying()) markQuote(quoted); // a tried choice wears the green itself
       S.quoted = quoted;
       S.shown = now;
@@ -995,6 +1059,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     setPinning();
     copyBtn.hidden = !S.on || !S.isAdmin || list.every((c) => c.resolved);
     drawList();
+    S.paintSections?.(); // the section bar's ink for unread pins (sections.ts)
     drawChat();
     if (!S.on) return done();
     list.forEach((c) => {
@@ -1012,6 +1077,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (S.openId !== c.id) return;
       }
       const ink = zone && c.anchor.ink; // a drawing is its own pin: its lines, no marker (draw.ts)
+      const words = !moved && !zone && inkRange(c.anchor); // its words are where they were: ink, the pin unseen at their end (wordink.ts)
       if (S.openId === c.id && !ink) add(drawZone(zone, `saved${anim}`)); // a drawn area shows its outline while open
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
@@ -1026,7 +1092,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
       for (const [cls, on] of Object.entries({
         resolved: c.resolved, done: state === 'done', new: news.length, moved,
-        grab: movable, open: S.openId === c.id, dragging: false,
+        grab: movable, open: S.openId === c.id, dragging: false, 'on-ink': words,
       })) pin.classList.toggle(cls, Boolean(on));
       pin.classList.add('pin');
       if (born && S.posted === c.id) pin.classList.add(coarse ? 'arrive' : 'in');
@@ -1132,6 +1198,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (zone && !ink) info.shown = add(drawZone(zone, 'saved'));
         else if (c.anchor?.quote && !quoted) quoted = c.anchor;
       }
+      if (words) inkNow.push({ c, r: words, pin }); // a click on the words is a click on it (wordink.ts)
       next.push(pin);
       pinsById.set(c.id, pin);
       if (S.openId === c.id) {
@@ -1139,7 +1206,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
         // The reply box takes the cursor on a computer. Phones don't (no keyboard popping up over what you came to read,
         // Leo 15 Nov); a keyboard already up while stepping to the next one stays up.
-        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
+        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && !S.quietOpen && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
+        S.quietOpen = false; // opened by a send, for its undo (takeBack): the cursor stays where it was
         S.openCard = card;
         if (appear && !S.stepping) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
@@ -1172,7 +1240,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (coarse && S.cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
         swipeDown(card, () => ((S.openId = null), (S.cardFull = false), render()), true);
         markSeen(news);
-        if (news.length) drawList(); // opened is read: the "N new" pill and the tab title count it off at once
+        if (news.length) {
+          drawList(); // opened is read: the "N new" pill, the tab title and the section bar's ink count it off at once
+          S.paintSections?.();
+        }
         quoted = zone ? null : c.anchor; // an area's outline says what it's on; only selected words get the highlight
       }
     });
@@ -1182,6 +1253,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // goes out). Phones: the usual sheet, which the bar grows into, with no keyboard until the box is tapped.
     const rects = S.draft?.fluid && !sheetMode.matches && quoteRects(S.draft.anchor);
     const fluid = Boolean(rects?.length); // words not found: the plain box
+    // Words selected with ink on words (wordink.ts): the band in the draft's grey while you write, the dialog open or not;
+    // a plain box's pin stays, unseen, for the sheet to aim at.
+    const draftInk = S.draft && !position(S.draft.anchor).zone && inkRange(S.draft.anchor);
+    if (draftInk) inkNow.push({ r: draftInk });
     if (S.draft && fluidHas(S.draft)) {
       quoted = S.draft.anchor; // the words stay lit while it is open
       if (rects) fluidFollow(rects); // and it stays with them (a saved file moved them); gone, it stays, cut and rewrite off
@@ -1193,7 +1268,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       else add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
       if (!fluid && !draft.select && !anchor.ink) {
-        const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
+        const pin = el('div', { class: `pin draft${anim}${draftInk ? ' on-ink' : ''}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
         onBoard(pin, anchor);
@@ -1216,6 +1291,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
           S.draft = null;
           keepSpot(null);
           S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
+          // Undo for 3 s (takeBack): its card opens quietly (no reply cursor) with undo in the resolve key's place, and
+          // closes when they are up, unless it was touched meanwhile.
+          if (S.isAdmin || edit) {
+            const u = { id: comment.id, until: Date.now() + UNDO_MS, text: said, anchor, touched: false };
+            S.undo = u;
+            S.openId = comment.id;
+            S.quietOpen = true;
+            setTimeout(() => {
+              if (S.undo !== u) return;
+              S.undo = null;
+              if (u.touched || S.openId !== u.id) return;
+              S.closeFast = true;
+              S.openId = null;
+              render();
+            }, UNDO_MS);
+          }
           S.posted = comment.id;
           if (fluid) fluidDrop(); // goes out as a card does, as the pin pops in
           holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
@@ -1223,6 +1314,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         },
       });
       float.append(el('div', { class: 'handle' }));
+      // Paused: the moment this pin will carry, so you know it is kept (Leo, 19 Nov: "some info in pin where it was").
+      if (anchor.moment) float.append(S.momentChip(anchor.moment));
       const row = quickRow(draft, box);
       if (row?.children.length) float.append(row);
       const act = draft.act;
@@ -1371,15 +1464,114 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     held[stop ? 'add' : 'delete'](el);
     S.paused = held.size > 0; // a comment written now says the page was paused
   };
-  // The paused thing a pin is about: the one that holds the pinned element or sits in it, else the first paused.
-  const pausedEl = (anchor) => {
+  // The moving thing a pin is about (Leo, 19 Nov: pins on a dot, a video and a GIF all got the loop next to them): the
+  // pinned element's own motion wins, the video or animation it is, holds or sits in, and of several the one under
+  // the pin's own spot (else the nearest to it). Only a pin with no motion of its own (the page, a heading) takes the
+  // paused thing most in view, nearest the screen's middle.
+  const ownMotion = (anchor) => {
     let at = null;
     try {
       at = anchor?.selector ? document.querySelector(anchor.selector) : null;
     } catch {}
-    const all = [...held].filter((el) => el.isConnected);
-    return all.find((h) => at && (h.contains(at) || at.contains(h))) || all[0];
+    if (at === document.body || at === document.documentElement || (at && root.contains(at))) at = null;
+    const things = [...new Set([...held, ...document.querySelectorAll('video'), ...pageAnims().map(targetOf)])].filter((el) => el?.isConnected && !root.contains(el));
+    const area = (r) => r.width * r.height;
+    if (at) {
+      const ar = at.getBoundingClientRect();
+      const px = ar.left + (Number.isFinite(anchor.x) ? anchor.x : 0.5) * ar.width, py = ar.top + (Number.isFinite(anchor.y) ? anchor.y : 0.5) * ar.height;
+      const own = things.filter((el) => at.contains(el) || el.contains(at));
+      const box = (el) => el.getBoundingClientRect();
+      const under = own.filter((el) => { const r = box(el); return px >= r.left && px <= r.right && py >= r.top && py <= r.bottom; });
+      if (under.length) return under.sort((p, q) => area(box(p)) - area(box(q)))[0]; // the smallest under the spot: the thing itself, not what holds it
+      const off = (el) => { const r = box(el); return Math.hypot(Math.max(r.left - px, 0, px - r.right), Math.max(r.top - py, 0, py - r.bottom)); };
+      if (own.length) return own.sort((p, q) => off(p) - off(q))[0];
+    }
+    return null;
   };
+  // A pin with no motion of its own, while paused: the paused thing most in view, nearest the screen's middle.
+  const pausedEl = (anchor) => ownMotion(anchor) || inView();
+  const inView = () => {
+    const all = [...held].filter((el) => el.isConnected);
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    const score = (el) => {
+      const r = el.getBoundingClientRect();
+      const seen = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+      return [seen > 0 ? 0 : 1, Math.hypot(r.left + r.width / 2 - cx, r.top + r.height / 2 - cy)];
+    };
+    return all.map((el) => [el, score(el)]).sort((p, q) => p[1][0] - q[1][0] || p[1][1] - q[1][1])[0]?.[0];
+  };
+  // A short name for it, as a person would point at it: ".hero video", "#spinner", "div.dot".
+  const nameOf = (el) => {
+    const own = (n) => n.localName + (n.id ? `#${n.id}` : n.classList[0] ? `.${n.classList[0]}` : '');
+    const me = own(el);
+    if (el.id || el.classList.length) return me.slice(0, 80);
+    const up = el.parentElement?.closest('[id], [class]');
+    return (up && up !== document.body ? `${up.id ? `#${up.id}` : `.${up.classList[0]}`} ${me}` : me).slice(0, 80);
+  };
+  // Where a paused thing stands: a video's second of its length; an animation's second inside one pass and which pass
+  // (a loop's total time, 835734 ms, says neither). lib/moment.mjs words it.
+  const momentOf = (el) => {
+    if (!el) return undefined;
+    const what = nameOf(el), sel = selectorFor(el);
+    const playing = isStill(el) ? undefined : true; // nothing paused: the moment it was showing as the pin went down
+    if (el instanceof HTMLVideoElement) {
+      if (!Number.isFinite(el.currentTime)) return undefined;
+      return { kind: 'video', at: el.currentTime, of: Number.isFinite(el.duration) ? el.duration : undefined, what, sel, playing };
+    }
+    const a = animsOf(el)[0];
+    const t = a?.effect?.getComputedTiming();
+    const dur = Number(t?.duration), local = Number(t?.localTime);
+    if (!t || !(dur > 0) || !Number.isFinite(local)) return undefined;
+    const pass = Number.isFinite(t.currentIteration) ? t.currentIteration : 0;
+    const at = Math.min(Math.max(local - (t.delay || 0) - pass * dur, 0), dur);
+    return { kind: t.iterations === Infinity ? 'loop' : 'anim', at: at / 1000, of: dur / 1000, pass: pass + 1, what, sel, ms: Number(a.currentTime), playing };
+  };
+  // A pin's moment chip: the page pauses and the thing goes back to that moment, to see what was meant. It stays
+  // paused; play it again as usual (the control or the pause key).
+  const seekMoment = (m) => {
+    let el = null;
+    try {
+      el = m?.sel ? document.querySelector(m.sel) : null;
+    } catch {}
+    if (!el || m.kind === 'gif') return false;
+    setPause(true);
+    if (!held.has(el)) setItem(el, true);
+    if (el instanceof HTMLVideoElement) el.currentTime = m.at;
+    else {
+      const a = animsOf(el)[0];
+      const t = a?.effect?.getComputedTiming();
+      if (!a) return false;
+      a.currentTime = Number.isFinite(m.ms) ? m.ms : (t?.delay || 0) + ((m.pass || 1) - 1) * Number(t?.duration) + m.at * 1000;
+    }
+    drawMotion();
+    return true;
+  };
+  S.seekMoment = seekMoment;
+  // The moment, in a small chip: a label in the box being written, a button on a sent pin (back to that moment).
+  const PAUSED = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
+  const momentChip = (m, seek = false) => {
+    const chip = el(seek && m.kind !== 'gif' ? 'button' : 'div', { class: 'moment' });
+    chip.innerHTML = m.kind === 'gif' || m.playing ? '' : PAUSED; // ⏸ only for a moment that was paused
+    chip.append(el('span', {}, momentText(m)));
+    if (chip.localName === 'button') {
+      chip.setAttribute('type', 'button');
+      chip.title = 'pause the page at this moment';
+      chip.addEventListener('click', (e) => (e.stopPropagation(), seekMoment(m)));
+    }
+    return chip;
+  };
+  S.momentChip = momentChip;
+  // A pin's moment: on a GIF (it can't be paused), how long it had been showing; else, while paused, where the paused
+  // thing it is about stood.
+  // Every way (Leo, 19 Nov: "it says only if i pause one"): the page paused, one thing paused, or nothing paused, a pin
+  // on a moving thing takes that thing's moment as the pin goes down (begin); a pin on still things, while paused, the
+  // paused thing most in view.
+  const momentFor = (anchor) => {
+    if (anchor.shownFor !== undefined) return { kind: 'gif', at: anchor.shownFor };
+    const el = ownMotion(anchor) || (S.paused ? inView() : null);
+    return el ? momentOf(el) : undefined;
+  };
+  S.momentFor = momentFor;
   const msOf = (el) => {
     if (!el) return undefined;
     const t = el instanceof HTMLVideoElement ? el.currentTime * 1000 : Number(animsOf(el)[0]?.currentTime);
@@ -1817,8 +2009,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.recheckCtl = () => S.mouse && sayCtl(document.elementFromPoint(S.mouse.x, S.mouse.y));
   const control = (t) => {
     if (S.overControls) return false; // with the switch on, nothing on the page keeps its click
+    const hand = !document.documentElement.classList.contains('lab-ink-over'); // over inked words the hand is ours (wordink.ts)
     for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
-      if (n.matches(INTERACTIVE) || getComputedStyle(n).cursor === 'pointer') return true;
+      if (n.matches(INTERACTIVE) || (hand && getComputedStyle(n).cursor === 'pointer')) return true;
     return false;
   };
   // data-uncommentable: no new pins or areas start inside this part of the page (same attribute as Claude artifacts).
@@ -2139,18 +2332,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     };
     range.setEnd(range.endContainer, trim(range.endContainer, range.endOffset, -1));
     range.setStart(range.startContainer, trim(range.startContainer, range.startOffset, 1));
-    // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
-    // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters.
-    /** @param {Node} node @param {number} i @param {number} step */
-    const grow = (node, i, step) => {
-      const d = node.nodeType === 3 ? /** @type {Text} */ (node).data : '';
-      while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
-      return i;
-    };
-    if (/\s/.test(String(range).trim())) {
-      range.setStart(range.startContainer, grow(range.startContainer, range.startOffset, -1));
-      range.setEnd(range.endContainer, grow(range.endContainer, range.endOffset, 1));
-    }
+    wholeWords(range); // a drag that starts or ends inside a word takes the whole word (anchoring.ts)
     const exact = String(range).replace(/\s+/g, ' ').trim();
     if (!exact) return;
     // The pin sits on the last selected letter (where the selection ended), when that's in the same element as its
@@ -2177,6 +2359,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       exact: short(exact, 300),
       prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, '').slice(-40),
       suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
+      selected: true, // picked by selecting, not the word under a click: shown as ink on the words (wordink.ts)
+      // Saved at 300 characters; a longer selection also keeps its last words, so the ink reaches them (anchoring.ts).
+      ...(exact.length > 300 && { tail: exact.slice(-40) }),
     };
     sel.removeAllRanges();
     return anchor;
@@ -2516,8 +2701,27 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   document.addEventListener('mouseup', (e) => {
     if (S.on && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
+  // A sent pin's card, opened by the send for its undo and not touched since, lets go on a press on the page, at once, so a
+  // drag over words it covered still selects them (a4c5ddc). The click that press makes only lets it go (Leo, 19 Nov:
+  // "when comment still 'undo' clicking outside opening another comment"): no new pin there; the sent one stays, and the
+  // next click pins as usual. A link or the page's own control still acts (onPageClick prevents nothing).
+  S.undoLetGo = 0; // when a press let a sent pin's undo card go: that press's click starts no pin
+  // Select mode takes a press on the page before this sees it (select.ts): its pick lets the card go the same way, so the
+  // card's reply box doesn't keep the keys (Tab steps the picks).
+  S.letUndoGo = (e, draw = true) => {
+    if (S.draft || !S.undo || S.openId !== S.undo.id || S.undo.touched || e.composedPath().includes(host)) return false;
+    S.undo = null;
+    S.openId = null;
+    if (draw) render();
+    return true;
+  };
+  document.addEventListener('pointerdown', (e) => {
+    S.undoLetGo = 0;
+    if (S.letUndoGo(e)) S.undoLetGo = Date.now();
+  }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
+    if (S.undoLetGo && Date.now() - S.undoLetGo < 2000) return void (S.undoLetGo = 0); // this click let a sent pin's undo card go (above)
     if (fluidState() === 'bar' && !(e.shiftKey && !S.shiftUp)) return dropOffer(); // the first click elsewhere only lets the bar go
     if (S.draft || S.openId) {
       // Typed text doesn't keep it open (Leo, 18 Nov): the click closes it and the words stay as a draft (the box saves them as
@@ -2573,12 +2777,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const movePins = (scrolled = false) => {
     // An open thread is drawn again with its pin; after a scroll, not when the browser holds the pin and its card.
     const openHeld = () => { const pin = pinsById.get(S.openId); return heldPin(pin) && !pinData.get(pin)?.zone; };
-    if (!S.on || (S.openId && !(scrolled && openHeld()))) return render();
+    if (!S.on || inkGone() || (S.openId && !(scrolled && openHeld()))) return render();
     newPass();
     const all = threads().filter((c) => c.anchor?.kind !== 'page');
     const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
     const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
     if (places.length + all.filter(skip).length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
+    // A pin whose words show again (back after an edit) turns into ink again.
+    if (places.some(([pin, { zone }, c]) => !zone && !pin.classList.contains('on-ink') && inkRange(c.anchor))) return render();
     for (const [pin, { left, top, clipped, zone }, c] of places) {
       const held = placePin(pin, c, pin.classList.contains('ink') && zone, left, top, false);
       pin.style.visibility = clipped && !held ? 'hidden' : '';
@@ -2722,8 +2928,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
-  // Fields and editable text stay selectable.
-  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  // Fields and editable text stay selectable. With ink on words (lab-ink-on, wordink.ts) the text stays selectable and only
+  // selectstart (below) keeps a drag from selecting: Safari paints a highlight over whole blocks of text that can't be
+  // selected, and the ink is a highlight.
+  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit, .lab-ink-on) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit, .lab-ink-on) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   // Letting go of Shift keeps text selectable a moment longer, so a selection made with it isn't dropped before its
   // comment opens.
   /** @type {any} */
@@ -2780,6 +2988,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
+  // Over inked words (a click opens their comment, wordink.ts) the page shows a hand.
+  fonts.textContent += 'html.lab-ink-over body, html.lab-ink-over body * { cursor: pointer !important; }';
   // The agent's ring draws its arc in (lab C2): an arc length that can animate has to be registered on the page itself.
   fonts.textContent += '@property --lab-arc { syntax: "<percentage>"; inherits: false; initial-value: 66%; }';
   // The room a phone's sheet made below the page's end (see goTo) stays after the sheet closes, so the page doesn't jump
@@ -2815,10 +3025,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     refreshPinCursor();
     if (S.on) showHint();
     document.body.append(host);
-    // The page's own selection while commenting, and the quoted words of an open text comment.
+    // The page's own selection while commenting (ink on words off), and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    fonts.textContent += inkCss(); // ink on words: the bands, and the selection drawn as sent ink (wordink.ts)
     if (flag('select')) startFlag('select');
     if (flag('native')) startFlag('native');
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on

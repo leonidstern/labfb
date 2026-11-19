@@ -73,6 +73,16 @@ test('sectionBar was kept: no flag, and the widget always starts the section bar
   assert.equal(widget.match(/startSections\(/g).length, 1, 'started in one place only');
 });
 
+test('inkOnText is a flag, off until a file turns it on (the page side is test/browser/ink.mjs)', () => {
+  assert.ok(FLAGS.inkOnText);
+  const dir = tmp();
+  assert.equal(read(dir).values.flags.inkOnText, false);
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { inkOnText: true } }));
+  const s = read(dir);
+  assert.equal(s.values.flags.inkOnText, true);
+  assert.deepEqual(s.problems, []);
+});
+
 // Your own settings file, in a config home of its own (the switch writes where XDG_CONFIG_HOME says).
 const withConfig = (cfg, fn) => {
   const was = process.env.XDG_CONFIG_HOME;
