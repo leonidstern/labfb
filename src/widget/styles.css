@@ -321,8 +321,9 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .mark .eye { fill: var(--_bg); }
 .listener .mark { margin: -2px 0 -1px -3px; }
 .listener .mark { fill: rgb(36, 160, 70); }
-.listener.idle .mark { fill: var(--_fg); }
-.listener.stale .mark { opacity: .4; }
+.listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
+.listener.stale .mark { fill: rgb(217, 139, 0); } /* reconnecting: amber */
+.listener.stale.idle .mark { fill: var(--_muted); }
 .mark :is(.e1, .e2, .eye) { transform-box: fill-box; transform-origin: 35% 100%; }
 .mark .eye { transform-origin: 50% 50%; }
 .listener.working .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
@@ -544,7 +545,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .quick button { border: 0; border-radius: var(--_r-s); padding: 5px 8px; background: var(--_soft); font-size: 12px; letter-spacing: 0; cursor: pointer; }
 .quick button:hover { background: var(--_hover); }
 .quick button.on { background: var(--_fg); color: var(--_bg); font-weight: 600; }
-.quick button.hl { box-shadow: 0 0 0 1.5px var(--_fg); } /* the action a typed / names: Enter runs it */
+.quick.alt button::after { content: attr(data-n); margin-left: 6px; opacity: .55; font-variant-numeric: tabular-nums; } /* ⌥ held: the key for each */
 /* Corners inside corners (Leo, 18 Nov): an inner radius is the outer one less the gap between them, so they run
    concentric: the bar's buttons sit 6 px in, the dialog's quick buttons and box 8 px in. */
 .p-bar button { border-radius: max(0px, calc(var(--_radius) - 6px)); }

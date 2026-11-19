@@ -1216,6 +1216,9 @@ const claim = (pages) => {
     writeAtomic(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
   } catch {}
 };
+// The last wait on each set of pages (its key), to tell a second session on the same pages that it isn't alone.
+const OTHER_MS = 600000;
+const lastWait = new Map(); // key -> { who, label, at }
 const claimed = () => {
   const now = Date.now();
   for (const w of waiters) for (const p of w.pages || []) claims.set(p, now);
@@ -1504,7 +1507,7 @@ async function wakeNow() {
     waitEnded = Date.now();
     clearTimeout(w.timer);
     remember(w);
-    deliver(w.res, got, w.who, w.ack, w.key);
+    deliver(w.res, w.heads ? { ...got, text: w.heads + got.text } : got, w.who, w.ack, w.key);
   }
 }
 
@@ -1909,6 +1912,12 @@ const handler = async (req, res) => {
       // A new wait for the same pages replaces the old one (the same session listening again, or another taking over);
       // waits for other pages stay.
       const key = want ? want.join(',') : '*';
+      const by = whoOf(sessionFrom(req));
+      // Another session listened on these same pages a moment ago: say so to both (Leo, 18 Nov: two sessions on /design
+      // took turns ending each other's wait; a pin went to the one about to stop and waited 8 minutes).
+      const before = lastWait.get(key);
+      const other = before && before.who !== by && Date.now() - before.at < OTHER_MS ? before : null;
+      if (other) console.log(`[lab] two sessions listen on ${want ? want.join(' ') : 'every page'}: ${other.label} and a new one. Pins go to whichever wait is open.`);
       for (const old of waiters.filter((w) => w.key === key)) {
         waiters = waiters.filter((w) => w !== old); // before its close handler runs, so it doesn't mark Claude as away
         clearTimeout(old.timer);
@@ -1920,6 +1929,10 @@ const handler = async (req, res) => {
       const me = sessionFrom(req);
       const named = me?.name && !/^session [0-9a-f]+$/i.test(me.name) && me.name !== me.agent;
       const w = { res, pages: want, key, who: whoOf(session), ack: ack === true, label: named ? `${me.agent || 'Claude'} (${me.name})` : me?.agent || 'Claude' };
+      lastWait.set(key, { who: w.who, label: w.label, at: Date.now() });
+      const heads = other
+        ? `Heads up: ${other.label} also listened on ${want ? want.join(', ') : 'every page'} ${Date.now() - other.at < 60000 ? 'just now' : `${Math.round((Date.now() - other.at) / 60000)} min ago`}. Two sessions on one page take turns at its pins (each wait ends the other's). Leave the page to one of you.\n\n`
+        : '';
       // The same session waiting again before it said it got the last hand-off never saw it: those pins go out again.
       for (const [id, d] of unacked) if (d.who === w.who && d.key === key) takeBack(id);
       claim(want);
@@ -1927,8 +1940,9 @@ const handler = async (req, res) => {
       recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
       if (got?.text) {
         remember(w);
-        return deliver(res, got, w.who, w.ack, key);
+        return deliver(res, heads ? { ...got, text: heads + got.text } : got, w.who, w.ack, key);
       }
+      w.heads = heads; // said with its first hand-off
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;
         waiters = waiters.filter((x) => x !== w);
@@ -2036,7 +2050,7 @@ const handler = async (req, res) => {
         if (runningLabs().some((l) => l.port === n)) return res.writeHead(409).end('already running');
         const env = { ...process.env, LABIT_EXIT_WITH_PARENT: '', ...(p.edge ? { LABIT_EDGE: p.edge } : {}) }; // a lab started again outlives the one that started it
         spawn(process.execPath, [...p.execArgv, ...p.argv.filter((a) => a !== '--no-open'), '--no-open'], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
-        fs.rmSync(path.join(PARKED, `${n}.json`), { force: true });
+        // The lab takes its parked record itself once it runs (and with it the session that listened last).
         console.log(`[lab] started ${p.name} again on ${n}`);
         return answer(res, { ok: true });
       }
@@ -2065,11 +2079,7 @@ const handler = async (req, res) => {
       }
       stopListening();
       if (action === 'stop') return answer(res, { ok: true });
-      try {
-        fs.mkdirSync(PARKED, { recursive: true });
-        const edge = process.env.LABIT_EDGE;
-        writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(action === 'archive' ? { archived: true } : {}), at: new Date().toISOString() }, null, 2));
-      } catch {}
+      park(action === 'archive');
       console.log('[lab] parked from the page: start it again from the switcher (⌘K) in another lab, or run labit here');
       answer(res, { ok: true });
       setTimeout(bye, 200); // after the answer is out
@@ -2306,6 +2316,15 @@ server.on('listening', async () => {
   origin = `http://localhost:${PORT}`;
   saveServer();
   writeAtomic(LOCK, JSON.stringify({ pid: process.pid, at: Date.now(), port: PORT }), 0o600); // a lab starting next asks this port
+  // Started again after it parked (⌘K, or labit in its folder): the session that listened last is its listener again,
+  // so that session's wake (the labit plugin) finds this lab and the next pin reaches it, from any folder.
+  try {
+    const was = JSON.parse(fs.readFileSync(path.join(PARKED, `${PORT}.json`), 'utf8'));
+    if (was.root === ROOT) {
+      if (!session && was.session?.id) session = was.session;
+      fs.rmSync(path.join(PARKED, `${PORT}.json`), { force: true });
+    }
+  } catch {}
   register();
   await persist();
   console.log(`[lab] ${origin}  ·  labit ${VERSION}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
@@ -2322,6 +2341,28 @@ server.on('listening', async () => {
     console.log(`[lab] no HTML pages in ${ROOT} — nothing to comment on yet. Name the folder that has them (${CMD} dist), or start your dev server and run this again.`);
   if (!opts['no-open']) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [origin + start], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
 });
+// Parked: a record of how it was started (in ~/.labit/parked), so the switcher (⌘K) in another lab, or labit run in
+// its folder again, starts it the same way.
+const park = (archived = false, why = '') => {
+  try {
+    fs.mkdirSync(PARKED, { recursive: true });
+    const edge = process.env.LABIT_EDGE;
+    writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(edge ? { edge } : {}), ...(archived ? { archived: true } : {}), ...(why ? { why } : {}), ...(session ? { session } : {}), at: new Date().toISOString() }, null, 2));
+  } catch {}
+};
+// A lab nobody uses parks itself after an hour (LABIT_IDLE_MS; 0 keeps it running): no page open on it, no agent
+// waiting, none working on its pins. Before, labs from old sessions ran for days, 35 at once (Leo, 18 Nov).
+const IDLE_MS = Number(process.env.LABIT_IDLE_MS ?? 3600000);
+let usedAt = Date.now();
+if (IDLE_MS > 0)
+  setInterval(() => {
+    if (clients.size || waiters.length || mode === 'working') usedAt = Date.now();
+    else if (Date.now() - usedAt >= IDLE_MS) {
+      park(false, 'idle');
+      console.log(`[lab] nobody used this lab for ${Math.round(IDLE_MS / 60000)} min: parked. Start it again from the switcher (⌘K) in another lab, or run labit here`);
+      bye();
+    }
+  }, Math.min(60000, Math.max(1000, IDLE_MS / 4))).unref();
 const bye = () => {
   try {
     if (JSON.parse(fs.readFileSync(SERVER, 'utf8')).pid === process.pid) fs.rmSync(SERVER);
