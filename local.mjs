@@ -1834,6 +1834,18 @@ const withIcon = (html) => {
   const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
 };
+// The section bar keeps its own room at the top of the page, so it never covers the page's first lines.
+// Kept here, from the first paint, when the page has sections (an h2 or h3, or more than one h1): kept by the widget
+// alone, it came a frame or two after the page had painted, and the page jumped down. 38 px, 44 on a phone, as the bar
+// (src/widget/styles.css .sbar); not with comments hidden (lab-on). The widget takes it over (src/widget/sections.ts).
+const ROOM = '<style data-lab="section-bar">html { padding-top: 38px !important; } @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { html { padding-top: 44px !important; } }</style>' +
+  `<script data-lab="section-bar">try{localStorage.getItem('lab-on')==='0'&&document.currentScript.previousElementSibling.remove()}catch{}</script>`;
+const withRoom = (html) => {
+  const body = html.replace(/<(script|style|template|svg)\b[\s\S]*?<\/\1>/gi, '');
+  if (!/<h[23][\s>]/i.test(body) && (body.match(/<h1[\s>]/gi) || []).length < 2) return html;
+  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  return at ? html.slice(0, at.index + at[0].length) + ROOM + html.slice(at.index + at[0].length) : ROOM + html;
+};
 // A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
 // where it sits: Chrome's location.reload is its own, and cannot be replaced, and by the time the widget loads the
 // dev server's client already holds its socket. So this goes in first, before anything else on the page: it wraps
@@ -2691,7 +2703,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(withIcon(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
+        inject((inFrame(req) ? withIcon : (h) => withRoom(withIcon(h)))(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
     }
     sendFile(req, res, file);
   } catch (e) {

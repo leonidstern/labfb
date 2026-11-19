@@ -290,7 +290,7 @@ export function startLive() {
     // An HTML page: fetch it and change only what differs, in place (scroll, open things and typed text stay). A
     // changed script or stylesheet list can't be patched safely: then it's a normal reload.
     const ownStyles = () => new Set([W.fonts, W.pinCursorStyle]);
-    const scriptsOf = (doc) => [...doc.querySelectorAll('script')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
+    const scriptsOf = (doc) => [...doc.querySelectorAll('script:not([data-lab])')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
     const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
     const keepOut = (n) => n === W.host || (n.nodeType === 1 && n.localName === 'script');
     // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
@@ -378,8 +378,9 @@ export function startLive() {
             W.drawList();
           }
           const mine = ownStyles();
-          const olds = [...document.head.querySelectorAll('style')].filter((x) => !mine.has(x));
-          const news = [...doc.head.querySelectorAll('style')];
+          // The lab's own (data-lab: the section bar's room, sections.ts) are the widget's, not the page's.
+          const olds = [...document.head.querySelectorAll('style:not([data-lab])')].filter((x) => !mine.has(x));
+          const news = [...doc.head.querySelectorAll('style:not([data-lab])')];
           news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
           for (const o of olds.slice(news.length)) o.remove();
           aroundMorph(() => morphKids(document.body, doc.body)); // a choice tried in the page: its words back first (thread.ts)
