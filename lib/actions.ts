@@ -55,5 +55,5 @@ export function listFrom(body: unknown): { actions: Action[] } | { why: string }
   if (list.length > LIST_MAX) return { why: `${LIST_MAX} actions at most` };
   const whys: string[] = [];
   const actions = actionItems(list, (w) => whys.push(w));
-  return whys.length ? { why: whys[0].replace(/; ignored$/, '') } : { actions };
+  return whys.length ? { why: whys[0].replace(/;? ignored$/, '') } : { actions };
 }
