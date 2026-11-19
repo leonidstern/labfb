@@ -89,9 +89,9 @@ try {
       await p.keyboard.press('Shift+Digit1');
       await sleep(500);
       const a3 = await rect('a');
-      await p.mouse.click(a3.x + 20, a3.y + 20); // comment mode: a tap pins; close that box
+      await p.mouse.click(a3.x + 20, a3.y + 20); // comment mode: a tap pins (or only lets the sent pin's undo card go); close a box it opened
       await sleep(300);
-      await p.keyboard.press('Escape');
+      if (await sh("return Boolean(r.querySelector('.float textarea'))")) await p.keyboard.press('Escape'); // Esc on an empty board would leave it
       await sleep(200);
       // The frame moves in the board file (another writer, or the agent): the board follows it, and the pin with it.
       const now = await (await fetch(`${B}/_lab/api/board?name=pins`)).json();

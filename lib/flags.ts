@@ -9,6 +9,7 @@
 export const FLAGS: Record<string, { name: string; since: string }> = {
   select: { name: 'select mode (V): pick a block and ask the agent to remove, restyle, move or vary it', since: '0.6.3' },
   inkOnText: { name: 'ink on selected words, not a pin', since: '0.6.3' },
+  native: { name: 'let the browser do it: pins and cards held on their spot, menus as popovers, boxes that grow by themselves (Chromium, Safari; the old way elsewhere)', since: '0.6.3' },
 };
 
 /** Every flag, off. */

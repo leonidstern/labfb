@@ -20,6 +20,7 @@ type Deps = {
   sheet: (open: boolean) => void;
   swipe: (node: HTMLElement, close: () => void) => void;
   leave: (node: HTMLElement, hide: () => void) => void; // the card's exit, then hide
+  native?: () => boolean; // the flag native: on a computer the box is a popover (the browser's top layer, Esc, a press elsewhere)
 };
 
 let d: Deps;
@@ -51,6 +52,19 @@ export function bindSwitcher(deps: Deps) {
   panel.append(el('div', { class: 'handle' }), input, list, foot);
   box.append(panel);
   (root.querySelector('.ui') || root).append(box); // with the bar, so a pinch zoom keeps it on screen (sheets.ts)
+  // With the flag native, a computer's box is a popover: above the page's own dialogs and full screen, and the browser
+  // closes it on a press elsewhere or Esc (then it says so here). Phones keep it one of the widget's sheets.
+  if (d.native?.() && !matchMedia('(pointer: coarse)').matches && typeof box.showPopover === 'function') {
+    box.popover = 'auto';
+    box.addEventListener('beforetoggle', (e) => {
+      if ((e as ToggleEvent).newState !== 'closed' || box.hidden) return;
+      // The browser closed it (a press elsewhere): it leaves as a card does. The popover's display is held for the length of
+      // the exit (switcher.css), so the card's own leaving plays; openSwitcher takes the class off again.
+      panelEl.classList.add('out');
+      box.hidden = true;
+      d.sheet(false);
+    });
+  }
   d.swipe(panel, () => closeSwitcher());
   input.addEventListener('input', () => {
     active = 0;
@@ -97,6 +111,7 @@ export function openSwitcher() {
   d.beforeOpen();
   panelEl.classList.remove('out'); // opened again while it was leaving
   box.hidden = false;
+  if (box.popover && !box.matches(':popover-open')) box.showPopover();
   d.sheet(true);
   input.value = '';
   active = 0;
@@ -114,7 +129,11 @@ export function closeSwitcher() {
   d.sheet(false);
   // A computer: the box leaves as a card does. A phone: the sheet goes as the widget's sheets do.
   if (matchMedia('(pointer: coarse)').matches) box.hidden = true;
-  else d.leave(panelEl, () => (box.hidden = true));
+  else
+    d.leave(panelEl, () => {
+      box.hidden = true;
+      if (box.popover && box.matches(':popover-open')) box.hidePopover();
+    });
 }
 
 /** Ask for the labs ahead, as the ⋯ menu opens, so the box opens with its list. */
