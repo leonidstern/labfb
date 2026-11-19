@@ -60,16 +60,16 @@ test('a flag that is not true or false is ignored, with a word about it', { skip
   assert.equal(s.values.flags[one], false);
 });
 
-test('sectionBar is off until switched on, and the widget starts nothing without it', () => {
-  assert.equal(flagDefaults().sectionBar, false);
-  assert.ok(FLAGS.sectionBar.name && FLAGS.sectionBar.since);
+test('sectionBar was kept: no flag, and the widget always starts the section bar, in one place', () => {
+  assert.ok(!('sectionBar' in FLAGS), 'kept: the flag is gone');
   assert.ok(!('sinceLooked' in FLAGS), 'the Added pill is gone');
   const dir = tmp();
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: true } }));
-  assert.deepEqual(flagsOn(read(dir).values.flags), ['sectionBar']);
+  const s = read(dir);
+  assert.match(s.problems[0], /sectionBar is not something being tried/, 'an old file is told, not refused');
   // The widget's only way in: the bar, the kept marks and every request come from startSections().
   const widget = fs.readFileSync(new URL('../src/comments.js', import.meta.url), 'utf8');
-  assert.match(widget, /name === 'sectionBar'\) startSections\(\)/);
+  assert.match(widget, /load\(\);\n\s+startSections\(\);/);
   assert.equal(widget.match(/startSections\(/g).length, 1, 'started in one place only');
 });
 
@@ -89,34 +89,34 @@ test('a switch is saved in your own settings, keeps the rest of the file, and of
   const cfg = tmp();
   fs.mkdirSync(path.join(cfg, 'labit'));
   fs.writeFileSync(mine(cfg), JSON.stringify({ name: 'Leo', shortcuts: { chat: 'x' } }));
-  const file = withConfig(cfg, () => savePersonalFlag('sectionBar', true));
+  const file = withConfig(cfg, () => savePersonalFlag('select', true));
   assert.equal(file, mine(cfg));
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { name: 'Leo', shortcuts: { chat: 'x' }, flags: { sectionBar: true } });
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { name: 'Leo', shortcuts: { chat: 'x' }, flags: { select: true } });
   const s = withConfig(cfg, () => loadSettings(tmp(), {}, {}));
-  assert.equal(s.values.flags.sectionBar, true);
-  assert.equal(s.flagFrom.sectionBar, 'personal');
-  withConfig(cfg, () => savePersonalFlag('sectionBar', false));
+  assert.equal(s.values.flags.select, true);
+  assert.equal(s.flagFrom.select, 'personal');
+  withConfig(cfg, () => savePersonalFlag('select', false));
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { name: 'Leo', shortcuts: { chat: 'x' } });
   assert.throws(() => withConfig(cfg, () => savePersonalFlag('wasKeptLastYear', true)), /not something being tried/);
 });
 
 test('a switch makes your settings file when there is none, and never writes over one that is not JSON', () => {
   const cfg = tmp();
-  withConfig(cfg, () => savePersonalFlag('sectionBar', true));
-  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { sectionBar: true } });
+  withConfig(cfg, () => savePersonalFlag('select', true));
+  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { select: true } });
   fs.writeFileSync(mine(cfg), '{ "name": "Leo", }');
-  assert.throws(() => withConfig(cfg, () => savePersonalFlag('sectionBar', false)));
+  assert.throws(() => withConfig(cfg, () => savePersonalFlag('select', false)));
   assert.equal(fs.readFileSync(mine(cfg), 'utf8'), '{ "name": "Leo", }', 'left as it was');
 });
 
 test("the project's labit.json wins over your switch, and says it is the project's", () => {
   const dir = tmp();
   const cfg = tmp();
-  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: false } }));
-  withConfig(cfg, () => savePersonalFlag('sectionBar', true));
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { select: false } }));
+  withConfig(cfg, () => savePersonalFlag('select', true));
   const s = withConfig(cfg, () => loadSettings(dir, {}, {}));
-  assert.equal(s.values.flags.sectionBar, false);
-  assert.equal(s.flagFrom.sectionBar, 'project');
+  assert.equal(s.values.flags.select, false);
+  assert.equal(s.flagFrom.select, 'project');
 });
 
 // The lab: POST /_lab/flags with the browser's key, from this computer. One lab, started once for these checks.
@@ -144,25 +144,25 @@ test('the Experiments switch: owner only, saved in your settings, on the page an
   const cfg = tmp();
   const { B, html, key, flagsOf, post } = await startLab(dir, cfg);
   assert.ok(key, "this computer's page has the key");
-  assert.equal(flagsOf(html).sectionBar.on, false);
-  assert.equal(flagsOf(html).sectionBar.project, undefined);
+  assert.equal(flagsOf(html).select.on, false);
+  assert.equal(flagsOf(html).select.project, undefined);
 
-  assert.equal((await post({ flag: 'sectionBar', on: true }, '')).status, 403, 'no key: refused');
-  assert.equal((await post({ flag: 'sectionBar', on: true }, 'x'.repeat(key.length))).status, 403, 'a wrong key: refused');
+  assert.equal((await post({ flag: 'select', on: true }, '')).status, 403, 'no key: refused');
+  assert.equal((await post({ flag: 'select', on: true }, 'x'.repeat(key.length))).status, 403, 'a wrong key: refused');
   assert.equal((await post({ flag: 'wasKeptLastYear', on: true })).status, 400);
-  assert.equal((await post({ flag: 'sectionBar', on: 'yes' })).status, 400);
+  assert.equal((await post({ flag: 'select', on: 'yes' })).status, 400);
   assert.equal((await post({ flag: '__proto__', on: true })).status, 400);
   assert.equal(fs.existsSync(mine(cfg)), false, 'nothing written for a refused switch');
 
-  const r = await post({ flag: 'sectionBar', on: true });
+  const r = await post({ flag: 'select', on: true });
   assert.equal(r.status, 200);
-  assert.deepEqual((await r.json()).flags, ['sectionBar']);
-  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { sectionBar: true } }, 'in your own settings');
+  assert.deepEqual((await r.json()).flags, ['select']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { select: true } }, 'in your own settings');
   assert.equal(fs.existsSync(path.join(dir, 'labit.json')), false, "the project's file is not touched");
-  assert.equal(flagsOf(await (await fetch(B + '/')).text()).sectionBar.on, true, 'the next page load has it, no restart');
-  assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, ['sectionBar'], 'open pages hear it');
+  assert.equal(flagsOf(await (await fetch(B + '/')).text()).select.on, true, 'the next page load has it, no restart');
+  assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, ['select'], 'open pages hear it');
 
-  await post({ flag: 'sectionBar', on: false });
+  await post({ flag: 'select', on: false });
   assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), {});
   assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, []);
 });
@@ -170,10 +170,10 @@ test('the Experiments switch: owner only, saved in your settings, on the page an
 test("a flag the project's labit.json sets: shown as the project's, and the switch is refused", async () => {
   const dir = tmp();
   const cfg = tmp();
-  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: true } }));
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { select: true } }));
   const { html, flagsOf, post } = await startLab(dir, cfg);
-  assert.deepEqual(flagsOf(html).sectionBar, { name: FLAGS.sectionBar.name, on: true, project: true });
-  assert.equal((await post({ flag: 'sectionBar', on: false })).status, 409);
+  assert.deepEqual(flagsOf(html).select, { name: FLAGS.select.name, on: true, project: true });
+  assert.equal((await post({ flag: 'select', on: false })).status, 409);
   assert.equal(fs.existsSync(mine(cfg)), false);
 });
 
@@ -182,11 +182,11 @@ test('`labit settings` names each flag that is on and whose it is', async () => 
   const cli = (cwd, cfg) => new Promise((resolve) => execFile(process.execPath, [LAB, 'settings'], { cwd, env: { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg } }, (err, out) => resolve({ code: err?.code ?? 0, out })));
   const dir = tmp();
   const cfg = tmp();
-  withConfig(cfg, () => savePersonalFlag('sectionBar', true));
+  withConfig(cfg, () => savePersonalFlag('select', true));
   let r = await cli(dir, cfg);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /^flags\s+sectionBar \(yours\)\s+your settings$/m);
-  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: true } }));
+  assert.match(r.out, /^flags\s+select \(yours\)\s+your settings$/m);
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { select: true } }));
   r = await cli(dir, cfg);
-  assert.match(r.out, /^flags\s+sectionBar \(labit\.json\)\s+labit\.json \+ your settings$/m);
+  assert.match(r.out, /^flags\s+select \(labit\.json\)\s+labit\.json \+ your settings$/m);
 });

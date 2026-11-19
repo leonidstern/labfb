@@ -37,7 +37,7 @@ const sec = (id, title, words = `Words of ${title}.`) => `<section id="${id}"><h
 const page = ({ head = '', body = '', extra = '', title = 'Plan' } = {}) =>
   `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{margin:0 30px;font:16px/1.4 serif}h1{margin:50px 0}section{height:1100px}${head}</style><body><h1>${title}</h1>` +
   (body || sec('speed', 'Speed') + sec('cost', 'Cost') + sec('risk', 'Risk') + sec('plan', 'Next steps')) + extra + '</body>';
-write('labit.json', JSON.stringify({ port: PORT, flags: { sectionBar: true } }));
+write('labit.json', JSON.stringify({ port: PORT })); // no flag: the section bar is simply labit
 write('index.html', page());
 write('plain.html', page({ body: '<p>Only words.</p>' }));
 write('sticky.html', page({ head: 'h1{display:none}header{position:sticky;top:0;height:60px;background:#eee;z-index:5}', body: '<header>Site</header>' + sec('a', 'Alpha') + sec('b', 'Beta') }));
@@ -48,7 +48,7 @@ write('long.html', page({ body: Array.from({ length: 62 }, (_, i) => `<h2>Headin
 write('h1s.html', page({ body: '<h1>One</h1><p>a</p><h1>Two</h1><p>b</p><h3>Small</h3><h3>Smaller</h3>' }));
 write('tight.html', page({ head: 'h1{margin:0}' }));
 write('many.html', page({ body: Array.from({ length: 14 }, (_, i) => sec(`m${i}`, `Section number ${i}`)).join('') }));
-fs.writeFileSync(path.join(OFF_DIR, 'labit.json'), JSON.stringify({ port: PORT + 200 }));
+fs.writeFileSync(path.join(OFF_DIR, 'labit.json'), JSON.stringify({ port: PORT + 200, flags: { sectionBar: false } })); // a file from before it was kept
 write('index.html', page(), OFF_DIR);
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
 const offServer = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: OFF_DIR, env });
@@ -161,7 +161,7 @@ try {
     check(eng, 'a section read on one device clears on the other (same name)', await until(async () => !(await states()).includes('Questions:new'), 8000), await states());
     await other.close();
 
-    // ---- the page's own bar, no sections, no flag ----
+    // ---- the page's own bar, no sections, an old flag ----
     const S = await open(await context(), '/sticky');
     const gap = await S.shadow(() => { return r.querySelector('.sbar').getBoundingClientRect().top; });
     check(eng, "under the page's own sticky bar", gap >= 59, String(gap));
@@ -177,8 +177,8 @@ try {
     check(eng, 'the page as served already keeps the room (no jump at first paint)', /<style data-lab="section-bar">/.test(served) && !/data-lab="section-bar"/.test(await (await fetch(`${B}/plain`)).text()));
     const N = await open(await context(), '/plain');
     check(eng, 'no sections, no bar', (await N.chips()).length === 0 && (await N.shadow(() => { return r.querySelector('.sbar')?.hidden !== false; })));
-    const F = await open(await context(), '/', 'leo-off', OFF);
-    check(eng, 'flag off: no bar and no request for sections', (await F.shadow(() => { return !r.querySelector('.sbar'); })) && (await F.p.evaluate(() => localStorage.getItem('lab-sections:/index'))) === null);
+    const F = await open(await context(), '/', 'old-flag', OFF);
+    check(eng, 'kept: an old sectionBar: false in labit.json still gets the bar', (await F.chips()).length === 4, String((await F.chips()).length));
 
     // ---- which headings are sections ----
     const LV = await open(await context(), '/levels');

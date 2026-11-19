@@ -13,7 +13,7 @@
 // down. A mark is a section's key (its id, or its heading's words) and a hash of its text.
 // The bar only ever scrolls itself sideways (nav.scrollTo): never scrollIntoView, which dragged the whole page to the top.
 // Phones: one line that scrolls sideways, opening at the first section with a status, above the sheets' dimmed page.
-// A computer: the page's title on the left, and what does not fit folds into "…". Flag: sectionBar (lib/flags.ts).
+// A computer: the page's title on the left, and what does not fit folds into "…".
 import { noisy } from '../../lib/ids.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

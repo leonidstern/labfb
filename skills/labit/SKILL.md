@@ -28,6 +28,7 @@ Start it with `npx @leonidstern/labit@latest`, so the person gets the newest ver
    In Claude Code, with the labit plugin, a pin that lands while you are busy or not waiting arrives as your next turn ("labit: a new pin on…"): run the `wait` it names to read it, answer, and listen again with `wait --bg`.
 4. Read each pin's or chat message's whole thread before answering (every message and reply). The page, URL or `#section` is where it sits, not what it asks. Cut short ("… N earlier messages")? Read those first.
    For each comment: edit the file (the page reloads by itself), then answer on the pin with `LAB reply <id> --done "<what changed>"`: `--done` tells the page the ask is done and closes the thread. Use the comment id that `wait` printed, not the number: numbers shift after a delete. Starting on something that takes more than a minute (a build, a lab restart, a PR): answer `--on-it` on each of its pins first, before the work, since the person sees nothing until you do; then `LAB reply <id> --progress "<what you're on now>"` every minute or so (one short line, no message: the page shows it by your name and on the pin; an answer clears it). A pin with no sign for 5 minutes turns grey. If you need something from the person, ask in the reply with `--question` and leave it open. (Older labit read "Done: …" at the start of the text; that still works, the flag is clearer.) Keep answers short, since they're read in a small window: one point per line or two, a blank line between points, `- ` lines for lists.
+   A pin with an `action:` line came from a button on the page (`data-lab-action`): do what it names, then answer `--done`. When it says "confirm first" (`data-lab-confirm`: merge, close and the like), reply `--question` with what will happen and do it only after the person's ✓ in that thread. Action buttons go on pages you write; the page shows only what you wrote into it.
    To suggest or ask something about the page yourself ("what I'd improve"), don't put a list in a reply: leave your own pins with `LAB pin <selector> "1. <point>" [--page /path]`, one pin per point, numbered, each on its spot. It prints the pin's id.
 5. Start `wait` again right away, so the page never says "no agent listening" while you are around. If `wait` says the page was closed (no page for an hour), stop listening: start again only when the person asks.
 
@@ -43,6 +44,16 @@ When the person says "use lab", "in lab" or "show it in lab", show the page in l
 5. For later changes, edit the file in the project, or publish a published page again. The page reloads by itself.
 
 Start local, always. The page stays on this computer (for a phone, add `--wifi`, then run `LAB invite` and give the person the link it prints: it lets one device in, once, within ten minutes). labit has no hosted labs for now, so to share a page with someone elsewhere, ask the person how they want it shared. Make an Artifact only if they ask for one.
+
+## Boards (options, widths, flows)
+
+A board shows pages side by side as frames. Use one when the person asks for options or variants, one page at several widths, or a flow. Don't describe options in a reply: draw them.
+
+- Options: `LAB board new "<topic>" --of /page --variants 3`. The lab copies the page into `.lab/boards/<board>/a.html`, `b.html`, `c.html` and prints the link. Edit those files; never write the page out again yourself. Three unless asked (six at most), each different in one way: name it with `LAB board add <board> a --label "<what differs>"`. Save a first, so the person sees it while you make b.
+- Widths: `--widths 390,820,1280`. A flow: `--flow /a,/b,/c`. These show the real pages; nothing is copied.
+- The lab places frames. Give an order (`--after`), never positions.
+- A pin on a frame names its frame and file: change that frame only.
+- "Picked b" comes as a pin: put b's change into the real page, then reply `--done`. The lab archives the others. Never delete variant files.
 
 In Codex's sandbox, `wait` and `reply` may be blocked from reaching the lab: run Codex with `-c sandbox_workspace_write.network_access=true`.
 

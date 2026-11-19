@@ -5,7 +5,8 @@
 import css from './switcher.css';
 
 type Page = { url: string; title: string; file: string; path: string; open: number; done?: number; last?: string | null; edited?: string | null; first?: string | null; replies?: number; agent?: number; people?: string[]; opened?: string | null; archived?: string | null };
-type Lab = { name: string; port: number; here: boolean; mode: string; listening: string | null; pages: Page[]; root?: string; unreachable?: boolean; started?: string; created?: string | null };
+type Board = { name: string; url: string; frames: number; of?: string | null; at?: string | null };
+type Lab = { name: string; port: number; here: boolean; mode: string; listening: string | null; pages: Page[]; boards?: Board[]; root?: string; unreachable?: boolean; started?: string; created?: string | null };
 type Parked = { name: string; port: number; root: string; archived?: boolean; at?: string };
 type Deps = {
   root: ShadowRoot;
@@ -223,6 +224,20 @@ function draw() {
     row.append(t, meta);
     goes(row, lab, p);
     out.push(row);
+  }
+  // Boards: a row each after the pages, "board checkout" with its lab, its frames and when it was saved. No comment count.
+  for (const lab of data.labs) {
+    for (const b of lab.boards || []) {
+      if (!(hit(q, b.name, b.of || '', 'board') || hit(q, lab.name, where(lab)))) continue;
+      const row = el('button', { type: 'button', class: 'sw-row', role: 'option', 'data-port': String(lab.port), 'data-kind': 'board' });
+      row.append(el('span', { class: 'sw-t' }, `board ${b.name}`), el('span', { class: 'sw-m' }, [where(lab), `${b.frames} frame${b.frames === 1 ? '' : 's'}`, since(b.at)].filter(Boolean).join(' · ')));
+      row.addEventListener('click', (e: MouseEvent) => {
+        const url = lab.here ? new URL(b.url, location.href).pathname : b.url;
+        if (e.metaKey || e.ctrlKey) window.open(lab.here ? location.origin + url : url, '_blank');
+        else location.href = url;
+      });
+      out.push(row);
+    }
   }
   // A phone: the labs it can't open (not on the wifi, or an older labit), named so none seems missing (Leo 18 Nov).
   const away = (data.local || []).filter((l) => hit(q, l.name, String(l.port)));
