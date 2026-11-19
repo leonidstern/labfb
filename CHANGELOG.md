@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Undo for 3 s after sending a pin: the sent pin's card shows **undo** in the resolve key's place, its countdown the page's half ink running out behind the word (whole, then gone, with reduced motion). Undo deletes the pin and closes the card with no words left anywhere. A press on the page lets the card go at once (a drag over words it covered still selects), and that click only closes it: no new pin begins there, a link still acts, and the next click pins as usual.
 - A `wait` (or `reply`, `pin`) that outlives a restart of the lab keeps going: it reads the lab's new key again instead of ending on "forbidden", which left the lab showing nobody listening and its pins unanswered.
 - Kept: the section bar is simply labit now, no flag. A page with two or more sections gets it; the `sectionBar` flag is gone, and a settings file that still names it is told so when the lab starts and otherwise ignored.
 - Board page: the frames are the lab's live pages, 8 at once (3 on a phone), the nearest the middle first, the rest title cards. Keys: ⇧1 fits everything, ⇧2 is 100%. A board made from a page has a plain "‹ back" at its top left; ⇧B and Esc on an empty board go back too.

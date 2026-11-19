@@ -187,9 +187,8 @@ button.btn.undo { color: var(--_fg); }
   animation: lab-undo var(--undo-ms, 3s) linear forwards; }
 @media (prefers-color-scheme: dark) { .btn.undo .w > span:first-child { --_ui: 45%; } }
 @keyframes lab-undo { from { width: calc(var(--undo-from, 1) * 100%); } to { width: 0; } }
-/* Reduced motion: the ink stays whole and fades out at the end. */
-@keyframes lab-undo-still { from, 90% { width: 100%; opacity: 1; } to { width: 100%; opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .btn.undo .w > span:first-child::before { animation-name: lab-undo-still; } }
+/* Reduced motion: the ink stays whole until the card goes. */
+@media (prefers-reduced-motion: reduce) { .btn.undo .w > span:first-child::before { animation: none; width: 100%; } }
 .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: 0; padding: 2px 0; animation: lab-fade var(--_fade); }
 .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
 .card .composer { margin-top: 6px; } /* close under resolve / delete */

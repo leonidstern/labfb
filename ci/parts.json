@@ -38,7 +38,8 @@
     "lab-out",
     "lab-pin",
     "lab-halo",
-    "lab-card-in"
+    "lab-card-in",
+    "lab-undo"
   ],
   "$where": "Files that may own a part: the drawer's gestures and keyboard fit live in sheets.ts (comments.js wires them up).",
   "gestures": [
