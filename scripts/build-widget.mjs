@@ -45,7 +45,7 @@ const options = {
 // Parts the page script loads only when they are used (part(name) in src/comments.js): each one an ES module beside
 // it, <name>.js, with its own styles in it. The lab serves them with the script (public/_lab/*.js), and its widget
 // version covers them (widgetRev in local.mjs), so a change to one reloads open pages too.
-const PARTS = { components: 'src/widget/components.ts' };
+const PARTS = { components: 'src/widget/components.ts', switcher: 'src/widget/switcher.ts' };
 const builds = [
   options,
   ...Object.entries(PARTS).map(([name, entry]) => ({ ...options, entryPoints: [entry], format: 'esm', outfile: path.join(path.dirname(outfile), `${name}.js`) })),

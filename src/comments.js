@@ -37,7 +37,6 @@ import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSelect, selectMode } from './widget/select.ts';
-import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
@@ -591,6 +590,25 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
   // Labs & pages (⌘K, src/widget/switcher.ts): local labs only. The menu opens with which lab this is, then the item.
   const LABS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'labs') : '';
+  // Labs & pages is its own file, loaded and set up the first time it is asked for (⌘K, or the ⋯ menu opening); labs:
+  // the module, once it is.
+  /** @type {any} */
+  let labs = null;
+  const switcher = () => (S.switcher ??= part('switcher').then((m) => {
+    m.bindSwitcher({
+      root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
+        setMenu(false);
+        if (coarse) S.chatOpen = false; // one sheet at a time on a phone
+      },
+      // Phones: labs & pages is a sheet like the list and the chat (see openSheet); a computer keeps its box over the page.
+      sheet: (open) => {
+        S.labsOpen = open;
+        render();
+      },
+      swipe: swipeDown,
+    });
+    return (labs = m);
+  }).catch(() => (S.switcher = null))); // couldn't load: nothing opens, and the next ask tries again
   const labHead = LABS ? el('div', { class: 'lab-head' }, `${script?.dataset.labName || 'lab'} · ${location.port || '80'}`) : null;
   const labsBtn = LABS ? el('button', { type: 'button', class: 'labs-btn' }) : null;
   if (labsBtn) {
@@ -600,7 +618,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     labsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       setMenu(false);
-      openSwitcher();
+      void switcher().then((m) => m?.openSwitcher());
     });
   }
   // Select (V) from the ⋯ menu too, so a phone, which has no V, can turn it on (Leo, 19 Nov). Shown while the select
@@ -1142,7 +1160,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
   function setMenu(open, refocus = false) {
-    if (open && LABS) preloadSwitcher();
+    if (open && LABS) void switcher().then((m) => m?.preloadSwitcher()); // the box and its list, ready by the time it is picked
     moreMenu.hidden = !open;
     moreBtn.setAttribute('aria-expanded', String(open));
     if (!open && expOpen) {
@@ -1571,9 +1589,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const scrim = /** @type {HTMLElement} */ (root.querySelector('.scrim'));
   // The open sheet (phones): a thread, a new comment, the list or the chat.
   /** @returns {HTMLElement | null} */
-  const openSheet = () => (S.labsOpen && switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.chatOpen ? chatEl : null);
+  const openSheet = () => (S.labsOpen && labs?.switcherSheet()) || root.querySelector('.card:not(.out), .float:not(.out)') || (S.chatOpen ? chatEl : null);
   const closeAll = () => {
-    if (S.labsOpen) return closeSwitcher(); // labs & pages sits over the others: only it goes
+    if (S.labsOpen) return labs?.closeSwitcher(); // labs & pages sits over the others: only it goes
     S.draft = null;
     S.openId = null;
     S.chatOpen = false;
@@ -2088,16 +2106,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
   startLive();
-  if (LABS) bindSwitcher({
-      root, el, api: LABS, admin: script?.dataset.admin || '', page: S.page, beforeOpen: () => {
-        setMenu(false);
-        if (coarse) S.chatOpen = false; // one sheet at a time on a phone
-      },
-      // Phones: labs & pages is a sheet like the list and the chat (see openSheet); a computer keeps its box over the page.
-      sheet: (open) => {
-        S.labsOpen = open;
-        render();
-      },
-      swipe: swipeDown,
-    });
+  // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads
+  // labs & pages and opens it once it is there.
+  if (LABS) document.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || (e.key || '').toLowerCase() !== 'k') return;
+    const typing = e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)) && n.getRootNode() !== root);
+    if (typing) return;
+    e.preventDefault();
+    void switcher().then((m) => m && (m.switcherSheet() ? m.closeSwitcher() : m.openSwitcher()));
+  });
 })();
