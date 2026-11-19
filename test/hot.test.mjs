@@ -124,10 +124,10 @@ test('a script save is a reload', async () => {
 test('a reload says which files changed', async () => {
   const live = await listen();
   const first = await live.next(() => true);
-  save('notes.md', '# notes');
+  save('notes.txt', 'notes'); // not a page: a .md file is one (lib/labpage.ts)
   const reload = await live.next((s) => s.files > first.files);
   live.stop();
-  assert.deepEqual(reload?.changed, ['/notes.md']);
+  assert.deepEqual(reload?.changed, ['/notes.txt']);
 });
 
 test('comment changes reach pages as deltas: a new comment, a reply, a delete', async () => {
