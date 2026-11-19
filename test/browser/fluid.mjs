@@ -25,7 +25,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 let DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-'));
 const PORT = String(5500 + Math.floor(Math.random() * 300));
 let B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = { ...process.env, XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const LONG = 'This is a very long paragraph meant to be selected whole, it keeps going and going with plenty of words so that the selection runs over several lines of the window, and then it goes on a little more for good measure, with yet more words to be sure that it is over three hundred characters long, until finally it ends.';
 const PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>fluid</title>
 <style>body{margin:30px;max-width:520px;font:18px/1.6 Georgia,serif} #box{height:96px;overflow:auto;border:1px solid #999} #field{width:200px}</style>
@@ -53,30 +53,6 @@ for (let i = 0; i < 80; i++) {
     await sleep(100);
   }
 }
-// A second lab whose labit.json changes the actions (go, then two of your own): scenes run in it through withLab2.
-const DIR2 = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-actions-'));
-const PORT2 = String(5850 + Math.floor(Math.random() * 100));
-const B2 = `http://localhost:${PORT2}`;
-fs.writeFileSync(path.join(DIR2, 'labit.json'), JSON.stringify({ actions: { words: ['go', { label: 'tighter', send: 'Tighter: less space' }, { label: 'shorter', send: 'Shorter: half the words' }] } }));
-for (let i = 0; i <= 100; i++) fs.writeFileSync(path.join(DIR2, i ? `s${i}.html` : 'index.html'), PAGE);
-const server2 = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT2], { cwd: DIR2, env: { ...env, XDG_CONFIG_HOME: path.join(DIR2, 'nobody') }, stdio: 'ignore' });
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B2 + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-const withLab2 = async (fn) => {
-  const was = [B, DIR];
-  [B, DIR] = [B2, DIR2];
-  try {
-    await fn();
-  } finally {
-    [B, DIR] = was;
-  }
-};
 let failed = 0;
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
@@ -431,55 +407,29 @@ try {
       });
 
       // Picking an action shows it on; picking it again goes back to the plain comment
-      // Actions of your own (labit.json `actions`: go, tighter, shorter): the row and its keys follow them
-      await withLab2(() => scene(eng, browser, {}, async (p) => {
-        await drag(p, '#a', 'delta echo');
-        await dlgUp(p);
-        const names = await inRoot(p, (r) => [...r.querySelectorAll('.p-dlg .quick button')].map((b) => b.textContent).join(' '));
-        check(eng, 'actions in labit.json: the row is the listed ones in their order', names === 'go tighter shorter', names);
-        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=tighter]').click());
-        await sleep(1500);
-        const c = await sent('Tighter: less space');
-        check(eng, '…an action of your own sends its text at once, on the words', Boolean(c) && c.anchor?.quote?.exact === 'delta echo' && (await fd(p)) === null, JSON.stringify(c?.anchor?.quote));
-      }));
-      await withLab2(() => scene(eng, browser, {}, async (p) => {
-        await drag(p, '#a', 'foxtrot golf');
-        await dlgUp(p);
-        await inRoot(p, (r) => r.querySelector('.p-dlg [data-k=shorter]').click());
-        await sleep(1500);
-        const c = await sent('Shorter: half the words');
-        check(eng, 'another action of your own sends its text at once too', Boolean(c) && c.anchor?.quote?.exact === 'foxtrot golf' && (await fd(p)) === null, JSON.stringify(c?.anchor?.quote));
-      }));
-      await withLab2(() => scene(eng, browser, {}, async (p) => {
-        await drag(p, '#a', 'india juliet');
-        await dlgUp(p);
-        await p.keyboard.press('Alt+Digit2');
-        await sleep(1500);
-        check(eng, 'Option+2 runs the second of your own actions: tighter', Boolean(await sent('Tighter: less space')));
-      }));
-
       // A spot (a click on the page): the regular dialog has the actions row too, over the open box; each sends at once
       await scene(eng, browser, {}, async (p) => {
         await p.mouse.click(300, 190);
         await sleep(800);
-        const st = await inRoot(p, (r) => ({ names: [...r.querySelectorAll('.float .quick button')].map((b) => b.textContent).join(' '), open: r.querySelector('.float .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
-        check(eng, 'a spot\'s dialog has the row go · remove · fix over the open box, the cursor in it', st.names === 'go remove fix' && st.open && st.focus === 'textarea', JSON.stringify(st));
+        const st = await inRoot(p, (r) => ({ names: [...r.querySelectorAll('.float > .quick button')].map((b) => b.textContent).join(' '), open: r.querySelector('.float .box')?.classList.contains('open'), focus: r.activeElement?.localName }));
+        check(eng, 'a spot\'s dialog has your actions (as many as fit) and … over the open box, the cursor in it', /^go fix remove( \w+)* …$/.test(st.names) && st.open && st.focus === 'textarea', JSON.stringify(st));
         await inRoot(p, (r) => r.querySelector('.float [data-k=remove]').click());
         await sleep(1500);
-        const c = await sent('Remove this');
-        check(eng, '…remove sends "Remove this" at once, on the spot', Boolean(c) && c.anchor?.kind !== 'text', JSON.stringify(c?.anchor));
+        const c = await sent('remove');
+        check(eng, '…remove sends "remove" at once, on the spot, with its prompt for the agent', Boolean(c) && c.anchor?.kind !== 'text' && c.anchor?.act === 'Remove this.', JSON.stringify(c?.anchor));
       });
       await scene(eng, browser, {}, async (p) => {
         await p.mouse.click(300, 190);
         await sleep(800);
+        await p.keyboard.type('the gap');
         await inRoot(p, (r) => r.querySelector('.float [data-k=fix]').click());
         await sleep(1500);
-        check(eng, '…fix sends "Fix this" at once', Boolean(await sent('Fix this')));
+        check(eng, '…fix sends "fix: <your words>" at once', Boolean(await sent('fix: the gap')));
       });
 
       // Sending: leaves, a new selection while it goes
       await scene(eng, browser, {}, async (p) => {
-        const s = await span(p, '#a', 'delta echo');
+        await span(p, '#a', 'delta echo');
         await drag(p, '#a', 'delta echo');
         await dlgUp(p);
         await p.keyboard.type('nice');
@@ -543,7 +493,7 @@ try {
         check(eng, 'words gone: the dialog stays with its text, cut and rewrite are off', Boolean(c?.dlg) && c.text === 'still here' && c.cls.includes('gone'), JSON.stringify(c));
         await inRoot(p, (r) => r.querySelector('[data-k=cut]').click());
         await sleep(300);
-        check(eng, '…a click on cut sends nothing', !(await comments()).some((x) => /^Cut: /.test(x.text) && /delta/.test(x.text)) && (await fd(p))?.text === 'still here');
+        check(eng, '…a click on cut sends nothing', !(await comments()).some((x) => x.text.startsWith('Cut: ') && /delta/.test(x.text)) && (await fd(p))?.text === 'still here');
         await p.keyboard.press('Enter');
         await sleep(900);
         const c2 = (await comments()).find((x) => x.text === 'still here');
@@ -631,9 +581,7 @@ try {
   }
 } finally {
   server.kill();
-  server2.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
-  fs.rmSync(DIR2, { recursive: true, force: true });
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

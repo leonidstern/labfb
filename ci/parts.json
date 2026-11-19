@@ -8,6 +8,8 @@
     "fluid.ts": "selected words: the actions bar and the comment dialog that grows out of it and lands on the words (the dialog is the thread card's box; on phones the bottom sheet)",
     "frame.ts": "a page inside a board's frame: draws nothing, binds nothing; keeps live updates and passes keys to the board",
     "hold.ts": "a dev server's reload waits while a sheet is open",
+    "ink.ts": "drawing pins (hold D and drag): the lines as they are drawn and over a saved drawing, and the drawing as an area comment",
+    "draw.ts": "what a drawing's lines read as (circled, arrow, underlined…); its own file (public/_lab/draw.js), loaded when D is first pressed",
     "list.ts": "the list of pins (a sheet on phones)",
     "live.ts": "the live stream: listening badge, mode, who is heard",
     "messages.ts": "one message in a thread or the chat",
@@ -47,5 +49,26 @@
   "keyboardFit": [
     "sheets.ts",
     "comments.js"
-  ]
+  ],
+  "values": {
+    "$comment": "Values written into a rule on purpose (ci/reuse.mjs part 6). Everything else comes from a token. Add one here with why, in the pull request that needs it.",
+    "colours": {},
+    "radii": {
+      "14px 14px 14px 2px": "the pin: a teardrop, its tail at the bottom left (28 px)",
+      "11px 11px 11px 2px": "the pin glyph in the bar: the same teardrop at 22 px",
+      "18px 18px 18px 6px": "the ring around a pin: the teardrop 4 px out, concentric",
+      "2px": "the grab handle: a 4 px tall pill",
+      "8px": "the switch in the ⋯ menu: a 16 px tall pill",
+      "12px": "the switch knob: a 12 px circle"
+    },
+    "motion": {
+      "0ms !important": "reduced motion: every animation runs at once"
+    },
+    "code": {
+      "anchoring.ts: rgb(1, 2, 3)": "a sentinel colour to tell whether the page set one, never drawn",
+      "select.ts: rgba(52, 199, 89, .18)": "the picked block highlight, drawn in the page document where the widget tokens are not",
+      "comments.js: rgba(52, 199, 89, .3)": "the selection highlight, drawn in the page document where the widget tokens are not",
+      "select.ts: rgb(52, 199, 89)": "the picked block's outline, drawn in the page document where the widget tokens are not"
+    }
+  }
 }

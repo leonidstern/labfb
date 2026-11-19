@@ -34,85 +34,41 @@ function step(dir: 1 | -1) {
   const at = T.pick ? all.indexOf(T.pick) : -1;
   return all[at < 0 ? (dir > 0 ? 0 : all.length - 1) : (at + dir + all.length) % all.length] || null;
 }
-// The bar for the picked block (Leo, 19 Nov: "make select tool full"), on phones and computers alike: remove · make like ·
-// move · states · variants · pin · done. Each goes to the agent as a pin on the block, worded so it knows what to do. Make like and move ask for a second block first ("tap the one to copy").
-let bar: HTMLElement | null = null;
-let want: { say: string; act: (other: HTMLElement) => void } | null = null;
-const label = (e: HTMLElement) => {
-  const t = (e.textContent || '').replace(/\s+/g, ' ').trim();
-  return `${e.localName}${e.id ? `#${e.id}` : ''} "${t.length > 50 ? `${t.slice(0, 49)}…` : t}"`;
-};
-const pinOn = async (e: HTMLElement, text: string) => {
+// The picked block opens the comment box (Leo, 19 Nov: "one action list for pin and select"): the same sheet, chips and
+// "…" as a pin, with no pin drawn while it is open; what is sent is a pin on the block. done (leave select) joins its line.
+const pointOn = (e: HTMLElement) => {
   const r = e.getBoundingClientRect();
-  const anchor = W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2);
-  let name = '';
-  try {
-    name = (W.store.get('lab-name') || '').trim();
-  } catch {}
-  try {
-    const { comment } = await W.send({ name: name || 'guest', text, anchor });
-    W.S.comments.push(comment);
-    W.markSeen([comment]);
-    W.render();
-    W.say?.('sent to the agent');
-  } catch {
-    W.say?.("couldn't send it: is the lab running?");
-  }
+  return W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2, false, e); // built onto the block itself, not what is at that point
 };
-const ACTS: Array<[string, () => void]> = [
-  ['remove', () => T.pick && pinOn(T.pick, 'Remove this.')],
-  ['make like', () => {
-    const p = T.pick;
-    if (p) want = { say: 'tap the one to copy', act: (o) => pinOn(p, `Make this look like ${label(o)}: same size, spacing, colour and type.`) };
-  }],
-  ['move', () => {
-    const p = T.pick;
-    if (p) want = { say: 'tap where it goes: it lands after that', act: (o) => pinOn(p, `Move this to just after ${label(o)}.`) };
-  }],
-  ['states', () => T.pick && pinOn(T.pick, 'Show this in its states (hover, loading, empty, error) so I can review each one.')],
-  ['variants', () => T.pick && pinOn(T.pick, 'Make 3 variants of this, shown in place as a / b / c tabs on it, so I can pick one.')],
-  ['pin', () => {
-    const p = T.pick;
-    if (!p) return;
-    const r = p.getBoundingClientRect();
-    selectMode(false);
-    W.begin(W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2));
-  }],
-];
-const drawBar = () => {
-  if (!W) return;
-  if (!bar) {
-    bar = W.el('div', { class: 'selbar quick', role: 'toolbar', 'aria-label': 'picked block' });
-    W.root.append(bar);
-  }
-  const b = (name: string, act: () => void, off = false) => {
-    const x = W.el('button', { type: 'button', 'data-a': name }, name) as HTMLButtonElement;
-    x.disabled = off;
-    x.addEventListener('click', (e: Event) => (e.stopPropagation(), act(), drawBar()));
-    return x;
-  };
-  if (want) bar!.replaceChildren(W.el('span', { class: 'selsay' }, want.say), b('cancel', () => (want = null)));
-  else bar!.replaceChildren(...ACTS.map(([n, a]) => b(n, a, !T.pick)), b(T.pick ? 'done' : 'leave select', () => (T.pick ? pick(null) : selectMode(false))));
-  bar!.hidden = !T.on;
+/** done, for the picked block's chips line. */
+export const selectChips = () => {
+  const x = W.el('button', { type: 'button', class: 'sel', 'data-a': 'done', 'aria-label': 'leave select', title: 'leave select' }, 'done') as HTMLButtonElement;
+  x.addEventListener('mousedown', (e: Event) => e.preventDefault());
+  x.addEventListener('click', (e: Event) => (e.stopPropagation(), selectMode(false)));
+  return [x];
 };
-/** Pick a block (or none). */
-function pick(el: HTMLElement | null) {
+/** Pick a block (or none); draw: false from inside the widget's own redraw. */
+export function pick(el: HTMLElement | null, draw = true) {
+  const S = W.S;
   T.pick?.removeAttribute('data-lab-picked');
   T.pick = el;
   el?.setAttribute('data-lab-picked', ''); // a green ring as well as the ink, so a phone shows what is picked (Leo, 19 Nov)
   ink('lab-pick', el);
   holdPicked(T.on); // the page's reload waits while select mode is on
-  drawBar();
   el?.scrollIntoView({ block: 'nearest' });
+  if (el) S.draft = S.selDraft = { anchor: pointOn(el), select: true };
+  else if (S.selDraft) {
+    if (S.draft === S.selDraft) S.draft = null;
+    S.selDraft = null;
+  } else return;
+  if (draw) W.render();
 }
 /** The mode on or off (V, the ⋯ menu's select, C to leave). */
 export function selectMode(on = !T.on) {
-  if (!on) want = null;
   T.on = on;
   W.S.selecting = on;
   document.documentElement.classList.toggle('lab-selecting', on);
   pick(null);
-  drawBar();
 }
 export function bindSelect(w: unknown) {
   W = w;
@@ -129,13 +85,6 @@ export function bindSelect(w: unknown) {
       if (!mine(m)) return;
       quiet(m);
       if (type === 'pointerdown') {
-        const other = want && blockAt(m.target);
-        if (want && other && other !== T.pick) {
-          const w = want;
-          want = null;
-          w.act(other);
-          return void drawBar();
-        }
         pick(blockAt(m.target));
       }
     }, true);
@@ -145,10 +94,6 @@ export function bindSelect(w: unknown) {
     if (e.key !== 'Escape' && e.key !== 'Tab') return;
     quiet(e);
     if (e.key === 'Tab') pick(step(e.shiftKey ? -1 : 1));
-    else if (want) {
-      want = null;
-      drawBar();
-    }
     else if (T.pick) pick(null);
     else selectMode(false);
   }, true);

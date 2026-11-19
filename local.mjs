@@ -153,7 +153,13 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands) reads them as before.
 const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'update', 'settings', 'skill'];
-const { loadSettings, changedShortcuts, changedActions, savePersonal, savePersonalFlag } = await import('./lib/settings.ts');
+const { loadSettings, changedShortcuts, seedActions, savePersonal, savePersonalFlag } = await import('./lib/settings.ts');
+// Your list of actions is written into your settings once, when a lab starts (or `labit settings` shows it) with none there yet.
+if (!pos[0] || !COMMANDS.includes(pos[0]) || pos[0] === 'settings') {
+  try {
+    if (seedActions()) console.error('[labit] your actions (go, fix, remove…) are now in your settings.json: edit them there');
+  } catch {}
+}
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
@@ -188,13 +194,15 @@ if (pos[0] === 'settings') {
   const show = (k, v) =>
     k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
       : k === 'flags' ? (flagsOn(v).map((f) => `${f} (${SETTINGS.flagFrom[f] === 'project' ? 'labit.json' : 'yours'})`).join(', ') || 'none on')
-      : k === 'actions' ? (Object.keys(changedActions(v)).length ? Object.entries(changedActions(v)).map(([a, l]) => `${a}: ${/** @type {any[]} */ (l).map((x) => x.label || x).join(' ') || '(none)'}`).join('; ') : 'the defaults')
+      : k === 'actions' ? v.map((a) => a.name).join(' ') || '(none)'
       : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
   const src = (f) => f.split(' + ').map((x) => (x === SETTINGS.files.project ? 'labit.json' : x === SETTINGS.files.personal ? 'your settings' : x)).join(' + ');
   console.log(`Project: ${SETTINGS.files.project ? home(SETTINGS.files.project) : `no labit.json in ${home(HERE)} or above`}\nYours:   ${home(SETTINGS.files.personal)}${fs.existsSync(SETTINGS.files.personal) ? '' : ' (not made yet)'}\n`);
   const w = Math.max(...Object.keys(SET).map((k) => k.length));
   for (const [k, v] of Object.entries(SET)) console.log(`${k.padEnd(w)}  ${show(k, v).padEnd(20)}  ${src(SETTINGS.from[k])}`);
+  console.log(`\nYour actions, in order (edit them in your settings.json):`);
+  for (const a of SET.actions) console.log(`  ${a.name.padEnd(7)}  ${a.prompt}`);
   console.log(`\nA flag or variable wins over labit.json, which wins over your file. See docs/settings.md.`);
   process.exit(SETTINGS.problems.length ? 1 : 0);
 }
@@ -1796,9 +1804,10 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
-// The actions on selected words that differ from the defaults (labit.json / settings.json `actions`). Labels are yours, so
-// the attribute is escaped as the flags' is.
-const ACTIONS_ATTR = Object.keys(changedActions(SET.actions)).length ? ` data-actions='${JSON.stringify(changedActions(SET.actions)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'` : '';
+// Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box and of select mode. Names
+// and prompts are yours, so the attribute is escaped as the flags' is.
+// Read per page: the "…" menu can change the list while the lab runs (PUT /_lab/api/actions).
+const actionsAttr = () => ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
 // What is being tried in this lab: every flag, its state, and whether the project's labit.json sets it (then the ⋯
 // menu's Experiments list shows it read-only: the project wins over your own settings).
 // The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
@@ -1819,7 +1828,7 @@ const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${ACTIONS_ATTR}${flagsAttr()}${LABIT_ATTR}${updateAttr()} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${actionsAttr()}${flagsAttr()}${LABIT_ATTR}${updateAttr()} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -1840,6 +1849,18 @@ const withIcon = (html) => {
   if (/<link\b[^>]*\brel=["']?(?:[^"'>]*\s)?icon[\s"'>/]/i.test(html) || fs.existsSync(path.join(ROOT, 'favicon.ico'))) return html;
   const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
+};
+// The section bar keeps its own room at the top of the page, so it never covers the page's first lines.
+// Kept here, from the first paint, when the page has sections (an h2 or h3, or more than one h1): kept by the widget
+// alone, it came a frame or two after the page had painted, and the page jumped down. 38 px, 44 on a phone, as the bar
+// (src/widget/styles.css .sbar); not with comments hidden (lab-on). The widget takes it over (src/widget/sections.ts).
+const ROOM = '<style data-lab="section-bar">html { padding-top: 38px !important; } @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { html { padding-top: 44px !important; } }</style>' +
+  `<script data-lab="section-bar">try{localStorage.getItem('lab-on')==='0'&&document.currentScript.previousElementSibling.remove()}catch{}</script>`;
+const withRoom = (html) => {
+  const body = html.replace(/<(script|style|template|svg)\b[\s\S]*?<\/\1>/gi, '');
+  if (!/<h[23][\s>]/i.test(body) && (body.match(/<h1[\s>]/gi) || []).length < 2) return html;
+  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  return at ? html.slice(0, at.index + at[0].length) + ROOM + html.slice(at.index + at[0].length) : ROOM + html;
 };
 // A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
 // where it sits: Chrome's location.reload is its own, and cannot be replaced, and by the time the widget loads the
@@ -2217,6 +2238,21 @@ const handler = async (req, res) => {
       console.log(`[lab] experiment ${flag}: ${on ? 'on' : 'off'} (${file.replace(os.homedir(), '~')})`);
       broadcast();
       return answer(res, { flags: flagsOn(SET.flags) });
+    }
+    // Your actions (lib/actions.ts) from a comment box's "…" menu: the whole list, in its order, saved in your own
+    // settings. This computer with the lab's key only, as the Experiments switch: never a guest, never the agent's key.
+    if (pathname === '/_lab/api/actions' && req.method === 'PUT') {
+      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
+      const out = (await import('./lib/actions.ts')).listFrom(await sent(req));
+      if ('why' in out) return res.writeHead(400).end(out.why);
+      try {
+        savePersonal('actions', out.actions);
+      } catch (e) {
+        return res.writeHead(500).end(`could not save it: ${e.message}`);
+      }
+      SET.actions = out.actions;
+      console.log(`[lab] your actions: ${out.actions.map((a) => a.name).join(' ') || '(none)'} (${SETTINGS.files.personal.replace(os.homedir(), '~')})`);
+      return answer(res, { actions: out.actions });
     }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.
@@ -2705,7 +2741,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject(withIcon(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
+        inject((inFrame(req) ? withIcon : (h) => withRoom(withIcon(h)))(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
     }
     sendFile(req, res, file);
   } catch (e) {

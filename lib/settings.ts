@@ -6,13 +6,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
+import { actionItems, seedFrom, SEED } from './actions.ts';
 
 const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
-// The actions row on selected words ("words") and on a spot ("spot"). The comment itself is
-// always there, first and unlisted; the list holds the built-in rewrite, cut, go, remove and fix, and your own: { label, send }.
-const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go', 'remove', 'fix'];
-const ACTIONS = { words: ['rewrite', 'cut', 'go'], spot: ['go', 'remove', 'fix'] };
-const MAX_ACTIONS = 5; // with comment, 6 in all
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
 // wifi; your own file can't say which folder or dev server a project uses).
@@ -33,7 +29,8 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags' | 'actions'; def
   // topic, instead of starting a lab of their own (Leo 18 Nov: "def reuse it, why we have so much").
   pagesFolder: { type: 'string', def: '~/lab-pages', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
-  actions: { type: 'actions', def: ACTIONS },
+  // Your one list of actions (lib/actions.ts): the comment box's chips and select mode's, in this order.
+  actions: { type: 'actions', def: SEED, only: 'personal' },
   // What is being tried here (lib/flags.ts). Off unless labit.json, your settings or the ⋯ menu's experiments turn one on.
   flags: { type: 'flags', def: flagDefaults() },
 };
@@ -76,42 +73,6 @@ const read = (file: string | null, problems: string[]): Record<string, unknown> 
   return {};
 };
 
-// One list of actions, checked: the built-in names and { label, send } of your own, in the order given. comment is
-// implied (listed, it is dropped); a name that isn't one, a label over 16 characters, a repeat, or more than 5 are said and left out.
-const actionList = (list: unknown[], bad: (why: string) => void): unknown[] => {
-  const out: unknown[] = [];
-  const seen = new Set(['comment']);
-  for (const x of list) {
-    if (typeof x === 'string') {
-      const name = x.trim().toLowerCase();
-      if (name === 'comment') continue;
-      if (!BUILTIN_ACTIONS.includes(name)) bad(`"${x}" is not an action (${BUILTIN_ACTIONS.join(', ')}, or { "label": "…", "send": "…" }); ignored`);
-      else if (seen.has(name)) bad(`"${x}" is listed twice; ignored`);
-      else {
-        seen.add(name);
-        out.push(name);
-      }
-      continue;
-    }
-    const o = x as Record<string, unknown> | null;
-    const label = typeof o?.label === 'string' ? o.label.trim() : '';
-    const send = typeof o?.send === 'string' ? o.send.trim() : '';
-    if (!o || typeof o !== 'object' || Array.isArray(o) || !label || !send) bad(`an action of your own needs a "label" and the text to "send"; ignored`);
-    else if (label.length > 16) bad(`"${label}": a label is 16 characters at most; ignored`);
-    else if (send.length > 300) bad(`"${label}": the text to send is 300 characters at most; ignored`);
-    else if (seen.has(label.toLowerCase())) bad(`"${label}" is listed twice; ignored`);
-    else {
-      seen.add(label.toLowerCase());
-      out.push({ label, send });
-    }
-  }
-  if (out.length > MAX_ACTIONS) {
-    bad(`has more than ${MAX_ACTIONS} actions (comment makes six); the rest are ignored`);
-    out.length = MAX_ACTIONS;
-  }
-  return out;
-};
-
 // A value from a file, checked: undefined (with a problem said) when it doesn't fit.
 const check = (key: string, v: unknown, file: string, problems: string[]): unknown => {
   const s = SPEC[key];
@@ -128,14 +89,8 @@ const check = (key: string, v: unknown, file: string, problems: string[]): unkno
     return out;
   }
   if (s.type === 'actions') {
-    if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object: { "words": [...], "spot": [...] }');
-    const out: Record<string, unknown[]> = {};
-    for (const [area, list] of Object.entries(v)) {
-      if (!(area in ACTIONS)) bad(`.${area} is not a place for actions (${Object.keys(ACTIONS).join(', ')})`);
-      else if (!Array.isArray(list)) bad(`.${area} must be a list`);
-      else out[area] = actionList(list, (why) => bad(`.${area} ${why}`));
-    }
-    return out;
+    if (!Array.isArray(v)) return bad('must be a list of { "name": "…", "prompt": "…" }');
+    return actionItems(v, bad);
   }
   if (s.type === 'flags') {
     if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object of flag → true or false');
@@ -189,7 +144,7 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       const v = check(key, data[key], file, problems);
       if (v === undefined) continue;
       // Shortcuts and flags add up, one at a time: the project's over yours over the defaults.
-      if (s.type === 'shortcuts' || s.type === 'flags' || s.type === 'actions') {
+      if (s.type === 'shortcuts' || s.type === 'flags') {
         if (s.type === 'flags') for (const f of Object.keys(v as object)) flagFrom[f] ??= where;
         values[key] = { ...(v as object), ...values[key] };
         from[key] = from[key] ? `${from[key]} + ${file}` : file;
@@ -200,7 +155,6 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
       break;
     }
     if (s.type === 'flags' && values[key]) values[key] = { ...flagDefaults(), ...values[key] };
-    if (s.type === 'actions' && values[key]) values[key] = { ...ACTIONS, ...values[key] };
     if (s.type === 'shortcuts' && values[key]) {
       values[key] = { ...SHORTCUTS, ...values[key] };
       const taken = Object.entries(values[key] as Record<string, string>).filter(([, k], i, all) => all.findIndex(([, k2]) => k2 === k) !== i);
@@ -217,8 +171,20 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
 /** The shortcuts that differ from the defaults (what the widget needs to hear). */
 export const changedShortcuts = (keys: Record<string, string>) => Object.fromEntries(Object.entries(keys).filter(([a, k]) => SHORTCUTS[a as keyof typeof SHORTCUTS] !== k));
 
-/** The actions lists that differ from the defaults (what the widget needs to hear). */
-export const changedActions = (actions: Record<string, unknown[]>) => Object.fromEntries(Object.entries(actions).filter(([area, list]) => JSON.stringify(ACTIONS[area as keyof typeof ACTIONS]) !== JSON.stringify(list)));
+/** Seeds your list of actions once (lib/actions.ts): a settings file with no list yet (or the old { words, spot } form)
+ *  gets today's actions written into it, so they are yours from then on. Returns true when it wrote. Nothing else in
+ *  the file changes; a file that isn't JSON is left alone. */
+export function seedActions(): boolean {
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(fs.readFileSync(personalFile(), 'utf8'));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return false;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data) || Array.isArray(data.actions)) return false;
+  savePersonal('actions', seedFrom(data.actions));
+  return true;
+}
 
 /** Turns a flag on or off in your own settings file (the Experiments list in the ⋯ menu), keeping the rest of the
  *  file. Off leaves no trace: off is the absence of a flag. A file that isn't JSON is left alone (it throws) rather than
