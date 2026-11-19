@@ -146,6 +146,10 @@ fs.writeFileSync(path.join(DIR, 'index.html'), '<h1>page</h1>');
 fs.writeFileSync(path.join(DIR, '.env'), 'SECRET=1');
 fs.writeFileSync(path.join(OUTSIDE, 'private.txt'), 'outside the folder');
 fs.symlinkSync(path.join(OUTSIDE, 'private.txt'), path.join(DIR, 'link.txt'));
+// Links that stay inside the folder but point into .lab (its keys) or at a dot file: served as their targets are, not at all.
+fs.symlinkSync('.lab', path.join(DIR, 'labdir'));
+fs.symlinkSync(path.join('.lab', 'server.json'), path.join(DIR, 'keys.txt'));
+fs.symlinkSync('.env', path.join(DIR, 'env.txt'));
 const PORT = 5200 + Math.floor(Math.random() * 90); // clear of 5060 and 5061, which fetch refuses ("bad port")
 const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], {
   cwd: DIR,
@@ -231,10 +235,10 @@ test('--proxy: the app writes through the lab, forms included; another site does
 });
 
 test('dot files, .lab/ and paths outside the folder are never served', async () => {
-  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/.lab/comments/index.json', '/.lab/archive/index.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt']) {
+  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/.lab/comments/index.json', '/.lab/archive/index.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt', '/labdir/server.json', '/labdir/key', '/keys.txt', '/env.txt']) {
     const r = await raw(p);
     assert.ok([403, 404].includes(r.status), `${p} → ${r.status}`);
-    assert.doesNotMatch(r.text, /SECRET|outside the folder|root:/);
+    assert.doesNotMatch(r.text, /SECRET|outside the folder|root:|"agent"|"token"/);
   }
 });
 

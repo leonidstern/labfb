@@ -2335,6 +2335,8 @@ const handler = async (req, res) => {
     if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
+    // A link in the folder that points at a dot file or into a dot folder (.lab holds the lab's keys) is one too.
+    if (!lab && path.relative(base, file).split(path.sep).some((s) => s.startsWith('.'))) return plain(res, 404, 'not found');
     if (fs.statSync(file).isDirectory() && !pathname.endsWith('/') && fs.existsSync(file + '.html')) file += '.html'; // /a is a.html, /a/ is a/index.html
     if (fs.statSync(file).isDirectory()) {
       if (!pathname.endsWith('/')) return res.writeHead(302, { location: url.pathname + '/' + url.search }).end();
