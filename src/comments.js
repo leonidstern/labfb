@@ -702,8 +702,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // …or, read at its newest, stays at its newest, so an answer that just came in is in view (as the chat follows new
     // messages; Leo, 17 Nov: "message scrolled up" on a phone).
     const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
-    // Stepping a question's rows with the keys when it is drawn again (a reply or a pick came in): the keys keep working.
-    const prevRows = Boolean(prev && root.activeElement?.closest?.('.choices') && prev.contains(root.activeElement));
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
     // A pin that is still there stays the same element, updated in place, so what runs on it (the agent's ring, a pop, a
@@ -922,10 +920,6 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         S.stepping = S.keepKeys = false;
         next.push(card);
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
-        if (!appear && prevRows) {
-          const rows = card.querySelector('.choices[role="listbox"]');
-          /** @type {HTMLElement | null} */ (rows?.querySelector('.choice.on') || rows?.querySelector('.choice') || rows)?.focus({ preventScroll: true });
-        }
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
         if (!appear && prevScroll != null) {
