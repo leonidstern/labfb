@@ -36,6 +36,8 @@ import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { bindChanges, startChanges } from './widget/changes.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { bindSwitcher, closeSwitcher, openSwitcher, preloadSwitcher, switcherSheet } from './widget/switcher.ts';
+import { bindEdit, editKey } from './widget/edit.ts';
+import { selectMode } from './widget/select.ts';
 import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, fluidFollow, fluidHas, fluidKey, fluidOpen, fluidSheet, fluidState, fluidSync } from './widget/fluid.ts';
 
 (() => {
@@ -95,6 +97,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get send() { return send; },
     get sheetMode() { return sheetMode; },
     get stampOf() { return stampOf; },
+    get wordsAnchor() { return wordsAnchor; },
+    get placed() { return placed; },
+    get say() { return say; },
+    get headers() { return headers; },
     get stamped() { return stamped; },
     get still() { return still; },
     get store() { return store; },
@@ -114,7 +120,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a', edit: 'e', select: 'v' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -456,6 +462,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // computer deletes it; a guest, who can't delete, resolves it (it steps aside).
   async function undoLast() {
     const id = placed.pop();
+    // An edit saved into a file is a function in the same list: the last thing done first (edit.ts).
+    if (typeof id === 'function') return void ((await id()) === false && placed.push(id));
     const c = id && S.comments.find((x) => x.id === id);
     if (!c) return;
     const ownKey = store.get(`lab-edit:${id}`);
@@ -1184,6 +1192,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // A letter typed while the bar shows starts the comment with it (F4); Escape lets the bar and its words go.
     // Not while typing in a field of the page or the widget (the chat), nor in another widget.
     if (!typing(e) && !inOtherWidget && fluidKey(e)) return void (S.draft || dropOffer());
+    // Select mode and the text tool (flag editText): V and E. A thread open keeps E as resolve; typing in a field or in the words being edited keeps its letters.
+    if (flag('editText') && S.on && !S.draft && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !S.editing && !typing(e) && !inOtherWidget && (keyOf(e) === KEYS.select || (keyOf(e) === KEYS.edit && !S.openId))) {
+      e.preventDefault();
+      return void (keyOf(e) === KEYS.select ? selectMode() : editKey());
+    }
     if (actionOf(e) === 'toggle' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
@@ -1528,12 +1541,23 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const text = String(sel || '').trim();
     const inside = range && host.contains(range.commonAncestorContainer);
     clearTimeout(S.selWait);
-    if (!(coarse && S.on && !S.draft && text && range && !inside)) return coarse && fluidState() === 'bar' && fluidDrop(); // gone with the selection
+    if (!(coarse && S.on && !S.draft && !S.editing && text && range && !inside)) return coarse && fluidState() === 'bar' && fluidDrop(); // gone with the selection
     // The handles change it many times a second as they are dragged: the bar comes once the selection is still.
     S.selWait = setTimeout(() => fluidBar(rectsOf(range), (first, act) => (first && store.set(`lab-typing:${S.page}:new`, first), commentOnSelection(act)), text.length), 250);
   });
   // The words selected, as an anchor: pinned at their end, quoting exactly them (a few words either side to find them
   // again), not just the word under the pin.
+  // A block's words as a pin's anchor (edit.ts offers a change the file could not take to the agent).
+  const wordsAnchor = (/** @type {Element} */ block) => {
+    const sel = getSelection();
+    const r = document.createRange();
+    r.selectNodeContents(block);
+    sel?.removeAllRanges();
+    sel?.addRange(r);
+    const anchor = selectionAnchor();
+    sel?.removeAllRanges();
+    return anchor;
+  };
   const selectionAnchor = () => {
     const sel = getSelection?.();
     const range = sel?.rangeCount && sel.getRangeAt(0).cloneRange(); // a copy: moving the selection's own range would take the cursor from a box being typed in
@@ -1652,7 +1676,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go opens the comment dialog.
   document.addEventListener('mouseup', (e) => {
-    if (S.on && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
+    if (S.on && !S.editing && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
   function onPageClick(e) {
     if (e.composedPath().includes(host)) return;
@@ -1904,6 +1928,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    if (flag('editText')) bindEdit(W);
     load();
     if (script?.dataset.live && flag('sinceLooked')) startChanges(); // the ids added since you looked (local labs, where pages change under you)
   };

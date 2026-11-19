@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a' };
+const SHORTCUTS = { toggle: 'm', comment: '1', chat: 'c', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', added: 'a', edit: 'e', select: 'v' };
 // The actions row on selected words ("words") and on a spot ("spot"). The comment itself is
 // always there, first and unlisted; the list holds the built-in rewrite, cut, go, remove and fix, and your own: { label, send }.
 const BUILTIN_ACTIONS = ['rewrite', 'cut', 'go', 'remove', 'fix'];
@@ -201,7 +201,8 @@ export function loadSettings(here: string, flags: Record<string, unknown> = {}, 
     if (s.type === 'shortcuts' && values[key]) {
       values[key] = { ...SHORTCUTS, ...values[key] };
       const taken = Object.entries(values[key] as Record<string, string>).filter(([, k], i, all) => all.findIndex(([, k2]) => k2 === k) !== i);
-      for (const [action, k] of taken) problems.push(`shortcuts: "${k}" is used twice (${action} too); the first action keeps it`);
+      // edit shares its key with resolve on purpose: resolve acts with a thread open, edit without one.
+      for (const [action, k] of taken.filter(([a, k]) => !(a === 'edit' && values[key].resolve === k))) problems.push(`shortcuts: "${k}" is used twice (${action} too); the first action keeps it`);
     }
     if (!(key in values)) {
       values[key] = s.def;
