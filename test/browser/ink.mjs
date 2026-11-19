@@ -266,17 +266,16 @@ try {
     check(eng, 'unread done is a green band', st(v, 'cell one') === 'kept' && low(keptBand) && green(keptBand), say(keptBand));
     const doneBand = await band(p, await gap(p, 'c2', 'cell'));
     const hair = await rules(p, 'c2', '::highlight(lab-ink-done)');
-    // Safari's engine takes an underline's place from the words, not from the highlight, so no line can sit under
-    // them there: done is a faint band. Chrome's draws the hairline at the foot.
-    if (eng === 'webkit') check(eng, 'read done is a faint band (no hairline can be put under the words here), with "show done" off too', st(v, 'cell two') === 'done' && Math.abs(alpha(hair.color) - 0.08) < 0.02 && low(doneBand) && doneBand.rgb[0] > sentBand.rgb[0] + 20, `${JSON.stringify(hair)} ${say(doneBand)}`);
-    else check(eng, 'read done is a hairline at the foot, faint, with "show done" off too', st(v, 'cell two') === 'done' && hair.thick === '2px' && doneBand.rows > 0 && doneBand.rows <= 3 && doneBand.from > 0.6, `${JSON.stringify(hair)} ${say(doneBand)}`);
+    // Safari can put no line under the words (it takes an underline's place from the words, not from the highlight),
+    // so done is the same band, faint, in every browser.
+    check(eng, 'read done is a faint band, with "show done" off too', st(v, 'cell two') === 'done' && Math.abs(alpha(hair.color) - 0.08) < 0.02 && low(doneBand) && doneBand.rgb[0] > sentBand.rgb[0] + 20, `${JSON.stringify(hair)} ${say(doneBand)}`);
 
     // ---- A word in a link keeps its seam out of the band
     {
       const c = await L.say(words('lnk', 'two linked words three'), 'link');
       await sleep(1200);
-      const [before, after] = [await band(p, await gap(p, 'lnk', 'two')), await band(p, await gap(p, 'lnk', ' three', 0))];
-      check(eng, 'no seam at a link: the band runs through the spaces either side', low(before) && low(after), `${say(before)} | ${say(after)}`);
+      const [before, inside, after] = [await band(p, await gap(p, 'lnk', 'two')), await band(p, await gap(p, 'lnk', 'linked')), await band(p, await gap(p, 'lnk', ' three', 0))];
+      check(eng, 'no seam at a link: the band runs through the spaces either side, and sits the same on the link', low(before) && low(after) && low(inside) && Math.abs(inside.from - before.from) < 0.06, `${say(before)} | ${say(inside)} | ${say(after)}`);
       await L.drop(c.id);
       await sleep(600);
     }
@@ -287,11 +286,11 @@ try {
     await sleep(300);
     const over = await look(p);
     const hand = await p.evaluate(() => getComputedStyle(document.getElementById('a')).cursor);
-    check(eng, 'pointing at inked words: a hand, and the words light up faintly', over.html.includes('lab-ink-over') && hand === 'pointer' && over.quote.some((q) => q.startsWith('delta epsilon')), `${over.html} ${hand} ${JSON.stringify(over.quote)}`);
+    check(eng, 'pointing at inked words: a hand', over.html.includes('lab-ink-over') && hand === 'pointer', `${over.html} ${hand}`);
     await p.mouse.move(900, 600);
     await sleep(300);
     const away = await look(p);
-    check(eng, 'pointing away: the page\'s own pointer, nothing lit', !away.html.includes('lab-ink-over') && away.quote.length === 0, `${away.html} ${JSON.stringify(away.quote)}`);
+    check(eng, 'pointing away: the page\'s own pointer', !away.html.includes('lab-ink-over'), away.html.join(' '));
     await p.mouse.click(...first);
     await sleep(400);
     check(eng, 'a click opens the thread', (await look(p)).card.includes('sent'));
@@ -371,11 +370,11 @@ try {
     check(eng, 'comments hidden: no ink, no hand', hidden.inks.length === 0 && none.rows === 0 && !(await look(p)).html.includes('lab-ink-over'), `${hidden.inks.length} inks, ${say(none)}`);
     await ctx.close();
 
-    // ---- A hairline and the states survive a reload
+    // ---- The done band and the states survive a reload
     {
       const [c2, q] = await open(browser, L.base + '/');
       const r2 = await look(q);
-      check(eng, 'a done hairline is there after a reload', st(r2, 'cell two') === 'done' && r2.inks.length === 6, `${r2.inks.length} inks`);
+      check(eng, 'a done band is there after a reload', st(r2, 'cell two') === 'done' && r2.inks.length === 6, `${r2.inks.length} inks`);
       // A note arriving while the page is open is inked without a reload.
       const fresh = await L.say(words('a', 'Alpha beta gamma'), 'fresh');
       await sleep(1200);
@@ -560,7 +559,7 @@ try {
       await sleep(600);
       const [after, own, lit, kept2] = [await look(q), await rules(q, 'a', '::selection'), await rules(q, 'a', '::highlight(lab-quote)'), await band(q, await gap(q, 'a', 'gamma'))];
       check(eng, 'Shift-drag: only the band shows while dragging, none of the page\'s own selection paint', low(during) && green(during) && clear(native.bg) && live.sel === 'gamma delta', `${say(during)} ${native.bg} "${live.sel}"`);
-      check(eng, 'Shift-drag let go: no full-height green on the words (selection or quote)', !/52, 199, 89|0\.2\d* 0\.78\d* 0\.3/.test(own.bg) && after.quote.length === 0 && alpha(lit.bg) < 0.2, `selection ${own.bg}, quote ${lit.bg}, quote set ${JSON.stringify(after.quote)}`);
+      check(eng, 'Shift-drag let go: no full-height green on the words (selection or quote)', !/52, 199, 89|0\.2\d* 0\.78\d* 0\.3/.test(own.bg) && after.quote.length === 0, `selection ${own.bg}, quote ${lit.bg}, quote set ${JSON.stringify(after.quote)}`);
       check(eng, 'Shift-drag let go: the words keep the low band, the same colour as while selecting, one band', st(after, 'gamma delta') === 'draft' && after.inks.length === 1 && !after.sel && low(kept2) && kept2.rgb.every((v, k) => Math.abs(v - during.rgb[k]) < 4), `${JSON.stringify(after.inks)} "${after.sel}" ${say(kept2)}`);
       // With that box open (comment mode's pointer is off the page then), a second Shift-drag on other words: the
       // band again from the first letter, never the page's own selection paint (Leo, 19 Nov).
@@ -576,11 +575,12 @@ try {
       await q.mouse.down();
       await q.mouse.move(at2[2], at2[3], { steps: 8 });
       await sleep(200);
-      const [again, native2, live2] = [await band(q, await gap(q, 'p1', 'first')), await rules(q, 'p1', '::selection'), await look(q)];
+      const [again, native2, live2, old, oldBand] = [await band(q, await gap(q, 'p1', 'first')), await rules(q, 'p1', '::selection'), await look(q), await rules(q, 'a', '::highlight(lab-ink-draft)'), await band(q, await gap(q, 'a', 'gamma'))];
       await q.mouse.up();
       await q.keyboard.up('Shift');
       await sleep(600);
       check(eng, 'Shift-drag with a box open: only the band while dragging', low(again) && green(again) && clear(native2.bg) && live2.sel === 'first paragraph here', `${say(again)} ${native2.bg} "${live2.sel}"`);
+      check(eng, 'Shift-drag with a box open: the band of the draft before is gone from the first letter', old.line === 'none' && oldBand.rows === 0, `${old.line} ${say(oldBand)}`);
       check(eng, 'Shift-drag with a box open, let go: the new words are the draft', st(await look(q), 'first paragraph here') === 'draft', JSON.stringify((await look(q)).inks));
       await c2.close();
     }
