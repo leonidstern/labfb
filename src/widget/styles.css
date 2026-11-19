@@ -332,7 +332,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
 .agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
-.mark .eye { fill: var(--_bg); }
+.mark .eye, .agentmark .eye { fill: var(--_bg); }
 .listener .mark { margin: -2px 0 -1px -3px; }
 .listener .mark { fill: rgb(36, 160, 70); }
 .listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
