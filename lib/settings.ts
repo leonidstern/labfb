@@ -221,10 +221,21 @@ export const changedActions = (actions: Record<string, unknown[]>) => Object.fro
 export function savePersonal(key: string, value: unknown) {
   const file = personalFile();
   let data: Record<string, unknown> = {};
+  let src: string | null = null;
   try {
-    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    src = fs.readFileSync(file, 'utf8');
   } catch {}
+  // A file that is there but can't be read as settings is left as it is: writing one key over it would drop the rest.
+  if (src !== null) {
+    try {
+      data = JSON.parse(src);
+    } catch {
+      throw new Error(`${file} is not valid JSON: fix it, then ${key} can be saved`);
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${file} does not hold settings: fix it, then ${key} can be saved`);
+  }
   data[key] = value;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+  fs.writeFileSync(file + '.tmp', JSON.stringify(data, null, 2) + '\n');
+  fs.renameSync(file + '.tmp', file);
 }

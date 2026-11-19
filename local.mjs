@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
+import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
@@ -383,8 +383,13 @@ const AGENT_KEY = randomBytes(16).toString('hex');
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
 const writeAtomic = (file, text, mode) => {
-  fs.writeFileSync(file + '.tmp', text, mode ? { mode } : undefined);
-  fs.renameSync(file + '.tmp', file);
+  try {
+    fs.writeFileSync(file + '.tmp', text, mode ? { mode } : undefined);
+    fs.renameSync(file + '.tmp', file);
+  } catch (e) {
+    fs.rmSync(file + '.tmp', { force: true }); // a half-written copy would hold on to the space a full disk needs back
+    throw e;
+  }
 };
 // Comments are kept one file per page in .lab/comments/: one comments.json for every page was ~700 KB in a busy lab
 // and was written whole for every comment (16 Nov). Each file holds its page's key, so its name only has to be safe and
@@ -613,8 +618,10 @@ const sourceFor = (page) => {
 
 let origin = '';
 const agentText = async (page) => {
-  const res = await api.GET(new Request(`http://localhost/api?format=text&page=${encodeURIComponent(page)}`, { headers: { host: 'localhost' } }));
-  const text = (await res.text()).replaceAll('http://localhost', origin);
+  // Asked with the lab's own address, so the links the text gives are right as written. (It used to be asked as
+  // http://localhost and every such string replaced afterwards, a comment's own "http://localhost:3000" included.)
+  const res = await api.GET(new Request(`${origin || 'http://localhost'}/api?format=text&page=${encodeURIComponent(page)}`, { headers: { host: 'localhost' } }));
+  const text = await res.text();
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   const file = fileFor(page);
@@ -757,18 +764,38 @@ function persist(page) {
   // Which pages this version changed, so an open page on another one skips the pull (a reply on /a used to make every
   // open tab on every page ask for its changes).
   version.commentPages = changeLog.filter((e) => e.rev === version.comments && e.page !== null).map((e) => e.page);
+  return flush();
+}
+// A page whose file could not be written (a full disk, a folder that turned read-only) stays unsaved: its comments
+// are in memory, and it is written again every few seconds until it works. Before 19 Nov the page was taken off the
+// list first, so a comment the page showed as sent was never written and was gone at the next start.
+const SAVE_RETRY_MS = Number(process.env.LAB_SAVE_RETRY_MS || 5000);
+let saveRetry = null;
+let saveFailing = false;
+function flush() {
   if (writing) {
     again = true;
     return writing;
   }
   writing = (async () => {
+    let failed;
     do {
       again = false;
+      failed = 0;
       // Only the pages that changed: one comment rewrites its own page's file, not every page's.
       for (const p of Array.from(unsaved)) {
-        unsaved.delete(p);
-        savePage(p);
+        try {
+          savePage(p);
+          unsaved.delete(p);
+        } catch (e) {
+          failed++;
+          if (!saveFailing) console.error(`[lab] could not save comments (${/** @type {Error} */ (e).message}). They are kept while the lab runs and saved again every ${SAVE_RETRY_MS / 1000} s.`);
+          saveFailing = true;
+        }
       }
+      if (!failed && saveFailing) console.log('[lab] comments saved again');
+      if (!failed) saveFailing = false;
+      else saveRetry ??= setTimeout(() => ((saveRetry = null), flush().catch(() => {})), SAVE_RETRY_MS).unref();
       const all = pages();
       for (const p of Array.from(dirty)) {
         dirty.delete(p); // a change during the rebuild marks it again, and the next round picks it up
@@ -785,7 +812,7 @@ function persist(page) {
             `Those pins wait until a session listens there: \`${CMD} wait --pages ${deaf.map((p) => p.page.replace(/^\//, '')).join(',')}\`\n\n`
           : '');
       writeAtomic(path.join(LAB, 'comments.md'), head + (all.map((p) => texts.get(p)).filter(Boolean).join('\n') || 'No comments yet.\n'));
-    } while (again || dirty.size || unsaved.size);
+    } while (again || dirty.size || (unsaved.size && !failed));
   })().finally(() => (writing = null));
   return writing;
 }
@@ -995,7 +1022,18 @@ const register = () => {
     writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: LAB_NAME, proxy: PROXY?.origin || null, version: VERSION, startedAt: STARTED, ...(registeredListener ? { listener: registeredListener, listenedAt: new Date().toISOString() } : {}) }, null, 2));
   } catch {}
 };
-const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
+// Written again as the mode and the session change. A write that fails then (a full disk) is said once and the lab
+// goes on with the file it has: it used to throw out of a wait, which answered 500 and then ended the lab.
+let serverSaved = true;
+const saveServer = () => {
+  try {
+    writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, agent: AGENT_KEY, session }, null, 2), 0o600);
+    serverSaved = true;
+  } catch (e) {
+    if (serverSaved) console.error(`[lab] could not write ${path.relative(ROOT, SERVER)}: ${/** @type {Error} */ (e).message}`);
+    serverSaved = false;
+  }
+};
 const clients = new Set();
 // A beat every 15 s on every live connection: a page that hears nothing for longer knows its connection stalled (the
 // laptop slept, the wifi changed) and connects again at once instead of waiting for the browser to notice.
@@ -1733,7 +1771,18 @@ const listing = (res, dir, urlPath) => {
 // A short plain-text answer: an error's reason.
 const plain = (res, code, why, more) => res.writeHead(code, { 'content-type': 'text/plain', ...more }).end(why);
 // What a request sent (JSON), and a JSON answer (never kept by the browser).
-const sent = async (req) => JSON.parse((await new Response(req).text()) || '{}');
+// What a request sent, as JSON. Too long or not JSON is the sender's mistake (413, 400), not the lab's (it was a 500
+// with the error's text, and a body of any size was read whole into memory).
+const refuse = (status, why) => Object.assign(new Error(why), { status });
+const sent = async (req) => {
+  const body = await sentWithin(req, BODY_MAX);
+  if (body === null) throw refuse(413, 'too big');
+  try {
+    return JSON.parse(body || '{}');
+  } catch {
+    throw refuse(400, 'not JSON');
+  }
+};
 // The body of a request, or null when it is longer than `max` bytes (the rest is read and dropped, so the sender gets its answer).
 const sentWithin = async (req, max) => {
   const parts = [];
@@ -1816,7 +1865,11 @@ const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
     if (!nearby(req) || !allowedHost(req.headers.host)) return plain(res, 403, 'unknown host');
-    if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !(req.headers['content-type'] || '').startsWith('application/json')))
+    // A write comes from a page of this lab, and to the lab itself as JSON. Behind --proxy the app's own writes pass
+    // through, forms included, but another site's do not: the lab hands them on under the dev server's own Origin, so
+    // the dev server could not tell them from its own.
+    const own = !PROXY || url.pathname.startsWith('/_lab/');
+    if (req.method !== 'GET' && req.method !== 'HEAD' && (!sameOrigin(req) || (own && !(req.headers['content-type'] || '').startsWith('application/json'))))
       return plain(res, 403, 'forbidden');
     const pathname = decodeURIComponent(url.pathname);
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
@@ -1862,6 +1915,8 @@ const handler = async (req, res) => {
     // `labit invite`: a link for a phone on the same wifi. Only the agent on this computer may ask for one.
     // Keep, no, or undo a rule the agent offered (src/widget/thread.ts): out of replies.md, and the answer says so.
     if (pathname === '/_lab/rule' && req.method === 'POST') {
+      // A rule goes into this computer's own replies.md and out to every agent in every lab: kept from this computer only.
+      if (!isLoopback(req)) return plain(res, 403, 'forbidden');
       const b = await sent(req);
       const page = String(b.page || '');
       // keep / no: a rule the agent offered (--suggest-rule). Otherwise: undo a kept one.
@@ -2304,6 +2359,8 @@ const handler = async (req, res) => {
     }
     sendFile(req, res, file);
   } catch (e) {
+    const status = /** @type {{ status?: number }} */ (e).status;
+    if (status && !res.headersSent) return plain(res, status, /** @type {Error} */ (e).message, status === 413 ? { connection: 'close' } : {});
     console.error(e);
     if (res.headersSent) res.destroy();
     else res.writeHead(500).end(String(e));
@@ -2316,7 +2373,8 @@ const proxy = PROXY && (await import('./lib/proxy.ts')).proxy({ PROXY, origin: (
 
 const server = http.createServer(handler);
 server.on('upgrade', (req, socket, head) => {
-  if (!proxy || !nearby(req) || !allowedHost(req.headers.host) || !mayIn(req)) return socket.destroy();
+  // A websocket opened by another site's page is not the app's own (the same rule as for writes).
+  if (!proxy || !nearby(req) || !allowedHost(req.headers.host) || !mayIn(req) || !sameOrigin(req)) return socket.destroy();
   proxy.upgrade(req, socket, head);
 });
 server.on('error', (e) => {
@@ -2364,6 +2422,7 @@ server.on('listening', async () => {
   newerVersion().then((v) => v && console.log(`[lab] labit ${v} is out (you have ${VERSION}): npx @leonidstern/labit@latest`));
   origin = `http://localhost:${PORT}`;
   saveServer();
+  if (!serverSaved) die(`[lab] could not start: ${path.relative(ROOT, SERVER)} can't be written`);
   writeAtomic(LOCK, JSON.stringify({ pid: process.pid, at: Date.now(), port: PORT }), 0o600); // a lab starting next asks this port
   // Started again after it parked (⌘K, or labit in its folder): the session that listened last is its listener again,
   // so that session's wake (the labit plugin) finds this lab and the next pin reaches it, from any folder.
