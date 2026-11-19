@@ -234,6 +234,14 @@ try {
     await sleep(900);
     const after = await P.shadow(() => { return { open: !r.querySelector('.chatwin').hidden }; });
     check(eng, 'a tap on a chip with the sheet open goes to that section and closes the sheet', (await P.p.evaluate(() => scrollY)) > 0 && !after.open, JSON.stringify(after));
+    // The line fades at an edge with more past it, and a small blue dot marks a hidden new or updated chip.
+    const fade = await P.shadow(() => { const n = r.querySelector('.sb-nav'); const e = (c) => { const x = r.querySelector('.sb-edge.' + c); const b = getComputedStyle(x); const d = getComputedStyle(x, '::after'); return { on: b.display !== 'none', dot: d.content !== 'none' && d.width === '5px' }; }; return { l: e('l'), r: e('r'), left: n.scrollLeft, max: n.scrollWidth - n.clientWidth }; });
+    check(eng, 'phone: fades on the left (scrolled to a chip), and on the right while more is there', fade.l.on && fade.r.on === fade.left < fade.max - 1, JSON.stringify(fade));
+    check(eng, 'phone: a 5 px blue dot on the left edge, where a new or updated chip is hidden', fade.l.dot === true || fade.r.dot === true, JSON.stringify(fade));
+    await P.shadow(() => { r.querySelector('.sb-nav').scrollLeft = 0; });
+    await sleep(300);
+    const home = await P.shadow(() => { const e = (c) => { const x = r.querySelector('.sb-edge.' + c); return { on: getComputedStyle(x).display !== 'none', dot: x.classList.contains('dot') }; }; return { l: e('l'), r: e('r') }; });
+    check(eng, 'phone: at the start there is no fade on the left, a fade and a dot on the right (the updated chip is out of sight)', !home.l.on && home.r.on && home.r.dot, JSON.stringify(home));
     await ph.close();
 
     // ---- pinch-zoomed in (as zoom.mjs: the page starts zoomed): the bar keeps its usual size, inside what the screen shows ----

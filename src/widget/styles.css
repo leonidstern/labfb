@@ -684,8 +684,15 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
         background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
 .sbar[hidden] { display: none; }
 .sb-title { flex: none; max-width: 28%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .sb-nav { position: relative; flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; scrollbar-width: none; }
 .sb-nav::-webkit-scrollbar { display: none; }
+.sb-edge { display: none; position: absolute; top: 0; bottom: 0; width: 28px; pointer-events: none; }
+.sb-edge.l { left: 0; background: linear-gradient(to right, var(--_bg), transparent); }
+.sb-edge.r { right: 0; background: linear-gradient(to left, var(--_bg), transparent); }
+.sb-edge.dot::after { content: ''; position: absolute; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: #0a84ff; }
+.sb-edge.l.dot::after { left: 3px; }
+.sb-edge.r.dot::after { right: 3px; }
 .sb-chip, .sb-more { font: inherit; flex: none; border: 0; background: none; color: var(--_muted); cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--_r-s); }
 .sb-chip[hidden] { display: none; }
 .sb-chip:hover, .sb-more:hover { background: var(--_soft); }
@@ -702,6 +709,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
   .sbar { height: 44px; padding: 0 8px; }
   .sb-title, .sb-more { display: none; }
+  .sb-edge.on { display: block; }
   .sb-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .sb-chip { padding: 9px 12px; }
   /* A sheet that fills the screen (keyboard up) leaves the bar clear. */

@@ -75,7 +75,10 @@ export function startSections() {
   const more = el('button', { class: 'sb-more', type: 'button', 'aria-expanded': 'false', 'aria-label': 'more sections' }, '…');
   const menu = el('div', { class: 'sb-menu' });
   const bar = el('div', { class: 'sbar' });
-  bar.append(title, nav, more, menu);
+  const edges = [el('i', { class: 'sb-edge l' }), el('i', { class: 'sb-edge r' })];
+  const wrap = el('div', { class: 'sb-wrap' });
+  wrap.append(nav, ...edges);
+  bar.append(title, wrap, more, menu);
   bar.hidden = true;
   menu.hidden = more.hidden = true;
   W.root.querySelector('.ui').append(bar);
@@ -204,7 +207,20 @@ export function startSections() {
       else c.removeAttribute('aria-current');
     }
     more.dataset.st = [...menu.children].some((c) => (c as HTMLElement).dataset.st) ? '1' : '';
+    fades();
   };
+  // A phone's line fades at an edge where more sections are hidden, with a small blue dot there when one of them is new or updated.
+  const fades = () => {
+    const [l, r] = edges;
+    const left = nav.scrollLeft;
+    const right = left + nav.clientWidth;
+    const out = chips().filter((c) => c.dataset.st);
+    l.classList.toggle('on', left > 1);
+    r.classList.toggle('on', right < nav.scrollWidth - 1);
+    l.classList.toggle('dot', out.some((c) => c.offsetLeft + c.offsetWidth <= left + 4));
+    r.classList.toggle('dot', out.some((c) => c.offsetLeft >= right - 4));
+  };
+  nav.addEventListener('scroll', fades, { passive: true });
   const place = () => {
     // Under the page's own bar when it has a fixed or sticky one at the top.
     let top = 0;
@@ -270,7 +286,7 @@ export function startSections() {
     frame = requestAnimationFrame(() => watch());
   };
   addEventListener('scroll', onScroll, { passive: true });
-  addEventListener('resize', () => (W.coarse ? place() : (fold(), place())));
+  addEventListener('resize', () => (W.coarse ? (place(), fades()) : (fold(), place())));
   more.onclick = (e) => {
     e.stopPropagation();
     menu.hidden = !menu.hidden;
