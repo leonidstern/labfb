@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { apiOn, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
-import { AGENTS, agentKind, agentNow } from './lib/agents.ts';
+import { AGENTS, agentKind } from './lib/agents.ts';
 import { pageIds } from './lib/ids.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
@@ -53,10 +53,6 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
       ~/.config/labit/settings.json, or the default. See docs/settings.md.
   labit skill
       How an agent works with labit (the skill the plugin installs), printed: for an agent without the plugin.
-  labit mcp
-      Optional: an MCP server (stdin/stdout) for agents with MCP: tools comments, reply, pin and wait, for this folder's lab.
-      Claude Code: claude mcp add labit -- npx @leonidstern/labit@latest mcp
-      Codex: codex mcp add labit -- npx @leonidstern/labit@latest mcp
   labit preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
   labit invite [name] [--page /path]
@@ -110,8 +106,8 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 
 // ---------- settings (lib/settings.ts) ----------
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
-// setting them here, so everything below (and the commands, and the MCP server) reads them as before.
-const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'mcp', 'settings', 'skill'];
+// setting them here, so everything below (and the commands) reads them as before.
+const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'settings', 'skill'];
 const { loadSettings, changedShortcuts, changedActions, savePersonal } = await import('./lib/settings.ts');
 const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
@@ -162,14 +158,6 @@ if (pos[0] === 'settings') {
 if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
   const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
-}
-
-// ---------- MCP (optional): the same comments, as tools for any agent with MCP ----------
-// `labit mcp` speaks MCP over stdin/stdout. It lives in lib/mcp.ts, loaded only for this command: most runs are a
-// lab or an agent command, and they needn't read it.
-if (pos[0] === 'mcp') {
-  const { runMcp } = await import('./lib/mcp.ts');
-  await runMcp({ HERE, ME, CMD, VERSION, WRITE_SHORT, AGENTS, agentKind, agentNow });
 }
 
 // ---------- the server ----------
@@ -1425,9 +1413,9 @@ async function unseen(scope = pages(), who = '') {
   return { text, marks, handed, full, rules: Boolean(rules) };
 }
 // Hand-offs the agent hasn't said it got yet (a wait that asked with ack: true). The marks go on at once, so no other
-// wait takes the same pins and the page shows them being worked on; the agent's `wait` (or MCP server) says it printed
+// wait takes the same pins and the page shows them being worked on; the agent's `wait` says it printed
 // them with POST /_lab/ack. Without that within ACK_MS, or when the same session waits again first (it never saw
-// them: an MCP wait cancelled after the lab answered, a killed command), the marks are taken back and the pins go out
+// them: a killed command), the marks are taken back and the pins go out
 // again. Before, a hand-off that never arrived left its pins "being worked on" for 3 minutes, then came back as
 // one line each, not the whole thread.
 const ACK_MS = Number(process.env.LAB_ACK_MS ?? 20000);
