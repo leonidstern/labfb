@@ -35,7 +35,7 @@
 * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
     font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: -.011em;
     font-feature-settings: var(--lab-font-features, normal); font-synthesis: none; font-optical-sizing: auto;
-    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
     caret-color: var(--_accent); -webkit-tap-highlight-color: transparent; }
 ::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
 button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
@@ -88,17 +88,15 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
         border-radius: var(--_radius); pointer-events: none; }
 .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--lab-radius, 12px); ry: var(--lab-radius, 12px); }
-/* Green dots, the same green as quoted words, with no dark ring under them. */
-.zone rect.ring { display: none; }
+/* Green dots, the same green as quoted words. */
 .zone rect.dots { stroke: rgb(52, 199, 89); stroke-width: 1.5; } /* 1.5 px round dots, 4 px apart */
 .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade var(--_fade); }
 /* The agent is on it: a green stroke runs round the pin's own teardrop outline. The ring (a still 2 px teardrop mask)
    holds a conic gradient that turns by transform, so the screen turns it without redrawing: 30 such pins cost ~1 ms
    a second, against ~125 ms when the gradient's angle itself was animated. */
 .pin .ring { position: absolute; inset: -4px; border-radius: 18px 18px 18px 6px; padding: 2px; overflow: hidden; pointer-events: none;
-             -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
              mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
-.ring::before { content: ''; position: absolute; inset: -50%; will-change: transform;
+.ring::before { content: ''; position: absolute; inset: -50%; will-change: transform; transition: opacity var(--_t-slow) var(--_ease-out);
                 background: conic-gradient(rgb(52, 199, 89) 0 var(--lab-arc, 66%), rgba(52, 199, 89, .22) var(--lab-arc, 66%) 100%); animation: lab-turn var(--_t-loop) linear infinite; }
 @keyframes lab-turn { to { transform: rotate(360deg); } }
 /* The agent takes it: the green arc draws itself in while it turns (lab C2, Leo 16 Nov; --lab-arc is registered on the page). */
@@ -109,7 +107,6 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
    Sent and done wear none. The turning arc stops (paused) once it has faded out. */
 .ring { --rc: transparent; }
 .ring::after { content: ''; position: absolute; inset: 0; opacity: 0; background: var(--rc); transition: opacity var(--_t-slow) var(--_ease-out); }
-.ring::before { transition: opacity var(--_t-slow) var(--_ease-out); }
 .ring:is(.got, .wait, .stale, .asks)::before { opacity: 0; animation-play-state: paused; }
 .ring:is(.got, .wait, .stale, .asks)::after { opacity: 1; }
 .ring.got { --rc: rgba(52, 199, 89, .35); }
@@ -131,7 +128,6 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .ptr span { grid-area: 1 / 1; font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 1; transition: opacity var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease-out); }
 .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                   background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
-.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
 .card { position: absolute; width: 320px; max-width: calc(100vw - 24px); background: var(--_bg); border-radius: var(--_radius);
         box-shadow: var(--_shadow); padding: 12px 14px 14px; transform-origin: 14px 0; z-index: 1;
         display: flex; flex-direction: column; max-height: min(460px, 62vh); }
@@ -148,7 +144,7 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .choices { display: grid; gap: 8px; margin: 8px 0 2px; }
 .choices .rows { display: grid; gap: 2px; }
 button.choice { display: flex; align-items: baseline; gap: 8px; width: 100%; margin: 0; padding: 7px 8px; border: 0; border-radius: var(--_r-s);
-                background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background .12s; }
+                background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background var(--_t-quick); }
 button.choice::before { content: ''; flex: none; width: 14px; text-align: center; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--_fg); }
 button.choice.on::before { content: '✓'; }
 button.choice:hover:not(:disabled) { background: var(--_soft); }
@@ -159,23 +155,14 @@ button.choice.picked::before { content: '✓'; color: rgb(36, 160, 70); }
 .choice .tx { min-width: 0; overflow-wrap: anywhere; color: inherit; }
 .choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); }
 button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding: 6px 12px; background: var(--_accent); color: var(--_accent-fg);
-              font-size: 12.5px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity .12s; }
+              font-size: 12.5px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_t-quick); }
 button.keep:hover:not(:disabled) { opacity: .9; }
 button.keep:disabled { opacity: .4; cursor: default; }
 .card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .fd.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; }
-.item { display: grid; row-gap: 3px; }
-.item + .item { margin-top: 14px; }
-.msg.item { display: block; } .msg.item + .msg.item { margin-top: 0; }
-.meta { display: flex; align-items: baseline; gap: .5em; font-size: 12px; color: var(--_muted); margin: 0;
-        white-space: nowrap; letter-spacing: 0; font-variant-numeric: tabular-nums; }
-.meta b { font-weight: 500; font-size: 13px; letter-spacing: -.006em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.meta .dot { flex: none; align-self: center; margin: 0; }
-.meta .ago { white-space: nowrap; }
-.text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
 .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
 /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
-.card .row:not(.nav) { justify-content: flex-end; gap: 10px; } .card .row:not(.nav) button.btn { font-size: 12px; letter-spacing: 0; }
+.card .row:not(.nav) { justify-content: flex-end; gap: 10px; }
 button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
              letter-spacing: 0; border-radius: var(--_r-s); transition: color var(--_t-quick) var(--_ease-out); }
 button.btn:hover { color: var(--_fg); }
@@ -201,19 +188,18 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
                 min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
-.who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: -.006em; }
+.who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; }
 .who * { font-size: 13px; letter-spacing: -.006em; }
 .who span { color: var(--_muted); }
 .who input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; outline: none; color: var(--_muted); text-overflow: ellipsis; }
 .who input:focus { color: var(--_fg); }
-.box.open .line { display: block; animation: lab-fade var(--_fade); }
+.box.open:not(.one) .line { display: block; animation: lab-fade var(--_fade); }
 .box.open .who { display: flex; animation: lab-fade var(--_fade); }
 /* One line once your name is known: text, a quiet "as <name>" (still editable) and the arrow, side by side.
    The text grows upward; the name and arrow stay on its last line. Only a first comment, with no name yet, opens
    the second row to ask for it. */
 .box.one, .box.one.open { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "text who send"; align-items: end; row-gap: 0; padding: 7px 7px 7px 14px; }
 .box.one.tall { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "text text" "who send"; row-gap: 8px; align-items: end; } /* scrolling text: the scrollbar at the box's right edge */
-.box.one .line { display: none !important; }
 .box.one .who { align-self: end; line-height: 20px; padding-bottom: 2px; max-width: 40%; } /* the text's last line box, so they share a line */
 .box.one .who input { flex: none; field-sizing: content; min-width: 2ch; max-width: 9em; }
 .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
@@ -237,11 +223,9 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .motion-slow { font: 600 11px/1 system-ui, sans-serif; }
 .motion-slow[aria-pressed="true"] { background: var(--_fg); color: var(--_bg); }
 .motion svg { width: 12px; height: 12px; fill: currentColor; }
-.bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
-.bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
-              box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
-              letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease); }
-.bar button:active { transform: none; }
+.bar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
+.bar button { border: 0; cursor: pointer; color: var(--_fg); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center;
+              letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--_t-quick) var(--_ease-out); }
 /* The list and the chat: a header, a part that scrolls, and (the chat) a box at the bottom that doesn't. */
 .list { position: fixed; right: 16px; bottom: 66px; width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: hidden;
         display: flex; flex-direction: column; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; }
@@ -250,15 +234,9 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .list .none { padding: 8px; color: var(--_muted); }
 /* Thin scrollbars inside the dialogs (chat, threads, the list), like macOS overlay ones, on a clear track. */
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; }
-@supports not (scrollbar-width: thin) {
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--_fg) 24%, transparent); border-radius: 999px; }
-}
 .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
 .chatwin .replying { flex: none; }
-.chatwin .tabs b { padding: 4px 8px; font-weight: 600; margin-right: auto; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
 /* Something just sent eases in; the arrow flies off and comes back. */
@@ -292,8 +270,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
 .msg .stamp:is(.busy, .ans) { opacity: 1; } .msg .stamp:is(.busy, .ans) .tm { opacity: .55; }
 .msg .stamp .tm { font-size: inherit; line-height: inherit; color: inherit; } /* every element gets 14 px by default: the time keeps the stamp's 10 */
-.msg :is(.stamp, .stamp-room) .ring { position: relative; display: inline-block; width: 9px; height: 9px; margin-left: 5px; vertical-align: -1px; border-radius: 50%; overflow: hidden;
-                    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px));
+.msg :is(.stamp, .stamp-room) .ring { position: relative; display: inline-block; width: 9px; height: 9px; border-radius: 50%; overflow: hidden;
                     mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1.5px)); }
 .msg .stamp.ans .tick { color: rgb(36, 160, 70); letter-spacing: 0; font-weight: 600; }
 /* One slot for the mark, whatever it is (✓, ✓✓, the turning ring, the green ✓): 12 px wide after a 4 px gap, so the
@@ -305,11 +282,8 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
 .bar button * { color: inherit; font-weight: inherit; }
 .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
-.bar button.secondary { color: var(--_muted); }
-.bar button.secondary.has-new { color: var(--_fg); font-weight: 600; }
-.bar .new-prev, .bar .new-next { padding: 9px 11px; font-size: 15px; letter-spacing: -.016em; line-height: 1; color: var(--_fg); }
-.bar .list-btn, .bar .done-btn { font-variant-numeric: tabular-nums; min-width: 4.6em; justify-content: center; }
-.bar button.quiet { opacity: .45; cursor: default; box-shadow: var(--_shadow); }
+.bar button.secondary { color: var(--_muted); } /* words stay grey; the count says what is new */
+.bar .list-btn, .bar .done-btn { justify-content: center; }
 .newline { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0; font-weight: 500; color: var(--_muted); }
 .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
 /* The left side: who's listening, then copy link; the right side is the bar. */
@@ -322,7 +296,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .soon:hover { color: var(--_fg); }
 .soon[hidden] { display: none; }
 .listener { display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: var(--_radius);
-       background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; text-decoration: none; white-space: nowrap; }
+       background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; text-decoration: none; white-space: nowrap; cursor: default; }
 .listener span { color: var(--_muted); }
 /* The mark says the state, three ways (Leo, 18 Nov: black only when nobody listens): plain green while an agent is
    connected and listening, green with twitching ears while one works on pins (Leo: no third colour), black and still when nobody
@@ -336,8 +310,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
 .mark .eye, .agentmark .eye { fill: var(--_bg); }
-.listener .mark { margin: -2px 0 -1px -3px; }
-.listener .mark { fill: var(--_green-fg); }
+.listener .mark { margin: -2px 0 -1px -3px; fill: var(--_green-fg); }
 .listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
 .listener.stale .mark { fill: rgb(217, 139, 0); } /* reconnecting: amber */
 .listener.stale.idle .mark { fill: var(--_muted); }
@@ -346,7 +319,6 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .listener.working .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
 .listener.working .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
 @keyframes lab-twitch { 0%, 62%, 100% { transform: rotate(0); } 70% { transform: rotate(-9deg); } 80% { transform: rotate(5deg); } 90% { transform: rotate(-3deg); } }
-.listener { cursor: default; }
 /* Letter spacing follows the size, as Apple's SF text does: looser below 12 px, tighter above (11 +.006em,
    13 −.006, 15 −.016, 17 −.025). Uppercase labels and the ✓✓ overlap keep their own. */
 /* Keys whisper: a small grey letter, no chip; a bit clearer while the pointer is on the bar. */
@@ -356,54 +328,47 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
 .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
 .bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1) reads like (c)hat and ne(w) */
 /* One bar of segments, a hairline between them; the less used ones in the ⋯ menu above it (phones too: same bar, bigger to tap). */
-@media all {
-  .bar { gap: 0; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
-  .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
-  .bar > button.first { box-shadow: none; }
-  /* Hover, pressed and "its menu is open" are the first grey step after white (soft), not the second: on the white
-     bar the second read as a dirty block (Leo, 16 Nov). */
-  /* Only with a mouse: on a phone the grey stayed on a tapped segment (iOS keeps :hover after a tap; Leo, 16 Nov). */
-  @media (hover: hover) and (pointer: fine) {
-    .bar > button:not(:disabled):hover { background: var(--_soft); }
-    .bar > button:active { background: var(--_soft); }
-  }
-  .bar > .more[aria-expanded=true] { background: var(--_soft); }
-  .bar > button:active { transform: none; }
-  .bar > button.quiet { opacity: 1; box-shadow: inset .5px 0 0 var(--_line); color: var(--_muted); }
-  .bar > button.quiet.first { box-shadow: none; }
-  .bar .list-btn, .bar .done-btn { min-width: 0; }
-  .bar .mn { color: var(--_muted); font-weight: 400; }
-  /* Words stay grey (as the bar's buttons were); the count is a plain number: grey at 0, green when something is new. */
-  .bar > button.secondary, .bar > button.secondary.has-new { color: var(--_muted); font-weight: 500; }
-  .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
-  .bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
-  .bar .cnt.zero { color: var(--_muted); }
-  .bar .cnt:not(.zero) { color: rgb(36, 160, 70); } /* something new: green, the go pin's green (Leo, 17 Nov) */
-  .gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
-        color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
-  /* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
-  .go-btn:not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
-  /* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
-     grey. It had a thicker, darker ring and regular letters, which read as another control (Leo, 16 Nov). */
-  .go-btn.cursor .gp { color: transparent; background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); position: relative; }
-  .go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
-                              font-size: 10px; font-weight: 600; letter-spacing: 0; }
-  .more { font-size: 15px !important; letter-spacing: .05em; }
-  .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
-               border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
-  .more-menu[hidden] { display: none; }
-  .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
-                      border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
-  .more-menu button:hover:not(:disabled) { background: var(--_soft); }
-  .more-menu button:disabled { color: var(--_muted); cursor: default; }
-  .more-menu button[hidden] { display: none; }
-  /* A pin left by the agent: labit's mark in place of a letter. */
-  .pin .agentmark { width: 60%; height: 60%; display: block; }
-  .more-menu kbd { margin: 0; }
-  /* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
-  .more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
-    color: var(--_muted); user-select: text; overflow-wrap: anywhere; }
+.bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
+.bar > button.first { box-shadow: none; }
+/* Hover, pressed and "its menu is open" are the first grey step after white (soft), not the second: on the white
+   bar the second read as a dirty block (Leo, 16 Nov). */
+/* Only with a mouse: on a phone the grey stayed on a tapped segment (iOS keeps :hover after a tap; Leo, 16 Nov). */
+@media (hover: hover) and (pointer: fine) {
+  .bar > button:not(:disabled):hover { background: var(--_soft); }
+  .bar > button:active { background: var(--_soft); }
 }
+.bar > .more[aria-expanded=true] { background: var(--_soft); }
+.bar > button.quiet { cursor: default; color: var(--_muted); }
+.bar .mn { color: var(--_muted); font-weight: 400; }
+/* The count is a plain number: grey at 0, green when something is new. */
+.bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
+.bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
+.bar .cnt.zero { color: var(--_muted); }
+.bar .cnt:not(.zero) { color: rgb(36, 160, 70); } /* something new: green, the go pin's green (Leo, 17 Nov) */
+.gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
+      color: rgb(36, 160, 70); box-shadow: inset 0 0 0 1.25px rgb(36, 160, 70); transition: background-color var(--_t-base) var(--_ease-out), color var(--_t-base) var(--_ease-out); }
+/* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
+.go-btn:not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
+/* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
+   grey. It had a thicker, darker ring and regular letters, which read as another control (Leo, 16 Nov). */
+.go-btn.cursor .gp { color: transparent; background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); position: relative; }
+.go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
+                            font-size: 10px; font-weight: 600; letter-spacing: 0; }
+.more { font-size: 15px !important; letter-spacing: .05em; }
+.more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
+             border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
+.more-menu[hidden] { display: none; }
+.more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
+                    border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
+.more-menu button:hover:not(:disabled) { background: var(--_soft); }
+.more-menu button:disabled { color: var(--_muted); cursor: default; }
+.more-menu button[hidden] { display: none; }
+/* A pin left by the agent: labit's mark in place of a letter. */
+.pin .agentmark { width: 60%; height: 60%; display: block; }
+.more-menu kbd { margin: 0; }
+/* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
+.more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
+  color: var(--_muted); user-select: text; overflow-wrap: anywhere; }
 kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
 .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
         box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
@@ -423,7 +388,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @supports (corner-shape: squircle) {
   :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
   *, *::before, *::after { corner-shape: squircle; }
-  .pin, .pin .ring, .pin.new::after, .dot, .send, .bar .toggle:not(.secondary)::before,
+  .pin, .pin .ring, .pin.new::after, .send, .bar .toggle:not(.secondary)::before,
   .msg :is(.stamp, .stamp-room) .ring, .gp { corner-shape: round; } /* circles stay circles */
 }
 @keyframes lab-pin { from { transform: scale(1.1); } }
@@ -449,13 +414,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
   /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
      panning the page can't push it up and nothing of the page shows above or below it. */
-  :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: var(--lab-top, 0px) !important; bottom: auto !important;
-    height: var(--lab-vh, 100dvh) !important; max-height: none !important; border-radius: 0; }
+  :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { bottom: auto !important; max-height: none !important; }
   /* A new comment stays small, just above the keyboard, with the page (dimmed) above it: you see what you comment on. */
-  :host([data-kb]) .float { top: auto !important; bottom: var(--lab-kb, 0px) !important; height: auto !important; border-radius: var(--_radius) var(--_radius) 0 0; }
-  .card, .float { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none;
-                  max-height: var(--_sheet-max); display: flex; flex-direction: column; border-radius: var(--_radius) var(--_radius) 0 0; padding: 8px 0 0; z-index: 3; }
-  .card::after, .float::after, .list::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--_bg); }
+  :host([data-kb]) .float { top: auto !important; height: auto !important; }
+  .card, .float { position: fixed; top: auto !important; width: auto; max-width: none;
+                  max-height: var(--_sheet-max); display: flex; flex-direction: column; padding: 8px 0 0; z-index: 3; }
   /* The same 12 px sides as the chat's, so a thread's reply box sits exactly where the chat's message box does. */
   .card > .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 4px; margin-right: 0; }
   /* A thread keeps one height, as the chat does (Leo, 15 Nov: it jumped while the chat stays put): the sheet's full
@@ -465,14 +428,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card > .foot, .float > .composer { flex: none; padding: 0 12px var(--_pb); }
   .card > .foot { margin-top: 0; padding-top: 6px; }
   .card .composer { margin-top: 0; }
-  .card > .nav { flex: none; margin: -6px 0 0; padding: 0 12px; gap: 20px; }
+  .card > .nav { flex: none; margin: -6px 0 0; padding: 0 12px; }
   .card .nav .btn { font-size: 14px; letter-spacing: -.011em; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
-  .card .nav { gap: 16px; }
-  .card .nav { flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
+  .card .nav { gap: 16px; flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
   .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
   .box.one .who span { font-size: 16px; letter-spacing: -.019em; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
-  .card .nav .acts button.btn { font-size: 14px; letter-spacing: -.011em; }
-  .float { background: var(--_bg); box-shadow: var(--_shadow); }
   /* The grab handle: the sheet's top strip, where a drag down moves it. The header of the list and the chat does the same. */
   /* Reaching 60 px above the sheet's edge over the dimmed page (Leo, 15 Nov: "the whole top and a bit above", then
      "do more"); the bar and the layout stay as they were. The chat's and the list's header reach up the same way. */
@@ -504,16 +464,15 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-opening]) :is(.card.in, .float.in, .scrim) { animation-play-state: paused; }
   /* Leaving (see leave() in sheets.ts): the dimmed page stays until the sheet is gone, fading on the sheet's curve. */
   :host([data-leaving]) .scrim { display: block; }
-  .list { left: 0; right: 0; bottom: 0 !important; width: auto; max-height: var(--_sheet-max); overflow: visible; border-radius: var(--_radius) var(--_radius) 0 0;
+  .list { width: auto; max-height: var(--_sheet-max); overflow: visible;
           font-size: 15px; letter-spacing: -.016em; z-index: 3; }
   /* The chat keeps one height (new messages don't move its top) and opens at the newest. */
   .chatwin { height: var(--_sheet-max); }
   .chatwin, .card { transition: height var(--_t-slow) var(--_ease-settle); } /* a comment pulls up to full height as the chat does */
   /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
-  .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px + var(--_kb)); max-height: none; }
+  .chatwin.full, .card.full { max-height: none; }
   /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
-  .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; border-radius: var(--_radius) var(--_radius) 0 0;
-                background: var(--_bg); }
+  .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; background: var(--_bg); }
   .chatwin .msgs { padding: 4px 12px 8px; }
   .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
   .chatwin .chat { padding: 6px 12px var(--_pb); }
@@ -523,13 +482,12 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card > .body { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
   /* …and fade out behind the box (iOS's scroll edge): from 4 px above its top to 12% at its bottom (Leo, 15 Nov:
      "behind input bottom", "a bit more", "less, it's just black", then "more, darker there"). */
-  .chatwin .msgs, .card > .body { -webkit-mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb)));
-                                          mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
+  .chatwin .msgs, .card > .body { mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
   .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
   :host { --_box-bg: color-mix(in srgb, var(--_bg) 72%, transparent);
           --_box-edge: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
   .float { --_box-bg: inherit; --_box-edge: inherit; } /* phones: the new comment sheet's box is the same glass */
-  .box { -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); }
+  .box { backdrop-filter: blur(18px) saturate(1.8); }
   /* Pins a size smaller (22 px), the tail still on the spot: 28 px covered words on a phone. Closed ones smaller still. */
   .pin { scale: .8; }
   /* …but a 44 pt place to tap (iOS 44 pt, Leo 16 Nov: hard to hit at 22): an invisible circle round the pin, so it
@@ -539,7 +497,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* Messages at 15 px (13 on computers): closer to the phone's own 17 px text, threads still short. */
   .msg .p { font-size: 15px; letter-spacing: -.016em; line-height: 21px; }
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }
-  .msg b, .msg .quote b { font-size: 12px; letter-spacing: 0; }
   .pin.moved:not(.resolved) { scale: .64; }
   /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
   .bar > button { padding: 12px 14px; min-height: 44px; }
@@ -552,8 +509,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
    card does (.in / .out, above); a copy of the bar goes out as the dialog comes in. */
 .fd { position: absolute; z-index: 4; overflow: hidden; background: var(--_bg); border-radius: var(--_radius);
       box-shadow: var(--_shadow); }
-.pane { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; transition: opacity .16s; }
-.pane.on { opacity: 1; pointer-events: auto; transition: opacity .22s .2s; }
+.pane { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; transition: opacity var(--_t-quick); }
+.pane.on { opacity: 1; pointer-events: auto; transition: opacity var(--_t-base) var(--_t-base); }
 .settled .p-dlg { position: relative; }
 .fd .p-bar { width: max-content; margin: 0; padding: 6px; }
 .p-dlg { padding: 8px; }
@@ -608,7 +565,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
     background: var(--_bg);
     box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px rgba(0, 0, 0, .18); transform-origin: var(--lab-from, 50% 100%); }
   .list .tabs { border-radius: var(--_card-r) var(--_card-r) 0 0; }
-  .card::after, .float::after, .list::after { content: none; }
   :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
   :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
   /* Pinch-zoomed: a thread's or new comment's sheet (on the page's layer, with the pins) is drawn the same way as .ui:
@@ -647,8 +603,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sw-lab { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 10px 10px 4px; }
 .sw-lab + .sw-lab, .sw-row + .sw-lab, .sw-none + .sw-lab { margin-top: 6px; border-top: var(--_hair); }
 .sw-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 5px; font-size: 12px; color: var(--_muted); min-width: 0; white-space: nowrap; }
-.sw-port { font-size: 12px; color: var(--_muted); }
-.sw-row .sw-t .sw-path { font-size: 12px; color: var(--_muted); }
+.sw-port, .sw-path { font-size: 12px; color: var(--_muted); }
 .sw-name b { color: var(--_fg); font-weight: 600; font-size: 13px; }
 .sw-row.armed .sw-m { color: rgb(196, 60, 40); } /* ⇧⌥A once: archiving the whole lab waits for a second press */
 .sw-row { display: flex; justify-content: space-between; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 7px 10px;
