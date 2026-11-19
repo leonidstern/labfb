@@ -38,10 +38,8 @@ npx @leonidstern/labit@latest pin <selector> "1. …"   # its own pin on a spot:
 
 Run each `wait` from the agent itself, never in a shell loop (`while true; do … wait; done`): a loop keeps listening after its session is gone, so pins are handed to nobody. A pin handed over that gets no reply of any kind in 2 minutes (`LAB_ANSWER_MS`) is marked "not answered" and goes to the next wait, and the pill says "Claude isn't answering" until that session replies.
 
-Or as an MCP server: `npx @leonidstern/labit@latest mcp`.
 
-
-**Fewer permission prompts (Claude Code):** copy [examples/claude-settings.json](examples/claude-settings.json) to `.claude/settings.json` in your project (or merge its `permissions` into yours). labit's commands and MCP tools then run without asking; `--wifi` and `invite`, which let another device in, still ask. Claude Code reads a project's allow rules only once you've opened the folder in it and trusted it.
+**Fewer permission prompts (Claude Code):** copy [examples/claude-settings.json](examples/claude-settings.json) to `.claude/settings.json` in your project (or merge its `permissions` into yours). labit's commands then run without asking; `--wifi` and `invite`, which let another device in, still ask. Claude Code reads a project's allow rules only once you've opened the folder in it and trusted it.
 
 ## Good to know
 
