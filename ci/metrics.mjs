@@ -19,6 +19,7 @@ const OXLINT = "oxlint@1.93.0"; // pinned, so the count only changes when the co
 const TYPES = ["typescript@5.9.3", "@types/node@22.20.5"]; // pinned for the same reason
 const LINTED = "lib local.mjs src"; // the commented sources (JS and TS); the shipped file is generated
 const PAGE_SCRIPT = "public/_lab/comments.js"; // what pages load: built from src/comments.js by npm run build
+const BOARD_SCRIPT = "public/_lab/board.js"; // loaded only on board pages
 
 // ratchet: may never get worse. budget: may grow by perPr per PR, never past max.
 // ALLOW_GROWTH=1 (the size-approved label) lifts perPr; raising max means editing this file.
@@ -27,6 +28,10 @@ const METRICS = {
   pageScriptGzipBytes: {
     kind: "budget", dir: "down", perPr: 2048, max: 80_000,
     hint: "Shrink src/comments.js without changing behaviour: remove dead code and duplication, then npm run build. No new dependencies.",
+  },
+  boardScriptGzipBytes: {
+    kind: "budget", dir: "down", perPr: 2048, max: 6_000,
+    hint: "Shrink src/board/ without changing behaviour, then npm run build. No new dependencies.",
   },
   npmPackBytes: {
     kind: "budget", dir: "down", perPr: 4096, max: 175_000,
@@ -90,6 +95,8 @@ function collect() {
 
   // The script every commented page loads, gzipped.
   m.pageScriptGzipBytes = gzipSync(readFileSync(PAGE_SCRIPT), { level: 9 }).length;
+  // The board page's own script, gzipped.
+  if (existsSync(BOARD_SCRIPT)) m.boardScriptGzipBytes = gzipSync(readFileSync(BOARD_SCRIPT), { level: 9 }).length;
 
   // What npm users download.
   // The package ships the built server (dist/, from build:cli): build it so the size is what npm users get.
