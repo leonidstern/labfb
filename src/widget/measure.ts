@@ -1,8 +1,9 @@
 // Measure (flag measure, Leo 19 Nov): on a computer while ⌥ (Option) is held, as in design tools, no mode ("just with
 // some shortcut pressed"): the thing under the mouse shows its size and its gaps to its nearest siblings, or to its
 // parent's inner edges where none is; with something picked (select mode's block, or the open pin's or new pin's thing,
-// green ring) the mouse on another (blue ring) gives the gap between the two. The reading sits small beside the mouse;
-// ⌥-click pins as ever and the pin carries it (current(), read by comments.js); letting go of ⌥ clears it all. Phones:
+// green ring) the mouse on another (blue ring) gives the gap between the two. Only the lines and their labels show, no
+// box of words by the mouse (Leo, 19 Nov); ⌥-click pins as ever and the pin carries the words (current(), read by
+// comments.js); letting go of ⌥ clears it all. Phones:
 // "measure" in the ⋯ menu is a mode, with a bar (reading, pin, done); tap one thing, then another. Lines with the px between
 // them and the space token, red when it is none, and the other's size. Border edge to border edge between two things; the inner
 // border edges when one holds the other (all four sides). One decimal, CSS px (a zoom or scale above both is taken out
@@ -12,7 +13,7 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
-const M = { on: false, sel: null as Element | null, hov: null as Element | null, locked: false, text: '', k: 1, tok: new Map<number, string>(), box: null as HTMLElement | null, bar: null as HTMLElement | null, words: null as HTMLElement | null, raf: 0, held: false, x: 0, y: 0 };
+const M = { on: false, sel: null as Element | null, hov: null as Element | null, locked: false, text: '', k: 1, tok: new Map<number, string>(), box: null as HTMLElement | null, bar: null as HTMLElement | null, words: null as HTMLElement | null, raf: 0, held: false };
 const GREEN = 'rgb(52, 199, 89)', BLUE = '#0a84ff', RED = '#ff3b30';
 const CSS = `.mz { position: fixed; inset: 0; pointer-events: none; z-index: 4; font: 500 11px/1 system-ui, sans-serif; }
 .mz i { position: absolute; display: block; box-sizing: border-box; }
@@ -20,7 +21,6 @@ const CSS = `.mz { position: fixed; inset: 0; pointer-events: none; z-index: 4; 
 .mz .tg { padding: 3px 5px; border-radius: 4px; background: ${BLUE}; color: #fff; white-space: nowrap; transform: translate(-50%, -50%); font-style: normal; }
 .mz .tg.bad { background: ${RED}; } .mz .tg.sz { background: #141414; transform: translate(-50%, 4px); }
 .mz .bx { outline: 1.5px solid ${BLUE}; } .mz .bx.sel { outline: 2px solid ${GREEN}; }
-.mz .rd { max-width: 280px; padding: 4px 6px; border-radius: 5px; background: #141414; color: #fff; font-style: normal; line-height: 1.3; overflow-wrap: anywhere; }
 .mzbar { position: fixed; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); width: fit-content; max-width: 560px; margin: 0 auto; box-sizing: border-box;
   display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; background: var(--_bg); color: var(--_fg); border-radius: var(--_radius); box-shadow: var(--_shadow);
   font: 13px/1.3 var(--lab-font, system-ui, sans-serif); pointer-events: auto; }
@@ -100,7 +100,7 @@ const line = (x1: number, y1: number, x2: number, y2: number, px: number) => {
 };
 const ring = (r: DOMRect, cls: string) => add(cls, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
 
-/** What is measured now, as words: on the bar and in a pin. */
+/** What is measured now, as words: on a phone's bar and in a pin. */
 function draw() {
   M.raf = 0;
   if (!M.box) return;
@@ -150,16 +150,7 @@ function say(words: string, text = '') {
   M.text = text;
   M.words!.textContent = words;
   (M.bar!.querySelector('[data-a="pin"]') as HTMLButtonElement).disabled = !text;
-  if (M.held) reading(words);
-}
-// ⌥ held: the reading beside the mouse, small.
-function reading(words: string) {
-  const d = document.createElement('i');
-  d.className = 'rd';
-  d.append(words);
-  const left = M.x > innerWidth - 300;
-  Object.assign(d.style, { left: `${M.x + (left ? -14 : 14)}px`, top: `${M.y + 18}px`, transform: left ? 'translateX(-100%)' : '' });
-  M.box!.append(d);
+  M.box!.dataset.said = words; // ⌥ held: no words on screen, kept here (the tests read them)
 }
 const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.min(a1, b1) - Math.max(a0, b0) > 0;
 /** Hovered alone (⌥ held): each side's gap to the nearest sibling there, else to the parent's inner (border) edge. */
@@ -219,7 +210,6 @@ export function hold(w: unknown, on: boolean) {
   M.sel = picked();
   const m = W.S.mouse;
   if (m) {
-    [M.x, M.y] = [m.x, m.y];
     const t = document.elementFromPoint(m.x, m.y);
     M.hov = t && t !== document.documentElement && t !== W.host ? t : null;
   }
@@ -292,8 +282,7 @@ function bind() {
   addEventListener('pointermove', (e) => {
     if (!mine(e) || M.locked || e.pointerType !== 'mouse') return;
     const t = at(e);
-    if (M.held) [M.x, M.y] = [e.clientX, e.clientY]; // the reading follows the mouse
-    else if (t === M.hov) return;
+    if (t === M.hov) return;
     M.hov = t;
     redraw();
   }, true);

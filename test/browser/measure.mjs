@@ -1,5 +1,5 @@
 // Measure (flag measure) in real browsers (WebKit and Chrome's engine): on a computer only while ⌥ is held (no mode, no
-// bar; the reading beside the mouse, gone when ⌥ is let go), the mouse alone gives the gaps to siblings and the parent,
+// bar, no box of words by the mouse: only the lines and their labels, gone when ⌥ is let go), the mouse alone gives the gaps to siblings and the parent,
 // a thing picked already and the mouse on another give the gap (or the four insides) and the size, checked against the page's own geometry: the CSS each case
 // sets, and the hovered thing's layout size. Scale and zoom above them are taken out; a token is named only on an exact
 // match, the page's own --space-* when it has them. an ⌥-click pin carries the measure to the agent; a phone
@@ -81,8 +81,8 @@ const pointOn = (p, id) => p.evaluate((id) => {
   for (let y = r.top + 3; y < r.bottom; y += 2) for (let x = r.left + 3; x < r.right; x += 2) if (document.elementFromPoint(x, y) === e) return [x - visualViewport.offsetLeft, y - visualViewport.offsetTop];
   return null;
 }, id);
-// A phone's bar, or (G held) the reading beside the mouse: its words, without its "pin".
-const said = (p) => p.evaluate(() => [...document.querySelectorAll('[data-lab-comments]')].map((n) => n.shadowRoot?.querySelector('.mzbar span')?.textContent ?? n.shadowRoot?.querySelector('.mz .rd')?.firstChild?.textContent).find((v) => v !== undefined) ?? null);
+// A phone's bar, or (⌥ held) the words kept on the lines' layer (none on screen): without its "pin".
+const said = (p) => p.evaluate(() => [...document.querySelectorAll('[data-lab-comments]')].map((n) => n.shadowRoot?.querySelector('.mzbar span')?.textContent ?? n.shadowRoot?.querySelector('.mz')?.dataset.said).find((v) => v !== undefined) ?? null);
 const inRoot = (p, sel) => p.evaluate((sel) => [...document.querySelectorAll('[data-lab-comments]')].some((n) => n.shadowRoot?.querySelector(sel)), sel);
 // Numbers and tokens out of the words: "gap 10.5 px, no token (8 or 12)", "left 16 px, space-4".
 const parse = (s) => [...(s || '').matchAll(/(?:gap|left|right|top|bottom) (-?[\d.]+) px, (space-[\w-]+|no token)/g)].map((m) => ({ v: +m[1], tok: m[2] === 'no token' ? null : m[2] }));
@@ -116,7 +116,7 @@ try {
         else {
           // ⌥ held: no bar; the thing under the mouse at once, with its gaps to siblings (8 to #a1) and to the parent.
           const s = await said(p);
-          check(tag, '⌥ held: no bar, the reading beside the mouse', !(await inRoot(p, '.mzbar')) && /^#b1 50 × 30 px; .*left 8 px, space-2 to #a1/.test(s || ''), s);
+          check(tag, '⌥ held: no bar, no box of words, the lines and their labels', !(await inRoot(p, '.mzbar')) && !(await inRoot(p, '.mz .rd')) && (await inRoot(p, '.mz .ln')) && (await inRoot(p, '.mz .tg.sz')) && /^#b1 50 × 30 px; .*left 8 px, space-2 to #a1/.test(s || ''), s);
           check(tag, '⌥ held: the mouse alone gives the parent edges', /top 0 px to parent; bottom 0 px to parent/.test(s || ''), s);
           await p.mouse.move(...(await pointOn(p, 'b7')));
           await sleep(150);
@@ -165,7 +165,9 @@ try {
           await p.keyboard.down('Alt');
           await sleep(150);
           // At its far corner: the pin's mark stays off the spot the phone taps later.
+          await p.evaluate(() => ((window.menus = 0), addEventListener('contextmenu', () => window.menus++, true)));
           await p.mouse.click(...(await p.evaluate(() => { const r = document.getElementById('b2').getBoundingClientRect(); return [r.right - 3, r.bottom - 3]; })));
+          check(tag, 'an ⌥-click opens no context menu and selects nothing', !(await p.evaluate(() => window.menus || String(getSelection()).trim())) && (await inRoot(p, '.mz .ln')) && !(await inRoot(p, '.mz .rd')));
           await p.keyboard.up('Alt');
           await pickEl(null);
           await sleep(400);
