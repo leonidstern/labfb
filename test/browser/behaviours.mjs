@@ -359,14 +359,14 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
   write('notes.md', '# notes, changed');
   await sleep(3000);
   check(eng, 'a save the page does not use leaves it alone', loads === 1, `loads ${loads}`);
-  // With the chat open the reload waits ("update waiting"), and what comes meanwhile still shows: before 19 Nov the
+  // With the chat open the reload waits (a "!" on the labit mark), and what comes meanwhile still shows: before 19 Nov the
   // held reload cut off every later update, so the agent's answer stayed out of an open chat until it was closed.
   await p.keyboard.press('c');
   await untilShadow(p, (r) => r.querySelector('.chatwin').hidden === false, null, 1000);
   const said = () => shadow(() => { return [...r.querySelectorAll('.msg')].some((m) => m.textContent.includes('while it waits')); });
   write('data.json', '{"a":2}');
-  await untilShadow(p, (r) => r.querySelector('.soon')?.hidden === false, null, 3000);
-  const waiting = await shadow(() => { return r.querySelector('.soon')?.hidden === false; });
+  await untilShadow(p, (r) => r.querySelector('.upd')?.hidden === false, null, 3000);
+  const waiting = await shadow(() => { return r.querySelector('.upd')?.hidden === false; });
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'while it waits', anchor: { kind: 'page', width: 1000, height: 700, dpr: 1 } }) });
   await untilShadow(p, (r) => [...r.querySelectorAll('.msg')].some((m) => m.textContent.includes('while it waits')), null, 2000);
   check(eng, 'a reload that waits for an open chat does not hold back new messages', waiting && loads === 1 && (await said()), `waiting ${waiting}, loads ${loads}`);

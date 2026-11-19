@@ -48,18 +48,56 @@ export function startLive() {
     let reloadWhenShown = false;
     let reloadTimer: any = 0;
     // A held reload is invisible otherwise: the page sits old while you read, then jumps the moment you close the
-    // thread. This says one is ready, and takes it now when tapped.
-    const soon = document.createElement('button');
-    soon.className = 'soon';
-    soon.type = 'button';
-    soon.hidden = true;
-    soon.textContent = 'update waiting';
-    soon.title = 'Take the update now';
-    soon.addEventListener('click', () => {
+    // thread. A "!" on the labit mark says one is ready (owner, 19 Nov: "move it to rabbit status"), and a tap on the
+    // mark takes it now. Where no mark shows (no agent news yet, a phone before its chat button got the mark), the ⋯
+    // button carries it. The badge floats over its corner, so nothing moves when it comes or goes.
+    const upd = Object.assign(document.createElement('span'), { className: 'upd', textContent: '!', hidden: true });
+    upd.setAttribute('aria-hidden', 'true');
+    let held = false;
+    let updOn: HTMLElement | null = null;
+    const UPD_LABEL = 'update waiting, tap to load';
+    const shows = (n: Element | null) => Boolean(n && !(n as HTMLElement).hidden && n.getClientRects().length);
+    const showUpd = (on: boolean) => {
+      held = on;
+      if (!on) {
+        upd.hidden = true;
+        if (updOn) {
+          const was = updOn.dataset.updLabel;
+          if (was) updOn.setAttribute('aria-label', was);
+          else updOn.removeAttribute('aria-label');
+          delete updOn.dataset.updLabel;
+          updOn.classList.remove('has-upd');
+        }
+        updOn = null;
+        return;
+      }
+      const markOn = W.coarse ? W.chatBtn : who;
+      const host: HTMLElement = shows(markOn) && markOn.querySelector('.mark') ? markOn : W.root.querySelector('.more');
+      if (!host) return;
+      if (updOn !== host) {
+        showUpd(false);
+        held = true;
+        updOn = host;
+        host.dataset.updLabel = host.getAttribute('aria-label') || '';
+        host.setAttribute('aria-label', UPD_LABEL);
+        host.classList.add('has-upd');
+        host.append(upd);
+      }
+      upd.hidden = false;
+      // On the mark's top right corner (or the ⋯'s), measured, so the badge sits on the mark wherever it is.
+      const m = host.querySelector('.mark') || host;
+      const hr = host.getBoundingClientRect();
+      const mr = m.getBoundingClientRect();
+      Object.assign(upd.style, { left: `${mr.right - hr.left - 6}px`, top: `${mr.top - hr.top - 6}px` });
+    };
+    const take = (e: Event) => {
+      if (!held || e.currentTarget !== updOn) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
       clearTimeout(reloadTimer);
       reloadTimer = 0;
       now();
-    });
+    };
     const now = () => {
       try {
         sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, chat: W.S.chatOpen }));
@@ -70,11 +108,11 @@ export function startLive() {
       // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
       if (document.hidden) return void (reloadWhenShown = true);
       if (busy()) {
-        soon.hidden = false;
+        showUpd(true);
         if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
         return;
       }
-      soon.hidden = true;
+      showUpd(false);
       now();
     };
     const who = document.createElement('a');
@@ -86,9 +124,12 @@ export function startLive() {
     const MARK = '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">' + MARK_PATHS + '</svg>';
     who.innerHTML = MARK + '<div class="lbl"></div>';
     const lbl = who.querySelector('.lbl') as HTMLElement;
+    // The pill's label, kept aside while it says "update waiting" (the "!" badge) and put back after.
+    const whoLabel = (t: string) => (updOn === who ? (who.dataset.updLabel = t) : who.setAttribute('aria-label', t));
     who.hidden = true;
     W.root.querySelector('.left').prepend(who);
-    W.root.querySelector('.left').append(soon);
+    // Capture, so a tap that takes the update never also opens the chat, the ⋯ menu or the session's link.
+    for (const n of [who, W.chatBtn, W.root.querySelector('.more')]) n?.addEventListener('click', take, { capture: true });
     // Files a save can mean for this page: the page itself, anything it loads, and data it may fetch as it runs.
     // Everything else -- a README, another page's script, the project's own server code -- leaves it alone.
     const FETCHED = /\.(json|wasm|csv|tsv|xml|txt|map|woff2?)$/i;
@@ -140,7 +181,7 @@ export function startLive() {
         }
         prog.dataset.k = key;
       }
-      who.setAttribute('aria-label', who.textContent);
+      whoLabel(lbl.textContent || '');
     };
     W.paintWho = paintWho;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
@@ -150,7 +191,7 @@ export function startLive() {
       pill = null; // the pill's own words are not painted over it until the next state
       lbl.dataset.sig = '';
       lbl.replaceChildren(span(word));
-      who.setAttribute('aria-label', word);
+      whoLabel(word);
       who.classList.add('stale');
       W.chatBtn.classList.add('stale');
       if (!who.classList.contains('working') && !last) who.classList.add('idle');
@@ -496,8 +537,8 @@ export function startLive() {
         W.listBtn.dataset.agent = mode;
         W.chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's mark
         if (W.coarse && !W.chatBtn.querySelector('.mark')) W.chatBtn.insertAdjacentHTML('afterbegin', MARK);
-        if (W.coarse) W.chatBtn.title = who.textContent; // phones: the light on the chat button says who's listening
-        who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
+        if (W.coarse) W.chatBtn.title = lbl.textContent || ''; // phones: the light on the chat button says who's listening
+        whoLabel(lbl.textContent || ''); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
