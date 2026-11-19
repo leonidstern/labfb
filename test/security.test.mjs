@@ -235,7 +235,7 @@ test('--proxy: the app writes through the lab, forms included; another site does
 });
 
 test('dot files, .lab/ and paths outside the folder are never served', async () => {
-  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/.lab/comments/index.json', '/.lab/archive/index.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt', '/labdir/server.json', '/labdir/key', '/keys.txt', '/env.txt']) {
+  for (const p of ['/.env', '/.lab/key', '/.lab/server.json', '/.lab/comments.json', '/.lab/state.json', '/.lab/comments/index.json', '/.lab/archive/index.json', '/..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/link.txt', '/labdir/server.json', '/labdir/key', '/keys.txt', '/env.txt']) {
     const r = await raw(p);
     assert.ok([403, 404].includes(r.status), `${p} → ${r.status}`);
     assert.doesNotMatch(r.text, /SECRET|outside the folder|root:|"agent"|"token"/);

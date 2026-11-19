@@ -91,30 +91,14 @@ test('each page has its own file; a comment rewrites only its page; a restart lo
   await again.stop();
 });
 
-test('a lab with the old comments.json moves it into per-page files and keeps it as .bak', async () => {
+test('a lab with the old comments.json is not started over it: it says how to move it', async () => {
   const dir = folder();
   fs.mkdirSync(path.join(dir, '.lab'));
-  const now = new Date().toISOString();
-  const old = {
-    '/x': { x1: { id: 'x1', parent: null, name: 'Leo', text: 'old store x', createdAt: now, resolved: false, anchor } },
-    '/y/z': { y1: { id: 'y1', parent: null, name: 'Leo', text: 'old store y', createdAt: now, resolved: false, anchor } },
-  };
-  fs.writeFileSync(path.join(dir, '.lab/comments.json'), JSON.stringify(old));
-  const lab = await start(dir);
-  assert.ok(!fs.existsSync(path.join(dir, '.lab/comments.json')), 'old file moved');
-  assert.deepEqual(readJson(path.join(dir, '.lab/comments.json.bak')), old, 'old file kept as .bak, unchanged');
-  assert.equal(readJson(path.join(dir, '.lab/comments/x.json')).page, '/x');
-  assert.equal(readJson(path.join(dir, '.lab/comments/y_2fz.json')).page, '/y/z');
-  assert.equal((await lab.list('/y/z'))[0].text, 'old store y');
-  // The reply command finds comments in the new files.
-  const replied = await new Promise((resolve) => execFile(process.execPath, [LAB, 'reply', 'x1', 'Done: moved'], { cwd: dir }, (err, out, errOut) => resolve({ code: err?.code ?? 0, out: out + errOut })));
-  assert.equal(replied.code, 0, replied.out);
-  assert.ok((await lab.list('/x')).some((c) => c.parent === 'x1' && c.text === 'Done: moved'), 'the reply landed');
-  await lab.stop();
-  const again = await start(dir);
-  assert.equal((await again.list('/x'))[0].text, 'old store x', 'still there after the next start (not migrated twice)');
-  assert.ok(fs.existsSync(path.join(dir, '.lab/comments.json.bak')));
-  await again.stop();
+  fs.writeFileSync(path.join(dir, '.lab/comments.json'), '{}');
+  const out = await new Promise((resolve) => execFile(process.execPath, [LAB, '.', '--no-open', '--port', String(nextPort)], { cwd: dir, env: { ...process.env, PORT: String(nextPort++) } }, (err, o, e) => resolve({ code: err?.code ?? 0, text: o + e })));
+  assert.notEqual(out.code, 0);
+  assert.match(out.text, /labit@0\.6\.2/);
+  assert.ok(!fs.existsSync(path.join(dir, '.lab/comments')), 'nothing started beside it');
 });
 
 test("a page's kept list is dropped when the page changes (new comment, reply, delete)", async () => {
@@ -193,8 +177,8 @@ test('an older page file loads unchanged in meaning: replies lose resolved:false
   assert.equal(got.t1.handedAt, now, 'a thread still says when the agent got it');
   assert.deepEqual(got.w1.anchor.quote, { exact: 'here', prefix: 'some words ', suffix: ' after it' }, 'a word pin from before quotes has its word as a quote');
   await until(() => readJson(path.join(dir, '.lab/comments/x.json')).v === 2, 'the file written in the new shape once the lab is up');
-  await until(() => fs.existsSync(path.join(dir, '.lab/handed.json')), 'the marks saved beside the comments');
-  assert.deepEqual(readJson(path.join(dir, '.lab/handed.json')), { t1: [now, 'sess-a', now], r3: [now, null] });
+  await until(() => fs.existsSync(path.join(dir, '.lab/state.json')), 'the marks saved beside the comments');
+  assert.deepEqual(readJson(path.join(dir, '.lab/state.json')).handed, { t1: [now, 'sess-a', now], r3: [now, null] });
   // The marks still mean what they meant: nothing here is new to a wait.
   const server = readJson(path.join(dir, '.lab/server.json'));
   const wait = await fetch(lab.B + '/_lab/wait', { method: 'POST', headers: { 'content-type': 'application/json', origin: lab.B, 'x-lab-admin': server.agent, 'x-lab-agent': '1' }, body: JSON.stringify({ timeout: 1 }) });
@@ -250,21 +234,41 @@ test('a done thread is archived a month after it was resolved, not after its las
   await lab.stop();
 });
 
-test('reads.json and claims.json: a damaged one is put aside, not read as empty and written over; saves go whole', async () => {
+test('state.json: a damaged one is put aside, not read as empty and written over; saves go whole', async () => {
   const dir = folder();
   fs.mkdirSync(path.join(dir, '.lab'));
-  fs.writeFileSync(path.join(dir, '.lab/reads.json'), '{"leo":{"/index":["a"');
-  fs.writeFileSync(path.join(dir, '.lab/claims.json'), 'not json');
+  fs.writeFileSync(path.join(dir, '.lab/state.json'), '{"reads":{"leo":{"/index":["a"');
   const lab = await start(dir);
   const names = () => fs.readdirSync(path.join(dir, '.lab'));
-  assert.ok(names().some((n) => n.startsWith('reads.json.broken-')), names().join(' '));
-  assert.ok(names().some((n) => n.startsWith('claims.json.broken-')), names().join(' '));
-  assert.equal(fs.readFileSync(path.join(dir, '.lab', names().find((n) => n.startsWith('reads.json.broken-'))), 'utf8'), '{"leo":{"/index":["a"', 'kept as it was');
+  const broken = names().find((n) => n.startsWith('state.json.broken-'));
+  assert.ok(broken, names().join(' '));
+  assert.equal(fs.readFileSync(path.join(dir, '.lab', broken), 'utf8'), '{"reads":{"leo":{"/index":["a"', 'kept as it was');
   const c = (await lab.post({ page: '/index', name: 'Leo', text: 'mark me', anchor })).comment;
   await fetch(lab.B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: lab.B }, body: JSON.stringify({ name: 'Leo', page: '/index', ids: [c.id] }) });
-  await until(() => fs.existsSync(path.join(dir, '.lab/reads.json')), 'read marks saved');
-  assert.deepEqual(readJson(path.join(dir, '.lab/reads.json')), { leo: { '/index': [c.id] } });
+  await until(() => fs.existsSync(path.join(dir, '.lab/state.json')) && readJson(path.join(dir, '.lab/state.json')).reads?.leo, 'read marks saved');
+  assert.deepEqual(readJson(path.join(dir, '.lab/state.json')).reads, { leo: { '/index': [c.id] } });
   assert.ok(!names().some((n) => n.endsWith('.tmp')), 'no half-written file left');
+  await lab.stop();
+});
+
+test('the state files of before 19 Nov go into state.json and are removed; .lab gets its own .gitignore', async () => {
+  const dir = folder();
+  fs.mkdirSync(path.join(dir, '.lab'));
+  const at = Date.now();
+  fs.writeFileSync(path.join(dir, '.lab/name'), 'Old topic\n');
+  fs.writeFileSync(path.join(dir, '.lab/reads.json'), JSON.stringify({ leo: { '/index': ['a'] } }));
+  fs.writeFileSync(path.join(dir, '.lab/archived.json'), JSON.stringify({ '/old': '2026-11-18T10:00:00.000Z' }));
+  fs.writeFileSync(path.join(dir, '.lab/claims.json'), JSON.stringify({ '/index': at }));
+  fs.writeFileSync(path.join(dir, '.lab/opened.json'), JSON.stringify({ '/index': '2026-11-18T10:00:00.000Z' }));
+  const lab = await start(dir);
+  await until(() => fs.existsSync(path.join(dir, '.lab/state.json')), 'state.json written at start');
+  const state = readJson(path.join(dir, '.lab/state.json'));
+  assert.equal(state.name, 'Old topic');
+  assert.deepEqual(state.reads, { leo: { '/index': ['a'] } });
+  assert.deepEqual(state.archived, { '/old': '2026-11-18T10:00:00.000Z' });
+  assert.deepEqual(state.claims, { '/index': at });
+  for (const f of ['name', 'reads.json', 'archived.json', 'claims.json', 'opened.json']) assert.ok(!fs.existsSync(path.join(dir, '.lab', f)), `${f} removed`);
+  assert.equal(fs.readFileSync(path.join(dir, '.lab/.gitignore'), 'utf8'), '*\n');
   await lab.stop();
 });
 
