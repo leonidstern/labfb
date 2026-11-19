@@ -199,7 +199,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   S.isAdmin = false;
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   S.on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
-  // A board page (src/board/): its clicks are the board's.
+  // A board page (src/board/): a tap selects a frame; 1 (comment mode) pins the board.
   S.board = /^\/_board\/[^/]+$/.test(S.page);
   S.openId = null;
   S.closeFast = false; // the next redraw that closes a comment fades it out quickly instead of sliding it
@@ -2129,6 +2129,12 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
+  // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
+  // and where a pin sits), and the pins are drawn again as the camera moves.
+  if (S.board) {
+    Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
+    addEventListener('lab-board-moved', () => S.on && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+  }
   startLive();
   // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads
   // labs & pages and opens it once it is there.

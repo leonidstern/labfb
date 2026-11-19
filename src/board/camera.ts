@@ -22,6 +22,11 @@ export const fitAll = (b: Box[], v: { w: number; h: number }): Cam => {
   const z = fitZ(b, v);
   return { z, x: v.w / 2 / z - (e.x + e.w / 2), y: v.h / 2 / z - (e.y + e.h / 2) };
 };
+/** One frame fills the view (a phone's first view). */
+export const fitFrame = (f: Box, v: { w: number; h: number }): Cam => {
+  const z = Math.min(MAX_Z, (v.w - 24) / f.w, (v.h - 24) / f.h);
+  return { z, x: v.w / 2 / z - (f.x + f.w / 2), y: v.h / 2 / z - (f.y + f.h / 2) };
+};
 // Finite edges: with margin m = view / 2 / z each axis is held to -(lo + len) - m + view / z <= cam <= -lo + m; when the
 // content plus margin is smaller than the view the axis centres.
 const hold = (c: number, lo: number, len: number, view: number, z: number) => {

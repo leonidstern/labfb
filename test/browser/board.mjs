@@ -1,5 +1,5 @@
-// The board page in real browsers (WebKit and Chrome's engine): frames on one canvas, panned and zoomed, the board file
-// followed, phones too. Not part of `npm test`; CI runs it in the `browser` job.
+// The board page in real browsers (WebKit and Chrome's engine): frames on one canvas, panned and zoomed, live pages in
+// them, selecting and entering one, the board file followed, phones too. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/board.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -57,14 +57,16 @@ try {
       const p = await ctx.newPage();
       const cam = () => p.evaluate(() => __labBoard.camera());
       const bw = (ms = 2500) => sleep(ms);
-      // ----- ten frames, each a title card
+      // ----- ten frames: the cap, and the widget in them draws nothing
       await p.goto(B + '/_lab/board/ten');
-      await bw(2000);
-      const ten = await p.evaluate(() => ({ cards: document.querySelectorAll('#lab-board .f').length, scroll: [scrollX, scrollY], hosts: document.querySelectorAll('[data-lab-comments]').length, bodyOverflow: getComputedStyle(document.body).overflow }));
-      check(eng, 'ten frames: all ten are on the board', ten.cards === 10, JSON.stringify(ten));
-      check(eng, 'the board page has one widget, its own', ten.hosts === 1, String(ten.hosts));
+      await bw(4000);
+      const ten = await p.evaluate(() => ({ live: __labBoard.live().length, cards: document.querySelectorAll('#lab-board .f').length, scroll: [scrollX, scrollY], hosts: document.querySelectorAll('[data-lab-comments]').length, bodyOverflow: getComputedStyle(document.body).overflow }));
+      check(eng, 'ten frames: all ten are on the board, at most 8 are alive', ten.cards === 10 && ten.live === 8, JSON.stringify(ten));
+      check(eng, 'the board page has one widget (its own), none in the frames', ten.hosts === 1, String(ten.hosts));
+      const inner = await p.evaluate(() => [...document.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelectorAll('[data-lab-comments]').length));
+      check(eng, 'no frame has a widget in it', inner.every((n) => n === 0), JSON.stringify(inner));
       const titleCard = await p.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.querySelector('.c')?.textContent).filter(Boolean));
-      check(eng, 'a frame is a title card: label, size, no count', titleCard.length === 10 && titleCard.every((t) => /\/pricing/.test(t) && /300 × 300/.test(t) && !/comment|pin|\d+ open/i.test(t)), JSON.stringify(titleCard));
+      check(eng, 'a frame not alive is a title card: label, size, no count', titleCard.length === 2 && titleCard.every((t) => /\/pricing/.test(t) && /300 × 300/.test(t) && !/comment|pin|\d+ open/i.test(t)), JSON.stringify(titleCard));
       // ----- inputs
       const c0 = await cam();
       await p.mouse.move(600, 400);
@@ -72,7 +74,13 @@ try {
       await sleep(200);
       const c1 = await cam();
       check(eng, 'a wheel pans the board, never the page', c1.y < c0.y + 0.001 && (await p.evaluate(() => scrollY)) === 0 && c1.z === c0.z, JSON.stringify([c0, c1]));
-      const fit = c1;
+      await p.keyboard.press('Shift+Digit2');
+      await sleep(200);
+      check(eng, 'Shift+2 goes to 100%', (await cam()).z === 1);
+      await p.keyboard.press('Shift+Digit1');
+      await sleep(200);
+      const fit = await cam();
+      check(eng, 'Shift+1 fits everything again', fit.z < 1 && Math.abs(fit.z - c0.z) < 0.01, JSON.stringify(fit));
       // zoom about the cursor: the world point under it stays under it
       const under = (c, x, y) => [x / c.z - c.x, y / c.z - c.y];
       const before = under(await cam(), 700, 300);
@@ -85,7 +93,27 @@ try {
       const after = under(z1, 700, 300);
       check(eng, 'Ctrl + wheel zooms about the cursor', z1.z > fit.z && Math.abs(before[0] - after[0]) < 0.5 && Math.abs(before[1] - after[1]) < 0.5, JSON.stringify([fit.z, z1.z, before, after]));
       check(eng, 'a pinch never zooms the page (no gesture reached it)', (await p.evaluate(() => visualViewport.scale)) === 1);
+      // ----- select, enter, leave (focus goes back to the board)
+      await p.keyboard.press('Shift+Digit1');
+      await sleep(200);
+      const pos = await p.evaluate(() => { const r = document.querySelector('#lab-board .f').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+      await p.mouse.click(pos[0], pos[1]);
+      check(eng, 'a click selects the frame', (await p.evaluate(() => __labBoard.selected())) === 'f0');
+      await p.keyboard.press('Enter');
+      await sleep(400);
+      const inFrame = await p.evaluate(() => ({ entered: __labBoard.entered(), pe: getComputedStyle(__labBoard.frame('f0')).pointerEvents, focus: document.activeElement === __labBoard.frame('f0') }));
+      check(eng, 'Enter gives the page in the frame the pointer and the focus', inFrame.entered === 'f0' && inFrame.pe === 'auto' && inFrame.focus, JSON.stringify(inFrame));
+      await p.keyboard.press('Escape');
+      await sleep(250);
+      const out = await p.evaluate(() => ({ entered: __labBoard.entered(), pe: getComputedStyle(__labBoard.frame('f0')).pointerEvents, body: document.activeElement === document.body, sel: __labBoard.selected() }));
+      check(eng, 'Esc in a frame leaves it: the board has the focus again, the frame stays selected', out.entered === '' && out.pe === 'none' && out.body && out.sel === 'f0', JSON.stringify(out));
+      await p.keyboard.press('Shift+Digit2'); // the board hears keys after leaving: this would go to the frame otherwise
+      await sleep(150);
+      check(eng, 'after leaving, board keys work again (Shift+2)', (await cam()).z === 1);
+      await p.keyboard.press('Escape');
+      check(eng, 'Esc clears the selection', (await p.evaluate(() => __labBoard.selected())) === '');
       // ----- finite edges
+      await p.keyboard.press('Shift+Digit1');
       for (let i = 0; i < 10; i++) await p.mouse.wheel(-4000, -4000);
       await sleep(300);
       const edge = await cam();
@@ -93,11 +121,17 @@ try {
       // ----- two boards, one with frames far apart
       await p.goto(B + '/_lab/board/wide');
       await bw(2500);
-      const w = await p.evaluate(() => ({ cam: __labBoard.camera() }));
-      check(eng, 'frames far apart: fit shows both', w.cam.z < 0.3, JSON.stringify(w));
-      // ----- the board file changes: the board follows
+      const w = await p.evaluate(() => ({ cam: __labBoard.camera(), live: __labBoard.live() }));
+      check(eng, 'frames far apart: fit shows both, the small ones are still readable titles or live', w.cam.z < 0.3 && w.live.length <= 2, JSON.stringify(w));
+      // ----- save a frame's page: the board does not reload, the frame follows
       await p.goto(B + '/_lab/board/three');
-      await bw(1500);
+      await bw(2500);
+      await p.evaluate(() => (window.__same = 1));
+      fs.writeFileSync(path.join(DIR, 'pricing.html'), fs.readFileSync(path.join(DIR, 'pricing.html'), 'utf8').replace('Pricing one', 'Pricing two'));
+      await sleep(2500);
+      const saved = await p.evaluate(() => ({ same: window.__same === 1, text: [...document.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelector('h1')?.textContent) }));
+      check(eng, 'a save does not reload the board; frames of that page follow', saved.same && saved.text.some((t) => t === 'Pricing two'), JSON.stringify(saved));
+      // ----- the board file changes: the board follows
       await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }, { id: 'd', src: '/checkout', w: 820, h: 1180 }], { of: '/pricing', rev: (await (await fetch(`${B}/_lab/api/board?name=three`)).json()).rev });
       await sleep(2500);
       check(eng, 'a frame added to the board file shows up', (await p.evaluate(() => document.querySelectorAll('#lab-board .f').length)) === 4);
@@ -106,14 +140,14 @@ try {
       await sleep(1200);
       check(eng, 'a board that does not exist says so', /no board called nothere/i.test(await p.evaluate(() => document.body.textContent)));
       await ctx.close();
-      // ----- a phone: first view is every frame at a phone's width, side by side; no page zoom
+      // ----- a phone: first view is every frame at a phone's width, side by side, live; no page zoom
       const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
       const q = await ph.newPage();
       await q.goto(B + '/_lab/board/three');
       await sleep(2500);
-      const first = await q.evaluate(() => ({ cam: __labBoard.camera(), vv: visualViewport.scale }));
+      const first = await q.evaluate(() => ({ cam: __labBoard.camera(), live: __labBoard.live(), vv: visualViewport.scale }));
       const widths = await q.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.offsetWidth));
-      check(eng, 'phone: the first view is every frame, 390 wide', widths.length > 1 && widths.every((w) => w === 390) && first.cam.z < 0.9 && first.vv === 1, JSON.stringify({ ...first, widths }));
+      check(eng, 'phone: the first view is every frame, 390 wide, the ones in view alive', widths.length > 1 && widths.every((w) => w === 390) && first.live.length >= 1 && first.cam.z < 0.9 && first.vv === 1, JSON.stringify({ ...first, widths }));
       await ph.close();
     } finally {
       await browser.close();
