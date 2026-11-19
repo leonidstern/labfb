@@ -674,13 +674,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
    it: the rest, ✎ to edit any, + add. */
 .quick { white-space: nowrap; }
 .quick[hidden] { display: none; }
-.acts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: -2px 0 6px; padding: 2px; border-radius: max(0px, calc(var(--_radius) - 8px)); background: var(--_soft); }
-.acts[hidden] { display: none; }
+.acts:not(:where(.row)) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: -2px 0 6px; padding: 2px; border-radius: max(0px, calc(var(--_radius) - 8px)); background: var(--_soft); }
+.acts:not(:where(.row))[hidden] { display: none; } /* not the thread's resolve / delete row (.row.acts) */
 .acts .quick { margin: 0 0 2px; }
 .acts .act { display: flex; min-width: 0; }
 .acts .act.on-line + .act:not(.on-line), .acts .act:not(.on-line) + .act.on-line { border-top: var(--_hair); }
-.acts button { border: 0; background: none; font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_fg); cursor: pointer; border-radius: max(0px, calc(var(--_radius) - 10px)); padding: 5px 8px; text-align: left; } /* concentric: 2 px inside the menu */
-.acts button:hover { background: var(--_hover); }
+.acts:not(:where(.row)) button { border: 0; background: none; font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_fg); cursor: pointer; border-radius: max(0px, calc(var(--_radius) - 10px)); padding: 5px 8px; text-align: left; } /* concentric: 2 px inside the menu */
+.acts:not(:where(.row)) button:hover { background: var(--_hover); }
 .acts .use { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
 .acts .use span { font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--_muted); }
 .acts .on-line .use { color: var(--_muted); }
