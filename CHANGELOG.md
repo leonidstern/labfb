@@ -4,7 +4,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- Fixed: a comment whose file could not be written (a full disk, a folder gone read-only) was shown as sent, logged once and never written again, so it was gone at the next start. The lab now keeps it and writes it again every 5 seconds until it works, and says so in its log. A wait started while `.lab/server.json` could not be written no longer answers 500 and ends the lab.
 - Phones: a comment made by holding the page always gets the cursor and the keyboard. The box used to focus itself during the hold, which Safari could do without a keyboard; now the finger's lift focuses it, once.
 - Phones: a pinch zoom no longer breaks the widget. While zoomed, the bar, the chat, the list and a thread's or new comment's sheet stay on screen at their usual size; pins stay on the page and zoom with it.
 - Pause sits beside what moves, not in the bar: each video and each animated element on the page gets a small pause / play just past its top right corner, over the page (nothing shifts), that stops or starts only that one. It shows with the comments and hides with them (M). **P** still pauses everything, or plays what was paused. The bar's pause button is gone.
@@ -18,6 +17,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - The listening pill drops the session name: "talking to Claude · Opus 5.5", not "… (labit for writing)". The name is in the pill's tooltip, and still in the labs & pages list.
 - On computers a comment on a spot or an area is one card like the dialog on words: the page's colour, the card's shadow, and the box (and its actions row, where there is one) 8 px in, its corners concentric with the card's.
 - The listening mark's colours: green while an agent listens or works, amber while the page reconnects to the lab (it was faded green), muted grey when no agent listens (it was black). Its tooltip names the state first (Listening, Working, Away), then the resume command.
+- Fixed: a comment whose file could not be written (a full disk, a folder gone read-only) was shown as sent, logged once and never written again, so it was gone at the next start. The lab now keeps it and writes it again every 5 seconds until it works, and says so in its log. A wait started while `.lab/server.json` could not be written no longer answers 500 and ends the lab.
 - Done pins are as big as open ones, only faded (50%). Before, a done pin also shrank to 80% (64% on phones); a pin whose spot is gone still does.
 - While a new comment is open the page shows its own pointer, empty or not (it used to switch only once you typed, so an empty box still showed the pin cursor).
 - Agents read a pin's or chat message's whole thread before answering, and don't guess from the page, URL or #section what it asks (`wait`, the plugin's wake turn and the skill say so).
