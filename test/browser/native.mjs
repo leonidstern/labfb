@@ -82,8 +82,9 @@ try {
         const tap = async (x, y) => (phone ? p.touchscreen.tap(x, y) : p.mouse.click(x, y));
         const at = (sel, fx, fy) => p.evaluate(([sel, fx, fy]) => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.left + fx * r.width, y: r.top + fy * r.height }; }, [sel, fx, fy]);
 
-        // The ⋯ menu: a popover the browser opens and closes.
-        if (can.popover) {
+        // The ⋯ menu on a computer: a popover the browser opens and closes. (A phone keeps it in the bar: a pinch zoom
+        // scales the bar, not the top layer.)
+        if (can.popover && !phone) {
           await inRoot(p, (r) => r.querySelector('.more').click());
           await settle(p);
           const open = await inRoot(p, (r) => { const m = r.querySelector('.more-menu'); return { pop: m.matches(':popover-open'), hidden: m.hidden, expanded: r.querySelector('.more').getAttribute('aria-expanded'), focus: r.activeElement?.closest('.more-menu') === m }; });
@@ -94,10 +95,13 @@ try {
           check(tag, '…Esc closes it', !esc.pop && esc.hidden, JSON.stringify(esc));
           await inRoot(p, (r) => r.querySelector('.more').click());
           await settle(p);
+          const again = await inRoot(p, (r) => r.querySelector('.more-menu').matches(':popover-open'));
           await tap(300, 300);
           await sleep(400);
           const out = await inRoot(p, (r) => { const m = r.querySelector('.more-menu'); return { pop: m.matches(':popover-open'), hidden: m.hidden, drafts: r.querySelectorAll('.pin.draft').length }; });
-          check(tag, '…and so does a press elsewhere on the page', !out.pop && out.hidden, JSON.stringify(out));
+          check(tag, '…and so does a press elsewhere on the page', again && !out.pop && out.hidden, JSON.stringify({ again, ...out }));
+          const closed = await inRoot(p, (r) => { const m = r.querySelector('.more-menu'); const b = m.getBoundingClientRect(); return { display: getComputedStyle(m).display, w: b.width }; });
+          check(tag, '…and closed it takes no room and no clicks', closed.display === 'none' && closed.w === 0, JSON.stringify(closed));
           if (out.drafts) await p.keyboard.press('Escape');
           await sleep(300);
         }
@@ -182,10 +186,11 @@ try {
           check(tag, '…Esc closes it', !swEsc.pop && swEsc.hidden, JSON.stringify(swEsc));
           await p.keyboard.press('Control+k');
           await untilRoot(p, (r) => r.querySelector('.switch')?.matches(':popover-open'), null, 4000);
+          const swAgain = await inRoot(p, (r) => r.querySelector('.switch').matches(':popover-open'));
           await p.mouse.click(40, 640);
           await sleep(500);
           const swOut = await inRoot(p, (r) => { const b = r.querySelector('.switch'); return { pop: b.matches(':popover-open'), hidden: b.hidden }; });
-          check(tag, '…and so does a press elsewhere', !swOut.pop && swOut.hidden, JSON.stringify(swOut));
+          check(tag, '…and so does a press elsewhere', swAgain && !swOut.pop && swOut.hidden, JSON.stringify({ swAgain, ...swOut }));
           if (await inRoot(p, (r) => r.querySelectorAll('.pin.draft').length)) await p.keyboard.press('Escape');
           await sleep(300);
         }
