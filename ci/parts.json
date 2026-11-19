@@ -10,6 +10,7 @@
     "hold.ts": "a dev server's reload waits while a sheet is open",
     "list.ts": "the list of pins (a sheet on phones)",
     "live.ts": "the live stream: listening badge, mode, who is heard",
+    "measure.ts": "measure (flag measure): G picks one thing, hover or tap another, px and space tokens between; a part loaded the first time it is used",
     "messages.ts": "one message in a thread or the chat",
     "select.ts": "select mode (flag editText): V picks the block under a click in low ink, Tab steps, Esc lets go; the text tool and the board build on it",
     "sections.ts": "the section bar (flag sectionBar): each section with a heading, current one filled, new and updated marked, read kept per person in the lab",

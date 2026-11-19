@@ -607,6 +607,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     toolsBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, 'V'));
     toolsBtn.addEventListener('click', () => selectMode(true));
   }
+  // Measure (flag measure): px and space tokens between two things, G or here; its code loads the first time (measure.ts).
+  const measureMode = () => part('measure').then((m) => m.measure(W), () => say("measure couldn't load"));
+  const measureBtn = el('button', { type: 'button', class: 'board-btn' });
+  measureBtn.append('measure', el('kbd', { 'aria-hidden': 'true' }, 'G'));
+  measureBtn.addEventListener('click', measureMode);
   // Motion (Leo, 19 Nov: in the ⋯ menu, nothing floating on the page): one row, shown while the page has motion that
   // goes on (a loop, a video): pause all / play (P), ¼ speed (S), and the first one's moment in ms while held or slowed.
   // A pick here keeps the menu open, so the readout can be watched.
@@ -702,7 +707,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   function placeBar() {
     const inMenu = !S.on ? (boardBtn ? [boardBtn] : [])
       : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), ...(toolsBtn && !S.board ? [toolsBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, motionRow, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
+      : [...(labHead ? [labHead, labsBtn] : []), ...(toolsBtn && !S.board ? [toolsBtn] : []), ...(flag('measure') && !S.board ? [measureBtn] : []), ...(boardBtn ? [boardBtn] : []), doneBtn, movedBtn, overBtn, motionRow, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
@@ -1355,6 +1360,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (flag('editText') && S.on && !S.draft && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !S.editing && !typing(e) && !inOtherWidget && (keyOf(e) === KEYS.select || (keyOf(e) === KEYS.edit && !S.openId))) {
       e.preventDefault();
       return void (keyOf(e) === KEYS.select ? selectMode() : editKey());
+    }
+    // G (gauge: M hides comments) measures (flag measure).
+    if (flag('measure') && S.on && !S.draft && keyOf(e) === 'g' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
+      e.preventDefault();
+      return void measureMode();
     }
     if (actionOf(e) === 'toggle' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
