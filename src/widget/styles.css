@@ -39,8 +39,15 @@
 ::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
 button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
+.ui { display: contents; }
+/* Pinch-zoomed (sheets.ts zoomFit): the bar, chat and list are laid out on the unzoomed screen as always, then drawn
+   1/zoom as big where the screen shows now. Only what's on it takes taps; the page between stays the page's. */
+:host([data-zoom]) .ui { display: block; position: fixed; left: 0; top: 0; width: var(--lab-zw); height: var(--lab-zh); z-index: 3;
+  transform: translate(var(--lab-zx), var(--lab-zy)) scale(var(--lab-zk)); transform-origin: 0 0; pointer-events: none; }
+@layer zoom { :host([data-zoom]) .ui > * { pointer-events: auto; } } /* a layer: loses to their own pointer-events rules */
+.pin, .motion { box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16); }
 .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
-       background: var(--_bg); border: 0; box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16);
+       background: var(--_bg); border: 0;
        display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12px; font-weight: 500;
        font-variant-numeric: tabular-nums; letter-spacing: 0; transform-origin: 0 100%;
        transition: transform var(--_t-quick) var(--_ease), opacity var(--_t-quick) var(--_ease-out); } /* the green edge comes at once: eased, it flickered on a click (Leo, 18 Nov) */
@@ -221,6 +228,12 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }
+/* Pause / play beside a video or a moving thing on the page (comments.js): a small key in the pin's look, over the page. */
+.motion { position: absolute; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--_r-s); cursor: pointer;
+          background: var(--_bg); color: var(--_fg); transition: transform var(--_t-quick) var(--_ease); }
+.motion:hover { transform: scale(1.03); }
+.motion[hidden] { display: none; }
+.motion svg { width: 12px; height: 12px; fill: currentColor; }
 .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
 .bar button { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
               box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
@@ -319,7 +332,7 @@ button.btn.danger, button.btn.danger:hover { color: #e5484d; }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
 .agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
-.mark .eye { fill: var(--_bg); }
+.mark .eye, .agentmark .eye { fill: var(--_bg); }
 .listener .mark { margin: -2px 0 -1px -3px; }
 .listener .mark { fill: rgb(36, 160, 70); }
 .listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
@@ -593,6 +606,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card::after, .float::after, .list::after { content: none; }
   :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
   :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
+  /* Pinch-zoomed: a thread's or new comment's sheet (on the page's layer, with the pins) is drawn the same way as .ui:
+     scaled about the unzoomed screen's bottom left corner, then moved to the bottom left of what the screen shows. */
+  :host([data-zoom]) .layer > :is(.card, .float) { transform-origin: calc(-1 * var(--_gap)) calc(100% + var(--_gap)) !important;
+    translate: var(--lab-zx) var(--lab-zb); scale: var(--lab-zk); }
   .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px - var(--_gap) + var(--_kb)); }
   .scrim { background: transparent; }
   .card.in, .float.in, .list:not([hidden]), .sw-box { animation: lab-card-in var(--_t-slow) var(--_ease); }
