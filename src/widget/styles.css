@@ -659,7 +659,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .sw-foot { display: none; }
 }
 
-/* New since you looked (changes.ts): a "New · 3" pill by the listener pill; it opens a short list of the new ids, each a
+/* New since you looked (changes.ts): an "Added · 3" pill by the listener pill; it opens a short list of the new ids, each a
    link. On narrow screens the pill rides above the bar and the list is a small sheet at the bottom. */
 .since { position: relative; display: inline-flex; align-items: center; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
 .since-count { font: inherit; border: 0; background: none; color: var(--_fg); cursor: pointer; padding: 9px 14px; border-radius: inherit; }
