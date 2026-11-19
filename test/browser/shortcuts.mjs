@@ -25,6 +25,8 @@ const PORT = 7930 + Math.floor(Math.random() * 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'ask.html'), '<!doctype html><meta charset="utf-8"><title>a</title><h1 id="h">Pick</h1><p>text</p>');
+// canvas-proposals' "Pause and ¼ speed": a looping press with its word inside and a toast, in a box (Measure off here).
+fs.writeFileSync(path.join(DIR, 'press.html'), '<!doctype html><meta charset="utf-8"><title>p</title><h1>Press</h1><div id="demo" style="position:relative;padding:40px;width:400px;height:120px;background:#eee"><span id="press" style="display:inline-block;padding:6px 12px;background:#141414;color:#fff"><b id="word">Buy</b></span><div id="toast" style="position:absolute;right:12px;bottom:12px">Order placed</div></div><script>for (const id of ["press", "toast"]) document.getElementById(id).animate([{ transform: "scale(1)" }, { transform: "scale(.94)" }, { transform: "scale(1)" }], { duration: 1200, iterations: Infinity });</script>');
 fs.writeFileSync(path.join(DIR, 'anim.html'), '<!doctype html><meta charset="utf-8"><title>m</title><style>@keyframes spin { to { rotate: 1turn } } #s, #t { width: 40px; height: 40px; background: red; animation: spin 2s linear infinite }</style><h1>Moving</h1><div id="s"></div><div id="t"></div><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, shortcuts: { toggle: 'h', chat: 'x' } }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
@@ -252,6 +254,26 @@ try {
       await p.keyboard.press('h'); // hide comments (this lab's toggle key): the controls go with them
       await untilRoot(p, (r) => !r.querySelector('.motion-ctl.on'), 1500);
       check(eng, 'hidden comments hide the motion controls too', !(await pause()).shown);
+      await p.keyboard.press('p');
+      await p.keyboard.press('h'); // comments back
+      // ⌥ on the moving thing, inside it, or on the box holding it shows its control, ⌥ first or the mouse first.
+      await p.goto(B + '/press');
+      await untilRoot(p, (r) => Boolean(r.querySelector('.motions')), 2500);
+      await sleep(500);
+      const ctlOn = () => p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelectorAll('.motion-ctl.on').length);
+      const spot = (id, dx, dy) => p.evaluate(([id, dx, dy]) => { const r = document.getElementById(id).getBoundingClientRect(); return [r.left + r.width * dx, r.top + r.height * dy]; }, [id, dx, dy]);
+      for (const [where, id, dx, dy] of [['on the moving thing', 'press', 0.08, 0.5], ['inside it', 'word', 0.5, 0.5], ['on the box holding it', 'demo', 0.6, 0.1]]) {
+        for (const altFirst of [true, false]) {
+          await p.mouse.move(5, 5);
+          if (altFirst) await p.keyboard.down('Alt');
+          await p.mouse.move(...(await spot(id, dx, dy)), { steps: 3 });
+          if (!altFirst) await p.keyboard.down('Alt');
+          await untilRoot(p, (r) => r.querySelectorAll('.motion-ctl.on').length === 1, 1000);
+          check(eng, `⌥ ${where} (${altFirst ? '⌥ first' : 'mouse first'}) shows its control`, (await ctlOn()) === 1);
+          await p.keyboard.up('Alt');
+          await sleep(100);
+        }
+      }
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/anim`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/anim', action: 'delete', id: c.id }) });
       await p.goto('about:blank');
       await ctx.close();

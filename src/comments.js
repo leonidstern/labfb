@@ -641,7 +641,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // kept (the last call wins, in order). ⌥ does nothing else on its own: no preventDefault, so ⌥W and ⌥-click stay.
   const measureMode = () => part('measure').then((m) => m.measure(W), () => say("measure couldn't load"));
   let altHeld = false;
-  /** @type {{ current: () => string } | null} */
+  /** @type {{ current: () => string, redraw: () => unknown } | null} */
   let measured = null;
   const measureHold = (on) => {
     if (altHeld === on) return;
@@ -1394,13 +1394,23 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     // On its control (wider than a small thing, so it can stick out past it): still that one.
     const own = hot && ctls.get(hot)?.box.getBoundingClientRect();
     if (own && hot.isConnected && pointerAt.x >= own.left && pointerAt.x <= own.right && pointerAt.y >= own.top && pointerAt.y <= own.bottom) return hot;
+    const outer = outermost(moving());
+    // The thing under the mouse is a moving one or inside one (the "Buy" text in a pressed button): that one.
+    const at = document.elementFromPoint(pointerAt.x, pointerAt.y);
+    const page = at && at !== host && at !== document.documentElement && at !== document.body && !root.contains(at) ? at : null;
+    const around = page && outer.find((t) => t.contains(page));
+    if (around) return around;
     let best = null;
-    for (const t of outermost(moving())) {
+    for (const t of outer) {
       const b = boxOf(t);
       if (!b.w || !b.h || pointerAt.x < b.left || pointerAt.x > b.right || pointerAt.y < b.top || pointerAt.y > b.bottom) continue;
       if (!best || b.w * b.h < best.a) best = { t, a: b.w * b.h };
     }
-    return best?.t || null;
+    if (best) return best.t;
+    // Or it holds moving things (the demo box around a pressed button and its toast, Leo 19 Nov: "it shows measure"):
+    // its control, for all that moves inside; not the page's whole body or a box as big as half the screen.
+    const r = page?.getBoundingClientRect();
+    return r && r.width * r.height <= (innerWidth * innerHeight) / 2 && outer.some((t) => page.contains(t)) ? page : null;
   };
   let motionLoop = 0;
   const drawMotion = () => {
@@ -1411,7 +1421,10 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const want = new Map();
     if (S.on) {
       if (!coarse) {
+        const was = hot;
         hot = altMotion ? under() : null;
+        S.motionHot = hot; // Measure draws no lines on it while its control shows (measure.ts)
+        if (hot !== was) measured?.redraw();
         for (const h of outermost([...held].filter((h) => h.isConnected))) want.set(h, 'mini');
         if (hot) want.set(hot, 'full');
       } else if (!scrolling && !host.hasAttribute('data-sheet')) {

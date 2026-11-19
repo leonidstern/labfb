@@ -56,6 +56,10 @@ const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-measure
 const port = 7400 + Math.floor(Math.random() * 400);
 fs.writeFileSync(path.join(dir, 'index.html'), page());
 fs.writeFileSync(path.join(dir, 'tok.html'), TOKPAGE);
+// A looping press with its toast, as on canvas-proposals' "Pause and ¼ speed": ⌥ there is motion's, not measure's.
+fs.writeFileSync(path.join(dir, 'anim.html'), `<!doctype html><meta charset="utf-8"><title>a</title><body style="margin:40px;font:14px system-ui">` +
+  `<div id="demo" style="position:relative;padding:40px;width:400px;height:120px;background:#eee"><span id="press" style="display:inline-block;padding:6px 12px;background:#141414;color:#fff"><b id="word">Buy</b></span><div id="toast" style="position:absolute;right:12px;bottom:12px">Order placed</div></div>` +
+  `<div id="still" style="width:80px;height:30px;margin-top:24px;background:#ccc"></div><script>for (const id of ['press', 'toast']) document.getElementById(id).animate([{ transform: 'scale(1)' }, { transform: 'scale(.94)' }, { transform: 'scale(1)' }], { duration: 1200, iterations: Infinity });</script></body>`);
 fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ port, flags: { measure: true } }));
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: dir, env });
 const L = `http://localhost:${port}`;
@@ -202,6 +206,38 @@ try {
             await p.keyboard.up('Alt');
           }
           await sleep(100);
+          // ⌥ over a moving thing, inside one, or a box holding them: its motion control, no measure lines on it, in either
+          // order (⌥ then the mouse, the mouse then ⌥); its pause works with ⌥ still held and drops no pin. Elsewhere, measure.
+          await p.goto(L + '/anim.html');
+          await sleep(2000);
+          const motion = () => p.evaluate(() => { const r = [...document.querySelectorAll('[data-lab-comments]')].map((n) => n.shadowRoot).find((s) => s?.querySelector('.motions')); return { ctl: r.querySelectorAll('.motion-ctl.on').length, lines: r.querySelectorAll('.mz .ln').length }; });
+          const spot = (id, dx = 0.5, dy = 0.5) => p.evaluate(([id, dx, dy]) => { const r = document.getElementById(id).getBoundingClientRect(); return [r.left + r.width * dx, r.top + r.height * dy]; }, [id, dx, dy]);
+          for (const [where, id, dx, dy] of [['on the moving thing', 'press', 0.08, 0.5], ['inside it (its word)', 'word', 0.5, 0.5], ['on the box holding it', 'demo', 0.6, 0.1]]) {
+            for (const altFirst of [true, false]) {
+              await p.mouse.move(5, 5);
+              if (altFirst) await p.keyboard.down('Alt');
+              await p.mouse.move(...(await spot(id, dx, dy)), { steps: 3 });
+              if (!altFirst) await p.keyboard.down('Alt');
+              await sleep(300);
+              const m = await motion();
+              check(tag, `⌥ ${where} (${altFirst ? '⌥ first' : 'mouse first'}): its motion control, no measure lines`, m.ctl === 1 && m.lines === 0, JSON.stringify(m));
+              await p.keyboard.up('Alt');
+              await sleep(100);
+            }
+          }
+          await p.mouse.move(...(await spot('word')));
+          await p.keyboard.down('Alt');
+          await sleep(300);
+          const pp = await p.evaluate(() => [...document.querySelectorAll('[data-lab-comments]')].map((n) => n.shadowRoot?.querySelector('.motion-ctl.on .motion-play')).find(Boolean).getBoundingClientRect().toJSON());
+          await p.mouse.move(pp.left + pp.width / 2, pp.top + pp.height / 2, { steps: 3 });
+          await p.mouse.click(pp.left + pp.width / 2, pp.top + pp.height / 2);
+          await sleep(300);
+          check(tag, 'its pause works with ⌥ held and drops no pin', (await p.evaluate(() => document.getElementById('press').getAnimations()[0].playState)) === 'paused' && !(await inRoot(p, 'textarea')));
+          await p.mouse.move(...(await spot('still')), { steps: 3 });
+          await sleep(300);
+          const el = await motion();
+          check(tag, '⌥ on a still thing beside it measures', el.lines > 0, JSON.stringify(el));
+          await p.keyboard.up('Alt');
           check(tag, 'no "measure" in the ⋯ menu on a computer', !(await p.evaluate(() => [...document.querySelectorAll('[data-lab-comments]')].flatMap((n) => [...(n.shadowRoot?.querySelectorAll('.more-menu button') || [])]).some((b) => (b.textContent || '').startsWith('measure')))));
         }
         await ctx.close();

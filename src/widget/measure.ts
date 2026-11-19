@@ -105,7 +105,11 @@ function draw() {
   M.raf = 0;
   if (!M.box) return;
   M.box.replaceChildren();
-  const { sel, hov } = M;
+  const { sel } = M;
+  // ⌥ held over a moving thing (or in or around one): its motion control shows (comments.js), no lines on it.
+  const hot: Element | null = M.held ? W.S.motionHot : null;
+  const hov = M.hov && hot && (hot.contains(M.hov) || M.hov.contains(hot)) ? null : M.hov;
+  if (!hov && M.hov) return say('');
   const coarse = W.coarse;
   if (sel) ring(sel.getBoundingClientRect(), 'bx sel');
   let text = '';
@@ -179,7 +183,7 @@ function around(hov: Element, h: DOMRect) {
   side('bottom', (r) => (r.top >= h.bottom - 0.5 && overlap(r.left, r.right, h.left, h.right) ? r.top - h.bottom : null), o.b - h.bottom, (r, px) => [midX(r), h.bottom, midX(r), h.bottom + px]);
   return out;
 }
-const redraw = () => M.on && (M.raf ||= requestAnimationFrame(draw));
+export const redraw = () => M.on && (M.raf ||= requestAnimationFrame(draw));
 
 /** A pin on the thing measured last, carrying what was measured (lib/comments-api.mjs: "measured:"). */
 function pin() {
