@@ -7,7 +7,8 @@
 import { clamp, fitAll, fitFrame, panBy, zoomAt } from './camera.ts';
 import type { Cam, Box } from './camera.ts';
 
-type Frame = { id: string; src: string; w: number; h: number; x: number; y: number; label?: string; state?: string };
+type Frame = { id: string; src: string; w: number; h: number; x: number; y: number; label?: string; state?: string; auto?: boolean; variantOf?: string };
+type Board = { rev: number; frames: Frame[]; of?: string } & Record<string, unknown>;
 type Card = { f: Frame; box: HTMLElement; inner: HTMLElement; frame?: HTMLIFrameElement; seen: number };
 
 const script = document.currentScript as HTMLScriptElement;
@@ -32,6 +33,8 @@ html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;backgrou
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
+#lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
+#lab-board .t u.on{opacity:1;text-decoration:underline}
 #lab-board .none{position:absolute;inset:0;display:grid;place-items:center;opacity:.7}
 #lab-board .done{position:fixed;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
 `;
@@ -50,9 +53,13 @@ let view = { w: innerWidth, h: innerHeight };
 let moved = false; // the person moved the camera: a resize no longer fits everything again
 let selected = '';
 let entered = '';
+let board: Board | null = null; // as the lab gave it: saved whole, with the rev it was read at
+let undo: Frame[][] = []; // the frames before each change, newest last (⌘Z)
+let focus = false; // the camera is fitted to one frame (a phone's first view, Tab): a swipe goes to the next
 let lastDown = 0;
 let checked = { x: 1e9, y: 1e9, z: 0 }; // the camera at the last wake/cull check
 let still: ReturnType<typeof setTimeout> | undefined;
+let settle: ReturnType<typeof setTimeout> | undefined;
 let hashTimer: ReturnType<typeof setTimeout> | undefined;
 
 const boxes = (): Box[] => cards.map((c) => c.f);
@@ -90,11 +97,24 @@ const moving = () => {
   clearTimeout(still);
   still = setTimeout(() => (world.style.willChange = ''), 140);
 };
-const go = (next: Cam, user = true) => {
-  cam = clamp(next, boxes(), view);
+const go = (next: Cam, user = true, soft = false) => {
+  const c = clamp(next, boxes(), view);
+  const was = cam.z;
+  // Past an edge a drag gives way half as far, and the board settles back when it stops.
+  cam = soft ? { z: c.z, x: Math.abs(next.x - c.x) > 0 ? cam.x + (next.x - cam.x) * 0.4 : c.x, y: Math.abs(next.y - c.y) > 0 ? cam.y + (next.y - cam.y) * 0.4 : c.y } : c;
   if (user) moved = true;
+  if (user && (!soft || Math.abs(c.z - was) > 1e-6)) focus = false;
   draw();
   moving();
+  if (soft) {
+    clearTimeout(settle);
+    settle = setTimeout(() => {
+      world.style.transition = 'transform 280ms cubic-bezier(.2,.8,.2,1)';
+      cam = clamp(cam, boxes(), view);
+      draw();
+      setTimeout(() => (world.style.transition = ''), 300);
+    }, 120);
+  }
   if (Math.abs(cam.x - checked.x) * cam.z > 64 || Math.abs(cam.y - checked.y) * cam.z > 64 || Math.abs(cam.z / (checked.z || 1) - 1) > 0.05) wake();
 };
 
@@ -154,14 +174,16 @@ function sleep(c: Card) {
 
 // ---------- frames in the world ----------
 const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
-function show(b: { frames: Frame[]; rev: number; of?: string }) {
+function show(b: Board) {
+  board = b;
   of = of || (b.of || '').split('#')[0];
   const next = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
   const old = new Map(cards.map((c) => [c.f.id, c]));
   cards = next.map((f) => {
     const was = old.get(f.id);
     old.delete(f.id);
-    if (was && was.f.src === f.src && was.f.w === f.w && was.f.h === f.h) {
+    if (was && was.f.src === f.src) {
+      if (!was.frame && (was.f.w !== f.w || was.f.h !== f.h)) was.inner.replaceChildren(card({ ...was, f }));
       was.f = f;
       return was;
     }
@@ -182,14 +204,18 @@ function show(b: { frames: Frame[]; rev: number; of?: string }) {
   for (const c of cards) {
     const f = c.f;
     Object.assign(c.box.style, { left: `${f.x}px`, top: `${f.y}px`, width: `${f.w}px`, height: `${f.h}px` });
-    (c.box.querySelector('.t') as HTMLElement).textContent = label(f);
+    paint(c);
   }
   if (selected && !cards.some((c) => c.f.id === selected)) selected = entered = '';
   world.querySelector('.none')?.remove();
   if (!cards.length) text('div', 'No frames on this board.', world).className = 'none';
   const hash = /^#(-?\d+),(-?\d+),([\d.]+)$/.exec(location.hash);
   if (hash && !moved) cam = { x: +hash[1], y: +hash[2], z: +hash[3] };
-  else if (!moved) cam = coarse && cards[0] ? fitFrame(cards[0].f, view) : fitAll(boxes(), view);
+  else if (!moved) {
+    focus = coarse && Boolean(cards[0]);
+    cam = focus ? fitFrame(cards[0].f, view) : fitAll(boxes(), view);
+    if (focus) select(cards[0].f.id);
+  }
   moved = moved || Boolean(hash);
   go(cam, false);
   wake();
@@ -208,12 +234,72 @@ fetch('/_lab/pages').then((r) => r.json()).then((d) => {
   for (const c of cards) if (!c.frame) c.inner.replaceChildren(card(c));
 }).catch(() => {});
 
+// The label above a frame; on the selected one a plain list of sizes to pick from.
+const SIZES: Record<number, number> = { 390: 844, 820: 1180, 1280: 800, 1440: 900 };
+const editable = () => Boolean(document.querySelector('script[data-admin]')); // this computer's browser; a guest only looks
+function paint(c: Card) {
+  const t = c.box.querySelector('.t') as HTMLElement;
+  t.textContent = label(c.f);
+  if (c.f.id !== selected || !editable()) return;
+  for (const w of Object.keys(SIZES)) t.append(' ', Object.assign(document.createElement('u'), { textContent: w, className: +w === c.f.w ? 'on' : '' }));
+  t.dataset.id = c.f.id;
+}
+const api = (more = '') => `/_lab/api/board?name=${name}${of ? `&page=${encodeURIComponent(of)}` : ''}${more}`;
+const copy = (fs: Frame[]) => fs.map((f) => ({ ...f }));
+// Every change is the whole board put back with the rev it was read at; a frame is never dropped, only archived. A frame the
+// lab placed (auto) is sent without x and y, or it would become fixed where it is now.
+async function save(frames: Frame[], before: Frame[], remember = true) {
+  if (!board || !editable()) return;
+  if (remember) undo.push(before);
+  const body = { ...board, frames: frames.map(({ auto, x, y, ...f }) => (auto ? f : { ...f, x, y })) };
+  const res = await fetch(api(), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+  if (!res) return;
+  const j = await res.json();
+  if (res.status === 409 && remember) undo.pop(); // somebody else changed it: theirs is shown, the change is not made
+  if (res.ok || res.status === 409) show(res.ok ? j : j.board);
+}
+// One change at a time: the next is made from what the lab answered to the last (the rev it names).
+let queue: Promise<unknown> = Promise.resolve();
+const change = (fn: (fs: Frame[]) => void, remember = true) => {
+  queue = queue.then(() => {
+    if (!board) return;
+    const before = copy(board.frames);
+    const fs = copy(board.frames);
+    fn(fs);
+    return save(fs, before, remember);
+  });
+};
+const mutate = (id: string, fn: (f: Frame) => void) => change((fs) => fn(fs.find((f) => f.id === id)!));
+const nextId = (fs: Frame[]) => {
+  for (let n = 0; ; n++) {
+    const id = String.fromCharCode(97 + (n % 26)) + (n >= 26 ? Math.floor(n / 26) : '');
+    if (!fs.some((f) => f.id === id)) return id;
+  }
+};
+const dup = (id: string) =>
+  change((fs) => {
+    const f = fs.find((g) => g.id === id)!;
+    const n = { ...f, id: nextId(fs), x: (f.x || 0) + f.w + 80, y: f.y, variantOf: f.id, auto: false, state: 'live' };
+    fs.splice(fs.indexOf(f) + 1, 0, n);
+    setTimeout(() => select(n.id), 400);
+  });
+const archive = (id: string) => (select(''), mutate(id, (f) => (f.state = 'archived')));
+const nudge = (id: string, dx: number, dy: number) => mutate(id, (f) => ((f.x += dx), (f.y += dy), (f.auto = false)));
+// ⌘Z: the frames as they were; one added since is archived (a frame is never dropped).
+const undoLast = () => {
+  const was = undo.pop();
+  if (was) change((fs) => fs.splice(0, fs.length, ...was, ...fs.filter((f) => !was.some((g) => g.id === f.id)).map((f) => ({ ...f, state: 'archived' }))), false);
+};
+
 // ---------- selecting and entering ----------
 const find = (id: string) => cards.find((c) => c.f.id === id);
 function select(id: string) {
   if (entered && entered !== id) leave();
   selected = id;
-  for (const c of cards) c.box.classList.toggle('sel', c.f.id === id);
+  for (const c of cards) {
+    c.box.classList.toggle('sel', c.f.id === id);
+    paint(c);
+  }
 }
 function focusIn(c: Card) {
   c.frame?.focus();
@@ -252,7 +338,7 @@ const at = (e: { clientX: number; clientY: number }) => {
 };
 const mine = (e: Event) => e.target instanceof Node && root.contains(e.target);
 const pts = new Map<number, { x: number; y: number }>();
-let down: { x: number; y: number; id: string; far: boolean; at: number } | null = null;
+let down: { x: number; y: number; id: string; far: boolean; at: number; mv?: Card; fx: number; fy: number; before?: Frame[] } | null = null;
 let tap = { at: 0, x: 0, y: 0 };
 let pinch = 0;
 let space = false;
@@ -262,6 +348,8 @@ addEventListener('pointerdown', (e) => {
   if (!mine(e) || entered && e.target instanceof HTMLIFrameElement) return;
   eat(e);
   lastDown = performance.now();
+  const size = (e.target as HTMLElement).closest?.('u');
+  if (size && editable()) return mutate((e.target as HTMLElement).parentElement!.dataset.id!, (f) => ((f.w = +size.textContent!), (f.h = SIZES[f.w]))); // a size from the list
   (document.activeElement as HTMLElement | null)?.blur?.();
   pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   root.setPointerCapture?.(e.pointerId);
@@ -269,7 +357,11 @@ addEventListener('pointerdown', (e) => {
     const [a, b] = [...pts.values()];
     pinch = Math.hypot(a.x - b.x, a.y - b.y);
     if (down) down.far = true; // a second finger: this was no tap
-  } else down = { x: e.clientX, y: e.clientY, id: at(e), far: false, at: performance.now() };
+  } else {
+    const id = at(e);
+    const mv = e.pointerType === 'mouse' && id && id === selected && !entered && editable() ? find(id) : undefined; // a selected frame is moved by its body (a finger only pans)
+    down = { x: e.clientX, y: e.clientY, id, far: false, at: performance.now(), mv, fx: mv?.f.x ?? 0, fy: mv?.f.y ?? 0, before: board ? copy(board.frames) : undefined };
+  }
 }, true);
 addEventListener('pointermove', (e) => {
   const p = pts.get(e.pointerId);
@@ -287,7 +379,20 @@ addEventListener('pointermove', (e) => {
   }
   pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.far = true;
-  if (down?.far) go(panBy(cam, dx, dy));
+  if (down?.far && down.mv) {
+    // Positions round to 8 px; an edge within 6 screen px of another frame's edge takes that edge.
+    const f = down.mv.f;
+    f.auto = false;
+    let nx = Math.round((down.fx + (e.clientX - down.x) / cam.z) / 8) * 8;
+    let ny = Math.round((down.fy + (e.clientY - down.y) / cam.z) / 8) * 8;
+    for (const o of cards) {
+      if (o === down.mv) continue;
+      for (const edge of [o.f.x, o.f.x + o.f.w]) for (const mine of [nx, nx + f.w]) if (Math.abs(edge - mine) * cam.z < 6) nx += edge - mine;
+      for (const edge of [o.f.y, o.f.y + o.f.h]) for (const mine of [ny, ny + f.h]) if (Math.abs(edge - mine) * cam.z < 6) ny += edge - mine;
+    }
+    [f.x, f.y] = [nx, ny];
+    Object.assign(down.mv.box.style, { left: `${nx}px`, top: `${ny}px` });
+  } else if (down?.far) go(panBy(cam, dx, dy), true, true);
 }, true);
 const up = (e: PointerEvent) => {
   if (!pts.delete(e.pointerId)) return;
@@ -296,6 +401,8 @@ const up = (e: PointerEvent) => {
   const d = down;
   if (pts.size || !d) return;
   down = null;
+  if (d.mv && d.far && d.before && board) return void save(copy(board.frames), d.before);
+  if (d.far && !d.mv && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
   if (d.far || e.type === 'pointercancel') return;
   // A tap selects the frame under it (or nothing); a second one close by and soon enters it.
   const again = performance.now() - tap.at < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24;
@@ -316,7 +423,7 @@ addEventListener('wheel', (e) => {
   if (e.ctrlKey || e.metaKey) {
     const dy = Math.max(-24, Math.min(24, e.deltaY));
     go(zoomAt(cam, e.clientX, e.clientY, cam.z * Math.exp(-dy * (e.ctrlKey ? 0.04 : 0.01)), boxes(), view));
-  } else go(panBy(cam, -(e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX), e.shiftKey && !e.deltaX ? 0 : -e.deltaY));
+  } else go(panBy(cam, -(e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX), e.shiftKey && !e.deltaX ? 0 : -e.deltaY), true, true);
 }, { passive: false, capture: true });
 // Safari's pinch.
 let g0 = 1;
@@ -333,16 +440,32 @@ const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof H
 const back = () => {
   if (of) location.href = of;
 };
+// The next (1) or previous (-1) frame in board order, the camera on it.
+const step = (by: number) => {
+  if (!cards.length) return;
+  const c = cards[(cards.findIndex((o) => o.f.id === selected) + by + cards.length) % cards.length];
+  select(c.f.id);
+  go(fitFrame(c.f, view));
+  focus = true;
+};
 const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
+  const [cmd, sel] = [e.metaKey || e.ctrlKey, find(selected)];
+  if (cmd && !e.altKey && !e.shiftKey && !entered && editable()) {
+    if (e.code === 'KeyZ' || (e.code === 'KeyD' && sel)) {
+      if (e.code === 'KeyZ') undoLast();
+      else dup(selected);
+      return true;
+    }
+  }
   if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  if (sel && !entered && editable() && /^(Arrow(Left|Right|Up|Down)|Backspace|Delete)$/.test(e.key)) {
+    if (e.key.length > 6 && e.key[0] === 'A') {
+      const d = e.shiftKey ? 80 : 8;
+      nudge(selected, e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0);
+    } else archive(selected);
+    return true;
+  }
   const digit = /^Digit(\d)$/.exec(e.code)?.[1];
-  const idx = cards.findIndex((c) => c.f.id === selected);
-  const step = (by: number) => {
-    if (!cards.length) return;
-    const c = cards[(idx + by + cards.length) % cards.length];
-    select(c.f.id);
-    go(fitFrame(c.f, view));
-  };
   if (e.shiftKey && digit === '1') go(fitAll(boxes(), view));
   else if (e.shiftKey && digit === '2') go(zoomAt(cam, view.w / 2, view.h / 2, 1, boxes(), view));
   else if (e.shiftKey && digit === '0') go(find(selected) ? fitFrame(find(selected)!.f, view) : fitAll(boxes(), view));
