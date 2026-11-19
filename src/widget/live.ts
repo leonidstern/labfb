@@ -31,6 +31,10 @@ export function startLive() {
     // keyboard up or have just touched the page.
     let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
+    // A board page (its key is /_board/<name>) holds its frames, which name the files it "uses": a save of a page, a .json
+    // or anything else is the frames' to follow (they patch or reload themselves), never the board's. It still reloads
+    // for a new widget script or comments schema, and follows the lab's comments and the board file.
+    const board = W.S.page.startsWith('/_board/');
     const busy = () =>
       W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
@@ -98,7 +102,7 @@ export function startLive() {
     };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
-    if (!document.querySelector('link[rel~="icon"]')) {
+    if (!board && !document.querySelector('link[rel~="icon"]')) {
       fetch('/favicon.ico', { method: 'HEAD' })
         .then((r) => r.ok && (r.headers.get('content-type') || '').startsWith('image/'))
         .catch(() => false)
@@ -299,6 +303,7 @@ export function startLive() {
     const ownScripts = () => scriptsOf(document).length > 0;
     let morphRun = 0;
     const morphPage = async () => {
+      if (board) return;
       if (ownScripts()) return reload();
       const run = ++morphRun;
       try {
@@ -432,12 +437,12 @@ export function startLive() {
         }
         if (String(v.files) !== W.script.dataset.version) {
           // The lab says which files changed (no list: a burst too big to judge, so reload as before).
-          if (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere)) W.script.dataset.version = String(v.files);
+          if (board || (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere))) W.script.dataset.version = String(v.files);
           else return reload();
         }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
-        if (hotAt !== null && v.hot !== hotAt) {
+        if (!board && hotAt !== null && v.hot !== hotAt) {
           if (v.hot - hotAt > 1) hotUpdate([{ kind: 'html' }, { kind: 'css', path: '' }]);
           else hotUpdate(v.hotFiles || []);
         }
