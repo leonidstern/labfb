@@ -62,19 +62,19 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | `lab-swap` (`.pin.swap`) | transform, opacity | base | standard | a pin's face changed (taken, done): a quiet change |
 | `lab-gone` (`.ring.gone`) | opacity | slow | in | the agent's ring fading out |
 | `lab-halo` | box-shadow | 2.5 × slow | standard | one faint halo from a new comment's pin |
-| `lab-fade` (`.zone.live`, `.row .ask`, `.box.open .line/.who`, `.more-menu`, `.sw-box`) | opacity | quick | out | small things appearing |
+| `lab-fade` (`.zone.live`, `.row .ask`, `.box.open .line/.who`) | opacity | quick | out | small things appearing |
 | `lab-fade` (`.scrim`, `.hint`) | opacity | base | out | the dimmed page, the shortcut hint |
 | `lab-turn` | transform | loop | linear, infinite | the agent's ring turning |
 | `lab-draw` (`.ring.come`) | `--lab-arc` | slow | out | the green arc drawing itself in |
 | `.ptr` | opacity, background | quick | out | the drawn pointer's look |
 | `.ptr span` | opacity, transform | quick | out | the same, its label |
-| `lab-in` (`.card.in`, `.float.in`) | transform | base | standard | a card or the new-comment box appearing |
-| `lab-out` (`.card.out`, `.float.out`) | opacity, transform | quick | in | a card leaving |
+| `lab-in` (`.card.in`, `.float.in`, `.more-menu`, `.sw-box`) | translate, scale | base | standard | a card, the new-comment box, the ⋯ menu or ⌘K appearing |
+| `lab-out` (`.card.out`, `.float.out`, `.more-menu.out`, `.sw-box.out`, `.hint.out`) | opacity, translate, scale | quick | in | one exit: a card leaving (also at once on a computer), the ⋯ menu, ⌘K and the hint (`goOut` in comments.js) |
 | `.row` buttons, `.box`, `kbd` | color, box-shadow, opacity | quick | out | hover and focus |
 | `.send` | background, color; transform | quick | out; standard | the send button (grows to 103% on hover, as a pin does) |
 | `.bar button` | color; transform | quick | out; standard | the bar's buttons |
 | `lab-ready` (`.send.ready`) | transform | quick | out | a small pulse when sending is possible |
-| `lab-rise` (`.fresh`) | opacity, transform | base | standard | a message arriving |
+| `lab-in` (`.fresh`) | translate, scale | base | standard | a message arriving, as a card does |
 | `lab-fly` (`.send.sent .arr`) | transform, opacity | slow | standard | the arrow leaving and coming back |
 | `lab-twitch` | transform | 2 × loop | ease-in-out, infinite | the listening mark's ears |
 | `.gp` | background, color | quick | out | the pin's glyph in the bar (every colour change is quick) |
@@ -90,7 +90,6 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | `fluid.ts` dialog | left, top, width, height | 0.8 × base / 2.5 × base | standard | the comment dialog following the selection, turning into the bar or the phone sheet |
 | `.pane` (the dialog's insides) | opacity | quick out; base in after base | out | one pane fading for the other |
 | `.sbar .sb-t` | background-color | quick | out | a section's new / updated wash |
-| `closeFast` fade (`comments.js`) | opacity | quick | out | a card closing at once on a computer |
 | shake (`comments.js`) | transform | base | standard | unsent words: the card (⌥W) or the sheet (closing on a phone) won't close; one sideways shake for both |
 | `goToBlock` (anchoring.ts) | outline (`--_green`) | 2 × hold | linear | a block named in a message |
 | quote jump (`chat.ts`) | box-shadow (`--_green`) | hold | linear | the message you jumped to |

@@ -18,6 +18,7 @@ type Deps = {
   // the handle, the swipe down, the keyboard fit and back closing all come from there. sheet(open) tells the widget.
   sheet: (open: boolean) => void;
   swipe: (node: HTMLElement, close: () => void) => void;
+  leave: (node: HTMLElement, hide: () => void) => void; // the card's exit, then hide
 };
 
 let d: Deps;
@@ -93,6 +94,7 @@ export function bindSwitcher(deps: Deps) {
 
 export function openSwitcher() {
   d.beforeOpen();
+  panelEl.classList.remove('out'); // opened again while it was leaving
   box.hidden = false;
   d.sheet(true);
   input.value = '';
@@ -108,8 +110,10 @@ export function openSwitcher() {
 
 export function closeSwitcher() {
   if (box.hidden) return;
-  box.hidden = true;
   d.sheet(false);
+  // A computer: the box leaves as a card does. A phone: the sheet goes as the widget's sheets do.
+  if (matchMedia('(pointer: coarse)').matches) box.hidden = true;
+  else d.leave(panelEl, () => (box.hidden = true));
 }
 
 /** Ask for the labs ahead, as the ⋯ menu opens, so the box opens with its list. */
