@@ -1943,7 +1943,7 @@ const labInfo = () => {
   return {
     name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
-    ...({ boards: B.names(ROOT).flatMap((name) => { const b = boardGet(name); return b ? [{ name, url: `${origin}/_lab/board/${name}`, frames: b.frames.filter((f) => f.state !== 'archived').length, of: b.of || null, at: b.at }] : []; }) }),
+    boards: B.names(ROOT).flatMap((name) => { const b = boardGet(name); return b ? [{ name, url: `${origin}/_lab/board/${name}`, frames: b.frames.filter((f) => f.state !== 'archived').length, of: b.of || null, at: b.at }] : []; }),
     created: created(),
     pages: list.map(({ key, ...p }) => {
       const at = lastAt(key, p.file ? path.join(ROOT, p.file) : '');
@@ -1958,7 +1958,7 @@ const boardApi = async (req, res, url) => {
   const json = (code, data) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
   const page = url.searchParams.get('page');
   const name = url.searchParams.get('name') || (page && B.nameOf(page));
-  if (req.method === 'GET' && !name) return json(200, { boards: B.names(ROOT).flatMap((n) => boardGet(n) || []).map(({ name, of, frames }) => ({ name, of, frames: frames.length })) });
+  if (req.method === 'GET' && !name) return json(200, { boards: (boardList ??= B.names(ROOT).flatMap((n) => boardGet(n) || [])).map(({ name, of, frames }) => ({ name, of, frames: frames.length })) });
   if (!name || !B.NAME.test(name) || (page && !B.labPath(page))) return json(400, { error: 'name a board (?name=) or a page (?page=/x)' });
   const was = boardGet(name);
   if (req.method === 'GET') {
