@@ -268,6 +268,8 @@ const LAB = path.join(ROOT, '.lab');
 const STORE = path.join(LAB, 'comments'); // the comments, one file per page
 const ARCHIVE = path.join(LAB, 'archive'); // done threads a month old, one file per page
 const SERVER = path.join(LAB, 'server.json');
+// Boards (lib/board.ts): pages side by side as frames, in .lab/boards.
+const B = await import('./lib/board.ts');
 fs.mkdirSync(LAB, { recursive: true });
 // Git skips the folder by itself: .lab/.gitignore holds `*`, so nobody has to add .lab to the project's .gitignore.
 try {
@@ -546,8 +548,15 @@ const fileFor = (page) => {
     fileMemo.clear();
     fileMemoAt = Date.now();
   }
+  if (page.startsWith('/_board/')) return boardFile(page); // a board's own files: never kept (they are made while the lab runs)
   if (!fileMemo.has(page)) fileMemo.set(page, findFile(page));
   return fileMemo.get(page);
+};
+// A board's key is /_board/<name>, a scratch frame's /_board/<name>/<frame>: their files are in .lab/boards.
+const boardFile = (key) => {
+  const [, , name, frame] = key.split('/');
+  const rel = frame ? `.lab/boards/${name}/${frame}.html` : `.lab/boards/${name}.json`;
+  return rel && !key.split('/')[4] && fs.existsSync(path.join(ROOT, rel)) ? rel : null;
 };
 const findFile = (page) => {
   if (!fileIndex) {
@@ -693,7 +702,8 @@ const widgetRev = () => {
     return '';
   }
 };
-let version = { files: 0, comments: 0, commentPages: [], lab: randomBytes(4).toString('hex'), widget: widgetRev(), schema: SCHEMA };
+/** @type {any} */
+let version = { files: 0, comments: 0, commentPages: [], lab: randomBytes(4).toString('hex'), widget: widgetRev(), schema: SCHEMA, boards: 0 };
 // Saving: the files of the pages that changed (.lab/comments/<page>.json) and comments.md are rewritten in the
 // background, one write at a time; changes that land meanwhile go into the next one. Each page's agent text is kept
 // and rebuilt only when that page changed, so a comment costs the same with 10 comments or 20,000. The request that
@@ -1272,6 +1282,52 @@ try {
     }, 120);
   });
 } catch {}
+
+// ---------- boards ----------
+// .lab/boards is watched by the lab itself: the project watcher skips dot folders and is off behind a dev server. A saved
+// variant is a hot update of that frame's own page alone; a changed board file is a new `boards` count (with which),
+// and neither touches `files`, so no page reloads for them.
+let boardList = null; // every stored board, kept like the cache below
+const boardCache = new Map(); // name -> the stored board and when it was written (cleared when its file changes)
+const boardGet = (name) => {
+  if (!boardCache.has(name)) {
+    const b = B.read(ROOT, name);
+    let at = null;
+    try {
+      at = b && fs.statSync(path.join(B.dirOf(ROOT), `${name}.json`)).mtime.toISOString();
+    } catch {}
+    boardCache.set(name, b && { ...b, at });
+  }
+  return boardCache.get(name);
+};
+let boardWatching = false;
+const watchBoards = () => {
+  if (boardWatching || !fs.existsSync(B.dirOf(ROOT))) return;
+  boardWatching = true;
+  const names = new Set();
+  const hot = new Set();
+  let timer;
+  try {
+    fs.watch(B.dirOf(ROOT), { recursive: true }, (event, file) => {
+      const m = /^([a-z0-9][a-z0-9_-]*)(?:\.json|[\\/]([a-z][a-z0-9]*)\.html)$/.exec(file || '');
+      if (!m) return; // a half-written .tmp, a file that is not a board's
+      names.add(m[1]);
+      boardCache.delete(m[1]);
+      boardList = null;
+      if (m[2]) hot.add(`/_lab/board/${m[1]}/${m[2]}`);
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        version = { ...version, boards: version.boards + 1, boardNames: [...names], ...(hot.size ? { hot: (version.hot || 0) + 1, hotFiles: [...hot].map((path) => ({ path, kind: 'html' })) } : {}) };
+        names.clear();
+        hot.clear();
+        broadcast();
+      }, mode === 'working' ? 400 : 80);
+    });
+  } catch {
+    boardWatching = false;
+  }
+};
+watchBoards();
 
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 // (seen: the one "given up to" time of labs before 17 Nov, kept as it was; nothing moves it now.)
@@ -1883,16 +1939,43 @@ const labInfo = () => {
   const list = (PROXY ? [] : pagesUnder(ROOT)).map((rel) => ({ url: origin + urlOf(rel), title: titleOf(path.join(ROOT, rel)), file: rel, key: keyFor(rel) }));
   if (PROXY) list.push({ url: origin + '/', title: '', file: '', key: '/' });
   // A dev server's pages: the ones with comments. Pages without a file (moved or deleted) keep their pins but aren't offered: going there would find nothing.
-  if (PROXY) for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
+  if (PROXY) for (const key of pages()) if (!key.startsWith('/_board/') && !list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
   return {
     name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
+    ...({ boards: B.names(ROOT).flatMap((name) => { const b = boardGet(name); return b ? [{ name, url: `${origin}/_lab/board/${name}`, frames: b.frames.filter((f) => f.state !== 'archived').length, of: b.of || null, at: b.at }] : []; }) }),
     created: created(),
     pages: list.map(({ key, ...p }) => {
       const at = lastAt(key, p.file ? path.join(ROOT, p.file) : '');
       return { ...p, path: key, ...tally(key), waiting: waitingOn(key), listener: listenerOf(key), at, when: ago(at), edited: edited(p.file), opened: opened.get(key) || null, archived: archivedPages.get(key) || null };
     }),
   };
+};
+// GET /_lab/api/board?name=<n> or ?page=/x (the board of that page) is the board with every drawn frame placed (x, y; auto
+// when the lab chose them); no query lists the boards. PUT (this computer, JSON) replaces it: it carries the rev it was
+// made from (409 when the file moved on) and may not drop a frame.
+const boardApi = async (req, res, url) => {
+  const json = (code, data) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+  const page = url.searchParams.get('page');
+  const name = url.searchParams.get('name') || (page && B.nameOf(page));
+  if (req.method === 'GET' && !name) return json(200, { boards: B.names(ROOT).flatMap((n) => boardGet(n) || []).map(({ name, of, frames }) => ({ name, of, frames: frames.length })) });
+  if (!name || !B.NAME.test(name) || (page && !B.labPath(page))) return json(400, { error: 'name a board (?name=) or a page (?page=/x)' });
+  const was = boardGet(name);
+  if (req.method === 'GET') {
+    if (was) return json(200, { ...B.place(was), exists: true });
+    if (!page) return json(404, { error: `no board ${name}` });
+    return json(200, { ...B.place({ v: 1, name, rev: 0, of: page, frames: [{ id: 'a', src: page, w: 1440, h: 900, state: 'live' }] }), exists: false });
+  }
+  if (req.method !== 'PUT' || !isLoopback(req)) return plain(res, 405, 'GET or PUT (this computer)');
+  const body = await sent(req);
+  if (was && body.rev !== was.rev) return json(409, { error: 'the board changed since you read it', board: B.place(was) });
+  const next = B.check({ ...(page && !body.of ? { of: page } : {}), ...body }, name, was);
+  if (typeof next === 'string') return json(422, { error: next });
+  B.save(ROOT, next);
+  boardCache.delete(name);
+  boardList = null;
+  watchBoards();
+  return json(200, { ...B.place(boardGet(name)), exists: true });
 };
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
 const keyOk = (req) => {
@@ -2273,6 +2356,18 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/pages') {
       if (!isLoopback(req)) return plain(res, 403, 'forbidden');
       return answer(res, labInfo());
+    }
+    // ---------- boards: a variant's page, and the board's data (lib/board.ts) ----------
+    // /_lab/board/<name> is the board page, /_lab/board/<name>/<frame> a variant's own page.
+    if (pathname.startsWith('/_lab/board/') || pathname === '/_lab/api/board') {
+      const m = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]*)\/([a-z][a-z0-9]*)$/.exec(pathname);
+      if (m && (req.method === 'GET' || req.method === 'HEAD')) {
+        const file = B.frameFile(ROOT, m[1], m[2]);
+        if (!fs.existsSync(file)) return notFound(req, res, pathname);
+        return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+          inject(withIcon(fs.readFileSync(file, 'utf8')), widget(`/_board/${m[1]}/${m[2]}`, isLoopback(req), nameFor(req), inFrame(req))));
+      }
+      if (pathname === '/_lab/api/board') return boardApi(req, res, url);
     }
     if (pathname.startsWith('/_lab/agent/')) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
