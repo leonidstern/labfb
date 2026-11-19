@@ -604,7 +604,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     toolsBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, 'V'));
     toolsBtn.addEventListener('click', () => selectMode(true));
   }
-  const boardBtn = flag('board') ? el('button', { type: 'button', class: 'board-btn' }) : null;
+  const boardBtn = flag('board') && S.board ? /* only "back to page" on a board; "side by side" on a page is gone (Leo, 19 Nov) */ el('button', { type: 'button', class: 'board-btn' }) : null;
   const toBoard = () => {
     const page = location.pathname.replace(/\.html?$/i, '').replace(/\/+$/, '') || '/';
     const name = page.replace(/^\/+/, '').replace(/\//g, '--').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 80) || 'index';

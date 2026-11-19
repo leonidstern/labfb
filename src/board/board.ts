@@ -15,9 +15,9 @@ const script = document.currentScript as HTMLScriptElement;
 const name = script.dataset.name || '';
 let of = new URLSearchParams(location.search).get('of') || ''; // the page this board is about: Esc on an empty board goes back to it
 const coarse = matchMedia('(pointer: coarse)').matches;
-const CAP = coarse ? 2 : 8; // frames alive at once (a phone: the one you see and the next, so it doesn't lag)
+const CAP = coarse ? 3 : 8; // frames alive at once (a phone draws them at 390 wide, so three side by side stay light)
 const AT_ONCE = coarse ? 1 : 2; // frames loading at once
-const WAKE = 120; // a frame is woken when it is in view and at least this many screen px wide
+const WAKE = coarse ? 80 : 120; // a frame is woken when it is in view and at least this many screen px wide (a phone: all three fitted)
 
 const css = `
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#e9e8e4;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif}
@@ -30,7 +30,7 @@ html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;backgrou
 #lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
 #lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
-#lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
+#lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
 #lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
@@ -179,7 +179,10 @@ const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
 function show(b: Board) {
   board = b;
   of = of || (b.of || '').split('#')[0];
-  const next = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
+  const live = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
+  // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
+  // page). Only how it's drawn here: what is saved is the board as read (save sends board.frames).
+  const next = coarse ? [...live].sort((p, q) => p.y - q.y || p.x - q.x).map((f, i) => ({ ...f, x: i * (390 + 80), y: 0, w: 390, h: 844 })) : live;
   const old = new Map(cards.map((c) => [c.f.id, c]));
   cards = next.map((f) => {
     const was = old.get(f.id);
@@ -214,9 +217,10 @@ function show(b: Board) {
   const hash = /^#(-?\d+),(-?\d+),([\d.]+)$/.exec(location.hash);
   if (hash && !moved) cam = { x: +hash[1], y: +hash[2], z: +hash[3] };
   else if (!moved) {
-    focus = coarse && Boolean(cards[0]);
-    cam = focus ? fitFrame(cards[0].f, view) : fitAll(boxes(), view);
-    if (focus) select(cards[0].f.id);
+    // Every frame in view, as on a computer, phones too (Leo, 19 Nov: one frame at a time read as a slider, "dont like
+    // this view at all"): drag pans, pinch zooms, Tab or a frame's label still fits one.
+    focus = false;
+    cam = fitAll(boxes(), view);
   }
   moved = moved || Boolean(hash);
   go(cam, false);
