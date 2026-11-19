@@ -260,6 +260,9 @@ try {
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'paragraph');
         await p.keyboard.down('Shift');
+        // The words must be selectable before the press: WebKit restyles a moment after Shift goes down (reading the style
+        // forces it), and a double-click's first press selects the word at once.
+        await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector('#t')); return c.userSelect !== 'none' && c.webkitUserSelect !== 'none'; }, null, { timeout: 1500, polling: 'raf' }).catch(() => {});
         await p.mouse.dblclick((s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2);
         await p.keyboard.up('Shift');
         await barUp(p, 900);
@@ -275,6 +278,9 @@ try {
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'quite a few');
         await p.keyboard.down('Shift');
+        // A triple-click is one press (clickCount 3), so unlike the double-click's first press there is no earlier one to let the
+        // engine restyle: wait until the words are really selectable (reading the style forces it to be current) before pressing.
+        await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector('#t')); return c.userSelect !== 'none' && c.webkitUserSelect !== 'none'; }, null, { timeout: 1500, polling: 'raf' }).catch(() => {});
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await p.keyboard.up('Shift');
         await untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.classList.contains('settled'); }, 1500);
