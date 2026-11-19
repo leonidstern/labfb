@@ -36,6 +36,36 @@ export function step(dir: 1 | -1) {
   return all[at < 0 ? (dir > 0 ? 0 : all.length - 1) : (at + dir + all.length) % all.length] || null;
 }
 export const picked = () => T.pick;
+// Phones have no V, Enter or Esc: while select is on, a small bar above the widget's bar does what the keys do for the
+// picked block (Leo, 19 Nov: "what can select do on mobile?" → edit · pin · done).
+let bar: HTMLElement | null = null;
+const drawBar = () => {
+  if (!W?.coarse) return;
+  if (!bar) {
+    bar = W.el('div', { class: 'selbar', role: 'toolbar', 'aria-label': 'picked block' });
+    const b = (name: string, act: () => void) => {
+      const x = W.el('button', { type: 'button', 'data-a': name }, name);
+      x.addEventListener('click', (e: Event) => (e.stopPropagation(), act()));
+      return x;
+    };
+    bar!.append(
+      b('edit', () => T.pick && T.open(T.pick)),
+      b('pin', () => {
+        const p = T.pick;
+        if (!p) return;
+        const r = p.getBoundingClientRect();
+        selectMode(false);
+        W.begin(W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2));
+      }),
+      b('done', () => (T.pick ? pick(null) : selectMode(false))),
+    );
+    W.root.append(bar);
+  }
+  bar.hidden = !T.on || Boolean(W.S.editing);
+  for (const x of bar.querySelectorAll<HTMLButtonElement>('[data-a="edit"], [data-a="pin"]')) x.disabled = !T.pick;
+  bar.querySelector('[data-a="done"]')!.textContent = T.pick ? 'done' : 'leave select';
+};
+export const redrawSelectBar = () => drawBar();
 /** The page holds its reloads while a block is picked or being edited. */
 export const hold = () => holdEditing(Boolean(T.on || W.S.editing));
 /** Pick a block (or none). */
@@ -43,6 +73,7 @@ export function pick(el: HTMLElement | null) {
   T.pick = el;
   ink('lab-pick', W.S.editing ? null : el);
   hold();
+  drawBar();
   el?.scrollIntoView({ block: 'nearest' });
 }
 /** The mode on or off (V, E). */
@@ -52,6 +83,7 @@ export function selectMode(on = !T.on) {
   W.S.selecting = on;
   document.documentElement.classList.toggle('lab-editing', on);
   pick(null);
+  drawBar();
 }
 export const selectOn = () => T.on;
 export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.close) {

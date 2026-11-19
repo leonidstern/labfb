@@ -660,6 +660,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar { position: fixed; left: 0; right: 0; top: var(--lab-top, 0px); z-index: 3; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
         background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
 .sbar[hidden] { display: none; }
+/* Select on a phone (select.ts): edit · pin · done for the picked block, above the widget's bar. */
+.selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 3; display: flex; gap: 2px; padding: 4px;
+          background: var(--_fg); border-radius: var(--_radius); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
+.selbar[hidden] { display: none; }
+.selbar button { font: inherit; font-size: 15px; border: 0; background: none; color: var(--_bg); padding: 10px 16px; border-radius: calc(var(--_radius) - 4px); -webkit-tap-highlight-color: transparent; }
+.selbar button:disabled { opacity: .4; }
+.selbar button:active:not(:disabled) { background: rgba(127, 127, 127, .3); }
+
 /* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .sb-wrap .sb-nav { flex: 1; }

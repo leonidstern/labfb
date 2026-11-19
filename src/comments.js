@@ -53,6 +53,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get S() { return S; },
     get agentOf() { return agentOf; },
     get anchorAt() { return anchorAt; },
+    get begin() { return begin; },
     get bar() { return bar; },
     get chatBtn() { return chatBtn; },
     get chatEl() { return chatEl; },

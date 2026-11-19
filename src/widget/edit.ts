@@ -4,7 +4,7 @@
 // back. No dialog, no pin: the agent only hears of an edit when it is pinned or asked about. The lab does the writing
 // (lib/edit.ts, POST /_lab/api/edit) and only when the old words are in exactly one place.
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
-import { bindSelect, hold, ink, pick, picked, selectMode, selectOn, step } from './select.ts';
+import { bindSelect, hold, ink, pick, picked, selectMode, selectOn, step, redrawSelectBar } from './select.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -21,6 +21,7 @@ function start(el: HTMLElement, at?: MouseEvent) {
   live = { el, node, was: el.textContent! };
   away();
   W.S.editing = true;
+  redrawSelectBar();
   pick(el);
   el.setAttribute('contenteditable', 'plaintext-only');
   if (el.contentEditable !== 'plaintext-only') el.contentEditable = 'true';
@@ -78,6 +79,7 @@ async function commit() {
   el.removeAttribute('data-lab-editing');
   el.removeEventListener('paste', flat);
   W.S.editing = false;
+  redrawSelectBar();
   getSelection()?.removeAllRanges();
   pick(el);
   if (was.trim() === now) return;
