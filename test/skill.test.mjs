@@ -14,3 +14,9 @@ test('labit skill prints SKILL.md without its frontmatter', async () => {
   assert.doesNotMatch(stdout, /^---/);
   assert.match(stdout, /wait --bg/);
 });
+
+test('the skill says how to use boards', async () => {
+  const { stdout } = await promisify(execFile)(process.execPath, [LAB, 'skill']);
+  assert.match(stdout, /board new/);
+  assert.match(stdout, /Picked b/);
+});

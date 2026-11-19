@@ -46,9 +46,12 @@ const options = {
 // it, <name>.js, with its own styles in it. The lab serves them with the script (public/_lab/*.js), and its widget
 // version covers them (widgetRev in local.mjs), so a change to one reloads open pages too.
 const PARTS = { components: 'src/widget/components.ts', switcher: 'src/widget/switcher.ts' };
+// The board page's script (src/board/board.ts) is built beside it: only the board page loads it.
+const board = { ...options, entryPoints: ['src/board/board.ts'], outfile: path.join(path.dirname(outfile), 'board.js') };
 const builds = [
   options,
   ...Object.entries(PARTS).map(([name, entry]) => ({ ...options, entryPoints: [entry], format: 'esm', outfile: path.join(path.dirname(outfile), `${name}.js`) })),
+  board,
 ];
 if (watch) for (const o of builds) await (await esbuild.context(o)).watch();
 else await Promise.all(builds.map((o) => esbuild.build(o)));
