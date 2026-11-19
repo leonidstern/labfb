@@ -666,24 +666,52 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar { position: fixed; left: 0; right: 0; top: var(--lab-top, 0px); z-index: 3; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
         background: var(--_bg); box-shadow: 0 .5px 0 var(--_line); font-size: 13px; letter-spacing: -.006em; white-space: nowrap; }
 .sbar[hidden] { display: none; }
+/* Floating over a page it does not push (a proxied app, an app shell, a page with its own top bar): away while the page
+   scrolls down, back on the way up (sections.ts, rule 3). Never in a print (rule 6). */
+.sbar { transition: opacity var(--_t-quick), transform var(--_t-quick) var(--_ease); }
+.sbar[data-away] { opacity: 0; transform: translateY(-100%); pointer-events: none; }
+@media print { .sbar { display: none !important; } }
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
 @media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
-/* Your actions (lib/actions.ts): as many as fit, "…", and select's ↑ ↓ done on one line; "…" opens a small menu under
-   it: the rest, ✎ to edit any, + add. */
+/* Your actions (lib/actions.ts): as many as fit, "…", and select's ↑ ↓ done on one line; "…" opens a small menu:
+   the line's and the rest, a pencil to edit any, + add. */
 .quick { white-space: nowrap; }
 .quick[hidden] { display: none; }
-.acts:not(:where(.row)) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: -2px 0 6px; padding: 2px; border-radius: max(0px, calc(var(--_radius) - 8px)); background: var(--_soft); }
+/* The "…" menu: the ⋯ menu's surface (radius, shadow, 4 px in, rows radius − 4 px: concentric), floating under the line
+   over the box on computers and above the sheet on phones, so nothing below it moves when it opens. */
+.acts:not(:where(.row)) { position: absolute; left: 8px; right: 8px; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr); margin-top: -2px;
+  max-height: min(340px, 60vh); overflow-y: auto; overscroll-behavior: contain; padding: 4px; background: var(--_bg); border-radius: var(--_radius);
+  box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
 .acts:not(:where(.row))[hidden] { display: none; } /* not the thread's resolve / delete row (.row.acts) */
-.acts .quick { margin: 0 0 2px; }
-.acts .act { display: flex; min-width: 0; }
-.acts .act.on-line + .act:not(.on-line), .acts .act:not(.on-line) + .act.on-line { border-top: var(--_hair); }
-.acts:not(:where(.row)) button { border: 0; background: none; font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_fg); cursor: pointer; border-radius: max(0px, calc(var(--_radius) - 10px)); padding: 5px 8px; text-align: left; } /* concentric: 2 px inside the menu */
-.acts:not(:where(.row)) button:hover { background: var(--_hover); }
-.acts .use { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
-.acts .use span { font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--_muted); }
-.acts .on-line .use { color: var(--_muted); }
-.acts .pen, .acts .add { color: var(--_muted); }
+.acts .quick { margin: 0 0 2px; padding: 2px 6px; }
+.acts .act-h { padding: 6px 10px 2px; font-size: 11px; letter-spacing: .006em; color: var(--_muted); }
+.acts .act-h ~ .act-h { margin-top: 4px; border-top: var(--_hair); padding-top: 8px; }
+.acts .act { display: flex; align-items: stretch; min-width: 0; border-radius: max(0px, calc(var(--_radius) - 4px)); }
+.acts .act:hover { background: var(--_soft); }
+.acts:not(:where(.row)) button { border: 0; background: none; font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_fg); cursor: pointer;
+  border-radius: max(0px, calc(var(--_radius) - 4px)); padding: 6px 10px; text-align: left; }
+.acts .use { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.acts .use b { font-weight: 400; font-size: 12px; letter-spacing: 0; color: var(--_fg); }
+.acts .use span { font-size: 11px; letter-spacing: .006em; color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acts:not(:where(.row)) .pen { flex: none; width: 32px; padding: 0; display: grid; place-items: center; color: var(--_muted); }
+.acts:not(:where(.row)) .pen:hover { color: var(--_fg); }
+.acts:not(:where(.row)) .add { display: flex; align-items: center; gap: 6px; color: var(--_muted); }
+.acts:not(:where(.row)) .add:hover { background: var(--_soft); color: var(--_fg); }
+.acts .ico { display: grid; place-items: center; width: 16px; height: 16px; }
+.acts .ico, .acts .ico * { color: inherit; } /* every element gets --_fg (the * rule): the icon takes its button's */
+.acts .ico svg { display: block; }
+.acts .act-edit button:hover { background: var(--_soft); }
+@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
+  .float > .acts:not(:where(.row)) { top: auto; bottom: calc(100% + var(--_gap, 8px)); left: 0; right: 0; max-height: 62vh; margin: 0; }
+  .acts:not(:where(.row)) button { padding: 6px 12px; }
+  .acts .use { min-height: 44px; align-content: center; }
+  .acts .use b { font-size: 14px; letter-spacing: -.011em; }
+  .acts .use span { font-size: 13px; letter-spacing: -.003em; }
+  .acts:not(:where(.row)) .pen { width: 44px; }
+  .acts:not(:where(.row)) .add { min-height: 44px; font-size: 14px; letter-spacing: -.011em; }
+  .acts .act-h { padding: 8px 12px 2px; font-size: 12px; }
+}
 .act-edit { display: grid; gap: 4px; padding: 4px; }
 .act-name { display: flex; align-items: center; gap: 6px; }
 .act-edit input, .act-edit textarea { font: inherit; font-size: 12px; color: var(--_fg); background: var(--_bg); border: var(--_hair); border-radius: var(--_r-s); padding: 4px 6px; }

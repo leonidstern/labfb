@@ -1897,33 +1897,52 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         queueMicrotask(() => name.focus());
         return form;
       };
-      // The rest first (what "…" is for), then the ones on the line (to edit them).
+      // A calm list floating under the line (above it on a phone, so the sheet doesn't grow): each row the action's name
+      // and its prompt on one muted line, tap = use it; a quiet pencil at the right edits it. On this computer the ones
+      // on the line come first under "on the line", then "more"; elsewhere only the rest. "+ add" is the last row.
+      const icon = (d) => {
+        const s = el('span', { class: 'ico', 'aria-hidden': 'true' });
+        s.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+        return s;
+      };
+      const PEN = 'M10.5 2.5l3 3L6 13H3v-3z M9 4l3 3';
+      const PLUS = 'M8 3v10 M3 8h10';
       function fill() {
         menu.replaceChildren(...(spill.children.length ? [spill] : []));
-        for (const i of [...LIST.keys()].slice(shown).concat([...LIST.keys()].slice(0, shown))) {
-          if (i < shown && !mayEdit) continue;
-          const a = LIST[i];
-          const line = el('div', { class: `act${i < shown ? ' on-line' : ''}` });
-          const use = quiet(btn(a.name, { class: 'use', 'data-act': a.name, title: a.prompt }));
-          use.append(el('span', {}, a.prompt));
-          use.addEventListener('click', () => chips[i].click());
-          line.append(use);
-          if (mayEdit) {
-            const pen = btn('✎', { class: 'pen', 'aria-label': `edit ${a.name}` });
-            pen.addEventListener('click', () => line.replaceWith(editor(i)));
-            line.append(pen);
+        const keys = [...LIST.keys()];
+        const groups = [['on the line', mayEdit ? keys.slice(0, shown) : []], ['more', keys.slice(shown)]].filter(([, g]) => g.length);
+        for (const [label, g] of groups) {
+          if (groups.length > 1) menu.append(el('div', { class: 'act-h' }, label));
+          for (const i of g) {
+            const a = LIST[i];
+            const line = el('div', { class: 'act' });
+            const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
+            use.append(el('b', {}, a.name), el('span', {}, a.prompt));
+            use.addEventListener('click', () => chips[i].click());
+            line.append(use);
+            if (mayEdit) {
+              const pen = btn('', { class: 'pen', 'aria-label': `edit ${a.name}` });
+              pen.append(icon(PEN));
+              pen.addEventListener('click', () => line.replaceWith(editor(i)));
+              line.append(pen);
+            }
+            menu.append(line);
           }
-          menu.append(line);
         }
         if (!mayEdit) return;
-        const add = btn('+ add', { class: 'add' });
+        const add = btn('', { class: 'add' });
+        add.append(icon(PLUS), 'add');
         add.addEventListener('click', () => add.replaceWith(editor(LIST.length)));
         menu.append(add);
       }
-      quiet(dots).addEventListener('click', () => {
-        if (menu.hidden) fill();
-        dots.setAttribute('aria-expanded', String(!(menu.hidden = !menu.hidden)));
-      });
+      const openMenu = (open) => {
+        if (open && menu.hidden) fill();
+        menu.hidden = !open;
+        dots.setAttribute('aria-expanded', String(open));
+      };
+      quiet(dots).addEventListener('click', () => openMenu(menu.hidden));
+      // It floats over the box: a press anywhere else in the composer closes it.
+      box.addEventListener('pointerdown', (e) => !menu.hidden && !e.composedPath().some((n) => n === menu || n === dots) && openMenu(false));
       row.append(...chips, dots, ...(draft.select ? selectChips() : []));
       let tries = 0;
       const measure = () => {
