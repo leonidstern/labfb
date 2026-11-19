@@ -1,5 +1,6 @@
 // Select mode (flag select) and your actions (lib/actions.ts) in a real browser: a pin's box shows as many actions as
-// fit on one line and "…", "…" opens the rest with ✎ and + add (saved in your settings); V picks blocks, and a picked block opens the same box (no pin drawn) whose
+// fit on one line and "…", "…" grows the line into the whole list, a right-click (or a hold) edits a row in place,
+// + add (saved in your settings; here every save and send is caught, nothing is written); V picks blocks, and a picked block opens the same box (no pin drawn) whose
 // chips send a pin on the block with the action's prompt for the agent; Esc lets go and leaves. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/select.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
@@ -55,7 +56,6 @@ const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
 };
-const texts = () => fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json()).then((d) => (d.comments || []).map((c) => c.text));
 
 try {
   for (const eng of (process.env.ENGINES || 'chromium').split(',')) {
@@ -64,6 +64,17 @@ try {
       reset();
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+      // Nothing is saved: a comment is answered here, a change to your actions refused (the lab never sees either).
+      const posts = [];
+      const puts = [];
+      await ctx.route('**/_lab/api/comments**', (r) => {
+        if (r.request().method() !== 'POST') return r.continue();
+        const body = r.request().postDataJSON();
+        posts.push(body);
+        return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ comment: { id: `m${posts.length}`, page: '/index', name: body.name, text: body.text, anchor: body.anchor, created: new Date().toISOString(), replies: [] }, edit: 'k1' }) });
+      });
+      await ctx.route('**/_lab/api/actions**', (r) => (r.request().method() === 'GET' ? r.continue() : (puts.push(r.request().postDataJSON()), r.abort())));
+      const texts = async () => posts.map((b) => b.text);
       const p = await ctx.newPage();
       await p.goto(B + '/');
       await sleep(600);
@@ -77,8 +88,9 @@ try {
         const shown = row ? [...row.children].filter((b) => !b.hidden) : [];
         return { names: shown.map((b) => b.textContent).join(' '), tops: new Set(shown.map((b) => Math.round(b.getBoundingClientRect().top))).size, fits: row ? row.scrollWidth <= row.clientWidth + 1 : false, more: more ? [...more.querySelectorAll('[data-act]')].map((b) => b.dataset.act).join(' ') : '', open: more ? !more.hidden : false, pin: Boolean(r.querySelector('.pin.draft')) };
       });
-      const last = async () => (await fetch(`${B}/_lab/api/comments?page=/index`).then((r) => r.json())).comments.at(-1);
-      const mine = () => JSON.parse(fs.readFileSync(path.join(env.XDG_CONFIG_HOME, 'labit', 'settings.json'), 'utf8')).actions.map((a) => a.name).join(' ');
+      const last = async () => posts.at(-1);
+      const edit = p.locator('.float .act-edit');
+      const editing = () => p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelectorAll('.act-edit').length);
       const all = 'go fix remove like move states variant';
       // A pin's box: as many as fit, in order, on one line; … opens the rest first, then the ones on the line (to edit)
       await p.locator('h1').click();
@@ -88,36 +100,45 @@ try {
       check(eng, "a pin's box: the line fills with actions in order, then …", wide > 3 && all.startsWith(l.names.slice(0, -2)) && l.names.endsWith(' …') && l.tops === 1 && l.fits && !l.open && l.pin, JSON.stringify(l));
       await chip('…').click();
       l = await line();
-      const rest = all.split(' ').slice(wide).join(' ');
-      check(eng, '… opens the rest in order, then the line ones', l.open && l.more === `${rest} ${all.split(' ').slice(0, wide).join(' ')}`.trim(), JSON.stringify(l));
-      await p.locator('.float .acts .pen').last().click();
-      await p.locator('.float .act-edit input').fill('nottoolong');
-      check(eng, '✎: the name stops at 7, the counter says so', (await p.locator('.float .act-edit input').inputValue()) === 'nottool' && (await p.locator('.float .act-edit .cnt').textContent()) === '7/7');
-      await p.locator('.float .act-edit input').fill('look');
-      await p.locator('.float .act-edit textarea').fill('Look at this again.');
-      await p.locator('.float .act-edit .ok').click();
-      check(eng, '…saved in your settings, in its place, the menu stays open', await until(async () => mine().split(' ')[wide - 1] === 'look' && (await line()).open), mine());
+      check(eng, '… grows the line into the whole list, in order', l.open && l.more === all, JSON.stringify(l));
+      // Edit in place: a right-click turns that row editable where it is (no form, no boxes).
+      await p.locator('.float .acts [data-act="move"]').click({ button: 'right' });
+      check(eng, 'right-click: that row is editable in place, its name focused', (await editing()) === 1 && (await edit.locator('input.nm').inputValue()) === 'move' && (await edit.locator('textarea.p').inputValue()) === SEED[4].prompt && (await p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.activeElement?.className)) === 'nm' && !(await p.locator('.float form, .float .act-btns').count()));
+      await edit.locator('input.nm').fill('nottoolong');
+      check(eng, 'the name stops at 7, the counter shows near the limit', (await edit.locator('input.nm').inputValue()) === 'nottool' && (await edit.locator('.cnt').textContent()) === '7/7');
+      await p.keyboard.press('Escape');
+      check(eng, 'Esc cancels: the row is back, nothing saved, the list stays', (await editing()) === 0 && !puts.length && (await line()).open);
+      await p.locator('.float .acts [data-act="like"]').click({ button: 'right' });
+      await edit.locator('input.nm').fill('look');
+      await p.keyboard.press('Enter');
+      check(eng, 'Enter in the name goes on to the prompt', (await p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.activeElement?.className)) === 'p');
+      await p.keyboard.press('End');
+      await p.keyboard.type(' again');
+      await p.keyboard.press('Shift+Enter');
+      await p.keyboard.type('two');
+      await p.keyboard.press('Enter');
+      check(eng, 'Enter in the prompt saves the whole list, Shift+Enter is a new line', await until(async () => puts.length === 1), JSON.stringify(puts[0]?.actions?.[3]));
+      const put = puts[0]?.actions || [];
+      check(eng, '…the row changed in its place, the rest as they were', put.map((a) => a.name).join(' ') === all.replace('like', 'look') && put[3].prompt === `${SEED[3].prompt} again\ntwo`, JSON.stringify(put[3]));
+      check(eng, 'a lab that does not answer: the row stays open and says so', await until(async () => /not answering/.test((await edit.locator('.why').textContent()) || '')));
+      await p.locator('.float .composer textarea').click();
+      check(eng, 'a tap elsewhere cancels', (await editing()) === 0 && (await line()).open && puts.length === 1);
       await p.locator('.float .acts .add').click();
-      await p.locator('.float .act-edit input').fill('look');
-      await p.locator('.float .act-edit textarea').fill('again');
-      await p.locator('.float .act-edit .ok').click();
-      check(eng, '+ add: a name twice is refused, with why', await until(async () => /twice/.test((await p.locator('.float .act-edit .why').textContent()) || '')));
-      await p.locator('.float .act-edit input').fill('ship');
-      await p.locator('.float .act-edit .ok').click();
-      check(eng, '+ add: a new one goes at the end', await until(async () => mine().endsWith(' ship')), mine());
-      await p.locator('.float .acts [aria-label="edit ship"]').click();
-      await p.locator('.float .act-edit .del').click();
-      check(eng, 'delete takes it out', await until(async () => !mine().includes('ship')), mine());
-      await p.locator('.float .acts [aria-label="edit look"]').click();
-      await p.locator('.float .act-edit input').fill(all.split(' ')[wide - 1]);
-      await p.locator('.float .act-edit textarea').fill(SEED.find((a) => a.name === all.split(' ')[wide - 1]).prompt);
-      await p.locator('.float .act-edit .ok').click();
-      check(eng, 'the list is back as it was', await until(async () => mine() === all), mine());
+      check(eng, '+ add: an empty row, editable, at the end', (await editing()) === 1 && (await edit.locator('input.nm').inputValue()) === '' && (await p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.act-edit').nextElementSibling?.classList.contains('act-foot'))));
+      await p.keyboard.press('Escape');
+      check(eng, '…Esc takes it away', (await editing()) === 0);
+      await p.locator('.float .acts [data-act="states"]').click({ button: 'right' });
+      await edit.locator('.del').click();
+      check(eng, 'delete saves the list without it, no confirm', await until(async () => puts.length === 2 && puts[1].actions.map((a) => a.name).join(' ') === all.replace(' states', '')), JSON.stringify(puts[1]?.actions?.map((a) => a.name)));
+      await p.locator('.float .composer textarea').click();
+      await p.locator('.float .acts .fold').click();
+      check(eng, 'done folds it back to the line', await until(async () => !(await line()).open));
       await p.locator('.float .composer textarea').click();
       await p.keyboard.type('the gap');
       await chip('fix').click();
       check(eng, 'a chip sends "<name>: <your words>"', await until(async () => (await texts()).includes('fix: the gap')));
       check(eng, "…and the agent reads the action's prompt", (await last())?.anchor?.act === 'Fix this: it is broken or wrong.');
+      await until(async () => !(await line()).names); // the sent box has gone
       await p.keyboard.press('v');
       check(eng, 'V turns select mode on, no box until a pick', (await mode()) && !(await line()).names);
       await p.locator('h1').click();
@@ -139,6 +160,8 @@ try {
       await p.keyboard.press('Escape');
       check(eng, 'Esc again leaves the mode', !(await mode()));
       await p.setViewportSize({ width: 390, height: 700 });
+      await p.reload(); // the pins sent above were only answered here: a fresh page has none over the heading
+      await sleep(600);
       await p.locator('h1').click();
       await until(async () => (await line()).names !== '');
       l = await line();
