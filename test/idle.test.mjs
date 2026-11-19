@@ -21,7 +21,7 @@ const start = (idleMs) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-idle-home-'));
   dirs.push(dir, home);
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><h1>Hi</h1>');
-  const port = String(5300 + Math.floor(Math.random() * 300));
+  const port = String(5500 + Math.floor(Math.random() * 90));
   const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', port], { cwd: dir, env: { ...process.env, LABIT_HOME: home, LABIT_IDLE_MS: String(idleMs) } });
   kids.push(lab);
   const exited = new Promise((r) => lab.on('exit', r));
