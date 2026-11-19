@@ -14,7 +14,7 @@ const span = (t: string, className = '') => Object.assign(document.createElement
 export function startLive() {
   if (W.script?.dataset.live) {
     // sessionStorage is shared by every frame of a tab: a board's frames of one page each keep their own (the board names them).
-    const key = 'lab-scroll:' + (/^lab:/.test(window.name) ? window.name + ':' : '') + location.pathname;
+    const key = 'lab-scroll:' + (window.name.startsWith('lab:') ? window.name + ':' : '') + location.pathname;
     try {
       // The scroll position and the open thread come back after a reload, so an answer shows where you left it.
       const kept = JSON.parse(sessionStorage.getItem(key) || 'null');
