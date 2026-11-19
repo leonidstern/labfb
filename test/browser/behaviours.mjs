@@ -277,7 +277,7 @@ for (const eng of ['webkit', 'chromium']) {
   const goClass = await shadow(() => { return r.querySelectorAll('.pin.go').length; });
   if (!placed.comment) throw new Error(`could not place the go comment: ${JSON.stringify(placed)}`);
   await post({ page, action: 'resolve', id: placed.comment.id });
-  await untilShadow(p, (r) => [...r.querySelectorAll('.pin')].filter((n) => n.textContent.trim() === '✓').length > 0, null, 1500);
+  await untilShadow(p, (r, n) => [...r.querySelectorAll('.pin')].filter((x) => x.textContent.trim() === '✓').length > n, goFace, 1500); // one more than before: an earlier done pin may already wear one
   const doneFace = await ticks();
   check(eng, 'a go comment is an ordinary pin (no go look), and wears the tick once it is done', !goClass && doneFace === goFace + 1, `${goClass} go-looks; ticks ${goFace} → ${doneFace}`);
   // A done pin is as big as an open one, only faded (once its face change has played).
