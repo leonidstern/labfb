@@ -2291,13 +2291,17 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       }
       // The height eases from the line's to the list's (and back) in 180 ms, none with reduced motion; the sheet sits on
       // the bottom on a phone, so it grows upward, and the page under it never moves.
+      // While the height eases the list is shorter than its rows, so overflow-y: auto would flash a scrollbar (macOS
+      // shows it for a second) though the rows fit: it scrolls only once the height has settled (Leo, 19 Nov).
       let anim = null;
       const ease = (from, to, then) => {
         anim?.cancel();
         anim = null;
+        menu.style.overflowY = '';
         if (still.matches || !from || !to || from === to) return void then?.();
+        menu.style.overflowY = 'hidden';
         anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 180, easing: 'cubic-bezier(.2, 0, 0, 1)' });
-        anim.onfinish = () => ((anim = null), then?.());
+        anim.onfinish = () => ((anim = null), (menu.style.overflowY = ''), then?.());
       };
       let lineH = 0; // the line's height when it grew, to fold back to
       const openMenu = (open, now = false) => {
