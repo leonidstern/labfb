@@ -35,7 +35,7 @@ import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
-import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard } from './widget/thread.ts';
+import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
@@ -348,7 +348,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   const scanForFramework = () => lookForFramework([document.body, ...document.querySelectorAll('body > *, body > * > *, body > * > * > *')]);
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
+  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning(), native: () => flag('native') });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
@@ -663,6 +663,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       },
       swipe: swipeDown,
       leave: goOut,
+      native: () => flag('native'),
     });
     return (labs = m);
   }).catch(() => (S.switcher = null))); // couldn't load: nothing opens, and the next ask tries again
@@ -737,6 +738,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
+    if (name === 'native') host.toggleAttribute('data-native', true); // what the widget's CSS does natively (styles.css)
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
   S.syncFlags = (on, reload) => {
@@ -1106,10 +1108,11 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         S.stepping = S.keepKeys = false;
         next.push(card);
-        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
+        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top, nativeTie() ? pin : null, zone ? zone.top - 12 : top - 40);
         // A question with choices on quoted words: by its quote, in the margin or under it (thread.ts). Drawn again after
         // the pick, it stays where it was instead of jumping back under its pin.
         if (!zone && (openAsk(c) || (!appear && prev?.matches('.margin, .under')))) placeAsk(card, c);
+        if (card.matches('.margin, .under')) tieToPin(card, null, 'card'); // by its words, where the script put it
         if (card.tie) next.push(card.tie); // its line to the words (trial.ts), kept by the layer's redraw
         // Opens at the newest message, as the chat does (a short thread doesn't scroll), on phones too (they opened at
         // the first message).
@@ -1191,7 +1194,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       else {
         next.push(float);
         if (zone) placeCard(float, left + 14, zone.top + zone.height);
-        else placeBeside(float, left, top);
+        else placeBeside(float, left, top, nativeTie() ? layer.querySelector(':scope > .pin.draft') : null);
       }
       // Phones: the sheet the bar grows into. Computers whose words can't be found again: the plain box, the bar lets go.
       if (draft.fluid && !fluid) (sheetMode.matches ? fluidSheet : fluidDrop)(float);
@@ -1233,7 +1236,32 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   toggleBtn.addEventListener('click', () => setOn(!S.on));
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
+  // With the flag native the menu is a popover the ⋯ button opens (read at start): the browser closes it on a press
+  // elsewhere or Esc, gives focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
+  const popMenu = flag('native') && !coarse && typeof moreMenu.showPopover === 'function'; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
+  if (popMenu) {
+    moreMenu.popover = 'auto';
+    /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
+    moreMenu.addEventListener('beforetoggle', (e) => {
+      const open = /** @type {ToggleEvent} */ (e).newState === 'open';
+      moreMenu.hidden = !open;
+      moreBtn.setAttribute('aria-expanded', String(open)); // the browser doesn't write it for its invoker
+      if (open) {
+        moreMenu.classList.remove('out');
+        if (LABS) void switcher().then((m) => m?.preloadSwitcher());
+        requestAnimationFrame(() => [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true }));
+      } else if (expOpen) {
+        expOpen = false;
+        placeBar();
+      }
+    });
+  }
   function setMenu(open, refocus = false) {
+    if (popMenu) {
+      if (open !== moreMenu.matches(':popover-open')) moreMenu[open ? 'showPopover' : 'hidePopover']();
+      if (!open && refocus) moreBtn.focus({ preventScroll: true });
+      return;
+    }
     if (open && LABS) void switcher().then((m) => m?.preloadSwitcher()); // the box and its list, ready by the time it is picked
     if (open) {
       moreMenu.classList.remove('out');
@@ -1249,14 +1277,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   }
   moreBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    setMenu(moreMenu.hidden || moreMenu.classList.contains('out')); // leaving counts as closed
+    if (!popMenu) setMenu(moreMenu.hidden || moreMenu.classList.contains('out')); // leaving counts as closed (a popover: the browser)
   });
   moreMenu.addEventListener('click', () => setTimeout(() => setMenu(false, true), 0));
   addEventListener('pointerdown', (e) => {
-    if (!moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) setMenu(false);
+    if (!popMenu && !moreMenu.hidden && !e.composedPath().some((n) => n === moreMenu || n === moreBtn)) setMenu(false);
   }, true);
   addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !moreMenu.hidden) {
+    if (e.key === 'Escape' && !popMenu && !moreMenu.hidden) {
       setMenu(false, true);
       e.stopPropagation();
     }
@@ -2464,12 +2492,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     pin.style.left = `${zone ? zone.left : left}px`;
     pin.style.top = `${zone ? zone.top : top}px`;
   };
-  // ...and, with the flag nativePins, held there by the browser (pinhold.ts): tied to its element, so scrolling needs no
+  // ...and, with the flag native, held there by the browser (pinhold.ts): tied to its element, so scrolling needs no
   // script. True when it is held.
+  // A card or box tied to its pin by the browser (thread.ts tieToPin): on a computer; phones keep their sheets.
+  const nativeTie = () => flag('native') && !sheetMode.matches;
   // Held, its place is the browser's: the script writes none (it would make the next pin's reading lay the page out again);
   // a drawing still gets its size.
   const placePin = (pin, c, zone, left, top, moved) => {
-    const node = flag('nativePins') && !moved && c.anchor?.kind !== 'board' ? findTarget(c.anchor || {}) : null;
+    const node = flag('native') && !moved && c.anchor?.kind !== 'board' ? findTarget(c.anchor || {}) : null;
     const held = holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
     if (!held) inkAt(pin, zone, left, top);
     else if (zone) inkAt(pin, zone, zone.left, zone.top);
@@ -2479,7 +2509,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // A full redraw happens only when something is open (a card or a composer follows its pin) or the pins changed.
   // After a scroll, the pins the browser holds are left alone.
   const movePins = (scrolled = false) => {
-    if (!S.on || S.openId) return render();
+    // An open thread is drawn again with its pin; after a scroll, not when the browser holds the pin and its card.
+    const openHeld = () => { const pin = pinsById.get(S.openId); return heldPin(pin) && !pinData.get(pin)?.zone; };
+    if (!S.on || (S.openId && !(scrolled && openHeld()))) return render();
     newPass();
     const all = threads().filter((c) => c.anchor?.kind !== 'page');
     const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
@@ -2719,6 +2751,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     if (flag('select')) startFlag('select');
+    if (flag('native')) startFlag('native');
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
     startSections(); // the section bar: what is new or updated on the page since you read it

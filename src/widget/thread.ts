@@ -1,7 +1,7 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 import { bindTrial, keptRow, onReshow, triesInPlace, tryRow, untry } from './trial.ts';
 import { stickToEnd } from './stick.ts';
-import { heldPin } from './pinhold.ts';
+import { heldPin, holdBox, letBox } from './pinhold.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -10,7 +10,47 @@ export function bindThread(w: unknown) {
   bindTrial(w);
 }
 
-export function placeCard(card, left, top) {
+// With the flag native (comments.js passes the pin): the card or box is tied to its pin with CSS anchor positioning, so
+// the browser keeps it with the pin through any scrolling (a held pin's sticky header too) and puts it above the pin, or
+// in from the screen's right edge, when there is no room (@position-try). A card on a pin the browser holds is tied to
+// that pin's element instead (pinhold.ts holdBox); one on a pin the script places, to the pin itself (styles.css
+// .tied-*). Where it goes is the script's own numbers (want, page px), kept as offsets from what it is tied to, so a
+// point's card, an area's and a drawing's work alike. Tied, it keeps no place of its own (the script's would win).
+// Phones' sheets and a question's card in the margin are placed as before.
+type Want = { cx: number; cy: number; ux?: number; uy?: number; ay: number };
+let tieCount = 0;
+const pinNames = new WeakMap<Element, string>();
+const px = (n: number) => `${Math.round(n * 100) / 100}px`;
+export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined, kind: 'card' | 'beside', want?: Want) {
+  node.classList.remove('tied-card', 'tied-beside');
+  if (!pin || !want || !CSS.supports('anchor-name: --a')) {
+    letBox(node);
+    return node.style.removeProperty('position-anchor');
+  }
+  let to: Element | null = kind === 'card' ? holdBox(node, pin) : null;
+  if (to) node.style.removeProperty('position-anchor'); // tied by the page's rule now: an inline one would win
+  if (!to) {
+    let name = pinNames.get(pin);
+    if (!name) pinNames.set(pin, (name = `--lab-pin${(++tieCount).toString(36)}`));
+    pin.style.setProperty('anchor-name', name);
+    node.style.setProperty('position-anchor', name);
+    node.classList.add(`tied-${kind}`);
+    to = pin;
+  }
+  // Its corner as anchor positioning reads it: a pin's layout box, not its rect (a pin still popping in is scaled).
+  const r = to === pin && pin.offsetParent ? pin.offsetParent.getBoundingClientRect() : to.getBoundingClientRect();
+  const [x, y] = to === pin ? [r.left + scrollX + pin.offsetLeft, r.top + scrollY + pin.offsetTop] : [r.left + scrollX, r.top + scrollY];
+  const set = (k: string, v?: number) => (v === undefined ? node.style.removeProperty(k) : node.style.setProperty(k, px(v)));
+  set('--lab-cx', want.cx - x);
+  set('--lab-cy', want.cy - y);
+  set('--lab-ux', want.ux === undefined ? undefined : want.ux - x);
+  set('--lab-uy', want.uy === undefined ? undefined : want.uy - y);
+  set('--lab-ay', want.ay - y);
+  node.style.left = node.style.top = '';
+}
+
+// aboveY: where the card's bottom goes when it opens above (an area's: above the area, not its pin).
+export function placeCard(card, left, top, pin?: HTMLElement | null, aboveY = top - 40) {
   W.layer.append(card);
   const width = card.offsetWidth;
   const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
@@ -20,10 +60,11 @@ export function placeCard(card, left, top) {
   const below = top + 10 + h > W.contentEnd();
   card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`; // above: clear of the pin (28 px tall)
   card.style.transformOrigin = below ? '14px 100%' : '';
+  tieToPin(card, pin, 'card', { cx: left - 14, cy: top + 10, ay: aboveY });
 }
 
 // Draft composer sits to the right of its pin, like the pin is the avatar; below it when there is no room.
-export function placeBeside(node, left, top) {
+export function placeBeside(node, left, top, pin?: HTMLElement | null) {
   W.layer.append(node);
   const width = node.offsetWidth;
   const right = scrollX + document.documentElement.clientWidth - 12;
@@ -36,6 +77,7 @@ export function placeBeside(node, left, top) {
     node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
     node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
   }
+  tieToPin(node, pin, 'beside', { cx: left + 36, cy: top - 37, ux: left - 14, uy: top + 10, ay: top - 40 });
 }
 
 // `now` gives the thread the pin shows now: the pin is kept across redraws (src/comments.js, render), so it can't hold one.

@@ -174,6 +174,18 @@ button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding:
 button.keep:hover:not(:disabled) { opacity: .9; }
 button.keep:disabled { opacity: .4; cursor: default; }
 .card.margin { width: 280px; }
+/* Tied to its pin (flag native, thread.ts tieToPin): the browser keeps it there. Where the script puts it, from the pin's
+   corner (--lab-cx / --lab-cy; a box's other place --lab-ux / --lab-uy); above (its bottom at --lab-ay), or in from the
+   screen's right edge, when there is no room. */
+@position-try --lab-above { top: auto; bottom: var(--lab-up); }
+@position-try --lab-edge { left: auto; right: 12px; }
+@position-try --lab-edge-above { left: auto; right: 12px; top: auto; bottom: var(--lab-up); }
+@position-try --lab-under { left: var(--lab-uleft); top: calc(anchor(top) + var(--lab-uy)); }
+@position-try --lab-under-above { left: var(--lab-uleft); top: auto; bottom: var(--lab-up); }
+.tied-card, .tied-beside { position: fixed !important; top: calc(anchor(top) + var(--lab-cy)); /* the shared places, written once: */
+  --lab-up: calc(anchor(top) - var(--lab-ay)); --lab-uleft: max(12px, calc(anchor(left) + var(--lab-ux))); }
+.tied-card { left: max(12px, calc(anchor(left) + var(--lab-cx))); position-try-fallbacks: --lab-above, --lab-edge, --lab-edge-above; }
+.tied-beside { left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above; }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .fd.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
@@ -204,6 +216,7 @@ button.btn.danger, button.btn.danger:hover { color: var(--_red); }
 .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
                 min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
+.box textarea.grow { field-sizing: content; height: auto; } /* flag native: the box grows with its words, no script (composer.ts) */
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
 .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; }
 .who * { font-size: 13px; letter-spacing: -.006em; }
@@ -248,6 +261,8 @@ button.btn.danger, button.btn.danger:hover { color: var(--_red); }
 .chatwin .replying { flex: none; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
+/* Flag native: a long chat lays out only the messages near the screen; each keeps its last height while away. */
+:host([data-native]) .msgs > .msg { content-visibility: auto; contain-intrinsic-size: auto 64px; }
 /* Something just sent eases in; the arrow flies off and comes back. */
 .fresh { animation: lab-in var(--_t-base) var(--_ease); } /* a message arrives as a card does */
 .send.sent .arr { animation: lab-fly var(--_t-slow) var(--_ease); }
@@ -366,7 +381,17 @@ kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
 .more { font-size: 15px !important; letter-spacing: .05em; }
 .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
              border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-in var(--_t-base) var(--_ease); }
-.more-menu[hidden] { display: none; }
+.more-menu[hidden]:not([popover]) { display: none; }
+.more-menu[popover]:not(:popover-open) { display: none; } /* closed: gone, not just unseen (display grid above would keep it, and its clicks) */
+.more-menu[popover] { inset: auto; right: 16px; bottom: 60px; margin: 0; border: 0; color: inherit; overflow: visible; } /* flag native: a popover, where the menu sits */
+/* ...that comes and goes by CSS alone: in with the card's rise, out with its sink, the browser keeping it shown while
+   it leaves (display and overlay as discrete steps); @starting-style is where it rises from. */
+.more-menu[popover] { animation: none; opacity: 0; translate: 0 2px; scale: .985;
+                      transition: opacity var(--_t-quick) var(--_ease-in), translate var(--_t-quick) var(--_ease-in), scale var(--_t-quick) var(--_ease-in),
+                                  display var(--_t-quick) allow-discrete, overlay var(--_t-quick) allow-discrete; }
+.more-menu[popover]:popover-open { opacity: 1; translate: 0 0; scale: 1; transition-duration: var(--_t-base); transition-timing-function: var(--_ease); }
+@starting-style { .more-menu[popover]:popover-open { opacity: 1; translate: 0 4px; scale: .98; } } /* lab-in: it rises, no fade */
+@media (prefers-reduced-motion: reduce) { .more-menu[popover] { transition: none; } }
 .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
                     border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
 .more-menu button:hover:not(:disabled) { background: var(--_soft); }
