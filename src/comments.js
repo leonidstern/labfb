@@ -612,6 +612,22 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   // Which labit this is, at the very foot of the ⋯ menu (the lab passes it as data-labit), so labs on different
   // builds can be told apart at a glance.
   const versionLine = script?.dataset.labit ? el('div', { class: 'labit-version' }, script.dataset.labit) : null;
+  // A newer release (a lab from npm, on this computer): what changed in a few lines, and update, which moves this lab
+  // onto it. Until then nothing changes on its own (Leo, 19 Nov: propose it, with a small changelog).
+  let update = null;
+  try {
+    update = script?.dataset.admin && script.dataset.update ? JSON.parse(script.dataset.update) : null;
+  } catch {}
+  const updateBtn = update && versionLine && el('button', { type: 'button', class: 'update-btn' }, `update to ${update.version}`);
+  if (updateBtn) {
+    versionLine.append(el('div', {}, `${update.version} is out`), ...update.notes.map((n) => el('div', { class: 'note' }, `· ${n}`)));
+    updateBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      updateBtn.textContent = 'updating…';
+      updateBtn.disabled = true;
+      void fetch(LABS, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': script.dataset.admin }, body: JSON.stringify({ action: 'update', port: Number(location.port) }) }).catch(() => {});
+    });
+  }
   // Labs & pages (⌘K, src/widget/switcher.ts): local labs only. The menu opens with which lab this is, then the item.
   const LABS = script?.dataset.live ? script.dataset.live.replace(/live$/, 'labs') : '';
   // Labs & pages is its own file, loaded and set up the first time it is asked for (⌘K, or the ⋯ menu opening); labs:
@@ -722,7 +738,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
   function placeBar() {
     const inMenu = !S.on ? []
       : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), ...(flag('select') ? [selectBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
+      : [...(labHead ? [labHead, labsBtn] : []), ...(flag('select') ? [selectBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(updateBtn ? [updateBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.

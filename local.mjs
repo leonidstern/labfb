@@ -1808,11 +1808,16 @@ const flagsAttr = () => {
 // Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
 // of main (EDGE, from a script that builds one, e.g. "main ab303fa").
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${EDGE ? ` · edge: ${EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
+// A newer release, for a lab run from npm (see newerVersion): offered in the ⋯ menu with a few lines of what changed.
+// The person updates when they choose; until then the lab, and a parked one started again, stays on its version.
+/** @type {{ version: string, notes: string[] } | null} */
+let UPDATE = null;
+const updateAttr = () => (UPDATE ? ` data-update="${JSON.stringify(UPDATE).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"` : '');
 const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${ACTIONS_ATTR}${flagsAttr()}${LABIT_ATTR} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${ACTIONS_ATTR}${flagsAttr()}${LABIT_ATTR}${updateAttr()} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -2422,13 +2427,13 @@ const handler = async (req, res) => {
         if (runningLabs().some((l) => l.port === n)) return res.writeHead(409).end('already running');
         const env = { ...process.env, LABIT_EXIT_WITH_PARENT: '', ...(p.edge ? { LABIT_EDGE: p.edge } : {}) }; // a lab started again outlives the one that started it
         const args = [...p.argv.filter((a) => a !== '--no-open'), '--no-open'];
-        // From npm: the newest release, not the version it parked on. Otherwise the path it was started by: through the
-        // edge script's link, that is the newest build.
+        // From npm: its own version through npx (npx's cache folder may be gone); a newer one is the person's choice, from
+        // the ⋯ menu. Otherwise the path it was started by: through the edge script's link, that is the newest build.
         const asParked = () => spawn(process.execPath, [...p.execArgv, ...args], { cwd: p.root, env, detached: true, stdio: 'ignore' }).unref();
         if (p.npx) {
           // Offline, or npm can't be reached: npx gives up at once, and the lab starts on the version it parked on.
           const since = Date.now();
-          const npx = spawn('npx', ['--yes', '@leonidstern/labit@latest', ...args.slice(1)], { cwd: p.root, env, detached: true, stdio: 'ignore' });
+          const npx = spawn('npx', ['--yes', `@leonidstern/labit@${p.version || 'latest'}`, ...args.slice(1)], { cwd: p.root, env, detached: true, stdio: 'ignore' });
           npx.on('error', asParked);
           npx.on('exit', (code) => code && Date.now() - since < 30000 && asParked());
           npx.unref();
@@ -2447,6 +2452,13 @@ const handler = async (req, res) => {
         return answer(res, { ok: true });
       }
       if (action === 'unarchive') return res.writeHead(409).end('running, not archived');
+      // The ⋯ menu's update: this lab moves onto the newer release from npm, the way a lab follows a newer build.
+      if (action === 'update') {
+        if (!UPDATE) return res.writeHead(409).end('no newer labit');
+        console.log(`[lab] updating to labit ${UPDATE.version}`);
+        handOver(process.env.LABIT_NPX || 'npx', ['--yes', `@leonidstern/labit@${UPDATE.version}`]);
+        return answer(res, { ok: true, version: UPDATE.version });
+      }
       if (!['stop', 'park', 'archive', 'archive-page', 'unarchive-page'].includes(action)) return res.writeHead(400).end('action: stop, park, archive, unarchive, start, archive-page or unarchive-page');
       if (n !== PORT) {
         // Another lab: it does it itself, asked with its own key (from its folder, on this same computer).
@@ -2732,7 +2744,7 @@ function skipLabs(port) {
 // A newer labit on npm: said once when the lab starts. Checked at most once a day (kept in ~/.labit/latest.json)
 // with a short timeout, never in CI or with LABIT_NO_UPDATE_CHECK=1. The request names only the package.
 async function newerVersion() {
-  if (process.env.LABIT_NO_UPDATE_CHECK || process.env.CI) return null;
+  if (process.env.LABIT_NO_UPDATE_CHECK || (process.env.CI && !process.env.LABIT_OFFER_UPDATE)) return null;
   const file = path.join(path.dirname(REGISTRY), 'latest.json');
   let latest = null;
   try {
@@ -2755,7 +2767,14 @@ async function newerVersion() {
   return null;
 }
 server.on('listening', async () => {
-  newerVersion().then((v) => v && console.log(`[lab] labit ${v} is out (you have ${VERSION}): npx @leonidstern/labit@latest`));
+  newerVersion().then(async (v) => {
+    if (!v) return;
+    const offer = CMD.startsWith('npx') || process.env.LABIT_OFFER_UPDATE; // a clone or a build updates its own way
+    console.log(`[lab] labit ${v} is out (you have ${VERSION}): ${offer ? 'update from the ⋯ menu' : 'npx @leonidstern/labit@latest'}`);
+    if (!offer) return;
+    const { fetchNotes } = await import('./lib/update.ts');
+    UPDATE = { version: v, notes: (await fetchNotes(v, VERSION)) || [] };
+  });
   origin = `http://localhost:${PORT}`;
   saveServer();
   if (!serverSaved) die(`[lab] could not start: ${path.relative(ROOT, SERVER)} can't be written`);
@@ -2790,9 +2809,9 @@ server.on('listening', async () => {
 const park = (archived = false, why = '') => {
   try {
     fs.mkdirSync(PARKED, { recursive: true });
-    // Run from npm: started again as npx @latest, not from this version's folder in npx's cache.
+    // Run from npm: started again through npx at this version, not from this version's folder in npx's cache.
     const npx = CMD.startsWith('npx');
-    writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(EDGE ? { edge: EDGE } : {}), ...(npx ? { npx } : {}), ...(archived ? { archived: true } : {}), ...(why ? { why } : {}), ...(session ? { session } : {}), at: new Date().toISOString() }, null, 2));
+    writeAtomic(path.join(PARKED, `${PORT}.json`), JSON.stringify({ port: PORT, root: ROOT, name: LAB_NAME, argv: process.argv.slice(1), execArgv: process.execArgv, ...(EDGE ? { edge: EDGE } : {}), ...(npx ? { npx, version: VERSION } : {}), ...(archived ? { archived: true } : {}), ...(why ? { why } : {}), ...(session ? { session } : {}), at: new Date().toISOString() }, null, 2));
   } catch {}
 };
 // A lab nobody uses parks itself after an hour (LABIT_IDLE_MS; 0 keeps it running): no page open on it, no agent
@@ -2834,6 +2853,32 @@ let followed = false;
 process.on('SIGUSR2', () => {
   followed = true;
 });
+// Starts `command` (node and a script, or npx and a version) in this lab's place and goes once it says it loaded.
+const handOver = (command, first) => {
+  /** @type {number | 'ignore'} */
+  let out = 'ignore';
+  try {
+    out = fs.openSync(path.join(LAB, 'lab.log'), 'a');
+  } catch {}
+  const args = process.argv.slice(2).filter((a) => a !== '--no-open');
+  followed = false;
+  spawn(command, [...first, ...args, '--no-open', '--port', String(PORT)], {
+    cwd: process.cwd(),
+    env: { ...process.env, LABIT_TAKEOVER: String(process.pid), LABIT_EXIT_WITH_PARENT: '', LABIT_EDGE: '' },
+    detached: true,
+    stdio: ['ignore', out, out],
+  })
+    .on('error', () => {})
+    .unref();
+  const since = Date.now();
+  const check = setInterval(() => {
+    if (followed) bye();
+    else if (Date.now() - since > Number(process.env.LABIT_FOLLOW_WAIT_MS || 20000)) {
+      clearInterval(check);
+      console.log(`[lab] the newer labit didn't start (see ${path.join(LAB, 'lab.log')}): this lab keeps running`);
+    }
+  }, 100);
+};
 if (!process.env.LAB_DEV && !process.env.LABIT_NO_FOLLOW && process.platform !== 'win32')
   setInterval(() => {
     if (mode === 'working' || !newerBuild()) return;
@@ -2841,26 +2886,7 @@ if (!process.env.LAB_DEV && !process.env.LABIT_NO_FOLLOW && process.platform !==
     if (next === followTried) return; // that build didn't load: wait for another one
     followTried = next;
     console.log(`[lab] a newer labit is installed (${next}): starting it in this lab's place`);
-    /** @type {number | 'ignore'} */
-    let out = 'ignore';
-    try {
-      out = fs.openSync(path.join(LAB, 'lab.log'), 'a');
-    } catch {}
-    const args = process.argv.slice(2).filter((a) => a !== '--no-open');
-    spawn(process.execPath, [...process.execArgv, ENTRY, ...args, '--no-open', '--port', String(PORT)], {
-      cwd: process.cwd(),
-      env: { ...process.env, LABIT_TAKEOVER: String(process.pid), LABIT_EXIT_WITH_PARENT: '', LABIT_EDGE: '' },
-      detached: true,
-      stdio: ['ignore', out, out],
-    }).unref();
-    const since = Date.now();
-    const check = setInterval(() => {
-      if (followed) bye();
-      else if (Date.now() - since > Number(process.env.LABIT_FOLLOW_WAIT_MS || 20000)) {
-        clearInterval(check);
-        console.log(`[lab] the newer labit didn't start (see ${path.join(LAB, 'lab.log')}): this lab keeps running`);
-      }
-    }, 100);
+    handOver(process.execPath, [...process.execArgv, ENTRY]);
   }, Number(process.env.LABIT_FOLLOW_MS || 30000)).unref();
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);

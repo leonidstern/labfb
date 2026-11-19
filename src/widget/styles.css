@@ -374,6 +374,9 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
 /* Which labit this is: the menu's last line, small and quiet, selectable to paste into a bug report. */
 .more-menu .labit-version { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px;
   color: var(--_muted); user-select: text; overflow-wrap: anywhere; }
+.more-menu .labit-version div { font: inherit; color: inherit; padding: 0; margin-top: 2px; }
+/* What changed in a newer release: wraps inside the menu's width instead of widening it. */
+.more-menu .labit-version:has(div) { width: 0; min-width: calc(100% - 20px); }
 kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: chat (c) */
 .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
         box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
