@@ -104,16 +104,18 @@ const generated = (v) => GENERATED.test(v || '');
 // Names a page gives an element for tests or for comments: the most lasting way to find it again.
 const NAMED = ['data-testid', 'data-lab', 'data-comment-target'];
 
-function selectorFor(node) {
+// In its own document: a board frame's block is named inside the frame (select.ts).
+export function selectorFor(node) {
   const parts = [];
-  while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
+  const doc = node?.ownerDocument || document;
+  while (node && node.nodeType === 1 && node !== doc.body && node !== doc.documentElement) {
     const name = NAMED.find((a) => node.getAttribute(a));
     const named = name && `[${name}="${CSS.escape(node.getAttribute(name))}"]`;
-    if (named && document.querySelectorAll(named).length === 1) {
+    if (named && doc.querySelectorAll(named).length === 1) {
       parts.unshift(named);
       break;
     }
-    if (node.id && !generated(node.id) && document.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1) {
+    if (node.id && !generated(node.id) && doc.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1) {
       parts.unshift(`#${CSS.escape(node.id)}`);
       break;
     }

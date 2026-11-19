@@ -4,6 +4,7 @@
 // board reuses this for frames' blocks. Part of the comment widget (src/comments.js bundles it). Uses the widget's own
 // parts through W, set once at startup.
 import { holdEditing } from './hold.ts';
+import { selectorFor, short } from './anchoring.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -21,13 +22,68 @@ export const ink = (name: string, el: HTMLElement | null) => {
 const OUT = 'script, style, noscript, textarea, input, select, svg, [data-lab-comments]';
 const isBlock = (e: Element) => !e.childElementCount && Boolean(e.textContent?.trim()) && !e.closest(OUT) && e.getClientRects().length > 0 && !(e as HTMLElement).isContentEditable;
 const blockAt = (t: EventTarget | null) => {
-  for (let e = t instanceof Element ? t : null, up = 0; e && up < 3; e = e.parentElement, up++) if (isBlock(e)) return e as HTMLElement;
+  const first = (t as Node | null)?.nodeType === 1 ? (t as Element) : null; // a frame's element is of its own window: no instanceof
+  for (let e = first, up = 0; e && up < 3; e = e.parentElement, up++) if (isBlock(e)) return e as HTMLElement;
   return null;
 };
+// On a board (Leo, 19 Nov: "selection doesnt work here"): the blocks are a frame's. Its page draws no widget
+// (frame.ts), so the board's reaches into the frame (same origin) and draws the ring over it, in the frame's box.
+const onBoard = () => Boolean((window as unknown as { __labBoard?: unknown }).__labBoard);
+const frameOf = (e: Element) => (e.ownerDocument === document ? null : (e.ownerDocument.defaultView?.frameElement as HTMLIFrameElement | null));
+/** The frame under a screen point and the point inside it, on a board. */
+const frameAt = (x: number, y: number) => {
+  if (!onBoard()) return null;
+  for (const f of [...document.querySelectorAll('iframe')].reverse()) {
+    const r = f.getBoundingClientRect();
+    if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
+    try {
+      const d = f.contentDocument;
+      const z = r.width / (f.clientWidth || r.width);
+      return d?.body ? { d, x: (x - r.left) / z, y: (y - r.top) / z } : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+const blockIn = (x: number, y: number) => {
+  const at = frameAt(x, y);
+  return at ? blockAt(at.d.elementFromPoint(at.x, at.y)) : null;
+};
+/** An element's boxes on this screen (a frame's scaled by the camera). */
+const screenRects = (e: Element) => {
+  const f = frameOf(e);
+  const rs = [...e.getClientRects()];
+  if (!f) return rs;
+  const r = f.getBoundingClientRect();
+  const z = r.width / (f.clientWidth || r.width);
+  return rs.map((q) => new DOMRect(r.left + q.left * z, r.top + q.top * z, q.width * z, q.height * z));
+};
+let unring = () => {};
+function rings() {
+  unring();
+  unring = () => {};
+  const f = T.set[0] && frameOf(T.set[0]);
+  const w = f?.contentWindow;
+  if (!f || !w || !f.parentElement) return;
+  const layer = f.parentElement.appendChild(document.createElement('div'));
+  layer.setAttribute('data-lab-rings', '');
+  layer.style.cssText = 'position: absolute; inset: 0; pointer-events: none; overflow: hidden';
+  const draw = () => layer.replaceChildren(...T.set.map((e) => {
+    const r = e.getBoundingClientRect(); // in the frame: its px are the frame box's own
+    const d = document.createElement('div');
+    d.style.cssText = `position: absolute; left: ${r.left - 3}px; top: ${r.top - 3}px; width: ${r.width + 6}px; height: ${r.height + 6}px; box-sizing: border-box; border: calc(2px * var(--iz, 1)) solid rgb(52, 199, 89); border-radius: 3px`;
+    return d;
+  }));
+  draw();
+  w.addEventListener('scroll', draw, true);
+  w.addEventListener('resize', draw);
+  unring = () => (layer.remove(), w.removeEventListener('scroll', draw, true), w.removeEventListener('resize', draw));
+}
 /** The next (1) or previous (-1) block after the picked one, in reading order. */
-const blocks = () => {
+const blocks = (doc = T.pick?.ownerDocument || document) => {
   const all: HTMLElement[] = [];
-  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const walk = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
   for (let n = walk.nextNode(); n; n = walk.nextNode()) {
     const e = n.parentElement;
     if (e && all[all.length - 1] !== e && isBlock(e)) all.push(e);
@@ -52,8 +108,10 @@ export const isWords = (e: HTMLElement | null) => Boolean(e) && isBlock(e!);
 // The picked block opens the comment box (Leo, 19 Nov: "one action list for pin and select"): the same sheet, chips and
 // "…" as a pin, with no pin drawn while it is open; what is sent is a pin on the block. ↑ ↓ and done join its chips line.
 const pointOn = (e: HTMLElement) => {
-  const r = e.getBoundingClientRect();
-  return W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2, false, e);
+  const r = screenRects(e)[0] || e.getBoundingClientRect();
+  const a = W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2, false, e);
+  // A board pin names the frame (the board's anchor) and the block inside it.
+  return frameOf(e) ? { ...a, selector: selectorFor(e), text: short(e.textContent, 80) || undefined } : a;
 };
 /** ↑ higher, ↓ deeper and done, for the picked block's chips line. */
 export const selectChips = () => [
@@ -76,7 +134,7 @@ export const hold = () => holdEditing(Boolean(T.on || W.S.editing));
 export const pick = (el: HTMLElement | null, draw = true) => picks(el ? [el] : [], draw);
 // Several picked (Leo, 19 Nov: "select should have multiselect"): Shift (or Command/Control) + click adds or drops a
 // block, a drag from empty space (or with Shift) boxes the blocks it touches; the last one added holds the sheet.
-const toggle = (e: HTMLElement) => picks(T.set.includes(e) ? T.set.filter((x) => x !== e) : [...T.set, e]);
+const toggle = (e: HTMLElement) => picks(T.set.includes(e) ? T.set.filter((x) => x !== e) : [...T.set.filter((x) => x.ownerDocument === e.ownerDocument), e]); // one frame's at a time
 function picks(list: HTMLElement[], draw = true) {
   const S = W.S;
   for (const e of T.set) e.removeAttribute('data-lab-picked');
@@ -84,9 +142,10 @@ function picks(list: HTMLElement[], draw = true) {
   const el = T.set[T.set.length - 1] || null;
   T.pick = el;
   for (const e of T.set) e.setAttribute('data-lab-picked', ''); // a green ring as well as the ink, so a phone shows what is picked (Leo, 19 Nov)
-  ink('lab-pick', S.editing ? null : el);
+  ink('lab-pick', S.editing || (el && frameOf(el)) ? null : el);
+  rings();
   hold();
-  el?.scrollIntoView({ block: 'nearest' });
+  if (el && !frameOf(el)) el.scrollIntoView({ block: 'nearest' }); // a frame's would scroll the board
   if (el && !S.editing) S.draft = S.selDraft = { anchor: pointOn(el), select: true, n: T.set.length };
   else if (S.selDraft) {
     if (S.draft === S.selDraft) S.draft = null;
@@ -161,22 +220,22 @@ export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.clos
     ' html.lab-editing body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } html.lab-editing [data-lab-editing], html.lab-editing [data-lab-editing] * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }';
   const quiet = (e: Event) => (e.preventDefault(), e.stopImmediatePropagation());
   const mine = (e: MouseEvent) => T.on && !e.altKey && !e.composedPath().includes(W.host);
-  let drag: { x: number; y: number; add: boolean; on: HTMLElement | null; box: HTMLElement | null } | null = null;
+  let drag: { x: number; y: number; add: boolean; on: HTMLElement | null; box: HTMLElement | null; doc?: Document } | null = null;
   // Before the page and the pins see them (window, capture): a click picks a block instead of pinning.
   for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick'])
     addEventListener(type, (e) => {
       const m = e as MouseEvent;
       if (!mine(m) || (W.S.editing && (m.target as Element).closest?.('[data-lab-editing]'))) return; // inside the words being edited: the browser's own
       quiet(m);
-      const on = blockAt(m.target);
+      const on = blockIn(m.clientX, m.clientY) || blockAt(m.target);
       const add = m.shiftKey || m.metaKey || m.ctrlKey;
       if (type === 'pointerdown') {
         T.close();
         // A phone: once something is picked, a tap on another block adds it and a tap on a picked one drops it.
         if ((e as PointerEvent).pointerType === 'touch') return void (on && T.set.length ? toggle(on) : pick(on));
         if (on && !add) return void pick(on);
-        drag = { x: m.clientX, y: m.clientY, add, on, box: null };
-      } else if (type === 'dblclick' && T.pick && T.pick === blockAt(m.target)) T.open(T.pick, m);
+        drag = { x: m.clientX, y: m.clientY, add, on, box: null, doc: frameAt(m.clientX, m.clientY)?.d };
+      } else if (type === 'dblclick' && T.pick && T.pick === (blockIn(m.clientX, m.clientY) || blockAt(m.target))) T.open(T.pick, m);
     }, true);
   addEventListener('pointermove', (e) => {
     if (!drag || (!drag.box && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 5)) return;
@@ -190,8 +249,8 @@ export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.clos
     if (d.box) {
       const r = d.box.getBoundingClientRect();
       d.box.remove();
-      const got = blocks().filter((b) => [...b.getClientRects()].some((q) => q.right > r.left && q.left < r.right && q.bottom > r.top && q.top < r.bottom));
-      picks(d.add ? [...T.set, ...got] : got);
+      const got = blocks(d.doc || document).filter((b) => screenRects(b).some((q) => q.right > r.left && q.left < r.right && q.bottom > r.top && q.top < r.bottom));
+      picks(d.add ? [...T.set.filter((x) => x.ownerDocument === (d.doc || document)), ...got] : got);
     } else if (d.on) toggle(d.on);
     else if (!d.add) pick(null);
   }, true);
