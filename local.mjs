@@ -1216,6 +1216,9 @@ const claim = (pages) => {
     writeAtomic(CLAIMS_FILE, JSON.stringify(Object.fromEntries([...claims].filter(([, at]) => now - at < CLAIM_MS))));
   } catch {}
 };
+// The last wait on each set of pages (its key), to tell a second session on the same pages that it isn't alone.
+const OTHER_MS = 600000;
+const lastWait = new Map(); // key -> { who, label, at }
 const claimed = () => {
   const now = Date.now();
   for (const w of waiters) for (const p of w.pages || []) claims.set(p, now);
@@ -1504,7 +1507,7 @@ async function wakeNow() {
     waitEnded = Date.now();
     clearTimeout(w.timer);
     remember(w);
-    deliver(w.res, got, w.who, w.ack, w.key);
+    deliver(w.res, w.heads ? { ...got, text: w.heads + got.text } : got, w.who, w.ack, w.key);
   }
 }
 
@@ -1909,6 +1912,12 @@ const handler = async (req, res) => {
       // A new wait for the same pages replaces the old one (the same session listening again, or another taking over);
       // waits for other pages stay.
       const key = want ? want.join(',') : '*';
+      const by = whoOf(sessionFrom(req));
+      // Another session listened on these same pages a moment ago: say so to both (Leo, 18 Nov: two sessions on /design
+      // took turns ending each other's wait; a pin went to the one about to stop and waited 8 minutes).
+      const before = lastWait.get(key);
+      const other = before && before.who !== by && Date.now() - before.at < OTHER_MS ? before : null;
+      if (other) console.log(`[lab] two sessions listen on ${want ? want.join(' ') : 'every page'}: ${other.label} and a new one. Pins go to whichever wait is open.`);
       for (const old of waiters.filter((w) => w.key === key)) {
         waiters = waiters.filter((w) => w !== old); // before its close handler runs, so it doesn't mark Claude as away
         clearTimeout(old.timer);
@@ -1920,6 +1929,10 @@ const handler = async (req, res) => {
       const me = sessionFrom(req);
       const named = me?.name && !/^session [0-9a-f]+$/i.test(me.name) && me.name !== me.agent;
       const w = { res, pages: want, key, who: whoOf(session), ack: ack === true, label: named ? `${me.agent || 'Claude'} (${me.name})` : me?.agent || 'Claude' };
+      lastWait.set(key, { who: w.who, label: w.label, at: Date.now() });
+      const heads = other
+        ? `Heads up: ${other.label} also listened on ${want ? want.join(', ') : 'every page'} ${Date.now() - other.at < 60000 ? 'just now' : `${Math.round((Date.now() - other.at) / 60000)} min ago`}. Two sessions on one page take turns at its pins (each wait ends the other's). Leave the page to one of you.\n\n`
+        : '';
       // The same session waiting again before it said it got the last hand-off never saw it: those pins go out again.
       for (const [id, d] of unacked) if (d.who === w.who && d.key === key) takeBack(id);
       claim(want);
@@ -1927,8 +1940,9 @@ const handler = async (req, res) => {
       recent = recent.filter((r) => r.key !== key); // listening again: it's an open wait now
       if (got?.text) {
         remember(w);
-        return deliver(res, got, w.who, w.ack, key);
+        return deliver(res, heads ? { ...got, text: heads + got.text } : got, w.who, w.ack, key);
       }
+      w.heads = heads; // said with its first hand-off
       w.timer = setTimeout(() => {
         if (!waiters.includes(w)) return;
         waiters = waiters.filter((x) => x !== w);
