@@ -101,10 +101,20 @@ const untilRoot = (p, fn, arg, ms) =>
     const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
     return Boolean(r) && new Function('r', 'a', `return (${src})(r, a)`)(r, a);
   }, [fn.toString(), arg], { timeout: ms, polling: 'raf' }).catch(() => {});
-// The dialog is up and still: on a slow machine 700 ms is not always enough for its animation.
-const dlgUp = async (p, ms = 1500) => {
-  await p.waitForFunction(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot; const e = r?.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg')?.classList.contains('on') && e.classList.contains('settled'); }, null, { timeout: ms, polling: 'raf' }).catch(() => {});
-  await sleep(350); // and its last settling in place
+// The dialog is up and still: its place has not moved for 300 ms (on a slow machine a fixed wait is not always enough
+// for its animation: a CI run in Linux WebKit read it 5 px low).
+const dlgUp = async (p, ms = 2500) => {
+  await p.waitForFunction(() => {
+    const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot;
+    const e = r?.querySelector('.fd');
+    if (!e || e.hidden || !e.querySelector('.p-dlg')?.classList.contains('on')) return false;
+    const b = e.getBoundingClientRect();
+    const k = [b.x, b.y, b.width, b.height].join();
+    const w = window.__dlgRect;
+    const now = performance.now();
+    if (!w || w.k !== k) { window.__dlgRect = { k, t: now }; return false; }
+    return now - w.t > 300;
+  }, null, { timeout: ms, polling: 'raf' }).catch(() => {});
 };
 const fd = (p) =>
   inRoot(p, (r) => {
