@@ -991,7 +991,9 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
         empty: '',
         nameFirst: false,
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
-        autofocus: !(draft.fluid && coarse),
+        // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
+        // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
+        autofocus: !(draft.fluid && coarse) && !S.pinnedByHold,
         draftKey: `lab-typing:${S.page}:new`,
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });
@@ -1508,7 +1510,8 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (e.pointerType === 'touch') S.lastTouch = Date.now();
     stopPress();
     pressing(false);
-    if (S.pinnedByHold) /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
+    // A finger's lift is touchend's (one focus, so the keyboard doesn't close and open again).
+    if (S.pinnedByHold && e.pointerType !== 'touch') /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
   }, true);
   // The lift after a hold: no click follows it (it would land on the dimmed page and take the cursor away), and the
   // touch's own end puts the cursor in the box, so the phone opens its keyboard.
@@ -1517,8 +1520,13 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     if (!S.pinnedByHold) return;
     S.pinnedByHold = false;
     e.preventDefault();
-    /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'))?.focus({ preventScroll: true });
+    const box = /** @type {HTMLElement | null} */ (root.querySelector('.float [data-first]') || root.querySelector('.float textarea'));
+    if (box && root.activeElement === box) box.blur(); // focused without a keyboard: again from the lift, so it opens
+    box?.focus({ preventScroll: true });
   }, { capture: true, passive: false });
+  // iOS took the touch (its own long press): no lift comes, and a tap in the box opens the keyboard. The next touch's
+  // lift isn't this hold's.
+  document.addEventListener('touchcancel', () => (S.pinnedByHold = false), true);
   document.addEventListener('pointercancel', () => (stopPress(), pressing(false)), true);
   addEventListener('scroll', stopPress, { passive: true, capture: true });
   document.addEventListener('contextmenu', (e) => (S.press || S.afterDrag) && e.preventDefault(), true);
