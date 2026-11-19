@@ -36,28 +36,100 @@ export function step(dir: 1 | -1) {
   return all[at < 0 ? (dir > 0 ? 0 : all.length - 1) : (at + dir + all.length) % all.length] || null;
 }
 export const picked = () => T.pick;
+// The bar for the picked block (Leo, 19 Nov: "make select tool full"), on phones and computers alike: edit · remove ·
+// make like · move · states · variants · pin · done. Edit works in place; the rest go to the agent as a pin on the block,
+// worded so it knows what to do. Make like and move ask for a second block first ("tap the one to copy").
+let bar: HTMLElement | null = null;
+let want: { say: string; then: (other: HTMLElement) => void } | null = null;
+const label = (e: HTMLElement) => {
+  const t = (e.textContent || '').replace(/\s+/g, ' ').trim();
+  return `${e.localName}${e.id ? `#${e.id}` : ''} "${t.length > 50 ? `${t.slice(0, 49)}…` : t}"`;
+};
+const pinOn = async (e: HTMLElement, text: string) => {
+  const r = e.getBoundingClientRect();
+  const anchor = W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2);
+  let name = '';
+  try {
+    name = (W.store.get('lab-name') || '').trim();
+  } catch {}
+  try {
+    const { comment } = await W.send({ name: name || 'guest', text, anchor });
+    W.S.comments.push(comment);
+    W.markSeen([comment]);
+    W.render();
+    W.say?.('sent to the agent');
+  } catch {
+    W.say?.("couldn't send it: is the lab running?");
+  }
+};
+const ACTS: Array<[string, () => void]> = [
+  ['edit', () => T.pick && T.open(T.pick)],
+  ['remove', () => T.pick && pinOn(T.pick, 'Remove this.')],
+  ['make like', () => {
+    const p = T.pick;
+    if (p) want = { say: 'tap the one to copy', then: (o) => pinOn(p, `Make this look like ${label(o)}: same size, spacing, colour and type.`) };
+  }],
+  ['move', () => {
+    const p = T.pick;
+    if (p) want = { say: 'tap where it goes: it lands after that', then: (o) => pinOn(p, `Move this to just after ${label(o)}.`) };
+  }],
+  ['states', () => T.pick && pinOn(T.pick, 'Show this in its states (hover, loading, empty, error) so I can review each one.')],
+  ['variants', () => T.pick && pinOn(T.pick, 'Make 3 variants of this, shown in place as a / b / c tabs on it, so I can pick one.')],
+  ['pin', () => {
+    const p = T.pick;
+    if (!p) return;
+    const r = p.getBoundingClientRect();
+    selectMode(false);
+    W.begin(W.anchorAt(r.left + Math.min(24, r.width / 2), r.top + r.height / 2));
+  }],
+];
+const drawBar = () => {
+  if (!W) return;
+  if (!bar) {
+    bar = W.el('div', { class: 'selbar quick', role: 'toolbar', 'aria-label': 'picked block' });
+    W.root.append(bar);
+  }
+  const b = (name: string, act: () => void, off = false) => {
+    const x = W.el('button', { type: 'button', 'data-a': name }, name) as HTMLButtonElement;
+    x.disabled = off;
+    x.addEventListener('click', (e: Event) => (e.stopPropagation(), act(), drawBar()));
+    return x;
+  };
+  if (want) bar!.replaceChildren(W.el('span', { class: 'selsay' }, want.say), b('cancel', () => (want = null)));
+  else bar!.replaceChildren(...ACTS.map(([n, a]) => b(n, a, !T.pick)), b(T.pick ? 'done' : 'leave select', () => (T.pick ? pick(null) : selectMode(false))));
+  bar!.hidden = !T.on || Boolean(W.S.editing);
+};
+export const redrawSelectBar = () => drawBar();
 /** The page holds its reloads while a block is picked or being edited. */
 export const hold = () => holdEditing(Boolean(T.on || W.S.editing));
 /** Pick a block (or none). */
 export function pick(el: HTMLElement | null) {
+  T.pick?.removeAttribute('data-lab-picked');
   T.pick = el;
+  el?.setAttribute('data-lab-picked', ''); // a green ring as well as the ink, so a phone shows what is picked (Leo, 19 Nov)
   ink('lab-pick', W.S.editing ? null : el);
   hold();
+  drawBar();
   el?.scrollIntoView({ block: 'nearest' });
 }
 /** The mode on or off (V, E). */
 export function selectMode(on = !T.on) {
   if (!on) T.close();
+  if (!on) want = null;
   T.on = on;
   W.S.selecting = on;
   document.documentElement.classList.toggle('lab-editing', on);
   pick(null);
+  drawBar();
 }
 export const selectOn = () => T.on;
 export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.close) {
   W = w;
   [T.open, T.close] = [open, close];
-  W.fonts.textContent += '::highlight(lab-pick) { background-color: rgba(120, 120, 128, .22); color: inherit; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }';
+  W.fonts.textContent += '::highlight(lab-pick) { background-color: rgba(52, 199, 89, .18); color: inherit; } [data-lab-picked] { outline: 2px solid rgb(52, 199, 89); outline-offset: 3px; border-radius: 3px; } html.lab-editing body, html.lab-editing body *:not([data-lab-editing]) { cursor: default !important; }' +
+    // In select mode a long tap picks a block, so the page's own text selection and iOS's menu stay off; the block
+    // being edited keeps both (Leo, 19 Nov: a long tap called two menus, iOS's and ours).
+    ' html.lab-editing body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } html.lab-editing [data-lab-editing], html.lab-editing [data-lab-editing] * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }';
   const quiet = (e: Event) => (e.preventDefault(), e.stopImmediatePropagation());
   const mine = (e: MouseEvent) => T.on && !e.altKey && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.composedPath().includes(W.host);
   // Before the page and the pins see them (window, capture): a click picks a block instead of pinning.
@@ -67,6 +139,13 @@ export function bindSelect(w: unknown, open: typeof T.open, close: typeof T.clos
       if (!mine(m) || (W.S.editing && (m.target as Element).closest?.('[data-lab-editing]'))) return; // inside the words being edited: the browser's own
       quiet(m);
       if (type === 'pointerdown') {
+        const other = want && blockAt(m.target);
+        if (want && other && other !== T.pick) {
+          const w = want;
+          want = null;
+          w.then(other);
+          return void drawBar();
+        }
         T.close();
         pick(blockAt(m.target));
       } else if (type === 'dblclick' && T.pick && T.pick === blockAt(m.target)) T.open(T.pick, m);

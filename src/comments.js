@@ -52,6 +52,7 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
     get S() { return S; },
     get agentOf() { return agentOf; },
     get anchorAt() { return anchorAt; },
+    get begin() { return begin; },
     get bar() { return bar; },
     get chatBtn() { return chatBtn; },
     get chatEl() { return chatEl; },
@@ -580,8 +581,14 @@ import { acts, actButton, actName, bindFluid, fluidBar, fluidDrop, fluidFixed, f
       openSwitcher();
     });
   }
+  // Select (V) from the ⋯ menu too, so a phone, which has no V, can turn the page's tools on (Leo, 19 Nov).
+  const toolsBtn = flag('editText') ? el('button', { type: 'button', class: 'tools-btn' }) : null;
+  if (toolsBtn) {
+    toolsBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, 'V'));
+    toolsBtn.addEventListener('click', () => selectMode(true));
+  }
   function placeBar() {
-    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
+    const inMenu = S.on ? [...(labHead ? [labHead, labsBtn] : []), ...(toolsBtn ? [toolsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])] : [];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     if (inMenu.some((b, i) => moreMenu.children[i] !== b)) moreMenu.append(...inMenu);
