@@ -185,9 +185,8 @@ try {
         await p.keyboard.press('Escape');
         await sleep(150);
       }
-      await sleep(2600); // a closed box keeps watching two seconds more, then lets go
       const after = await watching();
-      check(eng, 'a comment box that has closed stops watching the page', after - before <= 1, `${before} → ${after}`);
+      check(eng, 'boxes opened and closed again leave no observers behind', after - before <= 1, `${before} → ${after}`);
       const pause = () => p.evaluate(() => {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
         const [b] = r?.querySelectorAll('.motion') || [];

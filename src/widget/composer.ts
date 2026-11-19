@@ -37,6 +37,28 @@ const saysWriting = (field: HTMLTextAreaElement) => {
   d?.whileWriting?.(); // the page's own pointer comes back while you are writing (comments.js)
 };
 
+// Boxes that have been built, to see which have left the page. One observer for all of them, on the page and on the
+// widget's own tree (a box let go inside it, by Escape, changes nothing on the page, and its hold stayed until
+// something there did, keeping the page's text selectable without Shift). A box that is gone lets go of its hold; one
+// built for each redraw used to carry an observer of its own for good, and each ran on every change to the page.
+const boxes = new Set<WeakRef<HTMLElement>>();
+const textOf = new WeakMap<HTMLElement, HTMLTextAreaElement>();
+let sweeper: MutationObserver | null = null;
+const sweep = () => {
+  let gone = false;
+  for (const ref of boxes) {
+    const box = ref.deref();
+    if (!box) boxes.delete(ref);
+    else if (!box.isConnected) {
+      gone = true;
+      writing.delete(textOf.get(box) as HTMLTextAreaElement);
+    }
+  }
+  if (!gone) return;
+  holdReloads(writing.size);
+  d?.whileWriting?.();
+};
+
 // The send arrow is drawn with CSS (a stem and a chevron), no picture.
 const ARROW = '<i class="arr" aria-hidden="true"></i>';
 
@@ -204,25 +226,13 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
   };
   text.addEventListener('input', sync);
   text.addEventListener('input', keepDraft);
-  // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept. The widget's own
-  // tree is watched too: a box let go inside it (Escape) changes nothing on the page, and its hold stayed until
-  // something there did, keeping the page's text selectable without Shift.
-  // Once it has let go it stops watching, after two more seconds (the page's own pointer is recomputed as the redraw that
-  // follows settles): every redraw builds a new box, and an observer left on the whole page for each one ran on every
-  // change to the page, for good.
-  let seen = false;
-  let ending = false;
-  const gone = new MutationObserver(() => {
-    if (wrap.isConnected) return void (seen = true);
-    writing.delete(text);
-    holdReloads(writing.size);
-    d?.whileWriting?.();
-    if (seen && !ending) {
-      ending = true;
-      setTimeout(() => gone.disconnect(), 2000);
-    }
-  });
-  for (const n of [document.documentElement, root]) gone.observe(n, { childList: true, subtree: true });
+  // A box taken off the page (a card closing, a redraw) lets go of its hold; its words are kept (see sweep).
+  boxes.add(new WeakRef(wrap));
+  textOf.set(wrap, text);
+  if (!sweeper) {
+    sweeper = new MutationObserver(sweep);
+    for (const n of [document.documentElement, d.root]) sweeper.observe(n, { childList: true, subtree: true });
+  }
   name.addEventListener('input', sync);
   name.addEventListener('blur', () => setTimeout(sync, 0));
   text.addEventListener('keydown', onKey);
