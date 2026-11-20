@@ -1162,6 +1162,8 @@ const rulesSent = new Map();
 // How to answer goes to each session in full once, and again after half an hour (a long session may have dropped it
 // from what it remembers); in between, one short line (~70 tokens less a pin).
 const toldAt = new Map();
+// Sessions that have had the suggest-rule line (it waits for the first reply in a thread, so it has its own mark).
+const suggestTold = new Set();
 // What the page says about Claude: listening (a wait is open), working (it got comments and hasn't waited again
 // yet), or away (no wait, or nothing from it for two minutes after it got comments).
 let mode = 'away';
@@ -1713,18 +1715,27 @@ async function unseen(scope = pages(), who = '') {
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const full = !(now - toldAt.get(who) < 1800000);
   const rules = rulesOnce();
+  // The suggest-rule line only matters once a thread has a reply: said in full the first time one comes (or on a full
+  // hand-off), not again.
+  const suggest = given.some((f) => f.c.parent) && (full || !suggestTold.has(who));
+  // The standing lines (how to read, answer, report progress, write) are said in full to a session the first time it
+  // hears, and again only when the lab restarts, the session changes or half an hour has passed; after that, one line.
+  const standing = full
+    ? `\n\nRead each thread whole (every message and reply, not only the newest) before answering; the page, URL or #section is where a pin sits, not what it asks.` +
+      `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question] [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
+      // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked
+      // lost (Leo, 18 Nov). An --on-it first turns the ring and the pill at once.
+      `\nWork that takes more than a minute (a build, a restart, a PR): first ${CMD} reply <id> --on-it "<what you'll do>" on each, then start.` +
+      `\n${WRITE_SHORT}`
+    : `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question] [--wait]; the standing lines (read threads whole, --on-it before long work, short answers) and rules as before.`;
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${groups.length ? `${groups.join('\n')}\n\n` : ''}${blocks.join('\n\n')}` +
-    `\n\nRead each thread whole (every message and reply, not only the newest) before answering; the page, URL or #section is where a pin sits, not what it asks.` +
-    `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
-    // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked
-    // lost (Leo, 18 Nov). An --on-it first turns the ring and the pill at once.
-    `\nWork that takes more than a minute (a build, a restart, a PR): first ${CMD} reply <id> --on-it "<what you'll do>" on each, then start.` +
-    (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
-    (full ? `\n${WRITE_SHORT}` : '') + (rules || '');
+    standing +
+    (suggest ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
+    (rules || '');
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = given.map(({ page, c }) => [page, c.id, stamp(c)]);
-  return { text, marks, handed, full, rules: Boolean(rules) };
+  return { text, marks, handed, full, suggest, rules: Boolean(rules) };
 }
 // Hand-offs the agent hasn't said it got yet (a wait that asked with ack: true). The marks go on at once, so no other
 // wait takes the same pins and the page shows them being worked on; the agent's `wait` says it printed
@@ -1786,11 +1797,13 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
         saveHanded();
         for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
         if (got.full) toldAt.delete(who);
+        if (got.suggest) suggestTold.delete(who);
         broadcast();
         wake();
       },
     });
   if (got.full) toldAt.set(who, Date.now());
+  if (got.suggest) suggestTold.add(who);
   for (const [, id, at] of got.marks) handoff[id] = [at, who];
   const wrote = {}; // what this hand-off set, filled in below
   const at = new Date().toISOString();
