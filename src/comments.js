@@ -977,7 +977,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
           autoShut.add(c.id);
           send({ action: 'resolve', id: c.id, edit: store.get(`lab-edit:${c.id}`) || undefined }).then(({ comment }) => (Object.assign(c, comment), render()), () => {});
         }
-        if (!c.resolved) add(el('i', { class: 'ghost', 'aria-hidden': 'true', style: `left:${from}px;top:${top}px` })); // where it stood: faint, no target
+        if (!c.resolved) add(el('i', { class: 'lostmark', 'aria-hidden': 'true', style: `left:${from}px;top:${top}px` })); // where it stood: faint, no target
         if (S.openId !== c.id) return;
       }
       const ink = zone && c.anchor.ink; // a drawing is its own pin: its lines, no marker (draw.ts)

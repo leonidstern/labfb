@@ -50,7 +50,7 @@ try {
       check(eng, 'the ⋯ menu counts it, and only it: a pin in a closed details is hidden, not moved', s.shown && s.moved === 'moved · 1', JSON.stringify(s));
       const look = await shadow(() => {
         const pins = [...r.querySelectorAll('button.pin')];
-        const ghost = [...r.querySelectorAll('.ghost')];
+        const ghost = [...r.querySelectorAll('.lostmark')];
         return { unsure: pins.filter((b) => b.classList.contains('unsure')).length, hiddenPins: pins.filter((b) => b.style.visibility === 'hidden').length, ghosts: ghost.length, ghostClicks: ghost.map((g) => getComputedStyle(g).pointerEvents) };
       });
       check(eng, 'a guess wears the unsure look; a closed-details pin is hidden; a lost pin leaves a ghost that takes no clicks', look.unsure === 1 && look.hiddenPins === 1 && look.ghosts === 1 && look.ghostClicks[0] === 'none', JSON.stringify(look));
