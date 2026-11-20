@@ -64,6 +64,9 @@ button.pin.open, button.pin.open:is(:hover, :active) { box-shadow: 0 0 0 1.5px v
    So it never lifts, and goes from the lift to rest without a transition: the card is placed from the pin at rest. */
 button.pin.open:not(.dragging), button.pin.open:not(.dragging):is(:hover, :active) { transform: none; transition-property: opacity; }
 .pin.in { animation: lab-pin var(--_t-base) var(--_ease); }
+/* A pin its card is tied to (the new comment's box, an open thread) doesn't pop or bounce: the browser reads the pin's box as
+   drawn, so the card followed the scale for 200 ms, ~3 px down, and snapped the last 2 px when it ended (WebKit). */
+.pin.in:is(.draft, .open) { animation: none; }
 /* Phones: as the sent card slides away its new pin pops in from 70% with a small overshoot, and one green ring leaves
    it: sent (lab option 5, Leo 17 Nov). */
 .pin.arrive { animation: lab-arrive calc(var(--_t-slow) * 1.25) var(--_ease-pop) both; }
@@ -74,6 +77,8 @@ button.pin.arrive::before { content: ''; position: absolute; inset: 0; border-ra
    lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
 .pin.swap { animation: lab-swap var(--_t-base) var(--_ease); }
 @keyframes lab-swap { from { transform: scale(.9); opacity: .5; } } /* a quiet change of face */
+.pin.swap.open { animation-name: lab-swap-open; } /* its card is tied to it: the face fades, the pin holds still */
+@keyframes lab-swap-open { from { opacity: .5; } }
 .pin .ring.gone { animation: lab-gone var(--_t-slow) var(--_ease-in) forwards; }
 @keyframes lab-gone { to { opacity: 0; } }
 /* A new comment lands with one faint halo from its pin. */

@@ -122,6 +122,36 @@ for (const [n, eng] of engines().entries()) {
     check(eng, "hovering an open pin: its card's top stays within 0.1 px, in and out", held.length > 20 && off <= 0.1, `${held.length} frames, moved ${off.toFixed(2)} px`);
     await p.keyboard.press('Escape');
     await until(() => shadow(() => { return !r.querySelector('.card'); }));
+    // Placing a pin: the new comment's box and its pin keep their place from the first frame (the box was placed a line short
+    // and grew, and followed the pin's pop-in: near the screen's end it jumped, and WebKit snapped it at the end). Layout
+    // numbers, so the box's own fade-in (a transform) is not counted; recorded in the page on each resize too (a frame is short).
+    for (const [spotName, x, y] of [['in the page', 300, 100], ['near the right edge', 985, 100], ['near the bottom', 300, 690]]) {
+      await p.mouse.move(5, 5);
+      await shadow(() => {
+        window.__seen = [];
+        window.__take = () => {
+          const f = r.querySelector('.float');
+          const q = r.querySelector('.pin.draft')?.getBoundingClientRect();
+          if (f && q) window.__seen.push([parseFloat(getComputedStyle(f).top), f.offsetHeight, q.top, q.left]);
+        };
+        window.__watch?.disconnect();
+        window.__watch = new MutationObserver(() => {
+          const f = r.querySelector('.float');
+          if (!f || f.__ro) return;
+          f.__ro = true;
+          window.__take();
+          new ResizeObserver(window.__take).observe(f);
+        });
+        window.__watch.observe(r, { childList: true, subtree: true });
+      });
+      await p.mouse.click(x, y);
+      for (const end = Date.now() + 700; Date.now() < end; await sleep(20)) await shadow(() => { window.__take(); });
+      const seen = await p.evaluate(() => window.__seen);
+      const range = (k) => (seen.length ? Math.max(...seen.map((r) => r[k])) - Math.min(...seen.map((r) => r[k])) : Infinity);
+      check(eng, `placing a pin ${spotName}: the box and the pin stay within 0.5 px from the first frame`, seen.length > 5 && Math.max(range(0), range(1), range(2), range(3)) <= 0.5, `${seen.length} samples, box top ${range(0).toFixed(2)}, height ${range(1).toFixed(2)}, pin ${range(2).toFixed(2)}`);
+      await p.keyboard.press('Escape');
+      await until(() => shadow(() => { return !r.querySelector('.float'); }));
+    }
     const width = () => shadow(() => { return Math.round(r.querySelector('.listener').getBoundingClientRect().width); });
     const w1 = await width();
     await L.cli('reply', ids[0], '--progress', 'a different and much longer line about what is being drawn right now, with more words');

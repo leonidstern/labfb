@@ -256,7 +256,8 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
   });
   // Keep focus in the field when the send button is pressed.
   sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
-  requestAnimationFrame(sync);
+  sync(); // already as it will be when it shows: a card that is placed, then grows a line, moves (near the screen's end)
+  requestAnimationFrame(sync); // and once more when it is on screen, where its words can be measured
   // Right after it's on screen, in the same tap: phones open the keyboard only then.
   // preventScroll: the sheet is still sliding in from below the screen, and the page must not scroll to meet it.
   const focus = () => text.focus({ preventScroll: true });
