@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -23,7 +24,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-flags-'));
-const PORT = 7970 + Math.floor(Math.random() * 30);
+const PORT = claimPort(7970, 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>f</title><h1 id="t">Flags</h1><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
@@ -61,7 +62,9 @@ try {
       });
       const p = await ctx.newPage();
       await p.goto(B + '/');
-      await sleep(1500);
+      // The widget, however long a busy machine takes to start it (a fixed 1.5 s was too short with eight jobs at once).
+      await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.more-menu')), null, { timeout: 15000 });
+      await sleep(300);
       await p.evaluate(() => (window.labMark = 1)); // gone if the page reloads
       const r = () => p.evaluateHandle(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.more-menu'))?.shadowRoot);
       const menu = await (await r()).evaluate(async (root) => {

@@ -13,6 +13,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -28,7 +29,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-nativepins-'));
-const PORT = 8340 + Math.floor(Math.random() * 40);
+const PORT = claimPort(8340, 40);
 const B = `http://localhost:${PORT}`;
 const MOVING = new Set(['sticky', 'shifted']); // pins on these are held by the browser; on the rest, placed by the script
 const FILLER = '<p>Filler words to scroll past in the box.</p>'.repeat(4);

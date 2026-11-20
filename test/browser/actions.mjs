@@ -9,6 +9,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -30,7 +31,7 @@ const PAGE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content
 const labs = [];
 const lab = async () => {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-actions-')));
-  const port = 7400 + Math.floor(Math.random() * 400);
+  const port = claimPort(7400, 400);
   fs.writeFileSync(path.join(dir, 'index.html'), PAGE);
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ port }));
   labs.push({ dir, server: spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: dir, env }) });

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -23,7 +24,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 let DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-'));
-const PORT = String(5500 + Math.floor(Math.random() * 300));
+const PORT = String(claimPort(5500, 300));
 let B = `http://localhost:${PORT}`;
 const env = { ...process.env, XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
 const LONG = 'This is a very long paragraph meant to be selected whole, it keeps going and going with plenty of words so that the selection runs over several lines of the window, and then it goes on a little more for good measure, with yet more words to be sure that it is over three hundred characters long, until finally it ends.';
