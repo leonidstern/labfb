@@ -9,7 +9,7 @@
 import { clamp, fitAll, fitFrame, panBy, zoomAt } from './camera.ts';
 import type { Cam, Box } from './camera.ts';
 
-type Frame = { id: string; src: string; w: number; h: number; x: number; y: number; label?: string; state?: string; auto?: boolean; variantOf?: string };
+type Frame = { id: string; src: string; w: number; h: number; x: number; y: number; label?: string; state?: string; variantOf?: string };
 type Board = { rev: number; frames: Frame[]; of?: string } & Record<string, unknown>;
 type Card = { f: Frame; box: HTMLElement; inner: HTMLElement; frame?: HTMLIFrameElement; seen: number };
 type Spot = { left: number; top: number; zone: null; clipped?: boolean };
@@ -41,11 +41,9 @@ const css = `
 #lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
 #lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
-#lab-board .t{cursor:pointer;position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
+#lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
-#lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
-#lab-board .t u.on{opacity:1;text-decoration:underline}
 #lab-board .none{position:absolute;inset:0;display:grid;place-items:center;opacity:.7}
 #lab-hand{position:fixed;z-index:2147483647;cursor:grab;touch-action:none}
 #lab-hand.grabbing{cursor:grabbing}
@@ -92,8 +90,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   let moved = false; // the person moved the camera: a resize no longer fits everything again
   let selected = '';
   let entered = '';
-  let board: Board | null = null; // as the lab gave it: saved whole, with the rev it was read at
-  let undo: Frame[][] = []; // the frames before each change, newest last (⌘Z)
   let focus = false; // the camera is fitted to one frame (a phone's first view, Tab): a swipe goes to the next
   let lastDown = 0;
   let checked = { x: 1e9, y: 1e9, z: 0 }; // the camera at the last wake/cull check
@@ -263,12 +259,11 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
   function show(b: Board) {
     if (signal.aborted) return;
-    board = b;
     of = of || (b.of || '').split('#')[0];
     if (typeof b.home === 'string' && b.of) opts.home?.(b.home, b.of);
     const shown = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
     // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
-    // page). Only how it's drawn here: what is saved is the board as read (save sends board.frames).
+    // page). Only how it's drawn here.
     const next = coarse ? [...shown].sort((p, q) => p.y - q.y || p.x - q.x).map((f, i) => ({ ...f, x: i * (390 + 80), y: 0, w: 390, h: 844 })) : shown;
     const old = new Map(cards.map((c) => [c.f.id, c]));
     cards = next.map((f) => {
@@ -331,46 +326,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     for (const c of cards) if (!c.frame) c.inner.replaceChildren(card(c));
   }).catch(() => {});
 
-  // The label above a frame (a click on it opens the frame to use it); on the open one a plain list of sizes to pick from.
-  const SIZES: Record<number, number> = { 390: 844, 820: 1180, 1280: 800, 1440: 900 };
-  const editable = () => Boolean(document.querySelector('script[data-admin]')); // this computer's browser; a guest only looks
-  function paint(c: Card) {
-    const t = c.box.querySelector('.t') as HTMLElement;
-    t.textContent = label(c.f);
-    t.dataset.id = c.f.id;
-    if (c.f.id !== entered || !editable()) return;
-    for (const w of Object.keys(SIZES)) t.append(' ', Object.assign(document.createElement('u'), { textContent: w, className: +w === c.f.w ? 'on' : '' }));
-  }
-  const copy = (fs: Frame[]) => fs.map((f) => ({ ...f }));
-  // Every change is the whole board put back with the rev it was read at; a frame is never dropped, only archived. A frame the
-  // lab placed (auto) is sent without x and y, or it would become fixed where it is now.
-  async function save(frames: Frame[], before: Frame[], remember = true) {
-    if (!board || !editable()) return;
-    if (remember) undo.push(before);
-    const body = { ...board, frames: frames.map(({ auto, x, y, ...f }) => (auto ? f : { ...f, x, y })) };
-    const res = await fetch(api(), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
-    if (!res) return;
-    const j = await res.json();
-    if (res.status === 409 && remember) undo.pop(); // somebody else changed it: theirs is shown, the change is not made
-    if (res.ok || res.status === 409) show(res.ok ? j : j.board);
-  }
-  // One change at a time: the next is made from what the lab answered to the last (the rev it names).
-  let queue: Promise<unknown> = Promise.resolve();
-  const change = (fn: (fs: Frame[]) => void, remember = true) => {
-    queue = queue.then(() => {
-      if (!board) return;
-      const before = copy(board.frames);
-      const fs = copy(board.frames);
-      fn(fs);
-      return save(fs, before, remember);
-    });
-  };
-  const mutate = (id: string, fn: (f: Frame) => void) => change((fs) => fn(fs.find((f) => f.id === id)!));
-  // ⌘Z: the frames as they were; one added since is archived (a frame is never dropped).
-  const undoLast = () => {
-    const was = undo.pop();
-    if (was) change((fs) => fs.splice(0, fs.length, ...was, ...fs.filter((f) => !was.some((g) => g.id === f.id)).map((f) => ({ ...f, state: 'archived' }))), false);
-  };
+  // The label above a frame is only text (a click on it is a click on the board).
+  const paint = (c: Card) => ((c.box.querySelector('.t') as HTMLElement).textContent = label(c.f));
 
   // ---------- the frame the camera is on, and entering ----------
   // Frames aren't selected (Leo, 20 Nov: "do not select frames"): a click on the board pins, as on a page. \`selected\` is
@@ -379,10 +336,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   function select(id: string) {
     if (entered && entered !== id) leave();
     selected = id;
-    for (const c of cards) {
-      c.box.classList.toggle('sel', c.f.id === entered);
-      paint(c);
-    }
+    for (const c of cards) c.box.classList.toggle('sel', c.f.id === entered);
   }
   function focusIn(c: Card) {
     c.frame?.focus();
@@ -393,7 +347,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (!c) return;
     select(id);
     entered = id;
-    select(id); // the ring and the sizes, now that it is open
+    select(id); // the ring, now that it is open
     c.box.classList.add('in');
     if (!c.frame) live(c); // a card is woken to be entered, cap or not
     else focusIn(c);
@@ -405,7 +359,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     done.hidden = true;
     if (!c) return;
     c.box.classList.remove('in', 'sel');
-    paint(c);
     // The keys stay with the frame's document until focus is moved back: M, ⇧B and Esc would go to the wrong one.
     (c.frame?.contentWindow as unknown as { __labSpot?: { clear?: () => void } } | null | undefined)?.__labSpot?.clear?.();
     c.frame?.blur();
@@ -484,11 +437,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (zoomBox.classList.contains('open')) zoomBox.classList.remove('open');
     measure();
     theirs = false;
-    // Option held pins on anything, frames too, as on a page (Leo, 20 Nov: selecting a frame took the comment away).
-    const tag = !e.altKey && (e.target as HTMLElement).closest?.('.t') as HTMLElement | null;
-    const size = tag && (e.target as HTMLElement).closest('u');
-    if (size && editable()) return void (eat(e), mutate(tag.dataset.id!, (f) => ((f.w = +size.textContent!), (f.h = SIZES[f.w])))); // a size from the open frame's list
-    if (tag && tag.dataset.id) return void (eat(e), enter(tag.dataset.id)); // a frame's label opens it
     if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget() && (e.altKey || boardWidget()!.pinning())) {
       lastDown = performance.now();
       theirs = true; // comment mode or Option, no Space: the widget's own click (a pin) and drag (an area)
@@ -635,13 +583,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     focus = true;
   };
   const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
-    const cmd = e.metaKey || e.ctrlKey;
-    if (cmd && !e.altKey && !e.shiftKey && !entered && editable()) {
-      if (e.code === 'KeyZ') {
-        undoLast();
-        return true;
-      }
-    }
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
     const digit = /^Digit(\d)$/.exec(e.code)?.[1];
     if (e.shiftKey && digit === '1') go(fitAll(boxes(), view));

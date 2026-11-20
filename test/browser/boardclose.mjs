@@ -108,12 +108,13 @@ try {
         let s = await look();
         check(eng, `${where}: a click outside a new comment's box closes it and starts no other`, d0.draft && !s.draft && !s.card, JSON.stringify([d0, s]));
         // ----- an entered frame: a press inside its page closes the open thread
-        const lb = await p.locator('#lab-board .f[data-id="b"] .t').boundingBox();
-        await p.mouse.click(lb.x + 8, lb.y + lb.height / 2); // the label opens the frame
-        await sleep(600);
+        await p.evaluate((i) => { for (let n = 0; n < 9 && __labBoard.selected() !== i; n++) __labBoard.key({ key: 'Tab', code: 'Tab' }); __labBoard.key({ key: 'Enter', code: 'Enter' }); }, 'b'); // Tab to it, Enter opens it (a click on its label does not)
+        await p.evaluate(() => __labBoard.key({ key: '!', code: 'Digit1', shiftKey: true })); // Tab moved the camera to it: all in view again
+        await sleep(900);
+        const bNow = await rect('b');
         await open();
         const e0 = await look();
-        await p.mouse.click(b.x + b.w / 2, b.y + b.h / 2 + 40);
+        await p.mouse.click(bNow.x + bNow.w / 2, bNow.y + bNow.h / 2 + 40);
         await sleep(450);
         s = await look();
         check(eng, `${where}: a press inside an entered frame closes the open thread`, e0.card && !s.card && (await p.evaluate(() => window.__labBoard.entered())) === 'b', JSON.stringify([e0, s]));
