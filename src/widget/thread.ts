@@ -471,7 +471,11 @@ export function choicesEl(c, ask, host, chat = false) {
   box.append(list);
   const pick = pickOf(c, ask);
   const live = !pick && openAsk(c) === ask;
-  if (pick && pending?.ask === ask.id && !pending.sending) (clearTimeout(pending.timer), (pending = null)); // answered from elsewhere
+  if (pick && pending?.ask === ask.id && !pending.sending) {
+    // answered from elsewhere
+    clearTimeout(pending.timer);
+    pending = null;
+  }
   const inPlace = live && !chat && triesInPlace(c);
   const exact = c.anchor?.quote?.exact || '';
   // The quoted words as they are now: their own row ("· now") when trying in place, unless a choice is the same words.
