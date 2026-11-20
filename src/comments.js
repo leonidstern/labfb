@@ -280,7 +280,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     <div class="scrim"></div>
     <div class="layer"></div>
     <div class="motions"></div>
-    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · hold ${/Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt'} to pin on anything · ${KEYS.toggle} hide</div>
+    <div class="ui"><div class="hint" role="status" hidden></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -310,7 +310,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       hide();
     }, ms('quick'));
   };
-  if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'hold to comment';
   const toggleBtn = $('.toggle');
   const bar = /** @type {HTMLElement} */ (root.querySelector('.bar'));
   const moreBtn = $('.more');
@@ -1243,20 +1242,12 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const sheetMode = matchMedia('(pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px)');
 
   // ---------- events ----------
-  const showHint = () => {
-    if (store.get('lab-hint-seen') === '1') return;
-    hint.classList.remove('out');
-    hint.hidden = false;
-    store.set('lab-hint-seen', '1');
-    setTimeout(() => goOut(hint, () => (hint.hidden = true)), 5000);
-  };
   const setOn = (value) => {
     S.on = value;
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
     S.checkSections?.(); // hidden comments: no section bar
-    if (S.on) showHint();
     S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
     render();
@@ -2172,7 +2163,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const start = () => {
     document.head.append(fonts, pinCursorStyle);
     refreshPinCursor();
-    if (S.on) showHint();
     document.body.append(host);
     // The page's own selection while commenting, and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.

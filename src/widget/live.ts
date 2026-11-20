@@ -124,8 +124,9 @@ export function startLive() {
     // dot blinks now and then while an agent listens, the ears twitch while one works. The words sit in .lbl, so
     // changing them never rebuilds (and restarts) the mark.
     const MARK = '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">' + MARK_PATHS + '</svg>';
-    who.innerHTML = MARK + '<div class="lbl"></div>';
+    who.innerHTML = MARK + '<span class="cb"></span><div class="lbl"></div>';
     const lbl = who.querySelector('.lbl') as HTMLElement;
+    const cb = who.querySelector('.cb') as HTMLElement;
     // The pill's label, kept aside while it says "update waiting" (the "!" badge) and put back after.
     const whoLabel = (t: string) => (updOn === who ? (who.dataset.updLabel = t) : who.setAttribute('aria-label', t));
     who.hidden = true;
@@ -158,32 +159,33 @@ export function startLive() {
     }
     let stream = null;
     let beat = 0;
-    // The pill is the mark, and a badge when there is one to give: how many pins wait, or "!" when the agent went quiet
-    // (Leo, 20 Nov: "lets try this", icon only). Its words open over the pill while the pointer is on it (the .w box, out of
-    // the flow, so nothing beside it moves): "talking to Claude", the status line, "no update for 6 min · last: …". The words
-    // stay in the pill's label for screen readers and the tooltip. From the lab's state (mode, agent) and the agent's work
-    // on this page (list.ts pillLine).
+    // The pill is the mark, with its status as a badge on the mark's corner (Leo, 20 Nov: "lets try this", icon only; "like we had
+    // with !"): how many pins wait, or a sign: ! the agent went quiet, … it isn't answering, - nobody listens, ~ reconnecting. Its
+    // words open over the pill while the pointer is on it (the .w box, out of the flow, so nothing beside it moves): "talking to
+    // Claude", the status line, "no update for 6 min · last: …". They stay in the pill's label for screen readers and the tooltip.
+    // From the lab's state (mode, agent) and the agent's work on this page (list.ts pillLine).
     let pill = null;
-    const show = (parts: (string | Node)[], n = '', warn = false) => {
-      const sig = [...parts.map((x) => (typeof x === 'string' ? x : x.textContent)), n, warn].join('|');
+    const SIGNS = { '!': 'M6 3.25v3.25M6 8.75h.01', '…': 'M3.4 6h.01M6 6h.01M8.6 6h.01', '-': 'M3.75 6h4.5', '~': 'M8.6 6.6A2.6 2.6 0 1 1 6.3 4M5.1 2.8l1.3 1.2-1.3 1.2' };
+    const TONE = { '!': 'amber', '…': 'amber', '-': 'grey', '~': 'grey' };
+    const show = (parts: (string | Node)[], n = '') => {
+      const sig = [...parts.map((x) => (typeof x === 'string' ? x : x.textContent)), n].join('|');
       if (lbl.dataset.sig === sig) return;
       lbl.dataset.sig = sig;
-      const w = span('', 'w');
-      w.dataset.n = n;
-      w.append(...parts);
-      lbl.replaceChildren(w);
-      who.classList.toggle('warn', warn);
+      lbl.replaceChildren(span('', 'w'));
+      lbl.firstElementChild.append(...parts);
+      cb.className = `cb ${TONE[n] || ''}`;
+      cb.innerHTML = SIGNS[n] ? `<svg viewBox="0 0 12 12" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="${SIGNS[n]}" stroke="var(--_bg)" stroke-width="${n === '…' ? 2 : 1.5}"/></svg>` : n ? `<span>${n}</span>` : '';
       if (n) who.dataset.n = n;
       else delete who.dataset.n;
     };
     // What a screen reader and the tooltip get: the words, and the count the badge shows.
-    const said = () => (lbl.textContent || '') + (who.dataset.n && who.dataset.n !== '!' ? ` · ${who.dataset.n} waiting` : '');
+    const said = () => (lbl.textContent || '') + (/^\d+$/.test(who.dataset.n || '') ? ` · ${who.dataset.n} waiting` : '');
     const paintWho = () => {
       if (!pill) return;
       const { mode, agent, away } = pill;
       const { text, stale, waiting } = mode === 'working' ? pillLine() : { text: '', stale: false, waiting: 0 };
-      const n = stale ? '!' : waiting ? String(waiting) : '';
-      show(mode === 'listening' ? [span('talking to'), ` ${agent}`] : mode === 'quiet' ? [agent, span(" isn't answering")] : mode === 'working' ? (text ? [span(text + (stale && waiting ? ` · ${waiting} waiting` : ''))] : [agent, span(' is working')]) : [span(away)], n, stale);
+      const n = mode === 'working' ? (stale ? '!' : waiting ? String(Math.min(waiting, 99)) : '') : mode === 'quiet' ? '…' : mode === 'away' ? '-' : '';
+      show(mode === 'listening' ? [span('talking to'), ` ${agent}`] : mode === 'quiet' ? [agent, span(" isn't answering")] : mode === 'working' ? (text ? [span(text + (stale && waiting ? ` · ${waiting} waiting` : ''))] : [agent, span(' is working')]) : [span(away)], n);
       whoLabel(said());
     };
     W.paintWho = paintWho;
@@ -193,7 +195,7 @@ export function startLive() {
     const showAway = (word) => {
       pill = null; // the pill's own words are not painted over it until the next state
       lbl.dataset.sig = '';
-      show([span(word)]);
+      show([span(word)], '~');
       whoLabel(word);
       who.classList.add('stale');
       W.chatBtn.classList.add('stale');

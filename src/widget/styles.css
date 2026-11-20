@@ -370,7 +370,7 @@ button.btn.undo { color: var(--_fg); }
        background: var(--_green-fg); color: var(--_bg); box-shadow: 0 0 0 1.5px var(--_bg); font: 700 9.5px/1 system-ui, sans-serif;
        letter-spacing: 0; pointer-events: none; animation: lab-arrive var(--_t-quick) var(--_ease-out); }
 /* one floating pill (lab.css .lab-button is the same) */
-.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 0 12px; min-height: 37px; /* the bar's height, so the two line up */ background: var(--_bg); box-shadow: var(--_shadow);
+.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 0; width: 37px; height: 37px; justify-content: center; /* the bar's height, so the two line up */ background: var(--_bg); box-shadow: var(--_shadow);
         font: inherit; font-size: 13px; letter-spacing: -.006em; white-space: nowrap;
         display: inline-flex; gap: 6px; align-items: center; color: var(--_fg); text-decoration: none; cursor: default; }
 .listener span { color: var(--_muted); }
@@ -379,16 +379,21 @@ button.btn.undo { color: var(--_fg); }
    listens. A dropped connection keeps the last state, faded, instead of looking like nobody. Only transforms move, on three small shapes, so nothing else
    on the layer is redrawn (the old dot's ping was kept to transform and opacity for the same reason). */
 .listener .lbl { display: contents; }
-/* Icon only (Leo, 20 Nov): the pill is the mark and, when there is one, a badge: the number of pins waiting, or "!" once the agent
-   went quiet. The words open over it while the pointer is on it. .w is out of the flow, over the pill's own box, so nothing
-   beside the pill moves whatever it says. */
-.listener .mark { position: relative; z-index: 2; } /* above the words' box, so the mark stays put as it opens */
-.listener[data-n]::after, .listener .w:not([data-n=""])::after { content: attr(data-n); flex: none; min-width: 16px; padding: 0 5px; border-radius: 8px; text-align: center;
-        font-size: 11px; font-weight: 600; line-height: 16px; letter-spacing: 0; font-variant-numeric: tabular-nums;
-        background: color-mix(in srgb, var(--_green-fg) 16%, transparent); color: var(--_green-fg); }
-.listener.warn[data-n]::after, .listener.warn .w::after { background: color-mix(in srgb, var(--_amber) 20%, transparent); color: var(--_amber); }
+/* Icon only (Leo, 20 Nov): the pill is the mark, with its status as a badge on the mark's corner, ringed like the update "!" (.upd):
+   the number of pins waiting, or a sign: ! the agent went quiet, … it isn't answering, − nobody listens, ↻ reconnecting. The words
+   open over the pill while the pointer is on it. .w is out of the flow, over the pill's own box, so nothing beside the pill moves
+   whatever it says. */
+.listener .mark { position: relative; z-index: 2; transform: translate(-3px, 3px); } /* above the words' box, so the mark stays put as it opens; low and left, so the badge sits over its corner and not its ears */
+.listener .cb { position: absolute; right: 2px; top: 2px; z-index: 3; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; corner-shape: round; /* a circle, not a squircle */
+        background: currentColor; color: var(--_green-fg); box-shadow: 0 0 0 1.5px var(--_bg); }
+.listener .cb:empty { display: none; }
+.listener .cb.amber { color: var(--_amber); } .listener .cb.grey { color: color-mix(in srgb, var(--_fg) 50%, var(--_bg)); } /* --_muted is see-through: the disc would show twice */
+.listener .cb span { color: var(--_bg); font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: 0; }
+.listener .cb svg { width: 13px; height: 13px; display: block; }
+.listener .cb :is(svg, svg *) { color: inherit; } /* the sheet's * sets a colour on every element, the disc included */
+.listener.has-upd .cb { visibility: hidden; } /* the update's "!" takes the corner */
 .listener .w { position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; width: max-content; max-width: min(420px, 50vw); display: flex; gap: 6px; align-items: center;
-        padding: 0 12px 0 31px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); color: var(--_fg); white-space: nowrap;
+        padding: 0 12px 0 34px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); color: var(--_fg); white-space: nowrap;
         opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--_fade), visibility var(--_t-instant) var(--_ease) var(--_t-quick); }
 .listener .w > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .listener:is(:hover, :focus-visible) .w { opacity: 1; visibility: visible; transition-delay: var(--_t-instant); }
@@ -396,7 +401,8 @@ button.btn.undo { color: var(--_fg); }
 .agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
 .mark .eye, .agentmark .eye { fill: var(--_bg); }
-.listener .mark { margin: -2px 0 -1px -3px; fill: var(--_green-fg); }
+.listener .mark { fill: var(--_green-fg); }
+.listener .mark > g { fill: inherit; } /* the mark's own paths said currentColor, so its state colours never showed */
 .listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
 .listener.stale .mark { fill: var(--_amber); } /* reconnecting: amber */
 .listener.stale.idle .mark { fill: var(--_muted); }
