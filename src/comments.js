@@ -534,6 +534,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     }
     S.draft = { anchor };
     keepSpot(anchor);
+    ptr.classList.add('still'); // the new pin is where the drawn pointer is: it goes at once (it faded over the pin), back with the next move
     render();
   }
   // Sent once the lab answers: while it can't be reached (restarting, the laptop just woke), the message waits and is
@@ -2919,6 +2920,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const recheck = () => S.mouse && requestAnimationFrame(() => S.mouse && place(S.mouse.x, S.mouse.y, document.elementFromPoint(S.mouse.x, S.mouse.y)));
   addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
+    ptr.classList.remove('still');
     document.documentElement.classList.add('lab-drawn');
     S.mouse = { x: e.clientX, y: e.clientY };
     const t = e.composedPath()[0];

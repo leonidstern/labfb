@@ -134,7 +134,7 @@ for (const [n, eng] of engines().entries()) {
           const q = r.querySelector('.pin.draft')?.getBoundingClientRect();
           // The bar and the listening pill too: placing a pin must not touch them on a computer (only a phone's sheet moves them).
           const away = ['.bar', '.listener', '.left'].map((s) => { const n = r.querySelector(s); if (!n) return ''; const c = getComputedStyle(n); const b = n.getBoundingClientRect(); return [c.opacity, c.visibility, c.transform, b.left, b.top, b.width, b.height].join(' '); }).join(' | ');
-          if (f && q) window.__seen.push([parseFloat(getComputedStyle(f).top), f.offsetHeight, q.top, q.left, away]);
+          if (f && q) window.__seen.push([parseFloat(getComputedStyle(f).top), f.offsetHeight, q.top, q.left, away, getComputedStyle(r.querySelector('.ptr')).opacity]);
         };
         window.__watch?.disconnect();
         window.__watch = new MutationObserver(() => {
@@ -146,11 +146,17 @@ for (const [n, eng] of engines().entries()) {
         });
         window.__watch.observe(r, { childList: true, subtree: true });
       });
+      await p.mouse.move(x, y, { steps: 2 }); // the pointer rests on the spot first, its drawn pin showing
+      await sleep(300);
+      const shownBefore = await shadow(() => { return getComputedStyle(r.querySelector('.ptr')).opacity; });
       await p.mouse.click(x, y);
       for (const end = Date.now() + 700; Date.now() < end; await sleep(20)) await shadow(() => { window.__take(); });
       const seen = await p.evaluate(() => window.__seen);
       const range = (k) => (seen.length ? Math.max(...seen.map((r) => r[k])) - Math.min(...seen.map((r) => r[k])) : Infinity);
       check(eng, `placing a pin ${spotName}: the box and the pin stay within 0.5 px from the first frame`, seen.length > 5 && Math.max(range(0), range(1), range(2), range(3)) <= 0.5, `${seen.length} samples, box top ${range(0).toFixed(2)}, height ${range(1).toFixed(2)}, pin ${range(2).toFixed(2)}`);
+      // The drawn pointer (the pin-shaped pill that follows the mouse) is gone from the first frame: it faded over the new pin, 1 px off.
+      const ptrSeen = new Set(seen.map((r) => r[5]));
+      check(eng, `placing a pin ${spotName}: the drawn pointer is gone at once, not faded over the new pin`, (shownBefore === '1' || spotName !== 'in the page') && ptrSeen.size === 1 && ptrSeen.has('0'), `shown ${shownBefore} before; then ${[...ptrSeen].join(' ')}`);
       const moves = new Set(seen.map((r) => r[4]));
       check(eng, `placing a pin ${spotName}: the bar and the listening pill do not flicker or move`, moves.size === 1 && !moves.has('') && !/ hidden /.test([...moves][0]), `${moves.size} looks of 3: ${[...moves].slice(0, 2).join(' // ')}`);
       await p.keyboard.press('Escape');
