@@ -30,7 +30,12 @@ let watching: ResizeObserver | null = null;
 const rest = (node: HTMLElement) => {
   const at = rests.get(node);
   if (!at || at.frozen || !node.isConnected) return at;
+  // At the end of its opening motion (it moves the box a few px, and it may still be running): where it settles.
+  const moving = node.getAnimations();
+  const was = moving.map((m) => m.currentTime);
+  moving.forEach((m) => (m.currentTime = Number(m.effect?.getComputedTiming().endTime)));
   const [a, b] = [at.to.getBoundingClientRect(), node.getBoundingClientRect()];
+  moving.forEach((m, i) => (m.currentTime = was[i]));
   [at.x, at.y] = [b.left - a.left, b.top - a.top];
   return at;
 };
@@ -41,11 +46,11 @@ const thaw = (node: HTMLElement) => {
   node.style.removeProperty('position-try-fallbacks');
   node.style.left = node.style.top = '';
 };
+const settled = (e: AnimationEvent) => e.target === e.currentTarget && rest(e.currentTarget as HTMLElement);
 function followPin(node: HTMLElement, to: Element) {
   rests.set(node, { to, x: 0, y: 0, frozen: false });
   (watching ??= new ResizeObserver((es) => es.forEach((e) => rest(e.target as HTMLElement)))).observe(node);
-  // After its opening motion (it moves the box a few px): measured while it runs, the card would settle off its pin.
-  Promise.allSettled(node.getAnimations().map((a) => a.finished)).then(() => rest(node));
+  node.addEventListener('animationstart', settled);
 }
 function bindThreadScroll() {
   addEventListener('resize', () => rests.forEach((_, n) => (thaw(n), requestAnimationFrame(() => rest(n)))));
