@@ -1062,8 +1062,7 @@ export function goToBlock(e: Element) {
     range.selectNodeContents(e);
     const dark = matchMedia('(prefers-color-scheme: dark)').matches;
     const green = getComputedStyle(host).getPropertyValue('--_green-fg').trim();
-    const ink = document.createElement('div');
-    ink.setAttribute('data-lab-comments', '');
+    const ink = document.createElement('div'); // in the widget's shadow root: a page's i, div or * rules don't reach it
     ink.setAttribute('aria-hidden', 'true');
     ink.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2147483646';
     for (const l of range.getClientRects()) {
@@ -1073,7 +1072,7 @@ export function goToBlock(e: Element) {
       ink.append(b);
     }
     if (ink.childElementCount) {
-      document.documentElement.append(ink);
+      host.shadowRoot!.append(ink);
       const a = ink.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration: ms('hold', 2) });
       a.onfinish = a.oncancel = () => ink.remove();
       return;
