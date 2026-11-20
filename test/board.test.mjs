@@ -182,15 +182,19 @@ test('board new --variants copies the page, prints the link, and each file is th
   const r = await cli(DIR, 'new', 'Pricing hero', '--of', '/pricing', '--variants', '3');
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /^# Board pricing-hero · Pricing hero\nurl: http:\/\/localhost:\d+\/_lab\/board\/pricing-hero\n/);
-  assert.match(r.out, /\na {2}a\.html {2}1280×800\n/);
-  for (const id of 'abc') {
+  // Frame a is the page as it is now (the real page, not a copy); the variants sit beside it.
+  assert.match(r.out, /\na {2}\/pricing {2}1280×800 {2}"now"\n/);
+  assert.match(r.out, /\nb {2}b\.html {2}1280×800\n/);
+  assert.ok(!fs.existsSync(path.join(DIR, '.lab/boards/pricing-hero/a.html')), 'now is no copy');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/boards/pricing-hero.json'), 'utf8')).frames[0].src, '/pricing');
+  for (const id of 'bcd') {
     const file = fs.readFileSync(path.join(DIR, `.lab/boards/pricing-hero/${id}.html`), 'utf8');
     assert.match(file, /<head><base href="\/"><title>Pricing<\/title>/);
     assert.match(await (await fetch(`${B}/_lab/board/pricing-hero/${id}`)).text(), /<h1>Pricing<\/h1>/);
   }
   const nested = await cli(DIR, 'new', 'Deep', '--of', '/sub/deep', '--variants', '1');
   assert.equal(nested.code, 0, nested.out);
-  assert.match(fs.readFileSync(path.join(DIR, '.lab/boards/deep/a.html'), 'utf8'), /<base href="\/sub\/">/);
+  assert.match(fs.readFileSync(path.join(DIR, '.lab/boards/deep/b.html'), 'utf8'), /<base href="\/sub\/">/);
   const same = await cli(DIR, 'new', 'Pricing hero', '--of', '/pricing', '--variants', '2');
   assert.match(same.out, /# Board pricing-hero-2/, 'a second board of the same topic never overwrites the first');
 });
@@ -224,10 +228,10 @@ test('widths copy no file and run narrow to wide; flow keeps its order; add puts
 test('add copies a file in as a new variant; list with no name lists boards; the page of a board of a page via board new --of', async () => {
   fs.writeFileSync(path.join(DIR, 'mine.html'), '<!doctype html><title>mine</title><h1>mine</h1>');
   const r = await cli(DIR, 'add', 'pricing-hero', 'mine.html', '--label', 'my take');
-  assert.match(r.out, /Added d \(d\.html\)\./);
-  assert.match(await (await fetch(`${B}/_lab/board/pricing-hero/d`)).text(), /<h1>mine<\/h1>/);
+  assert.match(r.out, /Added e \(e\.html\)\./);
+  assert.match(await (await fetch(`${B}/_lab/board/pricing-hero/e`)).text(), /<h1>mine<\/h1>/);
   const all = await cli(DIR, 'list');
-  assert.match(all.out, /^pricing-hero {2}4 frames {2}of \/pricing {2}http/m);
+  assert.match(all.out, /^pricing-hero {2}5 frames {2}of \/pricing {2}http/m);
   const one = await cli(DIR, 'new', '--of', '/sub/deep');
   assert.match(one.out, /# Board sub--deep/);
   assert.match((await cli(DIR, 'list', 'nope')).out, /No board nope/);
@@ -242,13 +246,13 @@ const wait = (dir, ...args) => new Promise((resolve) => execFile(process.execPat
 test('a pin on a variant: its page text names the frame, the board and the file', async () => {
   const made = await cli(DIR, 'new', 'Hero', '--of', '/pricing', '--variants', '2');
   const name = /# Board (\S+)/.exec(made.out)[1];
-  await cli(DIR, 'add', name, 'a', '--label', 'price first');
-  const c = await pin(`/_board/${name}/a`, { text: 'bigger price', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5, width: 1280, height: 800 } });
+  await cli(DIR, 'add', name, 'b', '--label', 'price first');
+  const c = await pin(`/_board/${name}/b`, { text: 'bigger price', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5, width: 1280, height: 800 } });
   assert.ok(c.comment);
-  const t = await text(`/_board/${name}/a`);
-  assert.match(t, new RegExp(`^frame: a of board ${name} \\(variant of /pricing, 1280×800, "price first", beside b\\)$`, 'm'));
-  assert.match(t, new RegExp(`^file: \\.lab/boards/${name}/a\\.html$`, 'm'));
-  assert.match(t, /^page: http:\/\/localhost:\d+\/_lab\/board\/[^/]+\/a$/m);
+  const t = await text(`/_board/${name}/b`);
+  assert.match(t, new RegExp(`^frame: b of board ${name} \\(variant of /pricing, 1280×800, "price first", beside a, c\\)$`, 'm'));
+  assert.match(t, new RegExp(`^file: \\.lab/boards/${name}/b\\.html$`, 'm'));
+  assert.match(t, /^page: http:\/\/localhost:\d+\/_lab\/board\/[^/]+\/b$/m);
 });
 
 test('a board pin keeps signed numbers; the board text lists frames in order, then the pin near its frame', async () => {
@@ -302,28 +306,28 @@ test('a wait on a board is heard by its frames', async () => {
     heard = (await (await fetch(`${B}/_lab/state`)).json()).heard;
   }
   w.kill();
-  assert.ok(heard.pages.includes(`/_board/${name}`) && heard.pages.includes(`/_board/${name}/a`) && heard.pages.includes(`/_board/${name}/b`), JSON.stringify(heard));
+  assert.ok(heard.pages.includes(`/_board/${name}`) && heard.pages.includes('/pricing') && heard.pages.includes(`/_board/${name}/b`), JSON.stringify(heard));
 });
 
 test('pick: one frame is picked and the rest archived, files kept; the pick comes back in the next wait as a pin once', async () => {
   const made = await cli(DIR, 'new', 'Pick me', '--of', '/pricing', '--variants', '3');
   const name = /# Board (\S+)/.exec(made.out)[1];
   const r = await cli(DIR, 'pick', name, 'b');
-  assert.match(r.out, /Picked b\. Archived a, c \(files kept\)\./);
+  assert.match(r.out, /Picked b\. Archived a, c, d \(files kept\)\./);
   const disk = JSON.parse(fs.readFileSync(path.join(DIR, `.lab/boards/${name}.json`), 'utf8'));
-  assert.deepEqual(disk.frames.map((f) => f.state), ['archived', 'picked', 'archived']);
-  for (const id of 'abc') assert.ok(fs.existsSync(path.join(DIR, `.lab/boards/${name}/${id}.html`)));
+  assert.deepEqual(disk.frames.map((f) => f.state), ['archived', 'picked', 'archived', 'archived']);
+  for (const id of 'bcd') assert.ok(fs.existsSync(path.join(DIR, `.lab/boards/${name}/${id}.html`)));
   const got = await wait(DIR, '--pages', `/_board/${name}`);
   assert.match(got, /Picked b/);
   assert.match(got, /near: frame b \(b\.html at 1280×800\)/);
-  assert.match(got, /picked: a, c archived, files kept\. Put b's change into pricing\.html, then reply --done\./);
+  assert.match(got, /picked: a, c, d archived, files kept\. Put b's change into pricing\.html, then reply --done\./);
   assert.match((await cli(DIR, 'pick', name, 'b')).out, /already picked/);
   assert.equal((await (await fetch(`${B}/_lab/api/comments?page=/_board/${name}`)).json()).comments.length, 1, 'a second pick posts nothing');
   const two = await cli(DIR, 'new', 'Pick two', '--of', '/pricing', '--variants', '3');
   const n2 = /# Board (\S+)/.exec(two.out)[1];
-  assert.match((await cli(DIR, 'pick', n2, 'a', 'b')).out, /Kept a, b\. Archived c/);
+  assert.match((await cli(DIR, 'pick', n2, 'a', 'b')).out, /Kept a, b\. Archived c, d/);
   const d2 = JSON.parse(fs.readFileSync(path.join(DIR, `.lab/boards/${n2}.json`), 'utf8'));
-  assert.deepEqual(d2.frames.map((f) => f.state), ['live', 'live', 'archived']);
+  assert.deepEqual(d2.frames.map((f) => f.state), ['live', 'live', 'archived', 'archived']);
   assert.match((await cli(DIR, 'pick', n2, 'z')).out, /No frame z/);
 });
 
@@ -335,6 +339,6 @@ test('git stays clean: a repo that ignores .lab sees nothing of boards', async (
   g('add', '-A');
   g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base');
   await cli(DIR, 'new', 'Clean', '--of', '/pricing', '--variants', '3');
-  await cli(DIR, 'pick', 'clean', 'a');
+  await cli(DIR, 'pick', 'clean', 'b');
   assert.equal(g('status', '--porcelain').trim(), '');
 });

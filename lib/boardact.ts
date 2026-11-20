@@ -81,6 +81,7 @@ export function act(action: string, a: Ask, e: Env): Done {
       const rel = e.fileOf(page);
       if (e.proxied || !rel || !/\.html?$/i.test(rel)) return no(`${page} is not a plain HTML page of this folder, so it cannot be copied. Use --widths 390,820,1280 (the real page at several widths) or add your own file: labit board add ${into} <file.html>`);
       const html = fs.readFileSync(path.join(e.root, rel), 'utf8');
+      add({ src: page, w: 1280, label: 'now' }); // frame a: the page as it is now (the real page, not a copy), the variants beside it
       for (let i = 0; i < n; i++) {
         const id = nextId(b.frames);
         copyIn(e, into, id, seed(html, rel));

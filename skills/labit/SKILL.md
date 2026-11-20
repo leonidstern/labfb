@@ -50,7 +50,7 @@ Start local, always. The page stays on this computer (for a phone, add `--wifi`,
 
 A board shows pages side by side as frames. Use one when the person asks for options or variants, one page at several widths, or a flow. Don't describe options in a reply: draw them.
 
-- Options: `LAB board new "<topic>" --of /page --variants 3`. The lab copies the page into `.lab/boards/<board>/a.html`, `b.html`, `c.html` and prints the link. Edit those files; never write the page out again yourself. Three unless asked (six at most), each different in one way: name it with `LAB board add <board> a --label "<what differs>"`. Save a first, so the person sees it while you make b.
+- Options: `LAB board new "<topic>" --of /page --variants 3`. Frame `a` is the page as it is now (the real page, labelled "now", not a copy); the lab copies the page into `.lab/boards/<board>/b.html`, `c.html`, `d.html` and prints the link. Edit those files; never write the page out again yourself. Three unless asked (six at most), each different in one way: name it with `LAB board add <board> b --label "<what differs>"`. Save b first, so the person sees it while you make c.
 - Widths: `--widths 390,820,1280`. A flow: `--flow /a,/b,/c`. These show the real pages; nothing is copied.
 - The lab places frames. Give an order (`--after`), never positions.
 - A pin on a frame names its frame and file: change that frame only.

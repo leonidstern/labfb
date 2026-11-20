@@ -106,8 +106,8 @@ For the agent, from the project (any folder under it):
   labit update
       Move this folder's lab onto the newer release its ⋯ menu offers (the person pressed update): prints what changed.
   labit board new|add|move|pick|list ...
-      Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (the lab copies the page into
-      .lab/boards/<board>/a.html, b.html, c.html: edit those) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
+      Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (frame a is the page as it is
+      now, labelled "now"; the lab copies it into .lab/boards/<board>/b.html, c.html, d.html: edit those) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
       frames; you only give an order. add <board> <frame|/page|file.html> [--label] [--width] [--after]; move <board> <frame>
       --after <frame>; pick <board> <frame>; list [<board>].
 
