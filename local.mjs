@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
@@ -18,7 +18,6 @@ import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './l
 import { alive } from './lib/labcall.ts';
 import { DO_IT, UNMATCHED, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
-import { ensureBuilt } from './lib/build.ts';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -3053,6 +3052,8 @@ if (!process.env.LAB_DEV && !process.env.LABIT_NO_FOLLOW && process.platform !==
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed
-ensureBuilt(REPO); // a checkout: the page script is built from src/, not kept in git (lib/build.ts)
+// A checkout: the page script is built from src/, not kept in git (lib/build.ts). Its path is built at run time so the
+// npm bundle, which has no src/, doesn't carry it.
+if (fs.existsSync(path.join(REPO, 'src'))) (await import(pathToFileURL(path.join(REPO, 'lib/build.ts')).href)).ensureBuilt(REPO);
 PORT = skipLabs(PORT);
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');
