@@ -1860,7 +1860,7 @@ const inject = (html, tag) => {
 const LAB_ICON = '<link rel="icon" href="/_lab/favicon.svg">';
 const withIcon = (html) => {
   if (/<link\b[^>]*\brel=["']?(?:[^"'>]*\s)?icon[\s"'>/]/i.test(html) || fs.existsSync(path.join(ROOT, 'favicon.ico'))) return html;
-  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  const at = /<head(\s[^>]*)?>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
 };
 // The section bar keeps its own room at the top of the page, so it never covers the page's first lines.
@@ -1878,7 +1878,7 @@ const withRoom = (html) => {
   if (said === 'off' || !/<link\b[^>]*\bhref=["']?\/_lab\/lab\.css\b/i.test(html)) return html;
   const n = (t) => (body.replace(/<(nav|aside|dialog|footer)\b[\s\S]*?<\/\1>/gi, '').match(new RegExp(`<${t}[\\s>]`, 'gi')) || []).length;
   if (n('h2') < 3 && n('h3') < 3 && n('h1') < 3) return html;
-  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  const at = /<head(\s[^>]*)?>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + ROOM + html.slice(at.index + at[0].length) : ROOM + html;
 };
 // A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
@@ -1897,7 +1897,7 @@ return ws;}});})()</script>`;
 // Right after <head> (or at the top): it has to run before the dev server's own client script.
 const holdFirst = (html) => {
   if (!PROXY || /__lab=\{writing/.test(html)) return html; // only a dev server reloads pages; never twice
-  const head = /<head[^>]*>/i.exec(html);
+  const head = /<head(\s[^>]*)?>/i.exec(html);
   if (head) return html.slice(0, head.index + head[0].length) + HOLD + html.slice(head.index + head[0].length);
   const doc = /<!doctype[^>]*>/i.exec(html);
   return doc ? html.slice(0, doc[0].length) + HOLD + html.slice(doc[0].length) : HOLD + html;
