@@ -32,6 +32,8 @@ type Anchor = {
   /** The element's opening tag, and its height then. */
   element: string;
   eh: number;
+  /** A pin in the empty margin beside the page's content sits on the content level with it: this many px beyond the spot x says (minus: left of it). */
+  sx?: number;
   kind?: string;
   text?: string;
   inside?: string;
@@ -499,12 +501,20 @@ function sameKind(node, tag) {
 // only a point, never a quote, so nothing is highlighted (Leo 18 Nov: "pin pointing on word highlighting word").
 // onto: the element the caller knows is there (selected words' own). Chrome now and then finds nothing but <html>
 // under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
-export function anchorAt(clientX, clientY, words = false, onto = null) {
+export function anchorAt(clickX, clickY, words = false, onto = null) {
+  let [clientX, clientY] = [clickX, clickY];
   const board = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor; contains?: (x: number, y: number) => boolean } }).__labBoard;
   if (board?.anchor && (!board.contains || board.contains(clientX, clientY))) return board.anchor(clientX, clientY); // on a board (its page, or a page's board view): the board says what is there
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
   // ...and when the point is on something else (scrolled away, under the bar), the element the caller names wins.
   if (onto && !(stack[0] && (stack[0] === onto || onto.contains(stack[0])))) stack = [onto];
+  // A click in the empty margin beside the content (a centred column's left or right): on the content level with it,
+  // that many px out, so it follows that line when the page changes or the window is resized.
+  let aside = 0;
+  if (!onto && (!stack[0] || stack[0] === document.body)) {
+    const side = sideOf(clientX, clientY);
+    if (side) [aside, clientX, stack] = [clientX - side.x, side.x, side.stack];
+  }
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
   let shadowHost = null;
@@ -522,7 +532,7 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
     selector: selectorFor(target),
     x: rect.width ? (clientX - rect.left) / rect.width : 0,
     y: rect.height ? (clientY - rect.top) / rect.height : 0,
-    docX: (clientX + scrollX) / docWidth(),
+    docX: (clickX + scrollX) / docWidth(),
     docY: clientY + scrollY,
     width: innerWidth,
     height: innerHeight,
@@ -603,7 +613,7 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
   } else {
     // Code keeps its quote on a plain click: the line and its number are what an agent opens the file at.
     const inCode = target.closest('pre, [data-file], table[class*="code" i]') || getComputedStyle(target).whiteSpace.startsWith('pre');
-    const quote = words || inCode ? quoteAt(clientX, clientY, shadowRoots) : null;
+    const quote = (words || inCode) && !aside ? quoteAt(clientX, clientY, shadowRoots) : null; // beside the content there are no words under the click
     if (quote) {
       anchor.kind = 'text';
       anchor.quote = quote;
@@ -627,7 +637,29 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
   }
   Object.assign(anchor, schemeAt(target));
   if (!shadowHost && target !== document.body) anchor.fp = fingerprint(target);
+  if (aside) anchor.sx = Math.round(aside);
   return anchor;
+}
+
+// The content a click in the page's side margin is level with: the nearest box of the page (a child of body) whose top
+// and bottom hold the click's height and that the click is beside, and what stands at its edge there (past its padding),
+// as a block (not a word of it). Null when none is (the click is above or below the page's content).
+function sideOf(x: number, y: number): { x: number; stack: Element[] } | null {
+  let best: { d: number; r: DOMRect; c: Element; left: boolean } | null = null;
+  for (const c of document.body.children) {
+    if (c === host || host.contains(c)) continue;
+    const r = c.getBoundingClientRect();
+    const d = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+    if (d && r.width && r.height && y >= r.top && y <= r.bottom && (!best || d < best.d)) best = { d, r, c, left: x < r.left };
+  }
+  if (!best) return null;
+  const pad = parseFloat(getComputedStyle(best.c)[best.left ? 'paddingLeft' : 'paddingRight']) || 0;
+  const px = best.left ? best.r.left + pad + 1 : best.r.right - pad - 1;
+  const stack = document.elementsFromPoint(px, y).filter((n) => n !== host && n !== document.documentElement);
+  if (!best.c.contains(stack[0])) return null;
+  // Not on a word of the line (an inline element, a link or a bold word): on the block holding it.
+  while (stack.length > 1 && stack[0] !== best.c && getComputedStyle(stack[0]).display === 'inline' && !/^(img|video|canvas|svg|image|iframe)$/.test(stack[0].localName)) stack.shift();
+  return { x: px, stack };
 }
 
 // What a pin keeps of the page around its element: the box with an id or data-lab it sits in, the heading above it, and
@@ -972,7 +1004,7 @@ export function position(anchor) {
   if (anchor.kind === 'board') return at;
   // A page's board view covers what is under it: the page's pins there hide (overlay.ts).
   const covered = coveredAt(at.left - scrollX, at.top - scrollY); // told apart, so a scroll under the view only asks this again
-  return { ...at, covered, clipped: covered || clippedAt(findTarget(anchor), at.left - scrollX, at.top - scrollY) };
+  return { ...at, covered, clipped: covered || clippedAt(findTarget(anchor), at.left - scrollX - (anchor.sx || 0), at.top - scrollY) }; // a pin beside its line: its line's spot is what a scroll box hides
 }
 /** A pin whose tip is at this screen point is under a page's board view: its tip, or its far corner (a pin with its tip
  * just past the view's edge still lay over the board). */
@@ -1005,6 +1037,9 @@ function onWords(range, anchor, rect) {
   return { left: pull(gx, at.left, at.right) + scrollX, top: pull(gy, at.top, at.bottom) + scrollY };
 }
 // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
+// A pin in the margin beside its element's line: that many px out from it, kept on the page (a window too narrow for a
+// margin puts it at the page's edge instead of off it).
+const sideLeft = (left: number, anchor): number => (anchor.sx ? Math.min(Math.max(left + anchor.sx, 4), document.documentElement.clientWidth - 4) : left);
 function spotOf(anchor): Spot {
   if (anchor.kind === 'board') {
     // A board pin on a page shows only while that board is open in it (overlay.ts); the list still has it.
@@ -1027,7 +1062,7 @@ function spotOf(anchor): Spot {
   if (node && !anchor.zw && (anchor.gapAbove || anchor.gapBelow)) {
     const rect = node.getBoundingClientRect();
     const top = gapTop(anchor, node, rect);
-    if (top !== null) return { left: rect.left + scrollX + anchor.x * rect.width, top: top + scrollY, zone: null };
+    if (top !== null) return { left: sideLeft(rect.left + scrollX + anchor.x * rect.width, anchor), top: top + scrollY, zone: null };
   }
   // On a big container with no word to find: if the container's height changed since, the share of it no longer points
   // at the same thing, so the pin keeps its old place and shows faded as moved rather than pointing at something else.
@@ -1042,7 +1077,7 @@ function spotOf(anchor): Spot {
     const words = range && onWords(range, anchor, rect);
     if (words) return { ...words, zone: null };
     if (rect.width || rect.height) {
-      const left = rect.left + scrollX + anchor.x * rect.width;
+      const left = sideLeft(rect.left + scrollX + anchor.x * rect.width, anchor);
       // An area on a box much taller than itself (a section, the page) keeps its px offset and size: as a share of the
       // box it jumped onto other text when pictures above it loaded or the page grew.
       const tall = anchor.zw && Number.isFinite(anchor.oy) && anchor.docH && rect.height > 2 * anchor.docH;
@@ -1115,7 +1150,7 @@ export function foundAt(anchor) {
 // Where a pin sits on its element, as the lab keeps it: the element's path, its place on the page, its height.
 function placeOf(node, anchor) {
   const rect = node.getBoundingClientRect();
-  return { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height) };
+  return { selector: selectorFor(node), docX: clamp01(sideLeft(rect.left + scrollX + anchor.x * rect.width, anchor) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height) };
 }
 
 // A pin whose words or element were changed or removed on the page (the agent edited the file; a hot patch): what it said
@@ -1354,6 +1389,7 @@ export function zoneAnchor({ x0, y0, x1, y1 }) {
   const right = Math.max(x0, x1);
   const bottom = Math.max(y0, y1);
   const anchor = anchorAt((left + right) / 2, (top + bottom) / 2);
+  delete anchor.sx; // an area is stored on its box, as shares of it
   let box = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2).find((n) => n !== host && !host.contains(n));
   // The area is on the smallest element that holds most of it (80%): a narrow strip drawn a little past a picture's
   // edge stays on the picture, instead of climbing to the page itself.
