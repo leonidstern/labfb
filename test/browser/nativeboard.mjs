@@ -49,6 +49,11 @@ const put = (name, frames, extra = {}) => fetch(`${B}/_lab/api/board?name=${name
 await put('pins', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 600 }], { of: '/pricing' });
 try {
   for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+    // Each engine starts from the same board (the one before moved and resized frame a); its rev is the lab's now.
+    if (eng !== (process.env.ENGINES || 'webkit,chromium').split(',')[0]) {
+      const cur = await (await fetch(`${B}/_lab/api/board?name=pins`)).json();
+      await fetch(`${B}/_lab/api/board?name=pins`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ ...cur, frames: [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 600 }] }) });
+    }
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
@@ -77,7 +82,7 @@ try {
       const on = (pp, fr) => Math.abs(pp.x - spot(fr).x) < 3 && Math.abs(pp.y - spot(fr).y) < 3;
       const p1 = await pinAt();
       check(eng, hides ? 'a board pin on a frame is held by the browser, on its spot' : 'a board pin is placed by the script here (no anchor positioning), on its spot', p1.held === hides && on(p1, a), JSON.stringify({ p1, want: spot(a) }));
-      // Pan: drag the empty board (pointer mode). No redraw by the widget while the camera moves, and the pin stays on its spot.
+      // Pan: Space + drag on the empty board (pointer mode). No redraw by the widget while the camera moves, and the pin stays on its spot.
       await p.keyboard.press('Digit1'); // back to the pointer (1 toggles; Esc on a board goes back to its page)
       await sleep(200);
       await p.evaluate(() => {
@@ -88,9 +93,11 @@ try {
         }
       });
       await p.mouse.move(1100, 700);
+      await p.keyboard.down('Space'); // a plain drag is labit's; Space + drag pans (Leo, 19 Nov)
       await p.mouse.down();
       await p.mouse.move(950, 600, { steps: 12 });
       await p.mouse.up();
+      await p.keyboard.up('Space');
       await sleep(400);
       const measured = await p.evaluate(() => window.labMeasured);
       const a2 = await rect('a');

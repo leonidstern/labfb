@@ -15,7 +15,8 @@ const fitZ = (b: Box[], v: { w: number; h: number }) => {
   const e = extent(b);
   return Math.min(1, (v.w - PAD) / e.w, (v.h - PAD) / e.h);
 };
-const minZ = (b: Box[], v: { w: number; h: number }) => Math.min(fitZ(b, v), 1) * 0.999;
+// Further out than everything fitted (Leo, 19 Nov: "do more zoom out"): to 10 %, or a quarter of the fit when that is less.
+const minZ = (b: Box[], v: { w: number; h: number }) => Math.min(0.1, fitZ(b, v) / 4);
 export const fitAll = (b: Box[], v: { w: number; h: number }): Cam => {
   if (!b.length) return { x: 0, y: 0, z: 1 };
   const e = extent(b);
