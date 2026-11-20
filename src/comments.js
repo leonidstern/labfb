@@ -37,7 +37,7 @@ import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
-import { bindThread, flushPick, grab, openAsk, pickByKey, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
+import { bindThread, flushPick, grab, openAsk, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
@@ -1928,6 +1928,13 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // 1 to 6 answer an open question with that choice (thread.ts): before 1 is comment / pointer, which it keeps when no
     // question is open. Not while a text box has the focus.
     if (S.on && !coarse && /^Digit[1-6]$/.test(e.code) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && !typing(e) && !inOtherWidget && pickByKey(Number(e.code.slice(5)))) {
+      e.preventDefault();
+      return;
+    }
+    // Enter takes the agent's pick of an open question (the ticked row), the same path as a tap. Not in a text box, nor
+    // on a button or link (Enter presses that), and only when a row is ticked.
+    if (S.on && !coarse && e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && !typing(e) && !inOtherWidget
+      && !e.composedPath().some((n) => n instanceof HTMLElement && /^(BUTTON|A)$/.test(n.tagName)) && pickTicked()) {
       e.preventDefault();
       return;
     }

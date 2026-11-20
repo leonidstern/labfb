@@ -405,7 +405,8 @@ export function threadCard(c, fresh = new Set(), focus = false) {
 // answers (20 Nov, no Keep) as a reply, "Picked B: …" (the letter is for the agent, who listed them), with
 // picked: { of, n } (lib/schema.mjs), but only after 5 s: the card says "Picked B · undo" meanwhile, and the pick goes
 // at once when the card closes (or the page is hidden). On a computer 1 to 6 pick that choice of the open thread card (the
-// same as a tap, with its undo), unless a text box has the focus (comments.js, pickByKey). On a phone a touch that
+// same as a tap, with its undo), and Enter picks the ticked row (the agent's recommend, or the one tried last), unless a
+// text box or a button has the focus (comments.js, pickByKey, pickTicked). On a phone a touch that
 // moved (a scroll) answers nothing.
 // With quoted words on the page the rows are also tried in it (trial.ts). The page chat draws a question the same way
 // (chat.ts), with no trying: its messages have no quoted words.
@@ -461,6 +462,13 @@ export function pickByKey(n: number): boolean {
   if (W.coarse) return false;
   const live = W.S.openCard && ([...W.S.openCard.querySelectorAll('.choices.live')].pop() as { pick?: (n: number) => boolean } | undefined);
   return Boolean(live?.pick?.(n - 1));
+}
+
+/** Enter on a computer: the ticked row of the open thread card's question, as a tap. False when no question is open or no row is ticked (the agent gave no pick), so Enter does what it did. */
+export function pickTicked(): boolean {
+  if (W.coarse) return false;
+  const live = W.S.openCard && ([...W.S.openCard.querySelectorAll('.choices.live')].pop() as { ticked?: () => boolean } | undefined);
+  return Boolean(live?.ticked?.());
 }
 
 // The rows of a question, under it. Answered (or an older one): the rows as they were, the pick ticked. Open: rows to
@@ -602,6 +610,11 @@ export function choicesEl(c, ask, host, chat = false) {
   (box as unknown as { pick: (n: number) => boolean }).pick = (n) => {
     if (n < 0 || n >= ask.choices.length) return false;
     if (pending?.ask !== ask.id) answer(n); // a pick already waiting: the key is still taken (it is not "comment / pointer"), undo first
+    return true;
+  };
+  (box as unknown as { ticked: () => boolean }).ticked = () => {
+    if (cur < 0 || cur >= ask.choices.length) return false;
+    if (pending?.ask !== ask.id) answer(cur); // a pick already waiting: Enter is still taken, undo first
     return true;
   };
   select(cur);
