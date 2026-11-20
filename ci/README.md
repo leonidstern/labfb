@@ -21,6 +21,12 @@ Every PR, forks included, is measured against its own base commit. Takes seconds
 - Both sides are measured with the **base** branch's `ci/`, so a PR can't change how it's judged.
 - Both sides use the **PR's** `.oxlintrc.json`, so adding a rule doesn't fail the PR that adds it.
 
+## Waste check (`.github/workflows/waste.yml`)
+
+On every release tag (and on demand), `npm run waste` reports duplicated blocks, long functions, unused CSS custom
+properties, listeners added per redraw, state nothing reads, and the page script's gzip size with its biggest files. It
+only reports; it fails when `comments.js` is over its gzip cap. `ci/waste-review.sh` adds an AI review of the report (see AGENT.md).
+
 ## The agent (run from your machine, from an up-to-date main)
 
 ```bash

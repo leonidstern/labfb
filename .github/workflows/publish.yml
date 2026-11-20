@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write # the vX.Y.Z tag
+  actions: write # starts waste.yml on that tag (a tag pushed with this token starts no workflow by itself)
   id-token: write # trusted publishing
 
 jobs:
@@ -53,6 +54,12 @@ jobs:
         env:
           V: v${{ steps.v.outputs.version }}
         run: git tag "$V" && git push origin "$V" || echo "tag $V already exists"
+
+      - name: Waste check on the tag
+        if: steps.v.outputs.release == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run waste.yml --ref "v${{ steps.v.outputs.version }}" || echo "couldn't start waste.yml (the release itself is out)"
 
       - name: GitHub release
         env:
