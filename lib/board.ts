@@ -74,8 +74,14 @@ export function place(board: Board): Board {
 
 // ---------- the files ----------
 export const dirOf = (root: string) => path.join(root, '.lab', 'boards');
-const fileOf = (root: string, name: string) => path.join(dirOf(root), `${name}.json`);
-export const frameFile = (root: string, name: string, id: string) => path.join(dirOf(root), name, `${id}.html`);
+// A name becomes a path here and nowhere else, and only a plain one does: "../../package" (from a command, or from the
+// board a pin says it was made on) reached any .json file of the project, which read() then moved aside as damaged.
+const safeName = (name: string) => {
+  if (!NAME.test(name)) throw new Error(`not a board name: ${String(name).slice(0, 80)}`);
+  return name;
+};
+const fileOf = (root: string, name: string) => path.join(dirOf(root), `${safeName(name)}.json`);
+export const frameFile = (root: string, name: string, id: string) => path.join(dirOf(root), safeName(name), `${id}.html`);
 const ser = (b: Board) => `{"v":1,"name":${JSON.stringify(b.name)},"rev":${b.rev}${b.title ? `,"title":${JSON.stringify(b.title)}` : ''}${b.of ? `,"of":${JSON.stringify(b.of)}` : ''},\n"frames":[\n${b.frames.map((f) => '  ' + JSON.stringify({ ...f, auto: undefined })).join(',\n')}\n]}\n`;
 export const writeAtomic = (file: string, text: string) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -84,6 +90,7 @@ export const writeAtomic = (file: string, text: string) => {
 };
 /** The stored board; null when there is none; a file that can't be read is put aside (never overwritten) and counts as none. */
 export function read(root: string, name: string): Board | null {
+  if (!NAME.test(name)) return null; // no board has such a name
   const file = fileOf(root, name);
   let text: string;
   try {

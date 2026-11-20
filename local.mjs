@@ -2578,7 +2578,7 @@ const handler = async (req, res) => {
     // ---------- boards: a variant's page, and the board's data (lib/board.ts) ----------
     // /_lab/board/<name> is the board page, /_lab/board/<name>/<frame> a variant's own page.
     if (pathname.startsWith('/_lab/board/') || pathname === '/_lab/api/board') {
-      const m = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]*)\/([a-z][a-z0-9]*)$/.exec(pathname);
+      const m = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})\/([a-z][a-z0-9]*)$/.exec(pathname);
       if (m && (req.method === 'GET' || req.method === 'HEAD')) {
         const file = B.frameFile(ROOT, m[1], m[2]);
         if (!fs.existsSync(file)) return notFound(req, res, pathname);
