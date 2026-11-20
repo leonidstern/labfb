@@ -23,7 +23,7 @@ export function replyIntent(opts: Opts): 'done' | 'working' | 'question' | undef
  *  description under each (--hint, right after the --choice it describes, optional), and which one the agent would take
  *  (0-based), or an error to show. undefined when no --choice is given. 2 to 6 choices, each one line. */
 const MAX_CHOICES = 6;
-export const MAX_HINT = 120;
+const MAX_HINT = 120;
 export function replyChoices(opts: Opts): { choices: string[]; recommend?: number; hints?: string[] } | undefined | Error {
   const given: unknown[] = Array.isArray(opts.choice) ? opts.choice : [];
   if (!given.length) {
