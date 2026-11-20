@@ -61,7 +61,9 @@ try {
       });
       const p = await ctx.newPage();
       await p.goto(B + '/');
-      await sleep(1500);
+      // The widget, however long a busy machine takes to start it (a fixed 1.5 s was too short with eight jobs at once).
+      await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.more-menu')), null, { timeout: 15000 });
+      await sleep(300);
       await p.evaluate(() => (window.labMark = 1)); // gone if the page reloads
       const r = () => p.evaluateHandle(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.more-menu'))?.shadowRoot);
       const menu = await (await r()).evaluate(async (root) => {
