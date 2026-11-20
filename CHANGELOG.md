@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Ink on selected words (the `inkOnText` experiment) is gone. Selecting words for a comment gives a pin on them, as it always did; an old `inkOnText` in a settings file gets the "not something being tried now" note and nothing else.
 - The server bundle (`dist/local.mjs`) gets the same name shortening the page script has (`scripts/build-cli.mjs`): the npm package is 1.7 KB smaller.
 - **Agent pins, six better.** The skill has a short part of its own for them (when to pin, one point per pin, about 8 an ask, read the selector from the file, say how many were left). A browser checks the selector of `labit pin`: the page the pin is on draws it, and when the selector matches nothing it marks the pin, and the command (it waits up to 3 s when a browser has the lab open; `--no-check` skips that) and the agent's next wait say `pin <id> matched nothing on /page: <selector>`; when it matches, the browser saves the element's tag, words, box and heading once, so the pin is found again after edits. With no browser open the pin is saved unchecked, and the command says so.
 - **Pins that ask.** `labit pin <selector> "text" --question`, or `--choice "A" --choice "B" --recommend B`, makes the pin itself an asking pin (amber ring); the first message of a thread can now carry choices, and the pick comes back in the next `wait` as `Picked B: …`. The server takes `intent: question` and `choices` on an agent's first message.

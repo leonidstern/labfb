@@ -1,6 +1,6 @@
 // Shared by the edge-draw*.mjs files (edge cases of drawing pins, pens and ink on words): one lab on its own folder
 // and port, the widget's root, a stroke with the mouse, a real pen through Chrome's devtools, and what the agent and
-// the store got. Not a test itself: run edge-draw1.mjs … edge-draw5.mjs, one at a time.
+// the store got. Not a test itself: run edge-draw1.mjs … edge-draw4.mjs, one at a time.
 //   NODE_PATH=<node_modules with playwright> ENGINES=chromium node test/browser/edge-draw1.mjs
 import fs from 'node:fs';
 import os from 'node:os';

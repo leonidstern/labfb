@@ -119,14 +119,10 @@ test('a pin found again on a changed page saves where it is now, and does not co
   assert.equal(comment.movedAt, undefined);
 });
 
-test('quote.selected and quote.tail are kept, other quote fields dropped', async () => {
+test('a quote keeps its words and the few around them; other quote fields are dropped, selected and tail (ink on words, removed) too', async () => {
   const quote = { exact: 'some selected words', prefix: 'before ', suffix: ' after', selected: true, tail: 'and the last words of a long one', evil: '<script>' };
   const { comment } = await (await call({ page: '/anna/site/ink', name: 'Ann', text: 'on words', anchor: { selector: 'p', kind: 'text', quote } }, { ip: '10.1.5.1' })).json();
-  assert.deepEqual(comment.anchor.quote, { exact: 'some selected words', prefix: 'before ', suffix: ' after', selected: true, tail: 'and the last words of a long one' });
-  const post = async (q, ip) => (await (await call({ page: '/anna/site/ink', name: 'Ann', text: 'x', anchor: { selector: 'p', kind: 'text', quote: q } }, { ip })).json()).comment.anchor.quote;
-  assert.equal((await post({ exact: 'word', selected: 'yes' }, '10.1.5.2')).selected, undefined, 'only true counts');
-  assert.equal((await post({ exact: 'word', tail: 'tail without a selection' }, '10.1.5.3')).tail, undefined, 'a tail goes with a selection');
-  assert.equal((await post({ exact: 'a b', selected: true, tail: 'x'.repeat(100) }, '10.1.5.4')).tail.length, 40, 'at most 40 characters');
+  assert.deepEqual(comment.anchor.quote, { exact: 'some selected words', prefix: 'before ', suffix: ' after' });
 });
 
 test('a page full of open threads refuses people, not admins; done threads leave room', async () => {
