@@ -11,6 +11,8 @@ let closed = 0; // event streams the dev server saw end
 const dev = http.createServer((req, res) => {
   const here = `http://localhost:${dev.address().port}`;
   if (req.url === '/old') return void res.writeHead(302, { location: here + '/new?x=1' }).end();
+  if (req.url === '/ip') return void res.writeHead(302, { location: `http://127.0.0.1:${dev.address().port}/new#h` }).end();
+  if (req.url === '/six') return void res.writeHead(302, { location: `http://[::1]:${dev.address().port}/new` }).end();
   if (req.url === '/away') return void res.writeHead(302, { location: 'https://example.com/' }).end();
   if (req.url === '/near') return void res.writeHead(302, { location: here + '0/x' }).end(); // another port, not this server
   if (req.url === '/latin') return void res.writeHead(200, { 'content-type': 'text/html; charset=iso-8859-1' }).end(Buffer.from('<!doctype html><html><head><title>t</title></head><body>caf\xe9</body></html>', 'latin1'));
@@ -52,6 +54,8 @@ test('a redirect to the dev server\'s own address stays on the lab; one to somew
     return res.headers.location;
   };
   assert.equal(await at('/old'), `http://localhost:${PORT}/new?x=1`);
+  assert.equal(await at('/ip'), `http://localhost:${PORT}/new#h`, 'the same server by its number');
+  assert.equal(await at('/six'), `http://localhost:${PORT}/new`);
   assert.equal(await at('/away'), 'https://example.com/');
   assert.equal(await at('/near'), `http://localhost:${dev.address().port}0/x`, 'an address that only starts the same is not the dev server');
 });

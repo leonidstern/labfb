@@ -8,6 +8,8 @@ import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:
 import type { Duplex } from 'node:stream';
 import { decoderFor } from './dev.ts';
 
+const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/;
+
 type ProxyOptions = {
   PROXY: URL;
   origin: () => string;
@@ -36,8 +38,11 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
       const encoded = r.headers['content-encoding'] && r.headers['content-encoding'] !== 'identity';
       const html = /text\/html/i.test(r.headers['content-type'] || '') && req.method === 'GET' && !encoded;
       // A redirect to the dev server's own address would take the person off the lab (no widget, no comments).
-      const to = r.headers.location;
-      if (to && (to === PROXY.origin || to.startsWith(PROXY.origin + '/'))) r.headers.location = origin + to.slice(PROXY.origin.length);
+      // localhost, 127.0.0.1 and [::1] on its port are all it: a server asked for as localhost often redirects to 127.0.0.1.
+      const to = r.headers.location && URL.canParse(r.headers.location) ? new URL(r.headers.location) : null;
+      if (to && to.protocol === PROXY.protocol && to.port === PROXY.port && (to.host === PROXY.host || (LOCAL.test(to.hostname) && LOCAL.test(PROXY.hostname)))) {
+        r.headers.location = origin + to.pathname + to.search + to.hash;
+      }
       if (!html) {
         res.writeHead(r.statusCode || 502, r.headers);
         return void r.pipe(res);
