@@ -140,8 +140,8 @@ try {
           await sleep(500);
         }
 
-        // A pin's card, tied to its pin (computers): it stays with it as the page scrolls, and opens above it near the
-        // screen's bottom.
+        // A pin's card, tied to its pin (computers): it stays with it as the page scrolls (off the screen with it),
+        // and opens above it near the screen's bottom.
         if (!phone && can.anchor) {
           const pinAt = () => inRoot(p, (r) => { const b = r.querySelector('button.pin').getBoundingClientRect(); return { x: b.left + 14, y: b.top + 14, top: b.top, bottom: b.bottom, left: b.left }; });
           let pin = await pinAt();
@@ -157,13 +157,23 @@ try {
           const c2 = await card();
           const pin2 = await pinAt();
           check(tag, '…and stays with it as the page scrolls', Math.abs(c2.top - Math.round(pin2.bottom) - 10) <= 2 && Math.abs(pin2.top - pin.top + 60) <= 2, JSON.stringify({ card: c2, pin: pin2 }));
-          // Near the screen's bottom: above its pin.
+          // Scrolled so its pin is near the screen's bottom: it stays below it, going off the screen with the page (it doesn't flip above).
           await p.evaluate(() => { const r = document.getElementById('mid').getBoundingClientRect(); scrollBy(0, r.top - innerHeight + 90); });
           await settle(p);
           await sleep(300);
           const c3 = await card();
           const pin3 = await pinAt();
-          check(tag, '…near the bottom of the screen it opens above its pin', c3.bottom <= Math.round(pin3.top) && c3.top >= 0, JSON.stringify({ card: c3, pin: pin3 }));
+          check(tag, '…and keeps its place below its pin near the bottom of the screen', Math.abs(c3.top - Math.round(pin3.bottom) - 10) <= 2, JSON.stringify({ card: c3, pin: pin3 }));
+          // Opened there, it goes above its pin.
+          await p.keyboard.press('Escape');
+          await sleep(400);
+          await p.mouse.click(pin3.x, pin3.y);
+          await untilRoot(p, (r) => Boolean(r.querySelector('.card:not(.out)')));
+          await settle(p);
+          await sleep(300);
+          const c4 = await card();
+          const pin4 = await pinAt();
+          check(tag, '…near the bottom of the screen it opens above its pin', c4.bottom <= Math.round(pin4.top) && c4.top >= 0, JSON.stringify({ card: c4, pin: pin4 }));
           await p.keyboard.press('Escape');
           await sleep(300);
         }
