@@ -179,7 +179,6 @@ button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; backgroun
 button.choice { display: flex; align-items: baseline; gap: 4px; width: 100%; margin: 0; padding: 7px 10px; border: 0; border-radius: var(--_r-s);
                 background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background var(--_fade); }
 button.choice::before { content: attr(data-l); flex: none; color: var(--_green-fg); } /* a) b) c) in green, the words' size, right beside them (Leo, 20 Nov: picker 5) */
-button.choice.on, button.choice.picked, button.choice.on:hover:not(:disabled, [aria-disabled]) { background: color-mix(in srgb, var(--_green) 15%, var(--_bg)); } /* the pick: a green tint, not the reply box's grey (5b) */
 button.choice:hover:not(:disabled, [aria-disabled]) { background: var(--_soft); }
 button.choice:disabled, button.choice[aria-disabled] { cursor: default; opacity: .4; } /* aria-disabled while a pick waits: a focused row keeps its focus */
 button.choice.now { color: var(--_muted); }
@@ -325,7 +324,9 @@ button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; colo
 .send.sent .arr { animation: lab-fly var(--_t-slow) var(--_ease); }
 @keyframes lab-fly { 45% { transform: translate(9px, -9px) scale(.6); opacity: 0; } 46% { transform: translate(-7px, 7px) scale(.6); opacity: 0; } }
 .msg { max-width: 85%; padding: 7px 10px; border-radius: var(--_radius); background: var(--_soft); align-self: flex-start; }
-.msg.mine { align-self: flex-end; background: color-mix(in srgb, var(--_green) 15%, var(--_bg)); color: var(--_fg); } /* yours: soft green, dark text */
+.msg.mine { align-self: flex-end; color: var(--_fg); } /* yours: soft green, dark text */
+/* One soft green: your bubbles, and a question's pick (not the reply box's grey, Leo's 5b) */
+.msg.mine, button.choice.on, button.choice.picked, button.choice.on:hover:not(:disabled, [aria-disabled]) { background: color-mix(in srgb, var(--_green) 15%, var(--_bg)); }
 .msg b { display: block; font-size: 12px; letter-spacing: 0; font-weight: 600; opacity: .7; margin-bottom: 1px; }
 /* Each agent's messages in its own brand colour: the name in it, the bubble a soft wash of it (Leo, 15 Nov). */
 .msg[data-agent=claude] { --_brand: #d97757; } .msg[data-agent=codex] { --_brand: #10a37f; } .msg[data-agent=cursor] { --_brand: #8a8a8e; }
