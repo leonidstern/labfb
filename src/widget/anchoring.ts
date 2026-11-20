@@ -80,7 +80,7 @@ type Anchor = {
 type Box = { left: number; top: number; width: number; height: number };
 
 /** Where a pin shows: its point, the area it marks (if any), and whether its spot changed. */
-type Spot = { left: number; top: number; zone: Box | null; moved?: boolean; clipped?: boolean };
+type Spot = { left: number; top: number; zone: Box | null; moved?: boolean; clipped?: boolean; hidden?: boolean };
 
 type Deps = {
   host: HTMLElement;
@@ -958,19 +958,23 @@ const pinOf = (zone, anchor) => ({ left: zone.left + (anchor.pinX ? zone.width :
 // phone, or a page that fills the window, it is where it was.
 const EDGE = 10;
 const GUTTER = 30; // a moved pin is 22 px wide: its right side stops 8 px short of the content
-function edgeFor(anchor) {
-  const beside = (rect) => Math.max(EDGE, Math.round(rect.left + scrollX - GUTTER));
+// The nearest box of a pin's path that is still on the page and passes `keep`.
+function holder(anchor, keep: (n: Element) => boolean): Element | null {
   const parts = String(anchor?.selector || '').split(' > ');
   while (parts.length > 1) {
     parts.pop();
-    let node = null;
+    let node: Element | null = null;
     try {
       node = document.querySelector(parts.join(' > '));
     } catch {}
-    if (!node || /^(html|body)$/.test(node.localName) || host.contains(node)) continue;
-    const rect = node.getBoundingClientRect();
-    if (rect.width) return beside(rect);
+    if (node && !/^(html|body)$/.test(node.localName) && !host.contains(node) && keep(node)) return node;
   }
+  return null;
+}
+function edgeFor(anchor) {
+  const beside = (rect) => Math.max(EDGE, Math.round(rect.left + scrollX - GUTTER));
+  const box = holder(anchor, (n) => n.getBoundingClientRect().width > 0);
+  if (box) return beside(box.getBoundingClientRect());
   const boxes = [...document.body.children]
     .filter((c) => c !== host && !host.contains(c))
     .map((c) => c.getBoundingClientRect())
@@ -979,11 +983,17 @@ function edgeFor(anchor) {
 }
 export function position(anchor) {
   const at = spotOf(anchor);
-  if (at.moved) return { ...at, left: edgeFor(anchor) };
+  // Why a pin is not plainly on its spot, for its look and its card: lost (a ghost stays where it stood), hidden (not shown
+  // right now: it is not lost), or a guess (unsure: look-alikes; changed: its words).
+  const doubt = (): 'unsure' | 'changed' | undefined => {
+    const { node, sure, alike } = anchor.element && anchor.selector ? proof(anchor) : ({} as Proof);
+    return node && !sure ? (alike ? 'unsure' : 'changed') : undefined;
+  };
+  if (at.moved) return { ...at, from: at.left, left: edgeFor(anchor), why: 'lost' };
   if (anchor.kind === 'board') return at;
   // A page's board view covers what is under it: the page's pins there hide (overlay.ts).
   const covered = coveredAt(at.left - scrollX, at.top - scrollY); // told apart, so a scroll under the view only asks this again
-  return { ...at, covered, clipped: covered || clippedAt(findTarget(anchor), at.left - scrollX - (anchor.sx || 0), at.top - scrollY) }; // a pin beside its line: its line's spot is what a scroll box hides
+  return { ...at, covered, why: at.hidden ? 'hidden' : doubt(), clipped: covered || at.hidden || clippedAt(findTarget(anchor), at.left - scrollX - (anchor.sx || 0), at.top - scrollY) }; // a pin beside its line: its line's spot is what a scroll box hides
 }
 /** A pin whose tip is at this screen point is under a page's board view: its tip, or its far corner (a pin with its tip
  * just past the view's edge still lay over the board). */
@@ -1029,7 +1039,10 @@ function spotOf(anchor): Spot {
     const board = (window as unknown as { __labBoard?: { name?: string; spot: (a: unknown) => Spot } }).__labBoard;
     return board && (!anchor.board || !board.name || board.name === anchor.board) ? board.spot(anchor) : { left: 0, top: 0, zone: null, clipped: true };
   }
+  if (anchor.gone) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY, anchor.docH || 0), zone: null, moved: true }; // the agent said its spot was removed (labit pin gone)
   const node = findTarget(anchor);
+  // On the page but not shown (a closed details or tab, display:none): hidden, not lost. It comes back with its element.
+  if (node && node.checkVisibility?.() === false) return { left: anchor.docX * docWidth(), top: inPage(anchor.docY, anchor.docH || 0), zone: null, hidden: true };
   const hasWords = anchor.quote?.exact;
   // Words straight in the page (findTarget never returns the page itself): looked for in the whole page.
   const box = node || (hasWords && /^<(body|html)[\s>]/.test(anchor.element || '') ? document.body : null);
@@ -1074,6 +1087,9 @@ function spotOf(anchor): Spot {
   if (words) return { ...words, zone: null };
   const left = anchor.docX * docWidth();
   const top = inPage(anchor.docY, anchor.docH || 0);
+  // Not built at the moment (a long scroll box builds only the rows in view): not here now is not gone.
+  const tag = /^<([\w-]+)/.exec(anchor.element || '')?.[1] || '';
+  if (!node && tag && holder(anchor, (n) => /auto|scroll/.test(getComputedStyle(n).overflowY) && n.scrollHeight > 1.5 * n.clientHeight && n.getElementsByTagName(tag).length > 4)) return { left, top, zone: null, hidden: true };
   const zone = anchor.docW ? { left, top, width: anchor.docW, height: anchor.docH } : null;
   if (zone) return { ...pinOf(zone, anchor), zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
   // Anchored to the page itself (a margin, or an area wider than any element): nothing has moved.
