@@ -130,8 +130,8 @@ try {
         return r?.querySelector('.float textarea')?.value;
       });
       check(eng, 'with the comment card open on words, the changed toggle key (h) is a letter, not a shortcut', typed === 'h' && (await look(p)).on === onBefore, `${typed}`);
-      // A question's rows (src/widget/thread.ts, V1 plain list): no keys on the card. J K, the arrows, 1 to 6 and Enter move
-      // nothing and keep nothing; a tap picks a row and Keep sends it.
+      // A question's rows (src/widget/thread.ts, V1 plain list): J K and the arrows move nothing; on a computer 1 to 6 pick
+      // that choice (A is 1) like a tap, with its 5 s of undo, unless a text box has the focus; a tap on a row does the same.
       const key = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
       const send = (body, agent) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, ...(agent ? { 'x-lab-admin': key, 'x-lab-agent': '1' } : {}) }, body: JSON.stringify({ page: '/ask', ...body }) }).then((r) => r.json());
       const asked = (await send({ name: 'leo', text: 'which?', anchor: { kind: 'element', selector: '#h', x: 0.5, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="h">' } })).comment;
@@ -141,27 +141,54 @@ try {
       await sleep(1200);
       const sh = (fn) => a.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot), fn);
       const row = () => sh('return [...r.querySelectorAll(".choice")].findIndex((x) => x.classList.contains("on"))');
+      const note = () => sh('return r.querySelector(".choices .note")?.textContent.trim()');
       const picks = async () => (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => c.picked);
       await sh('r.querySelector("button.pin").click()');
       await sleep(600);
-      check(eng, 'a question with no quoted words opens on its pick, the reply box focused (no keys on its rows)', (await row()) === 1 && (await sh('return r.activeElement?.localName === "textarea"')));
-      // In the reply box they type as usual and move nothing.
+      check(eng, 'a question with no quoted words opens on its pick; the reply box is not focused, so the digits are keys', (await row()) === 1 && !(await sh('return r.activeElement?.localName === "textarea"')));
+      await a.keyboard.press('r'); // R goes to the reply box
+      await sleep(200);
+      check(eng, 'R puts the cursor in the reply box', await sh('return r.activeElement?.localName === "textarea"'));
+      // In the reply box they type as usual and move nothing: no digit picks while a text box has the focus.
       await a.keyboard.type('jk26');
-      await a.keyboard.press('Enter');
+      await sleep(200);
+      check(eng, 'in the reply box J, K, 2 and 6 are typed, and pick nothing', (await sh('return r.activeElement.value')) === 'jk26' && (await row()) === 1 && (await picks()).length === 0 && (await note()) === '');
+      await sh('r.activeElement.value = ""; r.activeElement.blur()');
+      await sh('r.querySelectorAll(".choice")[1].focus()'); // the focus on a row, not a text box
+      for (const k of ['j', 'k', 'ArrowDown', 'ArrowUp']) await a.keyboard.press(k);
       await sleep(300);
-      const sent = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.some((c) => c.text === 'jk26' && !c.picked);
-      check(eng, 'in the reply box J, K, 2 and 6 are typed, and Enter sends the words, not a pick', sent && (await row()) === 1 && (await picks()).length === 0);
-      await sh('r.querySelectorAll(".choice")[1].focus()'); // the focus on a row: still no keys
-      for (const k of ['j', 'k', 'ArrowDown', 'ArrowUp', '3', '1']) await a.keyboard.press(k);
+      check(eng, 'J K and the arrows do nothing on the card', (await row()) === 1 && (await picks()).length === 0, String(await row()));
+      await a.keyboard.press('9'); // no ninth choice: nothing
+      await a.keyboard.press('4'); // no fourth choice: nothing
+      await sleep(200);
+      check(eng, '4 and 9 (no such choice) do nothing', (await note()) === '' && (await picks()).length === 0);
+      await a.keyboard.press('3');
+      await sleep(400);
+      check(eng, '3 picks the third choice like a tap: "Picked C · undo", nothing sent yet', (await note()) === 'Picked C · undo' && (await picks()).length === 0, await note());
+      await a.keyboard.press('1'); // while waiting, a digit changes nothing (undo first)
+      await sleep(200);
+      check(eng, 'a digit while a pick waits is ignored', (await note()) === 'Picked C · undo');
+      await sh('r.querySelector(".choices .note .btn.undo").click()');
       await sleep(300);
-      check(eng, 'J K, the arrows and 1 to 6 do nothing on the card', (await row()) === 1 && (await picks()).length === 0, String(await row()));
-      await sh('r.querySelectorAll(".choice")[2].click()');
-      await sleep(150);
-      check(eng, 'a tap ticks its row; Keep reads Keep and is on', (await row()) === 2 && (await sh('const k = r.querySelector("button.keep"); return k.textContent === "Keep" && !k.disabled')));
-      await sh('r.querySelector("button.keep").click()');
-      await sleep(800);
+      check(eng, 'undo puts the rows back; nothing sent', (await note()) === '' && (await row()) === 1 && (await picks()).length === 0);
+      await a.keyboard.press('1');
+      await sleep(5700);
       const got = await picks();
-      check(eng, 'Keep sends the row ticked', got.length === 1 && got[0].picked.n === 2 && got[0].picked.of === q.id, JSON.stringify(got.map((c) => c.picked)));
+      check(eng, '1 picks the first choice and sends after 5 s', got.length === 1 && got[0].picked.n === 0 && got[0].picked.of === q.id && /^Picked A: one/.test(got[0].text), JSON.stringify(got.map((c) => [c.picked, c.text])));
+      check(eng, 'no Keep button', await sh('return !r.querySelector("button.keep")'));
+      // A question in the page chat has no keys: 1 to 6 pick only the open thread card's question, so 1 keeps its pointer toggle.
+      await a.keyboard.press('Escape'); // the thread card closes
+      await sleep(300);
+      const chatRoot = (await send({ name: 'leo', text: 'and the footer?', anchor: { kind: 'page', width: 1000, height: 700, dpr: 1 } })).comment;
+      await send({ name: 'Claude', text: 'Footer: which?', parent: chatRoot.id, choices: ['Dark', 'Light'], recommend: 1 }, true);
+      await sleep(1200);
+      await sh('r.querySelector(".chat-btn, button[aria-label^=chat]")?.click()'); // the chat
+      await sleep(700);
+      const inChat = await sh('return r.querySelectorAll(".msgs .choices.live").length');
+      await a.keyboard.press('1');
+      await sleep(400);
+      check(eng, 'a question in the chat is not answered by 1 to 6', inChat === 1 && (await sh('return r.querySelector(".msgs .choices .note")?.textContent.trim()')) === '' && (await picks()).length === 1, String(inChat));
+      // With the pointer switched on by 1 (comment / pointer) when no question is open: 1 still toggles it.
       await a.close();
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/ask', action: 'delete', id: c.id }) });
       // Pause: no ⋯ menu row; holding ⌥ over a moving thing shows its control (pause · ¼ · ms) in its top right corner,

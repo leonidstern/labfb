@@ -37,7 +37,7 @@ import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
-import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
+import { bindThread, flushPick, grab, openAsk, pickByKey, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
@@ -535,7 +535,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
-        res = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ page: S.page, ...payload }) });
+        // A pick (thread.ts) may go as the page is hidden or closed: keepalive lets the request finish.
+        res = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ page: S.page, ...payload }), keepalive: payload.picked !== undefined });
       } catch {
         if (tries >= 150) throw new Error("couldn't reach the lab; your text is still here");
         await new Promise((r) => setTimeout(r, 2000));
@@ -962,6 +963,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // A question's choice tried in the page (thread.ts): the page's own words are back before anything is read or drawn;
     // the same card drawn again tries the same row again.
     pauseTry(S.on ? S.openId : null);
+    // A pick still in its 5 s of undo goes now if its card (or the chat) has closed.
+    flushPick(S.on ? S.openId : null, Boolean(S.on && S.chatOpen));
     S.grabbing = false; // a pin being dragged is replaced: its drag ends here
     S.dropDrag?.();
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
@@ -974,7 +977,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
-    readPins(threads().map((c) => (c.anchor && c.anchor.kind !== 'page' && c.anchor.kind !== 'board' && !places.get(c.id)?.moved ? findTarget(c.anchor) : null)));
+    readPins(threads().map((c) => (c.anchor?.kind === 'board' ? frameBox(c.anchor) : c.anchor && c.anchor.kind !== 'page' && !places.get(c.id)?.moved ? findTarget(c.anchor) : null)));
     // A pin that is still there stays the same element, updated in place, so what runs on it (the agent's ring, a pop, a
     // swap, a hover or open transition) carries on instead of starting again (Leo, 18 Nov: clicking or leaving a pin
     // "reloads" its animation). Everything else on the layer (cards, outlines, drafts) is drawn anew, as before; a pin
@@ -1916,6 +1919,12 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       setOn(!S.on);
       return;
     }
+    // 1 to 6 answer an open question with that choice (thread.ts): before 1 is comment / pointer, which it keeps when no
+    // question is open. Not while a text box has the focus.
+    if (S.on && !coarse && /^Digit[1-6]$/.test(e.code) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && !typing(e) && !inOtherWidget && pickByKey(Number(e.code.slice(5)))) {
+      e.preventDefault();
+      return;
+    }
     if (S.on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || '') || (!/^[a-z]$/i.test(e.key || '') && e.code === 'KeyZ')) && !typing(e) && !inOtherWidget && placed.length) {
       e.preventDefault();
       return void undoLast();
@@ -2774,13 +2783,18 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const nativeTie = () => !sheetMode.matches;
   // Held, its place is the browser's: the script writes none (it would make the next pin's reading lay the page out again);
   // a drawing still gets its size.
+  // A board pin's frame box, read with the other pins' elements before any pin is written (pinhold.ts readPins).
+  const frameBox = (a) => (a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null) || null;
   const placePin = (pin, c, zone, left, top, moved) => {
     const a = c.anchor || {};
     let held;
     if (a.kind === 'board') {
       // A board pin on a frame: tied to the frame's box by its share of it, so the board's camera carries it (pinhold.ts).
-      const box = a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null;
-      const share = box?.offsetWidth && box.offsetHeight ? { x: a.fx / box.offsetWidth, y: (a.fy || 0) / box.offsetHeight } : null;
+      // Its size from the board, not the box: reading the box after the last pin was written lays the page out again, once per pin.
+      const B = /** @type {any} */ (window).__labBoard;
+      const box = a.frame && a.fx !== undefined ? B?.box?.(a.frame) : null;
+      const size = box && (B.size?.(a.frame) || { w: box.offsetWidth, h: box.offsetHeight });
+      const share = size?.w && size.h ? { x: a.fx / size.w, y: (a.fy || 0) / size.h } : null;
       held = holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
     } else {
       const node = moved ? null : findTarget(a);
@@ -2802,7 +2816,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     const all = threads().filter((c) => c.anchor?.kind !== 'page');
     const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
     const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
-    readPins(places.map(([, , c]) => (c.anchor?.kind === 'board' ? null : findTarget(c.anchor || {}))));
+    readPins(places.map(([, , c]) => (c.anchor?.kind === 'board' ? frameBox(c.anchor) : findTarget(c.anchor || {}))));
     if (places.length + all.filter(skip).length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
     // A pin whose words show again (back after an edit) turns into ink again.
     if (places.some(([pin, { zone }, c]) => !zone && !pin.classList.contains('on-ink') && inkRange(c.anchor))) return render();
