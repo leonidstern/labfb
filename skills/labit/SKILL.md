@@ -61,7 +61,7 @@ When the person says "use lab", "in lab" or "show it in lab", show the page in l
 
 A lab page never goes off the lab with the widget. The widget needs the lab server (`/_lab/api/comments`, `/_lab/live`), so as an Artifact or on static hosting it only shows "reconnecting" and "could not save", and no pin reaches you. When the person does ask for an Artifact or hosted copy of a lab page: publish the page's own source file, not the HTML fetched from the lab (the lab adds the widget script, the section bar and the admin token when it serves). If only served HTML exists, remove `comments.js`, the `data-lab` style and script, `data-admin` and the `/_lab/` links, and inline `lab.css` if the page uses its `--lab-*` tokens. Say it is a read-only copy: pins and replies stay on the local lab.
 
-Start local, always. The page stays on this computer (for a phone, add `--wifi`, then run `LAB invite` and give the person the link it prints: it lets one device in, once, within ten minutes). labit has no hosted labs for now, so to share a page with someone elsewhere, ask the person how they want it shared. Make an Artifact only if they ask for one.
+Start local, always. The page stays on this computer (for a phone, run `LAB invite` and give the person the link it prints: it lets one device in, once, within ten minutes. If the lab is local only, the invite turns wifi on in that same lab, which restarts for a moment on the same address with its pins and your wait intact. Never start a second lab or a copy of a page for a phone: its pins would be separate from this lab's). labit has no hosted labs for now, so to share a page with someone elsewhere, ask the person how they want it shared. Make an Artifact only if they ask for one.
 
 ## Boards (options, widths, flows)
 
