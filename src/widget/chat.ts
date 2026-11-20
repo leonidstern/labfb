@@ -19,6 +19,8 @@ export const stamped = (bubble, stamp) => {
   const room = stamp.cloneNode(true);
   room.classList.replace('stamp', 'stamp-room'); // its other classes stay, so it keeps the stamp's width
   room.setAttribute('aria-hidden', 'true');
+  room.querySelector('.state')?.remove(); // the words go under the bubble: no room for them in it
+  bubble.classList.toggle('waits', Boolean(stamp.querySelector('.state')));
   for (const n of room.querySelectorAll('[role]')) n.removeAttribute('role');
   const last = [...bubble.children].reverse().find((n) => n.classList?.contains('p'));
   (last || bubble).append(room);

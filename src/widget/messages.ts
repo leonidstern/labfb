@@ -23,9 +23,7 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
   const at = new Date(m.createdAt);
   const time = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' });
   const stamp = el('span', { class: 'stamp' });
-  const say = el('span', { class: 'say' }); // the words before the time (waiting · 1st in line · …): their room is kept, so the bubble doesn't resize as they change
-  const tm = el('span', { class: 'tm' }, prefix + time);
-  stamp.append(tm);
+  stamp.append(el('span', { class: 'tm' }, prefix + time));
   if (mine(m) && !m.session) {
     const thread = root ? [root, ...repliesOf(root.id)] : [m];
     const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
@@ -44,12 +42,16 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
     } else {
       const got = root?.handedAt && root.handedAt >= m.createdAt;
       stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, role: 'img', 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
-      if (sg?.s === 'wait') say.textContent = `waiting · ${ord(sg.n)} in line · `;
-      if (sg?.s === 'missed') say.textContent = 'not answered · ';
     }
-    // With an agent listening, the room stays whatever the state until it is answered: sent, handed over, waiting, on it.
-    // The words came and went and the bubble grew and shrank with them (Leo, 20 Nov: "its jumping and moving things").
-    if (!answered && latest && root && (!d.S.unheard || say.textContent)) stamp.prepend(say);
+    // Until it is answered, where it stands says so in words on one line of its own under the bubble, like a messenger's
+    // "Delivered". In the corner beside the time the words came and went, and the bubble grew and shrank with them (Leo,
+    // 20 Nov: "its jumping and moving things"). The line is always there while it waits, so only its words change.
+    // With no agent listening there is nothing to say yet, and no line.
+    if (!answered && latest && root && (sg || !d.S.unheard)) {
+      const got = root.handedAt && root.handedAt >= m.createdAt;
+      const words = { now: 'on it', stale: 'quiet for a while', wait: `waiting · ${ord(sg?.n ?? 0)} in line`, missed: 'not answered' }[sg?.s as string] || (got ? 'picked up' : 'sent');
+      stamp.append(el('span', { class: 'state' }, words));
+    }
   }
   return stamp;
 };

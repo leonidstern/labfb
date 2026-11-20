@@ -340,8 +340,6 @@ button.btn.undo { color: var(--_fg); }
 .msg .stamp { text-indent: 0; color: inherit; position: absolute; right: 10px; bottom: 6px; font-size: 10px; letter-spacing: .012em; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
 .msg .stamp-room { text-indent: 0; visibility: hidden; display: inline-block; margin-left: 10px; font-size: 10px; letter-spacing: .012em; line-height: 1; height: 10px; white-space: nowrap; }
 .msg .stamp-room * { font-size: inherit; }
-.msg :is(.stamp, .stamp-room) { white-space: nowrap; } /* one line, whatever the words say */
-.msg :is(.stamp, .stamp-room) .say { font-size: inherit; line-height: inherit; color: inherit; display: inline-block; min-width: 22ch; text-align: right; white-space: pre; vertical-align: top; } /* room for "waiting · 10th in line · ", empty or full */
 .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* ✓ drawn as tall as the time's digits */
 .msg .tick.got { font-weight: 600; }
 /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
@@ -355,6 +353,13 @@ button.btn.undo { color: var(--_fg); }
 .msg :is(.stamp, .stamp-room) .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
 .msg :is(.stamp, .stamp-room) .ring { margin: .5px 1.5px 0 5.5px; vertical-align: top; } /* the same 10 px tall as a ✓, so the bubble keeps its height */
 .msg .stamp { height: 10px; }
+/* Your message still waiting for its answer: where it stands, in words, on a line of its own under the bubble (sent,
+   picked up, waiting · 1st in line, on it). The bubble keeps room below for it, so as the words change nothing moves.
+   Seen in the chat too, whose bubbles otherwise clip what is outside them (content-visibility). */
+.msg.waits { margin-bottom: 15px; } .msgs > .msg.waits { content-visibility: visible; }
+.msg .stamp .state { position: absolute; top: calc(100% + 9px); right: -6px; font-size: 10px; line-height: 12px; letter-spacing: .012em;
+                     white-space: nowrap; color: inherit; font-variant-numeric: tabular-nums; }
+.msg .stamp:is(.busy, .ans) .state { opacity: .55; } /* the stamp's own .55 is lifted while busy: the words stay as muted */
 .bar button * { color: inherit; font-weight: inherit; }
 .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
 .bar button.secondary { color: var(--_muted); } /* words stay grey; the count says what is new */
