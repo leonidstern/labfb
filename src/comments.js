@@ -12,6 +12,7 @@ import {
   drawZone,
   foundAt,
   fillAt,
+  spotChanged,
   goToBlock,
   inPage,
   ease,
@@ -417,7 +418,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (c.resolved || looked.has(c.id) || !(S.isAdmin || edit) || !c.anchor?.selector) continue;
       looked.add(c.id);
       const anchor = foundAt(c.anchor);
-      if (anchor) send({ action: 'move', id: c.id, found: true, anchor, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
+      // Its words or element were changed or taken away (the agent's edit): the lab says so on the pin's next wait.
+      const changed = spotChanged(c.anchor);
+      if (anchor || changed) send({ action: 'move', id: c.id, found: true, ...(anchor ? { anchor } : {}), ...(changed ? { changed } : {}), edit }).then(({ comment }) => Object.assign(c, comment), () => {});
       // An agent's pin made from a selector (labit pin): it learns what a person's pin carries, once, so it survives edits;
       // or, when its selector finds nothing, it says so (the agent is told), and fills in when it is found later.
       if (c.session && !anchor && !c.anchor.element) {
@@ -528,6 +531,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     }
     S.draft = { anchor };
     keepSpot(anchor);
+    ptr.classList.add('still'); // the new pin is where the drawn pointer is: it goes at once (it faded over the pin), back with the next move
     render();
   }
   // Sent once the lab answers: while it can't be reached (restarting, the laptop just woke), the message waits and is
@@ -2928,6 +2932,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const recheck = () => S.mouse && requestAnimationFrame(() => S.mouse && place(S.mouse.x, S.mouse.y, document.elementFromPoint(S.mouse.x, S.mouse.y)));
   addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
+    ptr.classList.remove('still');
     document.documentElement.classList.add('lab-drawn');
     S.mouse = { x: e.clientX, y: e.clientY };
     const t = e.composedPath()[0];

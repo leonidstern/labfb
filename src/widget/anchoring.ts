@@ -637,11 +637,8 @@ function around(target: Element): Pick<Anchor, 'inside' | 'section' | 'block'> {
   const out: Pick<Anchor, 'inside' | 'section' | 'block'> = {};
   const inside = target.parentElement?.closest<HTMLElement>('[id], [data-lab]');
   if (inside) out.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
-  let heading = null;
-  for (const h of document.querySelectorAll('h1, h2, h3')) {
-    if (h.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(target)) heading = h;
-  }
-  if (heading) out.section = short(heading.textContent, 100);
+  const section = sectionIn(target);
+  if (section) out.section = section;
   for (let b: Element | null = target; b && b !== document.body && b !== document.documentElement; b = b.parentElement) {
     if (b.id) {
       out.block = b.id;
@@ -661,6 +658,13 @@ export function fillAt(anchor) {
   const out: Partial<Anchor> = { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height), element: openingTag(node), ...around(node) };
   if (node !== document.body && (node.textContent || '').length < 400 && !anchor.quote) out.text = short(node.textContent, 80);
   return out;
+}
+
+// The heading text of the section an element sits in: the last heading before it (or around it).
+function sectionIn(n, headings = [...document.querySelectorAll('h1, h2, h3')]) {
+  let heading = null;
+  for (const h of headings) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
+  return heading ? short(heading.textContent, 100) : '';
 }
 
 // The stored selector can point at a different element after a redeploy; check it against the
@@ -689,11 +693,12 @@ export function findTarget(anchor) {
     return true;
   };
   const said = short(anchor.text, 400);
-  const sectionOf = (n) => {
-    let heading = null;
-    for (const h of document.querySelectorAll('h1, h2, h3')) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
-    return heading ? short(heading.textContent, 100) : '';
-  };
+  const headings = [...document.querySelectorAll('h1, h2, h3')];
+  const sectionOf = (n) => sectionIn(n, headings);
+  // Its section still exists on the page: then the pin stays in it. Only when the heading is gone altogether (renamed,
+  // removed) may the pin be found in another section.
+  const kept = Boolean(anchor.section) && headings.some((h) => short(h.textContent, 100) === anchor.section);
+  const here = (n) => !kept || sectionOf(n) === anchor.section;
   const squash = (t) => String(t || '').replace(/\s+/g, '');
   const areaWords = squash(anchor.zoneText).slice(0, 30);
   // The element at the old path is only the same one if it still says the same: its words, an area's words, or at
@@ -760,12 +765,21 @@ export function findTarget(anchor) {
   }
   scopes.sort((a, b) => (a.contains(b) ? 1 : b.contains(a) ? -1 : 0)); // the smaller box first
   for (const scope of scopes) {
-    const { found, best } = pick(some([scope, ...scope.querySelectorAll(tag)].filter((n) => n.localName === tag)));
+    const { found, best } = pick(some([scope, ...scope.querySelectorAll(tag)].filter((n) => n.localName === tag && here(n))));
     if (best > 0) return found;
   }
-  const twins = some([...document.querySelectorAll(tag)]);
+  const all = some([...document.querySelectorAll(tag)]);
+  const twins = all.filter(here);
   const { found, best } = pick(twins);
-  if (best > 0 || !atPath) return found;
+  if (best > 0) return found;
+  // Its words are on the page in another section only (the twin of an edited word): that one is not it. The element at
+  // its old path, if still in its section, or else the nearest of its kind there, is; never the twin in the other section.
+  if (kept && pick(all).best > 0) {
+    if (atPath && here(atPath)) return atPath;
+    const away = (n) => Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
+    return twins.reduce((a, n) => (!a || away(n) < away(a) ? n : a), null);
+  }
+  if (!atPath) return found;
   // Nothing says the same. A lone element of its kind is still it (the words were edited, say). Among several
   // (cards reordered, one removed) the one at the old path is just whichever came to sit there: the pin shows as
   // moved instead of landing on the wrong card.
@@ -951,8 +965,25 @@ export function foundAt(anchor) {
     at = document.querySelector(anchor.selector);
   } catch {}
   if (!node || node === at) return null;
+  // Never saved into another section than the pin's own: that would move it silently (it stays shown there, unsaved).
+  if (anchor.section && sectionIn(node) !== anchor.section) return null;
   const rect = node.getBoundingClientRect();
   return { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height) };
+}
+
+// A pin whose words or element were changed or removed on the page (the agent edited the file; a hot patch): what it said
+// and where it sits now, for the widget to tell the lab, so the agent's next wait says it ("check it still fits, or
+// re-pin"). Null when its words are still there. The pin itself stays open and where findTarget puts it.
+export function spotChanged(anchor) {
+  if (!anchor.selector || anchor.kind === 'board' || anchor.kind === 'page') return null;
+  const was = short(anchor.quote?.exact || anchor.text || anchor.zoneText || '', 80);
+  const node = findTarget(anchor);
+  if (!node) return position(anchor).moved && was ? { was, gone: true } : null;
+  const said = short(anchor.text, 400);
+  const same = anchor.quote?.exact ? Boolean(quoteRange(anchor, node)) : !said || short(node.textContent, 400).startsWith(said.slice(0, 40));
+  if (same) return null;
+  const now = sectionIn(node);
+  return { was, now: short(node.textContent, 80), element: openingTag(node), ...(anchor.section && now !== anchor.section ? { away: true, in: now } : {}) };
 }
 
 // An element's letters without spaces, each with its text piece and place in it; read once per moment and shared by

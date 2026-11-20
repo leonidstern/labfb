@@ -1639,7 +1639,7 @@ function threadText(page, root, replies, fresh, spot, when) {
 // handed to a wait is marked with the stamp it had (handoff[id][0]), so a comment counts as new until it itself has
 // been handed over: a single "seen up to" time could skip one that a batch left out. `seen` is only the line for
 // comments from before these marks.
-const stamp = (c) => [c.createdAt, c.movedAt].filter(Boolean).sort().pop(); // new when written or moved
+const stamp = (c) => [c.createdAt, c.movedAt, c.spotChange?.at].filter(Boolean).sort().pop(); // new when written, moved, or its words were changed
 const rulesOnce = () => {
   const rules = rulesText();
   const who = session?.id || session?.name || '';

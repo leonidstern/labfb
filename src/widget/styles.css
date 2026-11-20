@@ -58,8 +58,15 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 button.pin:hover { transform: scale(1.03); box-shadow: 0 0 0 1.5px var(--_green-fg), 0 3px 10px rgba(0,0,0,.16); }
 button.pin:active { transform: scale(1.03); } /* no press movement: it stays as hovered */
 /* The open one only gets the green edge, no lift: clicking away then changes nothing but the edge (Leo, 18 Nov). */
-button.pin.open:not(:hover) { box-shadow: 0 0 0 1.5px var(--_green-fg), 0 2px 8px rgba(0,0,0,.16); }
+button.pin.open, button.pin.open:is(:hover, :active) { box-shadow: 0 0 0 1.5px var(--_green-fg), 0 2px 8px rgba(0,0,0,.16); }
+/* Its card is tied to the pin (thread.ts tieToPin), and the browser reads the pin's box as drawn, scale included: a lift
+   on the open pin moved the card with every touch of its edge (and flipped it above and below near the screen's end).
+   So it never lifts, and goes from the lift to rest without a transition: the card is placed from the pin at rest. */
+button.pin.open:not(.dragging), button.pin.open:not(.dragging):is(:hover, :active) { transform: none; transition-property: opacity; }
 .pin.in { animation: lab-pin var(--_t-base) var(--_ease); }
+/* A pin its card is tied to (the new comment's box, an open thread) doesn't pop or bounce: the browser reads the pin's box as
+   drawn, so the card followed the scale for 200 ms, ~3 px down, and snapped the last 2 px when it ended (WebKit). */
+.pin.in:is(.draft, .open) { animation: none; }
 /* Phones: as the sent card slides away its new pin pops in from 70% with a small overshoot, and one green ring leaves
    it: sent (lab option 5, Leo 17 Nov). */
 .pin.arrive { animation: lab-arrive calc(var(--_t-slow) * 1.25) var(--_ease-pop) both; }
@@ -69,7 +76,8 @@ button.pin.arrive::before { content: ''; position: absolute; inset: 0; border-ra
 /* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
    lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
 .pin.swap { animation: lab-swap var(--_t-base) var(--_ease); }
-@keyframes lab-swap { from { transform: scale(.9); opacity: .5; } } /* a quiet change of face */
+@keyframes lab-swap { from { transform: scale(var(--_swap-from, .9)); opacity: .5; } } /* a quiet change of face */
+.pin.swap.open { --_swap-from: 1; } /* its card is tied to it: the face fades, the pin holds still */
 .pin .ring.gone { animation: lab-gone var(--_t-slow) var(--_ease-in) forwards; }
 @keyframes lab-gone { to { opacity: 0; } }
 /* A new comment lands with one faint halo from its pin. */
@@ -148,6 +156,7 @@ button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; backgroun
        display: grid; place-items: center; pointer-events: none; z-index: 2147483647; opacity: 0; will-change: transform;
        transition: opacity var(--_t-quick) var(--_ease-out), background-color var(--_t-quick) var(--_ease-out); }
 .ptr.show { opacity: 1; }
+.ptr.still { opacity: 0; transition: none; } /* a pin was just placed under it: gone at once, not a fade over the new pin */
 .ptr span { grid-area: 1 / 1; font-size: 12px; letter-spacing: 0; font-weight: 600; line-height: 1; transition: opacity var(--_t-quick) var(--_ease-out), transform var(--_t-quick) var(--_ease-out); }
 .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                   background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
