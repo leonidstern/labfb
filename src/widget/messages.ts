@@ -42,8 +42,15 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
     } else {
       const got = root?.handedAt && root.handedAt >= m.createdAt;
       stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, role: 'img', 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
-      if (sg?.s === 'wait') stamp.firstChild!.textContent = `waiting · ${ord(sg.n)} in line · ${prefix}${time}`;
-      if (sg?.s === 'missed') stamp.firstChild!.textContent = `not answered · ${prefix}${time}`;
+    }
+    // Until it is answered, where it stands says so in words on one line of its own under the bubble, like a messenger's
+    // "Delivered". In the corner beside the time the words came and went, and the bubble grew and shrank with them (Leo,
+    // 20 Nov: "its jumping and moving things"). The line is always there while it waits, so only its words change.
+    // With no agent listening there is nothing to say yet, and no line.
+    if (!answered && latest && root && (sg || !d.S.unheard)) {
+      const got = root.handedAt && root.handedAt >= m.createdAt;
+      const words = { now: 'on it', stale: 'quiet for a while', wait: `waiting · ${ord(sg?.n ?? 0)} in line`, missed: 'not answered' }[sg?.s as string] || (got ? 'picked up' : 'sent');
+      stamp.append(el('span', { class: 'state' }, words));
     }
   }
   return stamp;
