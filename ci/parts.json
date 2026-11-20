@@ -5,19 +5,24 @@
     "chat.ts": "the chat sheet",
     "components.ts": "which component drew an element (React, Vue, Svelte), for a pin; its own file (public/_lab/components.js), loaded only on a page a framework drew",
     "composer.ts": "the text box for a comment or a reply, and its send button",
-    "fluid.ts": "selected words: the actions bar and the comment dialog that grows out of it and lands on the words (the dialog is the thread card's box; on phones the bottom sheet)",
+    "frame.ts": "a page inside a board's frame: draws nothing, binds nothing; keeps live updates and passes keys to the board",
     "hold.ts": "a dev server's reload waits while a sheet is open",
+    "pinhold.ts": "pins the browser holds on their element with CSS anchor positioning (flag native): no script on scroll",
+    "ink.ts": "drawing pins (hold D and drag): the lines as they are drawn and over a saved drawing, and the drawing as an area comment",
+    "draw.ts": "what a drawing's lines read as (circled, arrow, underlined…); its own file (public/_lab/draw.js), loaded when D is first pressed",
+    "wordink.ts": "ink on selected words (flag inkOnText): the band under the words that shows a comment's state instead of a pin",
     "list.ts": "the list of pins (a sheet on phones)",
     "live.ts": "the live stream: listening badge, mode, who is heard",
     "messages.ts": "one message in a thread or the chat",
-    "select.ts": "select mode (flag select): V picks the block under a click, and its bar sends the agent what to do with it",
-    "sections.ts": "the section bar (flag sectionBar): each section with a heading, current one filled, new and updated marked, read kept per person in the lab",
+    "actions.ts": "action buttons: a data-lab-action element on the page opens a comment with its words, the agent acts on it",
+    "sections.ts": "the section bar: each section with a heading, current one filled, new and updated marked, read kept per person in the lab",
     "sheets.ts": "THE drawer: every sheet on a phone (handle, swipe down, dimmed page, keyboard fit, back closes). Any new panel on a phone uses it.",
     "stick.ts": "a message list that stays at its newest while it shrinks (keyboard up) until you scroll back; used by the chat and a thread",
     "styles.css": "the widget's one stylesheet",
     "switcher.ts": "labs & pages (⌘K): a box on a computer, one of the sheets on a phone; built as its own file (public/_lab/switcher.js), loaded on the first ⌘K or ⋯ open",
     "switcher.css": "the styles of switcher.ts, which brings them with it",
     "thread.ts": "a pin's thread card",
+    "trial.ts": "a question's choices tried in the sentence: the differing words swapped in place, the block's height held, the page put back exactly",
     "types.d.ts": "types shared by the modules"
   },
   "animations": [
@@ -27,7 +32,6 @@
     "lab-turn",
     "lab-draw",
     "lab-ready",
-    "lab-rise",
     "lab-fly",
     "lab-twitch",
     "lab-fade",
@@ -35,7 +39,10 @@
     "lab-out",
     "lab-pin",
     "lab-halo",
-    "lab-card-in"
+    "lab-card-in",
+    "lab-ink-pulse",
+    "lab-ink-settle",
+    "lab-undo"
   ],
   "$where": "Files that may own a part: the drawer's gestures and keyboard fit live in sheets.ts (comments.js wires them up).",
   "gestures": [
@@ -45,5 +52,27 @@
   "keyboardFit": [
     "sheets.ts",
     "comments.js"
-  ]
+  ],
+  "values": {
+    "$comment": "Values written into a rule on purpose (ci/reuse.mjs part 6). Everything else comes from a token. Add one here with why, in the pull request that needs it.",
+    "colours": {},
+    "radii": {
+      "14px 14px 14px 2px": "the pin: a teardrop, its tail at the bottom left (28 px)",
+      "11px 11px 11px 2px": "the pin glyph in the bar: the same teardrop at 22 px",
+      "18px 18px 18px 6px": "the ring around a pin: the teardrop 4 px out, concentric",
+      "2px": "the grab handle: a 4 px tall pill",
+      "8px": "the switch in the ⋯ menu: a 16 px tall pill",
+      "12px": "the switch knob: a 12 px circle"
+    },
+    "motion": {
+      "0ms !important": "reduced motion: every animation runs at once"
+    },
+    "code": {
+      "anchoring.ts: rgb(1, 2, 3)": "a sentinel colour to tell whether the page set one, never drawn",
+      "comments.js: rgba(52, 199, 89, .3)": "the selection highlight, drawn in the page document where the widget tokens are not",
+      "wordink.ts: #24a046": "ink on words: the pins' green (selecting, draft, sent, done), a highlight in the page document where the widget tokens are not",
+      "wordink.ts: #34c759": "ink on words: working's green, a highlight in the page document where the widget tokens are not",
+      "wordink.ts: #e08a1a": "ink on words: asks' amber, a highlight in the page document where the widget tokens are not"
+    }
+  }
 }

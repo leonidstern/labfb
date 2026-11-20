@@ -1,12 +1,16 @@
 /* Labs & pages (⌘K, src/widget/switcher.ts, which brings this sheet with it into the shadow root, after the widget's
    own styles): a box over the page on a computer, a card sheet on a phone. */
 .switch { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+/* A computer: a popover covering the screen as before, without the browser's own box. */
+.switch[popover] { inset: 0; width: auto; height: auto; max-width: none; max-height: none; margin: 0; border: 0; padding: 0; background: none; color: inherit; overflow: visible; }
+/* ...and kept displayed, in the top layer, for the length of its exit when the browser closes it: the card's leaving plays (display and overlay as discrete steps; a browser without overlay shows no exit, as before). */
+.switch[popover] { transition: display var(--_t-quick) allow-discrete, overlay var(--_t-quick) allow-discrete; }
 .sw-box { pointer-events: auto; }
 /* The page behind dims with the widget's own .scrim (a click there closes it, as it closes a sheet). */
 :host([data-labs]) .scrim { display: block; background: rgba(0, 0, 0, .18); }
 :host([data-labs]) .hint { visibility: hidden; }
 .sw-box { position: absolute; left: 50%; top: 12vh; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); max-height: 70vh;
-  display: flex; flex-direction: column; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-fade var(--_fade); }
+  display: flex; flex-direction: column; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-in var(--_t-base) var(--_ease); } /* rises as a card does */
 .sw-box input { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 14px 16px 12px; font-size: 16px; color: var(--_fg); border-bottom: var(--_hair); }
 .sw-box input::placeholder { color: var(--_muted); }
 .sw-box a { cursor: default; } /* no hand in this box: its buttons show the arrow by default, its links need it said */
@@ -16,7 +20,7 @@
 .sw-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 5px; font-size: 12px; color: var(--_muted); min-width: 0; white-space: nowrap; }
 .sw-port, .sw-path { font-size: 12px; color: var(--_muted); }
 .sw-name b { color: var(--_fg); font-weight: 600; font-size: 13px; }
-.sw-row.armed .sw-m { color: rgb(196, 60, 40); } /* ⇧⌥A once: archiving the whole lab waits for a second press */
+.sw-row.armed .sw-m { color: var(--_red); } /* ⇧⌥A once: archiving the whole lab waits for a second press */
 .sw-row { display: flex; justify-content: space-between; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 7px 10px;
   border-radius: var(--_r-s); font-size: 14px; color: var(--_fg); }
 .sw-row.on, .sw-row:hover { background: var(--_soft); }

@@ -3,10 +3,9 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { LAB, claimPort, tmp as folder, rm, sleep } from './harness.mjs';
 import { loadSettings, savePersonalFlag } from '../lib/settings.ts';
 import { FLAGS, flagDefaults, flagsOn } from '../lib/flags.ts';
 
@@ -14,10 +13,10 @@ const dirs = [];
 const kids = [];
 after(() => {
   for (const k of kids) k.kill();
-  for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+  rm(dirs);
 });
 const tmp = () => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-flags-')));
+  const d = fs.realpathSync(folder('flags'));
   dirs.push(d);
   return d;
 };
@@ -60,17 +59,27 @@ test('a flag that is not true or false is ignored, with a word about it', { skip
   assert.equal(s.values.flags[one], false);
 });
 
-test('sectionBar is off until switched on, and the widget starts nothing without it', () => {
-  assert.equal(flagDefaults().sectionBar, false);
-  assert.ok(FLAGS.sectionBar.name && FLAGS.sectionBar.since);
+test('sectionBar was kept: no flag, and the widget always starts the section bar, in one place', () => {
+  assert.ok(!('sectionBar' in FLAGS), 'kept: the flag is gone');
   assert.ok(!('sinceLooked' in FLAGS), 'the Added pill is gone');
   const dir = tmp();
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: true } }));
-  assert.deepEqual(flagsOn(read(dir).values.flags), ['sectionBar']);
+  const s = read(dir);
+  assert.match(s.problems[0], /sectionBar is not something being tried/, 'an old file is told, not refused');
   // The widget's only way in: the bar, the kept marks and every request come from startSections().
   const widget = fs.readFileSync(new URL('../src/comments.js', import.meta.url), 'utf8');
-  assert.match(widget, /name === 'sectionBar'\) startSections\(\)/);
+  assert.match(widget, /load\(\);\n\s+startSections\(\);/);
   assert.equal(widget.match(/startSections\(/g).length, 1, 'started in one place only');
+});
+
+test('inkOnText is a flag, off until a file turns it on (the page side is test/browser/ink.mjs)', () => {
+  assert.ok(FLAGS.inkOnText);
+  const dir = tmp();
+  assert.equal(read(dir).values.flags.inkOnText, false);
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { inkOnText: true } }));
+  const s = read(dir);
+  assert.equal(s.values.flags.inkOnText, true);
+  assert.deepEqual(s.problems, []);
 });
 
 // Your own settings file, in a config home of its own (the switch writes where XDG_CONFIG_HOME says).
@@ -84,45 +93,46 @@ const withConfig = (cfg, fn) => {
   }
 };
 const mine = (cfg) => path.join(cfg, 'labit', 'settings.json');
+// No flag in your settings (a lab writes your actions there once when it starts, lib/actions.ts; that is not a switch).
+const noFlags = (cfg) => !fs.existsSync(mine(cfg)) || !('flags' in JSON.parse(fs.readFileSync(mine(cfg), 'utf8')));
 
 test('a switch is saved in your own settings, keeps the rest of the file, and off leaves no trace', () => {
   const cfg = tmp();
   fs.mkdirSync(path.join(cfg, 'labit'));
   fs.writeFileSync(mine(cfg), JSON.stringify({ name: 'Leo', shortcuts: { chat: 'x' } }));
-  const file = withConfig(cfg, () => savePersonalFlag('sectionBar', true));
+  const file = withConfig(cfg, () => savePersonalFlag('inkOnText', true));
   assert.equal(file, mine(cfg));
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { name: 'Leo', shortcuts: { chat: 'x' }, flags: { sectionBar: true } });
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { name: 'Leo', shortcuts: { chat: 'x' }, flags: { inkOnText: true } });
   const s = withConfig(cfg, () => loadSettings(tmp(), {}, {}));
-  assert.equal(s.values.flags.sectionBar, true);
-  assert.equal(s.flagFrom.sectionBar, 'personal');
-  withConfig(cfg, () => savePersonalFlag('sectionBar', false));
+  assert.equal(s.values.flags.inkOnText, true);
+  assert.equal(s.flagFrom.inkOnText, 'personal');
+  withConfig(cfg, () => savePersonalFlag('inkOnText', false));
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { name: 'Leo', shortcuts: { chat: 'x' } });
   assert.throws(() => withConfig(cfg, () => savePersonalFlag('wasKeptLastYear', true)), /not something being tried/);
 });
 
 test('a switch makes your settings file when there is none, and never writes over one that is not JSON', () => {
   const cfg = tmp();
-  withConfig(cfg, () => savePersonalFlag('sectionBar', true));
-  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { sectionBar: true } });
+  withConfig(cfg, () => savePersonalFlag('inkOnText', true));
+  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { inkOnText: true } });
   fs.writeFileSync(mine(cfg), '{ "name": "Leo", }');
-  assert.throws(() => withConfig(cfg, () => savePersonalFlag('sectionBar', false)));
+  assert.throws(() => withConfig(cfg, () => savePersonalFlag('inkOnText', false)));
   assert.equal(fs.readFileSync(mine(cfg), 'utf8'), '{ "name": "Leo", }', 'left as it was');
 });
 
 test("the project's labit.json wins over your switch, and says it is the project's", () => {
   const dir = tmp();
   const cfg = tmp();
-  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: false } }));
-  withConfig(cfg, () => savePersonalFlag('sectionBar', true));
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { inkOnText: false } }));
+  withConfig(cfg, () => savePersonalFlag('inkOnText', true));
   const s = withConfig(cfg, () => loadSettings(dir, {}, {}));
-  assert.equal(s.values.flags.sectionBar, false);
-  assert.equal(s.flagFrom.sectionBar, 'project');
+  assert.equal(s.values.flags.inkOnText, false);
+  assert.equal(s.flagFrom.inkOnText, 'project');
 });
 
 // The lab: POST /_lab/flags with the browser's key, from this computer. One lab, started once for these checks.
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const startLab = async (dir, cfg) => {
-  const port = 7600 + Math.floor(Math.random() * 150);
+  const port = claimPort(7600, 150);
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hi</h1>');
   const lab = spawn(process.execPath, [LAB, '--no-open', '--new', '--port', String(port)], { cwd: dir, env: { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg } });
   kids.push(lab);
@@ -130,7 +140,7 @@ const startLab = async (dir, cfg) => {
   let html = '';
   for (let i = 0; i < 80 && !html; i++) {
     html = await fetch(B + '/').then((r) => r.text(), () => '');
-    if (!html) await new Promise((r) => setTimeout(r, 100));
+    if (!html) await sleep(100);
   }
   assert.ok(html, 'the lab answers');
   const key = html.match(/data-admin="([^"]+)"/)?.[1];
@@ -144,37 +154,37 @@ test('the Experiments switch: owner only, saved in your settings, on the page an
   const cfg = tmp();
   const { B, html, key, flagsOf, post } = await startLab(dir, cfg);
   assert.ok(key, "this computer's page has the key");
-  assert.equal(flagsOf(html).sectionBar.on, false);
-  assert.equal(flagsOf(html).sectionBar.project, undefined);
+  assert.equal(flagsOf(html).inkOnText.on, false);
+  assert.equal(flagsOf(html).inkOnText.project, undefined);
 
-  assert.equal((await post({ flag: 'sectionBar', on: true }, '')).status, 403, 'no key: refused');
-  assert.equal((await post({ flag: 'sectionBar', on: true }, 'x'.repeat(key.length))).status, 403, 'a wrong key: refused');
+  assert.equal((await post({ flag: 'inkOnText', on: true }, '')).status, 403, 'no key: refused');
+  assert.equal((await post({ flag: 'inkOnText', on: true }, 'x'.repeat(key.length))).status, 403, 'a wrong key: refused');
   assert.equal((await post({ flag: 'wasKeptLastYear', on: true })).status, 400);
-  assert.equal((await post({ flag: 'sectionBar', on: 'yes' })).status, 400);
+  assert.equal((await post({ flag: 'inkOnText', on: 'yes' })).status, 400);
   assert.equal((await post({ flag: '__proto__', on: true })).status, 400);
-  assert.equal(fs.existsSync(mine(cfg)), false, 'nothing written for a refused switch');
+  assert.ok(noFlags(cfg), 'nothing written for a refused switch');
 
-  const r = await post({ flag: 'sectionBar', on: true });
+  const r = await post({ flag: 'inkOnText', on: true });
   assert.equal(r.status, 200);
-  assert.deepEqual((await r.json()).flags, ['sectionBar']);
-  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), { flags: { sectionBar: true } }, 'in your own settings');
+  assert.deepEqual((await r.json()).flags, ['inkOnText']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')).flags, { inkOnText: true }, 'in your own settings');
   assert.equal(fs.existsSync(path.join(dir, 'labit.json')), false, "the project's file is not touched");
-  assert.equal(flagsOf(await (await fetch(B + '/')).text()).sectionBar.on, true, 'the next page load has it, no restart');
-  assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, ['sectionBar'], 'open pages hear it');
+  assert.equal(flagsOf(await (await fetch(B + '/')).text()).inkOnText.on, true, 'the next page load has it, no restart');
+  assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, ['inkOnText'], 'open pages hear it');
 
-  await post({ flag: 'sectionBar', on: false });
-  assert.deepEqual(JSON.parse(fs.readFileSync(mine(cfg), 'utf8')), {});
+  await post({ flag: 'inkOnText', on: false });
+  assert.ok(noFlags(cfg), 'off leaves no flags behind');
   assert.deepEqual((await (await fetch(B + '/_lab/state')).json()).flags, []);
 });
 
 test("a flag the project's labit.json sets: shown as the project's, and the switch is refused", async () => {
   const dir = tmp();
   const cfg = tmp();
-  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: true } }));
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { inkOnText: true } }));
   const { html, flagsOf, post } = await startLab(dir, cfg);
-  assert.deepEqual(flagsOf(html).sectionBar, { name: FLAGS.sectionBar.name, on: true, project: true });
-  assert.equal((await post({ flag: 'sectionBar', on: false })).status, 409);
-  assert.equal(fs.existsSync(mine(cfg)), false);
+  assert.deepEqual(flagsOf(html).inkOnText, { name: FLAGS.inkOnText.name, on: true, project: true });
+  assert.equal((await post({ flag: 'inkOnText', on: false })).status, 409);
+  assert.ok(noFlags(cfg));
 });
 
 test('`labit settings` names each flag that is on and whose it is', async () => {
@@ -182,11 +192,11 @@ test('`labit settings` names each flag that is on and whose it is', async () => 
   const cli = (cwd, cfg) => new Promise((resolve) => execFile(process.execPath, [LAB, 'settings'], { cwd, env: { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg } }, (err, out) => resolve({ code: err?.code ?? 0, out })));
   const dir = tmp();
   const cfg = tmp();
-  withConfig(cfg, () => savePersonalFlag('sectionBar', true));
+  withConfig(cfg, () => savePersonalFlag('inkOnText', true));
   let r = await cli(dir, cfg);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /^flags\s+sectionBar \(yours\)\s+your settings$/m);
-  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { sectionBar: true } }));
+  assert.match(r.out, /^flags\s+inkOnText \(yours\)\s+your settings$/m);
+  fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags: { inkOnText: true } }));
   r = await cli(dir, cfg);
-  assert.match(r.out, /^flags\s+sectionBar \(labit\.json\)\s+labit\.json \+ your settings$/m);
+  assert.match(r.out, /^flags\s+inkOnText \(labit\.json\)\s+labit\.json \+ your settings$/m);
 });

@@ -5,29 +5,16 @@
 // Not part of `npm test`; CI runs it in the `browser` job. Run: node test/browser/selection.mjs   (needs the playwright
 // package; NODE_PATH can point at a node_modules that has it). Prints one line per check and exits 1 if any fails.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  // On CI a missing browser is a failure: a skip there would pass with nothing run.
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-selection-'));
-const PORT = String(5800 + Math.floor(Math.random() * 190)); // below 6000: browsers refuse that port (X11), and the page never loads
+const DIR = tmp('labit-selection-');
+const PORT = String(claimPort(5800, 190)); // below 6000: browsers refuse that port (X11), and the page never loads
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
+const env = labEnv({}, { settings: false });
 const PAGE = `<!doctype html><meta charset="utf-8"><title>selection</title>
 <style>body{margin:30px;max-width:420px;font:18px/1.6 Georgia,serif}</style>
 <p id="t">Plain words to drag across in this paragraph of text, quite a few of them.</p>
@@ -37,22 +24,10 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>selection</title>
 let scenes = 0;
 let PG = '/index';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env, stdio: 'ignore' }); // its log is not read: a full pipe would stop it
+const server = startLab(DIR, env, { root: '.', port: PORT, stdio: 'ignore' }); // its log is not read: a full pipe would stop it
 fs.writeFileSync(path.join(DIR, 'index.html'), PAGE);
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+await labUp(B);
+const missed = []; // changes to what the page shows that no redraw followed (window.__labDebug)
 const comments = async () => (await (await fetch(`${B}/_lab/api/comments?page=${PG}`)).json()).comments;
 const inRoot = (p, fn) =>
   p.evaluate((src) => {
@@ -66,18 +41,18 @@ const untilRoot = (p, fn, ms) =>
     const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
     return Boolean(r) && new Function('r', `return (${src})(r)`)(r);
   }, fn.toString(), ms);
-const barUp = (p, ms = 700) => untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-bar').classList.contains('on') && e.getAnimations().length === 0 && r.querySelectorAll('.fd').length === 1; }, ms);
-const dlgUp = (p, ms = 700) => untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.getAnimations().length === 0 && r.querySelectorAll('.fd').length === 1; }, ms);
+// The comment card on selected words is up and still, the cursor in its box.
+const cardUp = (p, ms = 700) => untilRoot(p, (r) => { const f = r.querySelectorAll('.float'); return f.length === 1 && f[0].getAnimations().length === 0 && r.activeElement?.localName === 'textarea'; }, ms);
 // Until the page has a comment with this text (sent).
 async function untilSent(text, ms) {
   for (const end = Date.now() + ms; Date.now() < end && !(await comments()).some((x) => x.text === text); ) await sleep(40);
 }
-// What the widget shows: the bar, the dialog, an area drawn, a pin or box for a point.
+// What the widget shows: a comment card on lit (selected) words, an area drawn, a pin or box for a point.
 const look = (p) =>
   inRoot(p, (r) => {
-    const e = r.querySelector('.fd');
-    const on = (s) => Boolean(e && !e.hidden && e.querySelector(s)?.classList.contains('on'));
-    return { bar: on('.p-bar'), dlg: on('.p-dlg'), zone: r.querySelectorAll('.zone.draft').length, draftPin: r.querySelectorAll('.pin.draft').length, box: r.querySelectorAll('.float').length };
+    const box = r.querySelectorAll('.float').length;
+    const lit = Boolean(globalThis.CSS?.highlights?.has('lab-quote'));
+    return { dlg: box === 1 && lit, zone: r.querySelectorAll('.zone.draft').length, draftPin: r.querySelectorAll('.pin.draft').length, box };
   });
 const span = (p, sel, text) =>
   p.evaluate(([sel, text]) => {
@@ -111,6 +86,10 @@ async function scene(browser, run) {
   fs.writeFileSync(path.join(DIR, `${PG.slice(1)}.html`), PAGE);
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
   await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+  // Debug: every change to what the page shows must be followed by a redraw (window.__labDebug in src/comments.js);
+  // a miss is reported here as it happens, so a reload doesn't lose it.
+  await ctx.exposeFunction('__labMiss', (s) => missed.push(s));
+  await ctx.addInitScript(() => Object.assign(window, { __labDebug: true, __labMissed: { push: (s) => window.__labMiss(s) } }));
   const p = await ctx.newPage();
   await p.goto(B + PG);
   await untilRoot(p, () => true, 1100);
@@ -118,19 +97,20 @@ async function scene(browser, run) {
   try {
     await run(p);
   } finally {
+    await sleep(100); // two frames for the last change
     await ctx.close();
   }
 }
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       await scene(browser, async (p) => {
         await dragWords(p, '#t', 'words to drag');
         await untilRoot(p, (r) => r.querySelectorAll('.zone.draft').length === 1, 500);
         const l = await look(p);
-        check(eng, 'a plain drag over words marks an area, no bar', l.zone === 1 && !l.bar && !l.dlg, JSON.stringify(l));
+        check(eng, 'a plain drag over words marks an area, no card on the words', l.zone === 1 && !l.dlg, JSON.stringify(l));
         check(eng, '…and selects none of the page\'s text', (await p.evaluate(() => String(getSelection()))) === '');
         await p.keyboard.type('over words');
         await p.keyboard.press('Enter');
@@ -140,11 +120,11 @@ try {
       });
       await scene(browser, async (p) => {
         const s = await dragWords(p, '#t', 'words to drag', true);
-        await barUp(p);
+        await cardUp(p);
         const l = await look(p);
-        check(eng, 'Shift-drag over words opens the dialog at once (no bar), no area', l.dlg && !l.bar && !l.zone && !l.draftPin, JSON.stringify(l));
+        check(eng, 'Shift-drag over words opens the comment card at once on them, no area', l.dlg && !l.zone && l.draftPin === 1, JSON.stringify(l));
         await p.keyboard.type('shifted');
-        await dlgUp(p);
+        await cardUp(p);
         await p.keyboard.press('Enter');
         await untilSent('shifted', 700);
         const c = (await comments()).find((x) => x.text === 'shifted');
@@ -182,9 +162,9 @@ try {
       });
       await scene(browser, async (p) => {
         await dragWords(p, '#t', 'ords to dra', true); // starts and ends inside words
-        await barUp(p);
+        await cardUp(p);
         await p.keyboard.type('snap');
-        await dlgUp(p);
+        await cardUp(p);
         await p.keyboard.press('Enter');
         await untilSent('snap', 700);
         const c = (await comments()).find((x) => x.text === 'snap');
@@ -192,9 +172,9 @@ try {
       });
       await scene(browser, async (p) => {
         await dragWords(p, '#t', 'aragra', true); // inside "paragraph" only
-        await barUp(p);
+        await cardUp(p);
         await p.keyboard.type('inside');
-        await dlgUp(p);
+        await cardUp(p);
         await p.keyboard.press('Enter');
         await untilSent('inside', 700);
         const c = (await comments()).find((x) => x.text === 'inside');
@@ -204,7 +184,7 @@ try {
         await dragTo(p, [700, 40], [900, 120]); // right of the column: nothing to select there
         await untilRoot(p, (r) => r.querySelectorAll('.zone.draft').length === 1, 400);
         const l = await look(p);
-        check(eng, 'a drag from empty space marks an area, no bar', l.zone === 1 && !l.bar, JSON.stringify(l));
+        check(eng, 'a drag from empty space marks an area, no card on the words', l.zone === 1, JSON.stringify(l));
         await p.keyboard.type('area');
         await p.keyboard.press('Enter');
         await untilSent('area', 700);
@@ -216,7 +196,7 @@ try {
         await p.mouse.click(s.first.left + 10, s.first.top + 10);
         await untilRoot(p, (r) => r.querySelectorAll('.float').length === 1, 500);
         const l = await look(p);
-        check(eng, 'a plain click on words places a point pin, no bar', l.box === 1 && !l.bar && !l.dlg, JSON.stringify(l));
+        check(eng, 'a plain click on words places a point pin, no card on the words', l.box === 1 && !l.dlg, JSON.stringify(l));
         await p.keyboard.type('point');
         await p.keyboard.press('Enter');
         await untilSent('point', 700);
@@ -235,12 +215,14 @@ try {
           await sleep(600);
           const lit = await p.evaluate(() => Boolean(CSS.highlights?.get('lab-quote')?.size));
           const l = await look(p);
-          check(eng, `a click on a word with ${dx},${dy} px of jitter is a point pin: no quote lit, no dialog row`, !lit && l.box === 1 && !l.dlg && !l.bar, JSON.stringify([lit, l]));
+          check(eng, `a click on a word with ${dx},${dy} px of jitter is a point pin: no quote lit, no dialog row`, !lit && l.box === 1 && !l.dlg, JSON.stringify([lit, l]));
           await p.keyboard.type(`jit${dx}${dy}`);
           await p.keyboard.press('Enter');
           await sleep(700);
           const c = (await comments()).find((q) => q.text === `jit${dx}${dy}`);
           check(eng, '…saved with no quote', Boolean(c) && !c.anchor.quote && c.anchor.kind !== 'text', JSON.stringify(c?.anchor?.kind));
+          await p.keyboard.press('Escape'); // the sent pin's undo card: a click outside it would only close it (undo.mjs)
+          await sleep(200);
         }
       });
       await scene(browser, async (p) => {
@@ -248,25 +230,28 @@ try {
         await p.mouse.dblclick((s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2);
         await sleep(300);
         const l = await look(p);
-        check(eng, 'a double-click on a word without Shift selects nothing and shows no bar', !l.bar && !l.dlg && (await p.evaluate(() => String(getSelection()))) === '', JSON.stringify(l));
+        check(eng, 'a double-click on a word without Shift selects nothing and shows no card on the words', !l.dlg && (await p.evaluate(() => String(getSelection()))) === '', JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'quite a few');
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await sleep(300);
         const l = await look(p);
-        check(eng, 'a triple-click without Shift shows no bar', !l.bar, JSON.stringify(l));
+        check(eng, 'a triple-click without Shift opens no card on the words', !l.dlg, JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'paragraph');
         await p.keyboard.down('Shift');
+        // The words must be selectable before the press: WebKit restyles a moment after Shift goes down (reading the style
+        // forces it), and a double-click's first press selects the word at once.
+        await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector('#t')); return c.userSelect !== 'none' && c.webkitUserSelect !== 'none'; }, null, { timeout: 1500, polling: 'raf' }).catch(() => {});
         await p.mouse.dblclick((s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2);
         await p.keyboard.up('Shift');
-        await barUp(p, 900);
+        await cardUp(p, 900);
         const l = await look(p);
-        check(eng, 'Shift + double-click on a word opens the dialog (one box, none left from the first click)', l.dlg && !l.bar && l.box === 1 && !l.draftPin, JSON.stringify(l));
+        check(eng, 'Shift + double-click on a word opens the comment card (one box, none left from the first click)', l.dlg && l.box === 1 && l.draftPin === 1, JSON.stringify(l));
         await p.keyboard.type('word');
-        await dlgUp(p);
+        await cardUp(p);
         await p.keyboard.press('Enter');
         await untilSent('word', 700);
         const c = (await comments()).find((x) => x.text === 'word');
@@ -275,11 +260,14 @@ try {
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'quite a few');
         await p.keyboard.down('Shift');
+        // A triple-click is one press (clickCount 3), so unlike the double-click's first press there is no earlier one to let the
+        // engine restyle: wait until the words are really selectable (reading the style forces it to be current) before pressing.
+        await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector('#t')); return c.userSelect !== 'none' && c.webkitUserSelect !== 'none'; }, null, { timeout: 1500, polling: 'raf' }).catch(() => {});
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await p.keyboard.up('Shift');
-        await untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.classList.contains('settled'); }, 1500);
+        await cardUp(p, 1500);
         const l = await look(p);
-        check(eng, 'Shift + triple-click selects the paragraph and opens the dialog at once', l.dlg && !l.bar, JSON.stringify(l));
+        check(eng, 'Shift + triple-click selects the paragraph and opens the comment card at once', l.dlg, JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const f = await p.locator('#field').boundingBox();
@@ -287,15 +275,16 @@ try {
         await sleep(500);
         const l = await look(p);
         const picked = await p.evaluate(() => document.querySelector('#field').value.slice(document.querySelector('#field').selectionStart, document.querySelector('#field').selectionEnd));
-        check(eng, 'a drag inside the page\'s own input selects its text and is not touched', picked.length > 3 && !l.bar && !l.zone, `${picked} ${JSON.stringify(l)}`);
+        check(eng, 'a drag inside the page\'s own input selects its text and is not touched', picked.length > 3 && !l.zone, `${picked} ${JSON.stringify(l)}`);
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#lnk', 'link right');
         await dragTo(p, [s.first.left + 2, s.first.top + 8], [s.last.right, s.last.top + 8]);
         await sleep(500);
         const l = await look(p);
-        check(eng, 'a drag that starts on a link leaves the page\'s own drag (no bar, no area)', !l.bar && !l.zone, JSON.stringify(l));
+        check(eng, 'a drag that starts on a link leaves the page\'s own drag (no bar, no area)', !l.zone, JSON.stringify(l));
       });
+      check(eng, 'every change to what the page shows was redrawn', !missed.length, missed.splice(0).join('\n'));
     } finally {
       await browser.close();
     }
@@ -304,5 +293,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

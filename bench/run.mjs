@@ -33,6 +33,10 @@ const say = async (text) => {
   for (let i = 0; i < 50 && !(await (await fetch(`${BASE}/_lab/agent${PAGE}`)).text()).includes(`open: ${posted}\n`); i++) {
     await page.waitForTimeout(100);
   }
+  // The sent pin's card opens with "undo" for 3 s, and the next click on the page only lets that card go. A person
+  // moves on by closing it (Esc), so the next click pins; the bench does the same instead of waiting out the 3 s.
+  if (await lab('.card').count()) await page.keyboard.press('Escape');
+  await lab('.card:not(.out)').waitFor({ state: 'detached' });
 };
 const clickAt = async (x, y) => { await page.mouse.click(x, y); await lab('.float textarea').waitFor(); };
 

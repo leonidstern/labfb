@@ -2,35 +2,21 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { LAB, site, claimPort, tmp, rm, spawnLab, sleep, up as answers, serverJson, cli as command } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-test-'));
-const PORT = String(4600 + Math.floor(Math.random() * 100));
-const B = `http://localhost:${PORT}`;
+const { DIR, PORT, B } = site('test', 4600, 100);
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 
-const run = (args, opts = {}) =>
-  new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: DIR, ...opts }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env: { ...process.env, PORT } });
+const run = (args, opts = {}) => command(args, { cwd: DIR, ...opts });
+const server = spawnLab(DIR, PORT, { env: { ...process.env, PORT } });
 after(() => {
   server.kill();
-  fs.rmSync(DIR, { recursive: true, force: true });
+  rm([DIR]);
 });
 
-const up = async () => {
-  for (let i = 0; i < 50; i++) {
-    try {
-      return await fetch(B + '/');
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  throw new Error('server did not start');
-};
+const up = () => answers(B + '/', { tries: 50, fail: 'server did not start' });
 const post = (body) =>
   fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) }).then((r) => r.json());
 
@@ -67,7 +53,7 @@ test('a lab tab wears labit\'s icon unless the page or the folder has its own', 
 test('wait hears a new comment, reply answers it, the text file has both', async () => {
   await up();
   const waiting = run(['wait', '--timeout', '10']);
-  await new Promise((r) => setTimeout(r, 400));
+  await sleep(400);
   const { comment } = await post({ page: '/index', name: 'Leo', text: 'make the title red', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
   assert.ok(comment?.id, 'comment saved');
   const heard = await waiting;
@@ -85,7 +71,7 @@ test('a Cut and a Rewrite on quoted words reach wait whole, quotes and arrow inc
   const quote = { exact: 'the “quoted” words', prefix: 'read ', suffix: ' here' };
   const anchor = { kind: 'text', selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">', quote };
   const waiting = run(['wait', '--timeout', '10']);
-  await new Promise((r) => setTimeout(r, 400));
+  await sleep(400);
   const cut = 'Cut: “the “quoted” words”';
   const rewrite = 'Rewrite “the “quoted” words” → “some other words”';
   await post({ page: '/index', name: 'Leo', text: cut, anchor });
@@ -153,17 +139,29 @@ test('a comment about the page as a whole has no spot in the agent text', async 
   assert.ok(after.includes(`page: ${B}/index`));
 });
 
+// The lab's live stream (/_lab/live): the newest version of one counter in its first events. One read can hold more
+// than one event (the lab sends the version, then a change straight after), or half of one, so whole events only.
+const live = async (field) => {
+  const ctl = new AbortController();
+  const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  while (!text.includes('\n\n')) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  ctl.abort();
+  const events = text.split('\n\n').slice(0, -1).map((e) => e.replace(/^data: /, '').trim()).filter((e) => e.startsWith('{'));
+  return JSON.parse(events.at(-1))[field];
+};
+
 test('read marks are shared by name: a phone and a Mac with the same name see the same new and read', async () => {
   await up();
   const reads = (q) => fetch(`${B}/_lab/api/reads?${q}`).then((r) => r.json());
   const mark = (body) => fetch(B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) });
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).reads;
-  };
+  const rev = () => live('reads');
   const { comment } = await post({ page: '/index', name: 'Sam', text: 'read me', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
   const id = comment.id;
   const before = await rev();
@@ -171,7 +169,7 @@ test('read marks are shared by name: a phone and a Mac with the same name see th
   assert.deepEqual((await reads('name=leo&page=/index')).ids, [id], 'same name in any case or spacing; ids not on the page dropped');
   assert.deepEqual((await reads('name=Mira&page=/index')).ids, [], 'another name has its own');
   assert.deepEqual((await reads('name=Leo&page=/other')).ids, [], 'per page');
-  await new Promise((r) => setTimeout(r, 400)); // marks are announced together, a moment later
+  await sleep(400); // marks are announced together, a moment later
   assert.equal(await rev(), before + 1, 'the live stream tells open tabs to fetch them again');
   assert.equal((await mark({ name: 'Leo', page: '/index', ids: [id] })).status, 204);
   assert.equal(await rev(), before + 1, 'nothing new read: no wake-up');
@@ -200,7 +198,7 @@ test('a reply in a thread the agent has comes with its thread, the new one marke
   assert.match(first.out, /make the heading bigger/);
   assert.doesNotMatch(first.out, /^looks:|^viewport:/m, 'rare details stay in the full text');
   const waiting = run(['reply', comment.id, 'On it', '--wait', '--timeout', '10']);
-  await new Promise((r) => setTimeout(r, 600));
+  await sleep(600);
   await post({ page: '/index', name: 'Leo', text: 'and make it blue', parent: comment.id });
   const out = (await waiting).out;
   assert.match(out, /^Replied on \/index\./m);
@@ -223,40 +221,40 @@ test('a reply goes in the short thread form only to the session that has its thr
   const { comment } = await post({ page: '/index', name: 'Leo', text: 'tighten the spacing under the title', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
   assert.match((await run(['wait', '--timeout', '5'], as('sess-a'))).out, /tighten the spacing/);
   const waiting = run(['wait', '--timeout', '10'], as('sess-b'));
-  await new Promise((r) => setTimeout(r, 600));
+  await sleep(600);
   await post({ page: '/index', name: 'Leo', text: 'a bit more', parent: comment.id });
   const b = (await waiting).out;
   assert.match(b, /^## /m, 'the whole thread for a session that never had it');
   assert.match(b, /^Answer each: .* reply <id> .* add --wait to the last one/m, 'how to answer, in full the first time a session hears');
   assert.match(b, /Read each thread whole \(every message and reply/, 'told to read the whole conversation before answering, not to guess from the page');
-  assert.match(b, /^Work that takes more than a minute .*: first .* reply <id> --on-it /m, 'on it first, before long work');
+  assert.match(b, /^If it will take more than about a minute .*: send one .* reply <id> --progress /m, 'a status line first, before long work');
   assert.match(b, /^Write answers short/m);
   assert.match(b, /tighten the spacing under the title/);
   assert.match(b, /a bit more/);
   const again = run(['wait', '--timeout', '10'], as('sess-b'));
-  await new Promise((r) => setTimeout(r, 600));
+  await sleep(600);
   await post({ page: '/index', name: 'Leo', text: 'and less on mobile', parent: comment.id });
   const b2 = (await again).out;
   assert.match(b2, new RegExp(`^## /index · thread id ${comment.id}$`, 'm'), 'now it has the thread: the short form');
   assert.match(b2, /^- Leo · .* · id \w+: a bit more$/m, 'earlier words, unmarked');
   assert.match(b2, /^- Leo · .* · id \w+: and less on mobile {2}← new$/m);
   assert.doesNotMatch(b2, /^# New comments/m, 'no heading for comments when there are only replies');
-  assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --on-it \| --question\] \[--wait\]$/m, 'then one short line');
-  assert.doesNotMatch(b2, /Write answers short|run in /);
-  await new Promise((r) => setTimeout(r, 500));
+  assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --question\] \[--wait\]; .*as before\.$/m, 'then one short line');
+  assert.doesNotMatch(b2, /Write answers short|run in |Read each thread whole|If it will take more than about a minute|suggest-rule/, 'the standing lines said once');
+  await sleep(500);
   assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/state.json'), 'utf8')).handed[comment.id][1], 'sess-b', 'which session has the thread: kept beside the comments');
   const seen = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === comment.id);
   assert.equal(seen.deliveredTo, undefined, 'and not sent to pages');
 });
 
 test('one lab per folder: two started at once make one; a dead lock or a silent server.json does not block; SIGHUP cleans up', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-lock-')));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  const dir = fs.realpathSync(tmp('lock'));
+  const home = tmp('home');
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
-  const base = 4700 + Math.floor(Math.random() * 15) * 3;
+  const [base, second, silent] = [0, 1, 2].map(() => claimPort(4700, 45));
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
   const start = (port) => {
-    const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port)], { cwd: dir, env });
+    const p = spawnLab(dir, port, { env });
     p.out = '';
     p.stdout.on('data', (d) => (p.out += d));
     p.stderr.on('data', (d) => (p.out += d));
@@ -264,13 +262,13 @@ test('one lab per folder: two started at once make one; a dead lock or a silent 
     return p;
   };
   const listening = async (p) => {
-    for (let i = 0; i < 100 && !/\[lab\] http:\/\/localhost/.test(p.out) && p.exitCode === null; i++) await new Promise((r) => setTimeout(r, 100));
+    for (let i = 0; i < 100 && !/\[lab\] http:\/\/localhost/.test(p.out) && p.exitCode === null; i++) await sleep(100);
     return /\[lab\] http:\/\/localhost/.test(p.out);
   };
   const lock = path.join(dir, '.lab/lock');
   const procs = [];
   try {
-    const [a, b] = [start(base), start(base + 1)];
+    const [a, b] = [start(base), start(second)];
     procs.push(a, b);
     const ups = await Promise.all([listening(a), listening(b)]);
     assert.equal(ups.filter(Boolean).length, 1, `${a.out}\n---\n${b.out}`);
@@ -284,7 +282,7 @@ test('one lab per folder: two started at once make one; a dead lock or a silent 
     assert.ok(!fs.existsSync(path.join(dir, '.lab/server.json')), 'and server.json');
     // A crashed lab: its lock names a dead pid, and server.json names a live pid (this one) on a port nobody answers.
     fs.writeFileSync(lock, JSON.stringify({ pid: 999999, at: Date.now() }));
-    fs.writeFileSync(path.join(dir, '.lab/server.json'), JSON.stringify({ port: base + 2, pid: process.pid, token: 'x' }));
+    fs.writeFileSync(path.join(dir, '.lab/server.json'), JSON.stringify({ port: silent, pid: process.pid, token: 'x' }));
     const c = start(base);
     procs.push(c);
     assert.ok(await listening(c), c.out);
@@ -293,25 +291,24 @@ test('one lab per folder: two started at once make one; a dead lock or a silent 
     assert.ok(!fs.existsSync(lock));
   } finally {
     for (const p of procs) if (p.exitCode === null && p.signalCode === null) p.kill();
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.rmSync(home, { recursive: true, force: true });
+    rm([dir, home]);
   }
 });
 
 test('labit --name gives the lab its topic, and later starts keep it', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-name-')));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  const dir = fs.realpathSync(tmp('name'));
+  const home = tmp('home');
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
-  const port = 4750 + Math.floor(Math.random() * 50);
+  const port = claimPort(4750, 50);
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
   const run = async (...more) => {
-    const p = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), ...more], { cwd: dir, env });
+    const p = spawnLab(dir, port, { args: more, env });
     p.out = '';
     p.stdout.on('data', (d) => (p.out += d));
     p.stderr.on('data', (d) => (p.out += d));
     const done = new Promise((r) => p.on('exit', r));
     try {
-      for (let i = 0; i < 100 && !/\[lab\] http:\/\/localhost/.test(p.out); i++) await new Promise((r) => setTimeout(r, 100));
+      for (let i = 0; i < 100 && !/\[lab\] http:\/\/localhost/.test(p.out); i++) await sleep(100);
       return (await (await fetch(`http://localhost:${port}/_lab/pages`)).json()).name;
     } finally {
       p.kill('SIGTERM');
@@ -323,14 +320,13 @@ test('labit --name gives the lab its topic, and later starts keep it', async () 
     assert.equal(await run('--name', 'Lab navigation'), 'Lab navigation');
     assert.equal(await run(), 'Lab navigation', 'kept in .lab/state.json');
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.rmSync(home, { recursive: true, force: true });
+    rm([dir, home]);
   }
 });
 
 test('a page can be archived and brought back (labs & pages), in .lab/state.json; the file stays', async () => {
-  for (let i = 0; i < 50 && !fs.existsSync(path.join(DIR, '.lab/server.json')); i++) await new Promise((r) => setTimeout(r, 100));
-  const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  for (let i = 0; i < 50 && !fs.existsSync(path.join(DIR, '.lab/server.json')); i++) await sleep(100);
+  const { token } = serverJson(DIR);
   const post = (body) => fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ port: Number(PORT), ...body }) });
   const page = async () => (await (await fetch(B + '/_lab/pages')).json()).pages.find((p) => p.path === '/index');
   assert.equal((await post({ action: 'archive-page', page: '/index' })).status, 200);
@@ -343,9 +339,9 @@ test('a page can be archived and brought back (labs & pages), in .lab/state.json
 });
 
 test('labit publish puts a page in the one pages lab, starts it once, and publishing again keeps the link', async () => {
-  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-pub-')));
+  const home = fs.realpathSync(tmp('pub'));
   const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), LABIT_HOME: path.join(home, '.labit'), LABIT_NO_UPDATE_CHECK: '1', PORT: '' };
-  const port = 4800 + Math.floor(Math.random() * 9);
+  const port = claimPort(4800, 9);
   fs.mkdirSync(path.join(home, '.config/labit'), { recursive: true });
   fs.writeFileSync(path.join(home, '.config/labit/settings.json'), JSON.stringify({ port }));
   fs.writeFileSync(path.join(home, 'Heading options.html'), '<!doctype html><title>Heading options</title><h1>one</h1>');
@@ -375,8 +371,8 @@ test('labit publish puts a page in the one pages lab, starts it once, and publis
     assert.match(fs.readFileSync(path.join(home, 'lab-pages/heading-options.html'), 'utf8'), /<h1>two<\/h1>/);
   } finally {
     if (pid) process.kill(pid);
-    await new Promise((r) => setTimeout(r, 300));
-    fs.rmSync(home, { recursive: true, force: true });
+    await sleep(300);
+    rm([home]);
   }
 });
 
@@ -404,7 +400,7 @@ test('a last look is kept by name and page', async () => {
   await look({ name: 'Mira', page: '/index', ids: [['intro', 'Hello'], ['v1', 'World']] });
   assert.equal((await lookOf('name=Mira&page=/index')).snap, mine.snap, 'the same ids are one round');
   assert.equal((await lookOf('name=Leo&page=/index')).snap, later.snap, "Mira's look leaves Leo's alone");
-  await new Promise((r) => setTimeout(r, 500)); // saved whole, a moment after the last change
+  await sleep(500); // saved whole, a moment after the last change
   const file = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/looked/index.json'), 'utf8'));
   assert.deepEqual([file.v, file.page, Object.keys(file.who).sort()], [1, '/index', ['leo', 'mira']]);
   assert.equal((await look({ page: '/index', ids: [] })).status, 400, 'no name, no look');
@@ -416,17 +412,11 @@ test('a last look is kept by name and page', async () => {
 
 test('a look bumps looked in the live state, so other tabs and devices check again', async () => {
   await up();
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).looked;
-  };
+  const rev = () => live('looked');
   const before = await rev();
   assert.equal(typeof before, 'number');
   await look({ name: 'Leo', page: '/index', ids: [['rev', 'check']] });
-  await new Promise((r) => setTimeout(r, 400));
+  await sleep(400);
   assert.equal(await rev(), before + 1);
 });
 
@@ -444,7 +434,7 @@ test('sections read are kept by name and page, apart from the looks', async () =
   assert.deepEqual(await secOf('name=Mira&page=/index'), {}, 'another name has its own');
   assert.deepEqual(await secOf('name=Leo&page=/other'), {}, 'per page');
   assert.deepEqual(await lookOf('name=Leo&page=/index&snap=none'), {}, 'not a look');
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
   const file = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/state.json'), 'utf8')).sections;
   assert.deepEqual(file.leo['/index'], { intro: 'a1', v1: 'c3', v2: 'd4' });
 });
@@ -470,34 +460,28 @@ test('section marks are checked: a name, a page of this lab, an object, a size',
 
 test('a section mark bumps sections in the live state, and only when something changed', async () => {
   await up();
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).sections;
-  };
+  const rev = () => live('sections');
   const before = await rev();
   assert.equal(typeof before, 'number');
   await sec({ name: 'Leo', page: '/index', sections: { rev: 'one' } });
-  await new Promise((r) => setTimeout(r, 400));
+  await sleep(400);
   assert.equal(await rev(), before + 1);
   await sec({ name: 'Leo', page: '/index', sections: { rev: 'one' } });
-  await new Promise((r) => setTimeout(r, 400));
+  await sleep(400);
   assert.equal(await rev(), before + 1, 'the same marks again change nothing');
 });
 
 test('a renamed page takes its section marks along', async () => {
   await up();
   fs.writeFileSync(path.join(DIR, 'secold.html'), '<!doctype html><h1>Old</h1>');
-  await new Promise((r) => setTimeout(r, 500));
+  await sleep(500);
   assert.equal((await sec({ name: 'Leo', page: '/secold', sections: { old: 'h' } })).status, 204);
   await look({ name: 'Leo', page: '/secold', ids: [['old', 'Old']] }); // a look makes the page's file known by what the disk calls it
-  await new Promise((r) => setTimeout(r, 600));
+  await sleep(600);
   fs.renameSync(path.join(DIR, 'secold.html'), path.join(DIR, 'secnew.html'));
   let moved = {};
   for (let i = 0; i < 30 && !moved.sections; i++) {
-    await new Promise((r) => setTimeout(r, 150));
+    await sleep(150);
     moved = await secOf('name=Leo&page=/secnew');
   }
   assert.deepEqual(moved.sections, { old: 'h' });
@@ -507,18 +491,18 @@ test('a renamed page takes its section marks along', async () => {
 test('a renamed page takes its looks along', async () => {
   await up();
   fs.writeFileSync(path.join(DIR, 'old.html'), '<!doctype html><h1>Old</h1>');
-  await new Promise((r) => setTimeout(r, 500));
+  await sleep(500);
   assert.equal((await look({ name: 'Leo', page: '/old', ids: [['old', 'Old']] })).status, 200);
-  await new Promise((r) => setTimeout(r, 500)); // saved a moment later, with the page's file and what the disk knows it by
+  await sleep(500); // saved a moment later, with the page's file and what the disk knows it by
   fs.renameSync(path.join(DIR, 'old.html'), path.join(DIR, 'fresh.html'));
   let moved = {};
   for (let i = 0; i < 30 && !moved.ids; i++) {
-    await new Promise((r) => setTimeout(r, 150));
+    await sleep(150);
     moved = await lookOf('name=Leo&page=/fresh');
   }
   assert.deepEqual(moved.ids, [['old', 'Old']]);
   assert.deepEqual(await lookOf('name=Leo&page=/old'), {});
-  await new Promise((r) => setTimeout(r, 600));
+  await sleep(600);
   assert.ok(!fs.existsSync(path.join(DIR, '.lab/looked/old.json')), 'the old file is gone');
   assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/looked/fresh.json'), 'utf8')).page, '/fresh');
 });
@@ -572,16 +556,23 @@ test('reply --progress keeps one line on the thread, replaced each time, with it
   assert.equal(c.progress.text, 'drawing W1–W6 · 2 of 4', 'the latest replaces the last');
   assert.equal((await threadsOf()).length, before);
   // The page is told: the lab's comments version moves, so open pages fetch the change.
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).comments;
-  };
-  const was = await rev();
+  const rev = () => live('comments');
+  // The version is read when the lab has been quiet for a moment (an earlier line's save and its notice may still be
+  // landing), and the third line must move it on: by one, or by more when something else of the lab's lands too.
+  let was = await rev();
+  for (let i = 0; i < 20; i++) {
+    await sleep(100);
+    const now = await rev();
+    if (now === was) break;
+    was = now;
+  }
   await run(['reply', id, '--progress', 'drawing W1–W6 · 3 of 4']);
-  assert.equal(await rev(), was + 1);
+  let now = await rev();
+  for (let i = 0; i < 30 && now <= was; i++) {
+    await sleep(100);
+    now = await rev();
+  }
+  assert.ok(now > was, `the comments version moves on (was ${was}, now ${now})`);
 });
 
 test('an answer, a new message or resolving clears the progress line', async () => {
@@ -627,24 +618,16 @@ test('--progress takes only its line: no text, no answer flags, an id that exist
 });
 
 test('stale: a pin the agent said it is on, with no sign since, comes back in its next wait with how long and its last line', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-stale-')));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  const dir = fs.realpathSync(tmp('stale'));
+  const home = tmp('home');
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
-  const port = String(4810 + Math.floor(Math.random() * 90));
+  const port = String(claimPort(4810, 90));
   const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '1500', LAB_SETTLE_MS: '0' };
-  const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', port], { cwd: dir, env });
+  const lab = spawnLab(dir, port, { env });
   const base = `http://localhost:${port}`;
   const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
-    for (let i = 0; i < 50; i++) {
-      try {
-        await fetch(base + '/');
-        break;
-      } catch {
-        await sleep(100);
-      }
-    }
+    await answers(base + '/', { tries: 50, fail: false });
     const { comment } = await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'make it red', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }) })).json();
     assert.match(await cli(['wait', '--timeout', '5']), new RegExp(comment.id), 'handed over');
     await cli(['reply', comment.id, 'On it', '--on-it']);
@@ -664,7 +647,98 @@ test('stale: a pin the agent said it is on, with no sign since, comes back in it
     assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'a plain answer ends the wait for it');
   } finally {
     lab.kill();
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.rmSync(home, { recursive: true, force: true });
+    rm([dir, home]);
   }
+});
+
+// A progress line counts as a sign of work, whoever wrote it: the agent (labit reply --progress) or the plugin's hook
+// (a POST with the agent key and no session, "helper: …" from a subagent's tool calls). The "no sign" clock restarts at it.
+test('stale: a progress line, the agent\'s or the hook\'s, is a sign of work: no reminder while it is newer than the window', async () => {
+  const dir = fs.realpathSync(tmp('stale-progress'));
+  const home = tmp('home');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
+  const port = String(claimPort(4810, 90));
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '2000', LAB_SETTLE_MS: '0' };
+  const lab = spawnLab(dir, port, { env });
+  const base = `http://localhost:${port}`;
+  const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
+  const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const pin = async (text) => (await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page: '/index', name: 'Leo', text, anchor }) })).json()).comment.id;
+  // What the plugin's hook sends: the agent's key, no session.
+  const hook = (id, text) => fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', host: `localhost:${port}`, 'x-lab-admin': serverJson(dir).agent, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/index', action: 'progress', id, text }) });
+  try {
+    await answers(base + '/', { tries: 50, fail: false });
+    const id = await pin('make it red');
+    assert.match(await cli(['wait', '--timeout', '5']), new RegExp(id), 'handed over');
+    // No on-it, no reply: only the hook's lines, each newer than the window when the next wait looks.
+    await sleep(1500);
+    assert.equal((await hook(id, 'helper: build the page')).status, 200);
+    await sleep(1500); // 3 s since the hand-off, 1.5 s since the line
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'the hook line is a sign');
+    await sleep(1000);
+    assert.equal((await hook(id, 'running npm test')).status, 200);
+    await sleep(1500);
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'a second line, again within the window');
+    // Truly no sign for longer than the window: the reminder, with how long and the last line.
+    await sleep(2300);
+    const out = await cli(['wait', '--timeout', '3']);
+    assert.match(out, /^# Still waiting for your answer/m);
+    assert.match(out, new RegExp(`id ${id} "make it red" · no sign for 0 min, last: running npm test`));
+  } finally {
+    lab.kill();
+    rm([dir, home]);
+  }
+});
+
+test('a hand-off of several pins names the pins that point at the same file, only for groups of two or more', async () => {
+  const dir = fs.realpathSync(tmp('same-file'));
+  const home = tmp('home');
+  for (const name of ['index', 'options', 'solo']) fs.writeFileSync(path.join(dir, `${name}.html`), `<!doctype html><title>${name}</title><h1 id="t">${name}</h1>`);
+  const port = String(claimPort(4810, 90));
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_SETTLE_MS: '0' };
+  const lab = spawnLab(dir, port, { env });
+  const base = `http://localhost:${port}`;
+  const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
+  const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const pin = async (page, text) => (await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page, name: 'Leo', text, anchor }) })).json()).comment.id;
+  try {
+    await answers(base + '/', { tries: 50, fail: false });
+    // One pin: no group line.
+    const one = await pin('/solo', 'a lone pin');
+    const lone = await cli(['wait', '--timeout', '5']);
+    assert.match(lone, new RegExp(one));
+    assert.doesNotMatch(lone, /Same file:/, 'one pin is no group');
+    await cli(['reply', one, 'ok', '--done']);
+    // Three on options, two on index, one on solo: two groups, solo left out.
+    for (const [page, text] of [['/options', 'one'], ['/index', 'two'], ['/options', 'three'], ['/solo', 'four'], ['/options', 'five'], ['/index', 'six']]) await pin(page, text);
+    const out = await cli(['wait', '--timeout', '5']);
+    assert.match(out, /^Same file: options\.html: 1, 2, 3$/m);
+    assert.match(out, /^Same file: index\.html: 1, 2$/m);
+    assert.doesNotMatch(out, /Same file: solo/);
+    assert.equal((out.match(/^Same file:/gm) || []).length, 2);
+    assert.ok(out.indexOf('Same file: options') < out.indexOf('## 1.'), 'said before the pins');
+  } finally {
+    lab.kill();
+    rm([dir, home]);
+  }
+});
+
+test("a pin whose words the agent's edit changed is said to the agent on its next wait, and stays open", async () => {
+  await up();
+  const made = await post({ page: '/index', name: 'Leo', text: 'check the letter', anchor: { selector: '#g > span', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<span class="k">', text: 'A', section: '5 · Letters' } });
+  const first = await run(['wait', '--timeout', '10']);
+  assert.match(first.out, /check the letter/);
+  assert.doesNotMatch(first.out, /spot changed/);
+  const report = (changed) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'move', id: made.comment.id, edit: made.edit, found: true, changed }) });
+  assert.equal((await report({ was: 'A', now: 'a)', element: '<span class="k">' })).status, 200);
+  const heard = await run(['wait', '--timeout', '10']);
+  assert.match(heard.out, /spot changed: .* — your edit changed the spot of pin \d+ \("A" in section "5 · Letters"\): it now sits on <span class="k"> "a\)" in the same section\. Check it still fits, or re-pin\./);
+  assert.equal((await report({ was: 'A', now: 'a)', element: '<span class="k">' })).status, 200);
+  assert.doesNotMatch((await run(['wait', '--timeout', '1'])).out, /spot changed/, 'the same report again is not told twice');
+  assert.equal((await report({ was: 'A', gone: true })).status, 200);
+  assert.match((await run(['wait', '--timeout', '10'])).out, /its words or element are gone from the page/);
+  const now = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === made.comment.id);
+  assert.equal(now.resolved, false, 'the pin stays open');
+  assert.equal(now.anchor.selector, '#g > span', 'a report with no new spot moves nothing');
+  await run(['reply', made.comment.id, 'Done: checked', '--resolve']);
 });

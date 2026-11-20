@@ -8,6 +8,13 @@ export function bindList(w: unknown) {
 }
 
 export const goTo = (c, keys = false) => {
+  // A pin on a board this page links (overlay.ts): the board opens over the page and the pin opens on it; the page stays.
+  const a = c.anchor || {};
+  if (a.kind === 'board' && !W.S.board) {
+    const view = (window as unknown as { __labBoard?: { name?: string }; __labBoardView?: { show: (n: string) => Promise<unknown> } });
+    if (view.__labBoard?.name === a.board) return void ((W.S.openId = c.id), (W.S.draft = null), W.render());
+    return void view.__labBoardView?.show(a.board).then(() => setTimeout(() => ((W.S.openId = c.id), (W.S.draft = null), W.render()), 300));
+  }
   W.S.stepping = Boolean(W.S.openId);
   W.S.keepKeys = W.S.stepping && (keys || W.root.activeElement?.localName === 'textarea');
   W.S.openId = c.id;
@@ -29,11 +36,6 @@ export function drawList() {
   const all = W.threads();
   W.paintWho?.(); // the pill's words and a phone sheet's line follow the agent's work
   paintLines();
-  W.goBtn.hidden = !W.S.on;
-  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, '+'), W.el('kbd', { 'aria-hidden': 'true' }, W.KEYS.comment));
-  W.goFace();
-  W.goBtn.classList.toggle('cursor', W.S.cursorMode);
-  W.goBtn.setAttribute('aria-pressed', String(!W.S.cursorMode));
   const freshAll = all.filter((c) => !W.isPage(c)).reduce((n, c) => n + W.unread(c).length, 0); // a new message in a done thread counts too
   // The middle shows how many are new (a click goes to the next one). The pills keep their place whatever the counts:
   // with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.

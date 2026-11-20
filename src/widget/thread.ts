@@ -1,13 +1,58 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { bindTrial, keptRow, onReshow, triesInPlace, tryRow, untry } from './trial.ts';
 import { stickToEnd } from './stick.ts';
+import { heldPin, holdBox, letBox } from './pinhold.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
 export function bindThread(w: unknown) {
   W = w;
+  bindTrial(w);
 }
 
-export function placeCard(card, left, top) {
+// On a computer (comments.js passes the pin): the card or box is tied to its pin with CSS anchor positioning, so
+// the browser keeps it with the pin through any scrolling (a held pin's sticky header too) and puts it above the pin, or
+// in from the screen's right edge, when there is no room (@position-try). A card on a pin the browser holds is tied to
+// that pin's element instead (pinhold.ts holdBox); one on a pin the script places, to the pin itself (styles.css
+// .tied-*). Where it goes is the script's own numbers (want, page px), kept as offsets from what it is tied to, so a
+// point's card, an area's and a drawing's work alike. Tied, it keeps no place of its own (the script's would win).
+// Phones' sheets and a question's card in the margin are placed as before.
+type Want = { cx: number; cy: number; ux?: number; uy?: number; ay: number };
+let tieCount = 0;
+const pinNames = new WeakMap<Element, string>();
+const px = (n: number) => `${Math.round(n * 100) / 100}px`;
+export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined, kind: 'card' | 'beside', want?: Want) {
+  node.classList.remove('tied-card', 'tied-beside');
+  node.removeAttribute('data-held'); // set below once the browser carries it with its pin (comments.js: no redraw for it)
+  if (!pin || !want) {
+    letBox(node);
+    return node.style.removeProperty('position-anchor');
+  }
+  let to: Element | null = kind === 'card' ? holdBox(node, pin) : null;
+  if (to) node.style.removeProperty('position-anchor'); // tied by the page's rule now: an inline one would win
+  if (!to) {
+    let name = pinNames.get(pin);
+    if (!name) pinNames.set(pin, (name = `--lab-pin${(++tieCount).toString(36)}`));
+    pin.style.setProperty('anchor-name', name);
+    node.style.setProperty('position-anchor', name);
+    node.classList.add(`tied-${kind}`);
+    to = pin;
+  }
+  node.setAttribute('data-held', '');
+  // Its corner as anchor positioning reads it: a pin's layout box, not its rect (a pin still popping in is scaled).
+  const r = to === pin && pin.offsetParent ? pin.offsetParent.getBoundingClientRect() : to.getBoundingClientRect();
+  const [x, y] = to === pin ? [r.left + scrollX + pin.offsetLeft, r.top + scrollY + pin.offsetTop] : [r.left + scrollX, r.top + scrollY];
+  const set = (k: string, v?: number) => (v === undefined ? node.style.removeProperty(k) : node.style.setProperty(k, px(v)));
+  set('--lab-cx', want.cx - x);
+  set('--lab-cy', want.cy - y);
+  set('--lab-ux', want.ux === undefined ? undefined : want.ux - x);
+  set('--lab-uy', want.uy === undefined ? undefined : want.uy - y);
+  set('--lab-ay', want.ay - y);
+  node.style.left = node.style.top = '';
+}
+
+// aboveY: where the card's bottom goes when it opens above (an area's: above the area, not its pin).
+export function placeCard(card, left, top, pin?: HTMLElement | null, aboveY = top - 40) {
   W.layer.append(card);
   const width = card.offsetWidth;
   const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
@@ -17,10 +62,11 @@ export function placeCard(card, left, top) {
   const below = top + 10 + h > W.contentEnd();
   card.style.top = `${below ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`; // above: clear of the pin (28 px tall)
   card.style.transformOrigin = below ? '14px 100%' : '';
+  tieToPin(card, pin, 'card', { cx: left - 14, cy: top + 10, ay: aboveY });
 }
 
 // Draft composer sits to the right of its pin, like the pin is the avatar; below it when there is no room.
-export function placeBeside(node, left, top) {
+export function placeBeside(node, left, top, pin?: HTMLElement | null) {
   W.layer.append(node);
   const width = node.offsetWidth;
   const right = scrollX + document.documentElement.clientWidth - 12;
@@ -33,6 +79,10 @@ export function placeBeside(node, left, top) {
     node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
     node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
   }
+  // Whole inside the screen (8 px in), where the script is the one placing it (no pin to tie it to).
+  const low = scrollY + document.documentElement.clientHeight - 8 - h;
+  node.style.top = `${Math.max(scrollY + 8, Math.min(parseFloat(node.style.top), low))}px`;
+  tieToPin(node, pin, 'beside', { cx: left + 36, cy: top - 37, ux: left - 14, uy: top + 10, ay: top - 40 });
 }
 
 // `now` gives the thread the pin shows now: the pin is kept across redraws (src/comments.js, render), so it can't hold one.
@@ -42,7 +92,9 @@ export function grab(pin, now) {
     const c = now();
     const r = pin.getBoundingClientRect();
     const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
-    const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+    // A pin the browser holds keeps no place of its own (pinhold.ts): its tip, the lower left corner, is where it shows.
+    const held = heldPin(pin);
+    const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: held ? r.left + scrollX : parseFloat(pin.style.left), top: held ? r.bottom + scrollY : parseFloat(pin.style.top) };
     let moving = false;
     let last = e;
     W.S.grabbing = true;
@@ -57,6 +109,7 @@ export function grab(pin, now) {
       if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
       moving = true;
       pin.classList.add('dragging');
+      W.letPin(pin); // the browser no longer holds it (pinhold.ts): the drag places it
       place();
     };
     const scrolled = () => moving && place();
@@ -107,9 +160,11 @@ export function grab(pin, now) {
 // - the reply box (composer) at the foot, its draft kept per thread, focused on a computer when opened by a click;
 // - scroll keeping: at the newest it follows new messages and the keyboard; scrolled back, it stays put; sync() adds
 //   replies that arrive in place, so the reply box keeps its focus;
-// - keys: R reply, E resolve, Escape closes, Ctrl-D / W next new (comments.js);
+// - keys: R reply, E resolve, Escape closes, Ctrl-D / W next new, 1 to 6 pick a choice of an open question (comments.js);
 // - phones: the bottom sheet (drag by its handle, swipe down to close: sheets.ts), "new · N ›" to the next one.
-// A question with choices adds its rows in its bubble (choicesEl, below). No keys on its rows: tap, Keep.
+// A question with choices adds its rows in its bubble (choicesEl, below); on quoted words the card opens in the margin
+// (placeAsk) and the rows are tried in the page. Its rows: point to try, tap or 1 to 6 to answer (undo for 5 s).
+// The reply box is not focused while a question is open, so the digits are keys; words typed there are an ordinary reply.
 export function threadCard(c, fresh = new Set(), focus = false) {
   const asking = openAsk(c);
   const card = W.el('div', { class: `card${asking ? ' asking' : ''}` }); // phones: an open question's sheet is half the screen
@@ -117,6 +172,8 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const body = W.el('div', { class: 'body' });
   const foot = W.el('div', { class: 'foot' });
   card.append(W.el('div', { class: 'handle' }), body, foot);
+  // Written while the page was paused: the moment, as a chip; clicked, the page pauses there again (comments.js).
+  if (c.anchor?.moment && W.S.momentChip) card.insertBefore(W.S.momentChip(c.anchor.moment, true), body);
   card.addEventListener('click', (e) => e.stopPropagation());
   // Messages as in the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, and
   // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.
@@ -177,7 +234,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     box.append(...W.readable(item.text));
     if (item.session && Array.isArray(item.choices) && item.choices.length) {
       box.classList.add('asks');
-      box.append(choicesEl(c, item));
+      box.append(choicesEl(c, item, card));
     }
     if (item.session && /kept|undone/.test(item.suggest?.state)) box.append(ruleLine(item));
     const stamp = W.stampOf(item, c, item === c && !c.resolved ? `#${W.numberOf(c)} · ` : '');
@@ -194,7 +251,30 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const shown = new Set();
   const all = [c, ...W.repliesOf(c.id)];
   const firstNew = all.find((x) => fresh.has(x.id));
-  for (const item of all) {
+  // The agent's "on it" messages fold into one muted row ("2 updates ›") once an answer follows them; the latest stays
+  // while there is no answer yet. A tap opens them in place (Leo, 20 Nov).
+  const unfolded: Set<string> = (W.S.unfolded ||= new Set());
+  for (const slot of W.foldStatus(all, () => c.id, unfolded)) {
+    if (slot.fold) {
+      // Open: its messages follow the row (drawn on the next render). A tap shows or hides them in place.
+      let els: HTMLElement[] = [];
+      const row = W.foldRow(slot, unfolded, (open) => {
+        if (open) {
+          els = slot.items.map((item) => itemEl(item));
+          row.after(...els);
+        } else {
+          for (const n of els) n.remove();
+          els = [];
+        }
+      });
+      body.append(row);
+      for (const item of slot.items) {
+        shown.add(item.id);
+        if (slot.open) els.push(body.appendChild(itemEl(item)));
+      }
+      continue;
+    }
+    const item = slot.m;
     if (item === firstNew && item !== c) body.append(W.el('div', { class: 'newline' }, 'new'));
     body.append(itemEl(item));
     shown.add(item.id);
@@ -202,6 +282,10 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   card.sync = () => {
     // A new question with choices, or a pick (from another device): the card is drawn again, so the rows are right.
     if (W.repliesOf(c.id).some((r) => !shown.has(r.id) && (r.choices || r.picked))) return W.render();
+    // A status, or an answer after statuses (they fold now): the card is drawn again so they fold, unless words are typed
+    // in a box, which a redraw would take; then it is appended in place like any reply and folds on the next render.
+    const written = [...card.querySelectorAll('textarea')].some((t) => (t as HTMLTextAreaElement).value.trim());
+    if (!written && W.repliesOf(c.id).some((r) => !shown.has(r.id) && r.session && W.repliesOf(c.id).some((x) => W.isStatus(x)))) return W.render();
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 48;
     for (const r of W.repliesOf(c.id)) {
       if (shown.has(r.id)) continue;
@@ -212,7 +296,10 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       shown.add(r.id);
       W.markSeen([r]);
     }
-    if (atEnd) body.scrollTop = body.scrollHeight; // at the newest: the new one comes into view
+    if (atEnd) { // at the newest: the new one comes into view, and stays while its words settle
+      body.scrollTop = body.scrollHeight;
+      W.S.stayAtEnd?.(body);
+    }
   };
   // Resolve: admins, and whoever started the thread (its key is kept in their browser). Delete: admins.
   const ownKey = W.store.get(`lab-edit:${c.id}`);
@@ -262,7 +349,30 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       W.S.openId = null;
       W.render();
     });
-    actions.append(...(W.S.isAdmin ? [resolve, del] : [resolve]));
+    // Undo (Leo, 19 Nov): for 3 s after this tab sent the thread (W.S.undo, src/comments.js), "undo" sits in the
+    // resolve key's place, a line under it running out; a tap deletes the pin and opens its box again with the words.
+    // The key keeps resolve's width (both words stacked, one hidden), so nothing moves when it turns back.
+    const take = W.S.undo?.id === c.id ? W.S.undo : null;
+    const left = take ? take.until - Date.now() : 0;
+    let first = resolve;
+    if (left > 0) {
+      const undo = W.el('button', { class: 'btn undo', type: 'button', 'aria-label': 'undo: take this pin back' });
+      const w = W.el('span', { class: 'w', style: `--undo-ms:${left}ms;--undo-from:${Math.min(1, left / W.UNDO_MS)}` });
+      w.append(W.el('span', {}, 'undo'), W.el('span', { class: 'ghost', 'aria-hidden': 'true' }, 'resolve'));
+      undo.append(w);
+      undo.addEventListener('click', async () => {
+        try {
+          await W.takeBack(c);
+        } catch {
+          failed(undo);
+        }
+      });
+      // Touched: the card stays open when the 3 s are up (untouched, it closes as a sent card always did).
+      for (const ev of ['pointerdown', 'focusin', 'keydown']) card.addEventListener(ev, (e) => e.target !== undo && !undo.contains(e.target) && (take.touched = true));
+      setTimeout(() => undo.isConnected && undo.replaceWith(resolve), left);
+      first = undo;
+    }
+    actions.append(...(W.S.isAdmin ? [first, del] : [first]));
     body.append(actions);
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).
@@ -288,7 +398,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   foot.append(
     W.composer({
       placeholder: 'reply',
-      autofocus: focus, // a question with choices too: its rows have no keys, so the reply box keeps the focus
+      autofocus: focus && !asking, // an open question: no focus in the box, so 1 to 6 pick its choices
       draftKey: `lab-typing:${W.S.page}:${c.id}`,
       onSubmit: async (name, text) => {
         const { comment } = await W.send({ name, text, parent: c.id });
@@ -300,7 +410,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
           W.render();
           // The card is drawn again: keep it where you were, at the newest message, with the cursor in the box.
           const again = W.S.openCard?.querySelector('.body');
-          if (again) again.scrollTop = again.scrollHeight;
+          if (again) { again.scrollTop = again.scrollHeight; W.S.stayAtEnd?.(again); }
           W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true });
           return { keep: true };
         }
@@ -312,6 +422,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
         added.classList.add('fresh');
         items[items.length - 1].after(added);
         body.scrollTop = body.scrollHeight; // the reply just sent is in view above the box
+        W.S.stayAtEnd?.(body);
         return { keep: true };
       },
     }),
@@ -321,8 +432,15 @@ export function threadCard(c, fresh = new Set(), focus = false) {
 
 // ---------- a question with choices (labit reply --choice …) ----------
 // V1 "plain list" (Leo, 18 Nov): no bubble, no letters, no tags. The question, then the versions as a plain list of rows
-// (the page's own words "· now", a tick on the one shown), then one Keep. Keep sends the pick as a reply, "Picked B: …"
-// (the letter is for the agent, who listed them), with picked: { of, n } (lib/schema.mjs). No keys on the card.
+// (the page's own words "· now", a tick on the one shown). A tap on a row
+// answers (20 Nov, no Keep) as a reply, "Picked B: …" (the letter is for the agent, who listed them), with
+// picked: { of, n } (lib/schema.mjs), but only after 5 s: the card says "Picked B · undo" meanwhile, and the pick goes
+// at once when the card closes (or the page is hidden). On a computer 1 to 6 pick that choice of the open thread card (the
+// same as a tap, with its undo), and Enter picks the ticked row (the agent's recommend, or the one tried last), unless a
+// text box or a button has the focus (comments.js, pickByKey, pickTicked). On a phone a touch that
+// moved (a scroll) answers nothing.
+// With quoted words on the page the rows are also tried in it (trial.ts). The page chat draws a question the same way
+// (chat.ts), with no trying: its messages have no quoted words.
 // The open question in a thread: the agent's last message with choices that nobody has picked on yet.
 const pickOf = (c, ask) => W.repliesOf(c.id).filter((r) => r.picked?.of === ask.id).pop();
 export function openAsk(c) {
@@ -331,61 +449,214 @@ export function openAsk(c) {
   return ask && !pickOf(c, ask) && !c.resolved ? ask : null;
 }
 const LETTER = (n: number) => String.fromCharCode(65 + n);
+
+// The pick just tapped, waiting its 5 s (one at a time). ui draws it in the card that shows it now: 'wait' (undo on
+// offer), 'sending', or 'off' (back to rows, with a note when it failed). The card may be drawn again meanwhile: the
+// new rows read this and pick up where it was.
+const PICK_MS = 5000;
+type Pending = { ask: string; thread: string; chat: boolean; n: number; before: number; name: string; text: string; until: number; timer: ReturnType<typeof setTimeout>; sending: boolean; ui?: (state: 'wait' | 'sending' | 'off', note?: string) => void };
+let pending: Pending | null = null;
+// A pick that could not be sent, kept by question so the card, drawn again, offers it again ("failed, tap again").
+const failedPick = new Map<string, number>();
+function commitPick(p: Pending) {
+  if (pending !== p || p.sending) return;
+  clearTimeout(p.timer);
+  p.sending = true;
+  p.ui?.('sending');
+  void (async () => {
+    try {
+      const { comment } = await W.send({ name: p.name, text: p.text, parent: p.ask, to: p.ask, picked: p.n });
+      if (pending === p) pending = null;
+      failedPick.delete(p.ask);
+      untry(); // the agent writes the pick into the file; the page shows its own words till then
+      W.S.comments.push(comment);
+      W.markSeen([comment]);
+      W.render();
+    } catch (err) {
+      console.warn('labit: the pick could not be sent', err);
+      if (pending === p) pending = null;
+      failedPick.set(p.ask, p.n); // its card may be closed: it shows this when it opens again
+      p.ui?.('off', 'failed, tap again');
+    }
+  })();
+}
+/** Before every redraw (comments.js render): a pick waiting its 5 s goes now when its card (or the chat) has closed. */
+export function flushPick(openId: string | null, chatOpen: boolean) {
+  if (!pending || pending.sending) return;
+  if (!(pending.chat ? chatOpen : openId === pending.thread)) commitPick(pending);
+}
+// The page is going or hidden (a tab switch, the phone locked): the pick goes now, not after its 5 s (best effort).
+addEventListener('pagehide', () => pending && commitPick(pending));
+document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && pending && commitPick(pending));
+/** 1 to 6 on a computer: the choice's row of the open thread card's question, as a tap (the chat's rows have no keys, so 1 stays comment / pointer there). Whether it took the key. */
+export function pickByKey(n: number): boolean {
+  if (W.coarse) return false;
+  const live = W.S.openCard && ([...W.S.openCard.querySelectorAll('.choices.live')].pop() as { pick?: (n: number) => boolean } | undefined);
+  return Boolean(live?.pick?.(n - 1));
+}
+
+/** Enter on a computer: the ticked row of the open thread card's question, as a tap. False when no question is open or no row is ticked (the agent gave no pick), so Enter does what it did. */
+export function pickTicked(): boolean {
+  if (W.coarse) return false;
+  const live = W.S.openCard && ([...W.S.openCard.querySelectorAll('.choices.live')].pop() as { ticked?: () => boolean } | undefined);
+  return Boolean(live?.ticked?.());
+}
+
 // The rows of a question, under it. Answered (or an older one): the rows as they were, the pick ticked. Open: rows to
-// pick, Keep under them.
-function choicesEl(c, ask) {
+// try; a tap answers. host: the card of the thread (its tie is drawn again as words change), or the chat.
+export function choicesEl(c, ask, host, chat = false) {
   const box = W.el('div', { class: 'choices' });
   const list = W.el('div', { class: 'rows' });
   box.append(list);
   const pick = pickOf(c, ask);
   const live = !pick && openAsk(c) === ask;
+  if (pick && pending?.ask === ask.id && !pending.sending) {
+    // answered from elsewhere
+    clearTimeout(pending.timer);
+    pending = null;
+  }
+  const inPlace = live && !chat && triesInPlace(c);
+  const exact = c.anchor?.quote?.exact || '';
+  // The quoted words as they are now: their own row ("· now") when trying in place, unless a choice is the same words.
+  const same = (a: string, b: string) => a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim();
+  const nowIs = inPlace ? ask.choices.findIndex((t) => same(t, exact)) : -1;
   const rows: { n: number; el: HTMLButtonElement }[] = [];
-  const row = (n: number, text: string) => {
+  const row = (n: number, text: string, hint = '') => {
     const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement;
-    b.append(W.el('span', { class: 'tx', dir: 'auto' }, text));
+    const now = inPlace && (n === -1 || n === nowIs);
+    const words = W.el('span', { class: 'tx', dir: 'auto' }, text);
+    const nw = now ? W.el('span', { class: 'nw' }, ' · now') : null;
+    if (hint) {
+      // A short description under the words, muted (labit reply --hint).
+      const line = W.el('span', { class: 'ln' });
+      line.append(words, ...(nw ? [nw] : []));
+      const cx = W.el('span', { class: 'cx' });
+      cx.append(line, W.el('span', { class: 'desc', dir: 'auto' }, hint));
+      b.append(cx);
+    } else b.append(words, ...(nw ? [nw] : []));
+    if (now) b.classList.add('now');
+    if (n >= 0 && n < 6 && !W.coarse && live) b.title = `press ${n + 1}`;
     if (pick && pick.picked.n === n) b.classList.add('picked');
     rows.push({ n, el: b });
     return b;
   };
-  ask.choices.forEach((t, n) => list.append(row(n, t)));
-  if (pick && pick.picked.n < 0) box.append(W.el('span', { class: 'note' }, `kept as it was · ${pick.name}`));
+  if (inPlace && nowIs < 0) list.append(row(-1, exact));
+  const hints = Array.isArray(ask.hints) ? ask.hints : [];
+  ask.choices.forEach((t, n) => list.append(row(n, t, typeof hints[n] === 'string' ? hints[n] : '')));
+  // One line under the rows of an open question, always there (empty, unseen) so a note never makes the card taller.
+  // An answered question has none (an old "kept as it was" pick keeps its line). A status: a screen reader says it.
+  const note = W.el('span', { class: 'note idle', role: 'status' }, ' ');
+  if (live || pick?.picked.n === -1) box.append(note);
+  const say = (t?: string) => {
+    note.classList.toggle('idle', !t);
+    note.replaceChildren(t || ' ');
+  };
+  if (pick && pick.picked.n === -1) say(`kept as it was · ${pick.name}`);
   if (!live) return box;
+  box.classList.add('live');
 
-  // The row picked (tapped): the agent's own pick at first.
-  let cur = ask.recommend ?? -1;
-  // Always "Keep", always on (Leo, 18 Nov: "just keep all the time"); with no row ticked it keeps the words as they are.
-  const keep = W.el('button', { class: 'keep', type: 'button' }, 'Keep') as HTMLButtonElement;
+  // A tap answers (Leo, 20 Nov: "remove keep button answer right away"), 5 s later (undo until then). On a computer
+  // pointing at a row still tries it in the page; the row shown at first is the page's own words, or the agent's pick.
+  const back = keptRow(ask);
+  const lost = failedPick.get(ask.id); // its pick could not be sent when this card was last open: offered again
+  let cur = lost ?? back ?? (inPlace ? (nowIs >= 0 ? nowIs : -1) : ask.recommend ?? -1);
+  const words = (n: number) => (n < 0 ? exact : ask.choices[n]);
+  let shown = cur; // the row in the page: the one pointed at, else cur
+  const show = (n: number) => {
+    shown = n;
+    return inPlace && tryRow(c, ask, n, n < 0 || n === nowIs ? null : words(n), host);
+  };
   const select = (n: number) => {
     cur = n;
     for (const r of rows) {
       r.el.classList.toggle('on', r.n === n);
       r.el.setAttribute('aria-pressed', String(r.n === n));
     }
-    if (!keep.disabled) keep.textContent = 'Keep'; // after "your name first" or "failed, try again"
+    show(n);
   };
-  for (const r of rows) r.el.addEventListener('click', () => select(r.n));
-  box.append(keep);
-  keep.addEventListener('click', async () => {
-    if (keep.disabled) return;
+  const label = (p: Pending) => (p.n < 0 ? 'Kept as is' : `Picked ${LETTER(p.n)}`);
+  // The pick, waiting: its row ticked, the others still, "Picked B · undo" under them.
+  const wait = (p: Pending) => {
+    for (const r of rows) {
+      r.el.setAttribute('aria-disabled', 'true'); // not `disabled`: a focused row keeps its focus
+      r.el.classList.remove('on');
+      r.el.classList.toggle('picked', r.n === p.n);
+    }
+    const left = Math.max(0, p.until - Date.now());
+    const undo = W.el('button', { class: 'btn undo', type: 'button', 'aria-label': 'undo: take this pick back' });
+    const w = W.el('span', { class: 'w', style: `--undo-ms:${left}ms;--undo-from:${Math.min(1, left / PICK_MS)}` });
+    w.append(W.el('span', {}, 'undo'));
+    undo.append(w);
+    undo.addEventListener('click', () => {
+      if (pending !== p || p.sending) return;
+      clearTimeout(p.timer);
+      pending = null;
+      p.ui?.('off');
+    });
+    note.classList.remove('idle');
+    note.replaceChildren(`${label(p)} · `, undo);
+  };
+  const ui = (p: Pending) => (state: 'wait' | 'sending' | 'off', msg?: string) => {
+    if (state === 'wait') return wait(p);
+    if (state === 'sending') return wait(p), note.replaceChildren(label(p)); // the word stays, no undo
+    for (const r of rows) {
+      r.el.removeAttribute('aria-disabled');
+      r.el.classList.remove('picked');
+    }
+    select(p.before);
+    say(msg);
+  };
+  const answer = (n: number) => {
+    if (pending?.ask === ask.id) return; // waiting: undo first
+    const prev = cur; // what undo goes back to
     const name = String(W.store.get('lab-name') || '').trim();
+    select(n);
     if (!name) {
-      keep.textContent = 'your name first';
-      return void W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true });
+      say('your name first');
+      return void host.querySelector('textarea')?.focus({ preventScroll: true });
     }
-    const n = cur; // -1: the words as they are (a choice that is the same words is picked by its letter)
+    failedPick.delete(ask.id);
+    if (pending) commitPick(pending); // another question's pick still waiting: it goes now
     const text = n < 0 ? 'Keep as is: none of these.' : `Picked ${LETTER(n)}: ${ask.choices[n]}`;
-    keep.disabled = true;
-    try {
-      const { comment } = await W.send({ name, text, parent: ask.id, to: ask.id, picked: n });
-      W.S.comments.push(comment);
-      W.markSeen([comment]);
-      W.render();
-    } catch {
-      keep.disabled = false;
-      keep.textContent = 'failed, try again';
-    }
-  });
+    const p: Pending = { ask: ask.id, thread: c.id, chat, n, before: prev, name, text, until: Date.now() + PICK_MS, timer: 0 as unknown as ReturnType<typeof setTimeout>, sending: false };
+    p.timer = setTimeout(() => commitPick(p), PICK_MS);
+    p.ui = ui(p);
+    pending = p;
+    wait(p);
+    (note.querySelector('.undo') as HTMLElement | null)?.focus({ preventScroll: true }); // the tapped row is greyed: focus goes to undo
+  };
+  for (const r of rows) {
+    // A touch that moved more than 8 px was a scroll: it answers nothing.
+    let down: { x: number; y: number } | null = null;
+    r.el.addEventListener('pointerdown', (e) => (down = e.pointerType === 'mouse' ? null : { x: e.clientX, y: e.clientY }));
+    r.el.addEventListener('pointercancel', () => (down = null));
+    r.el.addEventListener('click', (e) => {
+      const moved = Boolean(down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8);
+      down = null;
+      if (!moved) answer(r.n);
+    });
+    if (!W.coarse) r.el.addEventListener('pointerenter', () => show(r.n));
+  }
+  if (!W.coarse) list.addEventListener('pointerleave', () => show(cur));
+  (box as unknown as { pick: (n: number) => boolean }).pick = (n) => {
+    if (n < 0 || n >= ask.choices.length) return false;
+    if (pending?.ask !== ask.id) answer(n); // a pick already waiting: the key is still taken (it is not "comment / pointer"), undo first
+    return true;
+  };
+  (box as unknown as { ticked: () => boolean }).ticked = () => {
+    if (cur < 0 || cur >= ask.choices.length) return false;
+    if (pending?.ask !== ask.id) answer(cur); // a pick already waiting: Enter is still taken, undo first
+    return true;
+  };
   select(cur);
+  if (lost !== undefined) say('failed, tap again');
+  // Drawn again while its pick waits (a live update): the rows show the wait, the countdown where it was.
+  if (pending?.ask === ask.id) {
+    pending.ui = ui(pending);
+    select(pending.n);
+    pending.ui(pending.sending ? 'sending' : 'wait');
+  }
+  // After a hot save the words may be gone (or be back): the card is drawn again so its rows and place match them.
+  if (!chat) onReshow(() => box.isConnected && (triesInPlace(c) === inPlace ? show(shown) : W.render()));
   return box;
 }
-

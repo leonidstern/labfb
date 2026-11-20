@@ -4,40 +4,27 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { site, tmp, rm, spawnLab, sleep, up, cli as command } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-replies-')); // nobody's real ~/.config
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-replies-lab-'));
+const HOME = tmp('replies'); // nobody's real ~/.config
+const { DIR, PORT, B } = site('replies-lab', 9100, 40);
 const RULES = path.join(HOME, 'labit', 'replies.md');
-const PORT = 9100 + Math.floor(Math.random() * 40); // clear of the other test files' ranges
 const env = { ...process.env, XDG_CONFIG_HOME: HOME, PORT: '' };
-const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'package.json'), '{}');
 fs.writeFileSync(path.join(DIR, 'bar.html'), '<!doctype html><title>Bar</title><p id="x">Hi</p>');
-const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--new', '--port', String(PORT)], { cwd: DIR, env });
+const lab = spawnLab(DIR, PORT, { flags: ['--new'], env });
 after(() => {
   lab.kill();
-  for (const d of [HOME, DIR]) fs.rmSync(d, { recursive: true, force: true });
+  rm([HOME, DIR]);
 });
-const cli = (...args) => new Promise((done) => execFile(process.execPath, [LAB, ...args], { cwd: DIR, env }, (err, out, errOut) => done({ code: err?.code ?? 0, out: out + errOut })));
+const cli = (...args) => command(args, { cwd: DIR, env });
 const post = async (body, url = '/_lab/api/comments') => {
   const r = await fetch(B + url, { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/bar', ...body }) });
   return { status: r.status, json: r.status === 204 ? null : await r.json().catch(() => null) };
 };
 const thread = async () => (await (await fetch(`${B}/_lab/api/comments?page=/bar`)).json()).comments;
-const ready = async () => {
-  for (let i = 0; i < 80; i++) {
-    try {
-      return await fetch(B + '/');
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-};
+const ready = () => up(B + '/', { fail: false });
 
 test('the agent can offer a rule on its own; keep saves it, no does not; a person cannot offer one', async () => {
   await ready();
@@ -81,7 +68,7 @@ test('reply --choice --wait returns the pick', async () => {
   let ask;
   for (let i = 0; i < 50 && !ask; i++) {
     ask = (await thread()).find((c) => c.choices && c.parent === pin.id);
-    if (!ask) await new Promise((r) => setTimeout(r, 100));
+    if (!ask) await sleep(100);
   }
   assert.ok(ask, 'the question is saved');
   assert.deepEqual([ask.choices, ask.recommend, ask.intent], [['Hi', 'Hello'], 1, 'question']);
@@ -91,4 +78,6 @@ test('reply --choice --wait returns the pick', async () => {
   assert.match(out, /Asked with A\) Hi {2}B\) Hello {2}\(your pick: B\)/);
   assert.match(out, /Picked B: Hello \(their pick on your question id /);
   assert.ok(out.includes(`(their pick on your question id ${ask.id})`));
+  assert.match(out, /^A pick .*: make that change, then .* resolve <id> with no words; words only if/m, 'one rule for a pick: change it, resolve with no words');
+  assert.match(out, /resolve <id> with no words \(words only if/, 'the same rule where the question was asked');
 });

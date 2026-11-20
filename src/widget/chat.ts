@@ -1,5 +1,6 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 import { stickToEnd } from './stick.ts';
+import { choicesEl } from './thread.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -8,7 +9,7 @@ export function bindChat(w: unknown) {
 }
 
 // The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
-// a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.
+// a pin's say what they're on). An agent's question with choices shows its rows, as in a thread (thread.ts). New messages are about the page; on phones swipe one to answer it instead.
 // The time in a bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent, ✓✓ handed to
 // the agent (its thread went to the agent at or after you wrote it). Chat and threads alike.
 // The time and its mark sit pinned in the bubble's bottom-right corner, as WhatsApp and Telegram do: an invisible
@@ -54,8 +55,9 @@ export function drawChat() {
   if (W.chatEl.hidden && W.chatEl.contains(W.root.activeElement)) (W.root.activeElement as HTMLElement).blur(); // a closed chat keeps no focus, so keys work again
   if (W.chatEl.hidden) return;
   const box = W.$('.msgs', W.chatEl);
-  // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
-  const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+  // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back (nor
+  // when a fold row was just tapped: the messages it opens are not new, and the row stays where it is).
+  const atEnd = opening || (!W.S.foldToggle && box.scrollHeight - box.scrollTop - box.clientHeight < 48);
   const before = new Set(opening ? [] : [...(box.children as HTMLCollectionOf<HTMLElement>)].map((n) => n.dataset.id));
   // A message already on screen that hasn't changed keeps its own node: a redraw for one new message used to rebuild
   // every bubble (a phone showed the chat blink as messages arrived).
@@ -64,9 +66,15 @@ export function drawChat() {
     const old = kept.get(n.dataset?.id);
     return old && old.outerHTML.replace(' fresh', '') === n.outerHTML ? old : n;
   };
-  W.patchKids(box, msgs.flatMap((m) => {
+  const unfolded: Set<string> = (W.S.unfolded ||= new Set());
+  const rootId = (m) => m.parent || m.id;
+  // The agent's "on it" messages fold into one muted row once an answer follows them (as in a thread).
+  const slots = W.foldStatus(msgs, rootId, unfolded).flatMap((s) => (s.fold ? [s, ...(s.open ? s.items.map((m) => ({ m })) : [])] : [s]));
+  W.patchKids(box, slots.flatMap((slot) => {
+    if (slot.fold) return [W.foldRow(slot, unfolded)];
+    const m = slot.m;
     const root = m.parent ? byId.get(m.parent) : m;
-    const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
+    const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${before.size && !before.has(m.id) && !W.S.foldToggle ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
     // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
     // "Done" answer closes the thread.
     b.append(W.nameLine(m.name, false));
@@ -80,11 +88,16 @@ export function drawChat() {
         const to = W.$(`[data-id="${root.id}"]`, box);
         if (!to) return;
         box.scrollTo({ top: to.offsetTop - box.offsetTop - 12, behavior: W.still.matches ? 'auto' : 'smooth' });
-        to.animate?.([{ boxShadow: '0 0 0 2px rgb(52,199,89)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: W.ms('hold') });
+        to.animate?.([{ boxShadow: `0 0 0 2px ${getComputedStyle(to).getPropertyValue('--_green').trim()}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: W.ms('hold') });
       });
       b.append(q);
     }
     b.append(...W.readable(m.text));
+    // The agent's question with choices: its rows under it, as in a thread's card (thread.ts), nothing tried in the page.
+    if (m.session && Array.isArray(m.choices) && m.choices.length && root) {
+      b.classList.add('asks');
+      b.append(choicesEl(root, m, W.chatEl, true));
+    }
     stamped(b, W.stampOf(m, root));
     return m.id === W.S.newFrom && m !== msgs[0] ? [W.el('div', { class: 'newline' }, 'new'), b] : [b];
   }).map(same));
@@ -108,10 +121,14 @@ export function drawChat() {
           W.S.comments.push(comment);
           W.markSeen([comment]);
           box.scrollTop = box.scrollHeight;
+          W.S.stayAtEnd?.(box);
           W.render();
           return { keep: true }; // the same box stays, with the cursor in it: the phone's keyboard stays up
         },
       }),
     );
-  if (atEnd) box.scrollTop = box.scrollHeight;
+  if (atEnd) {
+    box.scrollTop = box.scrollHeight;
+    W.S.stayAtEnd?.(box); // and stays at the newest while the sheet and its words settle (comments.js)
+  }
 }

@@ -14,7 +14,7 @@ In your project:
 npx @leonidstern/labit@latest
 ```
 
-It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, and opens the page with comments on top. Click to comment, drag to mark an area, Shift-drag to quote words. `M` hides the comments.
+It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, and opens the page with comments on top. Click to comment, drag to mark an area, hold `D` and drag to draw on it (circle, arrow, underline, cross out), Shift-drag to quote words. `M` hides the comments.
 
 ## Let your agent answer
 
@@ -48,7 +48,7 @@ Run each `wait` from the agent itself, never in a shell loop (`while true; do �
 - You name yourself once. The name is kept for this computer in `~/.config/labit/settings.json`, so every later lab starts out knowing you — browsers keep it per port, labs don't. `labit invite [name]` carries a name to a phone the same way. `--page /path` makes the link open that page. Opening a used or old link again on a phone that's already in just takes you there, and a phone that keeps using the lab stays in.
 - Settings (port, your dev server, keys, how long the lab waits…): `labit.json` in the project and `~/.config/labit/settings.json` for you. `labit settings` shows them all; [docs/settings.md](docs/settings.md) explains each.
 - Comments stay in `.lab/` in your project. Add it to `.gitignore`.
-- `1` switches between comment and pointer (clicks are the page's own).
+- A click on the page pins a comment; the page's own links and buttons keep their clicks. Hold ⌥ to pin on anything, controls included.
 - No dependencies, Node 22+. `--help` lists everything else.
 
 Shared labs on a domain (comments from people you send a link to) come later.

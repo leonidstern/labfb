@@ -3,38 +3,24 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { site, rm, spawnLab, sleep, up as answers, serverJson } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-hot-'));
-const PORT = String(4900 + Math.floor(Math.random() * 90));
-const B = `http://localhost:${PORT}`;
+const { DIR, PORT, B } = site('hot', 4900, 90);
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><link rel="stylesheet" href="s.css"><h1 id="t">Hello</h1>');
 fs.writeFileSync(path.join(DIR, 's.css'), 'h1{color:red}');
 fs.writeFileSync(path.join(DIR, 'app.js'), 'console.log(1)');
 fs.writeFileSync(path.join(DIR, 'pic.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
 
 let server = null;
-const start = () => (server = spawn(process.execPath, [LAB, '.', '--no-open', '--new', '--port', PORT], { cwd: DIR, env: { ...process.env, PORT } }));
+const start = () => (server = spawnLab(DIR, PORT, { flags: ['--new'], env: { ...process.env, PORT } }));
 start();
 after(() => {
   server?.kill();
-  fs.rmSync(DIR, { recursive: true, force: true });
+  rm([DIR]);
 });
 
-const up = async () => {
-  for (let i = 0; i < 80; i++) {
-    try {
-      return await fetch(B + '/');
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  throw new Error('server did not start');
-};
+const up = () => answers(B + '/', { fail: 'server did not start' });
 const post = (body) =>
   fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) }).then((r) => r.json());
 
@@ -62,7 +48,7 @@ async function listen() {
       const hit = states.find(pred);
       if (hit) return hit;
       if (Date.now() - t0 > ms) return null;
-      await new Promise((r) => setTimeout(r, 50));
+      await sleep(50);
     }
   };
   return { states, next, stop: () => reader.cancel().catch(() => {}) };
@@ -157,7 +143,7 @@ test('a pick reaches pages as a delta', async () => {
   const first = await live.next(() => true);
   const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
   const { comment } = await post({ page: '/index', name: 'Leo', text: 'tone?', anchor });
-  const key = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
+  const key = serverJson(DIR).agent;
   const asked = await (await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': key }, body: JSON.stringify({ page: '/index', name: 'Claude', text: 'Which?', parent: comment.id, choices: ['Hello', 'Hi there'], recommend: 1 }) })).json();
   const mid = await live.next((s) => s.comments > first.comments);
   const picked = await post({ page: '/index', name: 'Leo', text: 'Picked B: Hi there', parent: asked.comment.id, to: asked.comment.id, picked: 1 });
@@ -176,7 +162,7 @@ test('a delta from too long ago, or from the future, asks for the whole list', a
 test('a restart is a new lab id (pages catch up in place), the widget revision stays', async () => {
   const before = (await (await fetch(B + '/')).text()).match(/data-lab="([^"]+)" data-widget="([^"]+)"/);
   server.kill();
-  await new Promise((r) => setTimeout(r, 500));
+  await sleep(500);
   start();
   const html = await (await up()).text();
   const now = html.match(/data-lab="([^"]+)" data-widget="([^"]+)"/);

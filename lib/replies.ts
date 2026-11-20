@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { writeAtomic } from './board.ts';
 
 /** At most this many rules go out with the pins: the ones you gave most often, then the newest. */
 const HANDED = 15;
@@ -45,9 +46,7 @@ function write(rules: Rule[]) {
       })
     : [HEAD.trimEnd(), ''];
   const out = [...kept, ...left.map(line)].join('\n') + '\n';
-  fs.mkdirSync(path.dirname(file()), { recursive: true });
-  fs.writeFileSync(file() + '.tmp', out);
-  fs.renameSync(file() + '.tmp', file());
+  writeAtomic(file(), out);
 }
 
 /** A rule from feedback: a new line, or the same rule given again counts once more. */

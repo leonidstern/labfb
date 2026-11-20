@@ -4,35 +4,20 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import http from 'node:http';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { site, tmp, rm, spawnLab, stop, sleep, up, serverJson, agentCall, pinPost, openTab } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-unanswered-'));
-const PORT = String(8800 + Math.floor(Math.random() * 90));
-const B = `http://localhost:${PORT}`;
+const { DIR, PORT, B } = site('unanswered', 8800, 90);
 fs.writeFileSync(path.join(DIR, 'design.html'), '<!doctype html><title>design</title><h1>design</h1>');
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '100', LAB_ANSWER_MS: '1500', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '100', LAB_ANSWER_MS: '1500', LABIT_HOME: tmp('home'), LABIT_NO_UPDATE_CHECK: '1' };
+const server = spawnLab(DIR, PORT, { env });
 const tabs = [];
 after(async () => {
   for (const t of tabs) t.destroy();
-  if (server.exitCode === null) await new Promise((r) => { server.once('exit', r); server.kill(); });
-  fs.rmSync(DIR, { recursive: true, force: true, maxRetries: 5 });
+  await stop(server);
+  rm([DIR], { maxRetries: 5 });
 });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const key = () => JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
-const call = (p, body, who) => new Promise((resolve, reject) => {
-  const data = JSON.stringify(body);
-  const req = http.request({ host: '127.0.0.1', port: PORT, path: p, method: 'POST', headers: { host: `localhost:${PORT}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(data), 'x-lab-admin': key(), 'x-lab-agent': '1', 'x-lab-session': encodeURIComponent(JSON.stringify({ id: who, name: who })) } }, (res) => {
-    let text = ''; res.on('data', (c) => (text += c));
-    res.on('end', () => resolve({ status: res.statusCode, text, delivery: res.headers['x-lab-delivery'] || '' }));
-  });
-  req.on('error', reject); req.end(data);
-});
+const call = agentCall(PORT, () => serverJson(DIR).agent);
 const PAGES = ['/design'];
 const wait = (who, o = {}) => call('/_lab/wait', { timeout: 3, pages: PAGES, ack: true, ...o }, who);
 const waitAcked = async (who, o) => {
@@ -40,13 +25,13 @@ const waitAcked = async (who, o) => {
   if (r.delivery) await call('/_lab/ack', { id: r.delivery }, who);
   return r;
 };
-const post = (text) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/design', name: 'Leo', text, anchor: { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1>' } }) }).then((r) => r.json());
+const post = (text) => pinPost(B)(text, '/design');
 const find = async (id) => ((await fetch(`${B}/_lab/api/comments?page=/design`, { headers: { origin: B } }).then((r) => r.json())).comments || []).find((c) => c.id === id);
 const state = () => fetch(`${B}/_lab/state`).then((r) => r.json());
 
 test('start', async () => {
-  for (let i = 0; i < 80; i++) { try { await fetch(B + '/'); break; } catch { await sleep(100); } }
-  tabs.push(http.get({ host: '127.0.0.1', port: PORT, path: '/_lab/live?tab=t1', headers: { host: `localhost:${PORT}` } }, (r) => r.resume()));
+  await up(B + '/', { fail: false });
+  tabs.push(openTab(PORT));
   await sleep(300);
 });
 
@@ -92,4 +77,25 @@ test('a reply from the session that was not answering clears it', async () => {
   assert.equal((await state()).silent.length, 1, 'still named before it says anything');
   await call('/_lab/api/comments', { page: '/design', parent: comment.id, name: 'ghost', text: 'on it', intent: 'on-it' }, 'ghost');
   assert.equal((await state()).silent.length, 0, 'answering again');
+});
+
+// A progress line is a sign of work, from the agent (labit reply --progress, signed with its session) or from the plugin's
+// hook (the agent's key, no session): the pin stays handed, nobody is named as not answering, and it does not go out again.
+test('a progress line inside the window, the agent\'s or the hook\'s, keeps the hand-off: not marked unanswered', async () => {
+  const progress = (id, text, who) => (who ? call('/_lab/api/comments', { page: '/design', action: 'progress', id, text }, who) : hook(id, text));
+  const hook = (id, text) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': serverJson(DIR).agent, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/design', action: 'progress', id, text }) });
+  for (const [who, text] of [['lineman', 'drawing 2 of 4'], ['', 'helper: build the page']]) {
+    const { comment } = await post(`progress by ${who || 'the hook'}`);
+    const a = await waitAcked(who || 'hooked');
+    assert.match(a.text, /progress by/);
+    await sleep(500);
+    const r = await progress(comment.id, text, who);
+    assert.ok(r.status < 300, `${r.status}`);
+    await sleep(2200); // past ANSWER_MS from the hand-off
+    const c = await find(comment.id);
+    assert.ok(c.handedAt, 'stays handed to the session working on it');
+    assert.equal(c.unanswered, undefined, 'not marked as not answered');
+    assert.deepEqual((await state()).silent.map((q) => q.label).filter((l) => /lineman|hooked/.test(l)), [], 'its session is not named as silent');
+    await call('/_lab/api/comments', { page: '/design', parent: comment.id, name: 'x', text: 'done', intent: 'done' }, who || 'hooked');
+  }
 });

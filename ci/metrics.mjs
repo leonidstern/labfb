@@ -29,7 +29,7 @@ const METRICS = {
     hint: "Shrink src/comments.js without changing behaviour: remove dead code and duplication, then npm run build. No new dependencies.",
   },
   npmPackBytes: {
-    kind: "budget", dir: "down", perPr: 4096, max: 160_000,
+    kind: "budget", dir: "down", perPr: 4096, max: 180_000,
     hint: "Shrink the published package (npm pack): remove dead code from the shipped files.",
   },
   oxlintProblems: {
@@ -46,7 +46,7 @@ const METRICS = {
   },
   staleBuild: {
     kind: "ratchet", dir: "down", ideal: 0,
-    hint: "public/_lab/comments.js doesn't match a fresh build of src/comments.js. Run npm run build and commit the result.",
+    hint: "public/_lab/comments.js doesn't match a fresh build of src/comments.js. Run npm run build (the built files are not kept in git).",
   },
   readmeClaimsWrong: {
     kind: "ratchet", dir: "down", ideal: 0, agent: false,

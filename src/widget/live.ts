@@ -1,6 +1,8 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 import { pillLine } from './list.ts';
 
+import { aroundMorph } from './trial.ts';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
 export function bindLive(w: unknown) {
@@ -18,7 +20,8 @@ const span = (t: string, className = '') => Object.assign(document.createElement
 // comments refresh when someone else, like an agent, changes them. A label says which Claude session listens.
 export function startLive() {
   if (W.script?.dataset.live) {
-    const key = 'lab-scroll:' + location.pathname;
+    // sessionStorage is shared by every frame of a tab: a board's frames of one page each keep their own (the board names them).
+    const key = 'lab-scroll:' + (window.name.startsWith('lab:') ? window.name + ':' : '') + location.pathname;
     try {
       // The scroll position and the open thread come back after a reload, so an answer shows where you left it.
       const kept = JSON.parse(sessionStorage.getItem(key) || 'null');
@@ -36,24 +39,67 @@ export function startLive() {
     // keyboard up or have just touched the page.
     let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
+    const frame = Boolean(W.S.frame); // a board's frame (frame.ts): the board holds the stream and says when it is busy
+    // A board page (its key is /_board/<name>) holds its frames, which name the files it "uses": a save of a page, a .json
+    // or anything else is the frames' to follow (they patch or reload themselves), never the board's. It still reloads
+    // for a new widget script or comments schema, and follows the lab's comments and the board file.
+    const board = Boolean(W.S.board); // exactly /_board/<name>: a variant opened by itself is a page like any other
     const busy = () =>
-      W.S.draft || W.S.selecting || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
+      frame ? W.S.busy() || performance.now() - touchedAt < 1500 : W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
     let reloadTimer: any = 0;
     // A held reload is invisible otherwise: the page sits old while you read, then jumps the moment you close the
-    // thread. This says one is ready, and takes it now when tapped.
-    const soon = document.createElement('button');
-    soon.className = 'soon';
-    soon.type = 'button';
-    soon.hidden = true;
-    soon.textContent = 'update waiting';
-    soon.title = 'Take the update now';
-    soon.addEventListener('click', () => {
+    // thread. A "!" on the labit mark says one is ready (owner, 19 Nov: "move it to rabbit status"), and a tap on the
+    // mark takes it now. Where no mark shows (no agent news yet, a phone before its chat button got the mark), the ⋯
+    // button carries it. The badge floats over its corner, so nothing moves when it comes or goes.
+    const upd = Object.assign(document.createElement('span'), { className: 'upd', textContent: '!', hidden: true });
+    upd.setAttribute('aria-hidden', 'true');
+    let held = false;
+    let updOn: HTMLElement | null = null;
+    const UPD_LABEL = 'update waiting, tap to load';
+    const shows = (n: Element | null) => Boolean(n && !(n as HTMLElement).hidden && n.getClientRects().length);
+    const showUpd = (on: boolean) => {
+      held = on;
+      if (!on) {
+        upd.hidden = true;
+        if (updOn) {
+          const was = updOn.dataset.updLabel;
+          if (was) updOn.setAttribute('aria-label', was);
+          else updOn.removeAttribute('aria-label');
+          delete updOn.dataset.updLabel;
+          updOn.classList.remove('has-upd');
+        }
+        updOn = null;
+        return;
+      }
+      const markOn = W.coarse ? W.chatBtn : who;
+      const host: HTMLElement = shows(markOn) && markOn.querySelector('.mark') ? markOn : W.root.querySelector('.more');
+      if (!host) return;
+      if (updOn !== host) {
+        showUpd(false);
+        held = true;
+        updOn = host;
+        host.dataset.updLabel = host.getAttribute('aria-label') || '';
+        host.setAttribute('aria-label', UPD_LABEL);
+        host.classList.add('has-upd');
+        host.append(upd);
+      }
+      upd.hidden = false;
+      // On the mark's top right corner (or the ⋯'s), measured, so the badge sits on the mark wherever it is.
+      const m = host.querySelector('.mark') || host;
+      const hr = host.getBoundingClientRect();
+      const mr = m.getBoundingClientRect();
+      Object.assign(upd.style, { left: `${mr.right - hr.left - 6}px`, top: `${mr.top - hr.top - 6}px` });
+    };
+    const take = (e: Event) => {
+      if (!held || e.currentTarget !== updOn) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
       clearTimeout(reloadTimer);
       reloadTimer = 0;
       now();
-    });
+    };
     const now = () => {
       try {
         sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, chat: W.S.chatOpen }));
@@ -64,11 +110,11 @@ export function startLive() {
       // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
       if (document.hidden) return void (reloadWhenShown = true);
       if (busy()) {
-        soon.hidden = false;
+        showUpd(true);
         if (!reloadTimer) reloadTimer = setTimeout(() => ((reloadTimer = 0), reload()), 500); // one waiting reload, not one per message
         return;
       }
-      soon.hidden = true;
+      showUpd(false);
       now();
     };
     const who = document.createElement('a');
@@ -80,9 +126,12 @@ export function startLive() {
     const MARK = '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">' + MARK_PATHS + '</svg>';
     who.innerHTML = MARK + '<div class="lbl"></div>';
     const lbl = who.querySelector('.lbl') as HTMLElement;
+    // The pill's label, kept aside while it says "update waiting" (the "!" badge) and put back after.
+    const whoLabel = (t: string) => (updOn === who ? (who.dataset.updLabel = t) : who.setAttribute('aria-label', t));
     who.hidden = true;
     W.root.querySelector('.left').prepend(who);
-    W.root.querySelector('.left').append(soon);
+    // Capture, so a tap that takes the update never also opens the chat, the ⋯ menu or the session's link.
+    for (const n of [who, W.chatBtn, W.root.querySelector('.more')]) n?.addEventListener('click', take, { capture: true });
     // Files a save can mean for this page: the page itself, anything it loads, and data it may fetch as it runs.
     // Everything else -- a README, another page's script, the project's own server code -- leaves it alone.
     const FETCHED = /\.(json|wasm|csv|tsv|xml|txt|map|woff2?)$/i;
@@ -98,7 +147,7 @@ export function startLive() {
     };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
-    if (!document.querySelector('link[rel~="icon"]')) {
+    if (!frame && !board && !document.querySelector('link[rel~="icon"]')) {
       fetch('/favicon.ico', { method: 'HEAD' })
         .then((r) => r.ok && (r.headers.get('content-type') || '').startsWith('image/'))
         .catch(() => false)
@@ -134,7 +183,7 @@ export function startLive() {
         }
         prog.dataset.k = key;
       }
-      who.setAttribute('aria-label', who.textContent);
+      whoLabel(lbl.textContent || '');
     };
     W.paintWho = paintWho;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
@@ -144,7 +193,7 @@ export function startLive() {
       pill = null; // the pill's own words are not painted over it until the next state
       lbl.dataset.sig = '';
       lbl.replaceChildren(span(word));
-      who.setAttribute('aria-label', word);
+      whoLabel(word);
       who.classList.add('stale');
       W.chatBtn.classList.add('stale');
       if (!who.classList.contains('working') && !last) who.classList.add('idle');
@@ -241,7 +290,7 @@ export function startLive() {
     // An HTML page: fetch it and change only what differs, in place (scroll, open things and typed text stay). A
     // changed script or stylesheet list can't be patched safely: then it's a normal reload.
     const ownStyles = () => new Set([W.fonts, W.pinCursorStyle]);
-    const scriptsOf = (doc) => [...doc.querySelectorAll('script')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
+    const scriptsOf = (doc) => [...doc.querySelectorAll('script:not([data-lab])')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
     const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
     const keepOut = (n) => n === W.host || (n.nodeType === 1 && n.localName === 'script');
     // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
@@ -299,6 +348,7 @@ export function startLive() {
     const ownScripts = () => scriptsOf(document).length > 0;
     let morphRun = 0;
     const morphPage = async () => {
+      if (board) return;
       if (ownScripts()) return reload();
       const run = ++morphRun;
       try {
@@ -328,11 +378,12 @@ export function startLive() {
             W.drawList();
           }
           const mine = ownStyles();
-          const olds = [...document.head.querySelectorAll('style')].filter((x) => !mine.has(x));
-          const news = [...doc.head.querySelectorAll('style')];
+          // The lab's own (data-lab: the section bar's room, sections.ts) are the widget's, not the page's.
+          const olds = [...document.head.querySelectorAll('style:not([data-lab])')].filter((x) => !mine.has(x));
+          const news = [...doc.head.querySelectorAll('style:not([data-lab])')];
           news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
           for (const o of olds.slice(news.length)) o.remove();
-          morphKids(document.body, doc.body);
+          aroundMorph(() => morphKids(document.body, doc.body)); // a choice tried in the page: its words back first (thread.ts)
           if (mark?.isConnected) {
             const moved = mark.getBoundingClientRect().top - markTop;
             if (Math.abs(moved) > 1) scrollBy(0, moved);
@@ -378,6 +429,7 @@ export function startLive() {
     const got = (v) => {
       beat = Date.now();
       last = v;
+      dispatchEvent(new CustomEvent('lab-state', { detail: v })); // the board page follows the board file from this
       onState(v);
     };
     if (bc)
@@ -433,12 +485,12 @@ export function startLive() {
         }
         if (String(v.files) !== W.script.dataset.version) {
           // The lab says which files changed (no list: a burst too big to judge, so reload as before).
-          if (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere)) W.script.dataset.version = String(v.files);
+          if (board || (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere))) W.script.dataset.version = String(v.files);
           else reload(); // held while something is open: the comments below still come in (the agent's answer, read marks)
         }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
-        if (hotAt !== null && v.hot !== hotAt) {
+        if (!board && hotAt !== null && v.hot !== hotAt) {
           if (v.hot - hotAt > 1) hotUpdate([{ kind: 'html' }, { kind: 'css', path: '' }]);
           else hotUpdate(v.hotFiles || []);
         }
@@ -487,8 +539,8 @@ export function startLive() {
         W.listBtn.dataset.agent = mode;
         W.chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's mark
         if (W.coarse && !W.chatBtn.querySelector('.mark')) W.chatBtn.insertAdjacentHTML('afterbegin', MARK);
-        if (W.coarse) W.chatBtn.title = who.textContent; // phones: the light on the chat button says who's listening
-        who.setAttribute('aria-label', who.textContent); // the words stay for screen readers when only the light shows
+        if (W.coarse) W.chatBtn.title = lbl.textContent || ''; // phones: the light on the chat button says who's listening
+        whoLabel(lbl.textContent || ''); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
@@ -511,7 +563,7 @@ export function startLive() {
       release?.(); // the next tab takes over the stream
       release = null;
       leading = !shared;
-      fetch(W.script.dataset.live.replace(/live$/, 'bye'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab }) }).catch(() => {});
+      if (!frame) fetch(W.script.dataset.live.replace(/live$/, 'bye'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab }) }).catch(() => {});
     });
     addEventListener('pageshow', (e) => e.persisted && start()); // back from the back-forward cache
     // Back from sleep, or the stream went quiet: catch up (the first message after it says what changed). A clock that
@@ -527,8 +579,8 @@ export function startLive() {
     const check = (slept = false) => {
       const stale = Date.now() - beat > 40000;
       if (stream && (slept || stale)) freshStream();
-      else if (!stream && stale) connect();
-      else if (!stream && slept) bc?.postMessage({ t: 'hello' });
+      else if (!stream && stale && !(frame && bc)) connect();
+      else if (!stream && (slept || stale)) bc?.postMessage({ t: 'hello' });
     };
     // Hidden tabs' timers are slowed to about once a minute, which would look like sleep: only a tab in front checks.
     setInterval(() => {
@@ -539,6 +591,7 @@ export function startLive() {
     }, 5000);
     addEventListener('online', () => !document.hidden && check(true));
     const start = () => {
+      if (frame && bc) return bc.postMessage({ t: 'hello' }); // a frame only listens: the board's stream is the one
       if (!shared) return connect();
       beat = Date.now(); // a joining tab waits up to 40 s for the shared stream before opening its own
       lead();

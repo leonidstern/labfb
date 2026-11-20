@@ -5,31 +5,13 @@
 // Not part of `npm test`; CI runs it in the `browser` job. Run: node test/browser/progress.mjs (needs playwright; NODE_PATH
 // can point at a node_modules that has it). One line per check; exits 1 if any fails.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { claimPort } from './port.mjs';
+import { playwright, engines, LAB, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  // On CI a missing browser is a failure: a skip there would pass with nothing run.
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 const until = async (ok, ms = 6000) => {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(60)) if (await ok()) return true;
   return false;
@@ -37,20 +19,13 @@ const until = async (ok, ms = 6000) => {
 
 // One lab per engine, so each starts with no comments.
 async function lab(n) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-progress-'));
-  const port = String(6300 + n * 40 + Math.floor(Math.random() * 30));
+  const dir = tmp('labit-progress-');
+  const port = String(claimPort(6300 + n * 40, 30));
   const B = `http://localhost:${port}`;
-  const env = { ...process.env, LAB_SETTLE_MS: '0', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
+  const env = labEnv({ LAB_SETTLE_MS: '0' }, { settings: false });
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><meta charset="utf-8"><title>p</title><body style="margin:40px"><p id="a">first line</p><p id="b">second line</p><p id="c">third line</p></body>');
-  const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', port], { cwd: dir, env });
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(B + '/');
-      break;
-    } catch {
-      await sleep(100);
-    }
-  }
+  const server = startLab(dir, env, { root: '.', port });
+  await labUp(B);
   const cli = (...args) => new Promise((done) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, out, errOut) => done({ code: err?.code ?? 0, out: out + errOut })));
   const post = (text, sel) =>
     fetch(B + '/_lab/api/comments', {
@@ -62,7 +37,7 @@ async function lab(n) {
   return { B, cli, post, comments, stop: () => (server.kill(), fs.rmSync(dir, { recursive: true, force: true })) };
 }
 
-for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').entries()) {
+for (const [n, eng] of engines().entries()) {
   const L = await lab(n);
   const browser = await pw[eng].launch();
   try {
@@ -114,6 +89,103 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     check(eng, 'hovering the ring shows the same line', (await tipOf(0)) === 'drawing W1–W6 · 2 of 4 · just now', await tipOf(0));
     const got = await L.comments();
     check(eng, 'no message was added, nothing is done', got.length === 3 && got[0].progress?.text === 'drawing W1–W6 · 2 of 4' && !got[0].resolved);
+    // A pin you point at holds still what is on it: the working pin's tip, and the card of an open pin (it is tied to its pin,
+    // which the browser reads as drawn: the pin's hover lift moved the card, and flipped it above and below near the screen's end).
+    const spot = (i) => shadow(() => { const q = [...r.querySelectorAll('button.pin')][a].getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; }, i);
+    const tops = async (sel, ms) => {
+      const seen = [];
+      for (const end = Date.now() + ms; Date.now() < end; await sleep(25)) seen.push(await shadow(() => { return r.querySelector(a)?.getBoundingClientRect().top ?? null; }, sel));
+      return seen.filter((t) => t !== null);
+    };
+    const spread = (a) => (a.length ? Math.max(...a) - Math.min(...a) : Infinity);
+    await p.mouse.move(5, 5);
+    const at0 = await spot(0);
+    await p.mouse.move(at0.x, at0.y, { steps: 3 });
+    await sleep(500);
+    const tipTops = await tops('button.pin .tip', 600);
+    check(eng, 'hovering a working pin: its tip stays within 1 px while the pointer is still', tipTops.length > 5 && spread(tipTops) <= 1, `${tipTops.length} frames, ${spread(tipTops).toFixed(2)} px`);
+    await p.mouse.move(5, 5);
+    const at1 = await spot(1);
+    await p.mouse.click(at1.x, at1.y);
+    await until(() => shadow(() => { return !!r.querySelector('.card'); }));
+    await p.mouse.move(5, 5);
+    await sleep(600);
+    const rest = (await tops('.card', 100))[0];
+    const held = [];
+    for (let k = 0; k < 4; k++) { // the pointer crossing its pin's edge in and out: the card must not follow it
+      await p.mouse.move(at1.x, at1.y, { steps: 2 });
+      held.push(...(await tops('.card', 250)));
+      await p.mouse.move(5, 5, { steps: 2 });
+      held.push(...(await tops('.card', 250)));
+    }
+    const off = Math.max(...held.map((t) => Math.abs(t - rest)));
+    check(eng, "hovering an open pin: its card's top stays within 0.1 px, in and out", held.length > 20 && off <= 0.1, `${held.length} frames, moved ${off.toFixed(2)} px`);
+    await p.keyboard.press('Escape');
+    await until(() => shadow(() => { return !r.querySelector('.card'); }));
+    // Opening, closing and reopening a thread by its pin: the card is never see-through (opacity 1, an opaque ground) and there
+    // is never more than one (an old one fading out beside the new one let the page show through).
+    {
+      const look = () => shadow(() => { return [...r.querySelectorAll('.card')].map((c) => { const s = getComputedStyle(c); return `${s.opacity} ${s.backgroundColor}`; }); });
+      const seenCards = [];
+      const watch = async (ms) => { for (const end = Date.now() + ms; Date.now() < end; await sleep(20)) seenCards.push(await look()); };
+      await p.mouse.move(5, 5);
+      const pinAt = await spot(1);
+      await p.mouse.move(pinAt.x, pinAt.y, { steps: 2 });
+      await sleep(200);
+      await p.mouse.down(); await p.mouse.up(); // open
+      await watch(400);
+      await p.mouse.down(); await p.mouse.up(); // close
+      await sleep(30);
+      await p.mouse.down(); await p.mouse.up(); // reopen at once
+      await watch(500);
+      await p.mouse.down(); await p.mouse.up(); // close again
+      await watch(100);
+      const many = seenCards.filter((c) => c.length > 1).length;
+      const thin = seenCards.flat().filter((c) => !/^1 rgb\((\d+), (\d+), (\d+)\)$/.test(c)).length;
+      check(eng, 'opening, closing and reopening a thread: one card at most, never see-through', seenCards.some((c) => c.length === 1) && many === 0 && thin === 0, `${seenCards.length} looks, ${many} with two cards, ${thin} see-through`);
+      await p.keyboard.press('Escape');
+      await until(() => shadow(() => { return !r.querySelector('.card'); }));
+    }
+    // Placing a pin: the new comment's box and its pin keep their place from the first frame (the box was placed a line short
+    // and grew, and followed the pin's pop-in: near the screen's end it jumped, and WebKit snapped it at the end). Layout
+    // numbers, so the box's own fade-in (a transform) is not counted; recorded in the page on each resize too (a frame is short).
+    for (const [spotName, x, y] of [['in the page', 300, 100], ['near the right edge', 985, 100], ['near the bottom', 300, 690]]) {
+      await p.mouse.move(5, 5);
+      await shadow(() => {
+        window.__seen = [];
+        window.__take = () => {
+          const f = r.querySelector('.float');
+          const q = r.querySelector('.pin.draft')?.getBoundingClientRect();
+          // The bar and the listening pill too: placing a pin must not touch them on a computer (only a phone's sheet moves them).
+          const away = ['.bar', '.listener', '.left'].map((s) => { const n = r.querySelector(s); if (!n) return ''; const c = getComputedStyle(n); const b = n.getBoundingClientRect(); return [c.opacity, c.visibility, c.transform, b.left, b.top, b.width, b.height].join(' '); }).join(' | ');
+          if (f && q) window.__seen.push([parseFloat(getComputedStyle(f).top), f.offsetHeight, q.top, q.left, away, getComputedStyle(r.querySelector('.ptr')).opacity]);
+        };
+        window.__watch?.disconnect();
+        window.__watch = new MutationObserver(() => {
+          const f = r.querySelector('.float');
+          if (!f || f.__ro) return;
+          f.__ro = true;
+          window.__take();
+          new ResizeObserver(window.__take).observe(f);
+        });
+        window.__watch.observe(r, { childList: true, subtree: true });
+      });
+      await p.mouse.move(x, y, { steps: 2 }); // the pointer rests on the spot first, its drawn pin showing
+      await sleep(300);
+      const shownBefore = await shadow(() => { return getComputedStyle(r.querySelector('.ptr')).opacity; });
+      await p.mouse.click(x, y);
+      for (const end = Date.now() + 700; Date.now() < end; await sleep(20)) await shadow(() => { window.__take(); });
+      const seen = await p.evaluate(() => window.__seen);
+      const range = (k) => (seen.length ? Math.max(...seen.map((r) => r[k])) - Math.min(...seen.map((r) => r[k])) : Infinity);
+      check(eng, `placing a pin ${spotName}: the box and the pin stay within 0.5 px from the first frame`, seen.length > 5 && Math.max(range(0), range(1), range(2), range(3)) <= 0.5, `${seen.length} samples, box top ${range(0).toFixed(2)}, height ${range(1).toFixed(2)}, pin ${range(2).toFixed(2)}`);
+      // The drawn pointer (the pin-shaped pill that follows the mouse) is gone from the first frame: it faded over the new pin, 1 px off.
+      const ptrSeen = new Set(seen.map((r) => r[5]));
+      check(eng, `placing a pin ${spotName}: the drawn pointer is gone at once, not faded over the new pin`, (shownBefore === '1' || spotName !== 'in the page') && ptrSeen.size === 1 && ptrSeen.has('0'), `shown ${shownBefore} before; then ${[...ptrSeen].join(' ')}`);
+      const moves = new Set(seen.map((r) => r[4]));
+      check(eng, `placing a pin ${spotName}: the bar and the listening pill do not flicker or move`, moves.size === 1 && !moves.has('') && !/ hidden /.test([...moves][0]), `${moves.size} looks of 3: ${[...moves].slice(0, 2).join(' // ')}`);
+      await p.keyboard.press('Escape');
+      await until(() => shadow(() => { return !r.querySelector('.float'); }));
+    }
     const width = () => shadow(() => { return Math.round(r.querySelector('.listener').getBoundingClientRect().width); });
     const w1 = await width();
     await L.cli('reply', ids[0], '--progress', 'a different and much longer line about what is being drawn right now, with more words');
@@ -155,4 +227,4 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     L.stop();
   }
 }
-process.exit(failed ? 1 : 0);
+finish('');

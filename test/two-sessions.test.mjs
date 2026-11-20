@@ -1,45 +1,27 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import http from 'node:http';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { site, tmp, rm, spawnLab, stop, sleep, up, serverJson, agentCall, pinPost, openTab } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-two-'));
-const PORT = String(8800 + Math.floor(Math.random() * 90));
-const B = `http://localhost:${PORT}`;
+const { DIR, PORT, B } = site('two', 8800, 90);
 for (const n of ['index', 'other', 'third']) fs.writeFileSync(path.join(DIR, n + '.html'), `<!doctype html><title>${n}</title><h1>${n}</h1>`);
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '100', LAB_ACK_MS: '1500', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '100', LAB_ACK_MS: '1500', LABIT_HOME: tmp('home'), LABIT_NO_UPDATE_CHECK: '1' };
+const server = spawnLab(DIR, PORT, { env });
 after(async () => {
   for (const t of tabs) t.destroy();
   // The lab writes to .lab as it shuts down: wait for it to exit before removing the folder.
-  if (server.exitCode === null) await new Promise((r) => { server.once('exit', r); server.kill(); });
-  fs.rmSync(DIR, { recursive: true, force: true, maxRetries: 5 });
+  await stop(server);
+  rm([DIR], { maxRetries: 5 });
 });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const key = () => JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
 
-const call = (p, body, who, signal) => new Promise((resolve, reject) => {
-  const data = JSON.stringify(body);
-  const req = http.request({ host: '127.0.0.1', port: PORT, path: p, method: 'POST', signal, headers: { host: `localhost:${PORT}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(data), 'x-lab-admin': key(), 'x-lab-agent': '1', 'x-lab-session': encodeURIComponent(JSON.stringify({ id: who, name: who })) } }, (res) => {
-    let text = ''; res.on('data', (c) => (text += c));
-    res.on('end', () => resolve({ status: res.statusCode, text, delivery: res.headers['x-lab-delivery'] || '' }));
-  });
-  req.on('error', reject); req.end(data);
-});
+const call = agentCall(PORT, () => serverJson(DIR).agent);
 const wait = (who, o = {}) => call('/_lab/wait', { timeout: 3, pages: null, ...o }, who);
-const post = (text, page = '/index') => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page, name: 'Leo', text, anchor: { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1>' } }) }).then((r) => r.json());
-const list = (page = '/index') => fetch(`${B}/_lab/api/comments?page=${page}`, { headers: { origin: B } }).then((r) => r.json());
-const handedAt = async (id, page) => ((await list(page)).comments || []).find((c) => c.id === id)?.handedAt;
-const drain = async (who) => { for (let i = 0; i < 3; i++) { const r = await wait(who, { timeout: 1, ack: true }); if (r.delivery) await call('/_lab/ack', { id: r.delivery }, who); } };
+const post = pinPost(B);
 
 const tabs = [];
-test('start', async () => { for (let i = 0; i < 80; i++) { try { await fetch(B + '/'); return; } catch { await sleep(100); } } assert.fail('no start'); });
-test('open a page', async () => { const req = http.get({ host: '127.0.0.1', port: PORT, path: '/_lab/live?tab=t1', headers: { host: `localhost:${PORT}` } }, (r) => r.resume()); tabs.push(req); await sleep(300); });
+test('start', async () => { await up(B + '/', { fail: () => assert.fail('no start') }); });
+test('open a page', async () => { tabs.push(openTab(PORT)); await sleep(300); });
 
 test('a second session on the same pages: the first is told to leave them, the second gets a heads-up with its pins', async () => {
   const first = wait('sess-a', { timeout: 5, pages: ['/index'] });

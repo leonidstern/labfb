@@ -13,6 +13,10 @@ type Quote = {
   pageLineNo?: number;
   lines?: number;
   label?: string;
+  /** Picked by selecting them (shown as ink on the words), not the word under a click. */
+  selected?: boolean;
+  /** The last words of a selection cut at 300 characters: the ink runs from `exact` to them. */
+  tail?: string;
 };
 
 /** Everything a pin remembers about its spot. Saved with the comment and read by agents. */
@@ -58,11 +62,16 @@ type Anchor = {
   atMs?: number;
   /** The page's motion ran at ¼ speed. */
   slow?: boolean;
+  /** A data-lab-action button's words, and whether the agent confirms before doing it. */
+  act?: string;
+  confirm?: boolean;
   duration?: number;
   transform?: string;
   /** An area dragged out, and what was inside it. */
   zoneItems?: string[];
   zoneText?: string;
+  /** A drawing (hold D and drag, draw.ts): what its lines read as, and the lines in 0–1000 of the area. */
+  ink?: { mark: string; from?: string; to?: string; pts: number[][]; w?: number[][]; marks?: string[] };
   shownFor?: number;
   build?: string;
 };
@@ -71,7 +80,7 @@ type Anchor = {
 type Box = { left: number; top: number; width: number; height: number };
 
 /** Where a pin shows: its point, the area it marks (if any), and whether its spot changed. */
-type Spot = { left: number; top: number; zone: Box | null; moved?: boolean };
+type Spot = { left: number; top: number; zone: Box | null; moved?: boolean; clipped?: boolean };
 
 type Deps = {
   host: HTMLElement;
@@ -101,7 +110,7 @@ const generated = (v) => GENERATED.test(v || '');
 // Names a page gives an element for tests or for comments: the most lasting way to find it again.
 const NAMED = ['data-testid', 'data-lab', 'data-comment-target'];
 
-function selectorFor(node) {
+export function selectorFor(node) {
   const parts = [];
   while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
     const name = NAMED.find((a) => node.getAttribute(a));
@@ -466,7 +475,7 @@ function quoteAt(cx, cy, shadowRoots = []) {
   return quote;
 }
 
-function openingTag(node) {
+export function openingTag(node) {
   const attrs = [...node.attributes]
     .filter((a) => /^(id|class|alt|role|aria-label|href|data-[\w-]+)$/.test(a.name))
     .map((a) => [a.name, a.name === 'class' ? a.value.split(/\s+/).filter((c) => c && !generated(c)).join(' ') : a.name === 'id' && generated(a.value) ? '' : a.value])
@@ -493,8 +502,11 @@ function sameKind(node, tag) {
 // onto: the element the caller knows is there (selected words' own). Chrome now and then finds nothing but <html>
 // under a point for the moment after a double-click selects a word, and the pin went on <body>, its words not found.
 export function anchorAt(clientX, clientY, words = false, onto = null) {
+  const board = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor; contains?: (x: number, y: number) => boolean } }).__labBoard;
+  if (board?.anchor && (!board.contains || board.contains(clientX, clientY))) return board.anchor(clientX, clientY); // on a board (its page, or a page's board view): the board says what is there
   let stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
-  if (onto && !stack.length) stack = [onto];
+  // ...and when the point is on something else (scrolled away, under the bar), the element the caller names wins.
+  if (onto && !(stack[0] && (stack[0] === onto || onto.contains(stack[0])))) stack = [onto];
   // Inside open web components: follow the click into each shadow root.
   const shadowRoots = [];
   let shadowHost = null;
@@ -524,11 +536,8 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
   if (own && target !== document.body && (target.textContent || '').length < 400) anchor.text = short(own, 80);
   const inside = target.parentElement?.closest<HTMLElement>('[id], [data-lab]');
   if (inside) anchor.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
-  let heading = null;
-  for (const h of document.querySelectorAll('h1, h2, h3')) {
-    if (h.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(target)) heading = h;
-  }
-  if (heading) anchor.section = short(heading.textContent, 100);
+  const section = sectionIn(target);
+  if (section) anchor.section = section;
   if (shadowHost) anchor.shadow = openingTag(shadowHost);
   for (const [k, v] of Object.entries(componentAt(target))) if (v) anchor[k] = short(v, 200);
   if (target !== document.body) anchor.looks = looksOf(target);
@@ -632,9 +641,16 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
   return anchor;
 }
 
+// The heading text of the section an element sits in: the last heading before it (or around it).
+function sectionIn(n, headings = [...document.querySelectorAll('h1, h2, h3')]) {
+  let heading = null;
+  for (const h of headings) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
+  return heading ? short(heading.textContent, 100) : '';
+}
+
 // The stored selector can point at a different element after a redeploy; check it against the
 // file / text fingerprint, look for the right one, and otherwise fall back to the page position.
-function findTarget(anchor) {
+export function findTarget(anchor) {
   let node = null;
   try {
     node = anchor.selector ? document.querySelector(anchor.selector) : null;
@@ -658,11 +674,12 @@ function findTarget(anchor) {
     return true;
   };
   const said = short(anchor.text, 400);
-  const sectionOf = (n) => {
-    let heading = null;
-    for (const h of document.querySelectorAll('h1, h2, h3')) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
-    return heading ? short(heading.textContent, 100) : '';
-  };
+  const headings = [...document.querySelectorAll('h1, h2, h3')];
+  const sectionOf = (n) => sectionIn(n, headings);
+  // Its section still exists on the page: then the pin stays in it. Only when the heading is gone altogether (renamed,
+  // removed) may the pin be found in another section.
+  const kept = Boolean(anchor.section) && headings.some((h) => short(h.textContent, 100) === anchor.section);
+  const here = (n) => !kept || sectionOf(n) === anchor.section;
   const squash = (t) => String(t || '').replace(/\s+/g, '');
   const areaWords = squash(anchor.zoneText).slice(0, 30);
   // The element at the old path is only the same one if it still says the same: its words, an area's words, or at
@@ -729,12 +746,21 @@ function findTarget(anchor) {
   }
   scopes.sort((a, b) => (a.contains(b) ? 1 : b.contains(a) ? -1 : 0)); // the smaller box first
   for (const scope of scopes) {
-    const { found, best } = pick(some([scope, ...scope.querySelectorAll(tag)].filter((n) => n.localName === tag)));
+    const { found, best } = pick(some([scope, ...scope.querySelectorAll(tag)].filter((n) => n.localName === tag && here(n))));
     if (best > 0) return found;
   }
-  const twins = some([...document.querySelectorAll(tag)]);
+  const all = some([...document.querySelectorAll(tag)]);
+  const twins = all.filter(here);
   const { found, best } = pick(twins);
-  if (best > 0 || !atPath) return found;
+  if (best > 0) return found;
+  // Its words are on the page in another section only (the twin of an edited word): that one is not it. The element at
+  // its old path, if still in its section, or else the nearest of its kind there, is; never the twin in the other section.
+  if (kept && pick(all).best > 0) {
+    if (atPath && here(atPath)) return atPath;
+    const away = (n) => Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
+    return twins.reduce((a, n) => (!a || away(n) < away(a) ? n : a), null);
+  }
+  if (!atPath) return found;
   // Nothing says the same. A lone element of its kind is still it (the words were edited, say). Among several
   // (cards reordered, one removed) the one at the old path is just whichever came to sit there: the pin shows as
   // moved instead of landing on the wrong card.
@@ -783,7 +809,16 @@ function edgeFor(anchor) {
 export function position(anchor) {
   const at = spotOf(anchor);
   if (at.moved) return { ...at, left: edgeFor(anchor) };
-  return anchor.kind === 'board' ? at : { ...at, clipped: clippedAt(findTarget(anchor), at.left - scrollX, at.top - scrollY) };
+  if (anchor.kind === 'board') return at;
+  // A page's board view covers what is under it: the page's pins there hide (overlay.ts).
+  const covered = coveredAt(at.left - scrollX, at.top - scrollY); // told apart, so a scroll under the view only asks this again
+  return { ...at, covered, clipped: covered || clippedAt(findTarget(anchor), at.left - scrollX, at.top - scrollY) };
+}
+/** A pin whose tip is at this screen point is under a page's board view: its tip, or its far corner (a pin with its tip
+ * just past the view's edge still lay over the board). */
+export function coveredAt(x: number, y: number) {
+  const covers = (window as unknown as { __labBoard?: { covers?: (x: number, y: number) => boolean } }).__labBoard?.covers;
+  return Boolean(covers && (covers(x, y) || covers(x + 28, y - 28)));
 }
 // A pin whose spot a box with overflow cut off (panned or scrolled out of a canvas, a carousel, a scroll box) hides
 // until its spot is back in view, instead of floating over the page outside that box.
@@ -811,6 +846,11 @@ function onWords(range, anchor, rect) {
 }
 // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
 function spotOf(anchor): Spot {
+  if (anchor.kind === 'board') {
+    // A board pin on a page shows only while that board is open in it (overlay.ts); the list still has it.
+    const board = (window as unknown as { __labBoard?: { name?: string; spot: (a: unknown) => Spot } }).__labBoard;
+    return board && (!anchor.board || !board.name || board.name === anchor.board) ? board.spot(anchor) : { left: 0, top: 0, zone: null, clipped: true };
+  }
   const node = findTarget(anchor);
   const hasWords = anchor.quote?.exact;
   // Words straight in the page (findTarget never returns the page itself): looked for in the whole page.
@@ -906,13 +946,32 @@ export function foundAt(anchor) {
     at = document.querySelector(anchor.selector);
   } catch {}
   if (!node || node === at) return null;
+  // Never saved into another section than the pin's own: that would move it silently (it stays shown there, unsaved).
+  if (anchor.section && sectionIn(node) !== anchor.section) return null;
   const rect = node.getBoundingClientRect();
   return { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height) };
 }
 
+// A pin whose words or element were changed or removed on the page (the agent edited the file; a hot patch): what it said
+// and where it sits now, for the widget to tell the lab, so the agent's next wait says it ("check it still fits, or
+// re-pin"). Null when its words are still there. The pin itself stays open and where findTarget puts it.
+export function spotChanged(anchor) {
+  if (!anchor.selector || anchor.kind === 'board' || anchor.kind === 'page') return null;
+  const was = short(anchor.quote?.exact || anchor.text || anchor.zoneText || '', 80);
+  const node = findTarget(anchor);
+  if (!node) return position(anchor).moved && was ? { was, gone: true } : null;
+  const said = short(anchor.text, 400);
+  const same = anchor.quote?.exact ? Boolean(quoteRange(anchor, node)) : !said || short(node.textContent, 400).startsWith(said.slice(0, 40));
+  if (same) return null;
+  const now = sectionIn(node);
+  return { was, now: short(node.textContent, 80), element: openingTag(node), ...(anchor.section && now !== anchor.section ? { away: true, in: now } : {}) };
+}
+
 // An element's letters without spaces, each with its text piece and place in it; read once per moment and shared by
 // the pins in it (pins on the page itself each read the whole page).
-const letters = new WeakMap<Node, { when: number; text: string; at: [Text, number][] }>();
+let letters = new WeakMap<Node, { when: number; text: string; at: [Text, number][] }>();
+/** The page's words were changed by the widget itself (a question's choice tried in place, thread.ts): read them again. */
+export const forgetLetters = () => void (letters = new WeakMap());
 function lettersOf(node, fresh = false) {
   const had = letters.get(node);
   if (had && !fresh && performance.now() - had.when < 400) return had;
@@ -941,6 +1000,7 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
   const want = q.exact.replace(/\s+/g, '');
   if (!want) return null;
   const tail = (q.prefix || '').replace(/\s+/g, '').slice(-12);
+  const last = (q.tail || '').replace(/\s+/g, '');
   let stale = false;
   for (let n = from, up = 0; n && up < 4; n = n.parentElement, up++) {
     const { text, at } = lettersOf(n, fresh);
@@ -957,6 +1017,12 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
         stale = true;
         continue;
       }
+      // A long selection saved only its start and its last words: the range runs on to them.
+      const j = last ? text.indexOf(last, i + want.length) : -1;
+      if (j >= 0) {
+        const [end, k] = at[j + last.length - 1];
+        range.setEnd(end, k + 1);
+      }
       if (!tail || text.slice(0, i).endsWith(tail)) return range;
       first ||= range;
     }
@@ -964,6 +1030,17 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
   }
   return stale && !fresh ? quoteRange(anchor, from, strict, true) : null;
 }
+// A text comment's words where its pin finds them (as spotOf does: strictly on the page itself or a big container),
+// for the ink drawn on them (wordink.ts). Null when they're gone: the pin shows instead.
+export function wordsRange(anchor) {
+  const node = findTarget(anchor);
+  const box = node || (/^<(body|html)[\s>]/.test(anchor.element || '') ? document.body : null);
+  return box && quoteRange(anchor, box, !anchor.docW && /^(html|body|main)$/.test(box.localName));
+}
+// The quoted words of a text comment as a Range in the page now, or null (a question's choices are tried in their place:
+// src/widget/thread.ts). Found as the pin and the highlight find them.
+export const quoteRangeOf = (anchor) =>
+  quoteRange(anchor) || (anchor?.quote?.exact && /^<(body|html)[\s>]/.test(anchor.element || '') ? quoteRange(anchor, document.body, true) : null);
 // A message's name with its small marks: ↩ replied, ✅ done.
 // A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
 export const nameLine = (name) => el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
@@ -973,7 +1050,32 @@ export function goToBlock(e: Element) {
   const r = e.getBoundingClientRect();
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   scrollTo({ top: Math.max(0, r.top + scrollY - 24 - (parseFloat(host.style.getPropertyValue('--lab-sbb')) || 0)), behavior: still ? 'auto' : 'smooth' });
-  const ring = '2px solid rgb(52, 199, 89)';
+  // A heading wears the half ink of words for a moment, as the bar's names do, not a box (Leo, 19 Nov: "green ink on
+  // header not green box after click"): a band under the lower 44 % of each line of its words, green at 30 % (45 % on
+  // dark), corners 3 px. In the page's own coordinates, so it scrolls with the heading; gone when it has faded.
+  if (/^H[1-6]$/.test(e.tagName)) {
+    const range = document.createRange();
+    range.selectNodeContents(e);
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const green = getComputedStyle(host).getPropertyValue('--_green-fg').trim();
+    const ink = document.createElement('div');
+    ink.setAttribute('data-lab-comments', '');
+    ink.setAttribute('aria-hidden', 'true');
+    ink.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2147483646';
+    for (const l of range.getClientRects()) {
+      if (!l.width || !l.height) continue;
+      const b = document.createElement('i');
+      b.style.cssText = `position:absolute;left:${l.left + scrollX}px;top:${l.top + scrollY + l.height * 0.526}px;width:${l.width}px;height:${l.height * 0.44}px;border-radius:3px;background:color-mix(in srgb, ${green} ${dark ? 45 : 30}%, transparent)`;
+      ink.append(b);
+    }
+    if (ink.childElementCount) {
+      document.documentElement.append(ink);
+      const a = ink.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration: ms('hold', 2) });
+      a.onfinish = a.oncancel = () => ink.remove();
+      return;
+    }
+  }
+  const ring = `2px solid ${getComputedStyle(host).getPropertyValue('--_green').trim()}`;
   e.animate([{ outline: ring, outlineOffset: '4px' }, { outline: ring, outlineOffset: '4px', offset: 0.7 }, { outline: '2px solid transparent', outlineOffset: '4px' }], { duration: ms('hold', 2) });
 }
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that
@@ -1033,17 +1135,21 @@ export const readable = (text) => {
     return node;
   });
 };
-/** A range's boxes on screen now, line by line, with how its words sit: reading right to left (their end is then the
- *  left edge), or in a fixed or sticky part of the page (what is placed by them is held to the screen too). */
-export const rectsOf = (range?: Range | null) => {
-  let n = range ? (range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement) : null;
-  const rtl = n ? getComputedStyle(n).direction === 'rtl' : false;
-  let fixed = false;
-  for (; n && !fixed; n = n.parentElement) fixed = /^(fixed|sticky)$/.test(getComputedStyle(n).position);
-  return Object.assign([...(range?.getClientRects() || [])].filter((r) => r.width > 0), { rtl, fixed });
+// A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
+// "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters. Letters, digits, marks,
+// apostrophes and _ are a word's. The quote (comments.js) and the ink drawn while selecting (wordink.ts) both use it.
+const grow = (node: Node, i: number, step: number) => {
+  const d = node.nodeType === 3 ? (node as Text).data : '';
+  while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
+  return i;
 };
-/** The quoted words' boxes on screen now (none when the words can't be found). */
-export const quoteRects = (anchor) => rectsOf(quoteRange(anchor));
+export const wholeWords = (range: Range) => {
+  if (/\s/.test(String(range).trim())) {
+    range.setStart(range.startContainer, grow(range.startContainer, range.startOffset, -1));
+    range.setEnd(range.endContainer, grow(range.endContainer, range.endOffset, 1));
+  }
+  return range;
+};
 const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
 export const markQuote = (anchor) => {
   if (!canMark) return;

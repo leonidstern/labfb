@@ -9,7 +9,7 @@ Every PR, forks included, is measured against its own base commit. Takes seconds
 | Metric | Rule | Why |
 |---|---|---|
 | `pageScriptGzipBytes` | may grow 2 KB per PR, never past 80 KB | every commented page loads `comments.js` |
-| `npmPackBytes` | may grow 4 KB per PR, never past 160 KB | what `npx` users download |
+| `npmPackBytes` | may grow 4 KB per PR, never past 180 KB | what `npx` users download |
 | `oxlintProblems` | never more | pinned `oxlint@1.93.0` over lib, api, local.mjs, src/comments.js |
 | `typeErrors` | never more | TypeScript (pinned 5.9.3) over the plain JS via `tsconfig.json`; `npm run typecheck` lists them |
 | `staleBuild` | must be 0 | `public/_lab/comments.js` must equal a fresh `npm run build` of `src/comments.js` |
@@ -44,3 +44,11 @@ Dependency and README-claim failures are left to you.
 | type errors | — | 180 (from here only down) |
 | runtime dependencies | 0 | 0 |
 | README claims that don't match | 4 | 0 |
+
+## Native features (`ci/native.mjs`, in `test.yml`)
+
+What Safari's engine (WebKit) and Chrome's (Chromium) can do natively that labit could use: 36 features (anchor
+positioning, popover, invoker commands, field-sizing, scroll-driven animations, `if()`, customizable select…), each
+probed in both engines and searched for in `src/`. The table goes to the job's summary, with two lists: in both
+engines and not used yet (candidates), and used but missing in an engine. Only the second fails the job. Run it
+locally with `node ci/native.mjs` (needs playwright). A new candidate is one line in `FEATURES`.

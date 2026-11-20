@@ -2,37 +2,22 @@
 // Chrome's. No lab server: the module is bundled on its own and run on small pages. Not part of `npm test`; CI runs it
 // in the `browser` job. Run: node test/browser/anchoring.mjs   (needs playwright; NODE_PATH can point at one).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { playwright, engines, tmp, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  try {
-    return require('playwright');
-  } catch {
-    try {
-      return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
-    } catch {
-      // On CI a missing browser is a failure: a skip there would pass with nothing run.
-      console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-      process.exit(process.env.CI ? 1 : 0);
-    }
-  }
-})();
+const pw = playwright({ ciFails: true });
 
-const SRC = fileURLToPath(new URL('../../src/widget/anchoring.ts', import.meta.url));
-const OUT = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-anchoring-')), 'anchoring.js');
+const WIDGET = fileURLToPath(new URL('../../src/widget/', import.meta.url));
+const TMP = tmp('labit-anchoring-');
+const OUT = path.join(TMP, 'anchoring.js');
+// The anchoring module with the part that tries a question's choices in the page (trial.ts), in one bundle: they share
+// the module's state, as they do in the widget.
+const SRC = path.join(TMP, 'entry.ts');
+fs.writeFileSync(SRC, `export * from ${JSON.stringify(WIDGET + 'anchoring.ts')};\nexport { bindTrial, tryRow, untry } from ${JSON.stringify(WIDGET + 'trial.ts')};\n`);
 execFileSync('npx', ['--yes', 'esbuild@0.25.12', SRC, '--bundle', '--format=iife', '--global-name=A', `--outfile=${OUT}`, '--log-level=warning']);
 const BUNDLE = fs.readFileSync(OUT, 'utf8');
-
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 
 // A page with the module bound to a stand-in widget, and helpers to pin and to place a pin.
 const open = async (ctx, body) => {
@@ -44,6 +29,7 @@ const open = async (ctx, body) => {
     document.documentElement.append(host);
     const el = (tag) => document.createElement(tag);
     A.bindAnchoring({ host, layer: host, el, store: { get: () => '', set: () => {} } });
+    A.bindTrial({ host });
     // The middle of a word on the page, in window pixels.
     window.wordAt = (word, root = document.body) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -63,7 +49,7 @@ const open = async (ctx, body) => {
 };
 
 try {
-  for (const eng of (process.env.ENGINES || 'chromium,webkit').split(',')) {
+  for (const eng of engines('chromium,webkit')) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 900, height: 700 } });
@@ -109,6 +95,64 @@ try {
         return { a: { inside: a.inside, block: a.block }, at: A.position(a), top: now.top + scrollY, bottom: now.bottom + scrollY };
       });
       check(eng, 'twins in two sections: searched inside its own box first', !r.at.moved && r.at.top >= r.top && r.at.top <= r.bottom, JSON.stringify(r));
+      await p.close();
+
+      // 2b. A word edited ("A" to "a)") while the same word stands in another section: the pin stays in its own section,
+      // on its span, and the other section's twin is neither shown nor saved as its new spot.
+      p = await open(ctx, `<div id="g"><h2>5 · Letters</h2><div class="card"><span class="k">A</span><span class="k">B</span></div>
+        <h2>8 · Letters in rings</h2><div class="card"><span class="k">A</span><span class="k">B</span></div></div>`);
+      r = await p.evaluate(() => {
+        const first = document.querySelector('#g .card .k').getBoundingClientRect();
+        const a = A.anchorAt(first.left + 2, first.top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        document.querySelector('#g .card .k').textContent = 'a)';
+        const node = A.findTarget(a);
+        const cards = [...document.querySelectorAll('#g .card')];
+        return { section: a.section, inside: a.inside, inFirst: cards[0].contains(node), inSecond: cards[1].contains(node), saved: A.foundAt(a), moved: A.position(a).moved || false, told: A.spotChanged(a) };
+      });
+      check(eng, 'an edited word is told to the lab (was, now, its element), in the same section', r.told?.was === 'A' && r.told.now === 'a)' && r.told.element === '<span class="k">' && !r.told.away && !r.told.gone, JSON.stringify(r.told));
+      check(eng, 'an edited word: the pin stays on its span in its own section, not on the twin in another', r.section === '5 · Letters' && r.inFirst && !r.inSecond && r.saved === null && !r.moved, JSON.stringify(r));
+      // Its span is gone too (a new first row): the nearest of its kind in the same section, still not the other one.
+      r = await p.evaluate(() => {
+        const first = document.querySelector('#g .card .k');
+        const a = A.anchorAt(first.getBoundingClientRect().left + 2, first.getBoundingClientRect().top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        a.text = 'A';
+        first.replaceWith(Object.assign(document.createElement('i'), { textContent: 'x' }));
+        const node = A.findTarget(a);
+        const cards = [...document.querySelectorAll('#g .card')];
+        return { found: node && node.textContent, inFirst: Boolean(node) && cards[0].contains(node), saved: A.foundAt(a), told: A.spotChanged(a) };
+      });
+      check(eng, 'its span removed: the lab is told its words changed, and the other section is not named as its place', r.told?.was === 'A' && !r.told.away, JSON.stringify(r.told));
+      check(eng, 'its span removed: never the twin in another section', r.inFirst && r.saved === null, JSON.stringify(r));
+      // Its section is gone altogether (the heading was removed): then another section's twin may be it.
+      r = await p.evaluate(() => {
+        const cards = document.querySelectorAll('#g .card');
+        const second = cards[1].querySelector('.k').getBoundingClientRect();
+        const a = A.anchorAt(second.left + 2, second.top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        a.section = 'A section that was removed';
+        a.selector = '#nowhere';
+        const node = A.findTarget(a);
+        return { found: node && node.textContent, anywhere: Boolean(node) };
+      });
+      check(eng, 'its section gone: found in another one, as before', r.anywhere, JSON.stringify(r));
+      // Untouched words say nothing; removed ones are told as gone.
+      r = await p.evaluate(() => {
+        const k = document.querySelectorAll('#g .card')[1].querySelector('.k');
+        const a = A.anchorAt(k.getBoundingClientRect().left + 2, k.getBoundingClientRect().top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        const same = A.spotChanged(a);
+        const card = k.parentElement;
+        const sel = a.selector;
+        card.remove();
+        return { same, gone: A.spotChanged({ ...a, selector: sel }) };
+      });
+      check(eng, 'words still there: nothing to tell; element gone: told as gone', r.same === null && r.gone?.gone === true && r.gone.was === 'A', JSON.stringify(r));
       await p.close();
 
       // 3. A pin on a word: words added before it in the same paragraph, the pin stays on the word.
@@ -253,6 +297,28 @@ try {
       check(eng, 'once saved, it has nothing more to say', r.healed === null, JSON.stringify(r.healed));
       check(eng, 'a pin that is lost saves nothing', r.lost === null, JSON.stringify(r.lost));
       await p.close();
+      // 11. A question's choice tried in the sentence (trial.ts) moves no pin: the other pins stay on their words, the
+      // page is as it was after, and the quoted words are found again (the words' places are read again, not remembered).
+      p = await open(ctx, '<p id="up">Above the claim.</p><p id="claim">labit puts the <a href="#x">full guide</a> on the page, not in chat. And a second sentence.</p><p id="low">A word after: special.</p>');
+      r = await p.evaluate(() => {
+        const at = (w) => { const m = wordAt(w); return A.anchorAt(m.x, m.y); };
+        const quote = at('guide');
+        quote.quote = { exact: 'the full guide on the page', prefix: 'labit puts ', suffix: ', not in chat' };
+        const pins = { up: at('Above'), low: at('special') };
+        const where = () => Object.fromEntries(Object.entries({ ...pins, quote }).map(([k, a]) => [k, A.position(a)]));
+        const html = document.body.innerHTML;
+        const before = where();
+        A.tryRow({ id: 'c', anchor: quote }, { id: 'q' }, 0, 'this short guide on the page, which is a longer way to say it and wraps the line', {});
+        const during = where();
+        const tried = document.getElementById('claim').textContent;
+        const lowWord = wordAt('special');
+        A.untry();
+        return { before, during, after: where(), same: document.body.innerHTML === html, tried, lowWord, low: A.position(pins.low) };
+      });
+      const rounded = (o) => JSON.stringify(Object.entries(o).map(([k, v]) => [k, Math.round(v.left), Math.round(v.top), Boolean(v.moved)]));
+      check(eng, 'a try moves no pin: the pin above stays, the one below follows its word', /this short guide/.test(r.tried) && rounded({ up: r.before.up }) === rounded({ up: r.during.up }) && !r.during.low.moved && r.during.low.top >= r.lowWord.top - 2 && r.during.low.top <= r.lowWord.bottom + 2 && r.during.low.top > r.before.low.top, JSON.stringify([r.before.low, r.during.low, r.lowWord]));
+      check(eng, 'after the try everything is as it was: the page, every pin, the quote found again', r.same && rounded(r.before) === rounded(r.after) && !r.after.quote.moved, JSON.stringify([r.same, rounded(r.before), rounded(r.after)]));
+      await p.close();
 
       // A long list: the pinned row is past the first 400 of its kind, and a row above it is taken out.
       p = await open(ctx, `<div id="list">${Array.from({ length: 520 }, (_, i) => `<div class="row">Row number ${i}</div>`).join('')}</div>`);
@@ -275,7 +341,6 @@ try {
     }
   }
 } finally {
-  fs.rmSync(path.dirname(OUT), { recursive: true, force: true });
+  fs.rmSync(TMP, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

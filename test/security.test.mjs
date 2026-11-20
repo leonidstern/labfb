@@ -6,8 +6,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { claimPort, tmp, rm, spawnLab, sleep, serverJson } from './harness.mjs';
 import { apiOn } from '../lib/dev.ts';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -118,6 +119,16 @@ test('a pin found again on a changed page saves where it is now, and does not co
   assert.equal(comment.movedAt, undefined);
 });
 
+test('quote.selected and quote.tail are kept, other quote fields dropped', async () => {
+  const quote = { exact: 'some selected words', prefix: 'before ', suffix: ' after', selected: true, tail: 'and the last words of a long one', evil: '<script>' };
+  const { comment } = await (await call({ page: '/anna/site/ink', name: 'Ann', text: 'on words', anchor: { selector: 'p', kind: 'text', quote } }, { ip: '10.1.5.1' })).json();
+  assert.deepEqual(comment.anchor.quote, { exact: 'some selected words', prefix: 'before ', suffix: ' after', selected: true, tail: 'and the last words of a long one' });
+  const post = async (q, ip) => (await (await call({ page: '/anna/site/ink', name: 'Ann', text: 'x', anchor: { selector: 'p', kind: 'text', quote: q } }, { ip })).json()).comment.anchor.quote;
+  assert.equal((await post({ exact: 'word', selected: 'yes' }, '10.1.5.2')).selected, undefined, 'only true counts');
+  assert.equal((await post({ exact: 'word', tail: 'tail without a selection' }, '10.1.5.3')).tail, undefined, 'a tail goes with a selection');
+  assert.equal((await post({ exact: 'a b', selected: true, tail: 'x'.repeat(100) }, '10.1.5.4')).tail.length, 40, 'at most 40 characters');
+});
+
 test('a page full of open threads refuses people, not admins; done threads leave room', async () => {
   const page = '/anna/site/full';
   const ids = [];
@@ -139,9 +150,8 @@ test("a comment's text can't fake a heading or a field in the agent text", async
 
 // ---------- local server ----------
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-guard-')));
-const OUTSIDE = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-outside-')));
+const DIR = fs.realpathSync(tmp('guard'));
+const OUTSIDE = fs.realpathSync(tmp('outside'));
 fs.writeFileSync(path.join(DIR, 'index.html'), '<h1>page</h1>');
 fs.writeFileSync(path.join(DIR, '.env'), 'SECRET=1');
 fs.writeFileSync(path.join(OUTSIDE, 'private.txt'), 'outside the folder');
@@ -150,15 +160,11 @@ fs.symlinkSync(path.join(OUTSIDE, 'private.txt'), path.join(DIR, 'link.txt'));
 fs.symlinkSync('.lab', path.join(DIR, 'labdir'));
 fs.symlinkSync(path.join('.lab', 'server.json'), path.join(DIR, 'keys.txt'));
 fs.symlinkSync('.env', path.join(DIR, 'env.txt'));
-const PORT = 5200 + Math.floor(Math.random() * 90); // clear of 5060 and 5061, which fetch refuses ("bad port")
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], {
-  cwd: DIR,
-  env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' },
-});
+const PORT = claimPort(5200, 90); // clear of 5060 and 5061, which fetch refuses ("bad port")
+const server = spawnLab(DIR, PORT, { env: { ...process.env, LABIT_HOME: tmp('home'), LABIT_NO_UPDATE_CHECK: '1' } });
 after(() => {
   server.kill();
-  fs.rmSync(DIR, { recursive: true, force: true });
-  fs.rmSync(OUTSIDE, { recursive: true, force: true });
+  rm([DIR, OUTSIDE]);
 });
 const raw = (p, { method = 'GET', headers = {}, body } = {}) =>
   new Promise((done) => {
@@ -172,7 +178,7 @@ const raw = (p, { method = 'GET', headers = {}, body } = {}) =>
   });
 const up = async () => {
   for (let i = 0; i < 50; i++) if ((await raw('/')).status === 200) return;
-  else await new Promise((r) => setTimeout(r, 100));
+  else await sleep(100);
 };
 
 test('another host name is refused (DNS rebinding)', async () => {
@@ -204,9 +210,9 @@ test('--proxy: the app writes through the lab, forms included; another site does
   dev.on('upgrade', (req, socket) => (seen.push(`UPGRADE ${req.url}`), socket.destroy()));
   await new Promise((r) => dev.listen(0, '127.0.0.1', r));
   const devPort = dev.address().port;
-  const port = 5600 + Math.floor(Math.random() * 90);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sec-proxy-'));
-  const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), '--proxy', String(devPort)], { cwd: dir, env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' } });
+  const port = claimPort(5600, 90);
+  const dir = tmp('sec-proxy');
+  const lab = spawnLab(dir, port, { args: ['--proxy', String(devPort)], env: { ...process.env, LABIT_HOME: tmp('home'), LABIT_NO_UPDATE_CHECK: '1' } });
   const ask = (p, { method = 'GET', headers = {}, body } = {}) =>
     new Promise((done) => {
       const req = http.request({ host: '127.0.0.1', port, path: p, method, headers: { host: `localhost:${port}`, ...headers } }, (res) => (res.resume(), res.on('end', () => done(res.statusCode))));
@@ -215,7 +221,7 @@ test('--proxy: the app writes through the lab, forms included; another site does
       req.end(body);
     });
   try {
-    for (let i = 0; i < 50 && (await ask('/')) !== 200; i++) await new Promise((r) => setTimeout(r, 100));
+    for (let i = 0; i < 50 && (await ask('/')) !== 200; i++) await sleep(100);
     seen.length = 0;
     const form = { 'content-type': 'application/x-www-form-urlencoded' };
     assert.equal(await ask('/save', { method: 'POST', body: 'a=1', headers: { ...form, origin: `http://localhost:${port}` } }), 200, 'the app\'s own form');
@@ -230,7 +236,7 @@ test('--proxy: the app writes through the lab, forms included; another site does
   } finally {
     lab.kill();
     dev.close();
-    fs.rmSync(dir, { recursive: true, force: true });
+    rm([dir]);
   }
 });
 
@@ -277,7 +283,7 @@ test("the key a page carries (data-admin) is not the agent's: it can't listen, i
   const page = await raw('/', { headers: { accept: 'text/html' } });
   const browserKey = page.text.match(/data-admin="([0-9a-f]+)"/)?.[1];
   assert.ok(browserKey, 'this computer gets the browser key');
-  const { agent, token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  const { agent, token } = serverJson(DIR);
   assert.equal(token, browserKey);
   assert.match(agent, /^[0-9a-f]{32}$/);
   assert.notEqual(agent, browserKey);
@@ -297,40 +303,57 @@ test("the key a page carries (data-admin) is not the agent's: it can't listen, i
   assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: as(agent) })).status, 204, 'the agent listens');
 });
 
-test("whoever started a thread may resolve and reopen it with its key, not delete it or touch another", async () => {
+test("whoever started a thread may resolve and reopen it with its key, take back a fresh unanswered one, not touch another", async () => {
   const mine = await pin('/anna/site/own');
   const other = await pin('/anna/site/own');
   const page = '/anna/site/own';
   assert.ok(mine.edit, 'the starter gets a key');
   assert.equal((await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).status, 200);
   assert.equal((await call({ page, action: 'reopen', id: mine.comment.id, edit: mine.edit })).status, 200);
-  assert.equal((await call({ page, action: 'delete', id: mine.comment.id, edit: mine.edit })).status, 403, 'delete stays admin-only');
   assert.equal((await call({ page, action: 'resolve', id: other.comment.id, edit: mine.edit })).status, 403, "another thread's key");
   const r = await (await call({ page, action: 'resolve', id: mine.comment.id, edit: mine.edit })).json();
   assert.equal(r.comment.resolvedBy, 'author');
+  // Delete: only the starter's undo, a fresh pin nobody answered; with a reply in it, it stays admin-only.
+  assert.equal((await call({ page, action: 'delete', id: other.comment.id, edit: mine.edit })).status, 403, "another thread's key can't delete");
+  assert.equal((await call({ page, name: 'Bo', text: 'seen', parent: other.comment.id })).status, 201);
+  assert.equal((await call({ page, action: 'delete', id: other.comment.id, edit: other.edit })).status, 403, 'answered: delete stays admin-only');
+  assert.equal((await call({ page, action: 'delete', id: mine.comment.id, edit: mine.edit })).status, 200, 'a fresh pin is taken back with its key');
+});
+
+test("the starter's take-back (delete with its key) ends after TAKE_BACK_MS, and never reaches a reply", async () => {
+  const page = '/anna/site/late';
+  const old = await pin(page);
+  const stored = db.get(`lab:comments:${page}`);
+  // Made 16 s ago (TAKE_BACK_MS is 15 s): backdated in the store.
+  const it = JSON.parse(stored.get(old.comment.id));
+  stored.set(old.comment.id, JSON.stringify({ ...it, createdAt: new Date(Date.now() - 16000).toISOString() }));
+  assert.equal((await call({ page, action: 'delete', id: old.comment.id, edit: old.edit })).status, 403, 'too late to take back');
+  // A reply's own key (the lab hands none, but one signed the same way) still can't delete it.
+  const fresh = await pin(page);
+  const reply = (await (await call({ page, name: 'Ann', text: 'and this', parent: fresh.comment.id }, { ip: '10.6.0.1' })).json()).comment;
+  const replyKey = createHmac('sha256', OWNER).update(`lab-edit:${page}:${reply.id}`).digest('base64url').slice(0, 24);
+  assert.equal((await call({ page, action: 'delete', id: reply.id, edit: replyKey })).status, 403, "a reply can't be taken back");
+  assert.equal((await call({ page, action: 'delete', id: reply.id }, { 'x-lab-admin': OWNER })).status, 200, 'an admin still deletes it');
 });
 
 // ---------- a guest's one-time link (--wifi) ----------
 // A lab open to the wifi lets nobody in on the strength of the IP alone: a guest needs a link, which works once.
 
-const WDIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-wifi-')));
+const WDIR = fs.realpathSync(tmp('wifi'));
 fs.writeFileSync(path.join(WDIR, 'index.html'), '<h1>wifi page</h1>');
-const WPORT = 5100 + Math.floor(Math.random() * 90);
-const wifi = spawn(process.execPath, [LAB, '.', '--no-open', '--wifi', '--port', String(WPORT)], {
-  cwd: WDIR,
-  env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' },
-});
+const WPORT = claimPort(5100, 90);
+const wifi = spawnLab(WDIR, WPORT, { flags: ['--wifi'], env: { ...process.env, LABIT_HOME: tmp('home'), LABIT_NO_UPDATE_CHECK: '1' } });
 after(() => {
   wifi.kill();
-  fs.rmSync(WDIR, { recursive: true, force: true });
+  rm([WDIR]);
 });
 // The agent's key, as `labit invite` reads it: the agent on this computer is the only one who may mint a link.
 const wifiToken = async () => {
   for (let i = 0; i < 50; i++) {
     try {
-      return JSON.parse(fs.readFileSync(path.join(WDIR, '.lab/server.json'), 'utf8')).agent;
+      return serverJson(WDIR).agent;
     } catch {
-      await new Promise((r) => setTimeout(r, 100));
+      await sleep(100);
     }
   }
   throw new Error('the wifi lab never started');
@@ -360,9 +383,9 @@ const invite = async () => {
 };
 
 test('a link is minted only for the agent on this computer, and only on a --wifi lab', async () => {
-  for (let i = 0; i < 50 && (await wraw('/')).status !== 200; i++) await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 50 && (await wraw('/')).status !== 200; i++) await sleep(100);
   assert.equal((await wraw('/_lab/invite', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } })).status, 403);
-  assert.equal((await raw('/_lab/invite', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json', 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent } })).status, 404, 'a lab without --wifi has nobody to invite');
+  assert.equal((await raw('/_lab/invite', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json', 'x-lab-agent': '1', 'x-lab-admin': serverJson(DIR).agent } })).status, 404, 'a lab without --wifi has nobody to invite');
   const links = await invite();
   assert.ok(links.length && links.every((l) => /^http:\/\/[^/]+:\d+\/_lab\/j\/[0-9a-f]{32}$/.test(l)), links.join(' '));
 });
