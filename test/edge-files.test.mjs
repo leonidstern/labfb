@@ -240,7 +240,7 @@ test('pages that are empty, plain words, not UTF-8, in capitals, or folders name
   fs.writeFileSync(path.join(at, 'old.htm'), PAGE('htm'));
   fs.writeFileSync(path.join(at, 'data.json'), '{"html":"<body></body>"}');
   fs.writeFileSync(path.join(at, 'pic.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>');
-  fs.writeFileSync(path.join(at, 'notes.md'), '# notes <body>');
+  fs.writeFileSync(path.join(at, 'notes.txt'), 'notes <body>'); // a .md file is a page (lib/labpage.ts), so plain text stands for a file that isn't
   fs.writeFileSync(path.join(at, 'noext'), '<body>no extension</body>');
   await sleep(300);
   for (const p of ['/odd/empty.html', '/odd/empty', '/odd/words', '/odd/latin1', '/odd/upper', '/odd/tricky', '/odd/old.htm', '/odd/folder.html/']) {
@@ -251,7 +251,7 @@ test('pages that are empty, plain words, not UTF-8, in capitals, or folders name
   }
   const folder = await raw(PORT, '/odd/folder.html');
   assert.ok([200, 302].includes(folder.status), `a folder named like a page → ${folder.status}`);
-  for (const [p, type] of [['/odd/data.json', /^application\/json/], ['/odd/pic.svg', /^image\/svg/], ['/odd/notes.md', /^text\/plain/], ['/odd/noext', /^application\/octet-stream/]]) {
+  for (const [p, type] of [['/odd/data.json', /^application\/json/], ['/odd/pic.svg', /^image\/svg/], ['/odd/notes.txt', /^text\/plain/], ['/odd/noext', /^application\/octet-stream/]]) {
     const r = await raw(PORT, p);
     assert.equal(r.status, 200, p);
     assert.match(r.headers['content-type'], type, p);

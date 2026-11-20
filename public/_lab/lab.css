@@ -142,8 +142,8 @@ body.lab {
 /* Lab pages (lib/labpage.ts): a page an agent made for the lab, or a Markdown page, gets this stylesheet and
    body.lab.lab-doc. Headings read as a document's (the lab's own screens keep h2 as a caps label). */
 .lab-doc main { gap: 16px; max-width: 720px; }
-.lab-doc h1 { font-size: 28px; }
-.lab-doc h2 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; text-transform: none; color: var(--lab-fg); margin: 14px 0 0; text-wrap: balance; }
+.lab-doc h1 { font-size: 24px; }
+.lab-doc h2 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; text-transform: none; color: var(--lab-fg); margin: 14px 0 0; text-wrap: balance; }
 .lab-doc h3 { font-size: 15px; font-weight: 600; margin: 6px 0 0; }
 .lab-doc header, .lab-doc section { display: grid; gap: 10px; min-width: 0; }
 .lab-doc header { gap: 4px; }
@@ -170,7 +170,7 @@ ol.lab-options { list-style: none; margin: 0; padding: 6px; display: grid; gap: 
 /* A link to a version (#v2, from a comment or the address) lands on it: a short light outline, still when motion is reduced. */
 .lab-options > li:target, .lab [data-version]:target { outline: 2px solid var(--lab-green-3); outline-offset: 2px; border-radius: var(--lab-corner-s); }
 @media (prefers-reduced-motion: no-preference) {
-  .lab-options > li:target, .lab [data-version]:target { animation: lab-landed 2s ease-out forwards; }
+  .lab-options > li:target, .lab [data-version]:target { animation: lab-landed calc(var(--lab-t-hold) * 2) var(--lab-ease-out) forwards; }
 }
 @keyframes lab-landed { 0%, 60% { outline-color: var(--lab-green-3); } 100% { outline-color: transparent; } }
 /* Compare: a table in a box; th.rec / td.rec mark the recommended column. */
@@ -187,13 +187,13 @@ ol.lab-options { list-style: none; margin: 0; padding: 6px; display: grid; gap: 
 /* Numbers in a row: the figure, then what it is. */
 .lab-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
 .lab-stats > div { display: grid; gap: 2px; align-content: start; background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 12px 14px; }
-.lab-stats b { font-size: 22px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.lab-stats b { font-size: 24px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .lab-stats span { font-size: 13px; color: var(--lab-muted); }
 /* A checklist: li.done is ticked. Markdown task lists (- [x]) come out as this. */
 ul.lab-checklist { list-style: none; padding: 0; display: grid; gap: 6px; }
 .lab-checklist > li { position: relative; padding-left: 26px; }
 .lab-checklist > li::before { content: ''; position: absolute; left: 0; top: .15em; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1.25px var(--lab-line);
-  font: 600 10px/16px var(--lab-font); text-align: center; color: #fff; }
+  font: 600 10px/16px var(--lab-font); text-align: center; color: var(--lab-white); }
 .lab-checklist > li.done::before { content: '✓'; background: var(--lab-green); box-shadow: none; }
 /* A question with its choices; the person answers with a pin. li.rec is the one you'd pick. */
 .lab-question { display: grid; gap: 10px; background: var(--lab-bg); box-shadow: var(--lab-shadow); border-radius: var(--lab-corner); padding: 14px 16px; }
@@ -222,7 +222,7 @@ ol.lab-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0
 .lab-bars { display: grid; gap: 8px; --max: 100; }
 .lab-bars > div { display: grid; grid-template-columns: minmax(0, 36%) minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 14px; }
 .lab-bars > div > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lab-bars > div > i { position: relative; height: 10px; border-radius: 5px; background: var(--lab-soft); overflow: hidden; }
+.lab-bars > div > i { position: relative; height: 10px; border-radius: var(--lab-r-s); background: var(--lab-soft); overflow: hidden; }
 .lab-bars > div > i::before { content: ''; position: absolute; inset: 0 auto 0 0; width: calc(var(--v, 0) / var(--max) * 100%); border-radius: inherit; background: var(--lab-fg); opacity: .7; }
 .lab-bars > div.rec > i::before { background: var(--lab-green); opacity: 1; }
 .lab-bars > div > b { min-width: 3.2em; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -236,7 +236,7 @@ ol.lab-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0
 .lab-cols { --max: 100; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .lab-cols > div { display: grid; grid-template-rows: auto 120px auto; gap: 4px; text-align: center; font-size: 12px; min-width: 0; }
 .lab-cols > div > b { font-weight: 600; font-variant-numeric: tabular-nums; }
-.lab-cols > div > i { align-self: end; height: calc(var(--v, 0) / var(--max) * 100%); border-radius: 4px 4px 0 0; background: var(--lab-fg); opacity: .7; }
+.lab-cols > div > i { align-self: end; height: calc(var(--v, 0) / var(--max) * 100%); border-radius: var(--lab-r-s) var(--lab-r-s) 0 0; background: var(--lab-fg); opacity: .7; }
 .lab-cols > div.rec > i { background: var(--lab-green); opacity: 1; }
 .lab-cols > div > span { color: var(--lab-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Line: a trend, as an <svg viewBox="0 0 100 40"> the agent writes from the numbers (a polyline, a dot on the last). */
@@ -244,7 +244,7 @@ ol.lab-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0
 .lab-line polyline { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 .lab-line circle { fill: var(--lab-green); }
 /* Stacked: parts of a whole in one bar, each part's share as --v; a legend under it. */
-.lab-stack { --max: 100; display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--lab-soft); }
+.lab-stack { --max: 100; display: flex; height: 14px; border-radius: var(--lab-radius); overflow: hidden; background: var(--lab-soft); }
 .lab-stack > i { width: calc(var(--v, 0) / var(--max) * 100%); background: var(--lab-fg); opacity: .7; }
 .lab-stack > i + i { opacity: .35; }
 .lab-stack > i + i + i { opacity: .15; }
@@ -253,7 +253,7 @@ ul.lab-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wra
 .lab-legend b { color: var(--lab-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
 /* Meter: one value against a goal. */
 .lab-meter { --max: 100; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
-.lab-meter > i { position: relative; height: 10px; border-radius: 5px; background: var(--lab-soft); overflow: hidden; }
+.lab-meter > i { position: relative; height: 10px; border-radius: var(--lab-r-s); background: var(--lab-soft); overflow: hidden; }
 .lab-meter > i::before { content: ''; position: absolute; inset: 0 auto 0 0; width: calc(var(--v, 0) / var(--max) * 100%); background: var(--lab-green); border-radius: inherit; }
 .lab-meter > b { font-weight: 600; font-variant-numeric: tabular-nums; }
 /* Before and after: two values per row on one scale, --a then --b, joined by a line; the after dot in green. */
@@ -275,15 +275,15 @@ ul.lab-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wra
   font: 600 11px/1 var(--lab-font); letter-spacing: .02em; vertical-align: 1px; white-space: nowrap; background: var(--lab-soft); color: var(--lab-muted); }
 [data-state="picked"]::after { background: var(--lab-green-soft); color: var(--lab-green); }
 [data-state="building"]::after { content: 'building…'; color: var(--lab-fg); }
-[data-state="built"]::after { content: '✓ built'; background: var(--lab-green); color: #fff; }
+[data-state="built"]::after { content: '✓ built'; background: var(--lab-green); color: var(--lab-white); }
 [data-state="dropped"] { opacity: .55; }
 [data-state="dropped"] > b, [data-state="dropped"] > h3, [data-state="dropped"] > span:not(:only-child) { text-decoration: line-through; }
 /* Where the pill goes in each block: under the text in the grid blocks, after the words elsewhere. */
 .lab-options > li[data-state]::after, .lab-timeline > li[data-state]::after { grid-column: 2; justify-self: start; margin: 4px 0 0; }
 .lab-cards > [data-state]::after { justify-self: start; margin: 4px 0 0; }
 .lab-choices > li[data-state]::after { margin-left: 6px; padding: 0; background: none; color: inherit; content: ''; }
-.lab-choices > li[data-state="picked"], .lab-choices > li[data-state="built"] { background: var(--lab-green); color: #fff; font-weight: 600; }
-.lab-choices > li[data-state="picked"]::after, .lab-choices > li[data-state="built"]::after { content: '✓'; color: #fff; background: none; }
+.lab-choices > li[data-state="picked"], .lab-choices > li[data-state="built"] { background: var(--lab-green); color: var(--lab-white); font-weight: 600; }
+.lab-choices > li[data-state="picked"]::after, .lab-choices > li[data-state="built"]::after { content: '✓'; color: var(--lab-white); background: none; }
 
 /* Apple's continuous corners (squircle) in Safari 26 and Chrome: a squircle needs about 1.8 times the radius to look the
    same size. */
