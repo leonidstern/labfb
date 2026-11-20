@@ -52,7 +52,8 @@ for (const [n, eng] of engines().entries()) {
     const pins = () => shadow(() => { return [...r.querySelectorAll('button.pin')].map((b) => [(/\bgone\b/.test(b.querySelector('.ring')?.className) ? '' : b.querySelector('.ring')?.className.replace(/\s*(come|off)\b/g, '')) || '', b.querySelector('.tip')?.textContent || '']); });
     const ringOf = async (i) => (await pins())[i]?.[0];
     const tipOf = async (i) => (await pins())[i]?.[1];
-    const pill = () => shadow(() => { return r.querySelector('.listener .lbl')?.textContent || ''; });
+    // The words that open over the pill, and the badge the collapsed pill shows (how many wait, or ! once the agent went quiet).
+    const pill = () => shadow(() => { const w = r.querySelector('.listener'); return (w?.querySelector('.lbl')?.textContent || '') + (w?.dataset.n ? ` [${w.dataset.n}]` : ''); });
     const pillIs = (re) => until(async () => re.test(await pill()), 8000);
     const ringIs = (i, ring) => until(async () => (await ringOf(i)) === ring);
     // All the rings at once, so the check after it doesn't catch one pin a moment behind another.
@@ -72,7 +73,7 @@ for (const [n, eng] of engines().entries()) {
     check(eng, 'the agent got them', ids.every((id) => heard.out.includes(id)));
     await ringsAre(['ring got', 'ring wait', 'ring wait']);
     check(eng, 'picked up: a still pale green ring; the rest wait with a still muted ring', (await ringOf(0)) === 'ring got' && (await ringOf(1)) === 'ring wait' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
-    check(eng, 'the pill counts those waiting', await pillIs(/is working · 2 waiting/), await pill());
+    check(eng, 'the pill counts those waiting', await pillIs(/is working \[2\]/), await pill());
     check(eng, 'working: a green mark and the tooltip says Working', /^Working/.test((await mark()).title) && (await mark()).fill === 'rgb(36, 160, 70)', JSON.stringify(await mark()));
     await shadow(() => { [...r.querySelectorAll('button.pin')][1].click(); });
     await until(() => shadow(() => { return !!r.querySelector('.card .stamp'); }));
@@ -85,7 +86,17 @@ for (const [n, eng] of engines().entries()) {
     check(eng, 'labit reply --progress works', say.code === 0 && /Progress noted/.test(say.out), say.out.trim());
     await ringsAre(['ring', 'ring wait', 'ring wait']);
     check(eng, 'working (progress): the green ring turns; the others still wait', (await ringOf(0)) === 'ring' && (await ringOf(1)) === 'ring wait', JSON.stringify(await pins()));
-    check(eng, 'the pill reads the line with its age and the queue', await pillIs(/^Claude· drawing W1–W6 · 2 of 4 · just now · 2 waiting/), await pill());
+    check(eng, 'the pill reads the line (no name, no age) and a badge for the queue', await pillIs(/^drawing W1–W6 · 2 of 4 \[2\]$/), await pill());
+    // Icon only: the words are not drawn until the pointer is on the pill, and then open over it without moving what is beside it.
+    const open = () => shadow(() => { const w = r.querySelector('.listener'); const t = w.querySelector('.w'); const b = w.getBoundingClientRect(); return { shown: getComputedStyle(t).opacity === '1' && getComputedStyle(t).visibility === 'visible', pill: Math.round(b.width), words: Math.round(t.getBoundingClientRect().width), next: Math.round(r.querySelector('.left .copy-all')?.getBoundingClientRect().left ?? -1), x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+    const shut = await open();
+    check(eng, 'collapsed: the pill is the mark and a badge, no words drawn', !shut.shown && shut.pill < 90, JSON.stringify(shut));
+    await p.mouse.move(shut.x, shut.y);
+    await until(async () => (await open()).shown);
+    const wide = await open();
+    check(eng, 'on the pill: the line opens over it; the pill and what is beside it do not move', wide.shown && wide.words > wide.pill + 80 && wide.pill === shut.pill && wide.next === shut.next, JSON.stringify([shut, wide]));
+    await p.mouse.move(5, 300);
+    await until(async () => !(await open()).shown);
     check(eng, 'hovering the ring shows the same line', (await tipOf(0)) === 'drawing W1–W6 · 2 of 4 · just now', await tipOf(0));
     const got = await L.comments();
     check(eng, 'no message was added, nothing is done', got.length === 3 && got[0].progress?.text === 'drawing W1–W6 · 2 of 4' && !got[0].resolved);
@@ -195,7 +206,7 @@ for (const [n, eng] of engines().entries()) {
     // A question: amber and still, the pill back to normal; then done: no ring, and the next one in line is picked up.
     await L.cli('reply', ids[0], 'green or red?', '--question');
     await ringIs(0, 'ring asks');
-    check(eng, 'a question: an amber ring, and the pill has no line', (await ringOf(0)) === 'ring asks' && (await pillIs(/is working · 1 waiting/)) && !/drawing/.test(await pill()), `${await ringOf(0)} | ${await pill()}`);
+    check(eng, 'a question: an amber ring, and the pill has no line', (await ringOf(0)) === 'ring asks' && (await pillIs(/is working \[1\]/)) && !/drawing/.test(await pill()), `${await ringOf(0)} | ${await pill()}`);
     check(eng, 'the progress line is gone from the thread (cleared by the answer)', (await L.comments()).find((c) => c.id === ids[0]).progress === undefined);
     await L.cli('reply', ids[0], 'Done: red', '--done');
     await ringsAre(['', 'ring got', 'ring wait']);
@@ -213,7 +224,7 @@ for (const [n, eng] of engines().entries()) {
     await p.clock.runFor(3 * 60 * 1000);
     await ringsAre(['', 'ring stale', 'ring wait']);
     check(eng, 'no sign for 5+ min: a grey still ring (the one waiting behind it is not grey)', (await ringOf(1)) === 'ring stale' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
-    check(eng, 'the pill says how long and what came last', await pillIs(/no update for 6 min · last: drawing W1–W6 · 3 of 4 · 1 waiting/), await pill());
+    check(eng, 'the pill says how long and what came last', await pillIs(/no update for 6 min · last: drawing W1–W6 · 3 of 4 · 1 waiting \[!\]/), await pill());
     check(eng, 'the tooltip says it too', /^no update for 6 min · last: drawing W1–W6 · 3 of 4$/.test(await tipOf(1)), await tipOf(1));
     // The next line replaces the old one on the thread (the page's own clock is moved ahead here, the lab's is not, so
     // it would still read as old: the stored line is what's checked).

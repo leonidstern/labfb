@@ -158,32 +158,33 @@ export function startLive() {
     }
     let stream = null;
     let beat = 0;
-    // The pill's words, from the lab's state (mode, agent) and the agent's work on this page (list.ts
-    // pillLine): while it works on a pin it reads "Claude · drawing W1–W6 · 40 s ago · 2 waiting", and "· no update for
-    // 6 min · last: …" once that one went quiet. The line has a fixed width (styles.css .prog), so nothing beside it moves.
+    // The pill is the mark, and a badge when there is one to give: how many pins wait, or "!" when the agent went quiet
+    // (Leo, 20 Nov: "lets try this", icon only). Its words open over the pill while the pointer is on it (the .w box, out of
+    // the flow, so nothing beside it moves): "talking to Claude", the status line, "no update for 6 min · last: …". The words
+    // stay in the pill's label for screen readers and the tooltip. From the lab's state (mode, agent) and the agent's work
+    // on this page (list.ts pillLine).
     let pill = null;
+    const show = (parts: (string | Node)[], n = '', warn = false) => {
+      const sig = [...parts.map((x) => (typeof x === 'string' ? x : x.textContent)), n, warn].join('|');
+      if (lbl.dataset.sig === sig) return;
+      lbl.dataset.sig = sig;
+      const w = span('', 'w');
+      w.dataset.n = n;
+      w.append(...parts);
+      lbl.replaceChildren(w);
+      who.classList.toggle('warn', warn);
+      if (n) who.dataset.n = n;
+      else delete who.dataset.n;
+    };
+    // What a screen reader and the tooltip get: the words, and the count the badge shows.
+    const said = () => (lbl.textContent || '') + (who.dataset.n && who.dataset.n !== '!' ? ` · ${who.dataset.n} waiting` : '');
     const paintWho = () => {
       if (!pill) return;
       const { mode, agent, away } = pill;
-      const { text, key, waiting } = mode === 'working' ? pillLine() : { text: '', key: '', waiting: 0 };
-      const more = waiting ? ` · ${waiting} waiting` : '';
-      const sig = [mode, agent, text ? 'p' : more].join('|');
-      if (lbl.dataset.sig !== sig) {
-        lbl.dataset.sig = sig;
-        lbl.replaceChildren(...(mode === 'listening' ? [span('talking to'), agent] : mode === 'quiet' ? [agent, span("isn't answering")] : mode === 'working' ? (text ? [agent, span('', 'prog')] : [agent, span(`is working${more}`)]) : [span(away)]));
-      }
-      const prog = lbl.querySelector('.prog') as HTMLElement | null;
-      if (prog) {
-        const words = `· ${text}${more}`;
-        // Another line fades out and in (200 ms); the age ticking on just changes.
-        if (!prog.dataset.k || prog.dataset.k === key) Object.assign(prog, { textContent: words });
-        else {
-          prog.classList.add('out');
-          setTimeout(() => (prog.classList.remove('out'), (prog.textContent = words)), 200);
-        }
-        prog.dataset.k = key;
-      }
-      whoLabel(lbl.textContent || '');
+      const { text, stale, waiting } = mode === 'working' ? pillLine() : { text: '', stale: false, waiting: 0 };
+      const n = stale ? '!' : waiting ? String(waiting) : '';
+      show(mode === 'listening' ? [span('talking to'), ` ${agent}`] : mode === 'quiet' ? [agent, span(" isn't answering")] : mode === 'working' ? (text ? [span(text + (stale && waiting ? ` · ${waiting} waiting` : ''))] : [agent, span(' is working')]) : [span(away)], n, stale);
+      whoLabel(said());
     };
     W.paintWho = paintWho;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
@@ -192,7 +193,7 @@ export function startLive() {
     const showAway = (word) => {
       pill = null; // the pill's own words are not painted over it until the next state
       lbl.dataset.sig = '';
-      lbl.replaceChildren(span(word));
+      show([span(word)]);
       whoLabel(word);
       who.classList.add('stale');
       W.chatBtn.classList.add('stale');
@@ -539,8 +540,8 @@ export function startLive() {
         W.listBtn.dataset.agent = mode;
         W.chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's mark
         if (W.coarse && !W.chatBtn.querySelector('.mark')) W.chatBtn.insertAdjacentHTML('afterbegin', MARK);
-        if (W.coarse) W.chatBtn.title = lbl.textContent || ''; // phones: the light on the chat button says who's listening
-        whoLabel(lbl.textContent || ''); // the words stay for screen readers when only the light shows
+        if (W.coarse) W.chatBtn.title = said(); // phones: the light on the chat button says who's listening
+        whoLabel(said()); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.

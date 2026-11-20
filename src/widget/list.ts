@@ -123,13 +123,13 @@ const age = (at) => {
 export const ord = (n) => n + (['th', 'st', 'nd', 'rd'][((n % 100) - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
 // The line for one thread as it stands: its progress and age, or "no update for 6 min · last: …" once it has gone quiet.
 export const lineOf = (e) => (e.s === 'stale' ? `no update for ${mins(e.at)}${e.line ? ` · last: ${e.line}` : ''}` : e.line ? `${e.line} · ${age(e.at)}` : '');
-// What the pill and a phone's sheet say about the agent's work: the line of the thread it signed most recently (it reads
-// "no update for…" when even that one went quiet), how many wait, and a key that changes when the line is another (the
-// pill fades then, not for the age ticking on). text is '' when there is no line to show.
+// What the pill says about the agent's work (on hover; collapsed it is the mark and a badge): the line of the thread it signed
+// most recently (it reads "no update for…" when even that one went quiet, and stale says so), and how many wait. text is ''
+// when there is no line to show.
 export function pillLine() {
   const all = [...lineUp().values()];
   const top = all.filter((e) => e.s === 'now' || e.s === 'stale').sort((a, b) => b.at.localeCompare(a.at))[0];
-  return { text: top ? lineOf(top) : '', key: top ? `${top.c.id}${top.s}${top.line}` : '', waiting: all.filter((e) => e.s === 'wait').length };
+  return { text: top ? (top.s === 'stale' ? lineOf(top) : top.line) : '', stale: top?.s === 'stale', waiting: all.filter((e) => e.s === 'wait').length };
 }
 // Off (Leo, 19 Nov: "in comment waiting queue in top near new - remove it, it disrupts modal"): the line pushed the
 // sheet's content down as it came and went. The pin's own ring and the chat still say where the agent is.
