@@ -187,6 +187,27 @@ export function readInk(strokes: P[][], say: (e: Element | null) => string | und
   // An arrow keeps its shaft only, up to the tip: the page draws it a clean head (Leo's pick H, 20 Nov), whatever the
   // hand did at the end.
   const kept = out.mark === 'arrow' && shaft.length > 1 ? [shaft] : strokes.slice(0, 16);
-  return { mark: out.mark, from: at(out.from), to: at(out.to), box, lines: kept.map(thin) };
+  // Several marks in one drawing (circle this, arrow that there, cross out those): each is read on its own and said
+  // with what it is on, in the order drawn, so the words can refer to them ("move this one first, rename that"). An
+  // arrowhead drawn as its own short stroke stays with its arrow. Sims, 20 Nov: with only "3 strokes, unclear" the
+  // agent moved the wrong card.
+  let marks: string[] | undefined;
+  if (lines.length > 1 && /unclear/.test(out.mark)) {
+    const groups: P[][][] = [];
+    for (const l of lines) {
+      const prev = groups.at(-1)?.at(-1);
+      if (prev && length(l) < length(prev) * 0.5 && dist(l[0], prev[prev.length - 1]) < Math.max(30, length(l))) groups.at(-1)!.push(l);
+      else groups.push([l]);
+    }
+    if (groups.length > 1)
+      marks = groups.slice(0, 12).map((g) => {
+        const r = readInk(g, say);
+        const mid = boxOf(g.flat());
+        const on = at({ x: (mid.l + mid.r) / 2, y: (mid.t + mid.b) / 2 });
+        const what = r.mark.replace(/\s*\(likely:.*\)$/, '').replace(/ \(go by the comment's words\)$/, '');
+        return r.from || r.to ? `${what} from ${r.from || '?'} to ${r.to || '?'}` : `${what}${on ? ` on ${on}` : ''}`;
+      });
+  }
+  return { mark: out.mark, from: at(out.from), to: at(out.to), box, lines: kept.map(thin), ...(marks ? { marks } : {}) };
 }
 

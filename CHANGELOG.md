@@ -18,6 +18,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - **A drawing sends with Enter, no words needed.** Its box opens with the lines; Enter sends it as what it reads as ("circled"), or type a few words first.
 - **The agent is told where to look.** On a plain HTML page each comment gets `in file: page.html:30`, and an arrow's ends name their card or section. In sims this cut a third of Haiku's time in the model.
 - **Drawn lines are a red pen**, as wide as you pressed (a pen's pressure, or slower = wider), and settle to 35% once sent, full on hover or open. Arrows get a clean head at the tip, whatever the hand drew.
+- **A drawing with several marks lists each one** with what it is on, in the order drawn ("mark 1: arrow from Integrations to Weekly digest", "mark 2: circled on Alerts"), so the words can refer to them.
 - **Hold Shift while drawing** and a line drawn about straight comes out straight, flat, upright or at 45°.
 - **Lines are smooth curves** through the kept points, so thinned lines stop looking jagged. The line you tap to open a drawing is 28 px wide, about a fingertip.
 - **A tapped action closes at once** (go, fix, remove…): no undo card to close by hand on a phone. Command-Z still takes it back on a computer.
