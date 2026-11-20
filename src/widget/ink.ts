@@ -3,11 +3,11 @@
 import { zoneAnchor } from './anchoring.ts';
 
 type P = { x: number; y: number; w?: number };
-type Ink = { mark: string; from?: string; to?: string; pts: number[][]; w?: number[][] };
-type Read = { mark: string; from?: string; to?: string; box: { l: number; t: number; r: number; b: number }; lines: P[][] };
+type Ink = { mark: string; from?: string; to?: string; pts: number[][]; w?: number[][]; marks?: string[] };
+type Read = { mark: string; from?: string; to?: string; box: { l: number; t: number; r: number; b: number }; lines: P[][]; marks?: string[] };
 
 // The drawing as an area comment: the area (at least min each way), plus the lines as 0–1000 across and down it.
-export function inkAnchor({ mark, from, to, box, lines }: Read, min: number) {
+export function inkAnchor({ mark, from, to, box, lines, marks }: Read, min: number) {
   for (const [a, b] of [['l', 'r'], ['t', 'b']] as const) {
     if (box[b] - box[a] >= min) continue;
     const mid = (box[a] + box[b]) / 2;
@@ -17,6 +17,7 @@ export function inkAnchor({ mark, from, to, box, lines }: Read, min: number) {
   const fit = (v: number, a: number, b: number) => Math.round(((v - a) / (b - a)) * 1000);
   anchor.ink = { mark, from, to, pts: lines.map((s) => s.flatMap((p) => [fit(p.x, box.l, box.r), fit(p.y, box.t, box.b)])) };
   // The pen's width at each point, in tenths of a px (pressure with a pen, speed otherwise): Leo's pick 4, 20 Nov.
+  if (marks?.length) anchor.ink.marks = marks;
   if (lines.some((s) => s.some((p) => p.w))) anchor.ink.w = lines.map((s) => s.map((p) => Math.round((p.w || 3) * 10)));
   return anchor;
 }

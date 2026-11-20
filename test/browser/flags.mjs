@@ -3,56 +3,30 @@
 // switches nothing, and an agent's pin wears labit's mark with no flag set. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/flags.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { claimPort } from './port.mjs';
+import { playwright, engines, LAB, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  // On CI a missing browser is a failure: a skip there would pass with nothing run.
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-flags-'));
+const DIR = tmp('labit-flags-');
 const PORT = claimPort(7970, 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>f</title><h1 id="t">Flags</h1><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+const env = labEnv();
+const server = startLab(DIR, env);
+await labUp(B);
 
 try {
   // A page without the lab's key (not this computer's browser) can't switch anything.
-  const sw = await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: 'select', on: true }) });
+  const sw = await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: 'inkOnText', on: true }) });
   check('lab', 'POST /_lab/flags without the key is refused', sw.status === 403, String(sw.status));
   // An agent's pin, left the way an agent leaves one.
   execFileSync(process.execPath, [LAB, 'pin', '#t', 'a question from the agent'], { cwd: DIR, env: { ...env, PORT: String(PORT) }, stdio: 'pipe' });
 
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
@@ -81,26 +55,22 @@ try {
         root.querySelector('.exp-btn').click();
         await new Promise((res) => setTimeout(res, 100));
         const m = root.querySelector('.more-menu');
-        const sw = m.querySelector('[role="switch"][data-flag="select"]');
+        const sw = m.querySelector('[role="switch"][data-flag="inkOnText"]');
         return { open: !m.hidden, back: Boolean(m.querySelector('.exp-back')), sw: sw?.getAttribute('aria-checked'), disabled: sw?.disabled, words: sw?.textContent || '' };
       });
       check(eng, 'experiments opens its list in the menu', list.open && list.back);
-      check(eng, 'a switch for select, off, that this computer may switch', list.sw === 'false' && list.disabled === false, JSON.stringify(list));
-      check(eng, 'with its one line', /select mode/.test(list.words), list.words);
+      check(eng, 'a switch for inkOnText, off, that this computer may switch', list.sw === 'false' && list.disabled === false, JSON.stringify(list));
+      check(eng, 'with its one line', /ink on selected words/.test(list.words), list.words);
       const on = await (await r()).evaluate(async (root) => {
-        root.querySelector('[data-flag="select"]').click();
+        root.querySelector('[data-flag="inkOnText"]').click();
         await new Promise((res) => setTimeout(res, 800));
-        return { checked: root.querySelector('[data-flag="select"]').getAttribute('aria-checked'), menuOpen: !root.querySelector('.more-menu').hidden };
+        return { checked: root.querySelector('[data-flag="inkOnText"]').getAttribute('aria-checked'), menuOpen: !root.querySelector('.more-menu').hidden };
       });
       check(eng, 'switched on, the menu stays open', on.checked === 'true' && on.menuOpen, JSON.stringify(on));
-      // Select mode works at once: V picks blocks, with no reload.
-      await p.keyboard.press('Escape');
-      await p.keyboard.press('v');
+      // The flag starts at once: the page wears ink on words, with no reload.
       await sleep(300);
-      const selecting = await p.evaluate(() => document.documentElement.classList.contains('lab-selecting'));
-      check(eng, 'the feature starts at once, no reload', selecting && (await p.evaluate(() => window.labMark)) === 1, String(selecting));
-      await p.keyboard.press('v'); // and out of it again
-      await sleep(200);
+      const inked = await p.evaluate(() => document.documentElement.classList.contains('lab-ink-on'));
+      check(eng, 'the feature starts at once, no reload', inked && (await p.evaluate(() => window.labMark)) === 1, String(inked));
       await (await r()).evaluate(async (root) => {
         if (root.querySelector('.more-menu').hidden) root.querySelector('.more').click();
         await new Promise((res) => setTimeout(res, 300));
@@ -108,13 +78,13 @@ try {
         await new Promise((res) => setTimeout(res, 100));
       });
       const saved = JSON.parse(fs.readFileSync(path.join(env.XDG_CONFIG_HOME, 'labit', 'settings.json'), 'utf8'));
-      check(eng, 'saved in your own settings', saved.flags?.select === true, JSON.stringify(saved));
+      check(eng, 'saved in your own settings', saved.flags?.inkOnText === true, JSON.stringify(saved));
       check(eng, 'labit.json is as it was', JSON.parse(fs.readFileSync(path.join(DIR, 'labit.json'), 'utf8')).flags === undefined);
       // Off: the page goes back to the lab for itself and comes back without it.
-      await (await r()).evaluate((root) => root.querySelector('[data-flag="select"]').click());
+      await (await r()).evaluate((root) => root.querySelector('[data-flag="inkOnText"]').click());
       await p.waitForFunction(() => !window.labMark, null, { timeout: 5000 }).catch(() => {});
       await sleep(1500);
-      const off = await (await r()).evaluate((root) => ({ since: document.documentElement.classList.contains('lab-selecting'), item: root.querySelector('.exp-btn')?.textContent || '' }));
+      const off = await (await r()).evaluate((root) => ({ since: document.documentElement.classList.contains('lab-ink-on'), item: root.querySelector('.exp-btn')?.textContent || '' }));
       check(eng, 'switched off, the page reloads without it', !(await p.evaluate(() => window.labMark)) && !off.since && off.item === 'experiments0', JSON.stringify(off));
       await p.goto('about:blank');
       await ctx.close();
@@ -126,5 +96,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

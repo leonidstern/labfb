@@ -370,7 +370,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (asked) for (const note of choiceSpills(data[hit.page]?.[hit.id]?.anchor?.quote, asked.choices)) console.log(`Note: ${note}`);
       // A note on no words (a spot or an element) has nothing to put them in: the choices show as rows, nothing is tried.
       if (asked && !data[hit.page]?.[hit.id]?.anchor?.quote?.exact) console.log('Note: this note has no quoted words, so the choices show as rows and nothing is tried in the page.');
-      if (asked) console.log(`Asked with ${asked.choices.map((c, i) => `${letter(i)}) ${c}`).join('  ')}${asked.recommend !== undefined ? `  (your pick: ${letter(asked.recommend)})` : ''}. The pick comes back in your next wait.`);
+      if (asked) console.log(`Asked with ${asked.choices.map((c, i) => `${letter(i)}) ${c}${asked.hints?.[i] ? ` (${asked.hints[i]})` : ''}`).join('  ')}${asked.recommend !== undefined ? `  (your pick: ${letter(asked.recommend)})` : ''}. The pick comes back in your next wait.`);
     }
     if (cmd === 'resolve' || opts.resolve) {
       const out = await call('/_lab/api/comments', { page: hit.page, action: 'resolve', id: hit.id });

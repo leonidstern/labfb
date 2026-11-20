@@ -4,15 +4,27 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Select mode is gone (it was the flag `select`, **V**, and select in the ⋯ menu): the code, its styles and its key with it. The quick actions on pins, words and areas stay. An old `select` under `flags` in `labit.json` or your settings is now said at start as "not something being tried now" and otherwise ignored, and a `select` under `shortcuts` as "not an action".
+- **Undo a tap on a question.** A tap shows "Picked B · undo" for 5 s; the pick goes after that, or at once when the card closes. Undo puts the rows back.
+- **Questions in the chat.** The agent's question with choices shows its rows in the page chat too, and picks work the same.
+- **A question card no longer focuses its reply box on a computer**, so keys 1 to 6 pick right away.
+- **Keys 1 to 6** pick that choice of an open question on a computer (A is 1), with the same undo; ignored while a text box has the focus.
+- **A scroll is not an answer.** On a touch screen a press that moved more than 8 px picks nothing.
+- **A line under each choice.** `labit reply --choice "Tabs" --hint "less scrolling" --choice "List"`: the hint (up to 120 characters, stored as `hints`) shows muted under its row. An older page ignores it.
+- **The question card stays in the window** on a computer: 8 px from the left edge, never past the bottom.
+- The labit skill says when to ask with `--choice`: copy, names, a risky step; one line per choice, always `--recommend`, one open question per pin; and to use a board, not choices, when the options are looks (layout, colour, spacing).
+- **A tap answers a question.** A question's choices send on tap, no Keep; pointing at one on a computer still tries it in the sentence. The rows are as wide as the messages.
 - **Drawings are quick actions.** The agent gets an `action:` line from the mark: X, strike or scribble remove; circle, box or a wavy line fix; underline rewrites; a side line reworks the block; an arrow moves (beside what's there); a caret adds. Words in the thread win.
 - **A drawing sends with Enter, no words needed.** Its box opens with the lines; Enter sends it as what it reads as ("circled"), or type a few words first.
 - **The agent is told where to look.** On a plain HTML page each comment gets `in file: page.html:30`, and an arrow's ends name their card or section. In sims this cut a third of Haiku's time in the model.
 - **Drawn lines are a red pen**, as wide as you pressed (a pen's pressure, or slower = wider), and settle to 35% once sent, full on hover or open. Arrows get a clean head at the tip, whatever the hand drew.
-- **Hold Shift while drawing** and a line drawn about straight comes out straight, flat, upright or at 45°.
+- **A drawing with several marks lists each one** with what it is on, in the order drawn ("mark 1: arrow from Integrations to Weekly digest", "mark 2: circled on Alerts"), so the words can refer to them.
+- **Hold Shift while drawing** and a line drawn about straight comes out straight, flat, upright or at 45°; a rough box comes out a clean rectangle and a loop a clean ellipse.
 - **Lines are smooth curves** through the kept points, so thinned lines stop looking jagged. The line you tap to open a drawing is 28 px wide, about a fingertip.
 - **A tapped action closes at once** (go, fix, remove…): no undo card to close by hand on a phone. Command-Z still takes it back on a computer.
 - **Drawing edge cases fixed:** loops that stop short or run past their start, wavy and slightly crooked lines, a palm on the glass, a scroll mid-stroke, a stroke into a frame or off the window, D typed into the box, a cancelled stroke, a loop ending on its own start, long scribbles and ten-stroke drawings kept whole, drawing over links, buttons and earlier lines.
 - One board. `/_lab/board/<name>` is now the same board view a page's board link opens, over an empty page: a bar with the board's name, and "‹ back" when the address names its page (`?of=`). ⇧B, Esc on an empty board and the browser's back go there as before, and the camera stays in the address. The package ships one board file (`boardview.js`), not two.
+- Fluid goes. Shift-selecting words on a computer opens the ordinary comment card on them (pinned at the words, with your actions row), not the dialog that followed the words; on a phone, selecting words no longer brings up the comment · rewrite · cut bar (hold to comment as before). `fluid.ts`, its styles, `test/browser/fluid.mjs` and the `fluid` CI job go.
 
 ## 0.7.0 · 2026-11-19
 

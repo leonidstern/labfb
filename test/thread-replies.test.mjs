@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { site, tmp, rm, spawnLab, sleep, up, serverJson, cli as command } from './harness.mjs';
-import { choiceSpills } from '../lib/args.ts';
+import { choiceSpills, parseArgs, replyChoices } from '../lib/args.ts';
 
 const HOME = tmp('thread'); // nobody's real ~/.config
 const { DIR, PORT, B } = site('thread-lab', 9150, 40);
@@ -117,6 +117,33 @@ test('a second pick: the agent reads the latest', async () => {
   assert.match(await (await fetch(`${B}/_lab/agent/bar`)).text(), /^ {2}picked: none, keep the words as they are \(leo\)$/m);
   const w = await cli('wait', '--timeout', '5');
   assert.match(w.out, new RegExp(`Picked B: Hello.*\\(their pick on your question id ${ask.id}\\)`));
+});
+
+// Each choice may carry a short description (--hint, right after its --choice): stored as hints, parallel to choices.
+test('--hint follows its choice and is stored as hints', async () => {
+  const parse = (...a) => replyChoices(parseArgs(a).opts);
+  assert.deepEqual(parse('--choice', 'Tabs', '--hint', 'less scrolling', '--choice', 'List', '--choice', 'Grid', '--hint', '-wide'), { choices: ['Tabs', 'List', 'Grid'], hints: ['less scrolling', '', '-wide'] });
+  assert.deepEqual(parse('--choice', 'A', '--choice', 'B', '--recommend', 'B'), { choices: ['A', 'B'], recommend: 1 }); // no hints: no field
+  assert.deepEqual(parse('--choice', 'A', '--hint', 'x', '--choice', 'B', '--recommend', '1').hints, ['x', '']);
+  // Refused: a hint before any choice, none with no choices, two for one choice, an empty one, 121 characters.
+  for (const bad of [['--hint', 'x', '--choice', 'A', '--choice', 'B'], ['--hint', 'x'], ['--choice', 'A', '--hint', 'x', '--hint', 'y', '--choice', 'B'], ['--choice', 'A', '--hint', ' ', '--choice', 'B'], ['--choice', 'A', '--hint', 'x'.repeat(121), '--choice', 'B']]) assert.ok(parse(...bad) instanceof Error, bad.join(' ').slice(0, 40));
+  assert.ok(!(parse('--choice', 'A', '--hint', 'x'.repeat(120), '--choice', 'B') instanceof Error));
+  const pin = await post({ name: 'leo', text: 'which layout?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } });
+  const sent = await cli('reply', pin.id, 'Which layout?', '--choice', 'Tabs', '--hint', 'less  scrolling', '--choice', 'List', '--recommend', 'A');
+  assert.equal(sent.code, 0, sent.out);
+  assert.match(sent.out, /A\) Tabs \(less scrolling\)/);
+  const ask = (await thread()).find((c) => c.text === 'Which layout?');
+  assert.deepEqual([ask.choices, ask.hints, ask.recommend], [['Tabs', 'List'], ['less scrolling', ''], 0]);
+  assert.match(await (await fetch(`${B}/_lab/agent/bar`)).text(), /^ {2}A\) Tabs — less scrolling \(your pick\)$/m);
+  // A question with no hint stores none; the server refuses hints that don't fit the choices.
+  const plain = await cli('reply', pin.id, 'Plain?', '--choice', 'a', '--choice', 'b');
+  assert.equal(plain.code, 0, plain.out);
+  assert.equal((await thread()).find((c) => c.text === 'Plain?').hints, undefined);
+  const agent = (body) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent }, body: JSON.stringify({ page: '/bar', name: 'Claude', text: 'Which?', parent: pin.id, choices: ['a', 'b'], ...body }) });
+  for (const hints of [['x'], ['x', 'y', 'z'], ['x', 1], 'x', ['x', 'y'.repeat(121)]]) assert.equal((await agent({ hints })).status, 400, JSON.stringify(hints).slice(0, 30));
+  assert.equal((await agent({ hints: ['x', ''] })).status, 201);
+  // A person's reply can't carry hints, whatever it sends.
+  assert.equal((await post({ name: 'leo', text: 'hm', parent: pin.id, hints: ['x'] })).hints, undefined);
 });
 
 // A note on a spot or an element has no quoted words: the choices show as rows, and the agent is told so.
