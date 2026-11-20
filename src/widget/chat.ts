@@ -49,7 +49,6 @@ export function drawChat() {
     W.chatBtn.setAttribute('aria-label', `chat, ${fresh} new`);
     W.chatBtn.setAttribute('aria-keyshortcuts', W.KEYS.chat);
   }
-  W.chatBtn.classList.toggle('has-new', fresh > 0);
   W.placeBar(); // the chat button may have just shown: the segment lines follow
   const opening = W.chatEl.hidden;
   W.chatEl.hidden = !W.S.on || !W.S.chatOpen;
