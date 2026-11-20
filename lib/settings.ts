@@ -9,7 +9,9 @@ import { FLAGS, flagDefaults } from './flags.ts';
 import { actionItems, seedFrom, SEED } from './actions.ts';
 import { writeAtomic } from './board.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
+// The widget's own table (KEYS in src/comments.js), in its order (of two actions on one key the first keeps it), and
+// the one in docs/settings.md: test/settings.test.mjs holds the three together.
+const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
 // wifi; your own file can't say which folder or dev server a project uses).

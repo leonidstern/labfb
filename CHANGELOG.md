@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The ¼ speed key can be moved like the others: `slow` in `shortcuts` (`labit.json` or your settings) was refused as "not an action" and S stayed. Another action put on S is now said when the lab starts, as for any key used twice.
+
 ## 0.7.0 · 2026-11-19
 
 The first release under a new license, and a big one: boards, select mode, drawn pins, one list of actions, undo, and labs that wake your agent and follow their install. MCP and cloud labs are parked. The full list of changes as they landed is at the end.
