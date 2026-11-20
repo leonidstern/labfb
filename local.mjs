@@ -96,9 +96,10 @@ For the agent, from the project (any folder under it):
       thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
   labit reply <id> --progress "what you're on now"
       During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
-  labit reply <id> "question" --choice "A words" --choice "B words" [--choice …] [--recommend B]
+  labit reply <id> "question" --choice "A words" [--hint "short why"] --choice "B words" [--choice …] [--recommend B]
       Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each one in the sentence
-      first) and the pick comes back in your next wait as "Picked B: …". --recommend marks your own pick.
+      first) and the pick comes back in your next wait as "Picked B: …". --hint (up to 120 characters, right after the
+      --choice it describes) shows as a small second line. --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
@@ -1874,7 +1875,7 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
-// Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box and of select mode. Names
+// Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box. Names
 // and prompts are yours, so the attribute is escaped as the flags' is.
 // Read per page: the "…" menu can change the list while the lab runs (PUT /_lab/api/actions).
 const actionsAttr = () => ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;

@@ -45,8 +45,6 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | the bar's fade when a sheet opens | delay quick / 3 = 40 ms | the sheet starts first |
 | a transition's clean-up timer (`sheets.ts`, `settled()`) | slow + quick / 3 = 400 ms | the transition and a frame or two |
 | the outline on a block named in a message (`goToBlock`) | 2 × hold = 2 s | you need time to find it |
-| the dialog moving to its new place or size (`fluid.ts`, `put`) | 0.8 × base = 160 ms | it follows the selection, so it keeps up with it |
-| the dialog growing into the phone sheet (`fluid.ts`) | 2.5 × base = 500 ms | a whole-screen change, then its insides fade in (base, out) |
 | the sheet carried away by a swipe | its speed, between quick and slow | it follows the finger |
 | the sent card has slid away (`leave`) | base + quick / 3 = 240 ms | after a send it starts a frame or two late |
 | waiting for the page to go back after a sheet (`backFromReveal`) | slow | the sheet has gone |
@@ -87,7 +85,6 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | drag release (sheets.ts) | transform, height; scrim opacity | slow | settle; out | a sheet springing back |
 | keyboard fit (sheets.ts) | transform | slow | settle | the sheet moving over the keyboard |
 | composer glide (`composer.ts`) | height; the arrow's transform | base | standard | the box growing, the arrow sliding |
-| `fluid.ts` dialog | left, top, width, height | 0.8 × base / 2.5 × base | standard | the comment dialog following the selection, turning into the bar or the phone sheet |
 | `.pane` (the dialog's insides) | opacity | quick out; base in after base | out | one pane fading for the other |
 | `.sbar .sb-t` | background-color | quick | out | a section's new / updated wash |
 | shake (`comments.js`) | transform | base | standard | unsent words: the card (⌥W) or the sheet (closing on a phone) won't close; one sideways shake for both |
