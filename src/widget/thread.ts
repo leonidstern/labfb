@@ -60,6 +60,9 @@ function bindThreadScroll() {
       rests.forEach((at, node) => {
         if (!node.isConnected) return rests.delete(node);
         if (at.frozen) return;
+        // Not measured yet (the page scrolled right after the card was drawn, as a reload putting the scroll back
+        // does): measured now, or it would be held at no offset at all, on top of its pin.
+        if (!at.x && !at.y) rest(node);
         at.frozen = true;
         node.style.setProperty('position-try-fallbacks', 'none');
         node.style.left = `calc(anchor(left) + ${px(at.x)})`;
