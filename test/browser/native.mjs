@@ -87,6 +87,20 @@ try {
           await sleep(300);
         }
 
+        // Near the screen's right edge the box goes to its pin's left (or in from the edge): never cut off.
+        if (!phone && can.anchor) {
+          const vw = await p.evaluate(() => document.documentElement.clientWidth);
+          await tap(vw - 20, 300);
+          await untilRoot(p, (r) => Boolean(r.querySelector('.float.tied-beside')));
+          await settle(p);
+          const edge = await inRoot(p, (r) => { const a = r.querySelector('.float').getBoundingClientRect(); return { l: Math.round(a.left), r: Math.round(a.right), t: Math.round(a.top), b: Math.round(a.bottom), vw: document.documentElement.clientWidth, vh: innerHeight }; });
+          check(tag, "…near the right edge the box stays on the screen (left of its pin)", edge.l >= 0 && edge.r <= edge.vw && edge.t >= 0 && edge.b <= edge.vh, JSON.stringify(edge));
+          const wide = await p.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+          check(tag, '…and its pin points the other way, so the page gets no sideways scroll', wide.sw <= wide.cw && (await inRoot(p, (r) => r.querySelector('.pin.draft').classList.contains('flip'))), JSON.stringify(wide));
+          await p.keyboard.press('Escape');
+          await sleep(400);
+        }
+
         // A new comment's box: beside its pin on a computer, growing with its words by itself. A phone pins on a long press
         // (a tap only reads), so there the box that grows is the chat's: the same box.
         let box = '.box textarea';
