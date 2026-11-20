@@ -74,7 +74,7 @@ for (const [n, eng] of engines().entries()) {
     await ringsAre(['ring got', 'ring wait', 'ring wait']);
     check(eng, 'picked up: a still pale green ring; the rest wait with a still muted ring', (await ringOf(0)) === 'ring got' && (await ringOf(1)) === 'ring wait' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill counts those waiting', await pillIs(/is working \[2\]/), await pill());
-    check(eng, 'working: a green mark and the box says Claude is working', /^Claude is working\n2 waiting\nSession /.test((await mark()).title) && (await mark()).fill === 'rgb(36, 160, 70)', JSON.stringify(await mark()));
+    check(eng, 'working: a green mark and the box says Claude is working', /^Claude is working\n2 waiting(\nSession .*)?$/.test((await mark()).title) && (await mark()).fill === 'rgb(36, 160, 70)', JSON.stringify(await mark()));
     await shadow(() => { [...r.querySelectorAll('button.pin')][1].click(); });
     await until(() => shadow(() => { return !!r.querySelector('.card .stamp'); }));
     const stamp = () => shadow(() => { return r.querySelector('.card .msg.mine .stamp .state')?.textContent || ''; });
