@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- One board. `/_lab/board/<name>` is now the same board view a page's board link opens, over an empty page: a bar with the board's name, and "‹ back" when the address names its page (`?of=`). ⇧B, Esc on an empty board and the browser's back go there as before, and the camera stays in the address. The package ships one board file (`boardview.js`), not two.
+
 ## 0.7.0 · 2026-11-19
 
 The first release under a new license, and a big one: boards, select mode, drawn pins, one list of actions, undo, and labs that wake your agent and follow their install. MCP and cloud labs are parked. The full list of changes as they landed is at the end.
