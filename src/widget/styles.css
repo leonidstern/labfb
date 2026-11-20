@@ -81,7 +81,7 @@ button.pin.arrive::before { content: ''; position: absolute; inset: 0; border-ra
                   --_halo: rgba(52, 199, 89, .75); animation: lab-halo calc(var(--_t-slow) * 2.5) var(--_ease-out) both; animation-delay: inherit; }
 /* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
    lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
-.pin.swap { animation: lab-swap var(--_t-base) var(--_ease); }
+.pin.swap { animation: lab-swap var(--_t-base) var(--_ease); transition: none; } /* the opacity transition fought the keyframes: WebKit pulsed */
 @keyframes lab-swap { from { transform: scale(var(--_swap-from, .9)); opacity: .5; } } /* a quiet change of face */
 .pin.swap.open { --_swap-from: 1; } /* its card is tied to it: the face fades, the pin holds still */
 .pin .ring.gone { animation: lab-gone var(--_t-slow) var(--_ease-in) forwards; }
