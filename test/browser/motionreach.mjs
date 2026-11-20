@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -22,7 +23,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-reach-'));
-const PORT = 7990 + Math.floor(Math.random() * 30);
+const PORT = claimPort(7990, 30);
 const B = `http://localhost:${PORT}`;
 fs.copyFileSync(fileURLToPath(new URL('../../bench/site/media/countdown.webm', import.meta.url)), path.join(DIR, 'v.webm'));
 fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="utf-8"><title>r</title>
