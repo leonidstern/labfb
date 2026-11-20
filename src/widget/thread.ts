@@ -60,6 +60,9 @@ function bindThreadScroll() {
       rests.forEach((at, node) => {
         if (!node.isConnected) return rests.delete(node);
         if (at.frozen) return;
+        // Not measured yet (the page scrolled right after the card was drawn, as a reload putting the scroll back
+        // does): measured now, or it would be held at no offset at all, on top of its pin.
+        if (!at.x && !at.y) rest(node);
         at.frozen = true;
         node.style.setProperty('position-try-fallbacks', 'none');
         node.style.left = `calc(anchor(left) + ${px(at.x)})`;
@@ -77,6 +80,9 @@ export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined,
     letBox(node);
     return node.style.removeProperty('position-anchor');
   }
+  // A thread open at the first draw (after a reload, or with a reply half written): its pin is new and not in the
+  // layer yet, so it has no place to measure. It goes in now; the layer's redraw keeps it where it belongs.
+  if (!pin.isConnected) W.layer.append(pin);
   let to: Element | null = kind === 'card' ? holdBox(node, pin) : null;
   if (to) node.style.removeProperty('position-anchor'); // tied by the page's rule now: an inline one would win
   if (!to) {
