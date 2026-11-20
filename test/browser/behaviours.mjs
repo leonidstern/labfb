@@ -2,33 +2,17 @@
 // Not part of `npm test`; CI runs it as the `browser` job. Run: node test/browser/behaviours.mjs   (needs the playwright package;
 // NODE_PATH can point at a node_modules that has it). Prints one line per check and exits 1 if any fails.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { claimPort } from './port.mjs';
+import { playwright, LAB, tmp, labEnv, startLab, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  try {
-    return require('playwright');
-  } catch {
-    try {
-      return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
-    } catch {
-      // On CI a missing browser is a failure: a skip there would pass with nothing run.
-      console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-      process.exit(process.env.CI ? 1 : 0);
-    }
-  }
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-browser-'));
+const DIR = tmp('labit-browser-');
 const PORT = String(claimPort(5100, 300));
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
+const env = labEnv({}, { settings: false });
 const paras = Array.from({ length: 80 }, (_, i) => `<p id="p${i}">paragraph ${i} with some words</p>`).join('');
 const PAGE = `<!doctype html><meta charset="utf-8"><title>T1</title><link rel="stylesheet" href="s.css"><body>
 <div id="top"></div><input id="i" value="typed"><details id="d"><summary>more</summary>inside</details>
@@ -41,7 +25,7 @@ write('notes.md', '# notes');
 write('data.json', '{"a":1}');
 
 let server;
-const start = () => (server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env }));
+const start = () => (server = startLab(DIR, env, { root: '.', port: PORT }));
 const up = async () => {
   for (let i = 0; i < 80; i++) {
     try {
@@ -52,18 +36,12 @@ const up = async () => {
   }
   throw new Error('lab did not start');
 };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Waits on the condition the next step needs; `ms` is the longest it waits, and it never throws (the check after it reports the real failure).
 const until = (p, fn, arg, ms) => p.waitForFunction(fn, arg, { timeout: ms, polling: 'raf' }).catch(() => {});
 // Until a comment of the page satisfies `pred`.
 async function untilApi(pred, ms) {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(40)) if ((await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.some(pred)) return;
 }
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 
 start();
 await up();
@@ -202,7 +180,7 @@ for (const eng of ['webkit', 'chromium']) {
       const a = rs[0], z = rs[rs.length - 1];
       return { x1: a.left + 1, y: a.top + a.height / 2, x2: z.right - 1 };
     }, [id, from, to]);
-    // A Shift-press on main stretches whatever selection is left from before (fixed with the fluid dialog): start clean.
+    // A Shift-press on main stretches whatever selection is left from before: start clean.
     await p.evaluate(() => getSelection().removeAllRanges());
     await p.keyboard.down('Shift');
     await p.mouse.move(at.x1, at.y);
@@ -736,5 +714,4 @@ for (const eng of ['webkit', 'chromium']) {
 }
 server.kill();
 fs.rmSync(DIR, { recursive: true, force: true });
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();
