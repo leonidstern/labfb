@@ -95,6 +95,9 @@ button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius
 button.pin.done { color: var(--_green-fg); }
 .pin:is(.resolved, .moved) { opacity: .5; } /* a done pin is as big as an open one, only faded (Leo, 18 Nov) */
 .pin.moved:not(.resolved) { scale: .8; }
+.pin.unsure:not(.resolved) { outline: 1.5px dashed var(--_amber); outline-offset: 2px; } /* a guess: look-alikes, or its words changed */
+.lostmark { position: absolute; width: 28px; height: 28px; margin: -28px 0 0; box-sizing: border-box; border: 1.5px dashed var(--_muted); border-radius: 14px 14px 14px 2px; opacity: .4; scale: .8; transform-origin: 0 100%; pointer-events: none; } /* where a lost pin stood */
+.spotnote { padding: 6px 12px 0; font-size: 12px; letter-spacing: 0; color: var(--_muted); }
 button.pin:is(.resolved, .moved):is(:hover, .open) { opacity: 1; }
 .pin.grab { touch-action: none; }
 button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }

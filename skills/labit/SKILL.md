@@ -48,6 +48,7 @@ Leave your own pins with `LAB pin <selector> "<point>" [--page /path]` when aske
 - One point per pin, numbered ("1. …"), 8 at most per ask, each on its spot. Say how many you left.
 - Read the selector from the file, never guess it; prefer an id (`#pricing h2`). With the page open a browser checks it: `pin` waits up to 3 s and says `pin <id> matched nothing on /page: <selector>` (the next wait too): fix and pin again. `--no-check` skips the wait.
 - Many at once: `LAB pin --file points.json` (a list of `{ selector, text, quote?, at?, page? }`). On words: `--quote "exact words"`. To ask: `--question`, or `--choice "A" --choice "B" --recommend B` (the pick comes back in your next wait). On a board: `--board <name> --frame <id> <selector> "text"` (`-` for the frame itself).
+- A wait says "spot changed" when your edit left a pin unsure or lost: settle it yourself, `LAB pin move <id> <selector> [--quote "words"]` (it goes there) or `LAB pin gone <id>` (its spot was removed).
 - "ticked: 2 of your 5 pins" in a wait: nothing to do. "<name> said: do it" (their "Do it" tap on your pin): do what it proposes, then `reply <id> --done`.
 
 ## Instead of an Artifact ("use lab")
