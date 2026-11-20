@@ -23,7 +23,6 @@ import {
   pageEnd,
   position,
   readable,
-  readComponents,
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { numberOf as pinNumber } from '../lib/schema.mjs';
@@ -43,6 +42,7 @@ import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } from './widget/drag.ts';
 import { bindBoardCam, showBoard } from './widget/boardcam.ts';
+import { bindFramework, overFramework, scanForFramework } from './widget/framework.ts';
 import { bindKeys } from './widget/keys.ts';
 import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, slowEls } from './widget/motion.ts';
 
@@ -338,24 +338,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
 
   // ---------- anchoring (src/widget/anchoring.ts) ----------
   bindAnchoring({ host, layer, el });
-  // Which component drew what a pin is on (components.ts, React, Vue, Svelte): its own file, loaded once the page shows
-  // it was drawn by one of them: at start, at load, or the first element the pointer goes over that says so. A pin
-  // reads it at once (anchorAt doesn't wait), so it is there before the first click.
-  /** @param {any} n */
-  const drawnByFramework = (n) => Boolean(n && (n.__vueParentComponent || n.__svelte_meta || Object.keys(n).some((k) => k.startsWith('__react'))));
-  /** @param {Iterable<Element | EventTarget | null>} nodes */
-  const lookForFramework = (nodes) => {
-    if (S.components) return;
-    for (const n of nodes) {
-      if (!drawnByFramework(n)) continue;
-      removeEventListener('pointerover', overFramework, true);
-      S.components = part('components').then((m) => readComponents(m.componentAt), () => (S.components = null));
-      return;
-    }
-  };
-  /** @param {PointerEvent} e */
-  const overFramework = (e) => lookForFramework([e.target]);
-  const scanForFramework = () => lookForFramework([document.body, ...document.querySelectorAll('body > *, body > * > *, body > * > * > *')]);
+  bindFramework(W);
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
   bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
