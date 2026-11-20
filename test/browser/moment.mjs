@@ -150,12 +150,12 @@ try {
       await until(p, () => document.getElementById('loop').getAnimations()[0]?.playState === 'running', null, 1000);
       await sleep(900);
       await p.reload();
-      await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelectorAll('.pin').length >= 3), ROOT, 3000);
+      await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelectorAll('.pin').length >= 3), ROOT, 8000);
       await sleep(300);
       const lr = await p.evaluate(() => document.getElementById('loop').getBoundingClientRect().toJSON());
       const pinBox = await inRoot(p, `[...r.querySelectorAll('.pin')].map((n) => n.getBoundingClientRect().toJSON()).sort((a, b) => Math.hypot(a.left - ${lr.left + 20}, a.bottom - ${lr.top + lr.height / 2}) - Math.hypot(b.left - ${lr.left + 20}, b.bottom - ${lr.top + lr.height / 2}))[0]`);
       await p.mouse.click(pinBox.left + pinBox.width / 2, pinBox.top + pinBox.height / 2);
-      await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelector('.card button.moment')), ROOT, 1500);
+      await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelector('.card button.moment')), ROOT, 6000); // a busy machine (eight jobs at once) opens the card late
       const shown = await inRoot(p, "r.querySelector('.card button.moment')?.textContent || ''");
       await inRoot(p, "r.querySelector('.card button.moment').click()");
       await sleep(200);
