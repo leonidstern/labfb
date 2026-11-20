@@ -5,9 +5,9 @@
 //   new      no mark for it: a filled blue dot and "new"
 //   updated  its text is not what it was when you read it: a ring and "updated"
 //   read     nothing
-//   pin      a pin in it has something you have not read (a new pin, a new reply): the same ink, no number; a tap opens
-//            the first such pin in it, as "new" in the bottom bar does (Leo, 19 Nov: "in tab bar on top to navigate",
-//            "dont show in tab bar number of new pins")
+// Only the section's own content marks it: unread pins and comments do not (the pins show their own unread), and a tap on
+// a chip only scrolls the page there, it opens no pin (Leo, 20 Nov: "clicking on it just scroll to section, not opening
+// comments, and just if there is new update, not new comment").
 // A section is read after about 3 s as the current one, or when you scroll on from it after a moment (0.8 s), whichever
 // is first; a tap on it in the bar reads it too. A first visit counts what is on the page as read.
 // What was read is kept per person in the lab (/_lab/api/sections, by the name you gave: your Mac and your phone agree;
@@ -61,7 +61,24 @@ const words = (t: string | null) => (t || '').replace(/\s+/g, ' ').trim();
 // The page's sections, in order. A section's text runs from its heading to the next one.
 function collect(): Sec[] {
   const heads = [...document.body.querySelectorAll(HEAD)].filter((h) => !h.closest(SKIP) && !chrome(h) && h.getClientRects().length && words(h.textContent));
-  const all = heads.length === 1 && heads[0].matches('h1') ? [] : heads.filter((h, _, every) => !h.matches('h1') || every.filter((x) => x.matches('h1')).length > 1);
+  // Headings inside repeated items (the cards of a grid, the rows of a list, a set of articles) are the items' titles, not
+  // sections: one item each would flood the bar.
+  const contains = (x: Element, tag: string) => heads.some((o) => o.localName === tag && x.contains(o));
+  const repeated = (h: Element) => {
+    for (let e: Element | null = h; e && e !== document.body && e.parentElement; e = e.parentElement) {
+      const p: Element = e.parentElement;
+      if (e.matches('section') && e.id && !noisy(e.id)) continue; // a named section is a section, whatever its neighbours
+      if (p === document.body || p === document.documentElement) continue;
+      const sibs = [...p.children].filter((x) => x !== e && contains(x, h.localName));
+      if (sibs.length < 2) continue;
+      const cs = getComputedStyle(p);
+      const row = cs.display.includes('grid') || (cs.display.includes('flex') && cs.flexDirection.startsWith('row')) || p.matches('ul, ol');
+      const same = e.className && !e.matches('section') && sibs.filter((x) => x.className === e.className).length >= 2;
+      if (e.matches('article, li, figure, [role=listitem]') || row || same) return true;
+    }
+    return false;
+  };
+  const all = heads.length === 1 && heads[0].matches('h1') ? [] : heads.filter((h) => !repeated(h)).filter((h, _, every) => !h.matches('h1') || every.filter((x) => x.matches('h1')).length > 1);
   // One level: the highest the sections use (h2 on most pages), so headings inside a section don't each get a chip.
   const top = ['h1', 'h2', 'h3'].find((t) => all.some((h) => h.matches(t)));
   const list = all.filter((h) => h.matches(top || 'h2'));
@@ -155,32 +172,6 @@ export function startSections() {
   let pushes = 0; // marks the lab has taken: a look at its marks begun before one went up is stale
 
   const status = (s: Sec) => (!marks || marks[s.key] === s.hash ? '' : marks[s.key] === undefined ? 'new' : 'updated');
-  // The pins with something unread in a section, top first (as stepNew in list.ts picks them): a section runs from its
-  // heading to the next section's, in page coordinates as the pins are. Board pins and moved ones are in no section.
-  const unreadIn = (s: Sec) => {
-    const at = secs.findIndex((x) => x.key === s.key); // by key: a chip outlives the look (check) that made its Sec
-    if (at < 0 || !W.S.on) return [];
-    const y = (h: Element) => h.getBoundingClientRect().top + scrollY;
-    const from = y(secs[at].h), to = secs[at + 1] ? y(secs[at + 1].h) : Infinity;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const top = (c: any) => {
-      const a = c.anchor || {};
-      if (a.kind === 'board') return NaN;
-      const p = W.position(a);
-      return p.moved ? NaN : p.top;
-    };
-    return W.threads()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((c: any) => !W.isPage(c) && W.unread(c).length)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((c: any) => ({ c, t: top(c) }))
-      .filter((e: { t: number }) => e.t >= from - 1 && e.t < to - 1)
-      .sort((a: { t: number }, b: { t: number }) => a.t - b.t)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((e: { c: any }) => e.c);
-  };
-  // What a chip wears: the section's own status, else "pin" for unread pins in it (one ink when it is both).
-  const shows = (s: Sec) => status(s) || (unreadIn(s).length ? 'pin' : '');
   const load = () => {
     try {
       const v = JSON.parse(W.store.get(key()) || 'null');
@@ -248,12 +239,6 @@ export function startSections() {
     b.append(el('i', { class: 'sb-dot' }), el('span', { class: 'sb-t' }, s.label), el('span', { class: 'sb-w' }));
     b.onclick = () => {
       read(s);
-      // An unread pin in it: that pin opens (and the page goes to it, in this section), as "new" in the bottom bar does.
-      const pin = unreadIn(s)[0];
-      if (pin) {
-        W.S.chatOpen = false;
-        return W.goTo(pin, !W.coarse);
-      }
       dispatchEvent(new CustomEvent('lab-goto', { detail: s.h })); // goes there, as a #id link in a message does
     };
     return b;
@@ -268,10 +253,10 @@ export function startSections() {
   const paint = () => {
     for (const c of chips()) {
       const s = secs.find((x) => x.key === c.dataset.s)!;
-      const st = shows(s);
+      const st = status(s);
       c.dataset.st = st;
       const w = c.querySelector('.sb-w')!;
-      if (st) w.textContent = st === 'pin' ? 'unread comment' : st; // gone: the old word stays while it folds away
+      if (st) w.textContent = st; // gone: the old word stays while it folds away
       w.classList.toggle('off', !st);
       if (s.key === current) c.setAttribute('aria-current', 'true');
       else c.removeAttribute('aria-current');
@@ -486,10 +471,6 @@ export function startSections() {
   keep(h0, h0);
   secs = [];
   W.S.checkSections = check;
-  // A pin read or a new one come (comments.js, after the bottom bar is drawn): the chips' ink follows.
-  W.S.paintSections = () => {
-    if (ready && !bar.hidden) paint();
-  };
   W.S.syncSections = check; // another device read something
   // Rule 5: looked at again a moment after a route change or a change to the headings (an app drawing its page late,
   // the agent's edit). A new route starts unread-free: nothing of the old one is read meanwhile, or saved under the new.
