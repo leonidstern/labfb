@@ -54,6 +54,7 @@
   --lab-t-slow: 300ms;   /* a sheet, a flight, a pin changing face: the biggest movement */
   --lab-t-loop: 1200ms;  /* one turn of something that goes on */
   --lab-t-hold: 1000ms;  /* how long a highlight stays (a wait, kept with reduced motion) */
+  --lab-t-calm: 120ms;   /* reduced motion only: the crossfade that stands in for a slide */
   --lab-ease: cubic-bezier(.2, .8, .2, 1);            /* standard */
   --lab-ease-out: cubic-bezier(0, 0, .58, 1);         /* a fade or a colour coming in */
   --lab-ease-in: cubic-bezier(.4, 0, 1, 1);           /* something leaving */

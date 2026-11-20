@@ -307,7 +307,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       if (!node.classList.contains('out')) return; // shown again meanwhile
       node.classList.remove('out');
       hide();
-    }, ms('quick'));
+    }, still.matches ? ms('calm') : ms('quick')); // reduced motion: a short fade (styles.css, lab-calm-out)
   };
   const toggleBtn = $('.toggle');
   const bar = /** @type {HTMLElement} */ (root.querySelector('.bar'));
@@ -909,7 +909,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     const done = () => {
       patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       flushPins(); // the rules of the pins the browser holds, now they are on the page (pinhold.ts)
-      if (S.closeFast && !now && prev) {
+      if ((S.closeFast || (still.matches && S.shown)) && !now && prev) { // reduced motion: a card or sheet fades out (a computer's went at once), no slide
         S.closeFast = false;
         prev.inert = true;
         layer.append(prev);
@@ -1113,6 +1113,9 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
         const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
         S.openCard = card;
         if (appear && !S.stepping) card.classList.add('in');
+        // Reduced motion: the page's scroll to the pin is instant, so the card is drawn again within its fade: it keeps the fade (a fresh node has no class).
+        if (appear) S.inAt = performance.now();
+        else if (still.matches && performance.now() - S.inAt < 200) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_thread-max))`;
         S.stepping = S.keepKeys = false;
         next.push(card);
@@ -1256,7 +1259,11 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
     moreMenu.addEventListener('beforetoggle', (e) => {
       const open = /** @type {ToggleEvent} */ (e).newState === 'open';
-      moreMenu.hidden = !open;
+      if (open || !still.matches) moreMenu.hidden = !open;
+      else { // reduced motion: it fades out where it is (display and hidden would end that at once)
+        moreMenu.classList.add('out');
+        setTimeout(() => (moreMenu.classList.remove('out'), moreMenu.matches(':popover-open') || (moreMenu.hidden = true)), ms('calm'));
+      }
       moreBtn.setAttribute('aria-expanded', String(open)); // the browser doesn't write it for its invoker
       if (open) {
         moreMenu.classList.remove('out');

@@ -20,7 +20,7 @@ let lastOpts: Opts | null = null; // a forward to #board=<name> opens it as the 
 // the page's own !important on the host (an inner shadow context wins the important declarations); the height is the
 // --bv-h variable, set inline by paintSize. cursor: inherit keeps the page's pin pointer over the board.
 const CSS = `
-:host{all:initial!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
+:host{all:initial!important;opacity:var(--bv-o,1)!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
 .bv-bar{position:relative;flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08)}
 :host(.full) .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
 .bv-bar button{font:inherit;color:inherit;background:transparent;border:0;border-radius:999px;padding:7px 11px;cursor:pointer}
@@ -156,6 +156,20 @@ export function show(name: string, o: Opts) {
   Object.assign(window, { __labBoard: { ...board.api, covers } });
   // The page scrolls under a half view: its pins and the board's are drawn again.
   addEventListener('scroll', scrolled, { passive: true });
+  // Reduced motion: it fades in (started once the board is mounted: that blocks the page for a while) (Apple: a crossfade, not a pop of the whole window). Its opacity is !important in :host (all: initial),
+  // which an animation or a transition can't beat, so --bv-o is stepped here, one frame at a time.
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const v = /^\s*([\d.]+)(m?s)\s*$/.exec(getComputedStyle(document.documentElement).getPropertyValue('--lab-t-calm')); // lab.css is served minified: .12s
+    const d = v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) : 120;
+    let t0 = 0;
+    const fade = (now: number) => {
+      const k = Math.min(1, ((t0 ||= now) === now ? 0 : now - t0) / d);
+      if (k < 1) (view.style.setProperty('--bv-o', String(k)), requestAnimationFrame(fade));
+      else view.style.removeProperty('--bv-o');
+    };
+    view.style.setProperty('--bv-o', '0');
+    requestAnimationFrame(fade);
+  }
   cur = { name, view, destroy: () => (ro.disconnect(), board.destroy()), onClose: o.onClose, restoration, pushed };
   moved();
 }
