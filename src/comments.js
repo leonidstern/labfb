@@ -3107,11 +3107,16 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       n.style.left = `${parseFloat(n.style.left) + dx}px`;
       n.style.top = `${parseFloat(n.style.top) + dy}px`;
     };
+    // Every spot is read first, then every pin written: a spot reads the page's scroll, and reading it after a pin was
+    // moved lays the page out again, once per pin (600 pins in a half view: a long task on every frame of a pan).
+    const moves = [];
     for (const [id, pin] of pinsById) {
       const a = pinData.get(pin)?.c.anchor;
-      if (a?.kind !== 'board' || heldPin(pin)) continue;
-      const at = position(a);
-      const [x, y] = [at.left - scrollX, at.top - scrollY]; // held to the screen (onBoard)
+      if (a?.kind === 'board' && !heldPin(pin)) moves.push([id, pin, position(a)]);
+    }
+    const [sx, sy] = [scrollX, scrollY];
+    for (const [id, pin, at] of moves) {
+      const [x, y] = [at.left - sx, at.top - sy]; // held to the screen (onBoard)
       if (S.openId === id && S.openCard?.isConnected) by(S.openCard, x - parseFloat(pin.style.left), y - parseFloat(pin.style.top));
       pin.style.left = `${x}px`;
       pin.style.top = `${y}px`;
