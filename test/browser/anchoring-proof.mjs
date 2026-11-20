@@ -178,6 +178,51 @@ try {
       });
       check(eng, 'a pin without fingerprint is found as before and learns one when its path and words agree', r.node && r.learnt === 'Second note.', JSON.stringify(r));
       await p.close();
+
+      // 11. Not here now is not gone: an element that is on the page but not shown (a closed details, display:none), or that
+      // a long scroll box has not built at the moment, is hidden (never lost, never told as gone); deleted for good it is lost.
+      const rows = Array.from({ length: 20 }, (_, i) => `<li>Row number ${i + 1}</li>`).join('');
+      p = await open(ctx, `<details id="d" open><summary>More</summary><p id="in">Words inside the details.</p></details><div id="tab"><button id="sv">Save changes</button></div><div id="v" style="height:100px;overflow:auto"><ul>${rows}</ul></div><div id="s" style="height:60px;overflow:auto"><ul><li>Only one</li><li>Only two</li><li>Only three</li></ul></div><p id="plain">A plain paragraph.</p>`);
+      r = await p.evaluate(() => {
+        const state = (a) => {
+          const at = A.position(a);
+          return `${at.why || 'plain'}${at.moved ? '+moved' : ''}${A.spotChanged(a) ? '+told' : ''}`;
+        };
+        const out = {};
+        const inside = pinOn('#in'), save = pinOn('#sv'), plain = pinOn('#plain'), few = pinOn('#s li:nth-child(2)');
+        const v = document.getElementById('v');
+        v.scrollTop = 150;
+        const row = pinOn('#v li:nth-child(9)');
+        out.shown = [inside, save, row, few].map(state);
+        document.getElementById('d').open = false;
+        document.getElementById('tab').style.display = 'none';
+        v.querySelector('li:nth-child(9)').remove(); // a long list builds only the rows near the view: the pinned one is not built now
+        out.hidden = [inside, save, row].map(state);
+        document.getElementById('d').open = true;
+        document.getElementById('tab').style.display = '';
+        out.back = [inside, save].map(state);
+        document.getElementById('plain').remove();
+        document.querySelector('#s li:nth-child(2)').remove();
+        out.deleted = [state(plain), state(few)];
+        const gone = pinOn('#in');
+        gone.gone = true;
+        out.settled = A.position(gone).why;
+        return out;
+      });
+      check(eng, 'hidden: a closed details, display:none and a row a long list has not built are hidden, not lost, not told as gone; shown again they are plain', r.shown.every((x) => x === 'plain') && r.hidden.every((x) => x === 'hidden') && r.back.every((x) => x === 'plain'), JSON.stringify(r));
+      check(eng, 'deleted for good (a paragraph; a row of a short list) is lost and told as gone; the agent saying gone is lost too', r.deleted.every((x) => x === 'lost+moved+told') && r.settled === 'lost', JSON.stringify(r));
+
+      // 12. The look: rewritten words in the same place are changed, a copy among look-alikes is unsure.
+      p = await open(ctx, '<div id="g"><p id="a">Welcome to our small shop on the corner</p></div><ul id="l"><li>Alice <button>Edit</button></li><li>Bob <button>Edit</button></li></ul>');
+      r = await p.evaluate(() => {
+        const a = pinOn('#a');
+        const bob = pinOn('li:nth-child(2) button');
+        document.getElementById('a').textContent = 'The corner shop: welcome, open nine to five daily';
+        document.getElementById('l').insertAdjacentHTML('beforeend', '<li>Bob <button>Edit</button></li>');
+        return { changed: A.position(a).why, copy: A.position(bob).why };
+      });
+      check(eng, 'rewritten in place: changed; a copy appeared next to it: unsure', r.changed === 'changed' && r.copy === 'unsure', JSON.stringify(r));
+      await p.close();
       await ctx.close();
     } finally {
       await browser.close();
