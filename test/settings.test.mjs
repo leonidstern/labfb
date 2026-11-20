@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { LAB, claimPort, tmp as folder, rm, sleep, cli as command } from './harness.mjs';
 import { loadSettings, seedActions } from '../lib/settings.ts';
 import { SEED, NAME_MAX, PROMPT_MAX, LIST_MAX, listFrom } from '../lib/actions.ts';
