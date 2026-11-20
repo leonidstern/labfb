@@ -216,6 +216,13 @@ if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', '
 
 // ---------- the server ----------
 if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in your project, or name a folder (see --help)`);
+// A folder that is a file, a port that is none (abc, 70000, 1.5) and a dev server address that is none, from a flag,
+// PORT or labit.json: each is said in a line. They were Node's own errors, with a stack trace.
+if (pos[0] && !fs.statSync(pos[0]).isDirectory()) die(`${pos[0]} is a file, not a folder. Run ${CMD} in your project, or name a folder (see --help)`);
+const askedPort = Number(opts.port || process.env.PORT || 4400);
+if (!Number.isInteger(askedPort) || askedPort < 0 || askedPort > 65535) die(`[lab] ${opts.port || process.env.PORT} is not a port: give a number from 1 to 65535 (--port, PORT, or "port" in labit.json)`);
+const proxyUrl = (p) => (/^\d+$/.test(p) ? `http://localhost:${p}` : p);
+if (typeof opts.proxy === 'string' && opts.proxy && !URL.canParse(proxyUrl(opts.proxy))) die(`[lab] ${opts.proxy} is not a dev server's address: give its port (--proxy 3000) or its URL (--proxy http://localhost:3000)`);
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
 
 // ---------- finding the dev server ----------
@@ -972,7 +979,7 @@ setInterval(() => {
 // Only names that point at this computer (no DNS rebinding), only pages served from here may post (no cross-site
 // comments), only this computer gets the admin key. Wifi guests can read the folder's pages and comment.
 const WIFI = Boolean(opts.wifi);
-const PROXY = opts.proxy ? new URL(/^\d+$/.test(opts.proxy) ? `http://localhost:${opts.proxy}` : opts.proxy) : null;
+const PROXY = opts.proxy ? new URL(proxyUrl(opts.proxy)) : null;
 const wifiAddrs = () => Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => a.address);
 const hostName = os.hostname().replace(/\.local$/, '').toLowerCase();
 const allowedHost = (h = '') => {
@@ -1154,7 +1161,7 @@ const setMode = (m) => {
   saveServer();
   broadcast();
 };
-let PORT = Number(opts.port || process.env.PORT || 4400);
+let PORT = askedPort;
 const STARTED = new Date().toISOString(); // the switcher shows how long a lab has run
 // Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
 const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
