@@ -121,11 +121,14 @@ export function drawChat() {
           W.S.comments.push(comment);
           W.markSeen([comment]);
           box.scrollTop = box.scrollHeight;
+          W.S.stayAtEnd?.(box);
           W.render();
           return { keep: true }; // the same box stays, with the cursor in it: the phone's keyboard stays up
         },
       }),
     );
-  if (atEnd) box.scrollTop = box.scrollHeight;
-  if (opening) W.S.stayAtEnd?.(box); // and stays at the newest while the sheet and its words settle (comments.js)
+  if (atEnd) {
+    box.scrollTop = box.scrollHeight;
+    W.S.stayAtEnd?.(box); // and stays at the newest while the sheet and its words settle (comments.js)
+  }
 }
