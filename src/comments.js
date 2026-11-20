@@ -35,7 +35,7 @@ import {
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { momentText } from '../lib/moment.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
-import { bindMessages, stampOf } from './widget/messages.ts';
+import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
@@ -137,6 +137,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     get send() { return send; },
     get sheetMode() { return sheetMode; },
     get stampOf() { return stampOf; },
+    get foldRow() { return foldRow; },
+    get foldStatus() { return foldStatus; },
+    get isStatus() { return isStatus; },
     get stamped() { return stamped; },
     get still() { return still; },
     get store() { return store; },
@@ -857,7 +860,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // Yours is never new: your name (any case or spacing), or a pin this browser started (it keeps its edit key).
   const plain = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const mine = (c) => (plain(c.name) && plain(c.name) === plain(store.get('lab-name'))) || Boolean(store.get(`lab-edit:${c.id}`));
-  const isNew = (c) => !S.seen.has(c.id) && !mine(c);
+  // The agent's status messages ("on it") are never unread: they fold once the answer comes (messages.ts).
+  const isNew = (c) => !S.seen.has(c.id) && !mine(c) && !isStatus(c);
   const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
   const markSeen = (items) => {
     const fresh = items.filter((item) => !S.seen.has(item.id)).map((item) => item.id);

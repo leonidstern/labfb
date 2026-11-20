@@ -251,14 +251,27 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const shown = new Set();
   const all = [c, ...W.repliesOf(c.id)];
   const firstNew = all.find((x) => fresh.has(x.id));
-  for (const item of all) {
+  // The agent's "on it" messages fold into one muted row ("2 updates ›") once an answer follows them; the latest stays
+  // while there is no answer yet. A tap opens them in place (Leo, 20 Nov).
+  const unfolded: Set<string> = (W.S.unfolded ||= new Set());
+  for (const slot of W.foldStatus(all, () => c.id, unfolded)) {
+    if (slot.fold) {
+      body.append(W.foldRow(slot, () => (unfolded.has(slot.fold) ? unfolded.delete(slot.fold) : unfolded.add(slot.fold), W.render())));
+      for (const item of slot.items) {
+        shown.add(item.id);
+        if (slot.open) body.append(itemEl(item));
+      }
+      continue;
+    }
+    const item = slot.m;
     if (item === firstNew && item !== c) body.append(W.el('div', { class: 'newline' }, 'new'));
     body.append(itemEl(item));
     shown.add(item.id);
   }
   card.sync = () => {
     // A new question with choices, or a pick (from another device): the card is drawn again, so the rows are right.
-    if (W.repliesOf(c.id).some((r) => !shown.has(r.id) && (r.choices || r.picked))) return W.render();
+    // So is an answer after status messages (they fold now) and a status after one (the older ones fold).
+    if (W.repliesOf(c.id).some((r) => !shown.has(r.id) && (r.choices || r.picked || (r.session && W.repliesOf(c.id).some((x) => W.isStatus(x)))))) return W.render();
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 48;
     for (const r of W.repliesOf(c.id)) {
       if (shown.has(r.id)) continue;

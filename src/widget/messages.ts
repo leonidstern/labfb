@@ -45,3 +45,42 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
   }
   return stamp;
 };
+
+// An agent's status message: its "on it" (reply --on-it, stored as intent "working"). Not an answer, so it is never
+// unread, and once the thread has its answer it folds (foldStatus). Old records work: the intent is all it reads.
+export const isStatus = (m: any): boolean => Boolean(m?.parent && m.session && m.intent === 'working');
+
+export type Slot = { m: any } | { fold: string; n: number; items: any[]; open: boolean };
+
+// Lays a list of messages out with its status runs folded: consecutive status messages (adjacent in the list, same
+// thread) followed later in that thread by a non-status agent message become one slot { fold, n, items, open } (open:
+// the person tapped it, so the messages show in place). A run with no answer yet folds all but its latest, which stays
+// visible so you can see it is working. rootOf names a message's thread.
+export function foldStatus(msgs: any[], rootOf: (m: any) => string, openKeys: Set<string>): Slot[] {
+  const out: Slot[] = [];
+  for (let i = 0; i < msgs.length; ) {
+    if (!isStatus(msgs[i])) {
+      out.push({ m: msgs[i++] });
+      continue;
+    }
+    let j = i;
+    while (j < msgs.length && isStatus(msgs[j]) && rootOf(msgs[j]) === rootOf(msgs[i])) j++;
+    const run = msgs.slice(i, j);
+    const answered = msgs.slice(j).some((x) => x.session && !isStatus(x) && rootOf(x) === rootOf(run[0]));
+    const hidden = answered ? run : run.slice(0, -1);
+    if (hidden.length) out.push({ fold: `fold-${hidden[0].id}`, n: hidden.length, items: hidden, open: openKeys.has(`fold-${hidden[0].id}`) });
+    for (const m of run.slice(hidden.length)) out.push({ m });
+    i = j;
+  }
+  return out;
+}
+
+// The row that stands for a fold: "2 updates ›" (muted), "1 update ›"; open, it reads "‹" and the messages follow it.
+export const foldRow = (slot: Extract<Slot, { fold: string }>, toggle: () => void): HTMLElement => {
+  const b = d.el('button', { class: `updates${slot.open ? ' open' : ''}`, type: 'button', 'data-id': slot.fold, 'aria-expanded': String(slot.open) }, `${slot.n} update${slot.n === 1 ? '' : 's'} ${slot.open ? '‹' : '›'}`);
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggle();
+  });
+  return b;
+};

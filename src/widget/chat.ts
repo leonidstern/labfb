@@ -65,7 +65,13 @@ export function drawChat() {
     const old = kept.get(n.dataset?.id);
     return old && old.outerHTML.replace(' fresh', '') === n.outerHTML ? old : n;
   };
-  W.patchKids(box, msgs.flatMap((m) => {
+  const unfolded: Set<string> = (W.S.unfolded ||= new Set());
+  const rootId = (m) => m.parent || m.id;
+  // The agent's "on it" messages fold into one muted row once an answer follows them (as in a thread).
+  const slots = W.foldStatus(msgs, rootId, unfolded).flatMap((s) => (s.fold ? [s, ...(s.open ? s.items.map((m) => ({ m })) : [])] : [s]));
+  W.patchKids(box, slots.flatMap((slot) => {
+    if (slot.fold) return [W.foldRow(slot, () => (unfolded.has(slot.fold) ? unfolded.delete(slot.fold) : unfolded.add(slot.fold), W.render()))];
+    const m = slot.m;
     const root = m.parent ? byId.get(m.parent) : m;
     const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
     // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
