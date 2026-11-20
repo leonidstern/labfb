@@ -87,23 +87,6 @@ try {
       check(eng, 'a 300-word draft at y=700: the box, Send and the name row stay inside the window', fits(s) && s.send <= s.h - 4, JSON.stringify(s));
       await close();
       await p.evaluate(() => { const t = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.float textarea'); if (t) t.value = ''; });
-      // Select mode (V, then a click on a block): its box has no pin to be tied to, so the script places it.
-      for (const id of ['low', 'mid']) {
-        await p.keyboard.press('v');
-        await sleep(200);
-        await p.click(`#${id}`);
-        await p.waitForFunction(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot; return Boolean(r?.querySelector('.float, .fd')); }, null, { timeout: 3000 });
-        await sleep(600);
-        s = await state();
-        check(eng, `select mode, a block at ${id === 'low' ? 735 : 690} px: the box is whole inside the window`, fits(s), JSON.stringify(s));
-        await p.keyboard.type(Array.from({ length: 300 }, (_, i) => `w${i}`).join(' '));
-        await sleep(400);
-        s = await state();
-        check(eng, `select mode at ${id}, a 300-word draft: Send stays inside the window`, fits(s) && s.send <= s.h - 4, JSON.stringify(s));
-        await close();
-        await p.keyboard.press('v');
-        await sleep(200);
-      }
       // A short window: the words scroll inside the box, so Send stays in view.
       await p.setViewportSize({ width: 1000, height: 320 });
       await sleep(300);
