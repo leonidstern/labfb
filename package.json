@@ -13,6 +13,7 @@
     "public/_lab/switcher.js",
     "public/_lab/draw.js",
     "public/_lab/board.js",
+    "public/_lab/boardview.js",
     "public/_lab/lab.css",
     "public/_lab/favicon.svg",
     "skills/",

@@ -23,6 +23,7 @@ const pinNames = new WeakMap<Element, string>();
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
 export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined, kind: 'card' | 'beside', want?: Want) {
   node.classList.remove('tied-card', 'tied-beside');
+  node.removeAttribute('data-held'); // set below once the browser carries it with its pin (comments.js: no redraw for it)
   if (!pin || !want || !CSS.supports('anchor-name: --a')) {
     letBox(node);
     return node.style.removeProperty('position-anchor');
@@ -37,6 +38,7 @@ export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined,
     node.classList.add(`tied-${kind}`);
     to = pin;
   }
+  node.setAttribute('data-held', '');
   // Its corner as anchor positioning reads it: a pin's layout box, not its rect (a pin still popping in is scaled).
   const r = to === pin && pin.offsetParent ? pin.offsetParent.getBoundingClientRect() : to.getBoundingClientRect();
   const [x, y] = to === pin ? [r.left + scrollX + pin.offsetLeft, r.top + scrollY + pin.offsetTop] : [r.left + scrollX, r.top + scrollY];
