@@ -17,6 +17,7 @@ export const PRESETS: Record<string, [number, number]> = { slide: [1920, 1080], 
 export const CAPTION = 120;
 const GAP = 80;
 const ROW = 4800;
+const CAPTION_GAP = 100; // more room between rows when a frame has a caption (it hangs under the frame)
 
 /** The name of the board of a page: /a/b is a--b, / is index. The file also says `of`, so the name is never read back. */
 export const nameOf = (page: string) => page.replace(/^\/+|\/+$/g, '').replace(/\//g, '--').slice(0, 80) || 'index';
@@ -41,7 +42,9 @@ export function check(raw: any, name: string, was?: Board | null): Board | strin
     const auto = f.auto === true || !Number.isFinite(f.x) || !Number.isFinite(f.y);
     if (!auto) [out.x, out.y] = [px(f.x, -1e6, 1e6)!, px(f.y, -1e6, 1e6)!];
     if (one(f.label, 80)) out.label = one(f.label, 80);
-    if (one(f.caption, CAPTION)) out.caption = one(f.caption, CAPTION);
+    // A save that says nothing of a caption keeps the stored one (the canvas never edits them); '' clears.
+    const caption = one(f.caption === undefined ? was?.frames.find((g) => g.id === f.id)?.caption : f.caption, CAPTION);
+    if (caption) out.caption = caption;
     if (typeof f.variantOf === 'string' && FRAME.test(f.variantOf)) out.variantOf = f.variantOf;
     out.state = f.state === 'picked' || f.state === 'archived' ? f.state : 'live';
     frames.push(out);
@@ -51,7 +54,7 @@ export function check(raw: any, name: string, was?: Board | null): Board | strin
   if (gone) return `frame ${gone.id} cannot be removed: archive it (state "archived")`;
   const board: Board = { v: 1, name, rev: (was?.rev ?? 0) + 1, frames };
   if (one(raw.title, 80)) board.title = one(raw.title, 80);
-  if (raw.flow === true) board.flow = true; // the frames are steps: the canvas draws an arrow from each to the next
+  if (raw.flow === true || (raw.flow === undefined && was?.flow)) board.flow = true; // the frames are steps: the canvas draws an arrow from each to the next
   if (raw.of !== undefined) {
     const of = typeof raw.of === 'string' ? raw.of.split('#')[0] : '';
     if (!labPath(of)) return '"of" is the page the board is about, like /pricing or /pricing#hero';
@@ -65,10 +68,11 @@ export function place(board: Board): Board {
   let x = 0;
   let y = 0;
   let row = 0;
+  const gap = GAP * 2 + (board.frames.some((f) => f.caption && f.state !== 'archived') ? CAPTION_GAP : 0);
   const frames = board.frames.map((f) => {
     if (f.state === 'archived') return { ...f, x: undefined, y: undefined };
     if (Number.isFinite(f.x) && Number.isFinite(f.y)) return f;
-    if (x && x + f.w > ROW) [x, y, row] = [0, y + row + GAP * 2, 0];
+    if (x && x + f.w > ROW) [x, y, row] = [0, y + row + gap, 0];
     const at = { ...f, x, y, auto: true };
     x += f.w + GAP;
     row = Math.max(row, f.h);

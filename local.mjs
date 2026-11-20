@@ -105,11 +105,13 @@ For the agent, from the project (any folder under it):
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
   labit update
       Move this folder's lab onto the newer release its ⋯ menu offers (the person pressed update): prints what changed.
-  labit board new|deck|add|caption|move|pick|list ...
+  labit board new|deck|add|caption|flow|move|pick|list ...
       Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (the lab copies the page into
       .lab/boards/<board>/a.html, b.html, c.html: edit those) | --widths 390,820,1280 | --flow /a,/b,/c [--captions
       "Cart|Pay|Done"] (frames in order, arrows between them). --size slide (1920x1080) | slide-720 | phone sets frame
-      size. deck "<topic>" --slides 8: eight blank slide frames, one .html each in .lab/boards/<board>/, one slides.css.
+      size. deck "<topic>" --slides 8: eight blank slide frames, one .html each in .lab/boards/<board>/, one slides.css;
+      deck <board> --add: one more blank slide at the end. flow <board> [on|off]: arrows between frames in order (an
+      older --flow board). A flag that does nothing where it is given (--captions without --flow) is an error.
       The lab places frames; you only give an order. add <board> <frame|/page|file.html> [--label] [--caption "one line"]
       [--size] [--width] [--after]; caption <board> <frame> "text" (empty clears); move <board> <frame> --after <frame>;
       pick <board> <frame>; list [<board>].

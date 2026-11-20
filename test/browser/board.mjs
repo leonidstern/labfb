@@ -50,6 +50,7 @@ await put('ten', grid(10), { of: '/pricing' });
 await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }], { of: '/pricing' });
 const LONG = 'A long caption that goes on and on about what the person does on this step of the flow and why it matters to them, '.repeat(3);
 await put('story', [{ id: 'a', src: '/pricing', w: 600, h: 400, caption: 'Cart' }, { id: 'b', src: '/checkout', w: 600, h: 400, caption: 'User taps Pay' }, { id: 'c', src: '/pricing', w: 600, h: 400, caption: LONG }, { id: 'd', src: '/checkout', w: 600, h: 400 }], { flow: true });
+await put('slidephone', [{ id: 'a', src: '/pricing', w: 1920, h: 1080, caption: 'One' }, { id: 'b', src: '/checkout', w: 1920, h: 1080, caption: 'Two' }, { id: 'c', src: '/pricing', w: 1920, h: 1080 }], { flow: true });
 await put('plain', [{ id: 'a', src: '/pricing', w: 600, h: 400, x: 800, y: 0, caption: 'right' }, { id: 'b', src: '/checkout', w: 600, h: 400, x: 0, y: 0, caption: 'left' }]);
 await put('wide', [{ id: 'a', src: '/pricing', w: 1000, h: 700, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 1000, h: 700, x: 4000, y: 3000 }]);
 try {
@@ -205,6 +206,24 @@ try {
       await p.keyboard.press('KeyP');
       await sleep(300);
       check(eng, 'present starts at the selected frame (here 2), and P again leaves', sel2.on && sel2.n === '2 / 4' && (await pres()).on === false, JSON.stringify(sel2));
+      // keys that must not reach the board under a talk, a clicker's keys, and the frames either side kept alive
+      await p.keyboard.press('KeyP');
+      await sleep(1500);
+      const nowN = () => p.evaluate(() => [document.querySelectorAll('#lab-board .f').length, document.querySelector('#lab-board .pn').textContent, __labBoard.live().sort().join('')]);
+      const [n0, num0, live0] = await nowN();
+      for (const k of ['Meta+KeyD', 'Control+KeyD', 'Meta+KeyZ', 'Control+KeyZ', 'Backspace']) await p.keyboard.press(k);
+      await sleep(900);
+      const [n1, num1] = await nowN();
+      check(eng, 'under a talk ⌘D, ⌘Z and Delete change nothing', n0 === 4 && n1 === 4 && num0 === num1 && !(await pres()).shown.includes(','), JSON.stringify([n0, n1, num0, num1]));
+      check(eng, 'the frames either side of the one shown are alive too (a step shows the page, not a card)', ['a', 'b', 'c'].every((id) => live0.includes(id)), live0);
+      const stepped = [];
+      for (const [key, want] of [['PageDown', '3 / 4'], ['ArrowUp', '2 / 4'], ['ArrowDown', '3 / 4'], ['PageUp', '2 / 4']]) {
+        await p.keyboard.press(key);
+        await sleep(250);
+        stepped.push([key, (await nowN())[1], want]);
+      }
+      check(eng, 'a clicker steps: PageDown / ↓ next, PageUp / ↑ back', stepped.every(([, got, want]) => got === want), JSON.stringify(stepped));
+      await p.keyboard.press('Escape');
       await p.goto(B + '/_lab/board/plain');
       await bw(2000);
       await p.keyboard.press('KeyP');
@@ -245,6 +264,24 @@ try {
       const first = await q.evaluate(() => ({ cam: __labBoard.camera(), live: __labBoard.live(), vv: visualViewport.scale }));
       const widths = await q.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.offsetWidth));
       check(eng, 'phone: the first view is every frame, 390 wide, the ones in view alive', widths.length > 1 && widths.every((w) => w === 390) && first.live.length >= 1 && first.cam.z < 0.9 && first.vv === 1, JSON.stringify({ ...first, widths }));
+      // slides on a phone keep their size (never cut to a phone's corner), flow order, and a tap steps
+      await q.goto(B + '/_lab/board/slidephone');
+      await sleep(2500);
+      const slideW = await q.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.offsetWidth));
+      const slideX = await q.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => parseFloat(f.style.left)));
+      await q.click('#lab-board .zm .zo');
+      await q.click('#lab-board .zm .zc:text("present")');
+      await sleep(900);
+      const slideFit = await q.evaluate(() => { const b = document.querySelector('#lab-board .f.cur').getBoundingClientRect(); return [Math.round(b.left), Math.round(b.right), innerWidth]; });
+      const tapAt = (x) => q.evaluate((x) => { const r = document.getElementById('lab-board'); r.setPointerCapture = () => {}; const at = (t) => r.dispatchEvent(new PointerEvent(t, { pointerType: 'touch', pointerId: 9, isPrimary: true, clientX: x, clientY: 300, bubbles: true, cancelable: true, composed: true })); at('pointerdown'); at('pointerup'); }, x);
+      await tapAt(300);
+      await sleep(400);
+      const tap1 = await q.evaluate(() => document.querySelector('#lab-board .pn').textContent);
+      await tapAt(20);
+      await sleep(400);
+      const tap2 = await q.evaluate(() => document.querySelector('#lab-board .pn').textContent);
+      check(eng, 'phone: slide frames keep 1920×1080 in flow order, a presented slide fits the screen whole, a tap steps (left edge back)', slideW.every((w) => w === 1920) && slideX[1] > slideX[0] && slideFit[0] >= 0 && slideFit[1] <= slideFit[2] && tap1 === '2 / 3' && tap2 === '1 / 3', JSON.stringify([slideW, slideX, slideFit, tap1, tap2]));
+      await q.click('#lab-board .px');
       // a phone presents from the zoom menu and swipes between frames
       await q.goto(B + '/_lab/board/story');
       await sleep(2500);

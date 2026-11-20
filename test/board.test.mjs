@@ -424,3 +424,70 @@ test('deck: N blank slide frames, one html each plus one slides.css, a flow boar
   assert.equal(thirty.code, 0, thirty.out);
   assert.equal(diskOf('thirty').frames.length, 30);
 });
+
+// ----- storyboards, review fixes -----
+test('a save that says nothing of flow or captions keeps them; flow:false and "" clear them', async () => {
+  await cli(DIR, 'new', 'Keep', '--flow', '/pricing,/cart', '--captions', 'One|Two');
+  const was = (await get(B, 'name=keep')).body;
+  const bare = { v: 1, rev: was.rev, frames: was.frames.map(({ caption, ...f }) => f) };
+  assert.equal((await put(B, 'name=keep', bare)).status, 200);
+  assert.deepEqual([diskOf('keep').flow, diskOf('keep').frames.map((f) => f.caption)], [true, ['One', 'Two']]);
+  const now = (await get(B, 'name=keep')).body;
+  assert.equal((await put(B, 'name=keep', { v: 1, rev: now.rev, flow: false, frames: now.frames.map((f, i) => ({ ...f, caption: i ? '' : 'Still' })) })).status, 200);
+  assert.deepEqual([diskOf('keep').flow, diskOf('keep').frames.map((f) => f.caption)], [undefined, ['Still', undefined]]);
+});
+
+test('board flow <board> [on|off] turns arrows on for an older board', async () => {
+  await cli(DIR, 'new', 'Old flow', '--flow', '/pricing,/cart');
+  assert.match((await cli(DIR, 'flow', 'old-flow', 'off')).out, /no flow/);
+  assert.equal('flow' in diskOf('old-flow'), false);
+  assert.match((await cli(DIR, 'flow', 'old-flow', 'off')).out, /already not a flow/);
+  assert.match((await cli(DIR, 'flow', 'old-flow')).out, /is a flow/);
+  assert.equal(diskOf('old-flow').flow, true);
+  assert.equal((await cli(DIR, 'flow', 'old-flow', 'maybe')).code, 1);
+  assert.equal((await cli(DIR, 'flow', 'nosuchboard')).code, 1);
+});
+
+test('cli words: --slides must be a whole number, --size is a preset only, a caption may start with a dash', async () => {
+  for (const bad of [['--slides'], ['--slides', 'abc'], ['--slides', '2.5'], ['--slides', '3x']]) assert.equal((await cli(DIR, 'deck', 'Bad count', ...bad)).code, 1, bad.join(' '));
+  assert.equal(fs.existsSync(path.join(DIR, '.lab/boards/bad-count')), false);
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) assert.match((await cli(DIR, 'new', 'Proto', '--flow', '/pricing', '--size', name)).out, /--size is one of/, name);
+  await cli(DIR, 'new', 'Dash', '--of', '/pricing', '--widths', '390');
+  assert.match((await cli(DIR, 'add', 'dash', '/cart', '--caption', '-20% off')).out, /Added b/);
+  assert.equal(diskOf('dash').frames[1].caption, '-20% off');
+  const f = await cli(DIR, 'new', 'Dash flow', '--flow', '/pricing,/cart', '--captions', '--first|-second');
+  assert.deepEqual(diskOf('dash-flow').frames.map((x) => x.caption), ['--first', '-second'], f.out);
+});
+
+test('a flag that does nothing where it is given is refused, not ignored', async () => {
+  assert.match((await cli(DIR, 'new', 'Ign', '--of', '/pricing', '--widths', '390', '--captions', 'a')).out, /--captions goes with --flow/);
+  assert.match((await cli(DIR, 'new', 'Ign two', '--size', 'slide')).out, /--size has nothing to size/);
+  assert.match((await cli(DIR, 'new', 'Ign three', '--flow', '/pricing', '--caption', 'x')).out, /--caption goes with board add/);
+  assert.match((await cli(DIR, 'pick', 'caps', 'a', '--size', 'slide')).out, /--size goes with board new or board add, not board pick/);
+  assert.match((await cli(DIR, 'deck', 'Ign deck', '--slides', '2', '--size', 'phone')).out, /--size goes with/);
+  assert.match((await cli(DIR, 'add', 'caps', 'a', '--captions', 'x')).out, /--captions goes with board new/);
+  assert.equal(fs.existsSync(path.join(DIR, '.lab/boards/ign.json')), false);
+});
+
+test('deck: never writes into a board folder that is already there; --add appends a blank slide to a deck only', async () => {
+  fs.mkdirSync(path.join(DIR, '.lab/boards/stale'), { recursive: true });
+  fs.writeFileSync(path.join(DIR, '.lab/boards/stale/a.html'), 'mine');
+  const r = await cli(DIR, 'deck', 'Stale', '--slides', '1');
+  assert.match(r.out, /# Board stale-2/);
+  assert.equal(fs.readFileSync(path.join(DIR, '.lab/boards/stale/a.html'), 'utf8'), 'mine');
+  const add = await cli(DIR, 'deck', 'stale-2', '--add');
+  assert.match(add.out, /Added slide 2 as b/);
+  assert.deepEqual(diskOf('stale-2').frames.map((f) => [f.id, f.label, f.w, f.h]), [['a', '1', 1920, 1080], ['b', '2', 1920, 1080]]);
+  assert.match(fs.readFileSync(path.join(DIR, '.lab/boards/stale-2/b.html'), 'utf8'), /<p class="n">2<\/p>/);
+  assert.match((await cli(DIR, 'deck', 'caps', '--add')).out, /not a deck/);
+  assert.match((await cli(DIR, 'deck', 'nosuch', '--add')).out, /No board nosuch/);
+  assert.equal((await cli(DIR, 'deck', 'stale-2', '--add', '--slides', '3')).code, 1);
+});
+
+test('rows of a board with captions are further apart, so a caption does not meet the next row', async () => {
+  const frames = (cap) => ['a', 'b', 'c'].map((id) => ({ id, src: '/pricing', w: 2400, h: 600, ...(cap ? { caption: 'x' } : {}) }));
+  await put(B, 'name=gap-plain', { v: 1, rev: 0, frames: frames(false) });
+  await put(B, 'name=gap-cap', { v: 1, rev: 0, frames: frames(true) });
+  const [p, c] = [(await get(B, 'name=gap-plain')).body.frames, (await get(B, 'name=gap-cap')).body.frames];
+  assert.ok(p[2].y > 0 && c[2].y - c[0].y > p[2].y - p[0].y, `${p[2].y} vs ${c[2].y}`);
+});

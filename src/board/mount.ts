@@ -196,16 +196,17 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     world.style.willChange = '';
     wake();
     if (!opts.hash) return;
+    writeHash();
+  };
+  // The camera in the address; while presenting, the one the talk will go back to (a reload comes back to the board).
+  const writeHash = () => {
+    const c = presenting && saved ? saved.cam : cam;
     try {
-      history.replaceState(history.state, '', `#${Math.round(cam.x)},${Math.round(cam.y)},${cam.z.toFixed(3)}`);
+      history.replaceState(history.state, '', `#${Math.round(c.x)},${Math.round(c.y)},${c.z.toFixed(3)}`);
     } catch {}
   };
   // A reload before the camera rested still comes back where it was: the address takes the camera as the page goes.
-  if (opts.hash) addEventListener('pagehide', () => {
-    try {
-      history.replaceState(history.state, '', `#${Math.round(cam.x)},${Math.round(cam.y)},${cam.z.toFixed(3)}`);
-    } catch {}
-  });
+  if (opts.hash) addEventListener('pagehide', () => writeHash());
   const moving = () => {
     movedAt = performance.now();
     if (!layered) {
@@ -231,6 +232,13 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
 
   // Which frames are alive. Those in view and wide enough, nearest the centre first, up to the cap, two loading at a time;
   // when the cap is reached the one seen longest ago is dropped back to its card (never the selected or entered one).
+  // The frame being presented and the ones either side of it: kept alive and drawn, so a step shows the page, not a card.
+  const held = (c: Card) => {
+    if (!presenting) return false;
+    const list = order();
+    const i = list.findIndex((o) => o.f.id === presenting);
+    return i >= 0 && Math.abs(list.indexOf(c) - i) <= 1;
+  };
   const loading = () => cards.filter((c) => c.frame && !c.frame.dataset.ready).length;
   function wake(load = true) {
     if (signal.aborted) return;
@@ -243,7 +251,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     const seen = cards.filter((c) => {
       const r = near(c);
       const inView = r.r > -200 && r.l < view.w + 200 && r.b > -200 && r.t < view.h + 200;
-      if (inView || load) c.box.classList.toggle('off', !inView); // mid-move a frame is only ever shown, never hidden
+      if (inView || load) c.box.classList.toggle('off', !inView && !held(c)); // mid-move a frame is only ever shown, never hidden
       return r.r > 0 && r.l < view.w && r.b > 0 && r.t < view.h;
     });
     for (const c of seen) if (c.frame) c.seen = now;
@@ -257,7 +265,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     for (const c of want) {
       if (loading() >= AT_ONCE) break;
       if (alive().length >= CAP) {
-        const old = alive().filter((o) => o.f.id !== selected && o.f.id !== entered && !seen.includes(o)).sort((a, b) => a.seen - b.seen)[0];
+        const old = alive().filter((o) => o.f.id !== selected && o.f.id !== entered && !seen.includes(o) && !held(o)).sort((a, b) => a.seen - b.seen)[0];
         if (!old) break;
         sleep(old);
       }
@@ -314,7 +322,15 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     const shown = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
     // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
     // page). Only how it's drawn here: what is saved is the board as read (save sends board.frames).
-    const next = coarse ? [...shown].sort((p, q) => p.y - q.y || p.x - q.x).map((f, i) => ({ ...f, x: i * (390 + 80), y: 0, w: 390, h: 844 })) : shown;
+    // (A frame of its own size, a slide's 1920 wide, keeps it: cut to a phone's corner it showed nothing of itself. A flow
+    // goes in its order, the rest left to right.)
+    let at = 0;
+    const next = coarse ? (b.flow ? [...shown] : [...shown].sort((p, q) => p.y - q.y || p.x - q.x)).map((f) => {
+      const big = f.w > 820;
+      const out = { ...f, x: at, y: 0, w: big ? f.w : 390, h: big ? f.h : 844 };
+      at += out.w + 80;
+      return out;
+    }) : shown;
     const old = new Map(cards.map((c) => [c.f.id, c]));
     cards = next.map((f) => {
       const was = old.get(f.id);
@@ -510,7 +526,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   let holdTimer = 0;
   // A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
   // put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
-  const boardWidget = () => (window as unknown as { __labBoardWidget?: { dismiss?: () => boolean; pinning: () => boolean; holding?: () => boolean; hold?: (x: number, y: number) => void; place: (x: number, y: number) => void } }).__labBoardWidget;
+  const boardWidget = () => (window as unknown as { __labBoardWidget?: { dismiss?: () => boolean; pinning: () => boolean; holding?: () => boolean; isPause?: (e: unknown) => boolean; hold?: (x: number, y: number) => void; place: (x: number, y: number) => void } }).__labBoardWidget;
   let tap = { at: 0, x: 0, y: 0 };
   let pinch = 0;
   // On a computer a plain mouse drag is labit's, as on a page (a click pins, a drag marks an area, a click selects); the
@@ -545,6 +561,15 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (zoomBox.classList.contains('open')) zoomBox.classList.remove('open');
     measure();
     theirs = false;
+    // Under a talk a touch is a swipe or a tap and nothing else: no pin, hold or drawing starts under a frame that is not shown.
+    if (presenting) {
+      eat(e);
+      lastDown = performance.now();
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) down = { x: e.clientX, y: e.clientY, id: '', far: false, at: performance.now(), t: e.timeStamp, hand: true };
+      else if (down) down.far = true;
+      return;
+    }
     if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget()?.pinning()) {
       lastDown = performance.now();
       theirs = true; // comment mode, no Space: the widget's own click (a pin) and drag (an area)
@@ -610,7 +635,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     hand();
     // Right after the page loads, the live frames keep the page busy: the finger's lift can be handled before the 400 ms
     // timer runs, and the first hold was taken for a tap (Leo, 19 Nov). The touch's own times decide it then.
-    if (!d.held && !d.far && e.type === 'pointerup' && e.pointerType === 'touch' && e.timeStamp - d.t >= 400) {
+    if (!presenting && !d.held && !d.far && e.type === 'pointerup' && e.pointerType === 'touch' && e.timeStamp - d.t >= 400) {
       const w = boardWidget();
       if (w?.holding ? w.holding() : w?.pinning()) d.held = true;
     }
@@ -620,7 +645,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       return;
     }
     if (d.far && coarse && (focus || presenting) && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
-    if (d.far || e.type === 'pointercancel' || presenting) return;
+    if (d.far || e.type === 'pointercancel') return;
+    if (presenting) return step(e.clientX - ox < view.w / 4 ? -1 : 1); // a tap: the next frame, or the one before from the left edge
     const widget = boardWidget();
     // An open comment or the chat: this tap only closes it, as a click outside one does on a page (Leo, 19 Nov: "clicking
     // outside comment should work here same as on page", "same with chat"). A drag (a pan) is no tap and closes nothing.
@@ -709,7 +735,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     cam = fitFrame(c.f, { w: view.w, h: Math.max(100, view.h - CAPTION_H) });
     barCap.textContent = c.f.caption || '';
     barNum.textContent = `${i + 1} / ${list.length}`;
-    if (!c.frame) live(c);
+    for (const o of [list[i - 1], c, list[i + 1]]) if (o && !o.frame) live(o);
     draw();
     moving();
     wake(false);
@@ -721,6 +747,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (!list.length) return;
     if (!presenting) {
       if (entered) leave();
+      boardWidget()?.dismiss?.(); // an open comment, draft or chat would take the first Esc
       saved = { cam: { ...cam }, selected, moved };
       presenting = (list.find((c) => c.f.id === selected) || list[0]).f.id;
       lastIndex = list.findIndex((c) => c.f.id === presenting);
@@ -753,7 +780,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   }
   const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
     const [cmd, sel] = [e.metaKey || e.ctrlKey, find(selected)];
-    if (cmd && !e.altKey && !e.shiftKey && !entered && editable()) {
+    if (cmd && !e.altKey && !e.shiftKey && !entered && !presenting && editable()) {
       if (e.code === 'KeyZ') {
         undoLast();
         return true;
@@ -761,13 +788,16 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
     // P: present (the widget's own pause key gives it up on a board). Under a talk nothing else of the board's works.
+    const pause = !e.shiftKey && (boardWidget()?.isPause ? boardWidget()!.isPause!(e) : e.code === 'KeyP'); // the pause key, as the settings have it
     if (presenting) {
-      if (!e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) present(e.key === 'ArrowRight' ? 1 : -1);
-      else if ((e.code === 'KeyP' && !e.shiftKey) || e.key === 'Escape') exitPresent();
-      else return false;
+      const to = e.shiftKey ? 0 : /^(ArrowRight|ArrowDown|PageDown)$/.test(e.key) ? 1 : /^(ArrowLeft|ArrowUp|PageUp)$/.test(e.key) ? -1 : 0; // a clicker sends PageDown / PageUp
+      if (e.repeat && (to || pause || e.key === 'Escape')) return true; // held down: once only
+      if (to) present(to);
+      else if (pause || e.key === 'Escape') exitPresent();
+      else if (e.key !== 'Backspace' && e.key !== 'Delete') return false; // (those two are taken too: Backspace goes back a page in some browsers)
       return true;
     }
-    if (e.code === 'KeyP' && !e.shiftKey && !entered && cards.length) return (present(), true);
+    if (pause && !entered && cards.length) return e.repeat || (present(), true);
     if (sel && !entered && editable() && (e.key === 'Backspace' || e.key === 'Delete')) {
       archive(selected);
       return true;
@@ -791,7 +821,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   };
   // ⌘D / Ctrl D duplicates the selected frame. In capture: Control-D is also the widget's "next new comment".
   on('keydown', (e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyD' && selected && !entered && editable() && !typing(e)) {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyD' && selected && !entered && !presenting && editable() && !typing(e)) {
       eat(e);
       dup(selected);
     }

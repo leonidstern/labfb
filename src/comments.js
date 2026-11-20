@@ -3203,7 +3203,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       pin.style.visibility = (covered || position(info.c.anchor || {}).clipped) && S.openId !== id ? 'hidden' : '';
     }
   };
-  Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))), dismiss } });
+  Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, isPause: (/** @type {KeyboardEvent} */ e) => actionOf(e) === 'pause', holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))), dismiss } });
   addEventListener('lab-board-moved', (e) => {
     const d = /** @type {CustomEvent} */ (e).detail;
     if (!S.on) return;

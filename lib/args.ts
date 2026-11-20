@@ -11,7 +11,7 @@ export function listenPages(opts: Opts, forWait = false): string[] | null {
 }
 // One list of flags for every command: anything else starting with -- is refused, so a typo
 // (`reply abc "Done" --resolv`) stops instead of landing in the reply's text. After a bare --, all is words.
-const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--new', '--all', '--bg', '--dev', '--fast', '--no-fast', '--done', '--on-it', '--question', '--first'];
+const SWITCHES = ['--wifi', '--no-open', '--resolve', '--wait', '--new', '--all', '--bg', '--dev', '--fast', '--no-fast', '--done', '--on-it', '--question', '--first', '--add'];
 /** What an agent's reply is, from its flag (reply --done / --on-it / --question): the thread's state is read from it.
  *  undefined when none is given; an error when more than one is. */
 export function replyIntent(opts: Opts): 'done' | 'working' | 'question' | undefined | Error {
@@ -81,6 +81,8 @@ export const WRITE_SHORT = "Write answers short: they're read in a small window,
 const VALUED = ['--port', '--name', '--page', '--pages', '--timeout', '--dir', '--proxy', '--model', '--suggest-rule', '--at', '--progress', '--choice', '--recommend', '--of', '--variants', '--widths', '--flow', '--label', '--caption', '--captions', '--size', '--slides', '--width', '--after'];
 // Flags given more than once, each time adding one (reply --choice "A" --choice "B"): a list, in the order given.
 const REPEATED = ['--choice'];
+// Words that may begin with a dash (a caption "-20% off"): whatever follows is the text.
+const VERBATIM = ['--caption', '--captions'];
 // The command line's words (pos) and options (opts), and any --flag it doesn't know.
 export function parseArgs(argv: string[]): { opts: Opts; pos: string[]; unknownFlags: string[] } {
   const opts: Opts = {};
@@ -96,6 +98,7 @@ export function parseArgs(argv: string[]): { opts: Opts; pos: string[]; unknownF
   else if (a === '--version' || a === '-v') opts.version = true;
   else if (SWITCHES.includes(a)) opts[a.slice(2)] = true;
   else if (a.startsWith('--') && !VALUED.includes(a)) unknownFlags.push(a);
+  else if (VERBATIM.includes(a)) opts[a.slice(2)] = argv[i + 1] === undefined ? true : argv[++i];
   else if (VALUED.includes(a)) {
     // --proxy on its own means "find the dev server yourself".
     const v = argv[i + 1];
