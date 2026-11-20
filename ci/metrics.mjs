@@ -46,7 +46,7 @@ const METRICS = {
   },
   staleBuild: {
     kind: "ratchet", dir: "down", ideal: 0,
-    hint: "public/_lab/comments.js doesn't match a fresh build of src/comments.js. Run npm run build and commit the result.",
+    hint: "public/_lab/comments.js doesn't match a fresh build of src/comments.js. Run npm run build (the built files are not kept in git).",
   },
   readmeClaimsWrong: {
     kind: "ratchet", dir: "down", ideal: 0, agent: false,
