@@ -13,7 +13,7 @@ export const AGENTS: Record<string, { name: string; env: string[] }> = {
   claude: { name: 'Claude', env: ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID'] },
 };
 // A name or id to a known agent: "codex", "Codex", "claude-code", "cursor-agent", "agy".
-export const agentKind = (word: unknown = ''): string => {
+const agentKind = (word: unknown = ''): string => {
   const w = String(word).toLowerCase();
   if (/\bagy\b/.test(w)) return 'antigravity';
   return Object.keys(AGENTS).find((k) => w.includes(k)) || '';
