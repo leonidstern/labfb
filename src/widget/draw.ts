@@ -108,6 +108,7 @@ export function readInk(strokes: P[][], say: (e: Element | null) => string | und
   const diag = Math.hypot(w, h) || 1;
   const out: { mark: string; from?: P; to?: P } = { mark: `${lines.length > 1 ? `${lines.length} strokes, ` : ''}unclear mark (go by the comment's words)` };
   const [s, t] = lines;
+  let shaft: P[] = [];
   if (lines.length === 1) {
     const ends = dist(s[0], s[s.length - 1]);
     const c = cut(s, Math.max(3, diag * 0.06));
@@ -170,15 +171,22 @@ export function readInk(strokes: P[][], say: (e: Element | null) => string | und
         }
       }
       Object.assign(out, { mark: 'arrow', from: s[0], to: tip });
+      shaft = s.slice(0, s.indexOf(tip) + 1);
     }
   } else if (lines.length === 2) {
     const [ls, lt] = [length(s), length(t)];
     if (straight(s) && straight(t) && cross(s[0], s[s.length - 1], t[0], t[t.length - 1]) && Math.min(ls, lt) > Math.max(ls, lt) * 0.5) out.mark = 'X drawn over it (likely: remove this)';
-    else if (lt < ls * 0.5 && dist(t[0], s[s.length - 1]) < Math.max(30, lt)) Object.assign(out, { mark: 'arrow', from: s[0], to: s[s.length - 1] });
+    else if (lt < ls * 0.5 && dist(t[0], s[s.length - 1]) < Math.max(30, lt)) {
+      Object.assign(out, { mark: 'arrow', from: s[0], to: s[s.length - 1] });
+      shaft = s;
+    }
   }
   // What is under a point on the page itself: labit's own bars and layers (data-lab-comments) are skipped (sims, 20 Nov:
   // an arrow's start read as the section bar).
   const at = (p?: P) => p && say(document.elementsFromPoint(p.x, p.y).find((e) => !e.closest('[data-lab-comments]')) || null);
-  return { mark: out.mark, from: at(out.from), to: at(out.to), box, lines: strokes.slice(0, 16).map(thin) };
+  // An arrow keeps its shaft only, up to the tip: the page draws it a clean head (Leo's pick H, 20 Nov), whatever the
+  // hand did at the end.
+  const kept = out.mark === 'arrow' && shaft.length > 1 ? [shaft] : strokes.slice(0, 16);
+  return { mark: out.mark, from: at(out.from), to: at(out.to), box, lines: kept.map(thin) };
 }
 

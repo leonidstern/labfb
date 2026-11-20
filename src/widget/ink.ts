@@ -41,7 +41,24 @@ export function inkSvg(ink: Ink, zone: { left: number; top: number; width: numbe
     hit.setAttribute('class', 'hit');
     svg.append(...widths(pts, ink.w?.[n]), hit);
   });
+  if (ink.mark.startsWith('arrow')) svg.append(...head(ink.pts.at(-1) || [], zone.width, zone.height));
   return svg;
+}
+// A clean arrowhead at the end of the arrow's line: two 12 px strokes at 28° either side of where it was heading,
+// worked out on screen and put back into the area's 0–1000 so the stretch of the area doesn't bend it.
+function head(pts: number[], w: number, h: number) {
+  const n = pts.length / 2;
+  if (n < 2 || !w || !h) return [];
+  const px = (i: number) => ({ x: (pts[i * 2] / 1000) * w, y: (pts[i * 2 + 1] / 1000) * h });
+  const tip = px(n - 1);
+  let from = px(n - 2);
+  for (let i = n - 2; i >= 0 && Math.hypot(tip.x - from.x, tip.y - from.y) < 14; i--) from = px(i); // a few px back, not the last jitter
+  const a = Math.atan2(tip.y - from.y, tip.x - from.x);
+  const leg = (k: number) => [Math.round(((tip.x - 12 * Math.cos(a + k)) / w) * 1000), Math.round(((tip.y - 12 * Math.sin(a + k)) / h) * 1000)];
+  const t = [Math.round((tip.x / w) * 1000), Math.round((tip.y / h) * 1000)];
+  const p = path(line([...leg(0.5), ...t, ...leg(-0.5)]));
+  p.setAttribute('class', 'head');
+  return [p];
 }
 // A line as one path, or, with widths, a path a segment so each can be as wide as the pen was there.
 function widths(pts: number[], w?: number[]) {
