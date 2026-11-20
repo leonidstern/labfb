@@ -389,9 +389,9 @@ button.btn.undo { color: var(--_fg); }
 .listener.warn[data-n]::after, .listener.warn .w::after { background: color-mix(in srgb, var(--_amber) 20%, transparent); color: var(--_amber); }
 .listener .w { position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; width: max-content; max-width: min(420px, 50vw); display: flex; gap: 6px; align-items: center;
         padding: 0 12px 0 31px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); color: var(--_fg); white-space: nowrap;
-        opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--_fade), visibility 0s linear var(--_t-quick); }
+        opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--_fade), visibility var(--_t-instant) var(--_ease) var(--_t-quick); }
 .listener .w > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.listener:is(:hover, :focus-visible) .w { opacity: 1; visibility: visible; transition-delay: 0s; }
+.listener:is(:hover, :focus-visible) .w { opacity: 1; visibility: visible; transition-delay: var(--_t-instant); }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
 .agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
