@@ -103,7 +103,7 @@ export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined,
 
 // aboveY: where the card's bottom goes when it opens above (an area's: above the area, not its pin).
 export function placeCard(card, left, top, pin?: HTMLElement | null, aboveY = top - 40) {
-  W.layer.append(card);
+  if (card.parentNode !== W.layer) W.layer.append(card); // one already there stays (moving a card takes the cursor from its box)
   const width = card.offsetWidth;
   const maxLeft = scrollX + document.documentElement.clientWidth - width - 12;
   card.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, maxLeft))}px`;

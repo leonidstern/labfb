@@ -53,6 +53,7 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 :host([data-zoom]) .ui { display: block; position: fixed; left: 0; top: 0; width: var(--lab-zw); height: var(--lab-zh); z-index: 3;
   transform: translate(var(--lab-zx), var(--lab-zy)) scale(var(--lab-zk)); transform-origin: 0 0; pointer-events: none; }
 @layer zoom { :host([data-zoom]) .ui > * { pointer-events: auto; } } /* a layer: loses to their own pointer-events rules */
+.pin, .pin * { -webkit-user-select: none; user-select: none; } /* a hold on a placed pin selected its letter on iOS and later taps did nothing; the page-level rule skips the widget host */
 .pin, .motion-ctl { box-shadow: 0 0 0 1px var(--_edge), 0 2px 8px rgba(0,0,0,.16); }
 .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
        background: var(--_bg); border: 0;
@@ -80,7 +81,7 @@ button.pin.arrive::before { content: ''; position: absolute; inset: 0; border-ra
                   --_halo: rgba(52, 199, 89, .75); animation: lab-halo calc(var(--_t-slow) * 2.5) var(--_ease-out) both; animation-delay: inherit; }
 /* Its state changed (the agent took it, it's done, a reply came): it gives a small bounce from its tail as the new face
    lands, and the agent's ring fades in and out instead of popping (it was a cut from one frame to the next). */
-.pin.swap { animation: lab-swap var(--_t-base) var(--_ease); }
+.pin.swap { animation: lab-swap var(--_t-base) var(--_ease); transition: none; } /* the opacity transition fought the keyframes: WebKit pulsed */
 @keyframes lab-swap { from { transform: scale(var(--_swap-from, .9)); opacity: .5; } } /* a quiet change of face */
 .pin.swap.open { --_swap-from: 1; } /* its card is tied to it: the face fades, the pin holds still */
 .pin .ring.gone { animation: lab-gone var(--_t-slow) var(--_ease-in) forwards; }
@@ -448,7 +449,7 @@ kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar .mn { color: var(--_muted); font-weight: 400; }
 /* The count is a plain number: grey at 0, green when something is new. */
 .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
-.bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
+.bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; min-width: 2ch; } /* room for two digits: the pill does not grow when a count reaches 10 */
 .bar .cnt.zero { color: var(--_muted); }
 .bar .cnt:not(.zero) { color: var(--_green-fg); } /* something new: green, the go pin's green (Leo, 17 Nov) */
 .more { font-size: 15px !important; letter-spacing: .05em; }

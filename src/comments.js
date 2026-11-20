@@ -1999,6 +1999,26 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     }
     flushPins();
   };
+  // An open card with the cursor in its reply box is not drawn again (the box would lose its caret, selection and words):
+  // its pin and card are put at the page's new place where they stand. False when that is not a plain pin and card (an
+  // area, a board, a question's margin card, a phone's sheet): they wait for the cursor to leave, as before.
+  const followOpen = () => {
+    const c = threads().find((t) => t.id === S.openId);
+    const pin = pinsById.get(S.openId);
+    const card = S.openCard;
+    const a = c?.anchor || {};
+    if (!c || !pin || !card?.isConnected || sheetMode.matches || card.matches('.margin, .under') || a.kind === 'board' || a.kind === 'page') return false;
+    newPass();
+    viewW = document.documentElement.clientWidth;
+    const at = /** @type {any} */ (position(a));
+    if (at.moved || at.zone) return false;
+    readPins([findTarget(a)]);
+    const held = placePin(pin, c, false, at.left, at.top, false);
+    pin.style.visibility = (at.clipped && !held) || at.covered ? 'hidden' : '';
+    flushPins();
+    placeCard(card, at.left, at.top, nativeTie() ? pin : null, at.top - 40);
+    return true;
+  };
   // The host sits at the page's top left corner (styles.css :host), as its box's own: a page that makes <body> or <html>
   // the box an absolute child counts from (position: relative, transform, filter, contain, will-change, a margin on it)
   // moves that corner, and every pin with it. Zoom does the same (`zoom` on the page scales what is drawn inside it).
@@ -2022,10 +2042,13 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     S.frame = requestAnimationFrame(() => {
       fit();
       const scrolledOnly = !reflowAll;
-      // Keep an open composer's text: only re-place when nothing is being typed.
-      if (S.draft || root.activeElement || S.grabbing || isTrying()) return; // words tried in place: the pins stay put
+      // Keep an open composer's text: a new comment's box (and a drag) is not drawn again; neither is a reply box with
+      // the cursor in it (its card follows in place).
+      if (S.draft || S.grabbing || isTrying()) return; // words tried in place: the pins stay put
+      const box = /^(textarea|input)$/.test(root.activeElement?.localName || '') || Boolean(/** @type {HTMLElement | null} */ (root.activeElement)?.isContentEditable);
+      if (box && !(S.openId && followOpen())) return;
       reflowAll = false;
-      movePins(scrolledOnly);
+      if (!box) movePins(scrolledOnly);
     });
   };
   addEventListener('resize', reflow);
