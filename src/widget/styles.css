@@ -88,14 +88,22 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 /* A drawing (hold D and drag, draw.ts) is its own pin: its lines over its area, no marker. Only the lines take the click
    (a wider see-through copy of them). Done or resolved, it fades like a pin. */
 .ink { position: absolute; overflow: visible; pointer-events: none; }
-.ink path { fill: none; stroke: var(--lab-ink, var(--_red)); stroke-width: 3px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.ink path.hit { stroke: transparent; stroke-width: 16px; pointer-events: stroke; cursor: pointer; }
+/* Always the red pen (Leo, 20 Nov): --lab-ink is the page's text colour on lab pages, which made lines look like content. */
+.ink path { fill: none; stroke: var(--lab-pen, var(--_red)); stroke-width: 3px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+/* A fingertip wide (Leo's pick E, 20 Nov): 16 px was easy to miss on a phone. */
+.ink path.hit { stroke: transparent; stroke-width: 28px; pointer-events: stroke; cursor: pointer; }
 .ink.live { left: 0; top: 0; width: 1px; height: 1px; }
 button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; background: none; box-shadow: none; outline: 0; color: transparent; pointer-events: none; transform: none; scale: none; }
 .pin.ink > :not(svg), button.pin.ink::before, .pin.ink::after { display: none; }
 .pin.ink.done { opacity: .5; }
 .pin.ink:is(:hover, .open) { opacity: 1; }
 .pin.ink:is(:hover, .open) path:not(.hit) { stroke-width: 4px; }
+/* A sent drawing settles (Leo's pick 7, drawing-lines lab, 20 Nov): bold as it lands, then it sinks to 35% so the page
+   reads again; full on hover or open. */
+.pin.ink path:not(.hit) { opacity: .35; transition: opacity var(--_t-base) var(--_ease); animation: lab-ink-settle var(--_t-slow) var(--_ease-out) var(--_t-hold) backwards; }
+.pin.ink:is(:hover, .open) path:not(.hit) { opacity: 1; animation: none; }
+@keyframes lab-ink-settle { from { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pin.ink path:not(.hit) { animation: none; } }
 .zone { position: absolute; background: none;
         border-radius: var(--_radius); pointer-events: none; }
 .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
@@ -180,12 +188,13 @@ button.keep:disabled { opacity: .4; cursor: default; }
 @position-try --lab-above { top: auto; bottom: var(--lab-up); }
 @position-try --lab-edge { left: auto; right: 12px; }
 @position-try --lab-edge-above { left: auto; right: 12px; top: auto; bottom: var(--lab-up); }
-@position-try --lab-under { left: var(--lab-uleft); top: calc(anchor(top) + var(--lab-uy)); }
+@position-try --lab-under { left: var(--lab-uleft); top: max(8px, calc(anchor(top) + var(--lab-uy))); }
+@position-try --lab-fit { left: var(--lab-uleft); top: 8px; bottom: 8px; height: fit-content; margin-block: auto; } /* neither side has room: in the screen's middle */
 @position-try --lab-under-above { left: var(--lab-uleft); top: auto; bottom: var(--lab-up); }
-.tied-card, .tied-beside { position: fixed !important; top: calc(anchor(top) + var(--lab-cy)); /* the shared places, written once: */
+.tied-card, .tied-beside { position: fixed !important; top: max(var(--lab-min, 0px), calc(anchor(top) + var(--lab-cy))); /* never above the screen's top */ /* the shared places, written once: */
   --lab-up: calc(anchor(top) - var(--lab-ay)); --lab-uleft: max(12px, calc(anchor(left) + var(--lab-ux))); }
 .tied-card { left: max(12px, calc(anchor(left) + var(--lab-cx))); position-try-fallbacks: --lab-above, --lab-edge, --lab-edge-above; }
-.tied-beside { left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above; }
+.tied-beside { --lab-min: 8px; margin-block: 0 8px; /* the 8 px under it counts in the browser's check, so it keeps off the bottom edge */ left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above, --lab-fit; }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .fd.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
@@ -225,6 +234,8 @@ button.btn.undo { color: var(--_fg); }
    (it shows on white and black pages alike) and a soft shadow. */
 .float { --_box-bg: var(--_bg); --_box-edge: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
 /* A comment on a spot or an area looks as the dialog on words does: one card, the buttons and box in it (Leo, 18 Nov). */
+/* On a computer the words scroll inside the box once it is tall: the send arrow and the name stay on screen. */
+@media (pointer: fine) { .float .box textarea { max-height: min(200px, calc(100vh - 180px)); } }
 @media (pointer: fine) { .float { --_box-bg: var(--_soft); --_box-edge: none; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); padding: 8px; } }
 /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
@@ -278,7 +289,6 @@ button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; colo
 .pin.draft.on-ink { visibility: hidden; }
 .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
-.chatwin .replying { flex: none; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
 /* A long chat lays out only the messages near the screen; each keeps its last height while away. */
@@ -321,8 +331,6 @@ button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; colo
 .msg :is(.stamp, .stamp-room) .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
 .msg :is(.stamp, .stamp-room) .ring { margin: .5px 1.5px 0 5.5px; vertical-align: top; } /* the same 10 px tall as a ✓, so the bubble keeps its height */
 .msg .stamp { height: 10px; }
-.replying { display: flex; gap: 6px; align-items: center; font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 2px 6px; }
-.replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
 .bar button * { color: inherit; font-weight: inherit; }
 .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
 .bar button.secondary { color: var(--_muted); } /* words stay grey; the count says what is new */

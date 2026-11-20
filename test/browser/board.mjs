@@ -83,7 +83,8 @@ try {
       const fit = await cam();
       check(eng, 'Shift+1 fits everything again', fit.z < 1 && Math.abs(fit.z - c0.z) < 0.01, JSON.stringify(fit));
       // zoom about the cursor: the world point under it stays under it
-      const under = (c, x, y) => [x / c.z - c.x, y / c.z - c.y];
+      const box = await p.evaluate(() => { const r = document.querySelector('#lab-board').getBoundingClientRect(); return [r.x, r.y]; }); // under the view's bar
+      const under = (c, x, y) => [(x - box[0]) / c.z - c.x, (y - box[1]) / c.z - c.y];
       const before = under(await cam(), 700, 300);
       await p.keyboard.down('Control');
       await p.mouse.move(700, 300);
@@ -140,6 +141,26 @@ try {
       await p.goto(B + '/_lab/board/nothere');
       await sleep(1200);
       check(eng, 'a board that does not exist says so', /no board called nothere/i.test(await p.evaluate(() => document.body.textContent)));
+      // ----- the board's own address is the one board: the view a page's board link opens, over an empty page
+      await p.goto(B + '/_lab/board/three');
+      await bw(1500);
+      await p.mouse.move(600, 400);
+      await p.mouse.wheel(30, 40);
+      await sleep(900);
+      const alone = await p.evaluate(() => { const v = document.querySelector('[data-lab-board-view="three"]'); const r = v?.getBoundingClientRect(); return { view: Boolean(v), whole: Boolean(r) && r.top === 0 && r.left === 0 && r.width === innerWidth && r.height === innerHeight, inView: Boolean(v?.querySelector('#lab-board .world')), name: v?.querySelector('.bv-name')?.textContent, half: Boolean(v?.querySelector('.bv-size, .bv-grip')), close: Boolean(v?.querySelector('.bv-close')), title: document.title, hash: location.hash, entries: history.length }; });
+      check(eng, 'the board page is the board view over the whole window, named, with no half and no close (nothing is under it)', alone.view && alone.whole && alone.inView && alone.name === 'board three' && !alone.half && !alone.close && alone.title === 'board three', JSON.stringify(alone));
+      check(eng, 'the board page keeps its camera in the address (a reload comes back there)', /^#-?\d+,-?\d+,[\d.]+$/.test(alone.hash), alone.hash);
+      const backs = [];
+      for (const how of ['button', 'Shift+KeyB', 'Escape']) {
+        await p.goto(B + '/_lab/board/three?of=%2Fcheckout');
+        await bw(1200);
+        const label = await p.evaluate(() => document.querySelector('[data-lab-board-view] .bv-close')?.textContent);
+        if (how === 'button') await p.click('[data-lab-board-view] .bv-close');
+        else await p.keyboard.press(how);
+        await p.waitForURL(B + '/checkout', { timeout: 4000 }).catch(() => {});
+        backs.push([how, label, new URL(p.url()).pathname]);
+      }
+      check(eng, 'a board page that names its page (?of=) goes back to it: "‹ back", ⇧B, Esc on an empty board', backs.every(([, label, at]) => label === '‹ back' && at === '/checkout'), JSON.stringify(backs));
       await ctx.close();
       // ----- a phone: first view is every frame at a phone's width, side by side, live; no page zoom
       const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });

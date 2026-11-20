@@ -3,10 +3,9 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { LAB, claimPort, tmp as folder, rm, sleep } from './harness.mjs';
 import { loadSettings, savePersonalFlag } from '../lib/settings.ts';
 import { FLAGS, flagDefaults, flagsOn } from '../lib/flags.ts';
 
@@ -14,10 +13,10 @@ const dirs = [];
 const kids = [];
 after(() => {
   for (const k of kids) k.kill();
-  for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+  rm(dirs);
 });
 const tmp = () => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-flags-')));
+  const d = fs.realpathSync(folder('flags'));
   dirs.push(d);
   return d;
 };
@@ -132,9 +131,8 @@ test("the project's labit.json wins over your switch, and says it is the project
 });
 
 // The lab: POST /_lab/flags with the browser's key, from this computer. One lab, started once for these checks.
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const startLab = async (dir, cfg) => {
-  const port = 7600 + Math.floor(Math.random() * 150);
+  const port = claimPort(7600, 150);
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hi</h1>');
   const lab = spawn(process.execPath, [LAB, '--no-open', '--new', '--port', String(port)], { cwd: dir, env: { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg } });
   kids.push(lab);
@@ -142,7 +140,7 @@ const startLab = async (dir, cfg) => {
   let html = '';
   for (let i = 0; i < 80 && !html; i++) {
     html = await fetch(B + '/').then((r) => r.text(), () => '');
-    if (!html) await new Promise((r) => setTimeout(r, 100));
+    if (!html) await sleep(100);
   }
   assert.ok(html, 'the lab answers');
   const key = html.match(/data-admin="([^"]+)"/)?.[1];

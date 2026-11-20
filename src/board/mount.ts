@@ -1,6 +1,6 @@
-// A board's frames on one canvas you pan and zoom, mounted into a box: the board page (/_lab/board/<name>, board.ts) mounts
-// it into a box over the whole window, a lab page mounts it into its board view (overlay.ts, over the same page, Leo
-// 19 Nov: "can board be part of same page?"). The board file and its API come from the lab (lib/board.ts, GET
+// A board's frames on one canvas you pan and zoom, mounted into a box: the box of a board view (overlay.ts), over the
+// page that links the board (Leo, 19 Nov: "can board be part of same page?") or, at the board's own address
+// (/_lab/board/<name>), over an empty page. The board file and its API come from the lab (lib/board.ts, GET
 // /_lab/api/board). Frames are the lab's own pages in iframes, named "lab:<id>", which the widget in them reads as
 // "draw nothing, bind nothing" (src/widget/frame.ts, it finds window.__labBoard on top).
 //

@@ -152,6 +152,23 @@ try {
       const scribble = await draw(p, 'scribble', [zig]);
       check(eng, 'a zigzag reads as scribbled over', /drawn: scribbled over/.test(scribble.text), scribble.text.split('\n').find((l) => l.startsWith('drawn')));
 
+      // Shift held with D: a line drawn about straight comes out straight, snapped flat (Leo's pick S1, 20 Nov).
+      await go('scribble');
+      const sh = await box(p, 'b');
+      await p.keyboard.down('d');
+      await p.keyboard.down('Shift'); // held only for the stroke: Shift+Enter would be a new line, not send
+      await stroke(p, Array.from({ length: 9 }, (_, i) => [sh.l + 10 + i * 30, sh.b + 4 + (i % 2 ? 3 : -2) + i * 1.2]));
+      await p.keyboard.up('Shift');
+      await p.keyboard.up('d');
+      await until(p, '.float textarea');
+      await p.keyboard.press('Enter');
+      await until(p, '.pin.ink');
+      await p.waitForTimeout(300);
+      const flatText = await (await fetch(`${B}/_lab/agent/scribble`)).text();
+      const kept = [...flatText.matchAll(/^lines \(px[^:]*: (.*)$/gm)].at(-1)?.[1] || ''; // the newest drawing on the page
+      const ys = [...kept.matchAll(/[ML](-?\d+) (-?\d+)/g)].map((m) => Number(m[2]));
+      check(eng, 'Shift held with D: a wobbly, slightly rising line comes out as one straight flat line', ys.length === 2 && ys[0] === ys[1], kept);
+
       // A plain drag, no D: today's box.
       await go('scribble');
       await stroke(p, [[sc.l, sc.t - 20], [sc.l + 200, sc.b + 20]]);

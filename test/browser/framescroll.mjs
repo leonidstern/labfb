@@ -60,7 +60,10 @@ try {
       const board = await ctx.newPage();
       await board.route(B + '/stub', (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><iframe name="lab:A" src="/pricing" style="width:400px;height:500px"></iframe><iframe name="lab:B" src="/pricing" style="width:400px;height:500px"></iframe>' }));
       await board.goto(B + '/stub');
-      await sleep(1500);
+      // Both frames loaded, however long a busy machine takes (a fixed 1.5 s was too short with eight jobs at once).
+      for (let t = 0; t < 15000 && !['lab:A', 'lab:B'].every((n) => board.frame({ name: n })?.url().endsWith('/pricing')); t += 100) await sleep(100);
+      await board.waitForLoadState('load');
+      await sleep(300);
       const [A, Bf] = ['lab:A', 'lab:B'].map((n) => board.frame({ name: n }));
       await A.evaluate(() => scrollTo(0, 400));
       await Bf.evaluate(() => scrollTo(0, 900));
