@@ -713,7 +713,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar[data-board] { visibility: hidden; pointer-events: none; }
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
-@media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
+/* It slides up and fades as the sheet opens and eases back down as the sheet goes, with the sheet's own --lab-p (0 open,
+   1 gone) while it is dragged or slides away, as the bottom bar does: it used to vanish and pop back (Leo, 20 Nov: "nav
+   is harsh coming back"). */
+@media (pointer: coarse) {
+  :host([data-sheet]) .sbar { transform: translateY(calc(-100% * (1 - var(--lab-p, 0)))); opacity: var(--lab-p, 0); pointer-events: none;
+                              transition: transform var(--_t-base) var(--_ease-in), opacity var(--_t-base) var(--_ease-out); }
+  .sbar { transition: opacity var(--_t-slow) var(--_ease-out), transform var(--_t-slow) var(--_ease-settle); }
+}
 /* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .sb-wrap .sb-nav { flex: 1; }
