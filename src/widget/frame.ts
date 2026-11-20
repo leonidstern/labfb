@@ -27,7 +27,7 @@ export function startFrame(script: HTMLScriptElement | null) {
   bindLive({
     S, script, host, root, coarse: false, fonts: null, pinCursorStyle: null, still: matchMedia('(prefers-reduced-motion: reduce)'), tabTitle: { base: '' },
     chatBtn: root.querySelector('.chat-btn'), listBtn: root.querySelector('.list-btn'),
-    drawList: none, reflow: none, load: none, loadChanges: none, syncReads: none,
+    drawList: none, reflow: none, relook: none, load: none, loadChanges: none, syncReads: none,
   });
   startLive();
   // An entered frame's wheel scrolls its own page and stops at its end: it never runs on into the page behind a board's view.

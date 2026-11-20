@@ -130,6 +130,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get readable() { return readable; },
     get recheck() { return recheck; },
     get reflow() { return reflow; },
+    get relook() { return relook; },
     letPin,
     get render() { return render; },
     get repliesOf() { return repliesOf; },
@@ -398,7 +399,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   }
   // A pin found again somewhere else than its saved path (the page changed around it) says where it is now, so the
   // next look and the agent's text start from there. Once per pin and page load, once the page has settled, and only
-  // from a browser that may move the pin.
+  // from a browser that may move the pin, and again after the page was patched in place (relook).
   const looked = new Set();
   const found = (quick = false) => {
     for (const c of document.readyState === 'complete' ? threads() : []) {
@@ -417,6 +418,11 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
         if (fill || !c.unmatched) send({ action: 'move', id: c.id, anchor: fill || c.anchor, [fill ? 'fill' : 'unmatched']: true, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
       }
     }
+  };
+  // Not while a choice is tried in the page (its words are swapped in): once it is put back.
+  const relook = () => {
+    looked.clear();
+    setTimeout(() => (isTrying() ? relook() : found()), 500);
   };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
   // Anything odd (a gap, an error, an old lab) falls back to the whole list.

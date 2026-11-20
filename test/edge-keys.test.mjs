@@ -143,7 +143,7 @@ test('the other keys are not edit keys: the page key and the agent key as "edit"
   assert.equal((await send({ page: '/index', action: 'progress', id: a.comment.id, text: 'on it' }, { 'x-lab-admin': agent, 'x-lab-agent': '1' })).status, 200);
 });
 
-test('a move with its key: a spot that is no spot is refused (400), a huge one is cut, a found-again one moves only the path', async () => {
+test('a move with its key: a spot that is no spot is refused (400), a huge one is cut, a found-again one moves the path and what the pin is now, nothing else', async () => {
   const a = await pin('/index', 'move me');
   const id = a.comment.id;
   for (const bad of [undefined, null, 'h2', 5, true, 0, '']) {
@@ -156,7 +156,7 @@ test('a move with its key: a spot that is no spot is refused (400), a huge one i
   assert.deepEqual([big.json.comment.anchor.selector.length, big.json.comment.anchor.x, big.json.comment.anchor.y, big.json.comment.anchor.docY, big.json.comment.anchor.text.length, big.json.comment.anchor.junk], [600, 1, 0, 100000, 80, undefined]);
   const found = await send({ page: '/index', action: 'move', id, edit: a.edit, found: true, anchor: { selector: 'main > h1', docX: 0.3, docY: 44, eh: 20, text: 'other words' } });
   assert.equal(found.status, 200);
-  assert.deepEqual([found.json.comment.anchor.selector, found.json.comment.anchor.docY, found.json.comment.anchor.text.length], ['main > h1', 44, 80]);
+  assert.deepEqual([found.json.comment.anchor.selector, found.json.comment.anchor.docY, found.json.comment.anchor.text.length], ['main > h1', 44, 11], 'the path, the place and the words it learned; the share of its element stays');
   // A reply can't be moved, by its thread's key or by the owner.
   const reply = (await send({ page: '/index', parent: id, name: 'Bo', text: 'reply' })).json.comment;
   assert.equal((await send({ page: '/index', action: 'move', id: reply.id, anchor }, { 'x-lab-admin': lab.keys().token })).status, 400);

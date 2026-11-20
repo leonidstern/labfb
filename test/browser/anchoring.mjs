@@ -125,8 +125,8 @@ try {
         const cards = [...document.querySelectorAll('#g .card')];
         return { found: node && node.textContent, inFirst: Boolean(node) && cards[0].contains(node), saved: A.foundAt(a), told: A.spotChanged(a) };
       });
-      check(eng, 'its span removed: the lab is told its words changed, and the other section is not named as its place', r.told?.was === 'A' && !r.told.away, JSON.stringify(r.told));
-      check(eng, 'its span removed: never the twin in another section', r.inFirst && r.saved === null, JSON.stringify(r));
+      check(eng, 'its span removed: the lab is told its words are gone, and the other section is not named as its place', r.told?.was === 'A' && !r.told.away, JSON.stringify(r.told));
+      check(eng, 'its span removed: never the twin in another section, and never the span that came to sit at its path (it is lost, and told so)', r.found === null && r.saved === null && r.told?.was === 'A', JSON.stringify(r));
       // Its section is gone altogether (the heading was removed): then another section's twin may be it.
       r = await p.evaluate(() => {
         const cards = document.querySelectorAll('#g .card');
