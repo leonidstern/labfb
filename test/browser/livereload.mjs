@@ -87,6 +87,20 @@ try {
       check(eng, 'a stylesheet saved before the page heard its first live message shows', await until(async () => (await col(p)) === 'rgb(9, 8, 7)', 9000), await col(p));
       await p.close();
 
+      // A page and its stylesheet saved together: patched in place (the stylesheet being swapped in is not a changed list of sheets).
+      p = await open('/plain');
+      await p.evaluate(() => (window.kept = 1));
+      save('plain.html', html('', 'both'));
+      save('s.css', color(2, 3, 4));
+      check(eng, 'a page saved with its stylesheet updates in place', (await until(async () => (await text(p)) === 'both' && (await col(p)) === 'rgb(2, 3, 4)')) && (await p.evaluate(() => window.kept === 1)), `${await text(p)} ${await col(p)}`);
+      // And a half-written file does not take the widget with it: the page stays and follows the file when it is whole.
+      save('plain.html', html('', 'whole').slice(0, 90));
+      await sleep(1500);
+      check(eng, 'a page cut short on disk stays as it is, with its widget', await p.evaluate(() => window.kept === 1 && Boolean(document.querySelector('script[data-live]'))));
+      save('plain.html', html('', 'whole'));
+      check(eng, 'and shows the whole file when it is saved again', await until(async () => (await text(p)) === 'whole'), String(await text(p)));
+      await p.close();
+
       // A page opened in another letter case (a disk that ignores case: macOS, Windows).
       if ((await fetch(`${B}/caps.html`)).status === 200) {
         p = await open('/caps.html');
