@@ -2057,8 +2057,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   function startDrag(e) {
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
     if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
-    if (e.composedPath().includes(host)) return;
-    if (!e.altKey && control(e.target)) return;
+    // Holding D, a press on an earlier drawing's line draws a new one instead of opening it.
+    if (e.composedPath().includes(host) && !(S.dKey && e.composedPath().some((n) => n instanceof Element && n.matches('.ink .hit')))) return;
+    // Holding D, a press on a link or a button draws too: circling a broken button is the point (sims, 20 Nov).
+    if (!e.altKey && !S.dKey && control(e.target)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false, ink: S.dKey };
     if (S.dKey) clearTimeout(S.inkTimer); // another stroke of the same drawing
@@ -2131,7 +2133,24 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (!readInk) return;
     showAgain();
     S.openId = null;
-    begin(inkAnchor(readInk(ink.strokes, (e) => e && short(`${openingTag(e)} "${short(e.textContent, 40)}"`, 160)), ZONE_MIN));
+    // An arrow's ends are named with the card or section they are in: "Shared availability" is in two plans (sims, 20 Nov).
+    const block = (e) => e.parentElement?.closest('article, section, li, tr, figure, [id]');
+    const read = readInk(ink.strokes, (e) => e && short(`${openingTag(e)} "${short(e.textContent, 40)}"${block(e) ? ` in ${openingTag(block(e))} "${short(block(e).textContent, 30)}"` : ''}`, 200));
+    const anchor = inkAnchor(read, ZONE_MIN);
+    // Sent on lift (a second after the last stroke), no typing (Leo, 19 Nov: "send it immediately"): its first line is
+    // what the drawing reads as, so the pin says what the agent got. Words go in after, as a reply.
+    const said = read.mark ? read.mark.replace(/\s*\(likely:.*\)$/, '') : 'drawing (unclear mark)';
+    try {
+      const { comment, edit } = await send({ name: store.get('lab-name') || '', text: said, anchor });
+      if (edit) store.set(`lab-edit:${comment.id}`, edit);
+      S.comments.push(comment);
+      markSeen([comment]);
+      S.posted = comment.id;
+      render();
+      say(`sent · read as: ${said}`);
+    } catch {
+      begin(anchor); // not sent: the usual box, so nothing drawn is lost
+    }
   }
   // D let go: the drawing is done, or, when nothing was drawn, done pins show or hide (KEYS.done).
   addEventListener('keyup', (e) => {
