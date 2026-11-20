@@ -21,6 +21,7 @@ const put = (name, frames, extra = {}) => fetch(`${B}/_lab/api/board?name=${name
 const grid = (n) => Array.from({ length: n }, (_, i) => ({ id: 'f' + i, src: '/pricing', w: 300, h: 300, x: (i % 5) * 340, y: Math.floor(i / 5) * 340 }));
 await put('ten', grid(10));
 await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }]); // no page: a board about a page opens over it (boardhome.mjs)
+await put('two', [{ id: 'a', src: '/pricing', w: 300, h: 300, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 300, h: 300, x: 500, y: 0 }]);
 await put('wide', [{ id: 'a', src: '/pricing', w: 1000, h: 700, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 1000, h: 700, x: 4000, y: 3000 }]);
 try {
   for (const eng of engines()) {
@@ -134,6 +135,32 @@ try {
         backs.push([how, label, new URL(p.url()).pathname]);
       }
       check(eng, 'a board page that names its page (?of=) goes back to it: "‹ back", ⇧B, Esc on an empty board', backs.every(([, label, at]) => label === '‹ back' && at === '/checkout'), JSON.stringify(backs));
+      // ----- the pointer: the page's pin where a click would pin (between the frames and on them), the hand with Space, the label's own
+      await p.goto(B + '/pricing');
+      await sleep(2500);
+      const curAt = async (x, y) => { await p.mouse.move(x - 3, y - 3); await p.mouse.move(x, y); await sleep(120); return p.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return { cursor: getComputedStyle(e).cursor, cls: e.className || e.id }; }, [x, y]); };
+      const onPage = await curAt(600, 300);
+      await p.goto(B + '/_lab/board/two');
+      await bw(3500);
+      const [f0, f1] = await p.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => { const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
+      const gap = await curAt((f0.x + f0.w + f1.x) / 2, f0.y + f0.h / 2);
+      const empty = await curAt(600, 760);
+      const onFrame = await curAt(f0.x + f0.w / 2, f0.y + f0.h / 2);
+      check(eng, 'a page in comment mode hides the system pointer (the drawn pin shows)', onPage.cursor === 'none', JSON.stringify(onPage));
+      check(eng, 'a board: the same pin pointer between the frames, on the empty canvas and on a frame (no extra arrow)', gap.cursor === onPage.cursor && empty.cursor === onPage.cursor && onFrame.cursor === onPage.cursor, JSON.stringify([gap, empty, onFrame]));
+      const showing = await p.evaluate(() => [...document.querySelectorAll('*')].map((n) => n.shadowRoot?.querySelector('.ptr')).find(Boolean)?.classList.contains('show'));
+      check(eng, 'the drawn pin shows on the board', showing === true);
+      const label = await curAt(f0.x + 10, f0.y - 8);
+      check(eng, 'the frame label keeps its own hand', label.cursor === 'pointer', JSON.stringify(label));
+      await p.mouse.move(600, 760);
+      await p.keyboard.down('Space');
+      await sleep(200);
+      const space = await curAt(600, 760);
+      const spaceFrame = await curAt(f0.x + f0.w / 2, f0.y + f0.h / 2);
+      await p.keyboard.up('Space');
+      await sleep(200);
+      const released = await curAt(600, 760);
+      check(eng, 'Space held: the hand over the canvas and the frames; let go: the pin again', space.cursor === 'grab' && spaceFrame.cursor === 'grab' && released.cursor === onPage.cursor, JSON.stringify([space, spaceFrame, released]));
       await ctx.close();
       // ----- a phone: first view is every frame at a phone's width, side by side, live; no page zoom
       const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });

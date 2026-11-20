@@ -28,7 +28,7 @@ const AT_ONCE = coarse ? 1 : 2; // frames loading at once
 const WAKE = coarse ? 56 : 120; // a frame is woken when it is in view and at least this many screen px wide (a phone: every frame fitted, live)
 
 const css = `
-#lab-board{position:fixed;inset:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:default;background:#f7f7f7;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif;overscroll-behavior:none}
+#lab-board{position:fixed;inset:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;background:#f7f7f7;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif;overscroll-behavior:none}
 @media (prefers-color-scheme:dark){#lab-board{background:#1b1b1a;color:#e9e8e4}}
 #lab-board .dots{position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(circle,var(--lab-black-2,rgba(0,0,0,.1)) .5px,transparent 1px)}
 @media (prefers-color-scheme:dark){#lab-board .dots{background-image:radial-gradient(circle,var(--lab-white-2,rgba(255,255,255,.1)) .5px,transparent 1px)}}
