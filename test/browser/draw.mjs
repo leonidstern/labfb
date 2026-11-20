@@ -169,6 +169,25 @@ try {
       const ys = [...kept.matchAll(/[ML](-?\d+) (-?\d+)/g)].map((m) => Number(m[2]));
       check(eng, 'Shift held with D: a wobbly, slightly rising line comes out as one straight flat line', ys.length === 2 && ys[0] === ys[1], kept);
 
+      // Shift held with D: a rough box comes out a clean rectangle (Leo's pick S2, 20 Nov). On the caret page, so its
+      // lines don't sit where the plain drag below starts.
+      await go('caret');
+      const bx = await box(p, 'b');
+      await p.keyboard.down('d');
+      await p.keyboard.down('Shift');
+      await stroke(p, [[bx.l - 8, bx.t - 6], [bx.l + 90, bx.t - 2], [bx.l + 200, bx.t - 9], [bx.l + 204, bx.b + 4], [bx.l + 100, bx.b + 9], [bx.l - 6, bx.b + 5], [bx.l - 9, bx.t - 1]]);
+      await p.keyboard.up('Shift');
+      await p.keyboard.up('d');
+      await until(p, '.float textarea');
+      await p.keyboard.press('Enter');
+      await until(p, '.pin.ink');
+      await p.waitForTimeout(300);
+      const boxText = await (await fetch(`${B}/_lab/agent/caret`)).text();
+      const boxLine = [...boxText.matchAll(/^lines \(px[^:]*: (.*)$/gm)].at(-1)?.[1] || '';
+      const corners = [...boxLine.matchAll(/[ML](-?\d+) (-?\d+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+      const square = corners.length === 5 && corners[0][1] === corners[1][1] && corners[1][0] === corners[2][0] && corners[2][1] === corners[3][1];
+      check(eng, 'Shift held with D: a rough box comes out as a clean rectangle, read as a box', square && /drawn: box drawn around it/.test(boxText.split('## ').at(-1)), boxLine);
+
       // A plain drag, no D: today's box.
       await go('scribble');
       await stroke(p, [[sc.l, sc.t - 20], [sc.l + 200, sc.b + 20]]);

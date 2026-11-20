@@ -2146,7 +2146,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (d.ink) {
       S.drew = true;
       // Shift held as the pen lifts: a stroke that runs about straight becomes a straight line, flat, upright or at 45°
-      // (Leo's pick S1, 20 Nov). A curl or a loop stays as drawn.
+      // (Leo's pick S1, 20 Nov); a rough box or loop a clean rectangle or ellipse (S2). Anything else stays as drawn.
       const st = S.inking?.strokes.at(-1);
       if (e.shiftKey && st?.length > 1) {
         const [a, b] = [st[0], st.at(-1)];
@@ -2157,6 +2157,14 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           const w = st.reduce((n, p) => n + (p.w || 3), 0) / st.length;
           st.splice(0, st.length, { x: a.x, y: a.y, w }, { x: a.x + chord * Math.cos(ang), y: a.y + chord * Math.sin(ang), w });
           S.inking.paint();
+        } else {
+          // A rough box or loop comes out neat: a rectangle or an ellipse (Leo's pick S2). The reading part is loaded
+          // with D, so this lands well before the drawing is read, a second later.
+          const ink = S.inking;
+          part('draw').then(({ neaten }) => {
+            const neat = neaten?.(st);
+            if (neat && ink.strokes.includes(st)) (st.splice(0, st.length, ...neat), ink.paint());
+          }).catch(() => {});
         }
       }
       clearTimeout(S.inkTimer);
