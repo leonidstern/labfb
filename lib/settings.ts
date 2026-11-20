@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 import { actionItems, seedFrom, SEED } from './actions.ts';
+import { writeAtomic } from './board.ts';
 
 const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
 type Kind = 'number' | 'boolean' | 'string';
@@ -225,7 +226,5 @@ export function savePersonal(key: string, value: unknown) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${file} does not hold settings: fix it, then ${key} can be saved`);
   }
   data[key] = value;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file + '.tmp', JSON.stringify(data, null, 2) + '\n');
-  fs.renameSync(file + '.tmp', file);
+  writeAtomic(file, JSON.stringify(data, null, 2) + '\n');
 }

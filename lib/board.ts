@@ -77,6 +77,8 @@ export const dirOf = (root: string) => path.join(root, '.lab', 'boards');
 const fileOf = (root: string, name: string) => path.join(dirOf(root), `${name}.json`);
 export const frameFile = (root: string, name: string, id: string) => path.join(dirOf(root), name, `${id}.html`);
 const ser = (b: Board) => `{"v":1,"name":${JSON.stringify(b.name)},"rev":${b.rev}${b.title ? `,"title":${JSON.stringify(b.title)}` : ''}${b.of ? `,"of":${JSON.stringify(b.of)}` : ''},\n"frames":[\n${b.frames.map((f) => '  ' + JSON.stringify({ ...f, auto: undefined })).join(',\n')}\n]}\n`;
+/** Writes a whole file or none of it (through a .tmp beside it), making its folder first. Also the settings' and the
+ *  reply rules' writer. */
 export const writeAtomic = (file: string, text: string) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file + '.tmp', text);
