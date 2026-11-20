@@ -81,7 +81,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [webkit, chromium]
+        # A PR runs Safari's engine only (Leo, 20 Nov: half the Mac's work per PR; Safari is where labit is used most).
+        # main runs both for a release, and "Run workflow" runs both by hand.
+        engine: ${{ fromJSON(github.event_name == 'pull_request' && '["webkit"]' || '["webkit", "chromium"]') }}
         # Groups of about the same length on the Mac (2 to 3 min each; the old "rest" took 9).
         group:
           # behaviours; the live connection; flags; pins finding their spot again; a phone pinch-zoomed in (zoom).
@@ -101,7 +103,7 @@ jobs:
       - id: pick
         env:
           PICKED: ${{ needs.plan.outputs.tests }}
-          BENCH: ${{ needs.plan.outputs.bench == 'true' && matrix.engine == 'chromium' && matrix.group.name == 'a' }}
+          BENCH: ${{ needs.plan.outputs.bench == 'true' && matrix.engine == 'webkit' && matrix.group.name == 'a' }}
         run: |
           run=""; for t in ${{ matrix.group.files }}; do case " $PICKED " in *" all "*|*" $t "*) run="$run $t";; esac; done
           echo "files=$run" >> "$GITHUB_OUTPUT"
@@ -121,7 +123,8 @@ jobs:
         # A file that fails runs once more before the job fails: eight browsers on one Mac make a timing check miss now
         # and then. The retry is a warning on the run, so a file that keeps needing it is easy to spot.
         run: for t in ${{ steps.pick.outputs.files }}; do echo "::group::$t"; node test/browser/$t.mjs || { echo "::warning::$t failed once, running it again"; node test/browser/$t.mjs; }; echo "::endgroup::"; done
-      # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
+      # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone. Once
+      # per run, in the webkit "a" job (bench/run.mjs starts Chrome itself).
       - if: steps.pick.outputs.bench == 'true'
         run: node bench/run.mjs
 
