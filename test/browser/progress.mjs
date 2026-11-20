@@ -76,8 +76,17 @@ for (const [n, eng] of engines().entries()) {
     check(eng, 'working: a green mark and the tooltip says Working', /^Working/.test((await mark()).title) && (await mark()).fill === 'rgb(36, 160, 70)', JSON.stringify(await mark()));
     await shadow(() => { [...r.querySelectorAll('button.pin')][1].click(); });
     await until(() => shadow(() => { return !!r.querySelector('.card .stamp'); }));
-    const stamp = () => shadow(() => { return r.querySelector('.card .msg.mine .stamp .tm')?.textContent || ''; });
+    const stamp = () => shadow(() => { return r.querySelector('.card .msg.mine .stamp')?.textContent || ''; });
     check(eng, 'a waiting pin says its place in its thread', /^waiting · 1st in line · #2 · /.test(await stamp()), await stamp());
+    // The words in the corner come and go as the state changes; the bubble keeps its size (Leo, 20 Nov: it jumped). The picked-up
+    // pin says no words and its bubble is the very size of the waiting one's.
+    const bubble = () => shadow(() => { const b = r.querySelector('.card .msg.mine').getBoundingClientRect(); return `${Math.round(b.width)}x${Math.round(b.height)}`; });
+    const waitingSize = await bubble();
+    await p.keyboard.press('Escape');
+    await until(() => shadow(() => { return !r.querySelector('.card'); }));
+    await shadow(() => { [...r.querySelectorAll('button.pin')][0].click(); });
+    await until(() => shadow(() => { return !!r.querySelector('.card .stamp'); }));
+    check(eng, 'the status words do not change the bubble: waiting and picked up are the same size', (await bubble()) === waitingSize && !/waiting/.test(await stamp()), `${waitingSize} vs ${await bubble()}`);
     await p.keyboard.press('Escape');
 
     // Progress: the ring turns, the pill says what it does, hovering says it too, and no message is added.

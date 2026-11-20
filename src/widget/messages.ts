@@ -23,7 +23,9 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
   const at = new Date(m.createdAt);
   const time = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString([], { day: 'numeric', month: 'short' });
   const stamp = el('span', { class: 'stamp' });
-  stamp.append(el('span', { class: 'tm' }, prefix + time));
+  const say = el('span', { class: 'say' }); // the words before the time (waiting · 1st in line · …): their room is kept, so the bubble doesn't resize as they change
+  const tm = el('span', { class: 'tm' }, prefix + time);
+  stamp.append(tm);
   if (mine(m) && !m.session) {
     const thread = root ? [root, ...repliesOf(root.id)] : [m];
     const latest = !thread.some((x) => !x.session && x.createdAt > m.createdAt);
@@ -42,9 +44,12 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
     } else {
       const got = root?.handedAt && root.handedAt >= m.createdAt;
       stamp.append(el('span', { class: `tick${got ? ' got' : ''}`, role: 'img', 'aria-label': got ? 'delivered to the agent' : 'sent' }, got ? '✓✓' : '✓'));
-      if (sg?.s === 'wait') stamp.firstChild!.textContent = `waiting · ${ord(sg.n)} in line · ${prefix}${time}`;
-      if (sg?.s === 'missed') stamp.firstChild!.textContent = `not answered · ${prefix}${time}`;
+      if (sg?.s === 'wait') say.textContent = `waiting · ${ord(sg.n)} in line · `;
+      if (sg?.s === 'missed') say.textContent = 'not answered · ';
     }
+    // With an agent listening, the room stays whatever the state until it is answered: sent, handed over, waiting, on it.
+    // The words came and went and the bubble grew and shrank with them (Leo, 20 Nov: "its jumping and moving things").
+    if (!answered && latest && root && (!d.S.unheard || say.textContent)) stamp.prepend(say);
   }
   return stamp;
 };

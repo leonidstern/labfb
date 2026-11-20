@@ -340,6 +340,8 @@ button.btn.undo { color: var(--_fg); }
 .msg .stamp { text-indent: 0; color: inherit; position: absolute; right: 10px; bottom: 6px; font-size: 10px; letter-spacing: .012em; line-height: 1; opacity: .55; font-variant-numeric: tabular-nums; }
 .msg .stamp-room { text-indent: 0; visibility: hidden; display: inline-block; margin-left: 10px; font-size: 10px; letter-spacing: .012em; line-height: 1; height: 10px; white-space: nowrap; }
 .msg .stamp-room * { font-size: inherit; }
+.msg :is(.stamp, .stamp-room) { white-space: nowrap; } /* one line, whatever the words say */
+.msg :is(.stamp, .stamp-room) .say { font-size: inherit; line-height: inherit; color: inherit; display: inline-block; min-width: 22ch; text-align: right; white-space: pre; vertical-align: top; } /* room for "waiting · 10th in line · ", empty or full */
 .msg .tick { color: inherit; margin-left: 4px; letter-spacing: -.34em; font-size: 10px; } /* ✓ drawn as tall as the time's digits */
 .msg .tick.got { font-weight: 600; }
 /* Your message the agent is on: the pin's turning green ring, small, by its time; answered: a green ✓. */
