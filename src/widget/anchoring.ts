@@ -1085,24 +1085,45 @@ export function goToBlock(e: Element) {
 // Messages show web addresses as links that open in a new tab, and #some-id, when the page has an element with that
 // id, as a link that goes to it there (an agent names the block it placed: "#speed-deeper").
 // The widget listens for lab-goto and scrolls (src/comments.js, goToBlock).
+// An address of this lab (localhost, 127.0.0.1, [::1] or this page's own host, on this page's own port) opens on the
+// reader's own origin, whatever the writer's machine called it: "http://localhost:4401/x" works on a phone. One with the
+// page's own path and a #id is that same shortcut: no reload, no address.
 const onPage = (id) => {
   const e = document.getElementById(id);
   return Boolean(e) && !e.closest('[data-lab-comments]');
 };
+const route = (p) => p.replace(/(\/index)?(\.html)?\/?$/, '');
 const linked = (text) => {
   const out = [];
   let at = 0;
   for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]|(?<![\w&/#])#([A-Za-z][\w:.-]*[\w])/g)) {
-    if (m[1] && !onPage(m[1])) continue;
+    let to = m[1];
+    let href = m[0];
+    let words = m[0];
+    let u: URL | null = null;
+    try {
+      if (!to) u = new URL(href);
+    } catch {}
+    if (u && u.port === location.port && (u.hostname === location.hostname || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname))) {
+      if (u.hash.length > 1 && route(u.pathname) === route(location.pathname)) {
+        try {
+          to = decodeURIComponent(u.hash.slice(1));
+        } catch {
+          to = u.hash.slice(1);
+        }
+        words = u.hash;
+      } else href = words = location.origin + u.pathname + u.search + u.hash;
+    }
+    if (to && !onPage(to)) continue;
     if (m.index > at) out.push(document.createTextNode(text.slice(at, m.index)));
-    const a = m[1]
-      ? el('a', { href: `#${m[1]}`, class: 'link' }, m[0])
-      : el('a', { href: m[0], target: '_blank', rel: 'noopener noreferrer', class: 'link' }, m[0]);
+    const a = to
+      ? el('a', { href: `#${to}`, class: 'link' }, words)
+      : el('a', { href, target: '_blank', rel: 'noopener noreferrer', class: 'link' }, words);
     a.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (!m[1]) return;
+      if (!to) return;
       e.preventDefault();
-      dispatchEvent(new CustomEvent('lab-goto', { detail: m[1] }));
+      dispatchEvent(new CustomEvent('lab-goto', { detail: to }));
     });
     out.push(a);
     at = m.index + m[0].length;
