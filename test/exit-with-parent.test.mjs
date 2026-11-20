@@ -2,16 +2,13 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { LAB, claimPort, tmp, rm, sleep } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-orphan-'));
+const DIR = tmp('orphan');
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><h1>Hi</h1>');
-after(() => fs.rmSync(DIR, { recursive: true, force: true }));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+after(() => rm([DIR]));
 const alive = async (port) => {
   try {
     await fetch(`http://localhost:${port}/_lab/pages`, { signal: AbortSignal.timeout(500) });
@@ -23,7 +20,7 @@ const alive = async (port) => {
 
 for (const [flag, ends] of [['1', true], ['', false]]) {
   test(`run killed, LABIT_EXIT_WITH_PARENT=${flag || '(unset)'}: the lab ${ends ? 'ends too' : 'keeps running'}`, async () => {
-    const port = String(5400 + Math.floor(Math.random() * 90));
+    const port = String(claimPort(5400, 90));
     // The "run": a node process that starts a lab and then is killed with no cleanup at all.
     const run = spawn(process.execPath, ['-e', `const c=require('child_process').spawn(process.execPath,${JSON.stringify([LAB, '.', '--no-open', '--port', port])},{stdio:'ignore'});console.log(c.pid);setInterval(()=>{},1e3)`], {
       cwd: DIR,

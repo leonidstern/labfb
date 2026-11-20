@@ -3,24 +3,23 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { LAB, claimPort, tmp as folder, rm, spawnLab, sleep, up, serverJson } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 // No agent of our own: these tests run inside agents too.
 const AGENT_VARS = /^(CLAUDE|CODEX|CURSOR|AMP_|ANTIGRAVITY|GEMINI|OPENCODE|LAB_AGENT|AGENT$|AI_AGENT$)/;
 const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !AGENT_VARS.test(k)));
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+const home = folder('home');
 const kids = [];
 const dirs = [];
 after(() => {
   kids.forEach((k) => k.kill());
-  dirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  rm(dirs);
 });
 const tmp = (name) => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `labit-${name}-`)));
+  const d = fs.realpathSync(folder(name));
   dirs.push(d);
   return d;
 };
@@ -29,22 +28,14 @@ const site = (name) => {
   fs.writeFileSync(path.join(d, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
   return d;
 };
-let port = 6100 + Math.floor(Math.random() * 250);
 async function lab(dir, args = [], env = {}) {
-  const p = port++;
-  const child = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(p), ...args], { cwd: dir, env: { ...clean, LABIT_HOME: home, ...env } });
+  const p = claimPort(6100, 260);
+  const child = spawnLab(dir, p, { args, env: { ...clean, LABIT_HOME: home, ...env } });
   kids.push(child);
   let log = '';
   child.stdout.on('data', (d) => (log += d));
   const B = `http://localhost:${p}`;
-  for (let i = 0; i < 60; i++) {
-    try {
-      await fetch(B + '/');
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
+  await up(B + '/', { tries: 60, fail: false });
   return { B, log: () => log };
 }
 const pin = async (B, text) =>
@@ -58,7 +49,7 @@ const replies = async (B, id, wantOne = true) => {
     const list = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
     const r = list.filter((c) => c.parent === id);
     if (r.length || !wantOne) return r;
-    await new Promise((res) => setTimeout(res, 100));
+    await sleep(100);
   }
   return [];
 };
@@ -98,8 +89,8 @@ test('a listening Codex session is shown by name, with its resume command', asyn
   kids.push(wait);
   let s = null;
   for (let i = 0; i < 50 && !s; i++) {
-    await new Promise((r) => setTimeout(r, 100));
-    s = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).session;
+    await sleep(100);
+    s = serverJson(dir).session;
   }
   assert.equal(s.agent, 'Codex');
   assert.equal(s.kind, 'codex');
@@ -151,7 +142,7 @@ test('each comment is marked when handed over: one left out of a batch still com
   const get = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
   const first = (await get()).find((c) => c.id === a);
   assert.ok(!('deliveredAt' in first) && !('deliveredTo' in first), 'the mark is not in the comment (so a wait does not change what pages load)');
-  await new Promise((r) => setTimeout(r, 500));
+  await sleep(500);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, '.lab/state.json'), 'utf8')).handed[a][0], first.createdAt, 'marked beside the comments, with the stamp it was handed over at');
   const b = await pin(B, 'and bigger');
   const out = await cli(dir, ['wait', '--timeout', '5'], {});
@@ -180,7 +171,7 @@ test('a page claim survives a lab restart', async () => {
   await lab(dir);
   await cli(dir, ['wait', '--pages', 'other', '--timeout', '1'], { LAB_SETTLE_MS: '0' });
   kids.at(-1).kill();
-  await new Promise((r) => setTimeout(r, 300));
+  await sleep(300);
   const { B } = await lab(dir);
   await fetch(B + '/_lab/api/comments', {
     method: 'POST',
@@ -204,9 +195,9 @@ test('two sessions share one lab by page: wait --pages takes only its pages, a p
       body: JSON.stringify({ page, name: 'Leo', text, anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } }),
     })).json()).comment.id;
   const mine = cli(dir, ['wait', '--pages', 'other', '--timeout', '6'], { LAB_SETTLE_MS: '0' });
-  await new Promise((r) => setTimeout(r, 400));
+  await sleep(400);
   const rest = cli(dir, ['wait', '--timeout', '6'], { LAB_SETTLE_MS: '0' });
-  await new Promise((r) => setTimeout(r, 400));
+  await sleep(400);
   await pinOn('/other', 'pin on other');
   await pinOn('/index', 'pin on index');
   const [a, b] = await Promise.all([mine, rest]);

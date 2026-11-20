@@ -2,25 +2,18 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { H1 as anchor, site, rm, spawnLab, sleep, up, serverJson } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-stamp-'));
-const PORT = 8500 + Math.floor(Math.random() * 90);
-const B = `http://localhost:${PORT}`;
+const { DIR, PORT, B } = site('stamp', 8500, 90);
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><h1>Hi</h1>');
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT)], { cwd: DIR, env: { ...process.env, LABIT_NO_UPDATE_CHECK: '1' } });
+const server = spawnLab(DIR, PORT, { env: { ...process.env, LABIT_NO_UPDATE_CHECK: '1' } });
 let log = '';
 server.stdout.on('data', (d) => (log += d));
 server.stderr.on('data', (d) => (log += d));
-after(() => { server.kill(); fs.rmSync(DIR, { recursive: true, force: true }); });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) { try { await fetch(B + '/'); break; } catch { await sleep(100); } }
-const srv = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
-const anchor = { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1>' };
+after(() => { server.kill(); rm([DIR]); });
+await up(B + '/', { fail: false });
+const srv = serverJson(DIR);
 const session = encodeURIComponent(JSON.stringify({ id: 's1', name: 'Sess', agent: 'Claude', model: 'm', kind: '', url: 'https://claude.ai/x', resume: 'r' }));
 const send = (body, h = {}, raw) => fetch(B + '/_lab/api/comments?page=%2Fp', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, ...h }, body: raw ?? JSON.stringify(body) });
 const person = async (body, h) => (await (await send(body, h)).json()).comment;
