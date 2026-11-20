@@ -4,41 +4,17 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 
-/** The in-memory store: keys, each a hash (Map) or a counter / string. */
+/** The in-memory store: keys, each a Map of comments or a counter / string. */
 type Db = Map<string, any>;
 type Handler = (req: Request) => Promise<Response>;
 
-// The comments API (lib/comments-api.mjs) keeps each page's comments as a hash in `db`, a Map of hashes and
-// counters / strings, through these commands. Returns the API module.
+// The comments API (lib/comments-api.mjs) keeps each page's comments in `db`, a Map of Maps (and the nonces and hourly
+// counts beside them). Returns the API module.
 export async function apiOn(db: Db): Promise<any> {
   // The key the lab sends with who wrote a comment (x-lab-stamp), so the API saves it in the same write.
   process.env.LAB_STAMP_KEY ||= (await import('node:crypto')).randomBytes(16).toString('hex');
-  const hash = (k: string): Map<string, string> => db.get(k) ?? (db.set(k, new Map()), db.get(k));
-  const cmds: Record<string, (...args: any[]) => unknown> = {
-    HSET: (k, ...pairs) => { const h = hash(k); let added = 0; for (let i = 0; i < pairs.length; i += 2) { if (!h.has(pairs[i])) added++; h.set(pairs[i], pairs[i + 1]); } return added; },
-    HGET: (k, f) => db.get(k)?.get(f) ?? null,
-    HDEL: (k, ...fs) => fs.filter((f) => db.get(k)?.delete(f)).length,
-    HVALS: (k) => [...(db.get(k)?.values() ?? [])],
-    HLEN: (k) => db.get(k)?.size ?? 0,
-    INCR: (k) => { const v = (db.get(k) || 0) + 1; db.set(k, v); return v; },
-    EXPIRE: () => 1,
-    // Set the field only if it still holds what was read (the API's SWAP).
-    EVAL: (_script, _keys, k, f, was, next) => (db.get(k)?.get(f) === was ? (db.get(k).set(f, next), 1) : 0),
-    GET: (k) => (['string', 'number'].includes(typeof db.get(k)) ? String(db.get(k)) : null),
-    SET: (k, v, ex, sec) => {
-      db.set(k, String(v));
-      if (/^ex$/i.test(ex || '')) setTimeout(() => db.delete(k), Number(sec) * 1000).unref();
-      return 'OK';
-    },
-  };
-  const one = ([name, ...args]: [string, ...unknown[]]) => {
-    if (!cmds[name]) throw new Error(`unknown command ${name}`);
-    return cmds[name](...args);
-  };
-  const run = async (...command: [string, ...unknown[]]) => one(command);
-  run.all = async (...commands: ([string, ...unknown[]] | false)[]) => commands.filter((c): c is [string, ...unknown[]] => Boolean(c)).map(one);
   const api = await import('./comments-api.mjs');
-  api.useStore(run);
+  api.useStore(db);
   return api;
 }
 

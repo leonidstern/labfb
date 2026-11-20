@@ -10,7 +10,6 @@
     "pinhold.ts": "pins the browser holds on their element with CSS anchor positioning (flag native): no script on scroll",
     "ink.ts": "drawing pins (hold D and drag): the lines as they are drawn and over a saved drawing, and the drawing as an area comment",
     "draw.ts": "what a drawing's lines read as (circled, arrow, underlined…); its own file (public/_lab/draw.js), loaded when D is first pressed",
-    "wordink.ts": "ink on selected words (flag inkOnText): the band under the words that shows a comment's state instead of a pin",
     "list.ts": "the list of pins (a sheet on phones)",
     "live.ts": "the live stream: listening badge, mode, who is heard",
     "messages.ts": "one message in a thread or the chat",
@@ -40,7 +39,6 @@
     "lab-pin",
     "lab-halo",
     "lab-card-in",
-    "lab-ink-pulse",
     "lab-ink-settle",
     "lab-undo"
   ],
@@ -69,10 +67,7 @@
     },
     "code": {
       "anchoring.ts: rgb(1, 2, 3)": "a sentinel colour to tell whether the page set one, never drawn",
-      "comments.js: rgba(52, 199, 89, .3)": "the selection highlight, drawn in the page document where the widget tokens are not",
-      "wordink.ts: #24a046": "ink on words: the pins' green (selecting, draft, sent, done), a highlight in the page document where the widget tokens are not",
-      "wordink.ts: #34c759": "ink on words: working's green, a highlight in the page document where the widget tokens are not",
-      "wordink.ts: #e08a1a": "ink on words: asks' amber, a highlight in the page document where the widget tokens are not"
+      "comments.js: rgba(52, 199, 89, .3)": "the selection highlight, drawn in the page document where the widget tokens are not"
     }
   }
 }

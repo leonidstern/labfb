@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
@@ -18,7 +18,6 @@ import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './l
 import { alive } from './lib/labcall.ts';
 import { DO_IT, PROGRESS_MS, UNMATCHED, numberOf, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
-import { ensureBuilt } from './lib/build.ts';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -50,22 +49,22 @@ const HELP = `labit ${VERSION}: comment on local pages, your agent (Claude, Code
 Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 
   labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
-      Run it in your project. If the project has a dev server (Astro, Next, Vite…) running, comments go on top
-      of it: it finds the server run from this folder, even with other projects' servers running. Give
-      --proxy <port> to pick one yourself. A folder of HTML files is served as it is at http://localhost:4400
-      and reloads when files change. The folder is this one unless you name another.
-      --wifi lets phones and laptops on the same wifi comment too (as guests). Each one needs a one-time link
-      (labit invite), so finding the port isn't enough. The pages still travel in the clear over the wifi.
-      A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
-      --name gives the lab its topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder; it's
-      kept in .lab/state.json, so later starts keep it.
+      Run it in your project. With a dev server (Astro, Next, Vite…) running there, comments go on top of it: it
+      finds the one run from this folder, even with other projects' servers running (--proxy <port> picks one).
+      A folder of HTML files is served as it is at http://localhost:4400 and reloads when files change. The folder
+      is this one unless you name another.
+      --wifi lets phones and laptops on the same wifi comment as guests, each with a one-time link (labit invite).
+      The pages still travel in the clear.
+      A folder a running lab already serves opens in that lab; --new starts a separate one.
+      --name sets the lab's topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder, and kept
+      in .lab/state.json.
   labit publish <page.html | folder> [--name "topic"]
       Show a page the way an Artifact is shown: it goes into your one pages lab (pagesFolder, ~/lab-pages), which
-      starts if it isn't running, and the page's link is printed. Publish it again to update it, at the same link.
-      A saved file reloads only the pages that use it: another page's script or a README leaves your page alone.
-      While a reload waits for you (you're reading a thread or typing), the page says "update waiting"; tap to take it now.
-      --dev is for working on labit itself: the lab runs under node --watch and comes back by itself when
-      local.mjs or lib/ change. npm run dev runs it with the widget build in the same terminal.
+      starts if it isn't running, and the link is printed. Publish again to update it, at the same link.
+      A saved file reloads only the pages that use it. While a reload waits for you (reading a thread, typing),
+      the page says "update waiting"; tap to take it now.
+      --dev is for working on labit itself: the lab runs under node --watch and restarts when local.mjs or lib/
+      change (npm run dev adds the widget build).
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labit pages [--all]
@@ -85,25 +84,28 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 For the agent, from the project (any folder under it):
   labit wait [--bg] [--timeout 1500] [--pages /a,/b] [--name <project>] [--model <your model>]
       --model: the page says "talking to Claude · Sonnet 5.5" (default: LAB_MODEL or ANTHROPIC_MODEL, if set).
-      --pages: only these pages' pins, so two sessions can share one lab (one per page). A wait without it gets every
-      page nobody else is listening on.
-      Run in the background. Ends with the next comment (and any not seen yet), printed in full.
-      --bg says you did: only then does it sit for the full timeout. Without it a wait ends after a minute, because a
-      wait left in the foreground holds the person's turn open and they can't say anything to you until it ends.
-      An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
-      That loop is the agent's own turns, never a shell loop (while true; do labit wait; done): a shell loop keeps
-      listening after the session is gone, so pins are handed to nobody. A pin with no reply for 2 minutes goes to the next wait.
-      The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
+      --pages: only these pages' pins, so two sessions can share one lab. A wait without it gets every page nobody
+      else listens on.
+      Run in the background. Ends with the next comment (and any not seen yet), printed in full; the page then says
+      it talks to this session.
+      --bg says you did: only then does it sit for the full timeout. Without it a wait ends after a minute, because
+      one left in the foreground holds the person's turn open until it ends. An agent that isn't told when a
+      background command ends runs it in the foreground: wait --timeout 50, in a loop. That loop is the agent's own
+      turns, never a shell loop (while true; do labit wait; done): that keeps listening after the session is gone,
+      so pins go to nobody. A pin with no reply for 2 minutes goes to the next wait. With the page closed it keeps
+      waiting, and ends after an hour of no page.
   labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
-      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --done says the ask is done (the
-      thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
+      Answer on the pin, by the id wait printed (the card's number works too, but shifts after a delete). --done: the ask
+      is done (the thread closes); --on-it: you're working on it; --question: you need the person; --resolve closes the
+      thread; --wait listens again right after.
   labit reply <id> --progress "what you're on now"
-      During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
+      During long work: one short line the page shows next to your name and on the pin, replaced by the next. Not a
+      message or an answer; an answer clears it.
   labit reply <id> "question" --choice "A words" [--hint "short why"] --choice "B words" [--choice …] [--recommend B]
-      Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each one in the sentence
-      first) and the pick comes back in your next wait as "Picked B: …": make that change, then resolve <id> with no words
-      (words only if something isn't obvious or you couldn't do it). --hint (up to 120 characters, right after the
-      --choice it describes) shows as a small second line. --recommend marks your own pick.
+      Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each in the sentence
+      first) and the pick comes back in your next wait as "Picked B: …": make that change, then resolve <id> with no
+      words (words only if something isn't obvious or you couldn't). --hint (up to 120 characters, right after its
+      --choice) is a small second line; --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y] [--quote "words"] [--question | --choice "A" --choice "B" [--recommend B]] [--no-check]
       Your own pin, one per point, numbered, instead of a list in a reply. --at: where on the element, as shares (default
@@ -457,6 +459,12 @@ const writeAtomic = (file, text, mode) => {
 // one is put aside (never read again or written over) and the lab starts without it. Before 19 Nov each part was a
 // file of its own (name, reads.json, opened.json, archived.json, handed.json, claims.json, seen): read once into this
 // one, then removed.
+// A file that can't be read is put aside (never loaded again, never overwritten) and the rest goes on without it.
+const putAside = (file, what) => {
+  const aside = `${file}.broken-${Date.now()}`;
+  fs.renameSync(file, aside);
+  console.log(`[lab] ${what} was damaged; moved it to ${path.relative(LAB, aside)}`);
+};
 const STATE_FILE = path.join(LAB, 'state.json');
 const OLD_STATE = { name: 'name', reads: 'reads.json', opened: 'opened.json', archived: 'archived.json', handed: 'handed.json', claims: 'claims.json', seen: 'seen' };
 const isObj = (o) => Boolean(o) && typeof o === 'object' && !Array.isArray(o);
@@ -482,9 +490,7 @@ const labState = (() => {
     const s = JSON.parse(text);
     if (isObj(s)) return s;
   } catch {}
-  const aside = `${STATE_FILE}.broken-${Date.now()}`;
-  fs.renameSync(STATE_FILE, aside);
-  console.log(`[lab] state.json was damaged; moved it to ${path.basename(aside)}`);
+  putAside(STATE_FILE, 'state.json');
   return {};
 })();
 const stateParts = {};
@@ -530,12 +536,6 @@ const savePage = (page, dir = STORE) => {
   const home = homes.get(page);
   if (h?.size) writeAtomic(file, `{"v":${SCHEMA},"page":${JSON.stringify(page)},${home ? `"file":${JSON.stringify(home[0])},"fid":"${home[1]}",` : ''}"comments":{${[...h].map(([id, v]) => `${JSON.stringify(id)}:${v}`).join(',')}}}`);
   else fs.rmSync(file, { force: true });
-};
-// A file that can't be read is put aside (never loaded again, never overwritten) and the rest goes on without it.
-const putAside = (file, what) => {
-  const aside = `${file}.broken-${Date.now()}`;
-  fs.renameSync(file, aside);
-  console.log(`[lab] ${what} was damaged; moved it to ${path.relative(LAB, aside)}`);
 };
 let saved = {};
 // What each wait was handed, kept beside the comments (.lab/state.json, handed) and not in them: { comment id: [the stamp it
@@ -1120,10 +1120,11 @@ const guestOk = (req) => {
 };
 // Loopback is this computer: the browser here never needs a link. Without --wifi nobody else gets this far anyway.
 const mayIn = (req) => isLoopback(req) || !WIFI || !!guestOk(req);
-// The labit mark (the cut for small sizes), drawn in the text colour: on the lab's own screens. The widget has the
-// same shapes split into parts (src/widget/live.ts); the tab icon is public/_lab/favicon.svg.
+// The labit mark (the cut for small sizes), drawn in the text colour: on the lab's own screens. Its shape is the tab icon's
+// (public/_lab/favicon.svg), read from there; the widget has the same shapes split into parts (src/widget/live.ts).
+const MARK = /\bd="([^"]+)"/.exec(fs.readFileSync(path.join(REPO, 'public/_lab/favicon.svg'), 'utf8'))?.[1];
 const markSvg = (size, style = '') =>
-  `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true"${style ? ` style="${style}"` : ''}><path transform="translate(-1 -.5)" fill="currentColor" fill-rule="evenodd" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67ZM37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02ZM31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26ZM24.8 45a6.2 6.2 0 1 0 12.4 0a6.2 6.2 0 1 0-12.4 0Z"/></svg>`;
+  `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true"${style ? ` style="${style}"` : ''}><path transform="translate(-1 -.5)" fill="currentColor" fill-rule="evenodd" d="${MARK}"/></svg>`;
 // Someone at this screen isn't let in yet, so nothing of the lab loads for them: the tab icon rides in the page.
 const GATE_ICON = `data:image/svg+xml,${encodeURIComponent(markSvg(64).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('currentColor', '#141414'))}`;
 const gate = (res, why = 'This lab opens with a one-time link.') =>
@@ -2130,7 +2131,7 @@ const sentWithin = async (req, max) => {
   }
   return n > max ? null : Buffer.concat(parts).toString();
 };
-const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+const answer = (res, data, code = 200) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
 // When this lab was made: its .lab folder's birth (the first run in this folder). Linux may not keep births: then its
 // oldest comment, else nothing.
 // Names once each, whatever their case ("Leo" and "leo" are one person).
@@ -2184,7 +2185,7 @@ const labInfo = () => {
 // made from (409 when the file moved on) and may not drop a frame. POST {action, …} is the agent's (labit board …): new,
 // add, move, pick, list; the answer is {text, board} (what the command prints), or 422 {error, text}.
 const boardApi = async (req, res, url) => {
-  const json = (code, data) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+  const json = (code, data) => answer(res, data, code);
   if (req.method === 'POST') {
     if (!isAgent(req) && !(isLoopback(req) && keyOk(req))) return plain(res, 403, 'forbidden');
     const b = await sent(req);
@@ -3056,6 +3057,8 @@ if (!process.env.LAB_DEV && !process.env.LABIT_NO_FOLLOW && process.platform !==
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed
-ensureBuilt(REPO); // a checkout: the page script is built from src/, not kept in git (lib/build.ts)
+// A checkout: the page script is built from src/, not kept in git (lib/build.ts). Its path is built at run time so the
+// npm bundle, which has no src/, doesn't carry it.
+if (fs.existsSync(path.join(REPO, 'src'))) (await import(pathToFileURL(path.join(REPO, 'lib/build.ts')).href)).ensureBuilt(REPO);
 PORT = skipLabs(PORT);
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');
