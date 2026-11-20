@@ -42,6 +42,7 @@ import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } from './widget/drag.ts';
 import { bindBoardCam, showBoard } from './widget/boardcam.ts';
+import { bindExperiments, expBack, expBtn, expClose, expIsOpen, expNote, expRows, flagNames, mayFlag, startFlag } from './widget/experiments.ts';
 import { bindFramework, overFramework, scanForFramework } from './widget/framework.ts';
 import { bindKeys } from './widget/keys.ts';
 import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, slowEls } from './widget/motion.ts';
@@ -77,9 +78,12 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
     get $() { return $; },
+    get FLAGS() { return FLAGS; },
+    get FLAGSAPI() { return FLAGSAPI; },
     get OFF() { return OFF; },
     get S() { return S; },
     get actionOf() { return actionOf; },
+    get adminToken() { return adminToken; },
     get agentOf() { return agentOf; },
     get anchorAt() { return anchorAt; },
     get begin() { return begin; },
@@ -96,7 +100,9 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get drawList() { return drawList; },
     get el() { return el; },
     get fonts() { return fonts; },
+    get flag() { return flag; },
     get goTo() { return goTo; },
+    get headers() { return headers; },
     get host() { return host; },
     get isNew() { return isNew; },
     get keepSpot() { return keepSpot; },
@@ -731,76 +737,10 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       void switcher().then((m) => m?.openSwitcher());
     });
   }
-  // Experiments (lib/flags.ts) in the ⋯ menu: "experiments" with how many are on; a click turns the menu into the list,
-  // a switch a flag with its one line, and a back row at its head. A switch saves in your own settings (every lab you
-  // run) and applies at once: the lab tells every open page, which starts what came on and reloads for what went off.
-  // A flag the project's labit.json sets wins over yours: shown, not switched. A guest sees the switches, greyed.
-  const flagNames = Object.keys(FLAGS);
-  const mayFlag = Boolean(adminToken && FLAGSAPI);
-  let expOpen = false;
-  const expBtn = flagNames.length && script?.dataset.live ? el('button', { type: 'button', class: 'exp-btn', 'aria-haspopup': 'true' }) : null;
-  const expBack = el('button', { type: 'button', class: 'exp-back' }, '‹ experiments');
-  const expNote = el('div', { class: 'exp-note' }, 'only the computer running the lab switches these');
-  const expRows = flagNames.map((name) => {
-    const b = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', class: 'exp', role: 'switch', 'data-flag': name }));
-    const words = el('span', { class: 'exp-words' }, FLAGS[name].name);
-    if (FLAGS[name].project) words.append(el('span', { class: 'exp-why' }, "set by the project's labit.json"));
-    b.append(words, el('span', { class: 'exp-sw', 'aria-hidden': 'true' }));
-    b.disabled = !mayFlag || Boolean(FLAGS[name].project);
-    b.addEventListener('click', async (e) => {
-      e.stopPropagation(); // the menu stays open: one pick doesn't close it here
-      if (b.disabled) return;
-      const on = !flag(name);
-      b.setAttribute('aria-checked', String(on)); // at once; FLAGS follows the lab's answer
-      try {
-        const r = await fetch(FLAGSAPI, { method: 'POST', headers: headers(), body: JSON.stringify({ flag: name, on }) });
-        if (!r.ok) throw new Error(await r.text());
-        S.syncFlags((await r.json()).flags, () => location.reload());
-      } catch {
-        drawExperiments();
-        say("couldn't switch it: is the lab running?");
-      }
-    });
-    return b;
-  });
-  function drawExperiments() {
-    if (!expBtn) return;
-    const n = flagNames.filter(flag).length;
-    expBtn.replaceChildren('experiments', el('span', { class: `exp-cnt${n ? '' : ' zero'}` }, String(n)));
-    expBtn.setAttribute('aria-label', `experiments, ${n} on`);
-    for (const b of expRows) b.setAttribute('aria-checked', String(flag(b.dataset.flag)));
-  }
-  drawExperiments();
-  const showExperiments = (open) => {
-    expOpen = open;
-    placeBar();
-    (open ? expRows.find((b) => !b.disabled) || expBack : expBtn)?.focus({ preventScroll: true });
-  };
-  expBtn?.addEventListener('click', (e) => (e.stopPropagation(), showExperiments(true)));
-  expBack.addEventListener('click', (e) => (e.stopPropagation(), showExperiments(false)));
-  // A flag's feature, started once. One that goes off can't be
-  // taken back out of a running page: the page reloads (when it's safe) and comes back without it.
-  const started = new Set();
-  const startFlag = (name) => {
-    if (started.has(name) || !host.isConnected) return;
-    started.add(name);
-  };
-  // The lab's word on which flags are on (live stream, or the answer to a switch here).
-  S.syncFlags = (on, reload) => {
-    let gone = false;
-    for (const [name, f] of Object.entries(FLAGS)) {
-      const now = on.includes(name);
-      if (f.on === now) continue;
-      f.on = now;
-      if (now) startFlag(name);
-      else if (started.has(name)) gone = true;
-    }
-    drawExperiments();
-    if (gone) reload();
-  };
+  bindExperiments(W);
   function placeBar() {
     const inMenu = !S.on ? []
-      : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
+      : expIsOpen() ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
       : [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
@@ -1339,8 +1279,8 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
         moreMenu.classList.remove('out');
         if (LABS) void switcher().then((m) => m?.preloadSwitcher());
         requestAnimationFrame(() => [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true }));
-      } else if (expOpen) {
-        expOpen = false;
+      } else if (expIsOpen()) {
+        expClose();
         placeBar();
       }
     });
@@ -1357,8 +1297,8 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       moreMenu.hidden = false;
     } else if (!moreMenu.hidden) goOut(moreMenu, () => (moreMenu.hidden = true));
     moreBtn.setAttribute('aria-expanded', String(open));
-    if (!open && expOpen) {
-      expOpen = false; // it opens on its first page again
+    if (!open && expIsOpen()) {
+      expClose(); // it opens on its first page again
       placeBar();
     }
     if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
