@@ -668,8 +668,9 @@ function sectionIn(n, headings = [...document.querySelectorAll('h1, h2, h3')]) {
 // What proves an element is the one a pin was put on. Saved with the pin: a hash of its words (h) and their first 80
 // letters (t), how many elements of its tag said exactly the same (u) and which of them it was (k), and its company: what
 // the box around it says besides it, as a hash (x) read l boxes up, and which it was among the look-alikes in that
-// company (o: its place and their number). Identical twins also keep what stands beside them (b), when that tells them apart.
-type Fp = { h: string; t: string; u: number; k: number; x: string; l: number; o: [number, number]; b?: string };
+// company (o: its place and their number). Identical twins also keep what stands beside them (b), when that tells them apart;
+// s: how many other elements of its tag say nearly the same (words a little changed can't tell it from those).
+type Fp = { h: string; t: string; u: number; k: number; x: string; l: number; o: [number, number]; b?: string; s?: number };
 /** What was found for a pin: the element (null: lost), whether it is proven (sure), or a guess of look-alikes (alike). */
 type Proof = { node: Element | null; sure?: boolean; alike?: boolean };
 // One read of the page, shared by every pin until the page changes (a MutationObserver says so; takeRecords makes it
@@ -740,8 +741,15 @@ function fingerprint(n: Element): Fp {
     if (c && e.length < eq.length) [l, x, eq] = [i, c, e];
   }
   const b = eq.length > 1 ? beside(n) : '';
-  return { h: hash(t), t: t.slice(0, 80), u: same.length, k: same.indexOf(n), x, l, o: [eq.indexOf(n), eq.length], ...(b && eq.filter((m) => beside(m) === b).length === 1 ? { b } : {}) };
+  const near = kin(n.localName).slice(0, 400).filter((m) => m !== n && hash(words(m)) !== hash(t) && alike(t.slice(0, 80), words(m).slice(0, 80)) >= 0.8).length;
+  return { h: hash(t), t: t.slice(0, 80), u: same.length, k: same.indexOf(n), x, l, o: [eq.indexOf(n), eq.length], ...(b && eq.filter((m) => beside(m) === b).length === 1 ? { b } : {}), ...(near ? { s: near } : {}) };
 }
+// How alike two short texts are, 0 to 1: the share of their letter triples they have in common.
+const alike = (a: string, b: string) => {
+  const t = (s: string) => new Set(Array.from({ length: Math.max(s.length - 2, 0) }, (_, i) => s.slice(i, i + 3)));
+  const [x, y] = [t(a), t(b)];
+  return x.size + y.size ? (2 * [...x].filter((g) => y.has(g)).length) / (x.size + y.size) : 0;
+};
 const byFile = (a) => a.file && /^(image|video)$/.test(a.kind);
 // Its words start here (a quote from a selection can run on into the next items); spaces don't count. A short quote
 // ("lab", "above") is found anywhere, so the words around it must be there too, or it's another element.
@@ -780,7 +788,7 @@ function prove(a): Proof {
     fp.u < 2 && ex.length < 2 ? sure(ex[0])
     : fp.o[1] < 2 && set.length === 1 ? { node: set[0], sure: fp.u > 1, alike: fp.u < 2 }
     : fp.o[1] > 1 && apart.length === 1 ? sure(apart[0])
-    : set.length === fp.o[1] && fp.o[1] > 1 ? { node: set[fp.o[0]], sure: !fp.b, alike: Boolean(fp.b) }
+    : set.length === fp.o[1] && fp.o[1] > 1 ? { node: set[fp.o[0]], sure: !fp.b || set[fp.o[0]] === at, alike: Boolean(fp.b) && set[fp.o[0]] !== at }
     : set.length ? guess(set.find((n) => n === at), true)
     : guess(ex.length === fp.u ? ex[fp.k] : ex.find((n) => n === at), true);
   if (byWords && byWords.node) return byWords;
@@ -789,10 +797,17 @@ function prove(a): Proof {
   if (at) {
     const like = quoteFits(a, at) && (a.zoneText ? words(at).replace(/\s/g, '').includes(a.zoneText.replace(/\s/g, '').slice(0, 30)) : fp.t.length > 3 && words(at).includes(fp.t));
     if (like && (co(at) || (fp.u < 2 && fp.t.length > 19))) return sure(at);
+    // Its words a little changed (80 % alike by their letter triples) where it stood, in its company (or unique, with none): changed.
+    const same = alike(fp.t, words(at).slice(0, 80));
+    if (!fp.s && same >= 0.9 && co(at) && quoteFits(a, at)) return sure(at); // a typo, in its own company
+    if (!fp.s && same >= 0.8 && (co(at) || (fp.u < 2 && !fp.x))) return guess(at);
     // Some of its old words still there (a new element in its place says none of them).
     const old = fp.t.match(/\w{3,}/g) || [];
     if ((co(at) || kin(tag).length === 1) && (!old.length || old.filter((w) => words(at).includes(w)).length / old.length > 0.3)) return guess(at);
   }
+  // Its words a little changed and it moved: the only element of its kind that says them 80 % alike (in its company, among look-alikes).
+  const close = fp.s ? [] : kin(tag).slice(0, 400).filter((n) => (fp.u < 2 || co(n)) && alike(fp.t, words(n).slice(0, 80)) >= 0.8);
+  if (close.length === 1) return guess(close[0]);
   return fp.u < 2 ? guess(near(set.length ? set : ex), true) : { node: null };
 }
 const proof = (a): Proof => {

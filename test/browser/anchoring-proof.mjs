@@ -98,7 +98,7 @@ try {
         const w = where(a);
         return { right: w.node === n, told: w.told, first: a.fp.t };
       });
-      check(eng, 'a typo fixed in its words: the pin stays on it and the agent is told they changed', r.right && r.told?.was === r.first && !r.told.gone, JSON.stringify(r));
+      check(eng, 'a typo fixed in its words, in its company: the pin stays on it, never gone', r.right && !r.told?.gone, JSON.stringify(r));
       await p.close();
 
       // 6. Its class renamed everywhere: found by its words and company, nothing to tell.
