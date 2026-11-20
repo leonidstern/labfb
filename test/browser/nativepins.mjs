@@ -1,6 +1,7 @@
-// Pins the browser holds (flag native, src/widget/pinhold.ts) in real browsers: WebKit (Safari) and Chrome's engine.
+// Pins the browser holds (src/widget/pinhold.ts) in real browsers: WebKit (Safari) and Chrome's engine.
 // Pins placed the usual way (a click on an element, one on a sticky header, one in the gap between two blocks, Shift +
-// double-click on words, one in a box that scrolls) are tied to their element with CSS anchor positioning: through
+// double-click on words, one in a box that scrolls). Those on something that moves on its own (the sticky header, a
+// transformed parent) are tied to their element with CSS anchor positioning; the rest are placed in the page. Through
 // scrolling (the page, the box), the page growing above them and words moving in their line, each stays where it is on
 // its element; a drag still moves one. A pin inside a box that cuts it off (a box that scrolls) is the script's: the
 // browser only hides a held pin once its whole element is cut off, so the script hides it by its spot.
@@ -30,6 +31,7 @@ const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-nativepins-'));
 const PORT = claimPort(8340, 40);
 const B = `http://localhost:${PORT}`;
+const MOVING = new Set(['sticky', 'shifted']); // pins on these are held by the browser; on the rest, placed by the script
 const FILLER = '<p>Filler words to scroll past in the box.</p>'.repeat(4);
 fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="utf-8"><title>held pins</title>
 <style>body{margin:0;font:18px/1.5 Georgia,serif;max-width:640px} p{margin:22px 24px}
@@ -43,7 +45,7 @@ fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="ut
 <div id="shifted"><p id="tp">A paragraph whose parent is moved by a transform.</p></div>
 <div style="height:1600px"></div>
 <p id="own" style="anchor-name:--theirs">A paragraph the page anchors something to itself.</p>`);
-fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, flags: { native: true } }));
+fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env, stdio: 'ignore' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -156,7 +158,9 @@ try {
         check(eng, 'every pin was placed', false, `missing: ${missing.join(', ')}`);
         continue;
       }
-      check(eng, 'four pins and a drawing held by the browser; the one in the box that scrolls placed by the script', names.every((k) => rest[k]?.shown && rest[k]?.held === (k !== 'inbox')), JSON.stringify(rest));
+      // Only a pin on something that moves on its own is held: the sticky header, the transformed parent. Pins on still
+      // content are the script's, placed in the page (they scroll with it, no layout per scroll step).
+      check(eng, 'the pins on the sticky header and the transformed parent held by the browser; the rest placed by the script', names.every((k) => rest[k]?.shown && rest[k]?.held === MOVING.has(k)), JSON.stringify(rest));
       await p.evaluate(() => (document.getElementById('box').scrollTop = 60));
       await settle(p);
       const boxed = await where(p);
@@ -198,7 +202,7 @@ try {
       await p.mouse.up();
       await sleep(800);
       const dropped = await where(p);
-      check(eng, 'a drag moves a pin, and it is held again on its new spot', Math.abs(mid.shifted.dx - rest.shifted.dx - 30) <= 4 && Math.abs(mid.shifted.dy - rest.shifted.dy - 40) <= 4 && !mid.shifted.held && dropped.shifted.held, JSON.stringify({ rest: rest.shifted, mid: mid.shifted, dropped: dropped.shifted }));
+      check(eng, 'a drag moves a pin, and it stays on its new spot', Math.abs(mid.shifted.dx - rest.shifted.dx - 30) <= 4 && Math.abs(mid.shifted.dy - rest.shifted.dy - 40) <= 4 && !mid.shifted.held && Math.abs(dropped.shifted.dx - mid.shifted.dx) <= 4 && Math.abs(dropped.shifted.dy - mid.shifted.dy) <= 4, JSON.stringify({ rest: rest.shifted, mid: mid.shifted, dropped: dropped.shifted }));
       // An element the page anchors something to itself: our anchor-name would take its place, so the script places the pin.
       await p.evaluate(() => document.getElementById('own').scrollIntoView({ block: 'center' }));
       await settle(p);
@@ -233,7 +237,7 @@ try {
       await m.evaluate(() => document.getElementById('box').scrollIntoView({ block: 'center' }));
       await settle(m);
       const mRest = await where(m);
-      check(tag, 'on a phone: the pins held by the browser, the one in the box that scrolls the script\'s', phoneNames.every((k) => mRest[k]?.held === (k !== 'inbox')), JSON.stringify(mRest));
+      check(tag, 'on a phone: the pin on the sticky header held by the browser, the pins on still content the script\'s', phoneNames.filter((k) => k !== 'shifted').every((k) => mRest[k]?.held === MOVING.has(k)), JSON.stringify(mRest));
       const boxTop = await m.evaluate(() => document.getElementById('box').scrollTop);
       await m.evaluate((t) => (document.getElementById('box').scrollTop = t + 50), boxTop);
       await settle(m);

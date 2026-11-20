@@ -174,7 +174,7 @@ button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding:
 button.keep:hover:not(:disabled) { opacity: .9; }
 button.keep:disabled { opacity: .4; cursor: default; }
 .card.margin { width: 280px; }
-/* Tied to its pin (flag native, thread.ts tieToPin): the browser keeps it there. Where the script puts it, from the pin's
+/* Tied to its pin (thread.ts tieToPin): the browser keeps it there. Where the script puts it, from the pin's
    corner (--lab-cx / --lab-cy; a box's other place --lab-ux / --lab-uy); above (its bottom at --lab-ay), or in from the
    screen's right edge, when there is no room. */
 @position-try --lab-above { top: auto; bottom: var(--lab-up); }
@@ -230,9 +230,8 @@ button.btn.undo { color: var(--_fg); }
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
 /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
 .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
-                min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
+                min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; field-sizing: content; } /* it grows with its words, no script */
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
-.box textarea.grow { field-sizing: content; height: auto; } /* flag native: the box grows with its words, no script (composer.ts) */
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
 .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; }
 .who * { font-size: 13px; letter-spacing: -.006em; }
@@ -282,8 +281,8 @@ button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; colo
 .chatwin .replying { flex: none; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
-/* Flag native: a long chat lays out only the messages near the screen; each keeps its last height while away. */
-:host([data-native]) .msgs > .msg { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+/* A long chat lays out only the messages near the screen; each keeps its last height while away. */
+.msgs > .msg { content-visibility: auto; contain-intrinsic-size: auto 64px; }
 /* Something just sent eases in; the arrow flies off and comes back. */
 .fresh { animation: lab-in var(--_t-base) var(--_ease); } /* a message arrives as a card does */
 .send.sent .arr { animation: lab-fly var(--_t-slow) var(--_ease); }
@@ -408,7 +407,7 @@ kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
              border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-in var(--_t-base) var(--_ease); }
 .more-menu[hidden]:not([popover]) { display: none; }
 .more-menu[popover]:not(:popover-open) { display: none; } /* closed: gone, not just unseen (display grid above would keep it, and its clicks) */
-.more-menu[popover] { inset: auto; right: 16px; bottom: 60px; margin: 0; border: 0; color: inherit; overflow: visible; } /* flag native: a popover, where the menu sits */
+.more-menu[popover] { inset: auto; right: 16px; bottom: 60px; margin: 0; border: 0; color: inherit; overflow: visible; } /* a popover, where the menu sits */
 /* ...that comes and goes by CSS alone: in with the card's rise, out with its sink, the browser keeping it shown while
    it leaves (display and overlay as discrete steps); @starting-style is where it rises from. */
 .more-menu[popover] { animation: none; opacity: 0; translate: 0 2px; scale: .985;

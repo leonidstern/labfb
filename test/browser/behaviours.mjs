@@ -405,7 +405,8 @@ for (const eng of ['webkit', 'chromium']) {
     });
     const original = await html();
     await q.evaluate(() => (window.__lnk = document.querySelector('#lnk')));
-    const pinsAt = () => sq(() => { return [...r.querySelectorAll('button.pin')].map((b) => b.style.left + '/' + b.style.top).join(' '); });
+    // Where each pin is drawn (the browser holds most of them: their place is not in their style).
+    const pinsAt = () => sq(() => { return [...r.querySelectorAll('button.pin')].map((b) => { const q = b.getBoundingClientRect(); return `${Math.round(q.left + scrollX)}/${Math.round(q.top + scrollY)}`; }).join(' '); });
     await sq(() => { r.querySelector('button.pin').click(); });
     await sleep(700);
     let c = await card();

@@ -1,7 +1,7 @@
 /* Labs & pages (⌘K, src/widget/switcher.ts, which brings this sheet with it into the shadow root, after the widget's
    own styles): a box over the page on a computer, a card sheet on a phone. */
 .switch { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
-/* Flag native, a computer: a popover covering the screen as before, without the browser's own box. */
+/* A computer: a popover covering the screen as before, without the browser's own box. */
 .switch[popover] { inset: 0; width: auto; height: auto; max-width: none; max-height: none; margin: 0; border: 0; padding: 0; background: none; color: inherit; overflow: visible; }
 /* ...and kept displayed, in the top layer, for the length of its exit when the browser closes it: the card's leaving plays (display and overlay as discrete steps; a browser without overlay shows no exit, as before). */
 .switch[popover] { transition: display var(--_t-quick) allow-discrete, overlay var(--_t-quick) allow-discrete; }
