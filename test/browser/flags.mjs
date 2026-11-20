@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -23,7 +24,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-flags-'));
-const PORT = 7970 + Math.floor(Math.random() * 30);
+const PORT = claimPort(7970, 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>f</title><h1 id="t">Flags</h1><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));

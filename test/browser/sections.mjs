@@ -12,6 +12,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -27,7 +28,7 @@ const pw = (() => {
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sections-')));
 const OFF_DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sections-off-')));
-const PORT = 5700 + Math.floor(Math.random() * 200);
+const PORT = claimPort(5700, 200);
 const B = `http://localhost:${PORT}`;
 const OFF = `http://localhost:${PORT + 200}`;
 const env = { ...process.env, PORT: '', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };

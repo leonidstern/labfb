@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -23,7 +24,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-draw-'));
-const PORT = 7960 + Math.floor(Math.random() * 30);
+const PORT = claimPort(7960, 30);
 const B = `http://localhost:${PORT}`;
 const PAGE = '<!doctype html><meta charset="utf-8"><title>d</title><style>body{margin:40px;font:20px/1.5 sans-serif} h1{margin:0 0 80px} p{width:600px;margin:0 0 60px}</style><h1 id="h">Pricing</h1><p id="a">Plans start small and grow with you</p><p id="b">Cancel any time from your account</p>';
 for (const n of ['circle', 'x', 'arrow', 'under', 'strike', 'box', 'caret', 'side', 'scribble']) fs.writeFileSync(path.join(DIR, `${n}.html`), PAGE);

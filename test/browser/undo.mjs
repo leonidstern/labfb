@@ -9,6 +9,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -36,7 +37,7 @@ const until = async (ok, ms = 6000) => {
 async function lab(n) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-undo-'));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
-  const port = String(6700 + n * 40 + Math.floor(Math.random() * 30));
+  const port = String(claimPort(6700 + n * 40, 30));
   const B = `http://localhost:${port}`;
   const env = { ...process.env, LAB_SETTLE_MS: '0', LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
   const html = '<!doctype html><meta charset="utf-8"><title>p</title><body style="margin:40px"><p id="a">first line</p><p id="b" style="margin-top:120px">second line</p></body>';
