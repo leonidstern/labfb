@@ -614,10 +614,10 @@ const ROOTS = [
   { id: 'id-added', says: 'the pinned paragraph given an id', should: 'R', today: 'R',
     html: '<p>One paragraph.</p><p>Another paragraph, the pinned one.</p><p>A third.</p>', pin: 'p:nth-child(2)',
     change: 'pinned.id = "intro"' },
-  { id: 'tag-renamed', says: 'the pinned paragraph made a div (same words, same place)', should: 'R', today: 'L',
+  { id: 'tag-renamed', says: 'the pinned paragraph made a div (same words, same place)', should: 'R', today: 'R',
     html: '<p>One paragraph.</p><p>Another paragraph, the pinned one.</p><p>A third.</p>', pin: 'p:nth-child(2)',
     change: 'const d = document.createElement("div"); d.textContent = pinned.textContent; pinned.replaceWith(d); d.__pinned = true' },
-  { id: 'word-rewritten-around', says: 'a pinned word that stands once on the page; the words around it rewritten', should: 'R', today: 'L',
+  { id: 'word-rewritten-around', says: 'a pinned word that stands once on the page; the words around it rewritten', should: 'R', today: 'R',
     html: '<p>We ship the lighthouse edition every spring to all members.</p><p>Other words stand here.</p>', pin: 'p', how: 'word', word: 'lighthouse',
     change: 'pinned.textContent = "Our team mails a lighthouse issue each autumn to subscribers."' },
   { id: 'picture-twice', says: 'the same picture twice; a figure added before the pinned (second) one', should: 'R', today: 'R',
@@ -1186,36 +1186,29 @@ finish(`${results.length} cases: right ${k.R}, wrong ${k.W}, lost ${k.L}; as it 
 // ---------- what fails today ----------
 // mutation → kind of pin → 'W:flavour,flavour L:flavour' (the worst outcome seen there: W a pin silently on the wrong
 // element, L a pin flagged as moved whose element is still on the page), with @engine when only that engine fails.
-// From the run of 20 Nov 2026 on the fingerprint build (anchoring stage 1; main 0659390 had many more cells) (both engines,
-// seeds 1 and 2); print it again with TORTURE_KNOWN=print.
+// From the run of 20 Nov 2026 on the scored search (anchoring stage 2; stage 1 and main 0659390 had many more cells) (both
+// engines, seeds 1 and 2); print it again with TORTURE_KNOWN=print.
 function knownToday() {
   return {
     'sib-before': { para: 'W:plain,ids,bare,hashed,twins', word: 'W:plain,ids,bare,hashed,twins', quote: 'W:plain,ids,bare,hashed,twins', area: 'W:plain,ids,bare,hashed,twins', li: 'W:plain,ids,bare,hashed,twins', cell: 'W:plain,ids,bare,hashed,twins', card: 'W:plain,ids,bare,hashed,twins', heading: 'W:plain,ids,bare,hashed,twins', img: 'W:plain,ids,bare,hashed,twins', button: 'W:plain,ids,bare,hashed,twins', cardbtn: 'W:plain,ids,bare,hashed,twins' },
-    'sib-apart': { para: 'L:twins', area: 'W:plain,ids,bare,hashed,twins', li: 'L:twins', cell: 'L:twins', card: 'W:plain,ids,bare,hashed,twins', heading: 'W:ids L:twins', img: 'W:plain,ids,bare,hashed', cardbtn: 'L:ids,hashed,twins' },
-    'rm-first': { li: 'L:twins' },
-    'rm-others': { area: 'W:plain,ids,bare,hashed,twins', li: 'L:twins' },
+    'sib-apart': { para: 'L:twins', cell: 'L:twins', heading: 'W:ids L:twins', img: 'W:plain,ids,bare,hashed', cardbtn: 'L:ids,hashed,twins' },
+    'rm-others': { li: 'L:twins' },
     'reverse': { li: 'W:twins', img: 'W:twins' },
     'shuffle': { li: 'W:twins' },
     'to-first': { li: 'W:twins' },
     'to-last': { img: 'W:twins' },
-    'typo-start': { li: 'L:twins', cell: 'L:plain,ids,bare,hashed', heading: 'L:plain,ids,bare,hashed,twins', button: 'L:plain,ids,bare,hashed,twins' },
-    'typo-end': { li: 'L:twins' },
-    'word-swap': { li: 'L:twins' },
-    'half-words': { para: 'L:plain,ids,bare,hashed,twins', word: 'L:plain,ids,bare,hashed,twins', quote: 'L:bare,hashed', li: 'L:twins' },
-    'prepend': { li: 'L:twins' },
-    'rewrite': { word: 'L:plain,ids,bare,hashed,twins', quote: 'L:plain,ids,bare,hashed,twins' },
+    'half-words': { para: 'L:plain,ids,bare,hashed,twins' },
     'alt-rewrite': { img: 'L:plain,ids,bare,hashed W:twins' },
-    'src-rename': { img: 'L:twins' },
     'q-typo': { word: 'W:twins', quote: 'W:twins' },
     'q-moved': { word: 'W:twins' },
     'q-around': { word: 'W:twins' },
     'q-deleted': { quote: 'W:twins' },
-    'delete': { img: 'W:twins' },
-    'retag': { para: 'L:plain,ids,bare,hashed,twins', area: 'L:plain,ids,bare,hashed,twins', li: 'L:plain,ids,bare,hashed,twins', cell: 'L:plain,ids,bare,hashed W:twins', card: 'L:plain,ids,bare,hashed,twins', heading: 'L:plain,ids,bare,hashed,twins', button: 'L:plain,ids,bare,hashed,twins', cardbtn: 'L:plain,ids,bare,hashed,twins' },
+    'retag': { cell: 'W:twins' },
     'dup-sec-before': { para: 'W:plain,ids,bare,hashed,twins', word: 'W:plain,ids,bare,hashed,twins', quote: 'W:plain,ids,bare,hashed,twins', area: 'W:plain,ids,bare,hashed,twins', li: 'W:plain,ids,bare,hashed,twins', cell: 'W:plain,ids,bare,hashed,twins', card: 'W:plain,ids,bare,hashed,twins', heading: 'W:plain,ids,bare,hashed,twins', img: 'W:plain,ids,bare,hashed,twins', button: 'W:plain,ids,bare,hashed,twins', cardbtn: 'W:plain,ids,bare,hashed,twins' },
     'move-unit': { img: 'W:twins', button: 'W:twins' },
     'move-block': { para: 'W:twins' },
-    'replace': { quote: 'W:twins', img: 'W:twins', cell: 'W:plain,hashed,twins', cardbtn: 'W:ids' },
+    'delete': { img: 'W:twins' },
+    'replace': { cell: 'W:plain,hashed,twins', img: 'W:twins', cardbtn: 'W:ids' },
     'delete-unit': { cell: 'W:twins', cardbtn: 'W:plain,ids,bare,hashed' },
   };
 }

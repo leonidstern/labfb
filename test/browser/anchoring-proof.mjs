@@ -46,14 +46,14 @@ try {
     try {
       const ctx = await browser.newContext({ viewport: { width: 900, height: 700 } });
 
-      // 1. What a pin saves: its words, how many said the same, its company; twins also what stands beside them.
+      // 1. What a pin saves: its words, how many said the same, its company, what stands beside it.
       let p = await open(ctx, '<ul id="l"><li>Alice <button>Edit</button></li><li>Bob <button>Edit</button></li></ul><p>Alone here</p>');
       let r = await p.evaluate(() => {
         const bob = pinOn('li:nth-child(2) button');
         const alone = pinOn('p');
         return { bob: bob.fp, alone: alone.fp };
       });
-      check(eng, 'fingerprint: words hash, first words, how many said them, which, its company and its place among look-alikes', r.bob.t === 'Edit' && r.bob.u === 2 && r.bob.k === 1 && r.bob.x && r.bob.o[1] === 1 && r.alone.u === 1 && r.alone.t === 'Alone here' && !r.alone.b, JSON.stringify(r));
+      check(eng, 'fingerprint: words hash, first words, how many said them, which, its company and its place among look-alikes', r.bob.t === 'Edit' && r.bob.u === 2 && r.bob.k === 1 && r.bob.x && r.bob.o[1] === 1 && r.alone.u === 1 && r.alone.t === 'Alone here' && !r.alone.a && r.bob.b === 'Alice Edit\u0001', JSON.stringify(r));
 
       // 2. A new first item: the pin on Bob's Edit stays on Bob's Edit (the element now at its path is Alice's).
       r = await p.evaluate(() => {
@@ -132,7 +132,7 @@ try {
         document.querySelector('li').remove();
         const w = where(a);
         const second = w.node === document.querySelector('li');
-        document.querySelector('li').textContent = 'Two, changed';
+        document.querySelector('li').textContent = 'Something else entirely';
         return { first, second, told: w.told, after: A.findTarget(a) === null };
       });
       check(eng, 'the shared page read follows changes made in the same task', r.first && r.second && r.after, JSON.stringify(r));

@@ -477,7 +477,9 @@ export function startLive() {
             reload();
           }
         };
-        if (document.startViewTransition && !W.still.matches) document.startViewTransition(safe);
+        // WebKit shifts the whole page by scrollY for ~250 ms under a view transition when scrolled: it only fades there when at the top.
+        const webkit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium\/|Edg\//.test(navigator.userAgent);
+        if (document.startViewTransition && !W.still.matches && !(webkit && scrollY > 0)) document.startViewTransition(safe);
         else safe();
       } catch {
         reload();
