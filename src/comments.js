@@ -2131,7 +2131,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       S.drew = true;
       S.inking.strokes.pop(); // a cancelled stroke (the system took the pointer) is not part of the drawing
       if (S.inking.strokes.length) S.inking.paint();
-      else (S.inking.svg.remove(), (S.inking = null));
+      else {
+        S.inking.svg.remove();
+        S.inking = null;
+      }
       return;
     }
     if (!d.active || e.type === 'pointercancel') return;
