@@ -124,6 +124,17 @@ test('the agent text: an area lists what it holds, and locally the answer is a r
   assert.doesNotMatch(text, /to answer: POST/);
 });
 
+test('the agent text: a pin in the side margin says what it is level with, and how far out', async () => {
+  await up();
+  await post({ page: '/index', name: 'Leo', text: 'left of the title', anchor: { selector: 'h1', x: 0.05, y: 0.5, sx: -210, docX: 0.1, docY: 80, width: 1400, element: '<h1>', kind: 'element' } });
+  await post({ page: '/index', name: 'Leo', text: 'beside nothing', anchor: { selector: 'body', x: 0.1, y: 0.5, docX: 0.1, docY: 900, width: 1400, element: '<body>', kind: 'element' } });
+  const text = await (await fetch(B + '/_lab/agent/index')).text();
+  const block = (t) => text.split('\n## ').find((b) => b.includes(t));
+  assert.match(block('left of the title'), /^in the margin: 210 px left of the element, level with it$/m);
+  assert.match(block('beside nothing'), /^on the page itself, no element beside it: 10% across, 900 px down the page/m);
+  assert.doesNotMatch(block('beside nothing'), /as a whole/);
+});
+
 test('a comment about the page as a whole has no spot in the agent text', async () => {
   await up();
   await post({ page: '/index', name: 'Leo', text: 'the whole page feels too airy', anchor: { kind: 'page', width: 390, height: 664, dpr: 2 } });
