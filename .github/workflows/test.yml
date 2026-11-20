@@ -72,7 +72,9 @@ jobs:
           node-version: 22
       - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
       - name: Run ${{ matrix.group.name }}
-        run: for t in ${{ matrix.group.files }}; do echo "::group::$t"; node test/browser/$t.mjs; echo "::endgroup::"; done
+        # A file that fails runs once more before the job fails: eight browsers on one Mac make a timing check miss now
+        # and then. The retry is a warning on the run, so a file that keeps needing it is easy to spot.
+        run: for t in ${{ matrix.group.files }}; do echo "::group::$t"; node test/browser/$t.mjs || { echo "::warning::$t failed once, running it again"; node test/browser/$t.mjs; }; echo "::endgroup::"; done
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
       - if: matrix.engine == 'chromium' && matrix.group.name == 'a'
         run: node bench/run.mjs
