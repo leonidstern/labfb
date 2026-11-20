@@ -88,6 +88,10 @@ export function show(name: string, o: Opts) {
     size = size >= 1 ? 0.5 : 1;
     saveSize(o.page, size);
     paintSize();
+    // One step, so fitted in this same frame: where the view is is read now (it is asked for by the board's pins), and the
+    // board fits to the new size before anything is drawn (not 200 ms on, once the box rests, as a dragged edge does).
+    at = view.getBoundingClientRect();
+    board.resized();
   });
   toggle.className = 'bv-size';
   const closeBtn = o.own ? btn('‹ back', 'back to the page', () => backTo(o.of || '')) : btn('‹ close', 'close the board', () => close());

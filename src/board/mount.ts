@@ -304,6 +304,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (selected && !cards.some((c) => c.f.id === selected)) selected = entered = '';
     world.querySelector('.none')?.remove();
     if (!cards.length) text('div', 'No frames on this board.', world).className = 'none';
+    measure(); // the box as it is now, for the fit
     const hash = opts.hash ? /^#(-?\d+),(-?\d+),([\d.]+)$/.exec(location.hash) : null;
     if (hash && !moved) cam = { x: +hash[1], y: +hash[2], z: +hash[3] };
     else if (!moved) {
@@ -314,6 +315,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     }
     moved = moved || Boolean(hash);
     go(cam, false);
+    cancelAnimationFrame(drawFrame);
+    paintCam(); // now, not in the next frame's callback: the first frame drawn with its frames in it is a fitted one
     wake();
   }
   const api = (more = '') => `/_lab/api/board?name=${name}${of ? `&page=${encodeURIComponent(of)}` : ''}${more}`;
@@ -668,9 +671,10 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // "when moving size of boards its sometimes flickering weirdly on some points": it fitted and drew all of it per step).
   let sized = false;
   const ro = new ResizeObserver(() => {
-    const [px, py] = [ox, oy];
+    const [px, py, pv] = [ox, oy, view];
     measure();
     if (!sized || !cards.length) return void ((sized = true), go(moved ? cam : fitAll(boxes(), view), false));
+    if (px === ox && py === oy && pv.w === view.w && pv.h === view.h) return; // already drawn at this size (resized(), below)
     cam = { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
     sizing = boxed = true;
     cancelAnimationFrame(drawFrame);
@@ -702,5 +706,17 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     for (const c of cards) c.frame?.remove();
     root.replaceChildren();
   };
-  return { api: boardApi, destroy, measure: () => (measure(), go(cam, false)) };
+  // The box was set to a new size in one step (a view's half and full): fitted again and drawn now, in the frame that has
+  // the new size, not once the box has rested (the board is in its old place and size for 200 ms, then jumps to its fit).
+  const resized = () => {
+    const [px, py] = [ox, oy];
+    measure();
+    if (!cards.length) return;
+    cam = moved ? { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z } : fitAll(boxes(), view);
+    go(cam, false);
+    [whole, boxed] = [false, true]; // told as the box changing with the camera, as a dragged edge is (the page's pins under it hide or show)
+    cancelAnimationFrame(drawFrame);
+    paintCam();
+  };
+  return { api: boardApi, destroy, measure: () => (measure(), go(cam, false)), resized };
 }
