@@ -87,8 +87,8 @@ jobs:
         engine: ${{ fromJSON(github.event_name == 'pull_request' && '["webkit"]' || '["webkit", "chromium"]') }}
         # Groups of about the same length on the Mac (2 to 3 min each; the old "rest" took 9).
         group:
-          # behaviours; the live connection; flags; pins finding their spot again; a phone pinch-zoomed in (zoom).
-          - { name: a, files: behaviours connection anchoring flags moved zoom shiftkeys frame framescroll boardclose }
+          # behaviours; the live connection; flags; pins finding their spot again; a phone pinch-zoomed in (zoom); a page's own CSS against the widget (pagecss).
+          - { name: a, files: behaviours connection anchoring flags moved zoom shiftkeys frame framescroll boardclose pagecss }
           # What a drag does (words, an area, a point, fields and links); the section bar; boards.
           - { name: b, files: selection sections board boardarrange boardreload }
           # The "!" on the labit mark for a held reload (updbadge); undo; moments; native; motion; actions; shortcuts from labit.json; status updates folding (fold); where a thread or the chat opens and stays (openscroll).
