@@ -509,15 +509,9 @@ export function startSections() {
     }
     soon();
   };
-  for (const m of ['pushState', 'replaceState'] as const) {
-    const original = history[m];
-    history[m] = function (this: History, ...args: Parameters<History['pushState']>) {
-      const out = original.apply(this, args);
-      queueMicrotask(() => routed());
-      return out;
-    };
-  }
-  addEventListener('popstate', () => routed());
+  // A route change reaches the bar through the widget's own navigation hook (comments.js: the Navigation API with the
+  // flag native, else its history patch), so history is patched once, or not at all.
+  W.S.routed = () => routed();
   addEventListener('hashchange', () => routed(true));
   const heady = (n: Node) => n.nodeType === 1 && ((n as Element).matches(HEAD) || Boolean((n as Element).querySelector(HEAD)));
   new MutationObserver((list) => {

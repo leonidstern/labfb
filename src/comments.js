@@ -2819,6 +2819,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (!host.isConnected && document.body) document.body.append(host);
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
+    S.routed?.(); // the section bar (sections.ts)
     if (pageNow() === S.page) return;
     S.page = pageNow();
     S.seen = readSeen();
