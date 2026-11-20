@@ -41,6 +41,14 @@ for (let i = 0; i < 80; i++) {
   }
 }
 let failed = 0;
+// `labit pin …` as the agent runs it: its words.
+const pinNow = (...args) => new Promise((done) => {
+  let out = '';
+  const c = spawn(process.execPath, [LAB, 'pin', ...args], { cwd: DIR, env: { ...env, CLAUDE_CODE_SESSION_ID: 'agentpins-1' } });
+  c.stdout.on('data', (d) => (out += d));
+  c.stderr.on('data', (d) => (out += d));
+  c.on('close', () => done(out));
+});
 const check = (eng, name, ok, detail = '') => {
   if (!ok) failed++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
@@ -86,6 +94,21 @@ try {
       const where = await p.evaluate(() => { const q = [...document.querySelectorAll('.blurb')].find((n) => /Pick a plan/.test(n.textContent)).getBoundingClientRect(); return { top: q.top + scrollY, bottom: q.bottom + scrollY }; });
       const pinAt = await sh(() => { const b = r.querySelector('button.pin'); if (!b) return null; const q = b.getBoundingClientRect(); return { y: q.top + q.height / 2 + scrollY, moved: b.classList.contains('moved') || b.getAttribute('data-moved') !== null }; });
       check(eng, 'after the page is edited the pin is still on its own paragraph', pinAt && pinAt.y > where.top - 30 && pinAt.y < where.bottom + 30, JSON.stringify([pinAt, where]));
+      await p.close();
+
+      // The browser is the check: a bare pin whose selector matches nothing is marked on the server; `labit pin` waits for
+      // that answer (up to 3 s) and names it, and says nothing for one that matches (it is filled in instead).
+      await wipe('/fill');
+      ({ p, sh } = await open('/fill'));
+      const gone = await bare('/fill', 'where?', { selector: '#nope' });
+      let marked;
+      for (let i = 0; i < 40 && !marked?.unmatched; i++) { await sleep(150); marked = (await list('/fill')).find((x) => x.id === gone.id); }
+      check(eng, 'a bare agent pin whose selector matches nothing is marked unmatched', marked?.unmatched === true && !marked.anchor.element, JSON.stringify(marked?.unmatched));
+      const said = await pinNow('#nope', 'asked from the command line', '--page', '/fill');
+      check(eng, 'labit pin names a selector the browser found nothing for', /pin \w+ matched nothing on \/fill: #nope/.test(said), said.trim().slice(-120));
+      const fine = await pinNow('.blurb', 'this one is there', '--page', '/fill');
+      const good = (await list('/fill')).find((x) => fine.includes(x.id));
+      check(eng, 'a selector that matches says nothing, and is filled in', !/Note:|matched nothing/.test(fine) && good?.anchor.element === '<p class="blurb">', fine.trim().slice(-120));
       await p.close();
 
       // 4: a pin that asks shows its choices; a tap sends the pick under it.

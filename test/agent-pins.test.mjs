@@ -1,10 +1,9 @@
-// The agent's own pins (`labit pin`): the selector is checked against the page's HTML and what is there is saved with
-// the pin; --quote pins on words; --question / --choice make the pin itself ask; "Do it" and ticks reach the agent's
+// The agent's own pins (`labit pin`): a browser checks the selector (the lab keeps what it says on the pin: the browser
+// test proves that part) and the agent is told when it matches nothing; --quote pins on words; --question / --choice make the pin itself ask; "Do it" and ticks reach the agent's
 // next wait; --file pins many at once; --board pins on a board and its frames.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import http from 'node:http';
 import path from 'node:path';
 import { site, tmp, rm, spawnLab, up, serverJson, cli as command } from './harness.mjs';
 
@@ -47,75 +46,43 @@ test('setup', async () => {
   await up(B + '/', { fail: false });
 });
 
-test('2: a selector that matches nothing in the page file is refused, and nothing is saved; no-check lets it through', async () => {
-  const before = (await all()).length;
-  const bad = await pin('#nope', 'x', '--page', '/index');
-  assert.equal(bad.code, 1, bad.out);
-  assert.match(bad.out, /"#nope" matches nothing in index\.html\. Ids on that page: #t, #plans, #p\./);
-  assert.match(bad.out, /--no-check/);
-  assert.equal((await all()).length, before, 'no pin');
-  const forced = await pin('#drawn', 'a script draws this', '--page', '/index', '--no-check');
-  assert.equal(forced.code, 0, forced.out);
-  assert.ok(idOf(forced.out));
-  // A page given by its file name, and the first of several matches with a note.
-  const many = await pin('li', 'the first item', '--page', 'index.html');
-  assert.equal(many.code, 0, many.out);
-  assert.match(many.out, /Note: "li" matches 3 elements in index\.html: the pin goes on the first/);
-  // Selectors the check does not read are said, not refused.
-  const odd = await pin('p:not(.x)', 'odd', '--page', '/index');
-  assert.equal(odd.code, 0, odd.out);
-  assert.match(odd.out, /Note: Could not check "p:not\(\.x\)"/);
-});
-
-test('2 and 3: a matching selector fills in the element, its words, the box and the heading from the HTML', async () => {
-  const r = await pin('#plans #p', 'wording?', '--page', '/index');
+test('2: with no browser open the pin is saved unchecked, and says so once; no-check says nothing', async () => {
+  const r = await pin('#nope', 'x', '--page', '/index');
   assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /^Note: No browser has the lab open, so the selector is not checked: the pins are saved unchecked\.$/m);
   const c = (await all()).find((x) => x.id === idOf(r.out));
-  assert.ok(c.session, 'an agent pin');
-  assert.deepEqual([c.anchor.kind, c.anchor.selector, c.anchor.element, c.anchor.inside, c.anchor.section, c.anchor.block], ['element', '#plans #p', '<p id="p">', '#plans', 'Plans', 'p']);
-  assert.equal(c.anchor.text, 'The quick brown fox jumps over the lazy dog, the quick brown fox.');
-  const h = await pin('#t', 'title', '--page', '/index');
-  assert.equal((await all()).find((x) => x.id === idOf(h.out)).anchor.text, 'Pricing & plans', 'entities read as the browser reads them');
-  const li = await pin('ul.list > li.last', 'implicit end tags', '--page', '/index');
-  assert.equal(li.code, 0, li.out);
-  assert.equal((await all()).find((x) => x.id === idOf(li.out)).anchor.element, '<li class="last">');
+  assert.deepEqual([c.anchor.kind, c.anchor.selector, c.anchor.x, c.anchor.y, c.anchor.element], ['element', '#nope', 0.5, 0.5, undefined]);
+  const quiet = await pin('#drawn', 'a script draws this', '--page', 'index.html', '--no-check');
+  assert.equal(quiet.code, 0, quiet.out);
+  assert.doesNotMatch(quiet.out, /Note:/);
+  assert.equal((await all()).find((x) => x.id === idOf(quiet.out)).anchor.page, undefined);
 });
 
-test('2: behind a dev server the check says it cannot run, and the pin is still made', async () => {
-  const dev = http.createServer((req, res) => res.end('<h1>dev</h1>'));
-  servers.push(dev);
-  await new Promise((r) => dev.listen(0, '127.0.0.1', r));
-  const { DIR: dir, PORT: port } = site('agent-pins-proxy', 9850, 30);
-  const proxied = spawnLab(dir, port, { args: ['--proxy', String(dev.address().port)], env });
-  try {
-    await up(`http://localhost:${port}/`, { fail: false });
-    const run = (...a) => command(a, { cwd: dir, env: { ...env, CLAUDE_CODE_SESSION_ID: S } });
-    const r = await run('pin', 'h1', 'in front of a dev server', '--page', '/x');
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /Note: Could not check the selector: this lab is in front of a dev server/);
-    assert.match(r.out, /Pinned \w+ on \/x at h1/);
-  } finally {
-    proxied.kill();
-    rm([dir]);
-  }
+test('3: a browser says a selector matched nothing (move with unmatched): the agent hears it once in its next wait; a fill clears it', async () => {
+  const id = idOf((await pin('#gone', 'where did it go', '--page', '/index', '--no-check')).out);
+  const said = await api({ page: '/index', action: 'move', id, unmatched: true, anchor: { selector: '#gone' } });
+  assert.equal(said.status, 200);
+  assert.equal(said.comment.unmatched, true);
+  assert.equal(said.comment.movedAt, undefined, 'no move');
+  await api({ page: '/index', text: 'something from a person', anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5 } });
+  const heard = await cli(S, 'wait', '--bg', '--timeout', '5');
+  assert.match(heard.out, new RegExp(`^pin ${id} matched nothing on /index: #gone$`, 'm'));
+  await api({ page: '/index', text: 'and one more', anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5 } });
+  assert.doesNotMatch((await cli(S, 'wait', '--bg', '--timeout', '5')).out, /matched nothing/, 'said once');
+  // Found later: the fill takes it back.
+  const filled = await api({ page: '/index', action: 'move', id, fill: true, anchor: { selector: '#gone', element: '<h2>' } });
+  assert.equal(filled.comment.unmatched, undefined);
+  // A person's pin takes neither.
+  const theirs = (await api({ page: '/index', text: 'mine', anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5 } })).comment;
+  assert.equal((await api({ page: '/index', action: 'move', id: theirs.id, unmatched: true, anchor: { selector: '#t' } })).status, 400);
 });
 
-test('6: --quote pins on those words, with the words around them from the file', async () => {
-  const r = await pin('#p', 'say it shorter', '--quote', 'lazy dog', '--page', '/index');
+test('6: --quote pins on those words; the browser finds them in the element', async () => {
+  const r = await pin('#p', 'say it shorter', '--quote', 'lazy   dog', '--page', '/index', '--no-check');
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /on the words "lazy dog"/);
   const c = (await all()).find((x) => x.id === idOf(r.out));
-  assert.equal(c.anchor.kind, 'text');
-  assert.deepEqual(c.anchor.quote, { exact: 'lazy dog', prefix: 'The quick brown fox jumps over the ', suffix: ', the quick brown fox.' });
-  assert.equal(c.anchor.element, '<p id="p">');
-  const twice = await pin('#p', 'which one', '--quote', 'quick brown fox', '--page', '/index');
-  assert.match(twice.out, /Note: "quick brown fox" stands 2 times/);
-  const wrong = await pin('#p', 'x', '--quote', 'purple cow', '--page', '/index');
-  assert.equal(wrong.code, 1, wrong.out);
-  assert.match(wrong.out, /The words "purple cow" are not in the text of "#p"/);
-  // Without a file to read, the quote goes as given.
-  const loose = await pin('#drawn', 'x', '--quote', 'drawn words', '--page', '/index', '--no-check');
-  assert.equal((await all()).find((x) => x.id === idOf(loose.out)).anchor.quote.exact, 'drawn words');
+  assert.deepEqual([c.anchor.kind, c.anchor.selector, c.anchor.quote], ['text', '#p', { exact: 'lazy dog', prefix: '', suffix: '' }]);
 });
 
 test('4: --question and --choice make the pin itself ask; the pick comes back in the next wait', async () => {
@@ -207,13 +174,13 @@ test('3: a browser fills an agent pin made from a bare selector (move with fill)
   assert.equal((await api({ page: '/index', action: 'move', id: theirs.id, fill: true, anchor: { selector: '#t', element: '<h1>' } })).status, 400);
 });
 
-test('7: --file pins many at once: all are checked first, then saved, every id printed', async () => {
+test('7: --file pins many at once: all are made ready first, then saved, every id printed', async () => {
   const file = path.join(DIR, 'points.json');
   const before = (await all()).length;
-  fs.writeFileSync(file, JSON.stringify([{ selector: '#t', text: '1. title' }, { selector: '#nope', text: '2. missing' }]));
+  fs.writeFileSync(file, JSON.stringify([{ selector: '#t', text: '1. title' }, { text: '2. no selector' }]));
   const bad = await pin('--file', file, '--page', '/index');
   assert.equal(bad.code, 1, bad.out);
-  assert.match(bad.out, /^Pin 2: "#nope" matches nothing in index\.html/);
+  assert.match(bad.out, /^Pin 2: Say where/);
   assert.equal((await all()).length, before, 'nothing half saved');
   fs.writeFileSync(file, JSON.stringify([
     { selector: '#t', text: '1. title' },
@@ -243,13 +210,12 @@ test('8: --board pins on a frame\'s element, on a frame, or on the board itself'
   const made = await cli(S, 'board', 'new', 'Hero', '--of', '/pricing', '--variants', '2');
   assert.equal(made.code, 0, made.out);
   const name = /# Board (\S+)/.exec(made.out)[1];
-  // An element of a variant: its own page, checked against its file.
+  // An element of a variant: its own page.
   const inFrame = await pin('--board', name, '--frame', 'b', 'h1', 'bigger?');
   assert.equal(inFrame.code, 0, inFrame.out);
   assert.ok(idOf(inFrame.out), inFrame.out);
   const c = (await all(`/_board/${name}/b`)).find((x) => x.id === idOf(inFrame.out));
-  assert.deepEqual([c.anchor.kind, c.anchor.selector, c.anchor.board, c.anchor.frame, c.anchor.element], ['element', 'h1', name, 'b', '<h1>']);
-  assert.match((await pin('--board', name, '--frame', 'b', '#nope', 'x')).out, /"#nope" matches nothing in \.lab\/boards\/.*b\.html/);
+  assert.deepEqual([c.anchor.kind, c.anchor.selector, c.anchor.board, c.anchor.frame], ['element', 'h1', name, 'b']);
   // Frame a is the real page: the pin goes there, saying which board and frame it was made on.
   const onPage = await pin('--board', name, '--frame', 'a', 'p', 'buy?');
   assert.match(onPage.out, /on \/pricing at p/);

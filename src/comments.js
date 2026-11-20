@@ -409,16 +409,20 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // next look and the agent's text start from there. Once per pin and page load, once the page has settled, and only
   // from a browser that may move the pin.
   const looked = new Set();
-  const found = () => {
+  const found = (quick = false) => {
     for (const c of document.readyState === 'complete' ? threads() : []) {
+      if (quick === true && !(c.session && !c.anchor?.element)) continue;
       const edit = store.get(`lab-edit:${c.id}`) || undefined;
       if (c.resolved || looked.has(c.id) || !(S.isAdmin || edit) || !c.anchor?.selector) continue;
       looked.add(c.id);
       const anchor = foundAt(c.anchor);
       if (anchor) send({ action: 'move', id: c.id, found: true, anchor, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
-      // An agent's pin made from a selector (labit pin): it learns what a person's pin carries, once, so it survives edits.
-      const fill = c.session && !anchor ? fillAt(c.anchor) : null;
-      if (fill) send({ action: 'move', id: c.id, fill: true, anchor: fill, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
+      // An agent's pin made from a selector (labit pin): it learns what a person's pin carries, once, so it survives edits;
+      // or, when its selector finds nothing, it says so (the agent is told), and fills in when it is found later.
+      if (c.session && !anchor && !c.anchor.element) {
+        const fill = fillAt(c.anchor);
+        if (fill || !c.unmatched) send({ action: 'move', id: c.id, anchor: fill || c.anchor, [fill ? 'fill' : 'unmatched']: true, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
+      }
     }
   };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
@@ -442,6 +446,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     shownAgain();
   }
   function shownAgain() {
+    setTimeout(found, 400, true); // an agent's new pin is looked at at once (labit pin waits for it)
     if (!typed() && !S.grabbing) render();
     // Someone is in a box: the open thread gets its new replies in place, the chat its new messages (its box is left
     // alone); everything else shows on the next render.

@@ -43,11 +43,11 @@ Start it with `npx @leonidstern/labit@latest`, so the person gets the newest ver
 
 Leave your own pins with `LAB pin <selector> "<point>" [--page /path]` when the person asks what you'd improve, or you find something worth their eye: a suggestion, a bug you found, a review note, or what you just changed (so they can look at it where it is). Not for status, and not instead of answering a pin: answer those with `reply`.
 - One point per pin, each on its own spot, numbered when there are several ("1. …"). At most about 8 per ask: pick the ones that matter.
-- Read the selector from the file; never guess it. Prefer an id (`#pricing h2`). `pin` checks it against the page's HTML and says when it matches nothing (`--no-check` only when the page draws that element with JavaScript).
+- Read the selector from the file; never guess it. Prefer an id (`#pricing h2`). With the page open a browser checks it: `pin` waits up to 3 s and says `pin <id> matched nothing on /page: <selector>` (the next wait says it too; fix it and pin again). `--no-check` skips the wait.
 - Many at once: `LAB pin --file points.json` (a list of `{ "selector", "text", "quote"?, "at"?, "page"? }`): one call, every id printed.
 - On words: `--quote "exact words"` pins those words. Ask something: `--question`, or choices with `--choice "A" --choice "B" --recommend B` (the pick comes back in your next wait). On a board: `--board <name> --frame <id> <selector> "text"`, or `-` in place of the selector for a pin on the frame itself.
 - A pin ticked as done by the person is told in your next wait ("ticked: 2 of your 5 pins"): nothing to do. "<name> said: do it" is their "Do it" tap on your pin: do what it proposes, then `reply <id> --done`.
-- Say in your reply how many pins you left and where (one line); don't repeat their words.
+- Say in your reply how many pins you left (one line).
 
 ## Instead of an Artifact ("use lab")
 

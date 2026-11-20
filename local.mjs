@@ -107,8 +107,8 @@ For the agent, from the project (any folder under it):
   labit pin <selector> "text" [--page /path] [--at x,y] [--quote "words"] [--question | --choice "A" --choice "B" [--recommend B]] [--no-check]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
-      The selector is checked against the page's HTML file and refused when it matches nothing (--no-check: the page draws
-      it with JavaScript); the pin saves the element's tag and words, so it survives edits. --quote "exact words": a pin on
+      A browser with the page open checks the selector (up to 3 s; --no-check skips that): the pin is filled in with the
+      element's tag and words so it survives edits, or the command says "pin <id> matched nothing". --quote "exact words": a pin on
       those words. --question: the pin asks, and waits for the person's answer. --choice: it asks with 2 to 6 choices (the
       pick comes back in your next wait). A "Do it" tap on your pin comes back as "<name> said: do it".
   labit pin --file points.json [--page /path]
@@ -1726,6 +1726,8 @@ async function unseen(scope = pages(), who = '') {
   // open and the ones just ticked.
   const mine = (c) => !c.parent && c.session && (!who || whoOf(c.session) === who);
   const ticks = scope.flatMap((page) => commentsOf(page).filter((c) => mine(c) && c.resolved && c.resolvedBy !== 'agent' && c.resolvedAt > (c.tickedAt || '')).map((c) => ({ page, c })));
+  // Pins of its own that a browser drew and found nothing for (the selector matches nothing on the page), said once.
+  const lost = scope.flatMap((page) => commentsOf(page).filter((c) => mine(c) && !c.resolved && c.unmatched && !c.lostTold).map((c) => ({ page, c })));
   const own = scope.reduce((n, page) => n + commentsOf(page).filter((c) => mine(c) && !c.resolved).length, 0) + ticks.length;
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
@@ -1737,13 +1739,14 @@ async function unseen(scope = pages(), who = '') {
     // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked
     // lost (Leo, 18 Nov). A --progress line first turns the ring and the pill at once, without a message (Leo, 20 Nov: less noise).
     `\nIf it will take more than about a minute (a build, a restart, a PR): send one ${CMD} reply <id> --progress "<what you're doing>" on each first (a status line, not a message), then start; a quick ask needs none (an answer within 2 minutes counts). A plain "go" or pick gets no words: resolve it when done.` +
+    lost.map(({ page, c }) => `\npin ${c.id} matched nothing on ${page}: ${c.anchor.selector}`).join('') +
     (ticks.length ? `\nticked: ${ticks.length} of your ${own} pins, resolved by people since your last wait (${ticks.map(({ page, c }) => `${page} id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 50)}"`).join('; ')}). Nothing to do for those.` : '') +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     (full ? `\n${WRITE_SHORT}` : '') + (rules || '');
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = given.map(({ page, c }) => [page, c.id, stamp(c)]);
-  return { text, marks, handed, ticked: ticks.map(({ page, c }) => [page, c.id, c.resolvedAt]), full, rules: Boolean(rules) };
+  return { text, marks, handed, ticked: ticks.map(({ page, c }) => [page, c.id, c.resolvedAt]), lost: lost.map(({ page, c }) => [page, c.id]), full, rules: Boolean(rules) };
 }
 // Hand-offs the agent hasn't said it got yet (a wait that asked with ack: true). The marks go on at once, so no other
 // wait takes the same pins and the page shows them being worked on; the agent's `wait` says it printed
@@ -1803,6 +1806,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
         if (got.rules) rulesSent.delete(who); // the rules went with it, so they go again
         for (const [page, id, was] of handedBefore) if (!theirs.has(id)) setComment(page, id, { handedAt: was });
         for (const [page, id] of got.ticked) setComment(page, id, { tickedAt: undefined }); // not seen: said again
+        for (const [page, id] of got.lost) setComment(page, id, { lostTold: undefined });
         saveHanded();
         for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
         if (got.full) toldAt.delete(who);
@@ -1813,6 +1817,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
   if (got.full) toldAt.set(who, Date.now());
   for (const [, id, at] of got.marks) handoff[id] = [at, who];
   for (const [page, id, at] of got.ticked) setComment(page, id, { tickedAt: at }); // told once
+  for (const [page, id] of got.lost) setComment(page, id, { lostTold: true });
   const wrote = {}; // what this hand-off set, filled in below
   const at = new Date().toISOString();
   for (const [page, id] of got.handed) {
@@ -2152,7 +2157,7 @@ const labInfo = () => {
   // A dev server's pages: the ones with comments. Pages without a file (moved or deleted) keep their pins but aren't offered: going there would find nothing.
   if (PROXY) for (const key of pages()) if (!key.startsWith('/_board/') && !list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
   return {
-    name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
+    name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, browser: openTabs() > 0, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
     boards: B.names(ROOT).flatMap((name) => { const b = boardGet(name); return b ? [{ name, url: `${origin}/_lab/board/${name}`, frames: b.frames.filter((f) => f.state !== 'archived').length, of: b.of || null, at: b.at }] : []; }),
     created: created(),

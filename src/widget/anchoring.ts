@@ -653,13 +653,13 @@ function around(target: Element): Pick<Anchor, 'inside' | 'section' | 'block'> {
 
 // An agent's pin (labit pin) is made from a selector alone. Drawn in a browser and found, it learns what a person's pin
 // carries (the element's tag, its words, its heading and box), so it is found again after the agent edits the page.
-// Null when it already has them, or its element is not found.
+// Null when its element is not found.
 export function fillAt(anchor) {
-  const node = anchor.element ? null : findTarget(anchor);
-  if (!node || node === document.body) return null;
+  const node = findTarget(anchor);
+  if (!node) return null;
   const rect = node.getBoundingClientRect();
   const out: Partial<Anchor> = { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height), element: openingTag(node), ...around(node) };
-  if ((node.textContent || '').length < 400 && !anchor.quote) out.text = short(node.textContent, 80);
+  if (node !== document.body && (node.textContent || '').length < 400 && !anchor.quote) out.text = short(node.textContent, 80);
   return out;
 }
 
