@@ -188,12 +188,13 @@ button.keep:disabled { opacity: .4; cursor: default; }
 @position-try --lab-above { top: auto; bottom: var(--lab-up); }
 @position-try --lab-edge { left: auto; right: 12px; }
 @position-try --lab-edge-above { left: auto; right: 12px; top: auto; bottom: var(--lab-up); }
-@position-try --lab-under { left: var(--lab-uleft); top: calc(anchor(top) + var(--lab-uy)); }
+@position-try --lab-under { left: var(--lab-uleft); top: max(8px, calc(anchor(top) + var(--lab-uy))); }
+@position-try --lab-fit { left: var(--lab-uleft); top: 8px; bottom: 8px; height: fit-content; margin-block: auto; } /* neither side has room: in the screen's middle */
 @position-try --lab-under-above { left: var(--lab-uleft); top: auto; bottom: var(--lab-up); }
-.tied-card, .tied-beside { position: fixed !important; top: calc(anchor(top) + var(--lab-cy)); /* the shared places, written once: */
+.tied-card, .tied-beside { position: fixed !important; top: max(var(--lab-min, 0px), calc(anchor(top) + var(--lab-cy))); /* never above the screen's top */ /* the shared places, written once: */
   --lab-up: calc(anchor(top) - var(--lab-ay)); --lab-uleft: max(12px, calc(anchor(left) + var(--lab-ux))); }
 .tied-card { left: max(12px, calc(anchor(left) + var(--lab-cx))); position-try-fallbacks: --lab-above, --lab-edge, --lab-edge-above; }
-.tied-beside { left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above; }
+.tied-beside { --lab-min: 8px; margin-block: 0 8px; /* the 8 px under it counts in the browser's check, so it keeps off the bottom edge */ left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above, --lab-fit; }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
@@ -233,6 +234,8 @@ button.btn.undo { color: var(--_fg); }
    (it shows on white and black pages alike) and a soft shadow. */
 .float { --_box-bg: var(--_bg); --_box-edge: 0 0 0 1px var(--_edge), 0 1px 2px rgba(0,0,0,.06), 0 8px 26px rgba(0,0,0,.14); }
 /* A comment on a spot or an area looks as the dialog on words does: one card, the buttons and box in it (Leo, 18 Nov). */
+/* On a computer the words scroll inside the box once it is tall: the send arrow and the name stay on screen. */
+@media (pointer: fine) { .float .box textarea { max-height: min(200px, calc(100vh - 180px)); } }
 @media (pointer: fine) { .float { --_box-bg: var(--_soft); --_box-edge: none; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); padding: 8px; } }
 /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
