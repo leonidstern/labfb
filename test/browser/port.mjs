@@ -2,6 +2,7 @@
 // The browser jobs share one Mac (eight at once), so two files with overlapping ranges, or the same file in WebKit and
 // Chromium, could pick the same port and talk to each other's lab. Each claim is a lock file, made exclusively and
 // removed when the process exits; a lock older than 30 minutes is a crashed run's and is taken over.
+// The unit tests claim theirs here too (test/harness.mjs): they run side by side, and beside the browser jobs.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

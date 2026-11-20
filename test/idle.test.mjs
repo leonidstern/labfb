@@ -2,41 +2,29 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { claimPort, tmp, rm, spawnLab, sleep, up as answers, serverJson } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const kids = [];
 const dirs = [];
 after(() => {
   kids.forEach((k) => k.kill());
-  dirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  rm(dirs);
 });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const start = (idleMs) => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-idle-')));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-idle-home-'));
+  const dir = fs.realpathSync(tmp('idle'));
+  const home = tmp('idle-home');
   dirs.push(dir, home);
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><h1>Hi</h1>');
-  const port = String(5500 + Math.floor(Math.random() * 90));
-  const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', port], { cwd: dir, env: { ...process.env, LABIT_HOME: home, LABIT_IDLE_MS: String(idleMs) } });
+  const port = String(claimPort(5500, 90));
+  const lab = spawnLab(dir, port, { env: { ...process.env, LABIT_HOME: home, LABIT_IDLE_MS: String(idleMs) } });
   kids.push(lab);
   const exited = new Promise((r) => lab.on('exit', r));
   return { dir, home, port, lab, exited };
 };
-const up = async (port) => {
-  for (let i = 0; i < 50; i++) {
-    try {
-      return await fetch(`http://localhost:${port}/_lab/pages`);
-    } catch {
-      await sleep(100);
-    }
-  }
-  throw new Error('lab did not start');
-};
+const up = (port) => answers(`http://localhost:${port}/_lab/pages`, { tries: 50 });
 
 test('nobody on it: the lab parks itself and can be started again from the parked record', async () => {
   const { dir, home, port, exited } = start(1500);
@@ -64,7 +52,7 @@ test('a page open on it: the lab stays', async () => {
 test('started again after parking: the session that listened last is its listener again', async () => {
   const { dir, home, port, exited } = start(1500);
   await up(port);
-  const key = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).agent;
+  const key = serverJson(dir).agent;
   const sess = { id: 'sess-park', name: 'park test', agent: 'Claude', kind: 'claude' };
   await fetch(`http://localhost:${port}/_lab/wait`, { method: 'POST', headers: { 'content-type': 'application/json', origin: `http://localhost:${port}`, 'x-lab-admin': key, 'x-lab-agent': '1', 'x-lab-session': encodeURIComponent(JSON.stringify(sess)) }, body: JSON.stringify({ timeout: 0.2 }) });
   await Promise.race([exited, sleep(10000)]);

@@ -2,33 +2,28 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { site, tmp, rm, spawnLab, up, cli as command } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-nonce-'));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-nonce-lab-'));
-const PORT = 9300 + Math.floor(Math.random() * 40);
+const HOME = tmp('nonce');
+const { DIR, PORT, B } = site('nonce-lab', 9300, 40);
 const base = { ...process.env, XDG_CONFIG_HOME: HOME, PORT: '', LABIT_NO_UPDATE_CHECK: '1' };
 delete base.CLAUDE_CODE_SESSION_ID; delete base.CLAUDE_CODE_REMOTE_SESSION_ID; delete base.LAB_SESSION_NAME;
-const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'package.json'), '{}');
 fs.writeFileSync(path.join(DIR, 'bar.html'), '<!doctype html><title>Bar</title><p id="x">Hi</p>');
-const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--new', '--port', String(PORT)], { cwd: DIR, env: base });
-after(() => { lab.kill(); for (const d of [HOME, DIR]) fs.rmSync(d, { recursive: true, force: true }); });
-const cli = (sid, ...args) => new Promise((done) => {
+const lab = spawnLab(DIR, PORT, { flags: ['--new'], env: base });
+after(() => { lab.kill(); rm([HOME, DIR]); });
+const cli = (sid, ...args) => {
   const env = { ...base }; if (sid) env.CLAUDE_CODE_SESSION_ID = sid;
-  execFile(process.execPath, [LAB, ...args], { cwd: DIR, env, timeout: 30000 }, (err, out, e) => done({ code: err?.code ?? 0, out: out + e }));
-});
+  return command(args, { cwd: DIR, env, timeout: 30000 });
+};
 const post = async (body) => (await (await fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/bar', ...body }) })).json()).comment;
 const all = async () => (await (await fetch(`${B}/_lab/api/comments?page=/bar`)).json()).comments;
 const pinOf = (t) => post({ name: 'leo', text: t, anchor: { kind: 'element', selector: '#x', x: 0.5, y: 0.5 } });
 const agentTexts = async (t) => (await all()).filter((c) => c.session && c.text === t);
 
 test('setup', async () => {
-  for (let i = 0; i < 80; i++) { try { await fetch(B + '/'); break; } catch { await new Promise((r) => setTimeout(r, 100)); } }
+  await up(B + '/', { fail: false });
 });
 
 test('retried reply is one comment; variations make new ones', async () => {
