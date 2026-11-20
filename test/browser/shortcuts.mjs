@@ -2,26 +2,13 @@
 // and the bar shows the new key. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/shortcuts.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
-})();
+const pw = playwright();
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-keys-'));
+const DIR = tmp('labit-keys-');
 const PORT = claimPort(7930, 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
@@ -30,17 +17,8 @@ fs.writeFileSync(path.join(DIR, 'ask.html'), '<!doctype html><meta charset="utf-
 fs.writeFileSync(path.join(DIR, 'press.html'), '<!doctype html><meta charset="utf-8"><title>p</title><h1>Press</h1><div id="demo" style="position:relative;padding:40px;width:400px;height:120px;background:#eee"><span id="press" style="display:inline-block;padding:6px 12px;background:#141414;color:#fff"><b id="word">Buy</b></span><div id="toast" style="position:absolute;right:12px;bottom:12px">Order placed</div></div><script>for (const id of ["press", "toast"]) document.getElementById(id).animate([{ transform: "scale(1)" }, { transform: "scale(.94)" }, { transform: "scale(1)" }], { duration: 1200, iterations: Infinity });</script>');
 fs.writeFileSync(path.join(DIR, 'anim.html'), '<!doctype html><meta charset="utf-8"><title>m</title><style>@keyframes spin { to { rotate: 1turn } } #s, #t { width: 40px; height: 40px; background: red; animation: spin 2s linear infinite }</style><h1>Moving</h1><div id="s"></div><div id="t"></div><p>text</p>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, shortcuts: { toggle: 'h', chat: 'x' } }));
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
+const server = startLab(DIR, labEnv());
+await labUp(B);
 // Waits on the condition the next step needs; `ms` is the longest it waits, and it never throws (the check after it reports the real failure).
 const until = (p, fn, arg, ms) => p.waitForFunction(fn, arg, { timeout: ms, polling: 'raf' }).catch(() => {});
 const untilRoot = (p, fn, ms) =>
@@ -48,11 +26,6 @@ const untilRoot = (p, fn, ms) =>
     const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
     return Boolean(r) && new Function('r', `return (${src})(r)`)(r);
   }, fn.toString(), ms);
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 // What the bar shows: comments on or off, the chat open or not, and the chat button's words.
 const look = (p) =>
   p.evaluate(() => {
@@ -66,7 +39,7 @@ const look = (p) =>
   });
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
@@ -313,5 +286,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();
