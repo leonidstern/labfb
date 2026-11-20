@@ -178,7 +178,7 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .choice .nw { flex: none; margin-left: -8px; white-space: pre; } /* " · now" right after the words, not a flex gap away */
 .choice .cx { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
 .choice .ln { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.choice .hint { font-size: 12px; letter-spacing: 0; line-height: 1.3; color: var(--_muted); overflow-wrap: anywhere; } /* a short description under the words (--hint) */
+.choice .desc { font-size: 12px; letter-spacing: 0; line-height: 1.3; color: var(--_muted); overflow-wrap: anywhere; } /* a short description under the words (--hint); not .hint, which is the floating bar tip */
 .choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); min-height: 1.35em; padding-left: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* always one line tall: a note never makes the card taller */
 .choices .note.idle { visibility: hidden; }
 .choices .note .btn.undo { margin-left: 1px; }
