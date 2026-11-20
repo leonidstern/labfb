@@ -1454,7 +1454,7 @@ const watchBoards = () => {
       boardCache.delete(m[1]);
       boardList = null;
       if (m[2]) hot.add(`/_lab/board/${m[1]}/${m[2]}`);
-      else if (/slides\.css$/.test(file)) for (const f of boardGet(m[1])?.frames || []) if (f.src.startsWith('/_lab/')) hot.add(f.src); // a deck's style: every slide reloads
+      else if (file.endsWith('slides.css')) for (const f of boardGet(m[1])?.frames || []) if (f.src.startsWith('/_lab/')) hot.add(f.src); // a deck's style: every slide reloads
       clearTimeout(timer);
       timer = setTimeout(() => {
         version = { ...version, boards: version.boards + 1, boardNames: [...names], ...(hot.size ? { hot: (version.hot || 0) + 1, hotFiles: [...hot].map((path) => ({ path, kind: 'html' })) } : {}) };
