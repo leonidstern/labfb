@@ -9,6 +9,8 @@ import { choiceSpills, FOREGROUND_CAP, letter, listenPages, replyChoices, replyI
 import { mySession } from './agents.ts';
 import { askPages, keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
+import { read as readBoard } from './board.ts';
+import { UNMATCHED } from './schema.mjs';
 
 type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
 
@@ -265,58 +267,173 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
 
     // The agent's own pin on a spot: a suggestion or a question about the page, where a person would have pinned it.
     // The widget finds the element by its selector and draws the pin with labit's mark (it has a session: the agent's).
+    // One pin: pin <selector> "text" [--quote "words"] [--question | --choice A --choice B [--recommend B]] [--at x,y];
+    // many: pin --file points.json; on a board: pin --board <name> [--frame b] <selector|-> "text".
     if (cmd === 'pin') {
-      const selector = (ref || '').trim();
-      if (!selector) die(`Say where: ${CMD} pin <selector> "text" [--page /path] [--at x,y], e.g. ${CMD} pin "#pricing h2" "1. …"`);
-      if (!words.length) die(`Pin text is missing: ${CMD} pin ${selector} "what you'd change, or your question"`);
-      let x = 0.5;
-      let y = 0.5;
-      if (opts.at !== undefined) {
-        const m = /^\s*(\d*\.?\d+)\s*,\s*(\d*\.?\d+)\s*$/.exec(String(opts.at));
-        if (!m || Number(m[1]) > 1 || Number(m[2]) > 1) die('--at takes x,y as shares of the element, each 0 to 1: --at 0.5,0.5 is its middle.');
-        [x, y] = [Number(m[1]), Number(m[2])];
-      }
-      const page = await pinPage(opts.page);
-      const out = await call('/_lab/api/comments', { page, name: signed(), text: words.join(' '), anchor: { kind: 'element', selector, x, y }, nonce: nonceOf(page, selector, words.join(' ')) });
-      if (out.status >= 300) die(`Could not pin: ${out.text}`);
-      const { comment } = JSON.parse(out.text);
-      console.log(`Pinned ${comment.id} on ${page} at ${selector}.`);
-      process.exit(0);
-    }
-    // Which page a pin goes on: --page as the lab's page key (/pricing), its file (pricing.html) or its address
-    // (/pricing.html, http://localhost:4400/pricing.html); with no --page, the lab's only page.
-    async function pinPage(asked: unknown): Promise<string> {
-      const got = await call('/_lab/pages', {});
-      const pages: { path: string; file: string; url: string }[] = got.status < 300 ? JSON.parse(got.text).pages || [] : [];
-      const proxied = got.status < 300 && Boolean(JSON.parse(got.text).proxy);
-      const list = () => pages.map((p) => p.path).join(', ') || 'none yet';
-      if (asked === undefined || asked === true) {
-        if (pages.length === 1 && !proxied) return pages[0].path;
-        die(`Which page? Add --page /path. This lab's pages: ${list()}.`);
-      }
-      let want = String(asked).trim();
-      try {
-        if (/^https?:\/\//.test(want)) want = new URL(want).pathname;
-      } catch {}
-      try {
-        want = decodeURIComponent(want);
-      } catch {}
-      const bare = want.replace(/^\/+|\/+$/g, '');
-      const pathOf = (u: string) => {
+      const usage = `${CMD} pin <selector> "text" [--page /path] | pin --file points.json | pin --board <name> --frame <id> <selector> "text"`;
+      type Point = { selector?: string; text?: string; quote?: string; at?: unknown; page?: unknown; question?: boolean; choices?: unknown; recommend?: unknown };
+      let points: Point[];
+      if (opts.file !== undefined) {
+        if (typeof opts.file !== 'string') die('--file takes a JSON file.');
+        if (ref || words.length) die('--file holds the pins: no selector or text on the command line.');
+        const each = ['quote', 'at', 'question', 'choice', 'recommend'].filter((k) => opts[k] !== undefined);
+        if (each.length) die(`${each.map((k) => `--${k}`).join(', ')} go on a single pin: in --file put them in each pin's own entry.`);
+        let list: unknown;
         try {
-          return decodeURIComponent(new URL(u).pathname).replace(/^\/+|\/+$/g, '');
-        } catch {
-          return null;
+          list = JSON.parse(fs.readFileSync(path.resolve(opts.file), 'utf8'));
+        } catch (e) {
+          die(`Could not read ${opts.file}: ${(e as Error).message}`);
         }
+        if (!Array.isArray(list) || !list.length || list.some((x) => !x || typeof x !== 'object' || Array.isArray(x))) die(`${opts.file} must be a list of pins: [{ "selector", "text" }, …]`);
+        if ((list as unknown[]).length > 50) die('At most 50 pins in one file.');
+        points = list as Point[];
+      } else {
+        let selector = (ref || '').trim();
+        let said = words;
+        // On a board a pin may be on no element: with one word left over, it is the text.
+        if (opts.board !== undefined && !words.length && selector) [selector, said] = ['', [ref]];
+        else if (selector === '-') selector = '';
+        points = [{ selector, text: said.join(' '), quote: opts.quote, at: opts.at, question: opts.question === true, choices: Array.isArray(opts.choice) ? opts.choice : undefined, recommend: opts.recommend }];
+      }
+
+      let browser = false; // whether a browser has the lab open (said by the lab with its pages)
+      let listed: ReturnType<typeof call> | undefined; // the lab's pages, asked once, however many pins
+      async function pinPage(asked: unknown): Promise<string> {
+        const got = await (listed ??= call('/_lab/pages', {}));
+        browser = got.status < 300 && Boolean(JSON.parse(got.text).browser);
+        const pages: { path: string; file: string; url: string }[] = got.status < 300 ? JSON.parse(got.text).pages || [] : [];
+        const proxied = got.status < 300 && Boolean(JSON.parse(got.text).proxy);
+        const list = () => pages.map((p) => p.path).join(', ') || 'none yet';
+        if (asked === undefined || asked === true) {
+          if (pages.length === 1 && !proxied) return pages[0].path;
+          die(`Which page? Add --page /path. This lab's pages: ${list()}.`);
+        }
+        let want = String(asked).trim();
+        try {
+          if (/^https?:\/\//.test(want)) want = new URL(want).pathname;
+        } catch {}
+        try {
+          want = decodeURIComponent(want);
+        } catch {}
+        const bare = want.replace(/^\/+|\/+$/g, '');
+        const pathOf = (u: string) => {
+          try {
+            return decodeURIComponent(new URL(u).pathname).replace(/^\/+|\/+$/g, '');
+          } catch {
+            return null;
+          }
+        };
+        // A folder's address is its index page; anything else is keyed the way the lab keys it (lib/labs.ts). Behind a
+        // dev server any address is a page (the lab lists only those with pins): its key is the answer.
+        const key = keyFor((bare.replace(/\.html?$/i, '') || 'index').split('/').join(path.sep));
+        if (proxied) return key;
+        const asIndex = keyFor(`${bare}/index`.split('/').join(path.sep));
+        const hit = pages.find((p) => [want, '/' + bare, key, asIndex].includes(p.path) || (p.file && p.file === bare) || pathOf(p.url) === bare);
+        if (hit) return hit.path;
+        die(`No page ${want} in this lab. Its pages: ${list()}.`);
+      }
+
+      const notes = new Set<string>();
+      const who = process.env.LAB_AGENT_NAME || session.agent;
+      const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
+      // --at: shares of the element (0 to 1), or pixels on a board.
+      const at = (v: unknown, px = false) => {
+        const m = /^\s*(-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\s*$/.exec(String(v));
+        const n = m ? [Number(m[1]), Number(m[2])] : [];
+        if (n.length < 2 || (px ? n.some((x) => x % 1) : n.some((x) => x < 0 || x > 1))) return die(`--at takes x,y ${px ? 'in pixels (from the frame\'s top left, or the board\'s origin): --at 40,120' : 'as shares of the element, each 0 to 1: --at 0.5,0.5'}.`);
+        return n;
       };
-      // A folder's address is its index page; anything else is keyed the way the lab keys it (lib/labs.ts). Behind a
-      // dev server any address is a page (the lab lists only those with pins): its key is the answer.
-      const key = keyFor((bare.replace(/\.html?$/i, '') || 'index').split('/').join(path.sep));
-      if (proxied) return key;
-      const asIndex = keyFor(`${bare}/index`.split('/').join(path.sep));
-      const hit = pages.find((p) => [want, '/' + bare, key, asIndex].includes(p.path) || (p.file && p.file === bare) || pathOf(p.url) === bare);
-      if (hit) return hit.path;
-      die(`No page ${want} in this lab. Its pages: ${list()}.`);
+
+      // Each pin is checked and made ready before any is saved, so a file with one wrong selector leaves nothing half done.
+      const ready = [];
+      for (const [i, pt] of points.entries()) {
+        const fail = (msg: string): never => die((points.length > 1 ? `Pin ${i + 1}: ` : '') + msg);
+        const text = typeof pt.text === 'string' ? pt.text.trim() : '';
+        const selector = typeof pt.selector === 'string' ? pt.selector.trim() : '';
+        const { board, frame } = opts as { board?: string; frame?: string };
+        if (!selector && !board) fail(`Say where: ${usage}`);
+        if (!text) fail(`Pin text is missing: ${CMD} pin ${selector || '<selector>'} "<point>"`);
+        if (pt.quote !== undefined && (typeof pt.quote !== 'string' || !pt.quote.trim())) fail('--quote takes the exact words.');
+        if (pt.quote && !selector) fail('--quote goes with a selector.');
+        let asked: { choices: string[]; recommend?: number } | undefined;
+        if (pt.choices !== undefined || pt.recommend !== undefined) {
+          const c = replyChoices({ choice: pt.choices, recommend: pt.recommend });
+          if (c instanceof Error) fail(c.message);
+          asked = c as { choices: string[]; recommend?: number } | undefined;
+        }
+
+        // Where the pin goes: a page of the lab, or a board (and one of its frames).
+        let page = '';
+        let spot: Record<string, unknown> = {};
+        if (board) {
+          const b = readBoard(dir, board) || fail(`No board ${board}. See: ${CMD} board list`);
+          const ids = b.frames.map((x) => x.id).join(', ');
+          const f = frame ? b.frames.find((x) => x.id === frame) || fail(`No frame ${frame} on board ${board} (its frames: ${ids}).`) : null;
+          if (!frame && selector) fail(`A pin on an element of a board names its frame: --frame <id> (its frames: ${ids}).`);
+          if (!f || !selector) {
+            // On the board itself (--at: pixels from its origin) or on a frame (from its top left).
+            const [px, py] = pt.at === undefined && f ? [24, 24] : pt.at === undefined ? fail('A pin on the board itself needs --at x,y in pixels from its origin (or --frame <id>).') : at(pt.at, true);
+            page = `/_board/${board}`;
+            spot = { kind: 'board', board, ...(f ? { frame: f.id, fx: px, fy: py } : { bx: px, by: py }), selector: '', x: 0, y: 0, docX: 0, docY: 0 };
+          } else if (f.src.startsWith('/_lab/')) {
+            // A variant of the board: its own page.
+            page = `/_board/${board}/${f.id}`;
+            spot = { board, frame: f.id };
+          } else {
+            // A frame that is a page of the lab: the pin goes on that page, with the board and frame it was made on.
+            page = await pinPage(f.src.split(/[?#]/)[0]);
+            spot = { board, frame: f.id };
+          }
+        } else {
+          page = await pinPage(pt.page === undefined ? opts.page : pt.page);
+        }
+
+        let [x, y] = [0.5, 0.5];
+        if (selector && pt.at !== undefined) [x, y] = at(pt.at);
+        let anchor: Record<string, unknown> = selector ? { kind: 'element', selector, x, y, ...spot } : spot;
+
+        // The words of a text pin: the browser finds them in the element (and says when it cannot).
+        if (pt.quote) anchor = { ...anchor, kind: 'text', quote: { exact: String(pt.quote).replace(/\s+/g, ' ').trim().slice(0, 300), prefix: '', suffix: '' } };
+        ready.push({ page, selector, text, anchor, asked, question: pt.question === true || Boolean(asked) });
+      }
+
+      const ids: string[] = [];
+      // Each pin is printed as it is saved, so a batch cut short (a refused pin, the lab gone) shows what was saved before it.
+      for (const r of ready) {
+        const res = await call('/_lab/api/comments', {
+          page: r.page, name, text: r.text, anchor: r.anchor, nonce: nonceOf(r.page, r.selector, r.text, JSON.stringify(r.anchor), JSON.stringify([r.asked, r.question])),
+          ...(r.question ? { intent: 'question' } : {}), ...r.asked,
+        });
+        if (res.status >= 300) die(`Could not pin${ready.length > 1 ? ` ${ids.length + 1} (${ids.length} of ${ready.length} saved: run it again, the saved ones are not made twice)` : ''}: ${res.text}`);
+        const { comment } = JSON.parse(res.text);
+        const words = r.anchor.quote ? ` (on the words "${(r.anchor.quote as { exact: string }).exact}")` : '';
+        const asks = r.asked ? ` (asks: ${r.asked.choices.map((c, n) => `${letter(n)}) ${c}`).join('  ')}${r.asked.recommend !== undefined ? `; your pick: ${letter(r.asked.recommend)}` : ''})` : r.question ? ' (a question)' : '';
+        ids.push(comment.id);
+        console.log(`Pinned ${comment.id} on ${r.page}${r.selector ? ` at ${r.selector}` : ' on the board'}${words}${asks}.`);
+      }
+      // The selector is checked by a browser: the page draws each pin and marks it when the selector matches nothing (or fills in
+      // what is there). With a browser open this waits up to 3 s for that; a pin it has not answered is saved unchecked.
+      const check = ready.map((r, n) => [r, ids[n]] as const).filter(([r]) => r.selector && !r.anchor.board);
+      if (check.length && !opts['no-check']) {
+        if (!browser) notes.add('No browser has the lab open: selector not checked.');
+        else {
+          const answer = (id: string) => {
+            const store = path.join(dir, '.lab/comments');
+            for (const f of fs.existsSync(store) ? fs.readdirSync(store) : [])
+              try {
+                const c = JSON.parse(fs.readFileSync(path.join(store, f), 'utf8')).comments?.[id];
+                if (c) return c.unmatched ? 1 : c.anchor?.element ? 2 : 0;
+              } catch {}
+            return 0;
+          };
+          for (let t = 0; t < 10 && check.some(([, id]) => !answer(id)); t++) await new Promise((r) => setTimeout(r, 300));
+          const slow = check.filter(([, id]) => !answer(id)).map(([, id]) => id);
+          if (slow.length) notes.add(`No browser answered in 3 s for ${slow.join(', ')}: saved unchecked.`);
+          for (const [r, id] of check) if (answer(id) === 1) notes.add(UNMATCHED(id, r.page, r.selector));
+        }
+      }
+      for (const n of notes) console.log(`Note: ${n}`);
+      process.exit(0);
     }
 
     // A comment by its id (of the thread or of a reply in it) or by the number on its card.

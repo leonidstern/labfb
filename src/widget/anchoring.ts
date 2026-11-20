@@ -530,10 +530,7 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
   };
   const own = short(target.textContent, 200);
   if (own && target !== document.body && (target.textContent || '').length < 400) anchor.text = short(own, 80);
-  const inside = target.parentElement?.closest<HTMLElement>('[id], [data-lab]');
-  if (inside) anchor.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
-  const section = sectionIn(target);
-  if (section) anchor.section = section;
+  Object.assign(anchor, around(target));
   if (shadowHost) anchor.shadow = openingTag(shadowHost);
   for (const [k, v] of Object.entries(componentAt(target))) if (v) anchor[k] = short(v, 200);
   if (target !== document.body) anchor.looks = looksOf(target);
@@ -627,14 +624,35 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
     }
   }
   Object.assign(anchor, schemeAt(target));
-  // The nearest element with an id around the spot: the block the pin is on.
+  return anchor;
+}
+
+// What a pin keeps of the page around its element: the box with an id or data-lab it sits in, the heading above it, and
+// the nearest element with an id (its block).
+function around(target: Element): Pick<Anchor, 'inside' | 'section' | 'block'> {
+  const out: Pick<Anchor, 'inside' | 'section' | 'block'> = {};
+  const inside = target.parentElement?.closest<HTMLElement>('[id], [data-lab]');
+  if (inside) out.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
+  const section = sectionIn(target);
+  if (section) out.section = section;
   for (let b: Element | null = target; b && b !== document.body && b !== document.documentElement; b = b.parentElement) {
     if (b.id) {
-      anchor.block = b.id;
+      out.block = b.id;
       break;
     }
   }
-  return anchor;
+  return out;
+}
+
+// An agent's pin (labit pin) is made from a selector alone. Drawn in a browser and found, it learns what a person's pin
+// carries (the element's tag, its words, its heading and box), so it is found again after the agent edits the page.
+// Null when its element is not found.
+export function fillAt(anchor) {
+  const node = findTarget(anchor);
+  if (!node) return null;
+  const out: Partial<Anchor> = { ...placeOf(node, anchor), element: openingTag(node), ...around(node) };
+  if (node !== document.body && (node.textContent || '').length < 400 && !anchor.quote) out.text = short(node.textContent, 80);
+  return out;
 }
 
 // The heading text of the section an element sits in: the last heading before it (or around it).
@@ -944,6 +962,10 @@ export function foundAt(anchor) {
   if (!node || node === at) return null;
   // Never saved into another section than the pin's own: that would move it silently (it stays shown there, unsaved).
   if (anchor.section && sectionIn(node) !== anchor.section) return null;
+  return placeOf(node, anchor);
+}
+// Where a pin sits on its element, as the lab keeps it: the element's path, its place on the page, its height.
+function placeOf(node, anchor) {
   const rect = node.getBoundingClientRect();
   return { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height) };
 }
