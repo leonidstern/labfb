@@ -6,8 +6,9 @@
 // can point at a node_modules that has it). One line per check; exits 1 if any fails.
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 import { claimPort } from './port.mjs';
-import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
+import { playwright, engines, LAB, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
 const pw = playwright({ ciFails: true });
 
@@ -30,6 +31,14 @@ async function lab(n) {
   const A = await post({ name: 'Sam', text: long(0), anchor: spot('#a') });
   seen.push(A.id);
   for (let i = 1; i <= 11; i++) seen.push((await post({ name: i % 2 ? 'Ann' : 'Sam', text: long(i), parent: A.id })).id);
+  // Thread Q: the last message is an agent's question with choices (it opens at the question, as thread.ts says).
+  const Q = await post({ name: 'Sam', text: long(0), anchor: spot('#b') });
+  seen.push(Q.id);
+  for (let i = 1; i <= 6; i++) seen.push((await post({ name: i % 2 ? 'Ann' : 'Sam', text: long(i), parent: Q.id })).id);
+  const cli = (...args) => new Promise((done) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, () => done()));
+  await cli('wait', '--timeout', '3');
+  await cli('reply', Q.id, `Which one do you want? ${long(3)}`, '--choice', 'First option with words', '--choice', 'Second option with more words to wrap around the row', '--choice', 'Third');
+  for (const c of (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments) if (c.parent === Q.id && c.session) seen.push(c.id);
   const T = await post({ name: 'Sam', text: long(0), anchor: spot('#c') });
   seen.push(T.id);
   for (let i = 1; i <= 11; i++) {
@@ -62,7 +71,7 @@ for (const [n, eng] of engines().entries()) {
       const q = box.getBoundingClientRect();
       const items = [...box.querySelectorAll('.msg')];
       const at = (n) => n && { top: Math.round(n.getBoundingClientRect().top - q.top), bottom: Math.round(n.getBoundingClientRect().bottom - q.top) };
-      return { scrollTop: Math.round(box.scrollTop), ch: box.clientHeight, n: items.length, last: at(items[items.length - 1]), fresh: at(box.querySelector('.fresh, .newline')) };
+      return { scrollTop: Math.round(box.scrollTop), ch: box.clientHeight, n: items.length, last: at(items[items.length - 1]), fresh: at(box.querySelector('.fresh, .newline')), ask: at(box.querySelector('.msg.asks')) };
     }, which);
     const inView = (x, ch) => Boolean(x) && x.top >= -1 && x.bottom <= ch + 1;
     const openOne = async (which) => {
@@ -70,7 +79,7 @@ for (const [n, eng] of engines().entries()) {
       await sleep(1800);
       if (which === 'chat') await shadow(() => { r.querySelector('.chat-btn').click(); });
       else {
-        const q = await shadow(() => { const b = r.querySelectorAll('button.pin')[a].getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }, which === 'A' ? 0 : 1);
+        const q = await shadow(() => { const b = r.querySelectorAll('button.pin')[a].getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }, { A: 0, Q: 1, B: 2 }[which]);
         await p.mouse.click(q.x, q.y);
       }
       await sleep(450);
@@ -86,6 +95,7 @@ for (const [n, eng] of engines().entries()) {
     };
     await stays('a read thread opens with its last message in view, and stays', 'A', (x) => x.n === 12 && inView(x.last, x.ch));
     await stays('a thread with new messages opens at the first new one, and stays', 'B', (x) => x.fresh && x.fresh.top >= -1 && x.fresh.top < x.ch - 20);
+    await stays('a thread whose last message is a question opens at the question, in view, and stays', 'Q', (x) => x.ask && x.ask.top >= -1 && x.ask.top < x.ch - 40);
     await stays('the chat opens with its last message in view, and stays', 'chat', (x) => x.n === 30 && inView(x.last, x.ch));
 
     // A message you send, and one that arrives, while the thread or the chat is open at its end.
