@@ -35,12 +35,12 @@ try {
       // ----- ten frames: the cap, and the widget in them draws nothing
       await p.goto(B + '/_lab/board/ten');
       await bw(4000);
-      const ten = await p.evaluate(() => ({ live: __labBoard.live().length, cards: document.querySelectorAll('#lab-board .f').length, scroll: [scrollX, scrollY], hosts: document.querySelectorAll('[data-lab-comments]').length, bodyOverflow: getComputedStyle(document.body).overflow }));
+      const ten = await p.evaluate(() => ({ live: __labBoard.live().length, cards: document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f').length, scroll: [scrollX, scrollY], hosts: document.querySelectorAll('[data-lab-comments]').length, bodyOverflow: getComputedStyle(document.body).overflow }));
       check(eng, 'ten frames: all ten are on the board, at most 8 are alive', ten.cards === 10 && ten.live === 8, JSON.stringify(ten));
       check(eng, 'the board page has one widget (its own), none in the frames', ten.hosts === 1, String(ten.hosts));
-      const inner = await p.evaluate(() => [...document.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelectorAll('[data-lab-comments]').length));
+      const inner = await p.evaluate(() => [...document.querySelector('[data-lab-board-view]').shadowRoot.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelectorAll('[data-lab-comments]').length));
       check(eng, 'no frame has a widget in it', inner.every((n) => n === 0), JSON.stringify(inner));
-      const titleCard = await p.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.querySelector('.c')?.textContent).filter(Boolean));
+      const titleCard = await p.evaluate(() => [...document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f')].map((f) => f.querySelector('.c')?.textContent).filter(Boolean));
       check(eng, 'a frame not alive is a title card: label, size, no count', titleCard.length === 2 && titleCard.every((t) => /\/pricing/.test(t) && /300 × 300/.test(t) && !/comment|pin|\d+ open/i.test(t)), JSON.stringify(titleCard));
       // ----- inputs
       const c0 = await cam();
@@ -57,7 +57,7 @@ try {
       const fit = await cam();
       check(eng, 'Shift+1 fits everything again', fit.z < 1 && Math.abs(fit.z - c0.z) < 0.01, JSON.stringify(fit));
       // zoom about the cursor: the world point under it stays under it
-      const box = await p.evaluate(() => { const r = document.querySelector('#lab-board').getBoundingClientRect(); return [r.x, r.y]; }); // under the view's bar
+      const box = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board').getBoundingClientRect(); return [r.x, r.y]; }); // under the view's bar
       const under = (c, x, y) => [(x - box[0]) / c.z - c.x, (y - box[1]) / c.z - c.y];
       const before = under(await cam(), 700, 300);
       await p.keyboard.down('Control');
@@ -74,16 +74,16 @@ try {
       await sleep(200);
       await p.keyboard.press('Tab');
       await sleep(400);
-      const tabbed = await p.evaluate(() => ({ at: __labBoard.selected(), ring: document.querySelectorAll('#lab-board .f.sel').length }));
+      const tabbed = await p.evaluate(() => ({ at: __labBoard.selected(), ring: document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f.sel').length }));
       check(eng, 'Tab moves the camera to a frame and draws no selection ring', Boolean(tabbed.at) && tabbed.ring === 0, JSON.stringify(tabbed));
       const lab = await p.locator('#lab-board .f[data-id="f0"] .t').boundingBox();
       await p.mouse.click(lab.x + 8, lab.y + lab.height / 2);
       await sleep(400);
-      const clicked = await p.evaluate(() => ({ entered: __labBoard.entered(), ring: document.querySelectorAll('#lab-board .f.sel').length, chips: document.querySelectorAll('#lab-board .t u').length }));
+      const clicked = await p.evaluate(() => ({ entered: __labBoard.entered(), ring: document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f.sel').length, chips: document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .t u').length }));
       check(eng, 'a click on the frame\'s label opens nothing: no ring, no size list', clicked.entered === '' && clicked.ring === 0 && clicked.chips === 0, JSON.stringify(clicked));
       await p.keyboard.press('Enter');
       await sleep(400);
-      const inFrame = await p.evaluate(() => ({ entered: __labBoard.entered(), pe: getComputedStyle(__labBoard.frame('f0')).pointerEvents, focus: document.activeElement === __labBoard.frame('f0') }));
+      const inFrame = await p.evaluate(() => ({ entered: __labBoard.entered(), pe: getComputedStyle(__labBoard.frame('f0')).pointerEvents, focus: document.querySelector('[data-lab-board-view]').shadowRoot.activeElement === __labBoard.frame('f0') }));
       check(eng, 'Enter on the frame Tab moved to gives the page in the frame the pointer and the focus', inFrame.entered === 'f0' && inFrame.pe === 'auto' && inFrame.focus, JSON.stringify(inFrame));
       await p.keyboard.press('Escape');
       await sleep(250);
@@ -97,7 +97,7 @@ try {
       for (let i = 0; i < 10; i++) await p.mouse.wheel(-4000, -4000);
       await sleep(300);
       const edge = await cam();
-      check(eng, 'panning stops at the edge: some of the board stays in view', (await p.evaluate(() => { const r = document.querySelector('#lab-board .world').getBoundingClientRect(); return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight; })), JSON.stringify(edge));
+      check(eng, 'panning stops at the edge: some of the board stays in view', (await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .world').getBoundingClientRect(); return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight; })), JSON.stringify(edge));
       // ----- two boards, one with frames far apart
       await p.goto(B + '/_lab/board/wide');
       await bw(2500);
@@ -109,30 +109,30 @@ try {
       await p.evaluate(() => (window.__same = 1));
       fs.writeFileSync(path.join(DIR, 'pricing.html'), fs.readFileSync(path.join(DIR, 'pricing.html'), 'utf8').replace('Pricing one', 'Pricing two'));
       await sleep(2500);
-      const saved = await p.evaluate(() => ({ same: window.__same === 1, text: [...document.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelector('h1')?.textContent) }));
+      const saved = await p.evaluate(() => ({ same: window.__same === 1, text: [...document.querySelector('[data-lab-board-view]').shadowRoot.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelector('h1')?.textContent) }));
       check(eng, 'a save does not reload the board; frames of that page follow', saved.same && saved.text.some((t) => t === 'Pricing two'), JSON.stringify(saved));
       // ----- the board file changes: the board follows
       await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }, { id: 'd', src: '/checkout', w: 820, h: 1180 }], { rev: (await (await fetch(`${B}/_lab/api/board?name=three`)).json()).rev });
       await sleep(2500);
-      check(eng, 'a frame added to the board file shows up', (await p.evaluate(() => document.querySelectorAll('#lab-board .f').length)) === 4);
+      check(eng, 'a frame added to the board file shows up', (await p.evaluate(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f').length)) === 4);
       // ----- a board that does not exist
       await p.goto(B + '/_lab/board/nothere');
       await sleep(1200);
-      check(eng, 'a board that does not exist says so', /no board called nothere/i.test(await p.evaluate(() => document.body.textContent)));
+      check(eng, 'a board that does not exist says so', /no board called nothere/i.test(await p.evaluate(() => document.body.textContent + (document.querySelector('[data-lab-board-view]')?.shadowRoot?.textContent || ''))));
       // ----- the board's own address is the one board: the view a page's board link opens, over an empty page
       await p.goto(B + '/_lab/board/three');
       await bw(1500);
       await p.mouse.move(600, 400);
       await p.mouse.wheel(30, 40);
       await sleep(900);
-      const alone = await p.evaluate(() => { const v = document.querySelector('[data-lab-board-view="three"]'); const r = v?.getBoundingClientRect(); return { view: Boolean(v), whole: Boolean(r) && r.top === 0 && r.left === 0 && r.width === innerWidth && r.height === innerHeight, inView: Boolean(v?.querySelector('#lab-board .world')), name: v?.querySelector('.bv-name')?.textContent, half: Boolean(v?.querySelector('.bv-size, .bv-grip')), close: Boolean(v?.querySelector('.bv-close')), title: document.title, hash: location.hash, entries: history.length }; });
+      const alone = await p.evaluate(() => { const v = document.querySelector('[data-lab-board-view="three"]'); const r = v?.getBoundingClientRect(); return { view: Boolean(v), whole: Boolean(r) && r.top === 0 && r.left === 0 && r.width === innerWidth && r.height === innerHeight, inView: Boolean(v?.shadowRoot?.querySelector('#lab-board .world')), name: v?.shadowRoot?.querySelector('.bv-name')?.textContent, half: Boolean(v?.shadowRoot?.querySelector('.bv-size, .bv-grip')), close: Boolean(v?.shadowRoot?.querySelector('.bv-close')), title: document.title, hash: location.hash, entries: history.length }; });
       check(eng, 'the board page is the board view over the whole window, named, with no half and no close (nothing is under it)', alone.view && alone.whole && alone.inView && alone.name === 'board three' && !alone.half && !alone.close && alone.title === 'board three', JSON.stringify(alone));
       check(eng, 'the board page keeps its camera in the address (a reload comes back there)', /^#-?\d+,-?\d+,[\d.]+$/.test(alone.hash), alone.hash);
       const backs = [];
       for (const how of ['button', 'Shift+KeyB', 'Escape']) {
         await p.goto(B + '/_lab/board/three?of=%2Fcheckout');
         await bw(1200);
-        const label = await p.evaluate(() => document.querySelector('[data-lab-board-view] .bv-close')?.textContent);
+        const label = await p.evaluate(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('.bv-close')?.textContent);
         if (how === 'button') await p.click('[data-lab-board-view] .bv-close');
         else await p.keyboard.press(how);
         await p.waitForURL(B + '/checkout', { timeout: 4000 }).catch(() => {});
@@ -142,11 +142,11 @@ try {
       // ----- the pointer: the page's pin where a click would pin (between the frames and on them), the hand with Space, the label's own
       await p.goto(B + '/pricing');
       await sleep(2500);
-      const curAt = async (x, y) => { await p.mouse.move(x - 3, y - 3); await p.mouse.move(x, y); await sleep(120); return p.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return { cursor: getComputedStyle(e).cursor, cls: e.className || e.id }; }, [x, y]); };
+      const curAt = async (x, y) => { await p.mouse.move(x - 3, y - 3); await p.mouse.move(x, y); await sleep(120); return p.evaluate(([x, y]) => { let e = document.elementFromPoint(x, y); for (let i = 0; i < 3 && e?.shadowRoot && e.matches('[data-lab-board-view]'); i++) e = e.shadowRoot.elementFromPoint(x, y) || e; return { cursor: getComputedStyle(e).cursor, cls: e.className || e.id }; }, [x, y]); };
       const onPage = await curAt(600, 300);
       await p.goto(B + '/_lab/board/two');
       await bw(3500);
-      const [f0, f1] = await p.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => { const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
+      const [f0, f1] = await p.evaluate(() => [...document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f')].map((f) => { const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
       const gap = await curAt((f0.x + f0.w + f1.x) / 2, f0.y + f0.h / 2);
       const empty = await curAt(600, 760);
       const onFrame = await curAt(f0.x + f0.w / 2, f0.y + f0.h / 2);
@@ -172,7 +172,7 @@ try {
       await q.goto(B + '/_lab/board/three');
       await sleep(2500);
       const first = await q.evaluate(() => ({ cam: __labBoard.camera(), live: __labBoard.live(), vv: visualViewport.scale }));
-      const widths = await q.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.offsetWidth));
+      const widths = await q.evaluate(() => [...document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f')].map((f) => f.offsetWidth));
       check(eng, 'phone: the first view is every frame, 390 wide, the ones in view alive', widths.length > 1 && widths.every((w) => w === 390) && first.live.length >= 1 && first.cam.z < 0.9 && first.vv === 1, JSON.stringify({ ...first, widths }));
       await ph.close();
     } finally {

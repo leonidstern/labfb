@@ -34,13 +34,13 @@ try {
       p.on('pageerror', (e) => console.log('pageerror', e.message));
       // The board's own address goes to the page, the board open over it.
       await p.goto(B + '/_lab/board/shop');
-      await p.waitForFunction(() => document.querySelector('[data-lab-board-view] #lab-board .f[data-id="a"]'), null, { timeout: 8000 });
+      await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="a"]'), null, { timeout: 8000 });
       await sleep(1000);
-      const at = await p.evaluate(() => ({ path: location.pathname, hash: location.hash, own: document.querySelector('[data-lab-board-view] .bv-grip') !== null }));
+      const at = await p.evaluate(() => ({ path: location.pathname, hash: location.hash, own: document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('.bv-grip') !== null }));
       check(eng, 'the old address ends on the page with the board open over it (#board=shop, the half-view bar)', at.path === '/pricing' && at.hash === '#board=shop' && at.own, JSON.stringify(at));
       check(eng, 'the pin left on the old address is drawn there (it is the page\'s now)', (await stored('/pricing')).some((c) => c.id === 'old1') && (await pins(p)) === 1, String(await pins(p)));
       // A tap on frame a makes a pin: the page's comment, not the old address's.
-      const a = await p.evaluate(() => { const r = document.querySelector('#lab-board .f[data-id="a"]').getBoundingClientRect(); return { x: r.x, y: r.y }; });
+      const a = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="a"]').getBoundingClientRect(); return { x: r.x, y: r.y }; });
       await p.mouse.click(a.x + 60, a.y + 80);
       await sleep(400);
       await p.keyboard.type('one set of pins');
@@ -53,7 +53,7 @@ try {
       check(eng, 'the board\'s view draws both pins', (await pins(p)) === 2, String(await pins(p)));
       // A reload opens the board again with both.
       await p.reload();
-      await p.waitForFunction(() => document.querySelector('[data-lab-board-view] #lab-board .f[data-id="a"]'), null, { timeout: 8000 });
+      await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="a"]'), null, { timeout: 8000 });
       await sleep(1000);
       check(eng, 'after a reload the page opens the board with both pins', (await pins(p)) === 2, String(await pins(p)));
       // From another page: the link goes to the board's page (no board over the cart, no third set of pins).
@@ -63,7 +63,7 @@ try {
       await q.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 5000 });
       await sleep(600);
       await q.click('#go');
-      await q.waitForFunction(() => location.pathname === '/pricing' && document.querySelector('[data-lab-board-view] #lab-board .f[data-id="a"]'), null, { timeout: 8000 });
+      await q.waitForFunction(() => location.pathname === '/pricing' && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="a"]'), null, { timeout: 8000 });
       await sleep(800);
       check(eng, 'a link to the board on another page opens it over the board\'s page', q.url().endsWith('/pricing#board=shop'), q.url());
       await q.goBack();

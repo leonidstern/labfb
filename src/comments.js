@@ -80,6 +80,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get FLAGS() { return FLAGS; },
     get FLAGSAPI() { return FLAGSAPI; },
     get OFF() { return OFF; },
+    get isOff() { return isOff; },
     get S() { return S; },
     get actionOf() { return actionOf; },
     get adminToken() { return adminToken; },
@@ -1453,12 +1454,14 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   };
   // data-uncommentable: no new pins or areas start inside this part of the page (same attribute as Claude artifacts).
   const OFF = '[data-uncommentable]';
+  // Is this press on a part marked so? Through shadow roots (a board's view has one), where the press's own target is the host.
+  const isOff = (e) => e.composedPath().some((n) => n instanceof Element && n.matches(OFF));
   bindDrag(W);
 
   // Option (Alt) presses are for commenting: the page never sees them, so a menu item or a button doesn't run
   // and close itself before the pin lands on it.
   const optionPress = (e) => e.altKey && !e.metaKey && !e.ctrlKey && e.button === 0 && !e.composedPath().includes(host) &&
-    !(e.target instanceof Element && e.target.closest(OFF));
+    !isOff(e);
   for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
     addEventListener(type, (e) => {
       if (!optionPress(e)) return;
@@ -1546,7 +1549,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       stopPress();
       S.pinnedByHold = false;
       if (e.pointerType === 'touch') S.lastTouch = Date.now();
-      if (e.pointerType !== 'touch' || S.draft || !(e.target instanceof Element) || e.composedPath().includes(host) || e.target.closest(OFF)) return;
+      if (e.pointerType !== 'touch' || S.draft || !(e.target instanceof Element) || e.composedPath().includes(host) || isOff(e)) return;
       const { clientX: x, clientY: y } = e;
       pressing(true);
       S.press = {
@@ -1923,7 +1926,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     if (S.lastTouch && Date.now() - S.lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || S.ctlClick) return;
-    if (e.target instanceof Element && e.target.closest(OFF)) return;
+    if (isOff(e)) return;
     if (String(getSelection?.() || '').trim()) return;
     showAgain();
     if (S.dKey && S.drew) return; // D held and something drawn (or cancelled): a click is part of that, not a pin

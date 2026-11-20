@@ -39,7 +39,7 @@ try {
       await sleep(2000);
       const hides = await p.evaluate(() => CSS.supports('anchor-name: --a')); // the board's box covers the screen: its pins are held wherever anchor positioning is
       const sh = (fn) => p.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot), fn);
-      const rect = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; }, id);
+      const rect = (id) => p.evaluate((i) => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; }, id);
       const a = await rect('a');
       await p.mouse.click(a.x + 100, a.y + 150);
       await p.waitForFunction(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot; return Boolean(r.querySelector('textarea')); }, null, { timeout: 4000 }).catch(() => {});
@@ -93,9 +93,9 @@ try {
       // The board reads its file again on the lab's word that it changed (the live stream); said here directly, so this
       // checks what follows: the board draws the frame anew and tells the widget the layout changed.
       await p.evaluate(() => dispatchEvent(new CustomEvent('lab-state', { detail: { boards: 1e6, boardNames: ['pins'] } })));
-      await p.waitForFunction((w) => Math.abs(document.querySelector('#lab-board .f[data-id="a"]').getBoundingClientRect().width - w) > 20, a4.w, { timeout: 8000 }).catch(() => {});
+      await p.waitForFunction((w) => Math.abs(document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="a"]').getBoundingClientRect().width - w) > 20, a4.w, { timeout: 8000 }).catch(() => {});
       await sleep(400);
-      const a5 = await p.evaluate(() => { const r = document.querySelector('#lab-board .f[data-id="a"]').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
+      const a5 = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="a"]').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
       const p5 = await pinAt();
       const want5 = { x: a5.x + an.fx * (a5.w / 820), y: a5.y + an.fy * (a5.w / 820) };
       check(eng, 'the frame is resized: the pin is placed again on its point', Math.abs(p5.x - want5.x) < 3 && Math.abs(p5.y - want5.y) < 3, JSON.stringify({ p5, want5, w: a5.w }));
