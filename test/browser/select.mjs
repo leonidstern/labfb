@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { SEED, listFrom } from '../../lib/actions.ts';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -24,7 +25,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-select-b-')));
-const PORT = 7930 + Math.floor(Math.random() * 30);
+const PORT = claimPort(7930, 30);
 const B = `http://localhost:${PORT}`;
 const page = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><body style="font:20px sans-serif">${body}`;
 const reset = () => {

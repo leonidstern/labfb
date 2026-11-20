@@ -34,7 +34,7 @@ import {
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { momentText } from '../lib/moment.mjs';
-import { flushPins, heldPin, holdPin, letPin, newPass } from './widget/pinhold.ts';
+import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
@@ -361,7 +361,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const scanForFramework = () => lookForFramework([document.body, ...document.querySelectorAll('body > *, body > * > *, body > * > * > *')]);
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning(), native: () => flag('native') });
+  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord });
   startInk(); // comments on selected words show as ink on them, not a pin (src/widget/wordink.ts)
 
@@ -724,7 +724,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       },
       swipe: swipeDown,
       leave: goOut,
-      native: () => flag('native'),
     });
     return (labs = m);
   }).catch(() => (S.switcher = null))); // couldn't load: nothing opens, and the next ask tries again
@@ -800,7 +799,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     started.add(name);
     if (name === 'select') bindSelect(W); // select mode (V)
     if (name === 'inkOnText' && S.loaded) render(); // switched on from the ⋯ menu: the notes on words turn to ink (wordink.ts)
-    if (name === 'native') host.toggleAttribute('data-native', true); // what the widget's CSS does natively (styles.css)
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
   S.syncFlags = (on, reload) => {
@@ -956,7 +954,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // A board is held to the screen (its own page, or a view over a page), so what sits on it is too: its pins, an open
   // card, a new comment's box. The page scrolling under a half view then moves none of them, and nothing is put back a
   // frame late (Leo, 19 Nov: "when on half board scrolling pins flickering weirdly"). n was just placed by the page's px.
-  // A pin the browser holds (flag native, pinhold.ts) is tied to its frame's box and left alone.
+  // A pin the browser holds (pinhold.ts) is tied to its frame's box and left alone.
   const onBoard = (/** @type {HTMLElement} */ n, /** @type {any} */ a) => {
     if (a?.kind !== 'board' || heldPin(n)) return void (n.style.position && (n.style.position = ''));
     n.style.position = 'fixed';
@@ -984,6 +982,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     const prevAtEnd = prevBody ? prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 48 : false;
     // Every pin's place is read before anything is written, so the page lays out once per render, not once per pin.
     const places = new Map(S.on ? threads().filter((c) => c.anchor?.kind !== 'page').map((c) => [c.id, position(c.anchor || {})]) : []);
+    readPins(threads().map((c) => (c.anchor && c.anchor.kind !== 'page' && c.anchor.kind !== 'board' && !places.get(c.id)?.moved ? findTarget(c.anchor) : null)));
     // A pin that is still there stays the same element, updated in place, so what runs on it (the agent's ring, a pop, a
     // swap, a hover or open transition) carries on instead of starting again (Leo, 18 Nov: clicking or leaving a pin
     // "reloads" its animation). Everything else on the layer (cards, outlines, drafts) is drawn anew, as before; a pin
@@ -1066,7 +1065,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (isPage(c)) return; // in the chat, not on the page
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
-      const { left, top, moved, zone, clipped } = places.get(c.id) || position(c.anchor || {});
+      const { left, top, moved, zone, clipped, covered } = places.get(c.id) || position(c.anchor || {});
       // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
       // new spot (drag) or close. The agent finishing one closes it.
       if (moved) {
@@ -1159,7 +1158,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         pin.append(inkSvg(ink, { left: 0, top: 0, width: zone.width, height: zone.height }));
       }
       const held = placePin(pin, c, ink && zone, left, top, moved);
-      pin.style.visibility = clipped && !held && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position; a held pin: the browser)
+      // Cut off by a box it's inside (see position; a held pin: the browser), or under a board's view over the page.
+      pin.style.visibility = ((clipped && !held) || covered) && S.openId !== c.id ? 'hidden' : '';
       if (born) {
         // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
         grab(pin, () => pinData.get(pin).c);
@@ -1370,9 +1370,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   toggleBtn.addEventListener('click', () => setOn(!S.on));
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
-  // With the flag native the menu is a popover the ⋯ button opens (read at start): the browser closes it on a press
-  // elsewhere or Esc, gives focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
-  const popMenu = flag('native') && !coarse && typeof moreMenu.showPopover === 'function'; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
+  // On a computer the menu is a popover the ⋯ button opens: the browser closes it on a press elsewhere or Esc, gives
+  // focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
+  const popMenu = !coarse; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
   if (popMenu) {
     moreMenu.popover = 'auto';
     /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
@@ -1843,9 +1843,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     else if (altMotion) drawMotion();
   }, { capture: true, passive: true });
   let scrollQuiet = 0;
-  // With the flag native the browser says when a scroll ended (scrollend); the timer stays as a backstop, longer, for a
-  // scroll that never says so. Without it, the timer is the end.
-  const scrollEnds = flag('native') && 'onscrollend' in window;
+  // The browser says when a scroll ended (scrollend); a timer stays as a backstop for a scroll that never says so.
   const scrollOver = () => {
     clearTimeout(scrollQuiet);
     if (scrolling) {
@@ -1863,9 +1861,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       scrolling = 1;
       drawMotion();
     }
-    scrollQuiet = window.setTimeout(scrollOver, scrollEnds ? 1500 : 250);
+    scrollQuiet = window.setTimeout(scrollOver, 1500);
   }, { capture: true, passive: true });
-  if (scrollEnds) addEventListener('scrollend', () => coarse && scrollOver(), { capture: true, passive: true });
+  addEventListener('scrollend', () => coarse && scrollOver(), { capture: true, passive: true });
   setInterval(() => ((S.slow || slowEls.size > 0) && slowAll(), drawMotion()), 1000);
   if (coarse) new MutationObserver(() => drawMotion()).observe(host, { attributeFilter: ['data-sheet'] }); // a sheet opens: the controls go
   doneBtn.addEventListener('click', toggleDone);
@@ -2763,10 +2761,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     pin.style.left = `${zone ? zone.left : left}px`;
     pin.style.top = `${zone ? zone.top : top}px`;
   };
-  // ...and, with the flag native, held there by the browser (pinhold.ts): tied to its element, so scrolling needs no
-  // script. True when it is held.
+  // ...and held there by the browser (pinhold.ts): tied to its element, so scrolling needs no script. True when it is held.
   // A card or box tied to its pin by the browser (thread.ts tieToPin): on a computer; phones keep their sheets.
-  const nativeTie = () => flag('native') && !sheetMode.matches;
+  const nativeTie = () => !sheetMode.matches;
   // Held, its place is the browser's: the script writes none (it would make the next pin's reading lay the page out again);
   // a drawing still gets its size.
   const placePin = (pin, c, zone, left, top, moved) => {
@@ -2774,11 +2771,11 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     let held;
     if (a.kind === 'board') {
       // A board pin on a frame: tied to the frame's box by its share of it, so the board's camera carries it (pinhold.ts).
-      const box = flag('native') && a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null;
+      const box = a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null;
       const share = box?.offsetWidth && box.offsetHeight ? { x: a.fx / box.offsetWidth, y: (a.fy || 0) / box.offsetHeight } : null;
       held = holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
     } else {
-      const node = flag('native') && !moved ? findTarget(a) : null;
+      const node = moved ? null : findTarget(a);
       held = holdPin(pin, Boolean(node), node, zone ? zone.left : left, zone ? zone.top : top);
     }
     if (!held) inkAt(pin, zone, left, top);
@@ -2797,12 +2794,13 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     const all = threads().filter((c) => c.anchor?.kind !== 'page');
     const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
     const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
+    readPins(places.map(([, , c]) => (c.anchor?.kind === 'board' ? null : findTarget(c.anchor || {}))));
     if (places.length + all.filter(skip).length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
     // A pin whose words show again (back after an edit) turns into ink again.
     if (places.some(([pin, { zone }, c]) => !zone && !pin.classList.contains('on-ink') && inkRange(c.anchor))) return render();
-    for (const [pin, { left, top, clipped, zone }, c] of places) {
+    for (const [pin, { left, top, clipped, covered, zone }, c] of places) {
       const held = placePin(pin, c, pin.classList.contains('ink') && zone, left, top, false);
-      pin.style.visibility = clipped && !held ? 'hidden' : '';
+      pin.style.visibility = (clipped && !held) || covered ? 'hidden' : '';
     }
     flushPins();
   };
@@ -2846,22 +2844,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     load();
     setTimeout(() => S.checkSections?.(), 400);
   };
-  // With the flag native and the Navigation API, the browser says when the current entry changed (pushState, replaceState,
-  // back and forward alike), so the page's own history is left as it is; else it is patched, as before. A page that
-  // patches history too can clash with the patch.
-  const navApi = flag('native') ? /** @type {any} */ (window).navigation : null;
-  if (navApi?.addEventListener) navApi.addEventListener('currententrychange', () => queueMicrotask(navigated));
-  else {
-    for (const m of ['pushState', 'replaceState']) {
-      const original = history[m];
-      history[m] = function (...args) {
-        const out = original.apply(this, args);
-        queueMicrotask(navigated);
-        return out;
-      };
-    }
-    addEventListener('popstate', navigated);
-  }
+  // The Navigation API says when the current entry changed (pushState, replaceState, back and forward alike), so the
+  // page's own history is left as it is.
+  /** @type {any} */ (window).navigation.addEventListener('currententrychange', () => queueMicrotask(navigated));
   document.addEventListener('astro:after-swap', navigated);
   // Pick up comments others left while this tab was in the background.
   document.addEventListener('visibilitychange', () => {
@@ -3047,7 +3032,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     fonts.textContent += inkCss(); // ink on words: the bands, and the selection drawn as sent ink (wordink.ts)
     if (flag('select')) startFlag('select');
-    if (flag('native')) startFlag('native');
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
     startSections(); // the section bar: what is new or updated on the page since you read it
@@ -3094,7 +3078,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // board's own sums (no read of the page, no redraw of the widget: that took 70 ms a frame on a page with many pins,
   // and ran a frame late, so the pins swam behind the frames; Leo, 19 Nov: "zoom feels weird, slow"). An open card or a
   // new comment's box on the board moves by as much as its pin, as it is (what is typed in it stays). Pins the browser
-  // holds (flag native) move by themselves. False when it can't (a pin being dragged): the caller draws everything again.
+  // holds move by themselves. False when it can't (a pin being dragged): the caller draws everything again.
   const followCamera = () => {
     if (S.grabbing) return false;
     const by = (/** @type {HTMLElement | null | undefined} */ n, /** @type {number} */ dx, /** @type {number} */ dy) => {
@@ -3129,7 +3113,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     for (const [id, pin] of pinsById) {
       const info = pinData.get(pin);
       if (!info || info.c.anchor?.kind === 'board') continue;
-      const covered = coveredAt(parseFloat(pin.style.left) - scrollX, parseFloat(pin.style.top) - scrollY);
+      // A pin the browser holds has no place in its style: its spot is read (only in a half view, as it scrolls).
+      const at = heldPin(pin) ? position(info.c.anchor || {}) : { left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+      const covered = coveredAt(at.left - scrollX, at.top - scrollY);
       if (covered === Boolean(info.covered)) continue;
       info.covered = covered;
       pin.style.visibility = (covered || position(info.c.anchor || {}).clipped) && S.openId !== id ? 'hidden' : '';

@@ -11,6 +11,7 @@ import zlib from 'node:zlib';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -71,7 +72,7 @@ async function lab(settings) {
   fs.writeFileSync(path.join(dir, 'index.html'), PAGE);
   fs.writeFileSync(path.join(dir, 'dark.html'), PAGE.replace('body{margin:30px;', 'body{background:#111;color:#eee;margin:30px;'));
   if (settings) fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify(settings));
-  const port = String(5500 + Math.floor(Math.random() * 400));
+  const port = String(claimPort(5500, 400));
   const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
   const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', port], { cwd: dir, env });
   const base = `http://localhost:${port}`;

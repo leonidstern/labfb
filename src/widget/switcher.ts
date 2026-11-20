@@ -20,7 +20,6 @@ type Deps = {
   sheet: (open: boolean) => void;
   swipe: (node: HTMLElement, close: () => void) => void;
   leave: (node: HTMLElement, hide: () => void) => void; // the card's exit, then hide
-  native?: () => boolean; // the flag native: on a computer the box is a popover (the browser's top layer, Esc, a press elsewhere)
 };
 
 let d: Deps;
@@ -52,9 +51,9 @@ export function bindSwitcher(deps: Deps) {
   panel.append(el('div', { class: 'handle' }), input, list, foot);
   box.append(panel);
   (root.querySelector('.ui') || root).append(box); // with the bar, so a pinch zoom keeps it on screen (sheets.ts)
-  // With the flag native, a computer's box is a popover: above the page's own dialogs and full screen, and the browser
-  // closes it on a press elsewhere or Esc (then it says so here). Phones keep it one of the widget's sheets.
-  if (d.native?.() && !matchMedia('(pointer: coarse)').matches && typeof box.showPopover === 'function') {
+  // A computer's box is a popover: above the page's own dialogs and full screen, and the browser closes it on a press
+  // elsewhere or Esc (then it says so here). Phones keep it one of the widget's sheets.
+  if (!matchMedia('(pointer: coarse)').matches) {
     box.popover = 'auto';
     box.addEventListener('beforetoggle', (e) => {
       if ((e as ToggleEvent).newState !== 'closed' || box.hidden) return;

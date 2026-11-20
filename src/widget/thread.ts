@@ -10,7 +10,7 @@ export function bindThread(w: unknown) {
   bindTrial(w);
 }
 
-// With the flag native (comments.js passes the pin): the card or box is tied to its pin with CSS anchor positioning, so
+// On a computer (comments.js passes the pin): the card or box is tied to its pin with CSS anchor positioning, so
 // the browser keeps it with the pin through any scrolling (a held pin's sticky header too) and puts it above the pin, or
 // in from the screen's right edge, when there is no room (@position-try). A card on a pin the browser holds is tied to
 // that pin's element instead (pinhold.ts holdBox); one on a pin the script places, to the pin itself (styles.css
@@ -24,7 +24,7 @@ const px = (n: number) => `${Math.round(n * 100) / 100}px`;
 export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined, kind: 'card' | 'beside', want?: Want) {
   node.classList.remove('tied-card', 'tied-beside');
   node.removeAttribute('data-held'); // set below once the browser carries it with its pin (comments.js: no redraw for it)
-  if (!pin || !want || !CSS.supports('anchor-name: --a')) {
+  if (!pin || !want) {
     letBox(node);
     return node.style.removeProperty('position-anchor');
   }

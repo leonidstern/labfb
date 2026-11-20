@@ -693,7 +693,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     /** A press inside an entered frame (its page tells, frame.ts): outside any open comment or the chat, so they close. */
     pressed: () => void boardWidget()?.dismiss?.(),
     frame: (id: string) => find(id)?.frame,
-    box: (id: string) => find(id)?.box || null, // a frame's box in the world: what the widget ties a board pin to (flag native)
+    box: (id: string) => find(id)?.box || null, // a frame's box in the world: what the widget ties a board pin to
     /** A screen point is on this board (a page's view is less than the window). */
     contains: inBox,
     // Where a point on the screen is on the board: the frame under it (else the nearest), by px from its top left, and the point.

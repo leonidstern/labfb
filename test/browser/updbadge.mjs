@@ -10,6 +10,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -25,7 +26,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-updbadge-'));
-const PORT = String(5600 + Math.floor(Math.random() * 190)); // below 6000: browsers refuse that port (X11)
+const PORT = String(claimPort(5600, 190)); // below 6000: browsers refuse that port (X11)
 const B = `http://localhost:${PORT}`;
 const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const UPD_LABEL = 'update waiting, tap to load';

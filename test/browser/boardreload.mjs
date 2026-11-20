@@ -7,6 +7,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { claimPort } from './port.mjs';
 
 const require = createRequire(import.meta.url);
 const pw = (() => {
@@ -21,7 +22,7 @@ const pw = (() => {
 
 const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-boardreload-'));
-const PORT = 8050 + Math.floor(Math.random() * 30);
+const PORT = claimPort(8050, 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'plain.html'), '<!doctype html><meta charset="utf-8"><title>pl</title><iframe src="/pricing"></iframe><script>0</script>');
 fs.writeFileSync(path.join(DIR, 'data.json'), '{"a":1}');

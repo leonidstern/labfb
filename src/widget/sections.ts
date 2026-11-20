@@ -509,8 +509,8 @@ export function startSections() {
     }
     soon();
   };
-  // A route change reaches the bar through the widget's own navigation hook (comments.js: the Navigation API with the
-  // flag native, else its history patch), so history is patched once, or not at all.
+  // A route change reaches the bar through the widget's own navigation hook (comments.js: the Navigation API), so
+  // history is never patched.
   W.S.routed = () => routed();
   addEventListener('hashchange', () => routed(true));
   const heady = (n: Node) => n.nodeType === 1 && ((n as Element).matches(HEAD) || Boolean((n as Element).querySelector(HEAD)));
