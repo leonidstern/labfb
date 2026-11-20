@@ -89,6 +89,39 @@ for (const [n, eng] of engines().entries()) {
     check(eng, 'hovering the ring shows the same line', (await tipOf(0)) === 'drawing W1–W6 · 2 of 4 · just now', await tipOf(0));
     const got = await L.comments();
     check(eng, 'no message was added, nothing is done', got.length === 3 && got[0].progress?.text === 'drawing W1–W6 · 2 of 4' && !got[0].resolved);
+    // A pin you point at holds still what is on it: the working pin's tip, and the card of an open pin (it is tied to its pin,
+    // which the browser reads as drawn: the pin's hover lift moved the card, and flipped it above and below near the screen's end).
+    const spot = (i) => shadow(() => { const q = [...r.querySelectorAll('button.pin')][a].getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; }, i);
+    const tops = async (sel, ms) => {
+      const seen = [];
+      for (const end = Date.now() + ms; Date.now() < end; await sleep(25)) seen.push(await shadow(() => { return r.querySelector(a)?.getBoundingClientRect().top ?? null; }, sel));
+      return seen.filter((t) => t !== null);
+    };
+    const spread = (a) => (a.length ? Math.max(...a) - Math.min(...a) : Infinity);
+    await p.mouse.move(5, 5);
+    const at0 = await spot(0);
+    await p.mouse.move(at0.x, at0.y, { steps: 3 });
+    await sleep(500);
+    const tipTops = await tops('button.pin .tip', 600);
+    check(eng, 'hovering a working pin: its tip stays within 1 px while the pointer is still', tipTops.length > 5 && spread(tipTops) <= 1, `${tipTops.length} frames, ${spread(tipTops).toFixed(2)} px`);
+    await p.mouse.move(5, 5);
+    const at1 = await spot(1);
+    await p.mouse.click(at1.x, at1.y);
+    await until(() => shadow(() => { return !!r.querySelector('.card'); }));
+    await p.mouse.move(5, 5);
+    await sleep(600);
+    const rest = (await tops('.card', 100))[0];
+    const held = [];
+    for (let k = 0; k < 4; k++) { // the pointer crossing its pin's edge in and out: the card must not follow it
+      await p.mouse.move(at1.x, at1.y, { steps: 2 });
+      held.push(...(await tops('.card', 250)));
+      await p.mouse.move(5, 5, { steps: 2 });
+      held.push(...(await tops('.card', 250)));
+    }
+    const off = Math.max(...held.map((t) => Math.abs(t - rest)));
+    check(eng, "hovering an open pin: its card's top stays within 0.1 px, in and out", held.length > 20 && off <= 0.1, `${held.length} frames, moved ${off.toFixed(2)} px`);
+    await p.keyboard.press('Escape');
+    await until(() => shadow(() => { return !r.querySelector('.card'); }));
     const width = () => shadow(() => { return Math.round(r.querySelector('.listener').getBoundingClientRect().width); });
     const w1 = await width();
     await L.cli('reply', ids[0], '--progress', 'a different and much longer line about what is being drawn right now, with more words');
