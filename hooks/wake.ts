@@ -84,16 +84,9 @@ async function labsFor($: any, me: string): Promise<Lab[]> {
   return labs.slice(0, MAX_LABS);
 }
 
-// What a tool call says it is doing, as a short line: "editing comments.js", "running npm test", "reading list.ts".
-const base = (p: unknown) => String(p || '').split('/').pop() || '';
-const lineFor = (e: any): string => {
-  const tool = String(e.tool || '');
-  if (/^(Edit|Write|NotebookEdit)$/.test(tool)) return `editing ${base(e.file_path || e.notebook_path)}`.trim();
-  if (tool === 'Bash') return `running ${String(e.command || '').replace(/\s+/g, ' ').slice(0, 60)}`.trim();
-  if (/^(Read|Grep|Glob)$/.test(tool)) return tool === 'Read' ? `reading ${base(e.file_path)}`.trim() : `searching ${String(e.pattern || '').slice(0, 40)}`.trim();
-  if (tool === 'Agent') return `helper: ${String(e.description || 'working').slice(0, 60)}`;
-  return '';
-};
+// The status line a tool call puts on a pin: just "working" (the pin shows "working · 1 min ago"). Leo, 20 Nov: the raw
+// command ("running timeout 175 sh -c …") read as noise; option 2, plain "working", picked.
+const lineFor = (e: any): string => (e && e.tool ? 'working' : '');
 
 async function progress($: any, e: any): Promise<void> {
   const line = lineFor(e);
