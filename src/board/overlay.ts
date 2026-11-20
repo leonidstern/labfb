@@ -32,6 +32,7 @@ const CSS = `
 :host(.full) .bv-grip::after{top:3px}
 .bv-box{position:relative;flex:1;min-height:0}
 .bv-box #lab-board{position:absolute}
+@media (pointer:coarse){.bv-bar{z-index:1}.bv-bar button{position:relative;z-index:2;min-width:44px}.bv-bar button::before{content:"";position:absolute;left:0;right:0;top:-9px;bottom:-12px}}
 @media (prefers-color-scheme:dark){:host{background:#1b1b1a!important;color:#e9e8e4!important}.bv-bar button:hover{background:rgba(255,255,255,.08)}.bv-bar{border-color:rgba(255,255,255,.08)}}
 `;
 const MIN = 0.25; // the least of the window it is dragged down to

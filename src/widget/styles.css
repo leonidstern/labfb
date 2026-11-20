@@ -562,7 +562,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card > .foot { margin-top: 0; padding-top: 6px; }
   .card .composer { margin-top: 0; }
   .card > .nav { flex: none; margin: -6px 0 0; padding: 0 12px; }
-  .card .nav .btn { font-size: 14px; letter-spacing: -.011em; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
+  .card .nav .btn { font-size: 14px; letter-spacing: -.011em; padding: 0 2px; min-height: 44px; min-width: 44px; justify-content: center; display: inline-flex; align-items: center; } /* 44 pt to tap (iOS) */
+  .card > .nav { position: relative; z-index: 2; } /* its 6 px pulled under the reply box stay tappable */
   .card .nav { gap: 16px; flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
   .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
   .box.one .who span { font-size: 16px; letter-spacing: -.019em; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
@@ -637,9 +638,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }
   .pin.moved:not(.resolved) { scale: .64; }
   /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
-  .bar > button { padding: 12px 14px; min-height: 44px; }
+  .bar > button { padding: 12px 14px; min-height: 44px; min-width: 44px; }
   .more-menu { bottom: 72px; min-width: 200px; }
-  .more-menu button { padding: 11px 12px; font-size: 15px; letter-spacing: -.016em; }
+  .more-menu button { padding: 11px 12px; font-size: 15px; letter-spacing: -.016em; min-height: 44px; }
 }
 /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
 .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
@@ -673,7 +674,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chat-btn.stale .mark { opacity: .4; }
   .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
   .chat-btn[data-agent=working] .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
-  .send { width: 36px; height: 36px; }
+  .send { width: 36px; height: 36px; position: relative; }
+  .send::before { content: ''; position: absolute; inset: -4px; border-radius: 50%; } /* 44 pt to hit, 36 to see */
   .send .arr { width: 17px; height: 15px; margin: auto; }
 }
 /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
@@ -793,7 +795,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sb-w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
   .sbar { height: 44px; padding: 0 8px; width: auto; max-width: none; margin-inline: 0; border-radius: 0; box-shadow: 0 .5px 0 var(--_line); }
-  .sb-chip { padding: 9px 12px; }
+  .sb-chip { padding: 9px 12px; min-height: 44px; } /* the bar is 44 tall: the whole of it is the chip */
   /* A sheet that fills the screen (keyboard up) leaves the bar clear. */
   :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }
 }
