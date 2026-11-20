@@ -135,6 +135,9 @@ button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; backgroun
 .ring.asks { --rc: var(--_amber); }
 .pin .ring.off { opacity: 0; }
 /* Hovering a working pin shows what it is doing (a phone has no hover: its sheet's head says it). */
+.pin.flip { margin-left: -28px; border-radius: 50%; border-bottom-right-radius: max(0px, calc(var(--_r-s) - 4px)); } /* by the right edge: its tip on the right (comments.js flipAt) */
+.pin.flip .ring { border-radius: 50%; border-bottom-right-radius: var(--_r-s); }
+.pin.flip .tip { left: auto; right: -4px; }
 .pin .tip { position: absolute; left: -4px; bottom: calc(100% + 10px); width: max-content; max-width: 240px; padding: 6px 9px; border-radius: var(--_r-s);
             background: var(--_bg); color: var(--_muted); box-shadow: var(--_shadow); font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 1.35;
             text-align: left; white-space: normal; pointer-events: none; opacity: 0; transform: translateY(2px); transition: opacity var(--_fade), transform var(--_fade); z-index: 6; }
@@ -185,7 +188,10 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .card.margin { width: 280px; }
 /* Tied to its pin (thread.ts tieToPin): the browser keeps it there. Where the script puts it, from the pin's
    corner (--lab-cx / --lab-cy; a box's other place --lab-ux / --lab-uy); above (its bottom at --lab-ay), or in from the
-   screen's right edge, when there is no room. */
+   screen's right edge, when there is no room. A new comment's box near the right edge goes to its pin's left, or above it
+   held in from the right edge (12 px), so it is never cut off. */
+@position-try --lab-left { left: auto; right: calc(anchor(left) + 8px); }
+@position-try --lab-under-edge-above { left: auto; right: 12px; top: auto; bottom: var(--lab-up); }
 @position-try --lab-above { top: auto; bottom: var(--lab-up); }
 @position-try --lab-edge { left: auto; right: 12px; }
 @position-try --lab-edge-above { left: auto; right: 12px; top: auto; bottom: var(--lab-up); }
@@ -195,7 +201,7 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .tied-card, .tied-beside { position: fixed !important; top: max(var(--lab-min, 0px), calc(anchor(top) + var(--lab-cy))); /* never above the screen's top */ /* the shared places, written once: */
   --lab-up: calc(anchor(top) - var(--lab-ay)); --lab-uleft: max(12px, calc(anchor(left) + var(--lab-ux))); }
 .tied-card { left: max(12px, calc(anchor(left) + var(--lab-cx))); position-try-fallbacks: --lab-above, --lab-edge, --lab-edge-above; }
-.tied-beside { --lab-min: 8px; margin-block: 0 8px; /* the 8 px under it counts in the browser's check, so it keeps off the bottom edge */ left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above, --lab-fit; }
+.tied-beside { --lab-min: 8px; margin-block: 0 8px; /* the 8 px under it counts in the browser's check, so it keeps off the bottom edge */ left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above, --lab-fit, --lab-left, --lab-under-edge-above; /* Chrome tries 5 at most */ }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .more-menu.out, .sw-box.out, .hint.out, .sent.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
@@ -242,7 +248,7 @@ button.btn.undo { color: var(--_fg); }
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
 /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
 .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
-                min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; field-sizing: content; } /* it grows with its words, no script */
+                min-height: 0; max-height: min(200px, max(80px, 30vh)); overflow-y: auto; outline: none; display: block; field-sizing: content; } /* it grows with its words, no script */
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
 .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; }
