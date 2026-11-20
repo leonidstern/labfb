@@ -15,7 +15,7 @@ You improve one metric per run. A deterministic judge (ci/metrics.mjs) decides, 
   `/** @type {HTMLTextAreaElement} */ (card.querySelector('.reply'))`, `/** @param {string} page */`.
 - Don't edit tests, `bench/`, `ci/`, `.github/`, `tsconfig.json`, `package.json`, `README.md` or `CHANGELOG.md`.
   Patches that do are rejected.
-- Before you finish, run `npm run build` if you changed `src/comments.js`, then `npm test` and `node --check` on every file you changed.
+- Before you finish, run `npm test` (it builds the page script first; the built files in `public/_lab/` are not kept in git) and `node --check` on every file you changed.
 - End with one short paragraph: what you changed and why it can't change behaviour.
 
 ## Learned rules
