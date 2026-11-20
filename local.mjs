@@ -49,22 +49,22 @@ const HELP = `labit ${VERSION}: comment on local pages, your agent (Claude, Code
 Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 
   labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
-      Run it in your project. If the project has a dev server (Astro, Next, Vite…) running, comments go on top
-      of it: it finds the server run from this folder, even with other projects' servers running. Give
-      --proxy <port> to pick one yourself. A folder of HTML files is served as it is at http://localhost:4400
-      and reloads when files change. The folder is this one unless you name another.
-      --wifi lets phones and laptops on the same wifi comment too (as guests). Each one needs a one-time link
-      (labit invite), so finding the port isn't enough. The pages still travel in the clear over the wifi.
-      A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
-      --name gives the lab its topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder; it's
-      kept in .lab/state.json, so later starts keep it.
+      Run it in your project. With a dev server (Astro, Next, Vite…) running there, comments go on top of it: it
+      finds the one run from this folder, even with other projects' servers running (--proxy <port> picks one).
+      A folder of HTML files is served as it is at http://localhost:4400 and reloads when files change. The folder
+      is this one unless you name another.
+      --wifi lets phones and laptops on the same wifi comment as guests, each with a one-time link (labit invite).
+      The pages still travel in the clear.
+      A folder a running lab already serves opens in that lab; --new starts a separate one.
+      --name sets the lab's topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder, and kept
+      in .lab/state.json.
   labit publish <page.html | folder> [--name "topic"]
       Show a page the way an Artifact is shown: it goes into your one pages lab (pagesFolder, ~/lab-pages), which
-      starts if it isn't running, and the page's link is printed. Publish it again to update it, at the same link.
-      A saved file reloads only the pages that use it: another page's script or a README leaves your page alone.
-      While a reload waits for you (you're reading a thread or typing), the page says "update waiting"; tap to take it now.
-      --dev is for working on labit itself: the lab runs under node --watch and comes back by itself when
-      local.mjs or lib/ change. npm run dev runs it with the widget build in the same terminal.
+      starts if it isn't running, and the link is printed. Publish again to update it, at the same link.
+      A saved file reloads only the pages that use it. While a reload waits for you (reading a thread, typing),
+      the page says "update waiting"; tap to take it now.
+      --dev is for working on labit itself: the lab runs under node --watch and restarts when local.mjs or lib/
+      change (npm run dev adds the widget build).
   labit list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labit pages [--all]
@@ -84,25 +84,28 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 For the agent, from the project (any folder under it):
   labit wait [--bg] [--timeout 1500] [--pages /a,/b] [--name <project>] [--model <your model>]
       --model: the page says "talking to Claude · Sonnet 5.5" (default: LAB_MODEL or ANTHROPIC_MODEL, if set).
-      --pages: only these pages' pins, so two sessions can share one lab (one per page). A wait without it gets every
-      page nobody else is listening on.
-      Run in the background. Ends with the next comment (and any not seen yet), printed in full.
-      --bg says you did: only then does it sit for the full timeout. Without it a wait ends after a minute, because a
-      wait left in the foreground holds the person's turn open and they can't say anything to you until it ends.
-      An agent that isn't told when a background command ends runs it in the foreground: wait --timeout 50, in a loop.
-      That loop is the agent's own turns, never a shell loop (while true; do labit wait; done): a shell loop keeps
-      listening after the session is gone, so pins are handed to nobody. A pin with no reply for 2 minutes goes to the next wait.
-      The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
+      --pages: only these pages' pins, so two sessions can share one lab. A wait without it gets every page nobody
+      else listens on.
+      Run in the background. Ends with the next comment (and any not seen yet), printed in full; the page then says
+      it talks to this session.
+      --bg says you did: only then does it sit for the full timeout. Without it a wait ends after a minute, because
+      one left in the foreground holds the person's turn open until it ends. An agent that isn't told when a
+      background command ends runs it in the foreground: wait --timeout 50, in a loop. That loop is the agent's own
+      turns, never a shell loop (while true; do labit wait; done): that keeps listening after the session is gone,
+      so pins go to nobody. A pin with no reply for 2 minutes goes to the next wait. With the page closed it keeps
+      waiting, and ends after an hour of no page.
   labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
-      Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --done says the ask is done (the
-      thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
+      Answer on the pin, by the id wait printed (the card's number works too, but shifts after a delete). --done: the ask
+      is done (the thread closes); --on-it: you're working on it; --question: you need the person; --resolve closes the
+      thread; --wait listens again right after.
   labit reply <id> --progress "what you're on now"
-      During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
+      During long work: one short line the page shows next to your name and on the pin, replaced by the next. Not a
+      message or an answer; an answer clears it.
   labit reply <id> "question" --choice "A words" [--hint "short why"] --choice "B words" [--choice …] [--recommend B]
-      Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each one in the sentence
-      first) and the pick comes back in your next wait as "Picked B: …": make that change, then resolve <id> with no words
-      (words only if something isn't obvious or you couldn't do it). --hint (up to 120 characters, right after the
-      --choice it describes) shows as a small second line. --recommend marks your own pick.
+      Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each in the sentence
+      first) and the pick comes back in your next wait as "Picked B: …": make that change, then resolve <id> with no
+      words (words only if something isn't obvious or you couldn't). --hint (up to 120 characters, right after its
+      --choice) is a small second line; --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y] [--quote "words"] [--question | --choice "A" --choice "B" [--recommend B]] [--no-check]
       Your own pin, one per point, numbered, instead of a list in a reply. --at: where on the element, as shares (default
