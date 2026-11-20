@@ -963,8 +963,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     n.style.left = `${parseFloat(n.style.left) - scrollX}px`;
     n.style.top = `${parseFloat(n.style.top) - scrollY}px`;
   };
+  let viewW = 0; // the screen's width without its scrollbar (flipAt)
   function render() {
     newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
+    viewW = document.documentElement.clientWidth; // read once a pass, before any pin is written (flipAt)
     if (win.__labDebug) unseen = new Map();
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
@@ -1268,6 +1270,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         const pin = el('div', { class: `pin draft${anim}${draftInk ? ' on-ink' : ''}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
+        flipAt(pin, left, null);
         onBoard(pin, anchor);
         layer.append(pin);
         next.push(pin);
@@ -2781,6 +2784,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     begin(anchorAt(e.clientX, e.clientY));
   }
 
+  // A pin whose 28 px would hang past the screen's right edge points the other way: its body left of its tip, so it is
+  // seen whole and never makes the page scroll sideways (a phone's sheets then measure a wider page and are cut off).
+  const flipAt = (pin, left, zone) => pin.classList.toggle('flip', !zone && left + 28 > viewW);
   // A pin at its spot; a drawing (draw.ts) over its whole area, its lines stretched to it.
   const inkAt = (pin, zone, left, top) => {
     const svg = zone && pin.querySelector(':scope > svg');
@@ -2797,6 +2803,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const frameBox = (a) => (a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null) || null;
   const placePin = (pin, c, zone, left, top, moved) => {
     const a = c.anchor || {};
+    flipAt(pin, left, zone || a.kind === 'board');
     let held;
     if (a.kind === 'board') {
       // A board pin on a frame: tied to the frame's box by its share of it, so the board's camera carries it (pinhold.ts).
@@ -2823,6 +2830,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     const openHeld = () => { const pin = pinsById.get(S.openId); return heldPin(pin) && !pinData.get(pin)?.zone; };
     if (!S.on || inkGone() || (S.openId && !(scrolled && openHeld()))) return render();
     newPass();
+    viewW = document.documentElement.clientWidth;
     const all = threads().filter((c) => c.anchor?.kind !== 'page');
     const skip = (c) => scrolled && heldPin(pinsById.get(c.id));
     const places = all.filter((c) => !skip(c)).map((c) => [pinsById.get(c.id), position(c.anchor || {}), c]).filter(([, at]) => !at.moved);
