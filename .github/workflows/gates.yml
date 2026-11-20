@@ -38,6 +38,9 @@ jobs:
         with:
           node-version: 22
 
+      # The page script is built from src/, not kept in git: both trees build it before they are measured.
+      - run: (cd base && npm run build) && (cd pr && npm run build)
+
       - name: Measure base
         if: hashFiles('base/ci/metrics.mjs') != '' # skip until the judge exists on base
         env:

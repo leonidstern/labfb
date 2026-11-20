@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The built page script (`public/_lab/comments.js` and its parts) is no longer kept in git, so two PRs that change the widget no longer clash in it. A lab started from a checkout builds it when it's missing or older than `src/`, `npm test` builds it first, CI builds it before testing, and the npm package ships it built as before.
 - **Pins on the same file are named together.** When a wait hands over several pins, a line above them says which share a file (`Same file: options.html: 2, 5, 7`), only for groups of two or more, so one helper can take the group.
 - **Helpers, in the skill.** One listener answers every pin itself and hands only long, independent jobs (builds, research) to helpers: one helper per group of pins on the same file, one writer per file, a `--progress` line on each pin a helper works on, and the main agent sends every reply.
 - **A progress line is a sign of work, always.** The plugin's hook now renews a helper's line once a minute while the session waits on it, so a long build inside a helper no longer ends in "Still waiting for your answer … no sign for 3 min" while it runs. The hand-off's reminder and the 2-minute "not answered" check both count a line from the agent or the hook (tests added).
