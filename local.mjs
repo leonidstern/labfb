@@ -14,7 +14,7 @@ import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
 import { pageIds } from './lib/ids.ts';
 import { watchTree } from './lib/watch.ts';
-import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
+import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive } from './lib/labcall.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
@@ -2400,8 +2400,7 @@ const handler = async (req, res) => {
           .filter((l) => l.port !== PORT)
           .map(async (l) => {
             try {
-              const r = await fetch(`http://localhost:${l.port}/_lab/pages`, { signal: AbortSignal.timeout(1500) });
-              return { ...(await r.json()), port: l.port, here: false };
+              return { ...(await (await askPages(l.port, 1500)).json()), port: l.port, here: false };
             } catch {
               return { name: l.name, root: l.root, port: l.port, here: false, pages: [], mode: 'away', unreachable: true };
             }

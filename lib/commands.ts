@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { choiceSpills, FOREGROUND_CAP, letter, listenPages, replyChoices, replyIntent, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
-import { keyFor, runningLabs, type Lab } from './labs.ts';
+import { askPages, keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
 
 type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
@@ -93,7 +93,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     for (const lab of labs) {
       let pages = '';
       try {
-        const info = await (await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) })).json();
+        const info = await (await askPages(lab.port, 2000)).json();
         const waiting = info.pages.reduce((n, p) => n + (p.waiting ?? p.open), 0);
         pages = ` · ${info.pages.length} page${info.pages.length === 1 ? '' : 's'}${waiting ? `, ${waiting} waiting` : ''}${info.listening ? ` · ${info.listening} listening` : ''}`;
       } catch {}
@@ -123,7 +123,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const near = here.filter((l) => l.root === HERE || l.root.startsWith(HERE + path.sep));
     for (const lab of opts.all || !near.length ? here : near) {
       try {
-        const res = await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) });
+        const res = await askPages(lab.port, 2000);
         if (res.ok) labs.push(await res.json());
       } catch {}
     }
