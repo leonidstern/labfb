@@ -99,7 +99,8 @@ for (const eng of engines()) {
     await p.waitForTimeout(800);
   }
   const n2 = await scrims();
-  check(eng, 'the dimmed page has its 4 touch listeners once, however often the sheet is drawn', n1 === 4 && n2 === n1, `${n1} then ${n2}`);
+  // (5: the four of swipeDown, and the scrim's own touchmove that keeps iOS's sheet curve; before, each draw added four more)
+  check(eng, 'the dimmed page gets no more touch listeners however often the sheet is drawn', n1 === 5 && n2 === n1, `${n1} then ${n2}`);
   // And a pull on the dimmed page still moves the open sheet (a made-up finger on the scrim, above the sheet).
   const pulled = await p.evaluate(() => {
     const root = document.querySelector('[data-lab-comments]').shadowRoot;
