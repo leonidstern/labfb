@@ -8,7 +8,7 @@ import path from 'node:path';
 import { FLAGS, flagDefaults } from './flags.ts';
 import { actionItems, seedFrom, SEED } from './actions.ts';
 
-const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
+const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', done: 'd', reply: 'r', resolve: 'e', pin: 'c' };
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
 // wifi; your own file can't say which folder or dev server a project uses).
@@ -29,7 +29,7 @@ const SPEC: Record<string, { type: Kind | 'shortcuts' | 'flags' | 'actions'; def
   // topic, instead of starting a lab of their own (Leo 18 Nov: "def reuse it, why we have so much").
   pagesFolder: { type: 'string', def: '~/lab-pages', only: 'personal' },
   shortcuts: { type: 'shortcuts', def: SHORTCUTS },
-  // Your one list of actions (lib/actions.ts): the comment box's chips and select mode's, in this order.
+  // Your one list of actions (lib/actions.ts): the comment box's chips, in this order.
   actions: { type: 'actions', def: SEED, only: 'personal' },
   // What is being tried here (lib/flags.ts). Off unless labit.json, your settings or the ⋯ menu's experiments turn one on.
   flags: { type: 'flags', def: flagDefaults() },

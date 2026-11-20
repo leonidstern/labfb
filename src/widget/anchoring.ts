@@ -71,7 +71,7 @@ type Anchor = {
   zoneItems?: string[];
   zoneText?: string;
   /** A drawing (hold D and drag, draw.ts): what its lines read as, and the lines in 0–1000 of the area. */
-  ink?: { mark: string; from?: string; to?: string; pts: number[][]; w?: number[][] };
+  ink?: { mark: string; from?: string; to?: string; pts: number[][]; w?: number[][]; marks?: string[] };
   shownFor?: number;
   build?: string;
 };
@@ -1102,17 +1102,6 @@ export const readable = (text) => {
     return node;
   });
 };
-/** A range's boxes on screen now, line by line, with how its words sit: reading right to left (their end is then the
- *  left edge), or in a fixed or sticky part of the page (what is placed by them is held to the screen too). */
-export const rectsOf = (range?: Range | null) => {
-  let n = range ? (range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement) : null;
-  const rtl = n ? getComputedStyle(n).direction === 'rtl' : false;
-  let fixed = false;
-  for (; n && !fixed; n = n.parentElement) fixed = /^(fixed|sticky)$/.test(getComputedStyle(n).position);
-  return Object.assign([...(range?.getClientRects() || [])].filter((r) => r.width > 0), { rtl, fixed });
-};
-/** The quoted words' boxes on screen now (none when the words can't be found). */
-export const quoteRects = (anchor) => rectsOf(quoteRange(anchor));
 // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
 // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters. Letters, digits, marks,
 // apostrophes and _ are a word's. The quote (comments.js) and the ink drawn while selecting (wordink.ts) both use it.
