@@ -116,8 +116,7 @@ const hover = (d: Drawn | null) => {
 };
 
 // The comment whose words are under the pointer, if any: of notes on the same words, the latest. None over a link or
-// control in them: its click stays the page's, as with pins ("pin over controls" gives it to the ink; option-click
-// always pins).
+// control in them: its click stays the page's, as with pins (option-click always pins).
 function under(e) {
   if (!W.S.on || W.S.cursorMode || W.control(e.target)) return null;
   let hit: Drawn | null = null;
