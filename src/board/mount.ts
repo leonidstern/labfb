@@ -683,7 +683,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     name,
     back,
     busy: () => performance.now() - lastDown < 1500,
-    single: () => cards.length === 1, // a board of one page: a link in it opens that page itself (frame.ts)
     key: (k: Parameters<typeof press>[0]) => press(k, true),
     /** A press inside an entered frame (its page tells, frame.ts): outside any open comment or the chat, so they close. */
     pressed: () => void boardWidget()?.dismiss?.(),

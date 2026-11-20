@@ -14,7 +14,7 @@ export const inFrame = (): boolean => {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Board = { busy?: () => boolean; single?: () => boolean; key?: (k: Record<string, unknown>) => void } & Record<string, any>;
+type Board = { busy?: () => boolean; key?: (k: Record<string, unknown>) => void } & Record<string, any>;
 
 export function startFrame(script: HTMLScriptElement | null) {
   const board = () => (top as unknown as { __labBoard: Board }).__labBoard;
@@ -35,15 +35,6 @@ export function startFrame(script: HTMLScriptElement | null) {
   // A press in this page (the frame is entered: only then do presses reach it) is a press outside whatever the board's
   // widget has open, a comment or the chat: the board is told, and closes it as a click outside does on a page.
   addEventListener('pointerdown', (e) => e.button === 0 && board()?.pressed?.(), true);
-  // A board of one page has nothing beside it to keep: a link to another page of the lab opens that page, the board gone
-  // (back brings the board again), not a second page inside the one frame (Leo, 20 Nov).
-  addEventListener('click', (e) => {
-    const a = e.target instanceof Element ? (e.target.closest('a[href]') as HTMLAnchorElement | null) : null;
-    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (a.target && a.target !== '_self') || !board()?.single?.()) return;
-    if (a.origin !== location.origin || a.pathname + a.search === location.pathname + location.search) return;
-    e.preventDefault();
-    top!.location.assign(a.href);
-  });
   // What the board may ask of this page (the rest of the bridge comes with the pins).
   Object.assign(window, { __labSpot: { clear: () => getSelection()?.removeAllRanges() } });
   // A key heard here goes to the board unless the page used it or is typing in it: the board's keys work in a focused frame.

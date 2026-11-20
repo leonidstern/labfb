@@ -21,9 +21,7 @@ const put = (name, frames, extra = {}) => fetch(`${B}/_lab/api/board?name=${name
 const grid = (n) => Array.from({ length: n }, (_, i) => ({ id: 'f' + i, src: '/pricing', w: 300, h: 300, x: (i % 5) * 340, y: Math.floor(i / 5) * 340 }));
 await put('ten', grid(10), { of: '/pricing' });
 await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }], { of: '/pricing' });
-fs.writeFileSync(path.join(DIR, 'linky.html'), '<!doctype html><meta charset="utf-8"><title>Linky</title><h1>Linky</h1><a id="go" href="/checkout" style="display:block;padding:20px">on</a>');
-await put('one', [{ id: 'a', src: '/linky', w: 600, h: 500, x: 0, y: 0 }], { of: '/linky' });
-await put('two', [{ id: 'a', src: '/linky', w: 300, h: 300, x: 0, y: 0 }, { id: 'b', src: '/linky', w: 300, h: 300, x: 500, y: 0 }], { of: '/linky' });
+await put('two', [{ id: 'a', src: '/pricing', w: 300, h: 300, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 300, h: 300, x: 500, y: 0 }], { of: '/pricing' });
 await put('wide', [{ id: 'a', src: '/pricing', w: 1000, h: 700, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 1000, h: 700, x: 4000, y: 3000 }]);
 try {
   for (const eng of engines()) {
@@ -163,19 +161,6 @@ try {
       await sleep(200);
       const released = await curAt(600, 760);
       check(eng, 'Space held: the hand over the canvas and the frames; let go: the pin again', space.cursor === 'grab' && spaceFrame.cursor === 'grab' && released.cursor === onPage.cursor, JSON.stringify([space, spaceFrame, released]));
-      // ----- a link in an entered frame: on a board of one page it opens that page (the board goes); with two frames it stays in the frame
-      for (const [name, opens] of [['one', true], ['two', false]]) {
-        await p.goto(B + '/_lab/board/' + name);
-        await bw(3500);
-        await p.locator('#lab-board .f[data-id="a"] .t').click();
-        await sleep(600);
-        const fr = p.frames().find((f) => f.name() === 'lab:a');
-        await fr.locator('#go').click();
-        await sleep(1500);
-        const at = new URL(p.url()).pathname;
-        const inside = await p.evaluate(() => document.querySelector('#lab-board iframe[name="lab:a"]')?.contentWindow.location.pathname);
-        check(eng, name === 'one' ? 'a board of one page: a link in its page opens that page (the board closes)' : 'a board of two: a link stays in its frame', opens ? at === '/checkout' : at === '/_lab/board/two' && inside === '/checkout', JSON.stringify([at, inside]));
-      }
       await ctx.close();
       // ----- a phone: first view is every frame at a phone's width, side by side, live; no page zoom
       const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
