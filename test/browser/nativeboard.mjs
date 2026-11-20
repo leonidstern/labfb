@@ -1,4 +1,4 @@
-// Board pins the browser holds (flag native): a pin on a frame is tied to the frame's box by its share of it (pinhold.ts),
+// Board pins the browser holds: a pin on a frame is tied to the frame's box by its share of it (pinhold.ts),
 // so the board's camera carries it. Through a pan and a zoom it stays on its spot of the frame and the same size, with no
 // redraw by the widget; it follows its frame when the frame is moved, and is placed again when a frame is resized. In a
 // browser without anchor positioning board pins are the script's, as before, and must still be on their spot.
@@ -28,7 +28,7 @@ const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'pricing.html'), '<!doctype html><meta charset="utf-8"><title>Pricing</title><h1>Pricing one</h1><div style="height:3000px"></div>');
 fs.writeFileSync(path.join(DIR, 'checkout.html'), '<!doctype html><meta charset="utf-8"><title>Checkout</title><h1>Checkout</h1>');
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
-fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, flags: { native: true } }));
+fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -1,6 +1,6 @@
 // Part of the comment widget (src/comments.js bundles it).
 //
-// Pins the browser holds (flag native): a pin on an element of the page is tied to that element with CSS anchor
+// Pins the browser holds: a pin on an element of the page is tied to that element with CSS anchor
 // positioning, so the browser keeps it on its spot through scrolling the page, on a sticky header, and on a parent that
 // moves. No script runs for that. The script still
 // finds the spot (anchoring.ts, position) when the pins are drawn or the page changes size, and writes it here as an
@@ -9,7 +9,6 @@
 // Two things make it reach the page:
 // - the pin is fixed: an absolute pin's containing block is the widget's own host, which no element of the page is in;
 // - its rule is in the page's style sheet, by ::part: anchor names given in the page are not seen from the shadow root.
-// A browser without anchor positioning keeps the pins the script places, as before.
 // So does a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
 // dialog, popover or full screen (the top layer is laid out after the pin, so it can't be its anchor). An element whose
 // anchor attribute a live patch took away parks its pins off screen (anchor()'s fallback) until they are placed again.
@@ -30,8 +29,6 @@ const TRIES =
   '@position-try --lab-c-edge-above{left:auto;right:12px;top:auto;bottom:calc(anchor(top) - var(--lab-ay))}';
 let count = 0;
 let dirty = false;
-let able: boolean | null = null;
-const can = () => (able ??= typeof CSS !== 'undefined' && CSS.supports('anchor-name: --a'));
 // What an element is, read once per placing of the pins (newPass): whether a box cuts it off, it sits in the top layer,
 // or the page gives it an anchor name of its own. Read before any pin is written, so placing many pins lays out once.
 let pass = 0;
@@ -60,7 +57,7 @@ const inTopLayer = (node: Element) => {
  *  box as the camera shows it, so a share stays on the same point of the frame through any pan and zoom). */
 export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, left: number, top: number, share?: { x: number; y: number }): boolean {
   // The page itself, or a big container placed by a share of its size, keeps the script's place (anchoring.ts, spotOf).
-  if (!on || !node || !can() || /^(html|body|main)$/.test(node.localName) || pin.classList.contains('dragging')) {
+  if (!on || !node || /^(html|body|main)$/.test(node.localName) || pin.classList.contains('dragging')) {
     letPin(pin);
     return false;
   }

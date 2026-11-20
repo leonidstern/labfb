@@ -1,4 +1,4 @@
-// Pins the browser holds (flag native, src/widget/pinhold.ts) in real browsers: WebKit (Safari) and Chrome's engine.
+// Pins the browser holds (src/widget/pinhold.ts) in real browsers: WebKit (Safari) and Chrome's engine.
 // Pins placed the usual way (a click on an element, one on a sticky header, one in the gap between two blocks, Shift +
 // double-click on words, one in a box that scrolls) are tied to their element with CSS anchor positioning: through
 // scrolling (the page, the box), the page growing above them and words moving in their line, each stays where it is on
@@ -42,7 +42,7 @@ fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="ut
 <div id="shifted"><p id="tp">A paragraph whose parent is moved by a transform.</p></div>
 <div style="height:1600px"></div>
 <p id="own" style="anchor-name:--theirs">A paragraph the page anchors something to itself.</p>`);
-fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, flags: { native: true } }));
+fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env, stdio: 'ignore' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

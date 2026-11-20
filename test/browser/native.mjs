@@ -1,4 +1,4 @@
-// What the browser does for the widget with the flag native, besides holding pins (nativepins.mjs), in real browsers:
+// What the browser does for the widget , besides holding pins (nativepins.mjs), in real browsers:
 // WebKit (Safari) and Chrome's engine, on a computer and as a phone (iPhone 13, Pixel 7).
 // - A pin's card and a new comment's box are tied to their pin (thread.ts tieToPin): they stay with it through
 //   scrolling, a sticky header's too, and the card opens above its pin when there is no room below.
@@ -37,7 +37,7 @@ fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="ut
 ${'<p>Words to fill the page so that it scrolls.</p>'.repeat(16)}
 <p id="mid">A paragraph in the middle of the page.</p>
 ${'<p>More words to fill the page.</p>'.repeat(30)}`);
-fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, flags: { native: true } }));
+fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
 const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env, stdio: 'ignore' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -137,10 +137,9 @@ try {
           await p.keyboard.type(line);
         }
         await settle(p);
-        const grown = await inRoot(p, (r, sel) => { const t = r.querySelector(sel); return { h: t.getBoundingClientRect().height, inline: t.style.height, grow: t.classList.contains('grow') }; }, box);
+        const grown = await inRoot(p, (r, sel) => { const t = r.querySelector(sel); return { h: t.getBoundingClientRect().height, inline: t.style.height, grow: getComputedStyle(t).fieldSizing === 'content' }; }, box);
         const lines = await inRoot(p, (r, sel) => parseFloat(getComputedStyle(r.querySelector(sel)).lineHeight), box);
-        if (can.grow) check(tag, 'the box grows with its words (three lines), the script writing no height', grown.h >= 3 * lines && grown.grow && !grown.inline, JSON.stringify({ h1, lines, ...grown }));
-        else check(tag, 'the box grows with its words (three lines; measured, no field-sizing here)', grown.h >= 3 * lines && !grown.grow, JSON.stringify({ h1, lines, ...grown }));
+        check(tag, 'the box grows with its words (three lines), the script writing no height', grown.h >= 3 * lines && grown.grow && !grown.inline, JSON.stringify({ h1, lines, ...grown }));
         if (phone) {
           await inRoot(p, (r, sel) => { const t = r.querySelector(sel); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); t.blur(); }, box); // nothing sent: the chat is the long chat below
           await inRoot(p, (r) => r.querySelector('.chat-btn').click());
@@ -247,8 +246,8 @@ try {
         check(tag, '…laying out only the messages near the screen', chat.cv === 'auto', String(chat.cv));
         // The browser says when the page navigated, and when a scroll ended: what the widget listens to follows what there is.
         const heard = await p.evaluate(() => [...window.__listened]);
-        check(tag, can.navigation ? 'the widget listens to the Navigation API, and leaves the page\'s history alone' : 'no Navigation API here: the widget patches the history, as before', can.navigation ? heard.includes('currententrychange') && !heard.includes('popstate') && (await p.evaluate(() => /native code/.test(history.pushState.toString()))) : heard.includes('popstate') && (await p.evaluate(() => !/native code/.test(history.pushState.toString()))), JSON.stringify({ nav: can.navigation, listened: heard.filter((t) => /currententrychange|popstate|scrollend/.test(t)) }));
-        check(tag, can.scrollend ? 'the widget listens for scrollend' : 'no scrollend here: its timer ends a scroll', can.scrollend ? heard.includes('scrollend') || !phone : true, `${can.scrollend}`);
+        check(tag, 'the widget listens to the Navigation API, and leaves the page\'s history alone', heard.includes('currententrychange') && !heard.includes('popstate') && (await p.evaluate(() => /native code/.test(history.pushState.toString()))), JSON.stringify({ listened: heard.filter((t) => /currententrychange|popstate|scrollend/.test(t)) }));
+        check(tag, 'the widget listens for scrollend', heard.includes('scrollend') || !phone);
         // A navigation inside the page: the comments of the new page are asked for, and of the old one after Back.
         const asked = [];
         p.on('request', (r) => { const m = /\/_lab\/api\/comments\?page=([^&]*)/.exec(r.url()); if (m) asked.push(decodeURIComponent(m[1])); });
