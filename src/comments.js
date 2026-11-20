@@ -39,7 +39,7 @@ import { bindMessages, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
-import { bindThread, grab, openAsk, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
+import { bindThread, flushPick, grab, openAsk, pickByKey, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
@@ -969,6 +969,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // A question's choice tried in the page (thread.ts): the page's own words are back before anything is read or drawn;
     // the same card drawn again tries the same row again.
     pauseTry(S.on ? S.openId : null);
+    // A pick still in its 5 s of undo goes now if its card (or the chat) has closed.
+    flushPick(S.on ? S.openId : null, Boolean(S.on && S.chatOpen));
     S.grabbing = false; // a pin being dragged is replaced: its drag ends here
     S.dropDrag?.();
     const prev = /** @type {HTMLElement | null} */ (layer.querySelector('.card:not(.out), .float:not(.out)'));
@@ -1942,6 +1944,12 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (actionOf(e) === 'toggle' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
+      return;
+    }
+    // 1 to 6 answer an open question with that choice (thread.ts): before 1 is comment / pointer, which it keeps when no
+    // question is open. Not while a text box has the focus.
+    if (S.on && !coarse && /^Digit[1-6]$/.test(e.code) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && !typing(e) && !inOtherWidget && pickByKey(Number(e.code.slice(5)))) {
+      e.preventDefault();
       return;
     }
     if (S.on && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (/^z$/i.test(e.key || '') || (!/^[a-z]$/i.test(e.key || '') && e.code === 'KeyZ')) && !typing(e) && !inOtherWidget && placed.length) {

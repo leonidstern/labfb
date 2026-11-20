@@ -173,6 +173,17 @@ export function triesInPlace(c) {
 // in place) it goes under the quote's last line, above its first near the page's end; never over the quoted lines.
 // Phones keep their sheet. Returns whether the card is placed by the quote, so the caller leaves it be.
 const MARGIN_W = 280;
+const GAP = 8;
+/** The card kept inside the window: GAP from its left edge (and right), and never past its bottom (nor above its top). */
+function clampToView(card) {
+  const w = card.offsetWidth;
+  const h = card.offsetHeight;
+  const view = document.documentElement;
+  const left = parseFloat(card.style.left);
+  if (Number.isFinite(left)) card.style.left = `${Math.max(scrollX + GAP, Math.min(left, scrollX + view.clientWidth - w - GAP))}px`;
+  const top = parseFloat(card.style.top);
+  if (Number.isFinite(top)) card.style.top = `${Math.max(scrollY + GAP, Math.min(top, scrollY + view.clientHeight - h - GAP))}px`;
+}
 export function placeAsk(card, c): boolean {
   if (W.coarse) return false;
   const range = quoteRangeOf(c.anchor);
@@ -187,12 +198,14 @@ export function placeAsk(card, c): boolean {
     const h = card.offsetHeight;
     card.classList.add('under');
     card.style.top = `${under + h > W.contentEnd() ? Math.max(scrollY + 8, rects[0].top + scrollY - 10 - h) : under}px`;
+    clampToView(card);
     return true;
   }
   card.classList.add('margin');
   const top = rects[0].top + scrollY;
   card.style.left = `${left + scrollX}px`;
   card.style.top = `${Math.max(scrollY + 8, Math.min(top, W.contentEnd() - card.offsetHeight - 8))}px`;
+  clampToView(card);
   card.style.transformOrigin = '0 14px';
   const tie = W.el('div', { class: 'tie', 'aria-hidden': 'true' });
   W.layer.append(tie);

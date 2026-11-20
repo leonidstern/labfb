@@ -1,5 +1,6 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 import { stickToEnd } from './stick.ts';
+import { choicesEl, sendElse, takeArmed } from './thread.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -8,7 +9,7 @@ export function bindChat(w: unknown) {
 }
 
 // The chat: the page's whole conversation in time order (messages about the page as a whole, pins and every reply;
-// a pin's say what they're on). New messages are about the page; on phones swipe one to answer it instead.
+// a pin's say what they're on). An agent's question with choices shows its rows, as in a thread (thread.ts). New messages are about the page; on phones swipe one to answer it instead.
 // The time in a bubble's corner, as in messengers (no hover tooltip over the text), and on yours ✓ sent, ✓✓ handed to
 // the agent (its thread went to the agent at or after you wrote it). Chat and threads alike.
 // The time and its mark sit pinned in the bubble's bottom-right corner, as WhatsApp and Telegram do: an invisible
@@ -85,6 +86,11 @@ export function drawChat() {
       b.append(q);
     }
     b.append(...W.readable(m.text));
+    // The agent's question with choices: its rows under it, as in a thread's card (thread.ts), nothing tried in the page.
+    if (m.session && Array.isArray(m.choices) && m.choices.length && root) {
+      b.classList.add('asks');
+      b.append(choicesEl(root, m, W.chatEl, true));
+    }
     stamped(b, W.stampOf(m, root));
     return m.id === W.S.newFrom && m !== msgs[0] ? [W.el('div', { class: 'newline' }, 'new'), b] : [b];
   }).map(same));
@@ -104,7 +110,10 @@ export function drawChat() {
         placeholder: 'message',
         draftKey: `lab-typing:${W.S.page}:chat`,
         onSubmit: async (name, text) => {
-          const { comment } = await W.send({ name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } });
+          // "Something else…" tapped under a question: these words answer it (picked -2), not a new message.
+          const to = takeArmed();
+          const answer = to ? await sendElse(to, name, text) : null;
+          const { comment } = answer ? { comment: answer } : await W.send({ name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } });
           W.S.comments.push(comment);
           W.markSeen([comment]);
           box.scrollTop = box.scrollHeight;

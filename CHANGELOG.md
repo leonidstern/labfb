@@ -4,6 +4,14 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- **Undo a tap on a question.** A tap shows "Picked B · undo" for 5 s; the pick goes after that, or at once when the card closes. Undo puts the rows back.
+- **Questions in the chat.** The agent's question with choices shows its rows in the page chat too, and picks work the same.
+- **"Something else…"** is the last row of a question: it puts the cursor in the reply box, and words sent while a question is open answer it (`picked: -2`). The agent's wait shows `picked: something else: <their words>`. A question card no longer focuses its reply box on a computer.
+- **Keys 1 to 6** pick that choice of an open question on a computer (A is 1), with the same undo; ignored while a text box has the focus.
+- **A scroll is not an answer.** On a touch screen a press that moved more than 8 px picks nothing.
+- **A line under each choice.** `labit reply --choice "Tabs" --hint "less scrolling" --choice "List"`: the hint (up to 120 characters, stored as `hints`) shows muted under its row. An older page ignores it.
+- **The question card stays in the window** on a computer: 8 px from the left edge, never past the bottom.
+- The labit skill says when to ask with `--choice`: copy, layouts, names, a risky step; one line per choice, always `--recommend`, one open question per pin; and to use a board, not choices, when the options are looks (layout, colour, spacing).
 - **A tap answers a question.** A question's choices send on tap, no Keep; pointing at one on a computer still tries it in the sentence. The rows are as wide as the messages.
 - **Drawings are quick actions.** The agent gets an `action:` line from the mark: X, strike or scribble remove; circle, box or a wavy line fix; underline rewrites; a side line reworks the block; an arrow moves (beside what's there); a caret adds. Words in the thread win.
 - **A drawing sends with Enter, no words needed.** Its box opens with the lines; Enter sends it as what it reads as ("circled"), or type a few words first.
