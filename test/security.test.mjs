@@ -100,12 +100,12 @@ test('a reply reopening a thread keeps the move made before it (one change reads
   assert.deepEqual([thread.resolved, thread.anchor.selector, typeof thread.movedAt], [false, 'h2', 'string'], 'reopened, and the move is still there');
 });
 
-test('a pin found again on a changed page saves where it is now, and does not count as moved', async () => {
+test('a pin found again on a changed page saves where it is now and what it is now, and does not count as moved', async () => {
   const page = '/anna/site/found';
   const a = (await (await call({ page, name: 'Ann', text: 'this card', anchor: { selector: 'div:nth-of-type(2)', x: 0.3, y: 0.4, docX: 0.2, docY: 100, eh: 40, element: '<div class="card">', text: 'Beta' } }, { ip: '10.1.4.1' })).json());
   assert.equal((await call({ page, action: 'move', id: a.comment.id, found: true, anchor: { selector: 'div:nth-of-type(3)', docX: 0.2, docY: 180, eh: 44 } })).status, 403, 'with its key, like any move');
   const { comment } = await (await call({ page, action: 'move', id: a.comment.id, found: true, anchor: { selector: 'div:nth-of-type(3)', docX: 0.2, docY: 180, eh: 44, text: 'other' }, edit: a.edit })).json();
-  assert.deepEqual(comment.anchor, { ...a.comment.anchor, selector: 'div:nth-of-type(3)', docY: 180, eh: 44 }, 'only the path and the place on the page');
+  assert.deepEqual(comment.anchor, { ...a.comment.anchor, selector: 'div:nth-of-type(3)', docY: 180, eh: 44, text: 'other' }, 'the path, the place on the page and the words it learned: the share of its element and the rest stay');
   assert.equal(comment.movedAt, undefined);
 });
 
