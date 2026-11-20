@@ -547,7 +547,17 @@ if (fs.existsSync(STORE)) {
     try {
       const { v, page, comments, file: rel, fid } = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (typeof page !== 'string' || !page.startsWith('/') || !comments || typeof comments !== 'object') throw new Error('not a page');
-      saved[page] = comments;
+      // What is no comment in a file that otherwise reads (null, a word, a record with no date, text or name: a file
+      // written by hand or by something else) is left out and the page's other comments load: one such entry kept
+      // the lab from starting. The file as it was is kept beside it, and the page is written again without them.
+      const real = Object.entries(comments).filter(([, c]) => c && ['id', 'name', 'text', 'createdAt'].every((k) => typeof c[k] === 'string'));
+      if (real.length < Object.keys(comments).length) {
+        const aside = `${file}.broken-${Date.now()}`;
+        fs.copyFileSync(file, aside);
+        console.log(`[lab] comments/${name} held ${Object.keys(comments).length - real.length} that are no comments; left out (the file as it was: ${path.relative(LAB, aside)})`);
+        outdated.push(page);
+      }
+      saved[page] = Object.fromEntries(real);
       if (typeof rel === 'string' && /^[\d.]+$/.test(fid)) homes.set(page, [rel, fid]);
       if (v !== SCHEMA) outdated.push(page);
     } catch {
