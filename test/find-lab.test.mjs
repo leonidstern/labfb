@@ -3,13 +3,13 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { tmp, rm } from './harness.mjs';
 import { findLab } from '../lib/labcall.ts';
 
-const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-findlab-')));
-after(() => fs.rmSync(DIR, { recursive: true, force: true }));
+const DIR = fs.realpathSync(tmp('findlab'));
+after(() => rm([DIR]));
 const lab = (dir, server) => {
   fs.mkdirSync(path.join(dir, '.lab'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.lab/server.json'), JSON.stringify(server));
