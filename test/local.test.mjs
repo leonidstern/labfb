@@ -430,7 +430,6 @@ test('a renamed page takes its section marks along', async () => {
   fs.writeFileSync(path.join(DIR, 'secold.html'), '<!doctype html><h1>Old</h1>');
   await sleep(500);
   assert.equal((await sec({ name: 'Leo', page: '/secold', sections: { old: 'h' } })).status, 204);
-  await post({ page: '/secold', name: 'Leo', text: 'a pin', anchor: { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1>' } }); // a page with a pin has its file known by what the disk calls it
   await sleep(600);
   fs.renameSync(path.join(DIR, 'secold.html'), path.join(DIR, 'secnew.html'));
   let moved = {};

@@ -654,7 +654,7 @@ const fidOf = (rel) => {
 };
 function rehome() {
   let byFid = null;
-  for (const page of PROXY ? [] : new Set(pages())) {
+  for (const page of PROXY ? [] : new Set([...pages(), ...Object.values(sections).flatMap(Object.keys)])) {
     const [was, fid] = homes.get(page) || [];
     const rel = fileIndex.get(page);
     if (rel) {
@@ -2649,6 +2649,8 @@ const handler = async (req, res) => {
         if (!name || !page.startsWith('/') || !given) return plain(res, 400, 'name, page and sections needed');
         if (given.length > SEC.ids) return plain(res, 413, 'too many sections');
         if (!isLabPage(page)) return plain(res, 400, 'a page of this lab needed');
+        const rel = fileFor(page);
+        if (rel && !homes.has(page)) homes.set(page, [rel, fidOf(rel)]); // so a renamed page takes its marks along
         if (!(name in sections) && Object.keys(sections).length >= SEC.names) return plain(res, 429, 'too many names');
         const mine = (sections[name] ||= bare({}));
         if (!(page in mine) && Object.keys(mine).length >= SEC.pages) return plain(res, 429, 'too many pages');
