@@ -201,8 +201,28 @@ test('board new --variants copies the page, prints the link, and each file is th
 
 test('variants: default is the caller\'s, 7 is refused, a missing page or a non-page is said plainly', async () => {
   assert.notEqual((await cli(DIR, 'new', 'Many', '--of', '/pricing', '--variants', '7')).code, 0);
-  assert.match((await cli(DIR, 'new', 'Nope', '--of', '/missing', '--variants', '2')).out, /not a plain HTML page/);
+  assert.match((await cli(DIR, 'new', 'Nope', '--of', '/missing', '--variants', '2')).out, /not a page of this lab/);
   assert.match((await cli(DIR, 'new', 'Bad', '--of', 'https://example.com/', '--variants', '2')).out, /page of this lab/);
+});
+
+test('variants behind a dev server (or of a page that is no .html file) are the live page with ?lab-variant=<frame>; pick says which won', async () => {
+  await up(PPX);
+  const inPx = (...a) => cli(PX, ...a);
+  const made = await inPx('new', 'Live', '--of', '/pricing', '--variants', '2');
+  assert.equal(made.code, 0, made.out);
+  assert.match(made.out, /\na {2}\/pricing {2}1280×800 {2}"now"\n/);
+  assert.match(made.out, /\nb {2}\/pricing\?lab-variant=b {2}1280×800\n/);
+  assert.match(made.out, /\nc {2}\/pricing\?lab-variant=c {2}1280×800\n/);
+  assert.match(made.out, /Each variant frame is the live page with \?lab-variant=<frame>; render your versions by branching on new URLSearchParams\(location\.search\)\.get\('lab-variant'\)/);
+  assert.match(made.out, /Remove the branching when one is picked\./);
+  assert.doesNotMatch(made.out, /folder: \.lab\/boards/, 'nothing is copied');
+  assert.equal(fs.existsSync(path.join(PX, '.lab/boards/live')), false);
+  const picked = await inPx('pick', 'live', 'c');
+  assert.match(picked.out, /Picked c\. Archived a, b/);
+  assert.match((await inPx('list', 'live')).out, /\nc {2}\/pricing\?lab-variant=c {2}1280×800 {2}picked\n/);
+  // The pick comes back to the agent as a pin on the board, saying which branch won.
+  const t = await (await fetch(`http://localhost:${PPX}/_lab/agent/_board/live`)).text();
+  assert.match(t, /^picked: a, b archived\. Keep the c branch \(\?lab-variant=c\) in \/pricing's source and remove the lab-variant branching, then reply --done\.$/m);
 });
 
 test('widths copy no file and run narrow to wide; flow keeps its order; add puts a step after another', async () => {

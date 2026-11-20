@@ -5,6 +5,10 @@ import path from 'node:path';
 import { MAX_FRAMES, NAME, heightFor, labPath, names, nameOf, one, read, save, frameFile, writeAtomic, type Board, type Frame } from './board.ts';
 
 export const MAX_VARIANTS = 6;
+/** The query parameter that tells a live page which variant it is drawing (boards of a page that cannot be copied). */
+export const VARIANT = 'lab-variant';
+const live = (f: Frame) => f.src.includes(`?${VARIANT}=`);
+const LIVE_SAID = `Each variant frame is the live page with ?${VARIANT}=<frame>; render your versions by branching on new URLSearchParams(location.search).get('${VARIANT}') in the page's source (frame a, "now", has no parameter: leave it as the page is). Remove the branching when one is picked.`;
 /** The text a person gave, as a board name: "Pricing hero" is pricing-hero. */
 export const slug = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'board';
 const idOf = (n: number) => (n < 26 ? String.fromCharCode(97 + n) : `z${n - 24}`);
@@ -29,6 +33,7 @@ export function text(b: Board, o: { origin: string; file?: string | null; json?:
   if (b.of) lines.push(`of: ${b.of.replace('#', ' #')}${o.file ? ` (file ${o.file})` : ''}`);
   if (o.json) lines.push(`file: .lab/boards/${b.name}.json`);
   if (b.frames.some((f) => f.src.startsWith('/_lab/'))) lines.push(`folder: .lab/boards/${b.name}/ (edit a frame's file; it reloads)`);
+  if (b.frames.some(live)) lines.push(LIVE_SAID);
   for (const f of b.frames) {
     const open = o.pins?.(f) || 0;
     lines.push([f.id, f.src.startsWith('/_lab/') ? `${f.id}.html` : f.src, `${f.w}×${f.h}`, f.label && `"${f.label}"`, f.variantOf && `variant of ${f.variantOf}`, f.state && f.state !== 'live' && f.state, open && `${open} open`].filter(Boolean).join('  '));
@@ -40,7 +45,9 @@ export const frameLine = (b: Board, f: Frame, file?: string | null) => {
   const beside = b.frames.filter((g) => g.id !== f.id && g.state !== 'archived').map((g) => g.id);
   const gone = b.frames.filter((g) => g.state === 'archived').map((g) => g.id);
   const line = `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, `${f.w}×${f.h}`, f.label && `"${f.label}"`, beside.length && `beside ${beside.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
-  return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived, files kept. ` : ''}${b.of ? `Put ${f.id}'s change into ${file || b.of.split('#')[0]}, then reply --done.` : ''}`.trimEnd() : line;
+  // A variant of the live page: its code is a branch in the page's own source, so the pick says which one to keep.
+  const put = live(f) ? `Keep the ${f.id} branch (?${VARIANT}=${f.id}) in ${file || b.of?.split('#')[0] || 'the page'}'s source and remove the ${VARIANT} branching, then reply --done.` : `Put ${f.id}'s change into ${file || b.of?.split('#')[0]}, then reply --done.`;
+  return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived${live(f) ? '' : ', files kept'}. ` : ''}${b.of ? put : ''}`.trimEnd() : line;
 };
 
 // ---------- the changes ----------
@@ -79,13 +86,19 @@ export function act(action: string, a: Ask, e: Env): Done {
       const n = Math.round(Number(a.variants));
       if (!of || !(n >= 1 && n <= MAX_VARIANTS)) return no(`--variants takes 1 to ${MAX_VARIANTS} and goes with --of /page: labit board new "<topic>" --of /pricing --variants 3`);
       const rel = e.fileOf(page);
-      if (e.proxied || !rel || !/\.html?$/i.test(rel)) return no(`${page} is not a plain HTML page of this folder, so it cannot be copied. Use --widths 390,820,1280 (the real page at several widths) or add your own file: labit board add ${into} <file.html>`);
-      const html = fs.readFileSync(path.join(e.root, rel), 'utf8');
+      if (!e.proxied && !rel) return no(`${page} is not a page of this lab. Use a page from: labit list`);
       add({ src: page, w: 1280, label: 'now' }); // frame a: the page as it is now (the real page, not a copy), the variants beside it
-      for (let i = 0; i < n; i++) {
-        const id = nextId(b.frames);
-        copyIn(e, into, id, seed(html, rel));
-        add({ src: route(into, id), w: 1280 });
+      if (e.proxied || !/\.html?$/i.test(rel!)) {
+        // Behind a dev server (or a page that is no plain .html file) it cannot be copied: each variant is the live page
+        // itself with ?lab-variant=<frame>, and the page's own source branches on it.
+        for (let i = 0; i < n; i++) add({ src: `${page}?${VARIANT}=${nextId(b.frames)}`, w: 1280 });
+      } else {
+        const html = fs.readFileSync(path.join(e.root, rel!), 'utf8');
+        for (let i = 0; i < n; i++) {
+          const id = nextId(b.frames);
+          copyIn(e, into, id, seed(html, rel!));
+          add({ src: route(into, id), w: 1280 });
+        }
       }
     } else if (a.widths) {
       const ws = String(a.widths).split(',').map((s) => Math.round(Number(s))).filter((w) => w >= 200 && w <= 4000);
