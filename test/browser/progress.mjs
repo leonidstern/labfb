@@ -132,7 +132,9 @@ for (const [n, eng] of engines().entries()) {
         window.__take = () => {
           const f = r.querySelector('.float');
           const q = r.querySelector('.pin.draft')?.getBoundingClientRect();
-          if (f && q) window.__seen.push([parseFloat(getComputedStyle(f).top), f.offsetHeight, q.top, q.left]);
+          // The bar and the listening pill too: placing a pin must not touch them on a computer (only a phone's sheet moves them).
+          const away = ['.bar', '.listener', '.left'].map((s) => { const n = r.querySelector(s); if (!n) return ''; const c = getComputedStyle(n); const b = n.getBoundingClientRect(); return [c.opacity, c.visibility, c.transform, b.left, b.top, b.width, b.height].join(' '); }).join(' | ');
+          if (f && q) window.__seen.push([parseFloat(getComputedStyle(f).top), f.offsetHeight, q.top, q.left, away]);
         };
         window.__watch?.disconnect();
         window.__watch = new MutationObserver(() => {
@@ -149,6 +151,8 @@ for (const [n, eng] of engines().entries()) {
       const seen = await p.evaluate(() => window.__seen);
       const range = (k) => (seen.length ? Math.max(...seen.map((r) => r[k])) - Math.min(...seen.map((r) => r[k])) : Infinity);
       check(eng, `placing a pin ${spotName}: the box and the pin stay within 0.5 px from the first frame`, seen.length > 5 && Math.max(range(0), range(1), range(2), range(3)) <= 0.5, `${seen.length} samples, box top ${range(0).toFixed(2)}, height ${range(1).toFixed(2)}, pin ${range(2).toFixed(2)}`);
+      const moves = new Set(seen.map((r) => r[4]));
+      check(eng, `placing a pin ${spotName}: the bar and the listening pill do not flicker or move`, moves.size === 1 && !moves.has('') && !/ hidden /.test([...moves][0]), `${moves.size} looks of 3: ${[...moves].slice(0, 2).join(' // ')}`);
       await p.keyboard.press('Escape');
       await until(() => shadow(() => { return !r.querySelector('.float'); }));
     }
