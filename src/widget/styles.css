@@ -197,8 +197,8 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .tied-card { left: max(12px, calc(anchor(left) + var(--lab-cx))); position-try-fallbacks: --lab-above, --lab-edge, --lab-edge-above; }
 .tied-beside { --lab-min: 8px; margin-block: 0 8px; /* the 8 px under it counts in the browser's check, so it keeps off the bottom edge */ left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above, --lab-fit; }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
-.card.in, .float.in, .fd.in { animation: lab-in var(--_t-base) var(--_ease); }
-.card.out, .float.out, .fd.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
+.card.in, .float.in { animation: lab-in var(--_t-base) var(--_ease); }
+.card.out, .float.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
 .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
 /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
 .card .row:not(.nav) { justify-content: flex-end; gap: 10px; }
@@ -506,7 +506,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
      bottom, are kept up to date from visualViewport); their bottom part is solid down past the screen's edge,
      behind the home bar, the keyboard and Safari's toolbar, so nothing of the page shows below the box. */
   :host { --_safe: env(safe-area-inset-bottom, 0px); --_kb: var(--lab-kb, 0px);
-          --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb)); }
+          --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb));
+          /* A thread opens taller than the chat, the list and the switcher (which keep --_sheet-max): more of a long thread
+             in view, the top 120px of the screen still the page's. On a phone on its side the same height as the rest. */
+          --_thread-max: calc(min(88dvh, var(--lab-vh, 100dvh) - 120px) + var(--_kb)); }
+  @media (max-height: 500px) { :host { --_thread-max: var(--_sheet-max); } }
   :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
   /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
      panning the page can't push it up and nothing of the page shows above or below it. */
@@ -515,12 +519,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-kb]) .float { top: auto !important; height: auto !important; }
   .card, .float { position: fixed; top: auto !important; width: auto; max-width: none;
                   max-height: var(--_sheet-max); display: flex; flex-direction: column; padding: 8px 0 0; z-index: 3; }
+  .card { max-height: var(--_thread-max); }
   /* The same 12 px sides as the chat's, so a thread's reply box sits exactly where the chat's message box does. */
   .card > .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 4px; margin-right: 0; }
   /* A thread keeps one height, as the chat does (Leo, 15 Nov: it jumped while the chat stays put): the sheet's full
      height whatever its length, a short thread sitting by the reply box, so new replies and the keyboard never
      move its top. */
-  .card { height: var(--_sheet-max); }
+  .card { height: var(--_thread-max); }
   .card > .foot, .float > .composer { flex: none; padding: 0 12px var(--_pb); }
   .card > .foot { margin-top: 0; padding-top: 6px; }
   .card .composer { margin-top: 0; }
@@ -543,7 +548,12 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chatwin .tabs { touch-action: none; }
   .msgs, .card > .body { touch-action: pan-y; }
 
-  :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
+  /* The listening pill and the hints step away with the bar and come back in step with the sheet as a finger drags it
+     down (--lab-p), instead of popping back once it has gone (Leo, 20 Nov: "harsh… don't show pill animation like
+     slowly swiping it with finger"). */
+  :is(.listener, .left) { transition: opacity var(--_t-base) var(--_ease-out), transform var(--_t-slow) var(--_ease-settle); }
+  :host([data-sheet]) :is(.listener, .left) { opacity: var(--lab-p, 0); transform: translateY(calc(24px * (1 - var(--lab-p, 0)))); pointer-events: none; }
+  :host([data-sheet]) .hint { visibility: hidden; } /* a hint is centred by its transform: it just steps out */
   /* The bar steps down under the screen's edge while a sheet is open and comes back as the sheet goes: --lab-p is
      how far the sheet is on its way out (0 open, 1 gone), set while a finger drags it and while it slides away,
      so the bar rises with it, in step, instead of after it (Leo, 15 Nov). */
@@ -601,30 +611,15 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 }
 /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
 .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
-/* Selected words' one element (fluid.ts): the actions bar and the dialog that replaces it. It comes and goes as a comment
-   card does (.in / .out, above); a copy of the bar goes out as the dialog comes in. */
-.fd { position: absolute; z-index: 4; overflow: hidden; background: var(--_bg); border-radius: var(--_radius);
-      box-shadow: var(--_shadow); }
-.pane { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; transition: opacity var(--_fade); }
-.pane.on { opacity: 1; pointer-events: auto; transition: opacity var(--_fade-base) var(--_t-base); }
-.settled .p-dlg { position: relative; }
-.fd .p-bar { width: max-content; margin: 0; padding: 6px; }
-.p-dlg { padding: 8px; }
-.fd .float { position: static; width: auto; max-width: none; --_box-bg: var(--_soft); --_box-edge: none; background: none; border-radius: 0; box-shadow: none; padding: 0; }
+/* Corners inside corners (Leo, 18 Nov): an inner radius is the outer one less the gap between them, so they run
+   concentric: the comment card's quick buttons and box sit 8 px in. */
 .quick { display: flex; gap: 4px; margin: 0 0 6px; }
 .quick button { border: 0; border-radius: var(--_r-s); padding: 5px 8px; background: var(--_soft); font-size: 12px; letter-spacing: 0; cursor: pointer; }
 .quick button:hover { background: var(--_hover); }
 .quick button.on { background: var(--_fg); color: var(--_bg); font-weight: 600; }
 .quick.alt button::after { content: attr(data-n); margin-left: 6px; opacity: .55; font-variant-numeric: tabular-nums; } /* ⌥ held: the key for each */
-/* Corners inside corners (Leo, 18 Nov): an inner radius is the outer one less the gap between them, so they run
-   concentric: the bar's buttons sit 6 px in, the dialog's quick buttons and box 8 px in. */
-.p-bar button { border-radius: max(0px, calc(var(--_radius) - 6px)); }
-.fd .p-dlg .quick button, .fd .box, .float .quick button, .float .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
-.fd.gone .quick [data-k=rewrite], .fd.gone .quick [data-k=cut] { opacity: .4; pointer-events: none; } /* its words are gone: cut and rewrite have nothing to act on */
-.fd.still .pane { transition: none; } /* back after a reload: nothing moves */
+.float .quick button, .float .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
-  .fd .p-bar { gap: 8px; }
-  .p-bar button { min-height: 44px; padding: 0 14px; font-size: 14px; letter-spacing: -.011em; }
   .float > .quick { flex: none; gap: 8px; margin: 0; padding: 2px 12px 10px; }
   .float > .quick button { min-height: 36px; padding: 0 12px; font-size: 14px; letter-spacing: -.011em; }
   .float > .composer .box { border-radius: max(0px, calc(var(--_card-r) - 12px)); } /* the sheet's corners (--_card-r), the box 12 px in */
@@ -726,7 +721,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar[data-board] { visibility: hidden; pointer-events: none; }
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
-@media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
+/* It slides up and fades as the sheet opens and eases back down as the sheet goes, with the sheet's own --lab-p (0 open,
+   1 gone) while it is dragged or slides away, as the bottom bar does: it used to vanish and pop back (Leo, 20 Nov: "nav
+   is harsh coming back"). */
+@media (pointer: coarse) {
+  :host([data-sheet]) .sbar { transform: translateY(calc(-100% * (1 - var(--lab-p, 0)))); opacity: var(--lab-p, 0); pointer-events: none;
+                              transition: transform var(--_t-base) var(--_ease-in), opacity var(--_t-base) var(--_ease-out); }
+  .sbar { transition: opacity var(--_t-slow) var(--_ease-out), transform var(--_t-slow) var(--_ease-settle); }
+}
 /* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .sb-wrap .sb-nav { flex: 1; }
@@ -781,10 +783,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }
 }
 /* Phones: a choice is a 44 pt row to tap, Keep a full-size button under them (V1: not stuck, so it never covers a row). */
-@media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
+@media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); --_thread-max: var(--_sheet-max); } button.choice { min-height: 44px; align-items: center; }
 }
 
-/* Your actions (lib/actions.ts): as many as fit, "…", and select's done on one line; "…" grows the line into the
+/* Your actions (lib/actions.ts): as many as fit, "…" on one line; "…" grows the line into the
    whole list; hold or right-click a row to edit it in place, + add. */
 .quick { white-space: nowrap; }
 .quick[hidden] { display: none; }
@@ -843,4 +845,3 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .act-fields .cnt, .act-fields .k, .act-fields .why { font-size: 12px; }
   .acts .act.gone { min-height: 44px; padding: 0 4px; font-size: 14px; }
 }
-.quick button.sel { background: none; padding-inline: 6px; margin-left: auto; }

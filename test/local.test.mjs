@@ -139,17 +139,29 @@ test('a comment about the page as a whole has no spot in the agent text', async 
   assert.ok(after.includes(`page: ${B}/index`));
 });
 
+// The lab's live stream (/_lab/live): the newest version of one counter in its first events. One read can hold more
+// than one event (the lab sends the version, then a change straight after), or half of one, so whole events only.
+const live = async (field) => {
+  const ctl = new AbortController();
+  const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  while (!text.includes('\n\n')) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  ctl.abort();
+  const events = text.split('\n\n').slice(0, -1).map((e) => e.replace(/^data: /, '').trim()).filter((e) => e.startsWith('{'));
+  return JSON.parse(events.at(-1))[field];
+};
+
 test('read marks are shared by name: a phone and a Mac with the same name see the same new and read', async () => {
   await up();
   const reads = (q) => fetch(`${B}/_lab/api/reads?${q}`).then((r) => r.json());
   const mark = (body) => fetch(B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) });
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).reads;
-  };
+  const rev = () => live('reads');
   const { comment } = await post({ page: '/index', name: 'Sam', text: 'read me', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
   const id = comment.id;
   const before = await rev();
@@ -400,13 +412,7 @@ test('a last look is kept by name and page', async () => {
 
 test('a look bumps looked in the live state, so other tabs and devices check again', async () => {
   await up();
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).looked;
-  };
+  const rev = () => live('looked');
   const before = await rev();
   assert.equal(typeof before, 'number');
   await look({ name: 'Leo', page: '/index', ids: [['rev', 'check']] });
@@ -454,13 +460,7 @@ test('section marks are checked: a name, a page of this lab, an object, a size',
 
 test('a section mark bumps sections in the live state, and only when something changed', async () => {
   await up();
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).sections;
-  };
+  const rev = () => live('sections');
   const before = await rev();
   assert.equal(typeof before, 'number');
   await sec({ name: 'Leo', page: '/index', sections: { rev: 'one' } });
@@ -556,16 +556,23 @@ test('reply --progress keeps one line on the thread, replaced each time, with it
   assert.equal(c.progress.text, 'drawing W1–W6 · 2 of 4', 'the latest replaces the last');
   assert.equal((await threadsOf()).length, before);
   // The page is told: the lab's comments version moves, so open pages fetch the change.
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).comments;
-  };
-  const was = await rev();
+  const rev = () => live('comments');
+  // The version is read when the lab has been quiet for a moment (an earlier line's save and its notice may still be
+  // landing), and the third line must move it on: by one, or by more when something else of the lab's lands too.
+  let was = await rev();
+  for (let i = 0; i < 20; i++) {
+    await sleep(100);
+    const now = await rev();
+    if (now === was) break;
+    was = now;
+  }
   await run(['reply', id, '--progress', 'drawing W1–W6 · 3 of 4']);
-  assert.equal(await rev(), was + 1);
+  let now = await rev();
+  for (let i = 0; i < 30 && now <= was; i++) {
+    await sleep(100);
+    now = await rev();
+  }
+  assert.ok(now > was, `the comments version moves on (was ${was}, now ${now})`);
 });
 
 test('an answer, a new message or resolving clears the progress line', async () => {
@@ -638,6 +645,78 @@ test('stale: a pin the agent said it is on, with no sign since, comes back in it
     await cli(['reply', done, 'Bigger now']);
     await sleep(1800);
     assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'a plain answer ends the wait for it');
+  } finally {
+    lab.kill();
+    rm([dir, home]);
+  }
+});
+
+// A progress line counts as a sign of work, whoever wrote it: the agent (labit reply --progress) or the plugin's hook
+// (a POST with the agent key and no session, "helper: …" from a subagent's tool calls). The "no sign" clock restarts at it.
+test('stale: a progress line, the agent\'s or the hook\'s, is a sign of work: no reminder while it is newer than the window', async () => {
+  const dir = fs.realpathSync(tmp('stale-progress'));
+  const home = tmp('home');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
+  const port = String(claimPort(4810, 90));
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '2000', LAB_SETTLE_MS: '0' };
+  const lab = spawnLab(dir, port, { env });
+  const base = `http://localhost:${port}`;
+  const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
+  const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const pin = async (text) => (await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page: '/index', name: 'Leo', text, anchor }) })).json()).comment.id;
+  // What the plugin's hook sends: the agent's key, no session.
+  const hook = (id, text) => fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', host: `localhost:${port}`, 'x-lab-admin': serverJson(dir).agent, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/index', action: 'progress', id, text }) });
+  try {
+    await answers(base + '/', { tries: 50, fail: false });
+    const id = await pin('make it red');
+    assert.match(await cli(['wait', '--timeout', '5']), new RegExp(id), 'handed over');
+    // No on-it, no reply: only the hook's lines, each newer than the window when the next wait looks.
+    await sleep(1500);
+    assert.equal((await hook(id, 'helper: build the page')).status, 200);
+    await sleep(1500); // 3 s since the hand-off, 1.5 s since the line
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'the hook line is a sign');
+    await sleep(1000);
+    assert.equal((await hook(id, 'running npm test')).status, 200);
+    await sleep(1500);
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'a second line, again within the window');
+    // Truly no sign for longer than the window: the reminder, with how long and the last line.
+    await sleep(2300);
+    const out = await cli(['wait', '--timeout', '3']);
+    assert.match(out, /^# Still waiting for your answer/m);
+    assert.match(out, new RegExp(`id ${id} "make it red" · no sign for 0 min, last: running npm test`));
+  } finally {
+    lab.kill();
+    rm([dir, home]);
+  }
+});
+
+test('a hand-off of several pins names the pins that point at the same file, only for groups of two or more', async () => {
+  const dir = fs.realpathSync(tmp('same-file'));
+  const home = tmp('home');
+  for (const name of ['index', 'options', 'solo']) fs.writeFileSync(path.join(dir, `${name}.html`), `<!doctype html><title>${name}</title><h1 id="t">${name}</h1>`);
+  const port = String(claimPort(4810, 90));
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_SETTLE_MS: '0' };
+  const lab = spawnLab(dir, port, { env });
+  const base = `http://localhost:${port}`;
+  const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
+  const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const pin = async (page, text) => (await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page, name: 'Leo', text, anchor }) })).json()).comment.id;
+  try {
+    await answers(base + '/', { tries: 50, fail: false });
+    // One pin: no group line.
+    const one = await pin('/solo', 'a lone pin');
+    const lone = await cli(['wait', '--timeout', '5']);
+    assert.match(lone, new RegExp(one));
+    assert.doesNotMatch(lone, /Same file:/, 'one pin is no group');
+    await cli(['reply', one, 'ok', '--done']);
+    // Three on options, two on index, one on solo: two groups, solo left out.
+    for (const [page, text] of [['/options', 'one'], ['/index', 'two'], ['/options', 'three'], ['/solo', 'four'], ['/options', 'five'], ['/index', 'six']]) await pin(page, text);
+    const out = await cli(['wait', '--timeout', '5']);
+    assert.match(out, /^Same file: options\.html: 1, 2, 3$/m);
+    assert.match(out, /^Same file: index\.html: 1, 2$/m);
+    assert.doesNotMatch(out, /Same file: solo/);
+    assert.equal((out.match(/^Same file:/gm) || []).length, 2);
+    assert.ok(out.indexOf('Same file: options') < out.indexOf('## 1.'), 'said before the pins');
   } finally {
     lab.kill();
     rm([dir, home]);

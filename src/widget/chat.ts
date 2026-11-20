@@ -127,4 +127,5 @@ export function drawChat() {
       }),
     );
   if (atEnd) box.scrollTop = box.scrollHeight;
+  if (opening) W.S.stayAtEnd?.(box); // and stays at the newest while the sheet and its words settle (comments.js)
 }

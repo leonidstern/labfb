@@ -4,27 +4,15 @@
 // page back to that moment. In WebKit and Chrome's engine. Not part of `npm test`.
 // Run: node test/browser/moment.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
-})();
+const pw = playwright();
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
 const MEDIA = fileURLToPath(new URL('../../bench/', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-moment-'));
+const DIR = tmp('labit-moment-');
 const PORT = claimPort(7960, 30);
 const B = `http://localhost:${PORT}`;
 fs.copyFileSync(path.join(MEDIA, 'site/media/countdown.webm'), path.join(DIR, 'v.webm'));
@@ -41,22 +29,8 @@ video, img { display: block; width: 200px }</style>
 <h1>Moment</h1><div class="demo"><div id="track"><div id="loop"></div></div><div id="dot"></div><video id="vid" src="v.webm" muted loop autoplay playsinline></video><img id="gif" src="g.gif" alt="gif"></div><p>text</p>`;
 // One page per engine: the pins of one never sit under the clicks of the other.
 for (const eng of ['webkit', 'chromium']) for (const n of ['', '-b', '-c']) fs.writeFileSync(path.join(DIR, `${eng}${n}.html`), PAGE);
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '--new', '--no-open', '--port', String(PORT)], { cwd: DIR, env });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+const server = startLab(DIR, labEnv(), { port: PORT });
+await labUp(B);
 const until = (p, fn, arg, ms) => p.waitForFunction(fn, arg, { timeout: ms, polling: 'raf' }).catch(() => {});
 const ROOT = "[...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot";
 const inRoot = (p, js) => p.evaluate(`(() => { const r = ${ROOT}; return ${js}; })()`);
@@ -65,7 +39,7 @@ const comments = async () => (await (await fetch(`${B}/_lab/api/comments?page=${
 const loopState = (p) => p.evaluate(() => { const a = document.getElementById('loop').getAnimations()[0]; return { play: a.playState, t: Number(a.currentTime) }; });
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     PG = `/${eng}`;
     const browser = await pw[eng].launch();
     try {
@@ -217,5 +191,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

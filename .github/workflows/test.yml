@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # "Run workflow" on a branch runs every browser test, for a PR whose pick looks too small
 concurrency:
   group: test-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -36,53 +37,102 @@ jobs:
       - run: npm run reuse
       - run: npm run deadcode
 
+  # Which browser tests this PR needs (ci/affected.mjs): from the files it changes, docs and CI-only PRs run none, a
+  # widget module runs the tests that reach it, and src/comments.js, styles, the server, package.json or the build run
+  # all. Merges to main run none (tested in their PR) unless they bump the version; a release and a run started by hand
+  # run every test. The reasons are in this job's summary.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.pick.outputs.tests }}
+      native: ${{ steps.pick.outputs.native }}
+      bench: ${{ steps.pick.outputs.bench }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20 # a PR's merge with base (HEAD^1 is base), and on main the commit before the push
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: pick
+        run: |
+          # A PR: its merge with base (HEAD^1 is base). A merge to main was tested in its PR, so it runs the browsers only
+          # when it bumps the version, a release (Leo, 20 Nov: "test whole only on tags"; publish.yml tags that merge,
+          # and a tag pushed with the workflow's token starts no run of its own).
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            node ci/affected.mjs HEAD^1 HEAD
+          elif [ "${{ github.ref }}" = refs/heads/main ] && git cat-file -e "${{ github.event.before }}^{commit}" 2>/dev/null; then
+            node ci/affected.mjs --main "${{ github.event.before }}" HEAD
+          else
+            node ci/affected.mjs --all
+          fi
+
   # The widget in real browsers: Safari's engine (WebKit) and Chrome's. Playwright is installed
   # only here (--no-save), so labit itself keeps zero dependencies. Split by engine and by file
-  # group so the jobs run side by side: the slowest (fluid.mjs) gets a job of its own.
+  # group so the jobs run side by side.
   # They run on Leo's Mac (four self-hosted runners labelled labit-mac, one job each; Leo, 20 Nov: "most heavy ones
   # [on my Mac] and gh only harnesses"). Only for main and for PRs from this repository: a fork's code never runs
   # on the Mac, so a fork's PR shows "browser" failed until someone pushes it to a branch here.
   browser:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: plan
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (needs.plan.outputs.tests != '' || needs.plan.outputs.bench == 'true')
     runs-on: [self-hosted, labit-mac]
     timeout-minutes: 12 # a hung browser fails here instead of holding the PR for half an hour
     strategy:
       fail-fast: false
       matrix:
-        engine: [webkit, chromium]
-        # Four groups of about the same length on the Mac (2 to 3 min each; the old "rest" took 9).
+        # A PR runs Safari's engine only (Leo, 20 Nov: half the Mac's work per PR; Safari is where labit is used most).
+        # main runs both for a release, and "Run workflow" runs both by hand.
+        engine: ${{ fromJSON(github.event_name == 'pull_request' && '["webkit"]' || '["webkit", "chromium"]') }}
+        # Groups of about the same length on the Mac (2 to 3 min each; the old "rest" took 9).
         group:
-          # Selected words: the chip, the dialog it grows into, slash actions, Escape, reload, saved files, right to left, reduced motion.
-          - { name: fluid, files: fluid }
           # behaviours; the live connection; flags; pins finding their spot again; a phone pinch-zoomed in (zoom).
           - { name: a, files: behaviours connection anchoring flags moved zoom shiftkeys frame framescroll boardclose }
           # What a drag does (words, an area, a point, fields and links); ink on selected words (flag inkOnText); the section bar; boards.
           - { name: b, files: selection ink sections board boardarrange boardreload }
-          # The "!" on the labit mark for a held reload (updbadge); undo; moments; native; motion; select; actions; shortcuts from labit.json.
-          - { name: c, files: progress fold shortcuts boardmode boardpins boardview boardhalf select actions draw motionreach updbadge update undo moment nativepins native nativeboard }
+          # The "!" on the labit mark for a held reload (updbadge); undo; moments; native; motion; actions; shortcuts from labit.json; status updates folding (fold).
+          - { name: c, files: progress fold shortcuts boardmode boardpins boardview boardhalf actions draw motionreach updbadge update undo moment nativepins native nativeboard }
     name: browser (${{ matrix.engine }}, ${{ matrix.group.name }})
     # The Mac keeps Playwright's browsers in ~/Library/Caches/ms-playwright (chromium 1255, webkit 2388 for 1.65.1),
     # so nothing is downloaded per run.
     env:
       ENGINES: ${{ matrix.engine }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # This group's files that the plan picked ("all" keeps every one). None picked and no bench: the job ends here,
+      # before checkout, in a second.
+      - id: pick
+        env:
+          PICKED: ${{ needs.plan.outputs.tests }}
+          BENCH: ${{ needs.plan.outputs.bench == 'true' && matrix.engine == 'webkit' && matrix.group.name == 'a' }}
+        run: |
+          run=""; for t in ${{ matrix.group.files }}; do case " $PICKED " in *" all "*|*" $t "*) run="$run $t";; esac; done
+          echo "files=$run" >> "$GITHUB_OUTPUT"
+          echo "go=$([ -n "$run" ] || [ "$BENCH" = true ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "bench=$BENCH" >> "$GITHUB_OUTPUT"
+          echo "Running:${run:- nothing}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: steps.pick.outputs.go == 'true'
+        uses: actions/checkout@v4
+      - if: steps.pick.outputs.go == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
+      - if: steps.pick.outputs.go == 'true'
+        run: npm install --no-save --no-audit --no-fund playwright@1.65.1
       - name: Run ${{ matrix.group.name }}
+        if: steps.pick.outputs.files != ''
         # A file that fails runs once more before the job fails: eight browsers on one Mac make a timing check miss now
         # and then. The retry is a warning on the run, so a file that keeps needing it is easy to spot.
-        run: for t in ${{ matrix.group.files }}; do echo "::group::$t"; node test/browser/$t.mjs || { echo "::warning::$t failed once, running it again"; node test/browser/$t.mjs; }; echo "::endgroup::"; done
-      # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
-      - if: matrix.engine == 'chromium' && matrix.group.name == 'a'
+        run: for t in ${{ steps.pick.outputs.files }}; do echo "::group::$t"; node test/browser/$t.mjs || { echo "::warning::$t failed once, running it again"; node test/browser/$t.mjs; }; echo "::endgroup::"; done
+      # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone. Once
+      # per run, in the webkit "a" job (bench/run.mjs starts Chrome itself).
+      - if: steps.pick.outputs.bench == 'true'
         run: node bench/run.mjs
 
   # Native features (ci/native.mjs): what Safari's engine and Chrome's can do that labit could use, as a table in the
   # job's summary. Fails only when a feature labit uses goes missing from one of them. On the Mac, beside the browser jobs.
   native:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: plan
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.plan.outputs.native == 'true'
     runs-on: [self-hosted, labit-mac]
     timeout-minutes: 5
     steps:
@@ -93,11 +143,14 @@ jobs:
       - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
       - run: node ci/native.mjs
 
-  # One required check name for branch protection, green only when every browser job is.
+  # One required check name for branch protection, green only when every browser job is, or when the plan picked no
+  # browser test at all (a docs or CI-only PR).
   browser-all:
     if: always()
-    needs: browser
+    needs: [plan, browser]
     runs-on: ubuntu-latest
     name: browser
     steps:
-      - run: test "${{ needs.browser.result }}" = success
+      - run: |
+          test "${{ needs.plan.result }}" = success
+          test "${{ needs.browser.result }}" = success || { test "${{ needs.browser.result }}" = skipped && test -z "${{ needs.plan.outputs.tests }}${{ needs.plan.outputs.bench == 'true' && 'bench' || '' }}"; }
