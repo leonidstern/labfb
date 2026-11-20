@@ -103,6 +103,37 @@ try {
         return { sh: t.scrollHeight, ch: t.clientHeight, st: Math.round(t.scrollTop), ov: getComputedStyle(t).overflowY };
       });
       const scrolls = (t) => t.sh <= t.ch + 1 || (t.ov === 'auto' && t.st + t.ch >= t.sh - 2);
+      // A paste of a few lines into a thread's reply box (your name known: text, "as <name>" and Send on one row): the
+      // box grows with the words. Safari grew the field but not the box, so the first line stuck out above it (Leo 20 Nov).
+      {
+        await p.setViewportSize({ width: 1000, height: 800 });
+        fs.writeFileSync(path.join(DIR, 'reply.html'), '<!doctype html><meta charset="utf-8"><title>r</title><h1>A thread</h1><p>words</p>');
+        await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: '/reply', name: 'Claude', text: 'a thread to reply in', anchor: { selector: 'h1', x: 0.5, y: 0.5, docX: 60, docY: 30, width: 200 } }) });
+        await p.evaluate(() => localStorage.setItem('lab-name', 'Leo'));
+        await p.goto(B + '/reply');
+        await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 5000 });
+        await sleep(800);
+        const pin = await p.evaluate(() => {
+          const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot;
+          const b = [...r.querySelectorAll('.pin')].map((e) => e.getBoundingClientRect()).find((b) => b.width && b.top > 0);
+          return b && { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        });
+        await p.mouse.click(pin.x, pin.y);
+        await sleep(600);
+        const reply = () => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.card textarea');
+        await p.evaluate(`(${reply})().focus()`);
+        await p.keyboard.insertText('also there is selecting frame that removes ability to comment');
+        await sleep(400);
+        const r = await p.evaluate(`(() => { const t = (${reply})(); const a = t.getBoundingClientRect(), b = t.closest('.box').getBoundingClientRect();
+          return { field: [Math.round(a.top), Math.round(a.bottom)], box: [Math.round(b.top), Math.round(b.bottom)], lines: Math.round(t.scrollHeight / 20) }; })()`);
+        check(eng, 'a paste of a few lines in a reply: the box grows around them, no line sticks out above it', r.lines >= 2 && r.field[0] >= r.box[0] && r.field[1] <= r.box[1], JSON.stringify(r));
+        await p.evaluate(`(${reply})().value = ''`);
+        await close();
+        await p.evaluate(() => localStorage.removeItem('lab-name'));
+        await p.goto(B + '/');
+        await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 5000 });
+        await sleep(400);
+      }
       for (const [h, words] of [[800, 200], [360, 36]]) {
         await p.setViewportSize({ width: 1000, height: h });
         await sleep(300);

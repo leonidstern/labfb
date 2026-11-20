@@ -160,6 +160,10 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     // the box's right edge, not left of the name; it stays wide until the words are clearly shorter (no flapping at the edge).
     // Its tallest is the max-height the box has where it is (200 px, less in a short window), not a fixed 200: with a
     // fixed number, words between the two were cut off at the top with no scrollbar (a long paste, Leo 20 Nov).
+    // Its height is also set here, not left to field-sizing alone: Safari grew the field but not the box around it,
+    // so a pasted message of a few lines stuck out above the box (Leo 20 Nov). max-height still caps it.
+    text.style.height = 'auto';
+    text.style.height = `${text.scrollHeight}px`;
     const cap = parseFloat(getComputedStyle(text).maxHeight) || 200;
     const tall = one && (text.scrollHeight > cap || (box.classList.contains('tall') && text.scrollHeight > cap - 40));
     if (tall !== box.classList.contains('tall')) box.classList.toggle('tall', tall);
