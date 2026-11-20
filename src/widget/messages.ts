@@ -117,6 +117,7 @@ export const foldRow = (slot: Extract<Slot, { fold: string }>, unfolded: Set<str
       b.textContent = label(open);
       return inPlace(open);
     }
+    d.S.endStays?.(); // a stay still settling after the list opened would pull it back to the end
     d.S.foldToggle = true;
     try {
       d.render();
