@@ -446,7 +446,7 @@ kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar .mn { color: var(--_muted); font-weight: 400; }
 /* The count is a plain number: grey at 0, green when something is new. */
 .bar .chat-btn, .bar .list-btn { align-items: baseline; } /* the number sits on the word's line */
-.bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
+.bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; min-width: 2ch; } /* room for two digits: the pill does not grow when a count reaches 10 */
 .bar .cnt.zero { color: var(--_muted); }
 .bar .cnt:not(.zero) { color: var(--_green-fg); } /* something new: green, the go pin's green (Leo, 17 Nov) */
 .more { font-size: 15px !important; letter-spacing: .05em; }
