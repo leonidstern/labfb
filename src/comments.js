@@ -1225,7 +1225,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         S.quietOpen = false; // opened by a send, for its undo (takeBack): the cursor stays where it was
         S.openCard = card;
         if (appear && !S.stepping) card.classList.add('in');
-        if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
+        if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_thread-max))`;
         S.stepping = S.keepKeys = false;
         next.push(card);
         const boardPin = c.anchor?.kind === 'board' && !heldPin(pin); // held to the screen by the script (onBoard), not tied
