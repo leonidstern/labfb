@@ -412,7 +412,7 @@ export function openAsk(c) {
 }
 const LETTER = (n: number) => String.fromCharCode(65 + n);
 // The rows of a question, under it. Answered (or an older one): the rows as they were, the pick ticked. Open: rows to
-// try and pick, Keep under them. card: the thread's card (its tie is drawn again as words change).
+// try; a tap answers. card: the thread's card (its tie is drawn again as words change).
 function choicesEl(c, ask, card) {
   const box = W.el('div', { class: 'choices' });
   const list = W.el('div', { class: 'rows' });
@@ -441,38 +441,36 @@ function choicesEl(c, ask, card) {
   if (pick && pick.picked.n < 0) box.append(W.el('span', { class: 'note' }, `kept as it was · ${pick.name}`));
   if (!live) return box;
 
-  // The row picked (tapped), and the one shown in the page (the row pointed at, or the picked one).
+  // A tap answers at once (Leo, 20 Nov: "remove keep button answer right away"): no Keep. On a computer pointing at a
+  // row still tries it in the page; the row shown at first is the page's own words, or the agent's pick.
   const back = keptRow(ask);
   let cur = back ?? (inPlace ? (nowIs >= 0 ? nowIs : -1) : ask.recommend ?? -1);
-  // Always "Keep", always on (Leo, 18 Nov: "just keep all the time"): on the page's own words it keeps them as they are.
-  const keep = W.el('button', { class: 'keep', type: 'button' }, 'Keep') as HTMLButtonElement;
   const words = (n: number) => (n < 0 ? exact : ask.choices[n]);
   const show = (n: number) => inPlace && tryRow(c, ask, n, n < 0 || n === nowIs ? null : words(n), card);
+  const note = W.el('span', { class: 'note', hidden: '' });
+  box.append(note);
   const select = (n: number) => {
     cur = n;
     for (const r of rows) {
       r.el.classList.toggle('on', r.n === n);
       r.el.setAttribute('aria-pressed', String(r.n === n));
     }
-    if (!keep.disabled) keep.textContent = 'Keep'; // after "your name first" or "failed, try again"
     show(n);
   };
-  for (const r of rows) {
-    r.el.addEventListener('click', () => select(r.n));
-    if (!W.coarse) r.el.addEventListener('pointerenter', () => show(r.n));
-  }
-  if (!W.coarse) list.addEventListener('pointerleave', () => show(cur));
-  box.append(keep);
-  keep.addEventListener('click', async () => {
-    if (keep.disabled) return;
+  let sending = false;
+  const answer = async (n: number) => {
+    if (sending) return;
+    select(n);
     const name = String(W.store.get('lab-name') || '').trim();
     if (!name) {
-      keep.textContent = 'your name first';
+      note.hidden = false;
+      note.textContent = 'your name first';
       return void W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true });
     }
-    const n = cur; // -1: the words as they are (a choice that is the same words is picked by its letter)
     const text = n < 0 ? 'Keep as is: none of these.' : `Picked ${LETTER(n)}: ${ask.choices[n]}`;
-    keep.disabled = true;
+    sending = true;
+    for (const r of rows) r.el.disabled = true;
+    note.hidden = true;
     try {
       const { comment } = await W.send({ name, text, parent: ask.id, to: ask.id, picked: n });
       untry(); // the agent writes the pick into the file; the page shows its own words till then
@@ -480,10 +478,17 @@ function choicesEl(c, ask, card) {
       W.markSeen([comment]);
       W.render();
     } catch {
-      keep.disabled = false;
-      keep.textContent = 'failed, try again';
+      sending = false;
+      for (const r of rows) r.el.disabled = false;
+      note.hidden = false;
+      note.textContent = 'failed, tap again';
     }
-  });
+  };
+  for (const r of rows) {
+    r.el.addEventListener('click', () => answer(r.n));
+    if (!W.coarse) r.el.addEventListener('pointerenter', () => show(r.n));
+  }
+  if (!W.coarse) list.addEventListener('pointerleave', () => show(cur));
   select(cur);
   // After a hot save the words may be gone (or be back): the card is drawn again so its rows and place match them.
   onReshow(() => box.isConnected && (triesInPlace(c) === inPlace ? show(cur) : W.render()));
