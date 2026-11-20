@@ -23,10 +23,11 @@
     "build:watch": "npm run build -- --watch",
     "dev": "node scripts/dev.mjs",
     "build:cli": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npx --yes esbuild@0.25.12 local.mjs --bundle --minify --keep-names --format=esm --platform=node --target=node22 --outdir=dist --out-extension:.js=.mjs --log-level=warning",
-    "prepack": "npm run build:cli",
+    "prepack": "npm run build && npm run build:cli",
     "typecheck": "node ci/metrics.mjs types",
     "deadcode": "npx --yes knip@5.66.0 --include files,exports,types --no-progress",
     "reuse": "node ci/reuse.mjs",
+    "pretest": "node -e \"import('./lib/build.ts').then((m) => process.exit(m.ensureBuilt('.') ? 0 : 1))\"",
     "test": "node --import ./test/setup.mjs --test test/*.test.mjs"
   },
   "engines": {
