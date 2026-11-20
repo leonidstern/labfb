@@ -29,6 +29,10 @@ export const runningLabs = (): Lab[] =>
     })
     .sort((a, b) => a.root.localeCompare(b.root));
 
+/** Asks the lab on `port` for its pages (GET /_lab/pages: its name, folder, pages and who listens), giving up after
+ *  `ms`. Rejects when nothing answers there. */
+export const askPages = (port: number, ms: number) => fetch(`http://localhost:${port}/_lab/pages`, { signal: AbortSignal.timeout(ms) });
+
 // ---------- parked labs ----------
 // A lab parked from the switcher stops and leaves ~/.labit/parked/<port>.json: how to start it again, the same way.
 export const PARKED = path.join(path.dirname(REGISTRY), 'parked');

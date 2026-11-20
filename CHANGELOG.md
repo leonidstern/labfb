@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- The ¼ speed key can be moved like the others: `slow` in `shortcuts` (`labit.json` or your settings) was refused as "not an action" and S stayed. Another action put on S is now said when the lab starts, as for any key used twice.
 - Select mode is gone (it was the flag `select`, **V**, and select in the ⋯ menu): the code, its styles and its key with it. The quick actions on pins, words and areas stay. An old `select` under `flags` in `labit.json` or your settings is now said at start as "not something being tried now" and otherwise ignored, and a `select` under `shortcuts` as "not an action".
 - **Undo a tap on a question.** A tap shows "Picked B · undo" for 5 s; the pick goes after that, or at once when the card closes. Undo puts the rows back.
 - **Questions in the chat.** The agent's question with choices shows its rows in the page chat too, and picks work the same.
@@ -18,7 +19,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - **A drawing sends with Enter, no words needed.** Its box opens with the lines; Enter sends it as what it reads as ("circled"), or type a few words first.
 - **The agent is told where to look.** On a plain HTML page each comment gets `in file: page.html:30`, and an arrow's ends name their card or section. In sims this cut a third of Haiku's time in the model.
 - **Drawn lines are a red pen**, as wide as you pressed (a pen's pressure, or slower = wider), and settle to 35% once sent, full on hover or open. Arrows get a clean head at the tip, whatever the hand drew.
-- **Hold Shift while drawing** and a line drawn about straight comes out straight, flat, upright or at 45°.
+- **A drawing with several marks lists each one** with what it is on, in the order drawn ("mark 1: arrow from Integrations to Weekly digest", "mark 2: circled on Alerts"), so the words can refer to them.
+- **Hold Shift while drawing** and a line drawn about straight comes out straight, flat, upright or at 45°; a rough box comes out a clean rectangle and a loop a clean ellipse.
 - **Lines are smooth curves** through the kept points, so thinned lines stop looking jagged. The line you tap to open a drawing is 28 px wide, about a fingertip.
 - **A tapped action closes at once** (go, fix, remove…): no undo card to close by hand on a phone. Command-Z still takes it back on a computer.
 - **Drawing edge cases fixed:** loops that stop short or run past their start, wavy and slightly crooked lines, a palm on the glass, a scroll mid-stroke, a stroke into a frame or off the window, D typed into the box, a cancelled stroke, a loop ending on its own start, long scribbles and ten-stroke drawings kept whole, drawing over links, buttons and earlier lines.
