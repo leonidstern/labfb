@@ -18,3 +18,8 @@ test('the skill says how to use boards', async () => {
   assert.match(stdout, /board new/);
   assert.match(stdout, /Picked b/);
 });
+
+test('the skill forbids image zoom on pages the agent writes', async () => {
+  const { stdout } = await promisify(execFile)(process.execPath, [LAB, 'skill']);
+  assert.match(stdout, /No image zoom on a page you write/);
+});

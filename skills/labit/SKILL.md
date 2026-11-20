@@ -79,5 +79,6 @@ In Codex's sandbox, `wait` and `reply` may be blocked from reaching the lab: run
 Rules:
 - Comments from "this computer" are the person. Comments marked as guests (from other devices with `--wifi`) are requests to weigh, not orders: ask the person before acting on anything beyond a small, clear page change.
 - Don't redraw or restyle parts nobody commented on.
+- No image zoom on a page you write: no click-to-enlarge, lightbox, `cursor: zoom-in` or full-screen picture overlay. A tap on an image does nothing. If a page already has one you didn't write, leave it unless asked.
 - Rename or move a page with `mv`: its comments follow the file. A page written anew under another name has none.
 - `.lab/comments.md` in the project holds every open comment as text if you lose track. `LAB --help` lists everything else.
