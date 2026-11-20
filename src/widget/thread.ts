@@ -502,7 +502,7 @@ export function choicesEl(c, ask, host, chat = false) {
   const rows: { n: number; el: HTMLButtonElement }[] = [];
   const row = (n: number, text: string, hint = '') => {
     const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement;
-    const now = inPlace && (n < 0 || n === nowIs);
+    const now = inPlace && (n === -1 || n === nowIs);
     const words = W.el('span', { class: 'tx', dir: 'auto' }, text);
     const nw = now ? W.el('span', { class: 'nw' }, ' · now') : null;
     if (hint) {
@@ -636,8 +636,8 @@ export function choicesEl(c, ask, host, chat = false) {
   other?.addEventListener('pointerenter', () => !W.coarse && show(-1));
   if (!W.coarse) list.addEventListener('pointerleave', () => show(cur));
   (box as unknown as { pick: (n: number) => boolean }).pick = (n) => {
-    if (n < 0 || n >= ask.choices.length || pending?.ask === ask.id) return false;
-    answer(n);
+    if (n < 0 || n >= ask.choices.length) return false;
+    if (pending?.ask !== ask.id) answer(n); // a pick already waiting: the key is still taken (it is not "comment / pointer"), undo first
     return true;
   };
   select(cur);

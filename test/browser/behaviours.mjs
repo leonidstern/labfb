@@ -400,8 +400,8 @@ for (const eng of ['webkit', 'chromium']) {
       const c = r.querySelector('.card');
       if (!c) return null;
       const b = c.getBoundingClientRect();
-      const rows = [...r.querySelectorAll('.choice')];
-      return { cls: c.className, left: b.left, top: b.top, right: b.right, bottom: b.bottom, tie: Boolean(r.querySelector('.tie')), keys: Boolean(r.querySelector('.keys, .keeprow, .tag, .lt')), bubble: getComputedStyle(r.querySelector('.msg.asks')).backgroundColor, name: getComputedStyle(r.querySelector('.msg.asks > b')).display, rows: rows.map((x) => x.textContent), on: rows.findIndex((x) => x.classList.contains('on')), disabled: rows.every((x) => x.disabled), keep: r.querySelector('.keep')?.textContent, keepOff: r.querySelector('.keep')?.disabled, picked: rows.findIndex((x) => x.classList.contains('picked')) };
+      const rows = [...r.querySelectorAll('.choice:not(.else)')];
+      return { other: r.querySelector('.choice.else')?.textContent, note: r.querySelector('.choices .note')?.textContent, noteIdle: r.querySelector('.choices .note')?.classList.contains('idle'), cls: c.className, left: b.left, top: b.top, right: b.right, bottom: b.bottom, tie: Boolean(r.querySelector('.tie')), keys: Boolean(r.querySelector('.keys, .keeprow, .tag, .lt')), bubble: getComputedStyle(r.querySelector('.msg.asks')).backgroundColor, name: getComputedStyle(r.querySelector('.msg.asks > b')).display, rows: rows.map((x) => x.textContent), on: rows.findIndex((x) => x.classList.contains('on')), disabled: rows.every((x) => x.disabled), keep: r.querySelector('.keep')?.textContent, keepOff: r.querySelector('.keep')?.disabled, picked: rows.findIndex((x) => x.classList.contains('picked')) };
     });
     const original = await html();
     await q.evaluate(() => (window.__lnk = document.querySelector('#lnk')));
@@ -412,7 +412,7 @@ for (const eng of ['webkit', 'chromium']) {
     let c = await card();
     const geo = await quoteRects();
     check(eng, 'a question opens in the margin, clear of the words', c && /margin/.test(c.cls) && c.tie && c.left >= geo.para.right + 28 && c.right <= 1000 - 8 && c.right - c.left === 280 && Math.abs(c.top - geo.para.top) <= 10, JSON.stringify([c?.cls, c?.tie, c?.left, c?.right, c?.top, geo.para]));
-    check(eng, 'a question (V1 plain list): no bubble, plain rows, the page\'s words "· now" ticked, no letters, tags or hint, no Keep (a tap answers)', c && c.rows.length === 4 && c.rows[0] === 'the full guide on the page · now' && c.rows.slice(1).every((t, i) => t === choices[i]) && !c.keys && /rgba\(0, 0, 0, 0\)|transparent/.test(c.bubble) && c.name === 'none' && c.on === 0 && c.keep === undefined, JSON.stringify(c));
+    check(eng, 'a question (V1 plain list): no bubble, plain rows, the page\'s words "· now" ticked, no letters, tags or hint, no Keep (a tap answers)', c && c.rows.length === 4 && c.rows[0] === 'the full guide on the page · now' && c.rows.slice(1).every((t, i) => t === choices[i]) && !c.keys && /rgba\(0, 0, 0, 0\)|transparent/.test(c.bubble) && c.name === 'none' && c.on === 0 && c.keep === undefined && c.other === 'Something else…', JSON.stringify(c));
     const pinsBefore = await pinsAt();
     const countBefore = await nodes();
     const belowAt = () => q.evaluate(() => Math.round(document.querySelector('#b').getBoundingClientRect().top + scrollY));
@@ -447,18 +447,35 @@ for (const eng of ['webkit', 'chromium']) {
     await sq(() => { r.querySelector('button.pin').click(); });
     await sleep(600);
     await answer(0);
+    await sleep(400);
+    const picksNow = async () => (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
+    c = await card();
+    check(eng, 'a tap waits 5 s: "Kept as is · undo", the rows still, nothing sent yet', c && /^Kept as is · undo$/.test(c.note) && !c.noteIdle && c.disabled && (await picksNow()).length === 0, JSON.stringify(c && [c.note, c.disabled]));
+    // Undo puts the rows back, and nothing is ever sent.
+    await sq(() => { r.querySelector('.choices .note .btn.undo').click(); });
+    await sleep(300);
+    c = await card();
+    check(eng, 'undo puts the rows back, still open', c && !c.disabled && c.noteIdle && c.on === 0 && c.picked === -1, JSON.stringify(c && [c.disabled, c.noteIdle, c.on, c.picked]));
+    await sleep(5400);
+    check(eng, 'after undo nothing is sent, not even after the 5 s', (await picksNow()).length === 0);
+    // Tapped again, the card closing sends the pick at once.
+    await answer(0);
+    await sleep(300);
+    await q.keyboard.press('Escape');
     await sleep(900);
-    const asIs = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
-    check(eng, 'a tap on the page\'s own words keeps them as they are', asIs.length === 1 && asIs[0].picked.n === -1 && asIs[0].text.startsWith('Keep as is') && (await html()) === original, JSON.stringify(asIs.map((x) => [x.picked, x.text])));
+    const asIs = await picksNow();
+    check(eng, 'closing the card sends the waiting pick at once; a tap on the page\'s own words keeps them as they are', asIs.length === 1 && asIs[0].picked.n === -1 && asIs[0].text.startsWith('Keep as is') && (await html()) === original, JSON.stringify(asIs.map((x) => [x.picked, x.text])));
     for (const x of asIs) await post({ page: '/ask', action: 'delete', id: x.id });
     await q.keyboard.press('Escape');
     await sleep(400);
 
-    // A tap on B sends the pick at once; the words are the page's until the agent writes the file.
+    // A tap on B sends the pick after 5 s; the words are the page's until the agent writes the file.
     await sq(() => { r.querySelector('button.pin').click(); });
     await sleep(600);
     await answer(2);
-    await sleep(900);
+    await sleep(1200);
+    check(eng, 'a pick is still not sent 1.2 s after the tap', (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.every((x) => !x.picked));
+    await sleep(4600);
     const got = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
     c = await card();
     check(eng, 'a tap on B sends the pick', got.length === 1 && got[0].picked.of === asked.id && got[0].picked.n === 1 && got[0].text.startsWith('Picked B: ') && (await html()) === original, JSON.stringify(got.map((x) => [x.picked, x.text])));
@@ -499,6 +516,20 @@ for (const eng of ['webkit', 'chromium']) {
     await sleep(300);
     await post({ page: '/ask', action: 'delete', id: (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.find((x) => x.picked)?.id });
     await sleep(800);
+
+    // A short window with the words near its bottom: the card is kept inside it (8 px from the edges), not run off the bottom.
+    await q.setViewportSize({ width: 1000, height: 420 });
+    await sleep(300);
+    await q.evaluate(() => scrollTo(0, document.querySelector('#a').getBoundingClientRect().top + scrollY - 330));
+    await sleep(300);
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(800);
+    c = await card();
+    check(eng, 'a question card near the window\'s bottom is clamped inside it (8 px gap)', c && c.left >= 8 && c.bottom <= 420 - 8 + 1 && c.top >= 8 - 1, JSON.stringify(c && [c.left, c.top, c.bottom]));
+    await q.keyboard.press('Escape');
+    await q.evaluate(() => scrollTo(0, 0));
+    await q.setViewportSize({ width: 1000, height: 700 });
+    await sleep(300);
 
     // The window too narrow for the margin: the card goes under the quote's last line, never over the words.
     await q.setViewportSize({ width: 700, height: 700 });
@@ -541,7 +572,7 @@ for (const eng of ['webkit', 'chromium']) {
     await sleep(700);
     await sq(() => { r.querySelectorAll('.choice')[1].dispatchEvent(new PointerEvent('pointerenter')); });
     await sleep(200);
-    const row = await sq(() => { return { cls: r.querySelector('.card').className, rows: [...r.querySelectorAll('.choice')].map((x) => x.textContent) }; });
+    const row = await sq(() => { return { cls: r.querySelector('.card').className, rows: [...r.querySelectorAll('.choice:not(.else)')].map((x) => x.textContent) }; });
     check(eng, 'a quote across two blocks: rows only, no "now" row, nothing changed in the page', !/margin/.test(row.cls) && row.rows.length === 2 && !row.rows.some((t) => t?.endsWith('now')) && (await mine()) === before, JSON.stringify(row));
     await q.keyboard.press('Escape');
     await post({ page: '/ask2', action: 'delete', id: across.id });
@@ -556,6 +587,89 @@ for (const eng of ['webkit', 'chromium']) {
     const inPage = await q.evaluate(() => ({ c: document.querySelector('#c').textContent, imgs: document.querySelectorAll('#c img').length, bs: document.querySelectorAll('#c b').length, x: window.__x }));
     check(eng, 'a choice with tags shows as text, in the row and in the sentence (dir auto)', raw.tx[1][0].startsWith('<b>Lonely</b><img') && raw.tx.every(([, d, k]) => d === 'auto' && k === 0) && inPage.c.startsWith('<b>Lonely</b>') && inPage.imgs === 0 && inPage.bs === 1 && inPage.x === undefined, JSON.stringify([raw, inPage]));
     await q.keyboard.press('Escape');
+    await q.close();
+  }
+
+  // A question with hints, a touch that scrolled, "Something else…", and a question in the page chat (thread.ts, chat.ts).
+  {
+    const body = (a) => `<!doctype html><meta charset="utf-8"><title>Ask3</title><style>body{margin:30px;font:18px/1.6 serif}main{max-width:520px}</style><main>${a}</main>`;
+    write('ask3.html', body('<p id="a">A heading-ish line of words.</p>' + Array.from({ length: 8 }, (_, i) => `<p>Filler ${i}.</p>`).join('')));
+    await wipe('/ask3');
+    const q = await ctx.newPage();
+    await q.goto(B + '/ask3');
+    await sleep(1200);
+    const sq = (fn, arg) => q.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
+    const picks = async () => (await (await fetch(`${B}/_lab/api/comments?page=/ask3`)).json()).comments.filter((x) => x.picked);
+    const pin = (await post({ page: '/ask3', name: 'leo', text: 'which layout?', anchor: { kind: 'element', selector: '#a', x: 0.5, y: 0.5, docX: 0.3, docY: 80, width: 1000, element: '<p id="a">' } })).comment;
+    const ask = (await post({ page: '/ask3', name: 'Claude', text: 'Which layout?', parent: pin.id, choices: ['Tabs', 'List', 'Grid'], hints: ['less scrolling', '', 'denser, harder to scan'], recommend: 0 })).comment;
+    await sleep(1200);
+    await sq(() => { r.querySelector('button.pin').click(); });
+    await sleep(700);
+    const info = () => sq(() => {
+      const rows = [...r.querySelectorAll('.choice:not(.else)')];
+      return { hints: rows.map((x) => x.querySelector('.hint')?.textContent || ''), tx: rows.map((x) => x.querySelector('.tx')?.textContent), note: r.querySelector('.choices .note')?.textContent.trim(), disabled: rows.every((x) => x.disabled), on: rows.findIndex((x) => x.classList.contains('on')), focus: r.activeElement?.localName, hintMuted: rows[0].querySelector('.hint') && getComputedStyle(rows[0].querySelector('.hint')).color !== getComputedStyle(rows[0].querySelector('.tx')).color, elseLast: r.querySelector('.choice:last-child')?.classList.contains('else') };
+    });
+    let c = await info();
+    check(eng, 'a hint shows as a muted second line in its row; rows without one have none; "Something else…" is last', c.hints.join('|') === 'less scrolling||denser, harder to scan' && c.tx.join('|') === 'Tabs|List|Grid' && c.hintMuted && c.elseLast, JSON.stringify(c));
+    check(eng, 'an open question does not focus the reply box on a computer', c.focus !== 'textarea' && c.on === 0, JSON.stringify([c.focus, c.on]));
+    // A touch that moved more than 8 px was a scroll: no answer. A touch that stayed put answers.
+    const touch = (i, dy) => sq(() => {
+      const el = r.querySelectorAll('.choice')[a[0]];
+      const b = el.getBoundingClientRect();
+      const x = b.left + 20, y = b.top + 10;
+      const ev = (t, yy) => el.dispatchEvent(new PointerEvent(t, { bubbles: true, composed: true, pointerType: 'touch', clientX: x, clientY: yy }));
+      ev('pointerdown', y); ev('pointermove', y + a[1]); ev('pointerup', y + a[1]);
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, clientX: x, clientY: y + a[1] }));
+    }, [i, dy]);
+    await touch(1, 30);
+    await sleep(300);
+    c = await info();
+    check(eng, 'a touch that moved 30 px (a scroll) answers nothing', !c.disabled && c.note === '' && (await picks()).length === 0, JSON.stringify(c));
+    await touch(1, 3);
+    await sleep(300);
+    c = await info();
+    check(eng, 'a touch that moved 3 px answers (waiting its 5 s)', c.disabled && c.note === 'Picked B · undo', JSON.stringify(c));
+    await sq(() => { r.querySelector('.choices .note .btn.undo').click(); });
+    await sleep(200);
+    // Something else…: the cursor goes to the reply box; the words typed are the answer, picked -2.
+    await sq(() => { r.querySelector('.choice.else').click(); });
+    await sleep(200);
+    check(eng, '"Something else…" puts the cursor in the reply box', (await info()).focus === 'textarea');
+    await q.keyboard.type('a tab bar, but on top');
+    await q.keyboard.press('Enter');
+    await sleep(900);
+    const got = await picks();
+    c = await info();
+    check(eng, 'words sent while a question is open answer it: picked -2, their words, rows closed, "Something else…" ticked', got.length === 1 && got[0].picked.n === -2 && got[0].picked.of === ask.id && got[0].text === 'a tab bar, but on top' && c.disabled && (await sq(() => { return r.querySelector('.choice.else').classList.contains('picked'); })), JSON.stringify([got.map((x) => [x.picked, x.text]), c.disabled]));
+    check(eng, 'the agent reads it as "something else: <their words>"', /^ {2}picked: something else: a tab bar, but on top \(/m.test(await (await fetch(`${B}/_lab/agent/ask3`)).text()));
+    await q.keyboard.press('Escape');
+    await post({ page: '/ask3', action: 'delete', id: pin.id });
+
+    // The page chat: the agent's question draws its rows there too; a tap waits, undo or closing the chat decides.
+    const root = (await post({ page: '/ask3', name: 'leo', text: 'what about the footer?', anchor: { kind: 'page', width: 1000, height: 700, dpr: 1 } })).comment;
+    const chatAsk = (await post({ page: '/ask3', name: 'Claude', text: 'Footer: which?', parent: root.id, choices: ['Dark', 'Light'], hints: ['', 'matches the header'], recommend: 1 })).comment;
+    await sleep(1200);
+    await sq(() => { r.querySelector('.chat-btn, button[aria-label^="chat"]')?.click(); });
+    await sleep(700);
+    const chat = () => sq(() => {
+      const rows = [...r.querySelectorAll('.msgs .choice:not(.else)')];
+      return { rows: rows.map((x) => x.querySelector('.tx')?.textContent), hint: rows[1]?.querySelector('.hint')?.textContent, disabled: rows.every((x) => x.disabled), picked: rows.findIndex((x) => x.classList.contains('picked')), note: r.querySelector('.msgs .choices .note')?.textContent.trim(), other: Boolean(r.querySelector('.msgs .choice.else')) };
+    });
+    c = await chat();
+    check(eng, 'the chat draws the question with its rows, hint and "Something else…"', c.rows?.join('|') === 'Dark|Light' && c.hint === 'matches the header' && c.other && !c.disabled, JSON.stringify(c));
+    await sq(() => { r.querySelectorAll('.msgs .choice')[0].click(); });
+    await sleep(500);
+    c = await chat();
+    check(eng, 'a tap in the chat waits: "Picked A · undo", nothing sent', c.disabled && c.picked === 0 && c.note === 'Picked A · undo' && (await picks()).length === 0, JSON.stringify(c));
+    await sq(() => { r.querySelector('.msgs .choices .note .btn.undo').click(); });
+    await sleep(300);
+    check(eng, 'undo in the chat puts the rows back', !(await chat()).disabled);
+    await sq(() => { r.querySelectorAll('.msgs .choice')[1].click(); });
+    await sleep(300);
+    await q.keyboard.press('Escape'); // closes the chat: the waiting pick goes at once
+    await sleep(900);
+    const chatPicks = (await picks()).filter((x) => x.picked.of === chatAsk.id);
+    check(eng, 'closing the chat sends the waiting pick', chatPicks.length === 1 && chatPicks[0].picked.n === 1 && /^Picked B: Light/.test(chatPicks[0].text), JSON.stringify(chatPicks.map((x) => [x.picked, x.text])));
     await q.close();
   }
 
