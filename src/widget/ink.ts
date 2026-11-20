@@ -42,13 +42,14 @@ export function inkSvg(ink: Ink, zone: { left: number; top: number; width: numbe
   return svg;
 }
 
-// The strokes as they are drawn, in page coordinates.
+// The strokes as they are drawn, in page coordinates (kept that way as they come in, so a scroll mid-stroke leaves the
+// part already drawn on the words it was drawn on).
 export function liveInk() {
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('class', 'ink live');
   const p = path('');
   svg.append(p);
   const strokes: P[][] = [];
-  const paint = () => p.setAttribute('d', strokes.map((s) => line(s.flatMap((q) => [Math.round(q.x + scrollX), Math.round(q.y + scrollY)]))).join(' '));
+  const paint = () => p.setAttribute('d', strokes.map((s) => line(s.flatMap((q) => [Math.round(q.x), Math.round(q.y)]))).join(' '));
   return { svg, strokes, paint };
 }

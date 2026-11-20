@@ -16,11 +16,12 @@ const cut = (s: P[], eps: number): P[] => {
   if (s.length < 3) return s;
   const a = s[0];
   const b = s[s.length - 1];
-  const d = dist(a, b) || 1;
+  const d = dist(a, b);
   let max = 0;
   let at = 0;
   for (let i = 1; i < s.length - 1; i++) {
-    const h = Math.abs((b.y - a.y) * s[i].x - (b.x - a.x) * s[i].y + b.x * a.y - b.y * a.x) / d;
+    // Ends on the same spot (a closed loop): how far each point is from it, not from a line that isn't there.
+    const h = d < 1 ? dist(a, s[i]) : Math.abs((b.y - a.y) * s[i].x - (b.x - a.x) * s[i].y + b.x * a.y - b.y * a.x) / d;
     if (h > max) [max, at] = [h, i];
   }
   return max <= eps ? [a, b] : [...cut(s.slice(0, at + 1), eps).slice(0, -1), ...cut(s.slice(at), eps)];
@@ -30,6 +31,23 @@ const turn = (a: P, b: P, c: P) => {
   return d > Math.PI ? 2 * Math.PI - d : d;
 };
 const turns = (s: P[], min: number) => s.slice(2).filter((p, i) => turn(s[i], s[i + 1], p) > min).length;
+const winding = (s: P[]) => {
+  let sum = 0;
+  for (let i = 2; i < s.length; i++) {
+    let d = Math.atan2(s[i].y - s[i - 1].y, s[i].x - s[i - 1].x) - Math.atan2(s[i - 1].y - s[i - 2].y, s[i - 1].x - s[i - 2].x);
+    if (d > Math.PI) d -= 2 * Math.PI;
+    if (d < -Math.PI) d += 2 * Math.PI;
+    sum += d;
+  }
+  return Math.abs(sum);
+};
+// At most 80 points a line, thinned evenly over its whole length (cutting the list at 80 dropped the end).
+const thin = (s: P[]) => {
+  let eps = 1.5;
+  let c = cut(s, eps);
+  while (c.length > 80) c = cut(s, (eps *= 1.5));
+  return c;
+};
 const straight = (s: P[]) => length(s) < dist(s[0], s[s.length - 1]) * 1.15;
 const boxOf = (s: P[]) => {
   const xs = s.map((p) => p.x);
@@ -93,9 +111,12 @@ export function readInk(strokes: P[][], say: (e: Element | null) => string | und
   if (lines.length === 1) {
     const ends = dist(s[0], s[s.length - 1]);
     const c = cut(s, Math.max(3, diag * 0.06));
-    if (ends < diag * 0.3 && length(s) > diag * 1.8) out.mark = c.length >= 4 && c.length <= 7 && turns(c, 1.1) >= 3 ? 'box drawn around it' : 'circled';
+    // Closed, or nearly: ends close, or a loop that goes at least three quarters round one way (a quick hand stops short
+    // or runs past its start). Edge tests, 20 Nov: both read as arrows.
+    const loops = winding(cut(s, Math.max(2, diag * 0.03))) > Math.PI * 1.25 && length(s) > diag * 1.3 && !(turns(cut(s, 6), 1) >= 4);
+    if ((ends < diag * 0.3 && length(s) > diag * 1.8) || loops) out.mark = c.length >= 4 && c.length <= 7 && turns(c, 1.1) >= 3 ? 'box drawn around it' : 'circled';
     // Cut finer for a low band, or a short word's small waves are cut away and it reads as an arrow (sims, 20 Nov).
-    else if (turns(cut(s, Math.min(6, Math.max(2, h / 3))), 1) >= 4 && w > 40 && h < Math.max(18, w * 0.2) && backs(cut(s, 6)) <= 1) {
+    else if (turns(cut(s, Math.min(6, Math.max(2, h / 3))), 1) >= 4 && w > 40 && h < Math.min(24, Math.max(18, w * 0.2)) && backs(cut(s, 6)) <= 1) {
       // A wavy underline: small waves along a flat band that only goes one way across (a scribble goes back and forth).
       out.mark = 'wavy underline (likely: wrong / check this)';
       for (let up = 4; up <= 18; up += 4) {
@@ -106,7 +127,7 @@ export function readInk(strokes: P[][], say: (e: Element | null) => string | und
         }
       }
     } else if (turns(cut(s, 6), 1) >= 4) out.mark = 'scribbled over (likely: remove this)';
-    else if (straight(s) && h < 18 && w > 24) {
+    else if (straight(s) && h < Math.max(18, w * 0.06) && w > 24) {
       const y = (box.t + box.b) / 2;
       const mid = (box.l + box.r) / 2;
       const on = letterAt(mid, y);
@@ -123,7 +144,7 @@ export function readInk(strokes: P[][], say: (e: Element | null) => string | und
           }
         }
       }
-    } else if (straight(s) && w < 18 && h > 24) {
+    } else if (straight(s) && w < Math.max(18, h * 0.06) && h > 24) {
       out.mark = 'side line (about this block)';
       // The block beside it, on whichever side holds words.
       for (const dx of [24, -24]) {
@@ -158,6 +179,6 @@ export function readInk(strokes: P[][], say: (e: Element | null) => string | und
   // What is under a point on the page itself: labit's own bars and layers (data-lab-comments) are skipped (sims, 20 Nov:
   // an arrow's start read as the section bar).
   const at = (p?: P) => p && say(document.elementsFromPoint(p.x, p.y).find((e) => !e.closest('[data-lab-comments]')) || null);
-  return { mark: out.mark, from: at(out.from), to: at(out.to), box, lines: strokes.map((q) => cut(q, 1.5).slice(0, 80)) };
+  return { mark: out.mark, from: at(out.from), to: at(out.to), box, lines: strokes.slice(0, 16).map(thin) };
 }
 

@@ -67,7 +67,9 @@ for (const s of SCENARIOS.filter((x) => !process.env.ONLY || process.env.ONLY.sp
   }
   await page.waitForTimeout(1600); // sent a second after the last stroke
   await page.keyboard.up('d');
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Enter'); // the box opens with the lines: Enter sends the drawing as it is, no words
+  await page.waitForTimeout(700);
   const text = await (await fetch(`http://localhost:${PORT}/_lab/agent/pricing`)).text();
   const blocks = text.split(/\n(?=## \d+\. )/).slice(1);
   const mine = blocks.find((b) => !seen.has(/id ([0-9a-f]{12})/.exec(b)?.[1])) || '';

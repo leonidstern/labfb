@@ -78,7 +78,9 @@ for (const s of SCEN) {
   }
   await page.waitForTimeout(1600);
   await page.keyboard.up('d');
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Enter'); // the box opens with the lines: Enter sends the drawing as it is, no words
+  await page.waitForTimeout(700);
   const drawn = await newest();
   writeFileSync(join(OUT, `${s.id}.draw.txt`), drawn);
   // Typed: a click on the same element (Option-click, which pins links and controls too), the words, Enter.

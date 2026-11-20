@@ -1277,12 +1277,13 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       }
       const float = el('div', { class: `float${draft.fluid ? '' : anim}` });
       const box = composer({
-        placeholder: S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
+        placeholder: anchor.ink ? `${inkSaid(anchor.ink.mark)} · Enter sends, or add words` : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
         // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
         // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
         autofocus: !(draft.fluid && coarse) && !S.pinnedByHold && !draft.select, // select: the keys (Tab, Esc, Enter) stay with the page until the box is tapped
         draftKey: `lab-typing:${S.page}:new`,
+        empty: anchor.ink ? inkSaid(anchor.ink.mark) : '',
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
@@ -2062,14 +2063,15 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // Holding D, a press on a link or a button draws too: circling a broken button is the point (sims, 20 Nov).
     if (!e.altKey && !S.dKey && control(e.target)) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
-    S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false, ink: S.dKey };
+    if (S.drag) return; // one pointer at a time: a palm on the glass while the pen draws is not a second stroke
+    S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false, ink: S.dKey, id: e.pointerId };
     if (S.dKey) clearTimeout(S.inkTimer); // another stroke of the same drawing
   }
   document.addEventListener('pointerdown', (e) => !e.altKey && startDrag(e), true); // Option presses are taken earlier (see optionPress)
   document.addEventListener(
     'pointermove',
     (e) => {
-      if (!S.drag) return;
+      if (!S.drag || e.pointerId !== S.drag.id) return; // another pointer (a palm) moving
       S.drag.x1 = e.clientX;
       S.drag.y1 = e.clientY;
       if (!S.drag.active && Math.hypot(S.drag.x1 - S.drag.x0, S.drag.y1 - S.drag.y0) > 8) {
@@ -2077,19 +2079,30 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         getSelection?.()?.removeAllRanges();
         document.documentElement.classList.add('lab-dragging');
         if (S.drag.ink) {
+          if (!S.inking && S.draft?.anchor?.ink && S.lastInk && !draftHasText()) {
+            layer.append((S.inking = liveInk()).svg);
+            S.inking.strokes.push(...S.lastInk.map((q) => q.map((p) => ({ ...p }))));
+            S.draft = null;
+            keepSpot(null);
+            render();
+          }
           if (!S.inking) layer.append((S.inking = liveInk()).svg);
-          S.inking.strokes.push([{ x: S.drag.x0, y: S.drag.y0 }]);
+          S.inking.strokes.push([{ x: S.drag.x0 + scrollX, y: S.drag.y0 + scrollY }]);
+          // Held by the page till the pen lifts: a stroke run into a frame, or off the window, still ends here.
+          try {
+            document.documentElement.setPointerCapture(e.pointerId);
+          } catch {}
         } else layer.append((S.liveZone = zoneEl('draft live')));
       }
       if (!S.drag.active) return;
       e.preventDefault();
-      if (S.drag.ink) return void (S.inking.strokes.at(-1).push({ x: e.clientX, y: e.clientY }), S.inking.paint());
+      if (S.drag.ink) return void (S.inking.strokes.at(-1).push({ x: e.clientX + scrollX, y: e.clientY + scrollY }), S.inking.paint());
       S.zoneFrame ||= requestAnimationFrame(paintZone);
     },
     true,
   );
   const endDrag = (e) => {
-    if (!S.drag) return;
+    if (!S.drag || e.pointerId !== S.drag.id) return; // another pointer lifting or cancelled (a palm) doesn't end the stroke
     const d = S.drag;
     S.drag = null;
     document.documentElement.classList.remove('lab-dragging');
@@ -2097,6 +2110,15 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     S.zoneFrame = 0;
     S.liveZone?.remove();
     S.liveZone = null;
+    if (d.active && d.ink && e.type === 'pointercancel' && S.inking) {
+      S.afterDrag = true; // nor is a click that may follow it
+      setTimeout(() => (S.afterDrag = false), 0);
+      S.drew = true;
+      S.inking.strokes.pop(); // a cancelled stroke (the system took the pointer) is not part of the drawing
+      if (S.inking.strokes.length) S.inking.paint();
+      else (S.inking.svg.remove(), (S.inking = null));
+      return;
+    }
     if (!d.active || e.type === 'pointercancel') return;
     // The click that follows this pointerup belongs to the drag, not a new pin.
     S.afterDrag = true;
@@ -2123,6 +2145,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   };
   S.dKey = false;
   S.inking = null;
+  // What a drawing sent with no words says: its mark, without the guess in brackets.
+  const inkSaid = (mark = '') => mark.replace(/\s*\(likely:.*\)$/, '') || 'drawing';
   async function endInk() {
     clearTimeout(S.inkTimer);
     const ink = S.inking;
@@ -2130,36 +2154,42 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (!ink) return;
     const { readInk } = await part('draw').catch(() => ({ readInk: null }));
     ink.svg.remove();
+    S.lastInk = ink.strokes; // a stroke drawn while its box is open, empty, joins it (above)
     if (!readInk) return;
     showAgain();
     S.openId = null;
     // An arrow's ends are named with the card or section they are in: "Shared availability" is in two plans (sims, 20 Nov).
     const block = (e) => e.parentElement?.closest('article, section, li, tr, figure, [id]');
-    const read = readInk(ink.strokes, (e) => e && short(`${openingTag(e)} "${short(e.textContent, 40)}"${block(e) ? ` in ${openingTag(block(e))} "${short(block(e).textContent, 30)}"` : ''}`, 200));
-    const anchor = inkAnchor(read, ZONE_MIN);
-    // Sent on lift (a second after the last stroke), no typing (Leo, 19 Nov: "send it immediately"): its first line is
-    // what the drawing reads as, so the pin says what the agent got. Words go in after, as a reply.
-    const said = read.mark ? read.mark.replace(/\s*\(likely:.*\)$/, '') : 'drawing (unclear mark)';
-    try {
-      const { comment, edit } = await send({ name: store.get('lab-name') || '', text: said, anchor });
-      if (edit) store.set(`lab-edit:${comment.id}`, edit);
-      S.comments.push(comment);
-      markSeen([comment]);
-      S.posted = comment.id;
-      render();
-      say(`sent · read as: ${said}`);
-    } catch {
-      begin(anchor); // not sent: the usual box, so nothing drawn is lost
-    }
+    const here = ink.strokes.map((q) => q.map((p) => ({ x: p.x - scrollX, y: p.y - scrollY }))); // page → window, as the reader looks
+    const read = readInk(here, (e) => e && short(`${openingTag(e)} "${short(e.textContent, 40)}"${block(e) ? ` in ${openingTag(block(e))} "${short(block(e).textContent, 30)}"` : ''}`, 200));
+    // The box opens with the lines: Enter sends the drawing as it is (its first line is what it reads as), or type a
+    // few words first. Sims, 20 Nov: a drawing with 2-3 words was right most often; arrows and X need none.
+    begin(inkAnchor(read, ZONE_MIN));
   }
   // D let go: the drawing is done, or, when nothing was drawn, done pins show or hide (KEYS.done).
   addEventListener('keyup', (e) => {
     if (!S.dKey || actionOf(e) !== 'done') return;
     S.dKey = false;
     if (S.inking && !S.drag) endInk();
-    else if (!S.drew) toggleDone();
+    else if (!S.drew && !S.drag) toggleDone(); // the pen still down: it's a drawing, done pins stay as they are
   }, true);
   addEventListener('blur', () => (S.dKey = false));
+  // The drawing's box is open and focused, nothing typed yet: D pressed again types a "d" there. If a stroke starts
+  // while it is still held, it was D held to draw on: the "d" goes and the stroke joins the drawing (edge tests, 20 Nov).
+  addEventListener('keydown', (e) => {
+    if (S.dKey || e.repeat || e.metaKey || e.ctrlKey || e.altKey || actionOf(e) !== 'done' || !S.draft?.anchor?.ink) return;
+    const ta = e.composedPath()[0];
+    if (ta instanceof HTMLTextAreaElement && !ta.value.trim()) S.dMaybe = ta;
+  }, true);
+  addEventListener('keyup', (e) => actionOf(e) === 'done' && (S.dMaybe = null), true);
+  addEventListener('pointerdown', (e) => { // on the window: before the document's press that starts the stroke
+    if (!S.dMaybe || e.button !== 0) return;
+    if (S.dMaybe.value.trim().toLowerCase() === 'd') S.dMaybe.value = '';
+    S.dMaybe.blur();
+    S.dMaybe = null;
+    S.dKey = true;
+    S.drew = false;
+  }, true);
   document.addEventListener('pointerup', endDrag, true);
   document.addEventListener('pointercancel', endDrag, true);
   // Don't let images and videos start a native drag while comments are on: a press there marks an area.
@@ -2770,6 +2800,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     if (String(getSelection?.() || '').trim()) return;
     showAgain();
+    if (S.dKey && S.drew) return; // D held and something drawn (or cancelled): a click is part of that, not a pin
+    if (S.dKey) S.drew = true; // a click with D held is a pin: letting D go then doesn't also show or hide done pins
     begin(anchorAt(e.clientX, e.clientY));
   }
 
