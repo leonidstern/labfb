@@ -27,6 +27,22 @@ It finds your running dev server (Astro, Next, Vite…) or serves plain HTML, an
 
 The plugin also wakes Claude for pins it missed: if you comment while it is busy building, or its `wait` lapsed, the pin comes in as its next turn the moment the current one ends, from any folder.
 
+**Codex:** add the marketplace, install labit from it, and trust its hooks once with `/hooks`.
+
+```sh
+codex plugin marketplace add leonidstern/labit
+```
+
+**Cursor:** install labit from the repository as a plugin (it carries the skill and the hooks).
+
+**opencode:** one file, in your project (or `~/.config/opencode/plugins/` for every project), and the skill from the CLI:
+
+```sh
+mkdir -p .opencode/plugins && curl -fsSL https://raw.githubusercontent.com/leonidstern/labit/main/hooks/agent.mjs -o .opencode/plugins/labit.js
+```
+
+Each gives your agent the skill and two hooks, with no MCP: while the session works, the pins it claimed show a live "session activity" line, and a pin that lands after it stopped listening comes in as its next turn (Codex and Cursor when the turn ends, opencode when the session goes idle). Without the hooks the agent still answers with `wait` and `reply`, as below.
+
 **Any other agent:** tell it to run these in your project.
 
 ```sh

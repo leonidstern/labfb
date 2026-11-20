@@ -1,0 +1,95 @@
+// labit for Codex, Cursor and opencode (hooks/agent.mjs): the status line of a claimed pin, and the wake for pins nobody
+// was handed, against a real lab. Same rules as the Claude Code hook (hooks/wake.ts).
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { site, tmp, rm, spawnLab, sleep, up, serverJson, agentCall, pinPost, cli } from './harness.mjs';
+
+const HOOK = fileURLToPath(new URL('../hooks/agent.mjs', import.meta.url));
+const { DIR, PORT, B } = site('agent-hooks', 9010, 9);
+for (const n of ['index', 'other']) fs.writeFileSync(path.join(DIR, n + '.html'), `<!doctype html><title>${n}</title><h1>${n}</h1>`);
+const home = tmp('home');
+const scratch = tmp('scratch'); // the hook's state files (TMPDIR)
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '100', LAB_ACK_MS: '1500', LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1' };
+const server = spawnLab(DIR, PORT, { env });
+after(() => { server.kill(); rm([DIR, home, scratch]); });
+const key = () => serverJson(DIR).agent;
+const call = agentCall(PORT, key);
+const post = pinPost(B);
+const comments = async (page = '/index') => (await (await fetch(`${B}/_lab/api/comments?page=${page}`)).json()).comments;
+const pending = async () => (await fetch(B + '/_lab/pending', { headers: { 'x-lab-admin': key(), 'x-lab-agent': '1' } })).json();
+// The hook as an agent runs it: the event on stdin, the answer on stdout.
+const hook = (mode, event) =>
+  new Promise((resolve) => {
+    const p = execFile(process.execPath, [HOOK, mode], { env: { ...env, TMPDIR: scratch } }, (_e, out) => resolve(out.trim()));
+    p.stdin.end(JSON.stringify(event));
+  });
+const codex = (sid, extra = {}) => ({ session_id: sid, cwd: DIR, hook_event_name: 'PostToolUse', tool_name: 'Bash', ...extra });
+const cursor = (sid, extra = {}) => ({ conversation_id: sid, workspace_roots: [DIR], hook_event_name: 'postToolUse', tool_name: 'Shell', ...extra });
+const progressAt = async (id) => (await comments()).find((c) => c.id === id).progress?.at || '';
+
+test('start', async () => { await up(B + '/', { fail: () => assert.fail('no start') }); });
+
+test('progress: only the session that listened last, only a pin it claimed, once a minute, a helper never', async () => {
+  const id = (await post('fix the heading')).comment.id;
+  const free = (await post('another one')).comment.id;
+  const w = await call('/_lab/wait', { timeout: 3, pages: null, ack: true }, 'S1');
+  assert.equal(w.status, 200);
+  await call('/_lab/ack', { id: w.delivery }, 'S1');
+  assert.equal(await progressAt(id), '', 'nothing claimed yet');
+  assert.equal(await hook('progress', codex('S1')), '');
+  assert.equal(await progressAt(id), '', 'a pin nobody claimed gets no line');
+  await call('/_lab/api/comments', { page: '/index', action: 'progress', id, text: 'drawing' }, 'S1');
+  const first = await progressAt(id);
+  assert.ok(first);
+  fs.rmSync(path.join(scratch, 'labit-hook-S1.json'), { force: true }); // the list of claimed pins is kept 15 s: ask again now
+  await hook('progress', codex('S2'));
+  await hook('progress', codex('S1', { agent_id: 'helper-1' }));
+  assert.equal(await progressAt(id), first, "another session's and a helper's tool calls renew nothing");
+  await sleep(20);
+  await hook('progress', codex('S1'));
+  const second = await progressAt(id);
+  assert.ok(second > first, 'its own tool call renews the line');
+  const line = (await comments()).find((c) => c.id === id).progress.text;
+  assert.equal(line, 'session activity', 'never the command');
+  await hook('progress', cursor('S1'));
+  assert.equal(await progressAt(id), second, 'within the minute: no second line');
+  assert.equal(await progressAt(free), '');
+});
+
+test('wake: the session that listened last, once per set of pins, no page named; Codex blocks the stop, Cursor follows up', async () => {
+  await post('while you were away', '/other');
+  assert.equal((await pending()).listening, false);
+  assert.equal(await hook('wake', codex('S2', { hook_event_name: 'Stop' })), '', 'another session is not woken');
+  const out = JSON.parse(await hook('wake', codex('S1', { hook_event_name: 'Stop' })));
+  assert.equal(out.decision, 'block');
+  assert.match(out.reason, /^labit: A new pin \(http:\/\/localhost:\d+\) while you weren't listening\. Run `.*wait --timeout 5`/);
+  assert.doesNotMatch(out.reason, /\/other/);
+  assert.equal(await hook('wake', codex('S1', { hook_event_name: 'Stop' })), '', 'the same pins never wake it twice');
+  await post('and another', '/other');
+  const next = JSON.parse(await hook('wake', cursor('S1', { hook_event_name: 'stop', status: 'completed' })));
+  assert.match(next.followup_message, /^labit: 2 new pins /);
+  assert.equal(next.decision, undefined);
+});
+
+test('the session is found from any folder through the lab registry', async () => {
+  await post('from elsewhere', '/index');
+  const elsewhere = tmp('elsewhere');
+  try {
+    const out = JSON.parse(await hook('wake', { session_id: 'S1', cwd: elsewhere, hook_event_name: 'Stop' }));
+    assert.match(out.reason, /new pin/);
+  } finally {
+    rm([elsewhere]);
+  }
+});
+
+test('Cursor: the start hook says the session to the shells, and wait signs with it', async () => {
+  assert.deepEqual(JSON.parse(await hook('start', cursor('conv-1', { hook_event_name: 'sessionStart' }))), { env: { LAB_SESSION_ID: 'conv-1' } });
+  assert.equal(await hook('start', codex('S1', { hook_event_name: 'SessionStart' })), '', 'Codex has its own id');
+  const out = await cli(['wait', '--timeout', '1', '--no-open'], { cwd: DIR, env: { ...env, CURSOR_AGENT: '1', LAB_SESSION_ID: 'conv-1' } });
+  assert.doesNotMatch(out.out, /Error/i);
+  assert.equal((await pending()).last, 'conv-1');
+});
