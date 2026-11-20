@@ -2800,10 +2800,7 @@ async function newerVersion() {
       return null;
     }
   }
-  const parts = (v) => String(v).split('-')[0].split('.').map(Number);
-  const [a, b] = [parts(latest), parts(VERSION)];
-  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i] ? latest : null;
-  return null;
+  return (await import('./lib/update.ts')).newer(latest, VERSION) ? latest : null;
 }
 server.on('listening', async () => {
   newerVersion().then(async (v) => {
