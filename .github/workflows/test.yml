@@ -50,17 +50,17 @@ jobs:
       fail-fast: false
       matrix:
         engine: [webkit, chromium]
+        # Four groups of about the same length on the Mac (2 to 3 min each; the old "rest" took 9).
         group:
           # Selected words: the chip, the dialog it grows into, slash actions, Escape, reload, saved files, right to left, reduced motion.
-          - fluid
-          # behaviours; the live connection; shortcuts from labit.json; pins finding their spot again;
-          # what a drag does (words, an area, a point, fields and links); new since you looked (the pill and list of the
-          # ids the agent added, what drops one off, two names, a phone's sheet, and what must never count).
-          # Ink on selected words (flag inkOnText).
-          # A phone pinch-zoomed in: the bar and the chat stay their usual size on screen (zoom).
-          # The "!" on the labit mark for a held reload: its host, its label, a tap that takes the update (updbadge).
-          - behaviours connection shortcuts anchoring selection flags progress moved zoom shiftkeys frame framescroll boardreload board boardmode boardpins boardarrange boardview boardhalf boardclose select sections actions draw motionreach ink updbadge update undo moment nativepins native nativeboard
-    name: browser (${{ matrix.engine }}, ${{ matrix.group == 'fluid' && 'fluid' || 'rest' }})
+          - { name: fluid, files: fluid }
+          # behaviours; the live connection; flags; pins finding their spot again; a phone pinch-zoomed in (zoom).
+          - { name: a, files: behaviours connection anchoring flags moved zoom shiftkeys frame framescroll boardclose }
+          # What a drag does (words, an area, a point, fields and links); ink on selected words (flag inkOnText); the section bar; boards.
+          - { name: b, files: selection ink sections board boardarrange boardreload }
+          # The "!" on the labit mark for a held reload (updbadge); undo; moments; native; motion; select; actions; shortcuts from labit.json.
+          - { name: c, files: progress shortcuts boardmode boardpins boardview boardhalf select actions draw motionreach updbadge update undo moment nativepins native nativeboard }
+    name: browser (${{ matrix.engine }}, ${{ matrix.group.name }})
     # The Mac keeps Playwright's browsers in ~/Library/Caches/ms-playwright (chromium 1255, webkit 2388 for 1.65.1),
     # so nothing is downloaded per run.
     env:
@@ -71,10 +71,10 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
-      - name: Run ${{ matrix.group }}
-        run: for t in ${{ matrix.group }}; do echo "::group::$t"; node test/browser/$t.mjs; echo "::endgroup::"; done
+      - name: Run ${{ matrix.group.name }}
+        run: for t in ${{ matrix.group.files }}; do echo "::group::$t"; node test/browser/$t.mjs; echo "::endgroup::"; done
       # Agent readability: pins on a photo, a code line and a video second must be findable from the link alone.
-      - if: matrix.engine == 'chromium' && matrix.group != 'fluid'
+      - if: matrix.engine == 'chromium' && matrix.group.name == 'a'
         run: node bench/run.mjs
 
   # One required check name for branch protection, green only when every browser job is.
