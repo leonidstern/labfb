@@ -33,7 +33,7 @@ The plugin also wakes Claude for pins it missed: if you comment while it is busy
 npx @leonidstern/labit@latest wait                    # ends with your next comment
 npx @leonidstern/labit@latest reply <id> --done "…"   # answers on the pin and closes it
 npx @leonidstern/labit@latest reply <id> --progress "…"  # during long work: one line next to its name, replaced by the next
-npx @leonidstern/labit@latest pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered
+npx @leonidstern/labit@latest pin <selector> "1. …"   # its own pin on a spot: suggestions and questions, one per point, numbered (--quote, --question, --choice, --file, --board)
 ```
 
 Run each `wait` from the agent itself, never in a shell loop (`while true; do … wait; done`): a loop keeps listening after its session is gone, so pins are handed to nobody. A pin handed over that gets no reply of any kind in 2 minutes (`LAB_ANSWER_MS`) is marked "not answered" and goes to the next wait, and the pill says "Claude isn't answering" until that session replies.

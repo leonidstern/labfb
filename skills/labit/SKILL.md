@@ -30,8 +30,18 @@ Start it with `npx @leonidstern/labit@latest`, so the person gets the newest ver
    For each comment: edit the file (the page reloads by itself), then answer on the pin with `LAB reply <id> --done "<what changed>"`: `--done` tells the page the ask is done and closes the thread. Use the comment id that `wait` printed, not the number: numbers shift after a delete. Starting on something that takes more than a minute (a build, a lab restart, a PR): answer `--on-it` on each of its pins first, before the work, since the person sees nothing until you do; then `LAB reply <id> --progress "<what you're on now>"` every minute or so (one short line, no message: the page shows it by your name and on the pin; an answer clears it). A pin with no sign for 5 minutes turns grey. If you need something from the person, ask in the reply with `--question` and leave it open. (Older labit read "Done: …" at the start of the text; that still works, the flag is clearer.) Keep answers short, since they're read in a small window: one point per line or two, a blank line between points, `- ` lines for lists.
    `action: update labit to X` came from the lab's ⋯ menu: run `LAB update` (it prints what changed), then answer `--done` with those few lines.
    A pin with an `action:` line came from a button on the page (`data-lab-action`): do what it names, then answer `--done`. When it says "confirm first" (`data-lab-confirm`: merge, close and the like), reply `--question` with what will happen and do it only after the person's ✓ in that thread. Action buttons go on pages you write; the page shows only what you wrote into it.
-   To suggest or ask something about the page yourself ("what I'd improve"), don't put a list in a reply: leave your own pins with `LAB pin <selector> "1. <point>" [--page /path]`, one pin per point, numbered, each on its spot. It prints the pin's id.
+   To suggest or ask something about the page yourself ("what I'd improve"), don't put a list in a reply: leave your own pins (see Your own pins, below).
 5. Start `wait` again right away, so the page never says "no agent listening" while you are around. If `wait` says the page was closed (no page for an hour), stop listening: start again only when the person asks.
+
+## Your own pins
+
+Leave your own pins with `LAB pin <selector> "<point>" [--page /path]` when the person asks what you'd improve, or you find something worth their eye: a suggestion, a bug you found, a review note, or what you just changed (so they can look at it where it is). Not for status, and not instead of answering a pin: answer those with `reply`.
+- One point per pin, each on its own spot, numbered when there are several ("1. …"). At most about 8 per ask: pick the ones that matter.
+- Read the selector from the file; never guess it. Prefer an id (`#pricing h2`). `pin` checks it against the page's HTML and says when it matches nothing (`--no-check` only when the page draws that element with JavaScript).
+- Many at once: `LAB pin --file points.json` (a list of `{ "selector", "text", "quote"?, "at"?, "page"? }`): one call, every id printed.
+- On words: `--quote "exact words"` pins those words. Ask something: `--question`, or choices with `--choice "A" --choice "B" --recommend B` (the pick comes back in your next wait). On a board: `--board <name> --frame <id> <selector> "text"`, or `-` in place of the selector for a pin on the frame itself.
+- A pin ticked as done by the person is told in your next wait ("ticked: 2 of your 5 pins"): nothing to do. "<name> said: do it" is their "Do it" tap on your pin: do what it proposes, then `reply <id> --done`.
+- Say in your reply how many pins you left and where (one line); don't repeat their words.
 
 ## Instead of an Artifact ("use lab")
 
@@ -50,7 +60,10 @@ Start local, always. The page stays on this computer (for a phone, add `--wifi`,
 
 A board shows pages side by side as frames. Use one when the person asks for options or variants, one page at several widths, or a flow. Don't describe options in a reply: draw them.
 
+When to open a board rather than answer in a reply: options that are looks (variants, `--variants`), one page at several widths (`--widths`), a flow or storyboard of steps (`--flow`, one frame per step), or a deck of slides (a frame per slide). Words alone (a plan, a list, a question) stay in the reply.
+
 - Options: `LAB board new "<topic>" --of /page --variants 3`. Frame `a` is the page as it is now (the real page, labelled "now", not a copy); the lab copies the page into `.lab/boards/<board>/b.html`, `c.html`, `d.html` and prints the link. Edit those files; never write the page out again yourself. Three unless asked (six at most), each different in one way: name it with `LAB board add <board> b --label "<what differs>"`. Save b first, so the person sees it while you make c.
+- Behind a dev server (or a page that is no plain HTML file) the page can't be copied: each variant is the live page with `?lab-variant=<frame>` (b, c, d…). Render your versions by branching on `new URLSearchParams(location.search).get('lab-variant')` in the page's source; when one is picked, keep its branch and remove the branching.
 - Widths: `--widths 390,820,1280`. A flow: `--flow /a,/b,/c`. These show the real pages; nothing is copied.
 - The lab places frames. Give an order (`--after`), never positions.
 - A pin on a frame names its frame and file: change that frame only.

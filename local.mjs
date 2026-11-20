@@ -15,7 +15,7 @@ import { AGENTS, agentKind } from './lib/agents.ts';
 import { pageIds } from './lib/ids.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
-import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
+import { DO_IT, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -100,14 +100,24 @@ For the agent, from the project (any folder under it):
       Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each one in the sentence
       first) and the pick comes back in your next wait as "Picked B: …". --recommend marks your own pick.
   labit resolve <id> [--page /path]
-  labit pin <selector> "text" [--page /path] [--at x,y]
+  labit pin <selector> "text" [--page /path] [--at x,y] [--quote "words"] [--question | --choice "A" --choice "B" [--recommend B]] [--no-check]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
       of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
+      The selector is checked against the page's HTML file and refused when it matches nothing (--no-check: the page draws
+      it with JavaScript); the pin saves the element's tag and words, so it survives edits. --quote "exact words": a pin on
+      those words. --question: the pin asks, and waits for the person's answer. --choice: it asks with 2 to 6 choices (the
+      pick comes back in your next wait). A "Do it" tap on your pin comes back as "<name> said: do it".
+  labit pin --file points.json [--page /path]
+      Many pins in one call: a list of { "selector", "text", "quote"?, "at"?, "page"?, "choices"?, "recommend"?, "question"? }.
+      All are checked first, then saved; prints each id.
+  labit pin --board <name> --frame <id> <selector> "text" | --board <name> --frame <id> - "text" [--at x,y] | --board <name> - "text" --at x,y
+      A pin on a board: on an element of a frame, on a frame (--at: pixels from its top left), or on the board itself (pixels from its origin).
   labit update
       Move this folder's lab onto the newer release its ⋯ menu offers (the person pressed update): prints what changed.
   labit board new|add|move|pick|list ...
       Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (frame a is the page as it is
-      now, labelled "now"; the lab copies it into .lab/boards/<board>/b.html, c.html, d.html: edit those) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
+      now, labelled "now"; the lab copies it into .lab/boards/<board>/b.html, c.html, d.html: edit those; behind a dev server
+      each variant is the live page with ?lab-variant=b, c, d: branch on it in the page's source) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
       frames; you only give an order. add <board> <frame|/page|file.html> [--label] [--width] [--after]; move <board> <frame>
       --after <frame>; pick <board> <frame>; list [<board>].
 
@@ -1622,7 +1632,7 @@ function threadText(page, root, replies, fresh, spot, when) {
     const state = r.session ? STATE[r.intent] : '';
     // A pick on a question with choices says which question it answers (the words already say which choice).
     const pick = r.picked ? ` (their pick on your question id ${r.picked.of})` : '';
-    out.push(`- ${who(r)} · ${when(r)}${state ? ` · ${state}` : ''} · id ${r.id}: ${body(r.text)}${pick}${fresh.has(r.id) ? '  ← new' : ''}`);
+    out.push(`- ${who(r)} · ${when(r)}${state ? ` · ${state}` : ''} · id ${r.id}: ${body(r.text)}${pick}${r.doit ? DO_IT(r.name) : ''}${fresh.has(r.id) ? '  ← new' : ''}`);
   }
   return out.join('\n');
 }
@@ -1707,6 +1717,10 @@ async function unseen(scope = pages(), who = '') {
   }
   const given = fresh.filter((f) => sent.has(`${f.page}\n${f.c.parent || f.c.id}`));
   if (!given.length && !missed.length) return null;
+  // People who ticked (resolved) pins the agent left itself since its last wait: "ticked: 2 of your 5 pins". Said with
+  // what else goes out, once each (a tick alone wakes nobody).
+  const ticks = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && c.session && c.resolved && c.resolvedBy !== 'agent' && c.resolvedAt > (c.tickedAt || '')).map((c) => ({ page, c })));
+  const own = scope.reduce((n, page) => n + commentsOf(page).filter((c) => !c.parent && c.session).length, 0);
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const full = !(now - toldAt.get(who) < 1800000);
@@ -1717,12 +1731,13 @@ async function unseen(scope = pages(), who = '') {
     // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked
     // lost (Leo, 18 Nov). An --on-it first turns the ring and the pill at once.
     `\nWork that takes more than a minute (a build, a restart, a PR): first ${CMD} reply <id> --on-it "<what you'll do>" on each, then start.` +
+    (ticks.length ? `\nticked: ${ticks.length} of your ${own} pins, resolved by people since your last wait (${ticks.map(({ page, c }) => `${page} id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 50)}"`).join('; ')}). Nothing to do for those.` : '') +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     (full ? `\n${WRITE_SHORT}` : '') + (rules || '');
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = given.map(({ page, c }) => [page, c.id, stamp(c)]);
-  return { text, marks, handed, full, rules: Boolean(rules) };
+  return { text, marks, handed, ticked: ticks.map(({ page, c }) => [page, c.id, c.resolvedAt]), full, rules: Boolean(rules) };
 }
 // Hand-offs the agent hasn't said it got yet (a wait that asked with ack: true). The marks go on at once, so no other
 // wait takes the same pins and the page shows them being worked on; the agent's `wait` says it printed
@@ -1781,6 +1796,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
         }
         if (got.rules) rulesSent.delete(who); // the rules went with it, so they go again
         for (const [page, id, was] of handedBefore) if (!theirs.has(id)) setComment(page, id, { handedAt: was });
+        for (const [page, id] of got.ticked) setComment(page, id, { tickedAt: undefined }); // not seen: said again
         saveHanded();
         for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
         if (got.full) toldAt.delete(who);
@@ -1790,6 +1806,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
     });
   if (got.full) toldAt.set(who, Date.now());
   for (const [, id, at] of got.marks) handoff[id] = [at, who];
+  for (const [page, id, at] of got.ticked) setComment(page, id, { tickedAt: at }); // told once
   const wrote = {}; // what this hand-off set, filled in below
   const at = new Date().toISOString();
   for (const [page, id] of got.handed) {
