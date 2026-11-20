@@ -1900,7 +1900,7 @@ const holdFirst = (html) => {
   const head = /<head(\s[^>]*)?>/i.exec(html);
   if (head) return html.slice(0, head.index + head[0].length) + HOLD + html.slice(head.index + head[0].length);
   const doc = /<!doctype[^>]*>/i.exec(html);
-  return doc ? html.slice(0, doc[0].length) + HOLD + html.slice(doc[0].length) : HOLD + html;
+  return doc ? html.slice(0, doc.index + doc[0].length) + HOLD + html.slice(doc.index + doc[0].length) : HOLD + html;
 };
 // Every page under a folder, as paths relative to it: the shallowest index pages first, then by path.
 const pagesUnder = (top) => {

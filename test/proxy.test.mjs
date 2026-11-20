@@ -14,6 +14,7 @@ const dev = http.createServer((req, res) => {
   if (req.url === '/away') return void res.writeHead(302, { location: 'https://example.com/' }).end();
   if (req.url === '/near') return void res.writeHead(302, { location: here + '0/x' }).end(); // another port, not this server
   if (req.url === '/latin') return void res.writeHead(200, { 'content-type': 'text/html; charset=iso-8859-1' }).end(Buffer.from('<!doctype html><html><head><title>t</title></head><body>caf\xe9</body></html>', 'latin1'));
+  if (req.url === '/nohead') return void res.writeHead(200, { 'content-type': 'text/html' }).end('\n<!-- c -->\n<!DOCTYPE html>\n<html><body><p>no head</p></body></html>');
   if (req.url === '/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     res.write('data: 1\n\n');
@@ -62,6 +63,12 @@ test('a page the dev server sends as iso-8859-1 is read as such and goes on as U
   const text = await r.text();
   assert.ok(text.includes('caf\u00e9'), 'the é is an é');
   assert.ok(!text.includes('\ufffd'), 'no replacement marks');
+});
+
+test('a page with a comment before its doctype and no <head> keeps its doctype whole', async () => {
+  await up();
+  const text = await (await fetch(`http://localhost:${PORT}/nohead`, { headers: { accept: 'text/html' } })).text();
+  assert.match(text, /<!DOCTYPE html><script>[^]*?<\/script>\n<html>/, 'the doctype is in one piece, the reload-holder after it');
 });
 
 test('a person who leaves an event stream ends it at the dev server too', async () => {
