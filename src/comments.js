@@ -511,6 +511,22 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     goFace();
     setPinning();
   };
+  // A thread or the chat opened at its newest message stays there while its words settle (a phone's sheet grows into
+  // place and long messages lay out after the first frame): Leo, 20 Nov, the last message was half hidden. It lets go at
+  // the first touch or wheel, or after a second.
+  function stayAtEnd(box) {
+    let until = performance.now() + 1000;
+    const stop = () => (until = 0);
+    box.addEventListener('touchstart', stop, { once: true, passive: true });
+    box.addEventListener('wheel', stop, { once: true, passive: true });
+    const end = () => (performance.now() < until ? (box.scrollTop = box.scrollHeight) : ro?.disconnect());
+    const ro = 'ResizeObserver' in window ? new ResizeObserver(end) : null;
+    ro?.observe(box);
+    for (const k of box.children) ro?.observe(k);
+    requestAnimationFrame(() => requestAnimationFrame(end));
+    setTimeout(() => ro?.disconnect(), 1100);
+  }
+  S.stayAtEnd = stayAtEnd;
   function begin(anchor) {
     if (!anchor.moment) {
       const moment = S.momentFor?.(anchor); // the moment as the pin goes down, not as it is sent
@@ -1067,7 +1083,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
       const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
-      const state = sg.s;
+      // A question you've read goes back to a plain pin: amber is for one still unread (Leo, 20 Nov: "orange pin after
+      // opening should become regular"), as selected words' ink already does (wordink.ts).
+      const state = sg.s === 'asks' && !news.length ? null : sg.s;
       const tip = coarse || (state !== 'now' && state !== 'stale') ? '' : lineOf(sg); // hovering a working ring says what it is doing
       const born = !old.has(c.id);
       const pin = old.get(c.id) || el('button', { type: 'button' });
@@ -1222,6 +1240,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           const asks = openAsk(c) ? [...body.querySelectorAll('.msg.asks')].pop() : null;
           const first = asks || (coarse ? null : body.querySelector('.fresh, .newline'));
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
+          if (!first) stayAtEnd(body);
         }
         if (coarse && S.cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
         swipeDown(card, () => ((S.openId = null), (S.cardFull = false), render()), true);
@@ -2112,7 +2131,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (d.ink) {
       S.drew = true;
       // Shift held as the pen lifts: a stroke that runs about straight becomes a straight line, flat, upright or at 45°
-      // (Leo's pick S1, 20 Nov). A curl or a loop stays as drawn.
+      // (Leo's pick S1, 20 Nov); a rough box or loop a clean rectangle or ellipse (S2). Anything else stays as drawn.
       const st = S.inking?.strokes.at(-1);
       if (e.shiftKey && st?.length > 1) {
         const [a, b] = [st[0], st.at(-1)];
@@ -2123,6 +2142,16 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           const w = st.reduce((n, p) => n + (p.w || 3), 0) / st.length;
           st.splice(0, st.length, { x: a.x, y: a.y, w }, { x: a.x + chord * Math.cos(ang), y: a.y + chord * Math.sin(ang), w });
           S.inking.paint();
+        } else {
+          // A rough box or loop comes out neat: a rectangle or an ellipse (Leo's pick S2). The reading part is loaded
+          // with D, so this lands well before the drawing is read, a second later.
+          const ink = S.inking;
+          part('draw').then(({ neaten }) => {
+            const neat = neaten?.(st);
+            if (!neat || !ink.strokes.includes(st)) return;
+            st.splice(0, st.length, ...neat);
+            ink.paint();
+          }).catch(() => {});
         }
       }
       clearTimeout(S.inkTimer);

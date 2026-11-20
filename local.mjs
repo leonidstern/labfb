@@ -779,6 +779,9 @@ const lineHints = (text, file) => {
   }).replace(/^(arrow from|arrow to|at): (<[^>\n]+> )"([^"\n]*)"(?= in <|$)/gm, (all, k, tag, words) => {
     const n = lineOf(words);
     return n ? `${all} (${file}:${n})` : all;
+  }).replace(/^(  mark \d+: .*?)(?: on| from| to) (<[^>\n]+> )"([^"\n]*)"/gm, (all, head, tag, words) => {
+    const n = lineOf(words); // each mark of a drawing with several: where its element is
+    return n ? `${all} (${file}:${n})` : all;
   }).replace(/(in file: [^\n]+)\n((?:[^\n]*\n){0,12}?)in file: [^\n]+\n/g, '$1\n$2');
 };
 // On a board: a board's text is its frames then its pins; a scratch frame's has one line saying which frame
