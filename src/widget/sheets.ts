@@ -214,6 +214,14 @@ export function swipeDown(node, close, grows = false) {
   };
   node.addEventListener('touchstart', onStart, { passive: true });
   W.scrim.addEventListener('touchstart', onStart, { passive: true });
+  // A move up or down that nothing in the sheet scrolls (short messages, a box already at its end) is the sheet's, not
+  // the page's: Safari with the keyboard up pans the page under a sheet whatever its overflow says, and the pin it
+  // belongs to left the screen (iOS 27 simulator, 20 Nov: 317 px after one swipe on a thread).
+  const keep = (e, t) => {
+    const up = t.clientY < last.y;
+    const scrolls = e.composedPath().some((n) => n instanceof HTMLElement && node.contains(n) && /auto|scroll/.test(getComputedStyle(n).overflowY) && (up ? n.scrollTop + n.clientHeight < n.scrollHeight - 1 : n.scrollTop > 0));
+    if (e.touches.length === 1 && e.cancelable && Math.abs(t.clientY - y0) > Math.abs(t.clientX - x0) && !scrolls) e.preventDefault();
+  };
   const onMove = (e) => {
     if (fromScrim !== (e.currentTarget === W.scrim)) return;
     const t = e.touches[0];
@@ -225,7 +233,7 @@ export function swipeDown(node, close, grows = false) {
       v = 0;
       last = { y: t.clientY, at: e.timeStamp };
     }
-    if (mode === 'off') return void (last = { y: t.clientY, at: e.timeStamp });
+    if (mode === 'off') return void (keep(e, t), (last = { y: t.clientY, at: e.timeStamp }));
     if (mode === 'hold') return e.preventDefault();
     if (!mode) {
       const down = t.clientY - y0;
@@ -240,7 +248,7 @@ export function swipeDown(node, close, grows = false) {
       else if (nearTop && box?.localName !== 'textarea') mode = 'drag';
       else if (box) mode = !sideways && down > 0 && box.scrollTop <= 0 && performance.now() - scrolledAt > 100 ? 'drag' : 'off';
       else mode = sideways ? 'hold' : 'drag';
-      if (mode === 'off') return;
+      if (mode === 'off') return keep(e, t);
       if (mode === 'hold') return e.preventDefault();
     }
     e.preventDefault();
