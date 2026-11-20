@@ -7,6 +7,7 @@ import { heldPin, holdBox, letBox } from './pinhold.ts';
 let W: any;
 export function bindThread(w: unknown) {
   W = w;
+  bindThreadScroll();
   bindTrial(w);
 }
 
@@ -21,9 +22,52 @@ type Want = { cx: number; cy: number; ux?: number; uy?: number; ay: number };
 let tieCount = 0;
 const pinNames = new WeakMap<Element, string>();
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
+// Where the browser put each tied card, as an offset from what it is tied to: once the page scrolls, the card is held
+// at that offset with no fallbacks, so it goes off screen with its pin (the fallbacks and the screen's floor are for where
+// it opens and when it grows; while scrolling they flipped it above and below its pin and pinned it to the screen's top).
+const rests = new Map<HTMLElement, { to: Element; x: number; y: number; frozen: boolean }>();
+let watching: ResizeObserver | null = null;
+const rest = (node: HTMLElement) => {
+  const at = rests.get(node);
+  if (!at || at.frozen || !node.isConnected) return at;
+  const [a, b] = [at.to.getBoundingClientRect(), node.getBoundingClientRect()];
+  [at.x, at.y] = [b.left - a.left, b.top - a.top];
+  return at;
+};
+const thaw = (node: HTMLElement) => {
+  const at = rests.get(node);
+  if (!at?.frozen) return;
+  at.frozen = false;
+  node.style.removeProperty('position-try-fallbacks');
+  node.style.left = node.style.top = '';
+};
+function followPin(node: HTMLElement, to: Element) {
+  rests.set(node, { to, x: 0, y: 0, frozen: false });
+  (watching ??= new ResizeObserver((es) => es.forEach((e) => rest(e.target as HTMLElement)))).observe(node);
+  // After its opening motion (it moves the box a few px): measured while it runs, the card would settle off its pin.
+  Promise.allSettled(node.getAnimations().map((a) => a.finished)).then(() => rest(node));
+}
+function bindThreadScroll() {
+  addEventListener('resize', () => rests.forEach((_, n) => (thaw(n), requestAnimationFrame(() => rest(n)))));
+  addEventListener(
+    'scroll',
+    () =>
+      rests.forEach((at, node) => {
+        if (!node.isConnected) return rests.delete(node);
+        if (at.frozen) return;
+        at.frozen = true;
+        node.style.setProperty('position-try-fallbacks', 'none');
+        node.style.left = `calc(anchor(left) + ${px(at.x)})`;
+        node.style.top = `calc(anchor(top) + ${px(at.y)})`;
+      }),
+    { capture: true, passive: true },
+  );
+}
 export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined, kind: 'card' | 'beside', want?: Want) {
   node.classList.remove('tied-card', 'tied-beside');
   node.removeAttribute('data-held'); // set below once the browser carries it with its pin (comments.js: no redraw for it)
+  rests.delete(node);
+  node.style.removeProperty('position-try-fallbacks'); // a scroll's hold (bindThreadScroll) ends with the tie
   if (!pin || !want) {
     letBox(node);
     return node.style.removeProperty('position-anchor');
@@ -49,6 +93,7 @@ export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined,
   set('--lab-uy', want.uy === undefined ? undefined : want.uy - y);
   set('--lab-ay', want.ay - y);
   node.style.left = node.style.top = '';
+  followPin(node, to);
 }
 
 // aboveY: where the card's bottom goes when it opens above (an area's: above the area, not its pin).
