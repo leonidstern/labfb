@@ -184,10 +184,7 @@ button.choice.else.picked { color: var(--_fg); }
 .choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); min-height: 1.35em; padding-left: 10px; } /* always a line tall: a note never makes the card taller */
 .choices .note.idle { visibility: hidden; }
 .choices .note .btn.undo { margin-left: 1px; }
-button.keep { justify-self: end; border: 0; border-radius: var(--_r-s); padding: 6px 12px; background: var(--_accent); color: var(--_accent-fg);
               font-size: 12px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_fade); }
-button.keep:hover:not(:disabled) { opacity: .9; }
-button.keep:disabled { opacity: .4; cursor: default; }
 .card.margin { width: 280px; }
 /* Tied to its pin (thread.ts tieToPin): the browser keeps it there. Where the script puts it, from the pin's
    corner (--lab-cx / --lab-cy; a box's other place --lab-ux / --lab-uy); above (its bottom at --lab-ay), or in from the
