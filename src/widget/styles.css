@@ -135,8 +135,8 @@ button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; backgroun
 .ring.asks { --rc: var(--_amber); }
 .pin .ring.off { opacity: 0; }
 /* Hovering a working pin shows what it is doing (a phone has no hover: its sheet's head says it). */
-.pin.flip { margin-left: -28px; border-radius: 14px 14px 2px 14px; } /* by the right edge: its tip on the right (comments.js flipAt) */
-.pin.flip .ring { border-radius: 18px 18px 6px 18px; }
+.pin.flip { margin-left: -28px; border-radius: 50%; border-bottom-right-radius: max(0px, calc(var(--_r-s) - 4px)); } /* by the right edge: its tip on the right (comments.js flipAt) */
+.pin.flip .ring { border-radius: 50%; border-bottom-right-radius: var(--_r-s); }
 .pin.flip .tip { left: auto; right: -4px; }
 .pin .tip { position: absolute; left: -4px; bottom: calc(100% + 10px); width: max-content; max-width: 240px; padding: 6px 9px; border-radius: var(--_r-s);
             background: var(--_bg); color: var(--_muted); box-shadow: var(--_shadow); font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 1.35;
