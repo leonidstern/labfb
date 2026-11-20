@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { apiOn, BODY_MAX, callApi, decoderFor, encodingFor, onLan, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
-import { AGENTS, agentKind } from './lib/agents.ts';
+import { AGENTS } from './lib/agents.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive, setWifi } from './lib/labcall.ts';
@@ -1475,7 +1475,8 @@ const remember = (w) => {
 // Who hears this page right now: a wait that named it, else one that named none. Null means a comment here waits
 // until someone listens -- worth saying out loud on a page that has something waiting.
 const listenerOf = (key) => (waiters.find((w) => w.pages && covers(w.pages, key)) || waiters.find((w) => !w.pages))?.label || null;
-// Threads still waiting on someone: nobody answered, or the newest word in them is a person's. An answered thread
+// Threads still waiting on someone: nobody answered, or the newest word in them is a person's (the agent's carry a
+// session, set by the lab alone: a name says nothing, "Campbell" has Campbell in it and "aider" is no listed agent). An answered thread
 // left unresolved is bookkeeping, not work; counting those made a day-old page read as a backlog of 52 when one
 // comment was waiting, and nothing that cries wolf like that gets read twice.
 const waitingOn = (key) => {
@@ -1485,7 +1486,7 @@ const waitingOn = (key) => {
   return all.filter((c) => {
     if (c.parent || c.resolved) return false;
     const reps = replies.get(c.id) || [];
-    return !reps.length || !agentKind(reps[reps.length - 1].name);
+    return !reps.length || !reps[reps.length - 1].session;
   }).length;
 };
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
