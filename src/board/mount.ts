@@ -9,8 +9,8 @@
 import { clamp, fitAll, fitFrame, panBy, zoomAt } from './camera.ts';
 import type { Cam, Box } from './camera.ts';
 
-type Frame = { id: string; src: string; w: number; h: number; x: number; y: number; label?: string; state?: string; auto?: boolean; variantOf?: string };
-type Board = { rev: number; frames: Frame[]; of?: string } & Record<string, unknown>;
+type Frame = { id: string; src: string; w: number; h: number; x: number; y: number; label?: string; caption?: string; state?: string; auto?: boolean; variantOf?: string };
+type Board = { rev: number; frames: Frame[]; of?: string; flow?: boolean } & Record<string, unknown>;
 type Card = { f: Frame; box: HTMLElement; inner: HTMLElement; frame?: HTMLIFrameElement; seen: number };
 type Spot = { left: number; top: number; zone: null; clipped?: boolean };
 
@@ -41,6 +41,23 @@ const css = `
 #lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
+#lab-board .cap{position:absolute;left:0;top:100%;width:calc(100% / var(--iz));transform-origin:0 0;transform:scale(var(--iz));padding-top:6px;opacity:.75;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}
+#lab-board .cap[hidden]{display:none}
+#lab-board .arrows{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;color:var(--lab-black-4,rgba(0,0,0,.5))}
+@media (prefers-color-scheme:dark){#lab-board .arrows{color:var(--lab-white-4,rgba(255,255,255,.5))}}
+#lab-board .arrows .ar{fill:none;stroke:currentColor;stroke-width:calc(1.5px*var(--iz,1))}
+#lab-board .px,#lab-board .pr{display:none}
+#lab-board.pres{background:#1b1b1a;color:#e9e8e4}
+#lab-board.pres :is(.dots,.arrows,.t,.cap,.zm,.done){display:none}
+#lab-board.pres .f:not(.cur){visibility:hidden}
+#lab-board.pres .f{outline:none}
+#lab-board.pres .f iframe{pointer-events:none}
+#lab-board.pres .px{display:block;position:absolute;right:max(10px,env(safe-area-inset-right));top:10px;z-index:6;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer;opacity:.7}
+#lab-board.pres .pr{position:absolute;left:0;right:0;bottom:0;height:72px;box-sizing:border-box;padding:0 16px max(6px,env(safe-area-inset-bottom));z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;pointer-events:none}
+#lab-board .pr .pc{max-width:min(100%,900px);font-size:15px;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}
+#lab-board .pr .pc:empty{display:none}
+#lab-board .pr .pn{font-size:12px;opacity:.6;font-variant-numeric:tabular-nums}
+html[data-lab-presenting] [data-lab-comments]{display:none!important}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
 #lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
@@ -75,6 +92,13 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const world = document.createElement('div');
   world.className = 'world';
   root.append(dots, world);
+  // The arrows of a flow board: in the world, first, so under every frame; one path from each frame to the next.
+  const SVG = 'http://www.w3.org/2000/svg';
+  const arrowLayer = document.createElementNS(SVG, 'svg');
+  arrowLayer.setAttribute('class', 'arrows');
+  arrowLayer.setAttribute('aria-hidden', 'true');
+  arrowLayer.innerHTML = `<defs><marker id="lab-arrowhead-${name}" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="8" markerHeight="8" markerUnits="strokeWidth" orient="auto"><path d="M1 1L6.5 4L1 7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>`;
+  world.append(arrowLayer);
 
   let of = opts.of || '';
   let cards: Card[] = [];
@@ -95,6 +119,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   let undo: Frame[][] = []; // the frames before each change, newest last (⌘Z)
   let focus = false; // the camera is fitted to one frame (a phone's first view, Tab): a swipe goes to the next
   let lastDown = 0;
+  let presenting = ''; // present mode (P): the id of the one frame shown full screen; '' when not
+  let saved: { cam: Cam; selected: string; moved: boolean } | null = null; // where the board was when it began
   let checked = { x: 1e9, y: 1e9, z: 0 }; // the camera at the last wake/cull check
   let still: ReturnType<typeof setTimeout> | undefined;
   let movedAt = -1e9; // when the camera last moved
@@ -191,6 +217,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // The camera goes to next, held to the board's edges: past an edge it just stops (Leo, 19 Nov: "remove weird bounce
   // on edge of canvas": it gave way and sprang back). pan: a move that keeps a fitted frame's focus (a phone's swipe).
   const go = (next: Cam, user = true, pan = false) => {
+    if (presenting) return void (user || refit()); // present mode holds the camera on its frame: only its own keys move it
     const c = clamp(next, boxes(), view);
     if (user) moved = true;
     if (user && (!pan || Math.abs(c.z - cam.z) > 1e-6)) focus = false;
@@ -260,6 +287,26 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
 
   // ---------- frames in the world ----------
   const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
+  // Frame to next frame, in board order: from the right edge to the left one when the next is beside it, else from the
+  // bottom to the top (a row that wrapped).
+  function arrows() {
+    for (const p of arrowLayer.querySelectorAll('.ar')) p.remove();
+    if (!board?.flow) return;
+    for (let i = 0; i + 1 < cards.length; i++) {
+      const a = cards[i].f;
+      const b = cards[i + 1].f;
+      const beside = b.x >= a.x + a.w || b.y < a.y + a.h;
+      const [sx, sy, ex, ey] = beside ? [a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2] : [a.x + a.w / 2, a.y + a.h, b.x + b.w / 2, b.y];
+      const k = Math.max(40, (beside ? ex - sx : ey - sy) / 2);
+      const path = document.createElementNS(SVG, 'path');
+      path.setAttribute('class', 'ar');
+      path.setAttribute('d', beside ? `M${sx} ${sy}C${sx + k} ${sy} ${ex - k} ${ey} ${ex} ${ey}` : `M${sx} ${sy}C${sx} ${sy + k} ${ex} ${ey - k} ${ex} ${ey}`);
+      path.setAttribute('marker-end', `url(#lab-arrowhead-${name})`);
+      path.dataset.from = a.id;
+      path.dataset.to = b.id;
+      arrowLayer.append(path);
+    }
+  }
   function show(b: Board) {
     if (signal.aborted) return;
     board = b;
@@ -287,6 +334,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       inner.appendChild(card(c));
       box.append(inner);
       text('div', '', box).className = 't';
+      text('div', '', box).className = 'cap';
       world.append(box);
       return c;
     });
@@ -296,6 +344,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       Object.assign(c.box.style, { left: `${f.x}px`, top: `${f.y}px`, width: `${f.w}px`, height: `${f.h}px` });
       paint(c);
     }
+    arrows();
     if (selected && !cards.some((c) => c.f.id === selected)) selected = entered = '';
     world.querySelector('.none')?.remove();
     if (!cards.length) text('div', 'No frames on this board.', world).className = 'none';
@@ -333,6 +382,9 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   function paint(c: Card) {
     const t = c.box.querySelector('.t') as HTMLElement;
     t.textContent = label(c.f);
+    const cap = c.box.querySelector('.cap') as HTMLElement;
+    cap.textContent = c.f.caption || '';
+    cap.hidden = !c.f.caption;
     if (c.f.id !== selected || !editable()) return;
     for (const w of Object.keys(SIZES)) t.append(' ', Object.assign(document.createElement('u'), { textContent: w, className: +w === c.f.w ? 'on' : '' }));
     t.dataset.id = c.f.id;
@@ -437,8 +489,11 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     });
     zoomBox.append(b);
   }
+  const presentBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'zc', textContent: 'present' });
+  presentBtn.addEventListener('click', () => (zoomBox.classList.remove('open'), present()));
+  zoomBox.append(presentBtn);
   root.append(zoomBox);
-  const ours = (e: Event) => e.target instanceof Node && zoomBox.contains(e.target); // its own clicks, not the board's
+  const ours = (e: Event) => e.target instanceof Node && (zoomBox.contains(e.target) || closeBtn.contains(e.target)); // its own clicks, not the board's
 
   // ---------- input: the board owns its surface (these run before the widget's own listeners) ----------
   // Points are the box's own: the screen's less where the box is.
@@ -564,8 +619,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       if (w && e.type === 'pointerup') setTimeout(() => (w.hold || w.place)(d.x, d.y), 0);
       return;
     }
-    if (d.far && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
-    if (d.far || e.type === 'pointercancel') return;
+    if (d.far && coarse && (focus || presenting) && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
+    if (d.far || e.type === 'pointercancel' || presenting) return;
     const widget = boardWidget();
     // An open comment or the chat: this tap only closes it, as a click outside one does on a page (Leo, 19 Nov: "clicking
     // outside comment should work here same as on page", "same with chat"). A drag (a pan) is no tap and closes nothing.
@@ -620,12 +675,82 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const back = () => opts.back?.();
   // The next (1) or previous (-1) frame in board order, the camera on it.
   const step = (by: number) => {
+    if (presenting) return present(by);
     if (!cards.length) return;
     const c = cards[(cards.findIndex((o) => o.f.id === selected) + by + cards.length) % cards.length];
     select(c.f.id);
     go(fitFrame(c.f, view));
     focus = true;
   };
+  // ---------- present mode: one frame full screen, in flow order (or left to right, row by row) ----------
+  const order = () => (board?.flow ? cards : [...cards].sort((p, q) => p.f.y - q.f.y || p.f.x - q.f.x));
+  const CAPTION_H = 72; // the strip under the frame: its caption and the "3 / 8"
+  const bar = document.createElement('div');
+  bar.className = 'pr';
+  bar.setAttribute('data-uncommentable', '');
+  const [barCap, barNum] = [text('div', '', bar), text('div', '', bar)];
+  barCap.className = 'pc';
+  barNum.className = 'pn';
+  const closeBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'px', textContent: 'close' });
+  closeBtn.setAttribute('data-uncommentable', '');
+  closeBtn.addEventListener('click', (e) => (e.stopPropagation(), exitPresent()));
+  root.append(bar, closeBtn);
+  // The frame fitted above the strip, and its caption and place in the order.
+  function refit() {
+    const list = order();
+    if (!list.length) return exitPresent();
+    let i = list.findIndex((c) => c.f.id === presenting);
+    if (i < 0) i = Math.min(Math.max(0, lastIndex), list.length - 1); // the frame went (archived): the one now in its place
+    lastIndex = i;
+    const c = list[i];
+    presenting = c.f.id;
+    for (const o of cards) o.box.classList.toggle('cur', o === c);
+    measure();
+    cam = fitFrame(c.f, { w: view.w, h: Math.max(100, view.h - CAPTION_H) });
+    barCap.textContent = c.f.caption || '';
+    barNum.textContent = `${i + 1} / ${list.length}`;
+    if (!c.frame) live(c);
+    draw();
+    moving();
+    wake(false);
+  }
+  let lastIndex = 0;
+  /** Present: begin at the selected frame (or the first), or step by ±1 when already presenting. */
+  function present(by = 0) {
+    const list = order();
+    if (!list.length) return;
+    if (!presenting) {
+      if (entered) leave();
+      saved = { cam: { ...cam }, selected, moved };
+      presenting = (list.find((c) => c.f.id === selected) || list[0]).f.id;
+      lastIndex = list.findIndex((c) => c.f.id === presenting);
+      root.classList.add('pres');
+      document.documentElement.setAttribute('data-lab-presenting', '');
+      return refit();
+    }
+    // One at a time, not round: the last frame stays the last (a talk ends; Esc leaves).
+    const i = Math.min(Math.max(0, list.findIndex((c) => c.f.id === presenting) + by), list.length - 1);
+    presenting = list[i].f.id;
+    refit();
+  }
+  /** Back to the board where it was: camera, selection. */
+  function exitPresent() {
+    if (!presenting) return;
+    presenting = '';
+    root.classList.remove('pres');
+    document.documentElement.removeAttribute('data-lab-presenting');
+    for (const c of cards) c.box.classList.remove('cur');
+    const was = saved;
+    saved = null;
+    if (was) {
+      moved = was.moved;
+      cam = was.cam;
+      select(find(was.selected) ? was.selected : '');
+      draw();
+      moving();
+      wake(false);
+    }
+  }
   const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
     const [cmd, sel] = [e.metaKey || e.ctrlKey, find(selected)];
     if (cmd && !e.altKey && !e.shiftKey && !entered && editable()) {
@@ -635,6 +760,14 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       }
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
+    // P: present (the widget's own pause key gives it up on a board). Under a talk nothing else of the board's works.
+    if (presenting) {
+      if (!e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) present(e.key === 'ArrowRight' ? 1 : -1);
+      else if ((e.code === 'KeyP' && !e.shiftKey) || e.key === 'Escape') exitPresent();
+      else return false;
+      return true;
+    }
+    if (e.code === 'KeyP' && !e.shiftKey && !entered && cards.length) return (present(), true);
     if (sel && !entered && editable() && (e.key === 'Backspace' || e.key === 'Delete')) {
       archive(selected);
       return true;
@@ -664,6 +797,11 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     }
   }, true);
   on('keydown', (e: KeyboardEvent) => {
+    if (presenting && e.key === ' ' && !typing(e)) {
+      e.preventDefault(); // space steps, shift-space goes back
+      if (!e.repeat) present(e.shiftKey ? -1 : 1);
+      return;
+    }
     if (e.key === ' ' && !typing(e) && !(entered && document.activeElement instanceof HTMLIFrameElement)) {
       e.preventDefault(); // the hand, not a scroll
       if (!space) {
@@ -713,6 +851,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     },
     camera: () => ({ ...cam }),
     selected: () => selected,
+    presenting: () => presenting,
     entered: () => entered,
     live: () => cards.filter((c) => c.frame).map((c) => c.f.id),
   };
@@ -747,6 +886,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   });
   load().then(() => (started = true));
   const destroy = () => {
+    document.documentElement.removeAttribute('data-lab-presenting');
     ac.abort();
     ro.disconnect();
     cancelAnimationFrame(drawFrame);

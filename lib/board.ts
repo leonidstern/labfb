@@ -4,14 +4,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export type Frame = { id: string; src: string; w: number; h: number; x?: number; y?: number; label?: string; variantOf?: string; state?: 'live' | 'picked' | 'archived'; auto?: boolean };
-export type Board = { v: 1; name: string; rev: number; title?: string; of?: string; frames: Frame[] };
+export type Frame = { id: string; src: string; w: number; h: number; x?: number; y?: number; label?: string; caption?: string; variantOf?: string; state?: 'live' | 'picked' | 'archived'; auto?: boolean };
+export type Board = { v: 1; name: string; rev: number; title?: string; of?: string; flow?: boolean; frames: Frame[] };
 
 // (the commands: lib/boardact.ts)
 export const NAME = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 export const FRAME = /^[a-z][a-z0-9]{0,5}$/;
 export const MAX_FRAMES = 60;
 export const SIZES: Record<number, number> = { 390: 844, 820: 1180, 1280: 800, 1440: 900 }; // phone, tablet, laptop, desktop
+/** --size: a frame's width and height by name (a slide is 16:9). */
+export const PRESETS: Record<string, [number, number]> = { slide: [1920, 1080], 'slide-720': [1280, 720], phone: [390, 844] };
+export const CAPTION = 120;
 const GAP = 80;
 const ROW = 4800;
 
@@ -38,6 +41,7 @@ export function check(raw: any, name: string, was?: Board | null): Board | strin
     const auto = f.auto === true || !Number.isFinite(f.x) || !Number.isFinite(f.y);
     if (!auto) [out.x, out.y] = [px(f.x, -1e6, 1e6)!, px(f.y, -1e6, 1e6)!];
     if (one(f.label, 80)) out.label = one(f.label, 80);
+    if (one(f.caption, CAPTION)) out.caption = one(f.caption, CAPTION);
     if (typeof f.variantOf === 'string' && FRAME.test(f.variantOf)) out.variantOf = f.variantOf;
     out.state = f.state === 'picked' || f.state === 'archived' ? f.state : 'live';
     frames.push(out);
@@ -47,6 +51,7 @@ export function check(raw: any, name: string, was?: Board | null): Board | strin
   if (gone) return `frame ${gone.id} cannot be removed: archive it (state "archived")`;
   const board: Board = { v: 1, name, rev: (was?.rev ?? 0) + 1, frames };
   if (one(raw.title, 80)) board.title = one(raw.title, 80);
+  if (raw.flow === true) board.flow = true; // the frames are steps: the canvas draws an arrow from each to the next
   if (raw.of !== undefined) {
     const of = typeof raw.of === 'string' ? raw.of.split('#')[0] : '';
     if (!labPath(of)) return '"of" is the page the board is about, like /pricing or /pricing#hero';
@@ -82,7 +87,7 @@ const safeName = (name: string) => {
 };
 const fileOf = (root: string, name: string) => path.join(dirOf(root), `${safeName(name)}.json`);
 export const frameFile = (root: string, name: string, id: string) => path.join(dirOf(root), safeName(name), `${id}.html`);
-const ser = (b: Board) => `{"v":1,"name":${JSON.stringify(b.name)},"rev":${b.rev}${b.title ? `,"title":${JSON.stringify(b.title)}` : ''}${b.of ? `,"of":${JSON.stringify(b.of)}` : ''},\n"frames":[\n${b.frames.map((f) => '  ' + JSON.stringify({ ...f, auto: undefined })).join(',\n')}\n]}\n`;
+const ser = (b: Board) => `{"v":1,"name":${JSON.stringify(b.name)},"rev":${b.rev}${b.title ? `,"title":${JSON.stringify(b.title)}` : ''}${b.of ? `,"of":${JSON.stringify(b.of)}` : ''}${b.flow ? ',"flow":true' : ''},\n"frames":[\n${b.frames.map((f) => '  ' + JSON.stringify({ ...f, auto: undefined })).join(',\n')}\n]}\n`;
 export const writeAtomic = (file: string, text: string) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file + '.tmp', text);

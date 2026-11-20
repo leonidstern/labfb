@@ -2,9 +2,10 @@
 // one is run, so a lab that only serves boards does not read it.
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_FRAMES, NAME, heightFor, labPath, names, nameOf, one, read, save, frameFile, writeAtomic, type Board, type Frame } from './board.ts';
+import { CAPTION, MAX_FRAMES, NAME, PRESETS, heightFor, labPath, names, nameOf, one, read, save, frameFile, writeAtomic, type Board, type Frame } from './board.ts';
 
 export const MAX_VARIANTS = 6;
+export const MAX_SLIDES = 30;
 /** The text a person gave, as a board name: "Pricing hero" is pricing-hero. */
 export const slug = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'board';
 const idOf = (n: number) => (n < 26 ? String.fromCharCode(97 + n) : `z${n - 24}`);
@@ -27,11 +28,12 @@ export const seed = (html: string, rel: string) => {
 export function text(b: Board, o: { origin: string; file?: string | null; json?: boolean; pins?: (f: Frame) => number }): string {
   const lines = [`# Board ${b.name}${b.title ? ` · ${b.title}` : ''}`, `url: ${o.origin}/_lab/board/${b.name}`];
   if (b.of) lines.push(`of: ${b.of.replace('#', ' #')}${o.file ? ` (file ${o.file})` : ''}`);
+  if (b.flow) lines.push('flow: the frames are steps, in this order (the canvas draws arrows)');
   if (o.json) lines.push(`file: .lab/boards/${b.name}.json`);
   if (b.frames.some((f) => f.src.startsWith('/_lab/'))) lines.push(`folder: .lab/boards/${b.name}/ (edit a frame's file; it reloads)`);
   for (const f of b.frames) {
     const open = o.pins?.(f) || 0;
-    lines.push([f.id, f.src.startsWith('/_lab/') ? `${f.id}.html` : f.src, `${f.w}×${f.h}`, f.label && `"${f.label}"`, f.variantOf && `variant of ${f.variantOf}`, f.state && f.state !== 'live' && f.state, open && `${open} open`].filter(Boolean).join('  '));
+    lines.push([f.id, f.src.startsWith('/_lab/') ? `${f.id}.html` : f.src, `${f.w}×${f.h}`, f.label && `"${f.label}"`, f.caption && `caption "${f.caption}"`, f.variantOf && `variant of ${f.variantOf}`, f.state && f.state !== 'live' && f.state, open && `${open} open`].filter(Boolean).join('  '));
   }
   return lines.join('\n') + '\n';
 }
@@ -43,8 +45,32 @@ export const frameLine = (b: Board, f: Frame, file?: string | null) => {
   return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived, files kept. ` : ''}${b.of ? `Put ${f.id}'s change into ${file || b.of.split('#')[0]}, then reply --done.` : ''}`.trimEnd() : line;
 };
 
+// ---------- slides ----------
+const SLIDES_CSS = `/* The look of every slide of this deck: one file, so changing it changes them all. */
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:var(--lab-bg,#fff);color:var(--lab-fg,#1d1d1b)}
+.slide{position:relative;box-sizing:border-box;width:1920px;height:1080px;padding:120px 140px;display:flex;flex-direction:column;gap:48px;font:400 44px/1.4 var(--lab-font,system-ui,sans-serif)}
+.slide h1{margin:0;font-size:96px;line-height:1.05;font-weight:600;letter-spacing:-.02em}
+.slide .body{flex:1;min-height:0}
+.slide .body p{margin:0 0 .6em}
+.slide .n{position:absolute;right:140px;bottom:80px;margin:0;font-size:32px;color:var(--lab-muted,rgba(0,0,0,.5))}
+`;
+const slideHtml = (board: string, n: number) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Slide ${n}</title>
+<link rel="stylesheet" href="/_lab/lab.css"><link rel="stylesheet" href="/_lab/board/${board}/slides.css"></head>
+<body><section class="slide"><h1>Title</h1><div class="body"><p>Body</p></div><p class="n">${n}</p></section></body></html>
+`;
+export const slidesFile = (e: { root: string }, name: string) => path.join(path.dirname(frameFile(e.root, name, 'a')), 'slides.css');
+
+/** A --size: its width and height, or the reason it is refused. */
+const sizeOf = (size?: string): [number, number] | undefined | string => {
+  if (size === undefined) return undefined;
+  return PRESETS[String(size)] ?? `--size is one of ${Object.keys(PRESETS).join(', ')} (got ${String(size).slice(0, 20)})`;
+};
+/** A caption as given: one line, at most CAPTION characters. */
+const cap = (t: unknown) => one(t, CAPTION) || undefined;
+
 // ---------- the changes ----------
-type Ask = { name?: string; topic?: string; of?: string; variants?: number; widths?: string; flow?: string; target?: string; label?: string; width?: number; after?: string; first?: boolean; frame?: string; frames?: string[] };
+type Ask = { name?: string; topic?: string; of?: string; variants?: number; widths?: string; flow?: string; target?: string; label?: string; width?: number; after?: string; first?: boolean; frame?: string; frames?: string[]; caption?: string; captions?: string; size?: string; slides?: number; text?: string };
 type Env = { root: string; origin: string; open: (key: string) => number; titleOf: (page: string) => string; fileOf: (page: string) => string | null; proxied: boolean };
 export type Done = { text: string; board?: Board; picked?: Frame; error?: string };
 
@@ -64,6 +90,27 @@ export function act(action: string, a: Ask, e: Env): Done {
     const b = read(e.root, a.name);
     return b ? { text: view(b, b.of ? e.fileOf(b.of.split('#')[0]) : null), board: b } : no(`No board ${a.name}. See: labit board list`);
   }
+  if (action === 'deck') {
+    const topic = one(a.topic, 80);
+    const n = Math.round(Number(a.slides));
+    if (!topic || !(n >= 1 && n <= MAX_SLIDES)) return no(`Give the deck a topic and a count (1 to ${MAX_SLIDES}): labit board deck "Q3 review" --slides 8`);
+    const name = a.name || slug(topic);
+    if (!NAME.test(name)) return no('Give the deck a topic: labit board deck "Q3 review" --slides 8');
+    let into = name;
+    for (let k = 2; read(e.root, into) && !a.name; k++) into = `${name}-${k}`;
+    if (read(e.root, into)) return no(`There is already a board ${into}.`);
+    const [w, h] = PRESETS.slide;
+    const b: Board = { v: 1, name: into, rev: 1, title: topic, flow: true, frames: [] };
+    writeAtomic(slidesFile(e, into), SLIDES_CSS);
+    for (let i = 1; i <= n; i++) {
+      const id = nextId(b.frames);
+      copyIn(e, into, id, slideHtml(into, i));
+      b.frames.push({ id, src: route(into, id), w, h, label: String(i), state: 'live' });
+    }
+    save(e.root, b);
+    const done = read(e.root, into)!;
+    return { text: view(done, null) + `slides: edit .lab/boards/${into}/<frame>.html (a title and a body each); the look is .lab/boards/${into}/slides.css\n`, board: done };
+  }
   if (action === 'new') {
     const topic = one(a.topic, 80);
     const name = a.name || (a.of && !topic ? nameOf(a.of.split('#')[0]) : slug(topic));
@@ -74,7 +121,10 @@ export function act(action: string, a: Ask, e: Env): Done {
     const page = of.split('#')[0];
     if (of && !labPath(page)) return no(`--of is a page of this lab, like /pricing (got ${of.slice(0, 60)})`);
     const b: Board = { v: 1, name: into, rev: 0, ...(topic ? { title: topic } : {}), ...(of ? { of } : {}), frames: [] };
-    const add = (f: Omit<Frame, 'id' | 'h'> & { h?: number }) => b.frames.push({ ...f, id: nextId(b.frames), h: f.h ?? heightFor(f.w), state: 'live' });
+    const size = sizeOf(a.size);
+    if (typeof size === 'string') return no(size);
+    if (size && a.widths) return no('--size goes with --variants, --flow or a single page; --widths already sets the sizes.');
+    const add = (f: Omit<Frame, 'id' | 'h'> & { h?: number }) => b.frames.push({ ...f, ...(size ? { w: size[0], h: size[1] } : {}), id: nextId(b.frames), h: size ? size[1] : f.h ?? heightFor(f.w), state: 'live' });
     if (a.variants !== undefined) {
       const n = Math.round(Number(a.variants));
       if (!of || !(n >= 1 && n <= MAX_VARIANTS)) return no(`--variants takes 1 to ${MAX_VARIANTS} and goes with --of /page: labit board new "<topic>" --of /pricing --variants 3`);
@@ -93,7 +143,10 @@ export function act(action: string, a: Ask, e: Env): Done {
     } else if (a.flow) {
       const pages = String(a.flow).split(',').map((s) => s.trim()).filter(Boolean);
       if (!pages.length || pages.length > MAX_FRAMES || pages.some((p) => !labPath(p))) return no('--flow takes pages of this lab in order: --flow /cart,/checkout,/thanks');
-      pages.forEach((p, i) => add({ src: p, w: 1280, label: `${i + 1} ${e.titleOf(p) || p.slice(1) || 'home'}` }));
+      const caps = a.captions === undefined ? [] : String(a.captions).split('|').map((t) => cap(t));
+      if (caps.length > pages.length) return no(`--captions has ${caps.length} captions for ${pages.length} pages: --captions "Cart|Pay|Done" (one per page, in order, | between).`);
+      pages.forEach((p, i) => add({ src: p, w: 1280, label: `${i + 1} ${e.titleOf(p) || p.slice(1) || 'home'}`, ...(caps[i] ? { caption: caps[i] } : {}) }));
+      b.flow = true;
     } else if (page) add({ src: page, w: 1440, h: 900 });
     save(e.root, { ...b, rev: 1 });
     const done = read(e.root, into)!;
@@ -112,9 +165,13 @@ export function act(action: string, a: Ask, e: Env): Done {
     if (a.after && !frameOf(b, a.after)) return no(`No frame ${a.after} on ${b.name}.`);
     const w = a.width === undefined ? undefined : Math.round(Number(a.width));
     if (w !== undefined && !(w >= 200 && w <= 4000)) return no('--width is 200 to 4000.');
+    const size = sizeOf(a.size);
+    if (typeof size === 'string') return no(size);
     if (had) {
       if (a.label !== undefined) had.label = one(a.label, 80) || undefined;
+      if (a.caption !== undefined) had.caption = cap(a.caption);
       if (w) [had.w, had.h] = [w, heightFor(w)];
+      if (size) [had.w, had.h] = size;
       if (a.after) {
         b.frames.splice(b.frames.indexOf(had), 1);
         insert(b, had, a.after);
@@ -123,7 +180,7 @@ export function act(action: string, a: Ask, e: Env): Done {
     }
     if (b.frames.length >= MAX_FRAMES) return no(`A board holds at most ${MAX_FRAMES} frames.`);
     const id = nextId(b.frames);
-    const f: Frame = { id, src: '', w: w ?? 1280, h: 0, state: 'live', ...(a.label ? { label: one(a.label, 80) } : {}) };
+    const f: Frame = { id, src: '', w: size?.[0] ?? w ?? 1280, h: 0, state: 'live', ...(a.label ? { label: one(a.label, 80) } : {}), ...(cap(a.caption) ? { caption: cap(a.caption) } : {}) };
     // /cart is a path on this lab, below the lab's folder (path.resolve would read it from the disk's root: "/" always exists there).
     const file = t.startsWith('/') ? path.join(e.root, t) : path.resolve(e.root, t);
     if (labPath(t) && !(fs.existsSync(file) && fs.statSync(file).isFile())) f.src = t;
@@ -132,9 +189,15 @@ export function act(action: string, a: Ask, e: Env): Done {
       copyIn(e, b.name, id, fs.readFileSync(file, 'utf8'));
       f.src = route(b.name, id);
     }
-    f.h = heightFor(f.w);
+    f.h = size?.[1] ?? heightFor(f.w);
     insert(b, f, a.after);
     return done(`Added ${id} (${f.src.startsWith('/_lab/') ? `${id}.html` : f.src})${a.after ? ` after ${a.after}` : ''}.`);
+  }
+  if (action === 'caption') {
+    const f = frameOf(b, a.frame);
+    if (!f) return no(`No frame ${a.frame} on ${b.name}.`);
+    f.caption = cap(a.text);
+    return done(f.caption ? `Caption on ${f.id}: "${f.caption}"` : `Cleared the caption of ${f.id}.`);
   }
   if (action === 'move') {
     const f = frameOf(b, a.frame);
@@ -158,5 +221,5 @@ export function act(action: string, a: Ask, e: Env): Done {
     const gone = b.frames.filter((f) => f.state === 'archived').map((f) => f.id);
     return done(`${ids.length === 1 ? `Picked ${ids[0]}` : `Kept ${ids.join(', ')}`}.${gone.length ? ` Archived ${gone.join(', ')} (files kept).` : ''}`, ids.length === 1 ? { picked: frameOf(b, ids[0]) } : {});
   }
-  return no(`Unknown board action ${action}. Use new, add, move, pick or list.`);
+  return no(`Unknown board action ${action}. Use new, deck, add, caption, move, pick or list.`);
 }

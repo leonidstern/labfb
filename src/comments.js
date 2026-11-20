@@ -1977,7 +1977,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: cha(t) (C was chat until 19 Nov; Leo: C is comment), ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
     // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || act === 'done' || !e.shiftKey)) { // ⇧D draws too: Shift straightens (below)
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && !(act === 'pause' && /** @type {any} */ (window).__labBoard) /* on a board the pause key presents (P) */ && (act === 'next' || act === 'done' || !e.shiftKey)) { // ⇧D draws too: Shift straightens (below)
       const k = act;
       e.preventDefault();
       if (k === 'pause') return setPause(!S.paused);

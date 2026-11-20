@@ -338,3 +338,89 @@ test('git stays clean: a repo that ignores .lab sees nothing of boards', async (
   await cli(DIR, 'pick', 'clean', 'a');
   assert.equal(g('status', '--porcelain').trim(), '');
 });
+
+// ----- storyboards: captions, flow arrows' flag, slide sizes, decks -----
+const diskOf = (name) => JSON.parse(fs.readFileSync(path.join(DIR, `.lab/boards/${name}.json`), 'utf8'));
+
+test('captions: --caption on add, board caption (empty clears), cap at 120 characters, shown in the board text', async () => {
+  await cli(DIR, 'new', 'Caps', '--of', '/pricing', '--widths', '390,820');
+  assert.match((await cli(DIR, 'add', 'caps', '/cart', '--caption', 'User taps Pay')).out, /Added c \(\/cart\)/);
+  assert.equal(diskOf('caps').frames.find((f) => f.id === 'c').caption, 'User taps Pay');
+  assert.match((await cli(DIR, 'list', 'caps')).out, /\nc {2}\/cart {2}1280×800 {2}caption "User taps Pay"\n/);
+  assert.match((await cli(DIR, 'caption', 'caps', 'a', 'Lands on  the\npricing page')).out, /Caption on a: "Lands on the pricing page"/);
+  assert.equal(diskOf('caps').frames[0].caption, 'Lands on the pricing page');
+  assert.match((await cli(DIR, 'add', 'caps', 'b', '--caption', 'x'.repeat(300))).out, /Changed b\./);
+  assert.equal(diskOf('caps').frames.find((f) => f.id === 'b').caption.length, 120);
+  assert.match((await cli(DIR, 'caption', 'caps', 'a', '')).out, /Cleared the caption of a\./);
+  assert.equal('caption' in diskOf('caps').frames[0], false);
+  assert.match((await cli(DIR, 'caption', 'caps', 'zz', 'x')).out, /No frame zz/);
+  assert.equal((await cli(DIR, 'caption', 'caps', 'zz', 'x')).code, 1);
+  // a caption survives the page's own save (the board PUT)
+  const was = await get(B, 'name=caps');
+  assert.equal((await put(B, 'name=caps', was.body)).status, 200);
+  assert.equal(diskOf('caps').frames.find((f) => f.id === 'c').caption, 'User taps Pay');
+});
+
+test('flow boards: --captions by order, "flow": true stored, shown in the text; variants and widths boards have no flag', async () => {
+  const f = await cli(DIR, 'new', 'Pay flow', '--flow', '/pricing,/cart,/sub/deep', '--captions', 'Cart|Pay|Done');
+  assert.equal(f.code, 0, f.out);
+  assert.match(f.out, /\nflow: the frames are steps/);
+  const d = diskOf('pay-flow');
+  assert.equal(d.flow, true);
+  assert.deepEqual(d.frames.map((x) => x.caption), ['Cart', 'Pay', 'Done']);
+  assert.equal((await get(B, 'name=pay-flow')).body.flow, true);
+  const part = await cli(DIR, 'new', 'Half flow', '--flow', '/pricing,/cart', '--captions', 'One');
+  assert.deepEqual(diskOf('half-flow').frames.map((x) => x.caption), ['One', undefined]);
+  assert.match((await cli(DIR, 'new', 'Over', '--flow', '/pricing', '--captions', 'a|b')).out, /2 captions for 1 pages/);
+  await cli(DIR, 'new', 'Not flow', '--of', '/pricing', '--widths', '390,820');
+  await cli(DIR, 'new', 'Not flow v', '--of', '/pricing', '--variants', '2');
+  assert.equal('flow' in diskOf('not-flow'), false);
+  assert.equal('flow' in diskOf('not-flow-v'), false);
+});
+
+test('--size: slide 1920×1080, slide-720 1280×720, phone 390×844, on new and add; unknown is refused', async () => {
+  const sz = (out) => out.split('\n').filter((l) => /^[a-z] {2}/.test(l)).map((l) => l.split(/ {2}/)[2]);
+  assert.deepEqual(sz((await cli(DIR, 'new', 'Slides sized', '--flow', '/pricing,/cart', '--size', 'slide')).out), ['1920×1080', '1920×1080']);
+  assert.deepEqual(sz((await cli(DIR, 'new', 'Small slides', '--of', '/pricing', '--variants', '2', '--size', 'slide-720')).out), ['1280×720', '1280×720']);
+  assert.deepEqual(sz((await cli(DIR, 'new', 'Phone sized', '--of', '/pricing', '--size', 'phone')).out), ['390×844']);
+  assert.match((await cli(DIR, 'add', 'slides-sized', '/pricing', '--size', 'slide-720')).out, /Added c/);
+  assert.deepEqual(diskOf('slides-sized').frames.map((f) => [f.w, f.h]), [[1920, 1080], [1920, 1080], [1280, 720]]);
+  assert.match((await cli(DIR, 'add', 'slides-sized', 'c', '--size', 'phone')).out, /Changed c\./);
+  assert.deepEqual([diskOf('slides-sized').frames[2].w, diskOf('slides-sized').frames[2].h], [390, 844]);
+  const bad = await cli(DIR, 'new', 'Bad size', '--flow', '/pricing', '--size', 'huge');
+  assert.equal(bad.code, 1);
+  assert.match(bad.out, /--size is one of slide, slide-720, phone/);
+  assert.match((await cli(DIR, 'new', 'Wide size', '--of', '/pricing', '--widths', '390', '--size', 'slide')).out, /--widths already sets the sizes/);
+  // the lab places 1920-wide frames without overlap
+  const placed = (await get(B, 'name=slides-sized')).body.frames;
+  assert.ok(placed[1].x >= placed[0].x + 1920 || placed[1].y > placed[0].y);
+});
+
+test('deck: N blank slide frames, one html each plus one slides.css, a flow board, numbered', async () => {
+  const r = await cli(DIR, 'deck', 'Q3 review', '--slides', '4');
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /^# Board q3-review · Q3 review\n/);
+  assert.match(r.out, /\nflow: the frames are steps/);
+  const d = diskOf('q3-review');
+  assert.equal(d.flow, true);
+  assert.deepEqual(d.frames.map((f) => [f.id, f.w, f.h, f.label, f.src]), ['a', 'b', 'c', 'd'].map((id, i) => [id, 1920, 1080, String(i + 1), `/_lab/board/q3-review/${id}`]));
+  const dir = path.join(DIR, '.lab/boards/q3-review');
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['a.html', 'b.html', 'c.html', 'd.html', 'slides.css']);
+  assert.match(fs.readFileSync(path.join(dir, 'c.html'), 'utf8'), /<link rel="stylesheet" href="\/_lab\/board\/q3-review\/slides\.css">[\s\S]*<h1>Title<\/h1><div class="body"><p>Body<\/p><\/div><p class="n">3<\/p>/);
+  assert.match(fs.readFileSync(path.join(dir, 'slides.css'), 'utf8'), /1920px[\s\S]*var\(--lab-/);
+  const page = await fetch(`${B}/_lab/board/q3-review/b`);
+  assert.match(await page.text(), /class="slide"/);
+  const css = await fetch(`${B}/_lab/board/q3-review/slides.css`);
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /text\/css/);
+  assert.equal((await fetch(`${B}/_lab/board/nosuch/slides.css`)).status, 404);
+  assert.match(r.out, /slides: edit \.lab\/boards\/q3-review\/<frame>\.html/);
+  const again = await cli(DIR, 'deck', 'Q3 review', '--slides', '2');
+  assert.match(again.out, /# Board q3-review-2/, 'a second deck of the same topic never overwrites the first');
+  assert.equal((await cli(DIR, 'deck', 'Too many', '--slides', '31')).code, 1);
+  assert.equal((await cli(DIR, 'deck', 'Zero', '--slides', '0')).code, 1);
+  assert.equal((await cli(DIR, 'deck', '--slides', '3')).code, 1);
+  const thirty = await cli(DIR, 'deck', 'Thirty', '--slides', '30');
+  assert.equal(thirty.code, 0, thirty.out);
+  assert.equal(diskOf('thirty').frames.length, 30);
+});
