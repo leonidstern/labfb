@@ -559,9 +559,19 @@ test('reply --progress keeps one line on the thread, replaced each time, with it
   const rev = async () => {
     const ctl = new AbortController();
     const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while (!text.includes('\n\n')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
     ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).comments;
+    // One read can hold more than one event (the lab sends the version, then a change straight after), or half of one:
+    // whole events only, and the last of them is the newest.
+    const events = text.split('\n\n').slice(0, -1).map((e) => e.replace(/^data: /, '').trim()).filter((e) => e.startsWith('{'));
+    return JSON.parse(events.at(-1)).comments;
   };
   // The version is read when the lab has been quiet for a moment (an earlier line's save and its notice may still be
   // landing), and the third line must move it on: by one, or by more when something else of the lab's lands too.
