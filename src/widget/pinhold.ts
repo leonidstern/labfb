@@ -32,7 +32,7 @@ let dirty = false;
 // What an element is, read once per placing of the pins (newPass): whether a box cuts it off, it sits in the top layer,
 // or the page gives it an anchor name of its own. Read before any pin is written, so placing many pins lays out once.
 let pass = 0;
-const seen = new WeakMap<Element, { pass: number; no: boolean }>();
+const seen = new WeakMap<Element, { pass: number; no: boolean; moves: boolean }>();
 /** A new placing of the pins: what was read about their elements is read again. */
 export const newPass = () => void pass++;
 const cutOff = (node: Element) => {
@@ -65,6 +65,27 @@ const inTopLayer = (node: Element) => {
   }
 };
 
+const nameOf = (node: Element) => {
+  let name = names.get(node);
+  if (!name) names.set(node, (name = `lab${(++count).toString(36)}`));
+  return name;
+};
+// What holdPin needs to know about an element, read once a pass. Reading a style after the pins were written lays the
+// page out again, so readPins reads them all first, before any pin is written.
+const readNode = (node: Element) => {
+  let read = seen.get(node);
+  if (read?.pass !== pass) {
+    const name = nameOf(node);
+    const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
+    seen.set(node, (read = { pass, no: Boolean(own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || cutOff(node), moves: moves(node) }));
+  }
+  return read;
+};
+/** Reads what holdPin needs about these elements, all at once: called before the pins are written (comments.js). */
+export const readPins = (nodes: (Element | null | undefined)[]) => {
+  for (const n of nodes) if (n && !/^(html|body|main)$/.test(n.localName)) readNode(n);
+};
+
 /** Ties a pin to node, its spot at (left, top) in page coordinates. False, and the pin let go, when the script places it.
  *  share: the spot as a share of node's box instead (a board's frame, which the board's camera scales: anchor() reads the
  *  box as the camera shows it, so a share stays on the same point of the frame through any pan and zoom). */
@@ -74,14 +95,9 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
     letPin(pin);
     return false;
   }
-  let name = names.get(node);
-  if (!name) names.set(node, (name = `lab${(++count).toString(36)}`));
-  let read = seen.get(node);
-  if (read?.pass !== pass) {
-    const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
-    seen.set(node, (read = { pass, no: Boolean(own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || cutOff(node) || (!share && !moves(node)) }));
-  }
-  if (read.no) {
+  const name = nameOf(node);
+  const read = readNode(node);
+  if (read.no || (!share && !read.moves)) {
     letPin(pin);
     return false;
   }
