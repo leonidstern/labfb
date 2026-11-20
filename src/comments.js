@@ -1083,7 +1083,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
       const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
-      const state = sg.s;
+      // A question you've read goes back to a plain pin: amber is for one still unread (Leo, 20 Nov: "orange pin after
+      // opening should become regular"), as selected words' ink already does (wordink.ts).
+      const state = sg.s === 'asks' && !news.length ? null : sg.s;
       const tip = coarse || (state !== 'now' && state !== 'stale') ? '' : lineOf(sg); // hovering a working ring says what it is doing
       const born = !old.has(c.id);
       const pin = old.get(c.id) || el('button', { type: 'button' });
