@@ -7,7 +7,7 @@
 // Strokes drawn while D is held make one drawing; one that starts where the last ended joins it into one line.
 // The drawing is the pin: no marker, its line is what you click (comments.js).
 
-type P = { x: number; y: number };
+type P = { x: number; y: number; w?: number };
 
 const dist = (a: P, b: P) => Math.hypot(a.x - b.x, a.y - b.y);
 const length = (s: P[]) => s.reduce((n, p, i) => (i ? n + dist(p, s[i - 1]) : 0), 0);
@@ -91,6 +91,24 @@ const backs = (c: P[]) => {
   }
   return n;
 };
+
+// Shift held as the pen lifts (Leo's pick S2, 20 Nov): a rough box becomes a clean rectangle and a loop a clean ellipse,
+// at the size drawn, read the same way as below. Anything else: null, the stroke stays as drawn.
+export function neaten(s: P[]): P[] | null {
+  if (s.length < 3) return null;
+  const b = boxOf(s);
+  const diag = Math.hypot(b.r - b.l, b.b - b.t) || 1;
+  const run = length(s);
+  const closed = dist(s[0], s[s.length - 1]) < diag * 0.3 && run > diag * 1.8;
+  const loops = winding(cut(s, Math.max(2, diag * 0.03))) > Math.PI * 1.25 && run > diag * 1.3 && !(turns(cut(s, 6), 1) >= 4);
+  if (!closed && !loops) return null;
+  const w = s.reduce((n, p) => n + (p.w || 3), 0) / s.length;
+  const c = cut(s, Math.max(3, diag * 0.06));
+  if (c.length >= 4 && c.length <= 8 && turns(c, 1.1) >= 3)
+    return [[b.l, b.t], [b.r, b.t], [b.r, b.b], [b.l, b.b], [b.l, b.t]].map(([x, y]) => ({ x, y, w }));
+  const [cx, cy, rx, ry] = [(b.l + b.r) / 2, (b.t + b.b) / 2, (b.r - b.l) / 2, (b.b - b.t) / 2];
+  return Array.from({ length: 49 }, (_, i) => ({ x: cx + rx * Math.cos((i / 48) * 2 * Math.PI), y: cy + ry * Math.sin((i / 48) * 2 * Math.PI), w }));
+}
 
 // What the strokes read as, and the box the comment is on (the box around them, or what an underline or side line is about).
 export function readInk(strokes: P[][], say: (e: Element | null) => string | undefined) {
