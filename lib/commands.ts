@@ -381,6 +381,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
             // On the board itself (--at: pixels from its origin) or on a frame (from its top left).
             const [px, py] = pt.at === undefined && f ? [24, 24] : pt.at === undefined ? fail('A pin on the board itself needs --at x,y in pixels from its origin (or --frame <id>).') : at(pt.at, true);
             page = `/_board/${board}`;
+            if (b.of) page = JSON.parse((await call('/_lab/api/board', { action: 'list', name: board })).text).home || page; // a board about a page is pinned on that page
             spot = { kind: 'board', board, ...(f ? { frame: f.id, fx: px, fy: py } : { bx: px, by: py }), selector: '', x: 0, y: 0, docX: 0, docY: 0 };
           } else if (f.src.startsWith('/_lab/')) {
             // A variant of the board: its own page.
