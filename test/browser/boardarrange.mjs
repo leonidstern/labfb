@@ -107,17 +107,34 @@ try {
       await p.keyboard.press('ArrowLeft');
       await sleep(1500);
       check(eng, 'the board keeps working after another writer got in first', (await kids()).length >= 3 && file('arr').title === 'other');
-      // ----- rubber band: pan far past the edge, it settles back
+      // ----- the edge: past it the board just stops, no give and no settling back (Leo, 19 Nov: "remove weird bounce")
       await p.keyboard.press('Shift+Digit2');
       await sleep(300);
       const edge = async () => p.evaluate(() => { const r = document.querySelector('#lab-board .world').getBoundingClientRect(); return r.left; });
       await p.mouse.move(600, 400);
-      for (let i = 0; i < 12; i++) await p.mouse.wheel(3000, 0);
+      for (let i = 0; i < 6; i++) await p.mouse.wheel(3000, 0);
+      await sleep(60);
+      const at = await edge();
+      const seen = [];
+      for (let i = 0; i < 6; i++) {
+        await p.mouse.wheel(3000, 0);
+        seen.push(await edge());
+      }
       await sleep(60);
       const over = await edge();
       await sleep(900);
       const rest = await edge();
-      check(eng, 'past the edge the board gives way, then settles back inside it', over < rest - 5 || Math.abs(over - rest) > 5, JSON.stringify([over, rest]));
+      check(eng, 'past the edge the board just stops: it never gives way and never springs back', seen.every((v) => Math.abs(v - at) < 0.5) && Math.abs(over - at) < 0.5 && Math.abs(rest - at) < 0.5, JSON.stringify([at, seen, over, rest]));
+      // Space + drag past the edge: the same
+      await p.keyboard.down('Space');
+      await p.mouse.move(700, 400);
+      await p.mouse.down();
+      await p.mouse.move(100, 400, { steps: 8 });
+      const held = await edge();
+      await p.mouse.up();
+      await p.keyboard.up('Space');
+      await sleep(700);
+      check(eng, 'a drag past the edge stops there too', Math.abs(held - at) < 0.5 && Math.abs((await edge()) - at) < 0.5, JSON.stringify([at, held, await edge()]));
       // ----- phone: every frame in view, a swipe pans the canvas (no stepping frame to frame)
       const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
       const q = await ph.newPage();

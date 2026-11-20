@@ -124,9 +124,10 @@ export function act(action: string, a: Ask, e: Env): Done {
     if (b.frames.length >= MAX_FRAMES) return no(`A board holds at most ${MAX_FRAMES} frames.`);
     const id = nextId(b.frames);
     const f: Frame = { id, src: '', w: w ?? 1280, h: 0, state: 'live', ...(a.label ? { label: one(a.label, 80) } : {}) };
-    if (labPath(t) && !fs.existsSync(path.resolve(e.root, t))) f.src = t;
+    // /cart is a path on this lab, below the lab's folder (path.resolve would read it from the disk's root: "/" always exists there).
+    const file = t.startsWith('/') ? path.join(e.root, t) : path.resolve(e.root, t);
+    if (labPath(t) && !(fs.existsSync(file) && fs.statSync(file).isFile())) f.src = t;
     else {
-      const file = path.resolve(e.root, t);
       if (!t || !/\.html?$/i.test(file) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return no(`${t || 'nothing'}: give a frame id, a page like /cart, or an .html file to copy in.`);
       copyIn(e, b.name, id, fs.readFileSync(file, 'utf8'));
       f.src = route(b.name, id);

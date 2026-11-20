@@ -20,6 +20,7 @@ import {
   nameLine,
   pageEnd,
   position,
+  coveredAt,
   quoteRects,
   rectsOf,
   readable,
@@ -925,7 +926,43 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   S.dropDrag = null;
   // What each pin on the layer was drawn from, so a redraw can keep the pin itself and only update it.
   /** @type {WeakMap<Element, any>} */
+  // A link on the page to a board opens it over this same page, its pins this page's (Leo, 19 Nov: "can board be part
+  // of same page?"); /_lab/board/<name> itself still works as a link from anywhere else. Any other way to a board keeps
+  // the scroll under the page's key, so the board's back lands where you were. A page the browser gives back whole
+  // (bfcache) has its scroll already, so the key goes, or a later reload would jump.
+  if (!S.board && self === top) {
+    const scrollKey = 'lab-scroll:' + location.pathname;
+    document.addEventListener('click', (e) => {
+      const a = /** @type {HTMLAnchorElement | null} */ (e.target instanceof Element ? e.target.closest('a[href]') : null);
+      if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (a.target && a.target !== '_self')) return;
+      try {
+        const u = new URL(a.href, location.href);
+        const bn = u.origin === location.origin && /^\/_lab\/board\/([a-z0-9][a-z0-9_-]*)\/?$/i.exec(u.pathname)?.[1];
+        if (bn) {
+          e.preventDefault();
+          return void showBoard(bn, u.searchParams.get('of') || '');
+        }
+        if (u.origin === location.origin && u.pathname.startsWith('/_lab/board/')) sessionStorage.setItem(scrollKey, JSON.stringify({ y: scrollY }));
+      } catch {}
+    });
+    addEventListener('pageshow', (e) => {
+      if (!e.persisted) return;
+      try {
+        sessionStorage.removeItem(scrollKey);
+      } catch {}
+    });
+  }
   const pinData = new WeakMap();
+  // A board is held to the screen (its own page, or a view over a page), so what sits on it is too: its pins, an open
+  // card, a new comment's box. The page scrolling under a half view then moves none of them, and nothing is put back a
+  // frame late (Leo, 19 Nov: "when on half board scrolling pins flickering weirdly"). n was just placed by the page's px.
+  // A pin the browser holds (flag native, pinhold.ts) is tied to its frame's box and left alone.
+  const onBoard = (/** @type {HTMLElement} */ n, /** @type {any} */ a) => {
+    if (a?.kind !== 'board' || heldPin(n)) return void (n.style.position && (n.style.position = ''));
+    n.style.position = 'fixed';
+    n.style.left = `${parseFloat(n.style.left) - scrollX}px`;
+    n.style.top = `${parseFloat(n.style.top) - scrollY}px`;
+  };
   function render() {
     newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
     if (win.__labDebug) unseen = new Map();
@@ -1176,7 +1213,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_sheet-max))`;
         S.stepping = S.keepKeys = false;
         next.push(card);
-        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top, nativeTie() ? pin : null, zone ? zone.top - 12 : top - 40);
+        const boardPin = c.anchor?.kind === 'board' && !heldPin(pin); // held to the screen by the script (onBoard), not tied
+        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top, nativeTie() && !boardPin ? pin : null, zone ? zone.top - 12 : top - 40);
+        if (boardPin && !sheetMode.matches) onBoard(card, c.anchor);
         // A question with choices on quoted words: by its quote, in the margin or under it (thread.ts). Drawn again after
         // the pick, it stays where it was instead of jumping back under its pin.
         if (!zone && (openAsk(c) || (!appear && prev?.matches('.margin, .under')))) placeAsk(card, c);
@@ -1232,6 +1271,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         const pin = el('div', { class: `pin draft${anim}${draftInk ? ' on-ink' : ''}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
+        onBoard(pin, anchor);
         layer.append(pin);
         next.push(pin);
       }
@@ -1287,7 +1327,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       else {
         next.push(float);
         if (zone) placeCard(float, left + 14, zone.top + zone.height);
-        else placeBeside(float, left, top, nativeTie() ? layer.querySelector(':scope > .pin.draft') : null);
+        else placeBeside(float, left, top, nativeTie() && anchor.kind !== 'board' ? layer.querySelector(':scope > .pin.draft') : null);
+        if (!sheetMode.matches) onBoard(float, anchor);
       }
       // Phones: the sheet the bar grows into. Computers whose words can't be found again: the plain box, the bar lets go.
       if (draft.fluid && !fluid) (sheetMode.matches ? fluidSheet : fluidDrop)(float);
@@ -2740,6 +2781,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     }
     if (!held) inkAt(pin, zone, left, top);
     else if (zone) inkAt(pin, zone, zone.left, zone.top);
+    onBoard(pin, a); // a board's pin the browser doesn't hold: held to the screen
     return held;
   };
   // Scrolling an inner box or the page growing only moves the pins: their places are read together, then written.
@@ -2790,6 +2832,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (!host.isConnected && document.body) document.body.append(host);
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
+    S.routed?.(); // the section bar (sections.ts)
     if (pageNow() === S.page) return;
     S.page = pageNow();
     S.seen = readSeen();
@@ -3016,14 +3059,90 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
   // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
-  // and where a pin sits), and the pins are drawn again as the camera moves.
-  if (S.board) {
-    Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
-    // The camera moved: the pins are drawn again, unless the browser holds every one (flag native: tied to their frames).
-    const allHeld = () => !S.openId && !S.draft && pinsById.size > 0 && [...pinsById.values()].every((p) => heldPin(p));
-    // When the frames themselves changed (detail.layout: one gone, replaced or resized), every pin is placed again.
-    addEventListener('lab-board-moved', (e) => S.on && (/** @type {CustomEvent} */ (e).detail?.layout || !allHeld()) && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
+  // and where a pin sits), and the pins move with the camera.
+  // A board in this page (src/board/overlay.ts, loaded when one is opened): its link, the address's #board=<name> (a
+  // reload, a forward) or a board pin picked in the list opens it. Closing it lets go of a board pin that was open.
+  /** @param {string} name @param {string} [of] @param {boolean} [push] */
+  const showBoard = (name, of = '', push = true) =>
+    part('boardview').then((m) => m.show(name, { page: S.page, of, push, onClose: () => {
+      const open = S.comments.find((c) => c.id === S.openId);
+      if (open?.anchor?.kind === 'board') S.openId = null;
+      if (S.draft?.anchor?.kind === 'board') S.draft = null;
+      render();
+    } }), () => say("the board couldn't load"));
+  if (!S.board && self === top) {
+    Object.assign(window, { __labBoardView: { show: showBoard } });
+    const bn = /^#board=([a-z0-9][a-z0-9_-]*)/i.exec(location.hash)?.[1];
+    if (bn) showBoard(bn, '', false);
   }
+  // A tap on the board outside an open comment or the chat closes it, as a click outside one does on a page (onPageClick,
+  // and the chat's own press above); the board's surface eats its presses, so it asks here (Leo, 19 Nov). True when
+  // something closed: that tap only closes, a sent pin's undo card too (as on a page: the sent pin stays, no new one).
+  const dismiss = () => {
+    const chat = S.chatOpen && !coarse; // phones close the chat by its handle or the dimmed page
+    if (!S.draft && !S.openId && !chat) return false;
+    if (S.undo && S.openId === S.undo.id) S.undo = null;
+    S.draft = null;
+    S.openId = null;
+    if (chat) S.chatOpen = false;
+    render();
+    return true;
+  };
+  // The board's camera moved (a pinch, a pan) and nothing else: its pins go with it in the same frame, placed by the
+  // board's own sums (no read of the page, no redraw of the widget: that took 70 ms a frame on a page with many pins,
+  // and ran a frame late, so the pins swam behind the frames; Leo, 19 Nov: "zoom feels weird, slow"). An open card or a
+  // new comment's box on the board moves by as much as its pin, as it is (what is typed in it stays). Pins the browser
+  // holds (flag native) move by themselves. False when it can't (a pin being dragged): the caller draws everything again.
+  const followCamera = () => {
+    if (S.grabbing) return false;
+    const by = (/** @type {HTMLElement | null | undefined} */ n, /** @type {number} */ dx, /** @type {number} */ dy) => {
+      if (!n?.style.left || !(dx || dy)) return;
+      n.style.left = `${parseFloat(n.style.left) + dx}px`;
+      n.style.top = `${parseFloat(n.style.top) + dy}px`;
+    };
+    for (const [id, pin] of pinsById) {
+      const a = pinData.get(pin)?.c.anchor;
+      if (a?.kind !== 'board' || heldPin(pin)) continue;
+      const at = position(a);
+      const [x, y] = [at.left - scrollX, at.top - scrollY]; // held to the screen (onBoard)
+      if (S.openId === id && S.openCard?.isConnected) by(S.openCard, x - parseFloat(pin.style.left), y - parseFloat(pin.style.top));
+      pin.style.left = `${x}px`;
+      pin.style.top = `${y}px`;
+      pin.style.visibility = at.clipped && S.openId !== id ? 'hidden' : '';
+    }
+    if (S.draft?.anchor?.kind === 'board') {
+      const pin = /** @type {HTMLElement | null} */ (layer.querySelector('.pin.draft'));
+      if (pin) {
+        const at = position(S.draft.anchor);
+        const [dx, dy] = [at.left - scrollX - parseFloat(pin.style.left), at.top - scrollY - parseFloat(pin.style.top)];
+        by(pin, dx, dy);
+        by(/** @type {HTMLElement | null} */ (layer.querySelector('.float:not(.out)')), dx, dy);
+      }
+    }
+    return true;
+  };
+  // The page's own pins under a board's view hide (position, anchoring.ts): as the page scrolls under a half view, or
+  // the view is dragged taller, only those that cross its edge are looked at again; nothing else is read or drawn.
+  const coverPins = () => {
+    for (const [id, pin] of pinsById) {
+      const info = pinData.get(pin);
+      if (!info || info.c.anchor?.kind === 'board') continue;
+      const covered = coveredAt(parseFloat(pin.style.left) - scrollX, parseFloat(pin.style.top) - scrollY);
+      if (covered === Boolean(info.covered)) continue;
+      info.covered = covered;
+      pin.style.visibility = (covered || position(info.c.anchor || {}).clipped) && S.openId !== id ? 'hidden' : '';
+    }
+  };
+  Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))), dismiss } });
+  addEventListener('lab-board-moved', (e) => {
+    const d = /** @type {CustomEvent} */ (e).detail;
+    if (!S.on) return;
+    // The camera alone, or the page scrolling under a half view (its own pins scroll with it, the board's are held
+    // to the screen): no redraw. With the view's box changing too, the page's pins it covers are hidden or shown.
+    if (d?.camera && followCamera()) return void (d.box && coverPins());
+    if (d?.scroll && !S.grabbing) return coverPins();
+    S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()));
+  });
   startLive();
   // ⌘K / Control-K from anywhere but a field of the page's own (where it may mean "add a link"): the first press loads
   // labs & pages and opens it once it is there.
