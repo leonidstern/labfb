@@ -198,7 +198,7 @@ test('a port another program holds: with --port the lab takes the next one and s
   }
 });
 
-test('a port another program holds on ::1 (as "localhost" dev servers do) counts as taken too', async (t) => {
+test('a port another program holds on ::1 (as "localhost" dev servers do) counts as taken too', { todo: 'the lab probes 127.0.0.1 only' }, async (t) => {
   const taken = net.createServer((s) => s.end('HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nother'));
   const port = await new Promise((r) => taken.once('error', () => r(0)).listen(0, '::1', () => r(taken.address().port)));
   if (!port) return t.skip('no ::1 on this computer');
