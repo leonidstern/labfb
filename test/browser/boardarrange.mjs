@@ -27,8 +27,8 @@ try {
       const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tester'));
       const p = await ctx.newPage();
-      const kids = () => p.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.dataset.id));
-      const centre = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }, id);
+      const kids = () => p.evaluate(() => [...document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f')].map((f) => f.dataset.id));
+      const centre = (id) => p.evaluate((i) => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }, id);
       // A frame is opened with Tab to it and Enter (a click on its label or on the frame pins, as anywhere on the board); Escape leaves it.
       const open = async (id) => { await p.evaluate((i) => { for (let n = 0; n < 9 && __labBoard.selected() !== i; n++) __labBoard.key({ key: 'Tab', code: 'Tab' }); __labBoard.key({ key: 'Enter', code: 'Enter' }); }, id); await sleep(400); };
       const wait = async (fn, ms = 4000) => { for (let i = 0; i < ms / 100; i++) { if (await fn()) return true; await sleep(100); } return false; };
@@ -53,9 +53,9 @@ try {
       const lb = await p.locator('#lab-board .f[data-id="a"] .t').boundingBox();
       await p.mouse.click(lb.x + 8, lb.y + lb.height / 2);
       await sleep(400);
-      check(eng, 'a click on a frame\'s label opens nothing: no ring, no size list', await p.evaluate(() => __labBoard.entered() === '' && document.querySelectorAll('#lab-board .f.sel').length === 0 && document.querySelectorAll('#lab-board .t u').length === 0));
+      check(eng, 'a click on a frame\'s label opens nothing: no ring, no size list', await p.evaluate(() => __labBoard.entered() === '' && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f.sel').length === 0 && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .t u').length === 0));
       await open('a');
-      check(eng, 'Tab and Enter open a frame: the ring shows on it only, and no size list', await p.evaluate(() => __labBoard.entered() === 'a' && document.querySelectorAll('#lab-board .f.sel').length === 1 && document.querySelectorAll('#lab-board .t u').length === 0));
+      check(eng, 'Tab and Enter open a frame: the ring shows on it only, and no size list', await p.evaluate(() => __labBoard.entered() === 'a' && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f.sel').length === 1 && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .t u').length === 0));
       // ----- no Delete / ⌘D / ⌘Z on frames: nothing on the board changes the board file
       await p.keyboard.press('Escape');
       await sleep(300);
@@ -78,7 +78,7 @@ try {
       // ----- the edge: past it the board just stops, no give and no settling back (Leo, 19 Nov: "remove weird bounce")
       await p.keyboard.press('Shift+Digit2');
       await sleep(300);
-      const edge = async () => p.evaluate(() => { const r = document.querySelector('#lab-board .world').getBoundingClientRect(); return r.left; });
+      const edge = async () => p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .world').getBoundingClientRect(); return r.left; });
       await p.mouse.move(600, 400);
       for (let i = 0; i < 6; i++) await p.mouse.wheel(3000, 0);
       await sleep(60);
