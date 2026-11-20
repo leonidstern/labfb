@@ -40,7 +40,7 @@ export const frameLine = (b: Board, f: Frame, file?: string | null) => {
   const beside = b.frames.filter((g) => g.id !== f.id && g.state !== 'archived').map((g) => g.id);
   const gone = b.frames.filter((g) => g.state === 'archived').map((g) => g.id);
   const line = `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, `${f.w}×${f.h}`, f.label && `"${f.label}"`, beside.length && `beside ${beside.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
-  return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived, files kept. ` : ''}${b.of ? `Put ${f.id}'s change into ${file || b.of.split('#')[0]}, then reply --done.` : ''}`.trimEnd() : line;
+  return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived, files kept. ` : ''}${b.of ? `Put ${f.id}'s change into ${file || b.of.split('#')[0]}, then resolve it with no words (resolve <id>).` : ''}`.trimEnd() : line;
 };
 
 // ---------- the changes ----------
