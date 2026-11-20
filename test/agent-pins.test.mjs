@@ -49,7 +49,7 @@ test('setup', async () => {
 test('2: with no browser open the pin is saved unchecked, and says so once; no-check says nothing', async () => {
   const r = await pin('#nope', 'x', '--page', '/index');
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /^Note: No browser has the lab open, so the selector is not checked: the pins are saved unchecked\.$/m);
+  assert.match(r.out, /^Note: No browser has the lab open: selector not checked\.$/m);
   const c = (await all()).find((x) => x.id === idOf(r.out));
   assert.deepEqual([c.anchor.kind, c.anchor.selector, c.anchor.x, c.anchor.y, c.anchor.element], ['element', '#nope', 0.5, 0.5, undefined]);
   const quiet = await pin('#drawn', 'a script draws this', '--page', 'index.html', '--no-check');
@@ -126,7 +126,7 @@ test('5: Do it on an agent pin reaches the next wait; on a person\'s pin it is o
   assert.equal(done.status, 201);
   assert.equal(done.comment.doit, true);
   const heard = await cli(S, 'wait', '--bg', '--timeout', '5');
-  assert.match(heard.out, /Do it \(Leo said: do it: they pressed "Do it" on your pin\. Go ahead with what it proposes, then reply --done\)/);
+  assert.match(heard.out, /Do it \(Leo said: do it\. Go ahead with what your pin proposes, then reply --done\)/);
   const text = await (await fetch(`${B}/_lab/agent/index`)).text();
   assert.match(text, /^reply: Leo.* · id \w+: Do it \(Leo said: do it/m);
   const theirs = (await api({ page: '/index', text: 'mine', anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5 } })).comment;
@@ -148,7 +148,7 @@ test('5: ticked pins are told once in the next wait: "ticked: N of your M pins"'
   // A tick alone wakes nothing: it goes out with the next pin from a person.
   await api({ page: '/index', text: 'something else', anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5 } });
   const heard = await cli(S, 'wait', '--bg', '--timeout', '5');
-  assert.match(heard.out, new RegExp(`^ticked: 2 of your ${mine.length} pins, resolved by people since your last wait`, 'm'));
+  assert.match(heard.out, new RegExp(`^ticked: 2 of your ${mine.length} pins \\(resolved by people since your last wait`, 'm'));
   assert.ok(heard.out.includes(`id ${one.id}`) && heard.out.includes(`id ${two.id}`));
   assert.ok(!heard.out.includes(`id ${other}`), 'another session\'s pin is not told');
   await api({ page: '/index', text: 'and another', anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5 } });
@@ -203,7 +203,7 @@ test('7: --file pins many at once: all are made ready first, then saved, every i
   assert.equal((await all()).length, here.length);
   assert.match((await pin('--file', path.join(DIR, 'nope.json'))).out, /Could not read/);
   fs.writeFileSync(file, '{"a":1}');
-  assert.match((await pin('--file', file)).out, /is a list of pins/);
+  assert.match((await pin('--file', file)).out, /must be a list of pins/);
 });
 
 test('8: --board pins on a frame\'s element, on a frame, or on the board itself', async () => {

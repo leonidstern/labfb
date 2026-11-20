@@ -213,7 +213,7 @@ test('variants behind a dev server (or of a page that is no .html file) are the 
   assert.match(made.out, /\na {2}\/pricing {2}1280×800 {2}"now"\n/);
   assert.match(made.out, /\nb {2}\/pricing\?lab-variant=b {2}1280×800\n/);
   assert.match(made.out, /\nc {2}\/pricing\?lab-variant=c {2}1280×800\n/);
-  assert.match(made.out, /Each variant frame is the live page with \?lab-variant=<frame>; render your versions by branching on new URLSearchParams\(location\.search\)\.get\('lab-variant'\)/);
+  assert.match(made.out, /Each variant frame is the live page with \?lab-variant=<frame>; branch on new URLSearchParams\(location\.search\)\.get\('lab-variant'\)/);
   assert.match(made.out, /Remove the branching when one is picked\./);
   assert.doesNotMatch(made.out, /folder: \.lab\/boards/, 'nothing is copied');
   assert.equal(fs.existsSync(path.join(PX, '.lab/boards/live')), false);

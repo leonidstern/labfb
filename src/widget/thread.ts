@@ -375,7 +375,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     // "Do it" on a pin the agent left itself (labit pin): hands it back to the agent's next wait as "<name> said: do it".
     const said = [c, ...W.repliesOf(c.id)].filter((m) => m.session).map((m) => m.createdAt).sort().pop() || '';
     const asked = W.repliesOf(c.id).some((r) => r.doit && !r.session && r.createdAt > said); // already told, and the agent has not answered since
-    const doIt = c.session && !c.resolved ? W.el('button', { class: 'btn', type: 'button', title: 'Tell the agent to go ahead with this', ...(asked ? { disabled: '' } : {}) }, asked ? 'told' : 'Do it') : null;
+    const doIt = c.session && !c.resolved ? W.el('button', { class: 'btn', type: 'button', ...(asked ? { disabled: '' } : {}) }, asked ? 'told' : 'Do it') : null;
     doIt?.addEventListener('click', async () => {
       const name = String(W.store.get('lab-name') || '').trim();
       if (!name) return void ((doIt.textContent = 'your name first'), W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true }));

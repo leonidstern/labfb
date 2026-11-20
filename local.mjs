@@ -16,7 +16,7 @@ import { pageIds } from './lib/ids.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive } from './lib/labcall.ts';
-import { DO_IT, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
+import { DO_IT, UNMATCHED, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
 import { ensureBuilt } from './lib/build.ts';
 
@@ -106,23 +106,19 @@ For the agent, from the project (any folder under it):
       --choice it describes) shows as a small second line. --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y] [--quote "words"] [--question | --choice "A" --choice "B" [--recommend B]] [--no-check]
-      Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
-      of a list in a reply. --at: where on the element, as shares of it (default 0.5,0.5, its middle). Prints the pin's id.
-      A browser with the page open checks the selector (up to 3 s; --no-check skips that): the pin is filled in with the
-      element's tag and words so it survives edits, or the command says "pin <id> matched nothing". --quote "exact words": a pin on
-      those words. --question: the pin asks, and waits for the person's answer. --choice: it asks with 2 to 6 choices (the
-      pick comes back in your next wait). A "Do it" tap on your pin comes back as "<name> said: do it".
+      Your own pin, one per point, numbered, instead of a list in a reply. --at: where on the element, as shares (default
+      0.5,0.5). A browser with the page open checks the selector (3 s; --no-check skips) and says "pin <id>
+      matched nothing". --quote: pin those words. --question / --choice (2 to 6): the pin asks, the pick comes back in
+      your next wait. "Do it" on your pin comes back as "<name> said: do it".
   labit pin --file points.json [--page /path]
-      Many pins in one call: a list of { "selector", "text", "quote"?, "at"?, "page"?, "choices"?, "recommend"?, "question"? }.
-      All are checked first, then saved; prints each id.
-  labit pin --board <name> --frame <id> <selector> "text" | --board <name> --frame <id> - "text" [--at x,y] | --board <name> - "text" --at x,y
-      A pin on a board: on an element of a frame, on a frame (--at: pixels from its top left), or on the board itself (pixels from its origin).
+      A list of { "selector", "text", "quote"?, "at"?, "page"?, "choices"?, "recommend"?, "question"? }.
+  labit pin --board <name> [--frame <id>] <selector|-> "text" [--at x,y]
+      On a board: a frame's element, a frame (-), or the board (- and no --frame); --at in pixels.
   labit update
       Move this folder's lab onto the newer release its ⋯ menu offers (the person pressed update): prints what changed.
   labit board new|add|move|pick|list ...
-      Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (frame a is the page as it is
-      now, labelled "now"; the lab copies it into .lab/boards/<board>/b.html, c.html, d.html: edit those; behind a dev server
-      each variant is the live page with ?lab-variant=b, c, d: branch on it in the page's source) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
+      Options, widths and flows as frames on a board: new "<topic>" --of /page --variants 3 (frame a is the page now; edit the copies
+      b.html, c.html… in .lab/boards/<board>/; behind a dev server a variant is the page with ?lab-variant=b) | --widths 390,820,1280 | --flow /a,/b,/c. The lab places
       frames; you only give an order. add <board> <frame|/page|file.html> [--label] [--width] [--after]; move <board> <frame>
       --after <frame>; pick <board> <frame>; list [<board>].
 
@@ -1727,11 +1723,11 @@ async function unseen(scope = pages(), who = '') {
   // what else goes out, once each (a tick alone wakes nobody).
   // Only this session's own pins count (another session's pins on the page are not its to hear about); M is the ones still
   // open and the ones just ticked.
-  const mine = (c) => !c.parent && c.session && (!who || whoOf(c.session) === who);
-  const ticks = scope.flatMap((page) => commentsOf(page).filter((c) => mine(c) && c.resolved && c.resolvedBy !== 'agent' && c.resolvedAt > (c.tickedAt || '')).map((c) => ({ page, c })));
+  const pins = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && c.session && (!who || whoOf(c.session) === who)).map((c) => ({ page, c })));
+  const ticks = pins.filter(({ c }) => c.resolved && c.resolvedBy !== 'agent' && c.resolvedAt > (c.tickedAt || ''));
   // Pins of its own that a browser drew and found nothing for (the selector matches nothing on the page), said once.
-  const lost = scope.flatMap((page) => commentsOf(page).filter((c) => mine(c) && !c.resolved && c.unmatched && !c.lostTold).map((c) => ({ page, c })));
-  const own = scope.reduce((n, page) => n + commentsOf(page).filter((c) => mine(c) && !c.resolved).length, 0) + ticks.length;
+  const lost = pins.filter(({ c }) => !c.resolved && c.unmatched && !c.lostTold);
+  const own = pins.filter(({ c }) => !c.resolved).length + ticks.length;
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const full = !toldAt.has(who);
@@ -1751,15 +1747,15 @@ async function unseen(scope = pages(), who = '') {
     : `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --question] [--wait]; the standing lines (read threads whole, --progress before long work, short answers) and rules as before.`;
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${groups.length ? `${groups.join('\n')}\n\n` : ''}${blocks.join('\n\n')}` +
     standing +
-    lost.map(({ page, c }) => `\npin ${c.id} matched nothing on ${page}: ${c.anchor.selector}`).join('') +
-    (ticks.length ? `\nticked: ${ticks.length} of your ${own} pins, resolved by people since your last wait (${ticks.map(({ page, c }) => `${page} id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 50)}"`).join('; ')}). Nothing to do for those.` : '') +
+    lost.map(({ page, c }) => `\n${UNMATCHED(c.id, page, c.anchor.selector)}`).join('') +
+    (ticks.length ? `\nticked: ${ticks.length} of your ${own} pins (resolved by people since your last wait: ${ticks.map(({ page, c }) => `${page} id ${c.id} "${c.text.replace(/\s+/g, ' ').slice(0, 50)}"`).join('; ')}). Nothing to do.` : '') +
     (given.some((f) => f.c.picked) ? `\nA pick ("Picked B: …"): make that change, then ${CMD} resolve <id> with no words; words only if something isn't obvious or you couldn't do it.` : '') +
     (suggest ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     (rules || '');
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
   const handed = [...sent].map((k) => k.split('\n'));
   const marks = given.map(({ page, c }) => [page, c.id, stamp(c)]);
-  return { text, marks, handed, ticked: ticks.map(({ page, c }) => [page, c.id, c.resolvedAt]), lost: lost.map(({ page, c }) => [page, c.id]), full, suggest, rules: Boolean(rules) };
+  return { text, marks, handed, told: [...ticks.map(({ page, c }) => [page, c.id, 'tickedAt', c.resolvedAt]), ...lost.map(({ page, c }) => [page, c.id, 'lostTold', true])], full, suggest, rules: Boolean(rules) };
 }
 // Hand-offs the agent hasn't said it got yet (a wait that asked with ack: true). The marks go on at once, so no other
 // wait takes the same pins and the page shows them being worked on; the agent's `wait` says it printed
@@ -1818,8 +1814,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
         }
         if (got.rules) rulesSent.delete(who); // the rules went with it, so they go again
         for (const [page, id, was] of handedBefore) if (!theirs.has(id)) setComment(page, id, { handedAt: was });
-        for (const [page, id] of got.ticked) setComment(page, id, { tickedAt: undefined }); // not seen: said again
-        for (const [page, id] of got.lost) setComment(page, id, { lostTold: undefined });
+        for (const [page, id, k] of got.told) setComment(page, id, { [k]: undefined }); // not seen: said again
         saveHanded();
         for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
         if (got.full) toldAt.delete(who);
@@ -1831,8 +1826,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
   if (got.full) toldAt.set(who, Date.now());
   if (got.suggest) suggestTold.add(who);
   for (const [, id, at] of got.marks) handoff[id] = [at, who];
-  for (const [page, id, at] of got.ticked) setComment(page, id, { tickedAt: at }); // told once
-  for (const [page, id] of got.lost) setComment(page, id, { lostTold: true });
+  for (const [page, id, k, v] of got.told) setComment(page, id, { [k]: v }); // told once
   const wrote = {}; // what this hand-off set, filled in below
   const at = new Date().toISOString();
   for (const [page, id] of got.handed) {

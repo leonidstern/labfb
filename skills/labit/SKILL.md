@@ -41,13 +41,12 @@ Start it with `npx @leonidstern/labit@latest`, so the person gets the newest ver
 
 ## Your own pins
 
-Leave your own pins with `LAB pin <selector> "<point>" [--page /path]` when the person asks what you'd improve, or you find something worth their eye: a suggestion, a bug you found, a review note, or what you just changed (so they can look at it where it is). Not for status, and not instead of answering a pin: answer those with `reply`.
-- One point per pin, each on its own spot, numbered when there are several ("1. …"). At most about 8 per ask: pick the ones that matter.
-- Read the selector from the file; never guess it. Prefer an id (`#pricing h2`). With the page open a browser checks it: `pin` waits up to 3 s and says `pin <id> matched nothing on /page: <selector>` (the next wait says it too; fix it and pin again). `--no-check` skips the wait.
-- Many at once: `LAB pin --file points.json` (a list of `{ "selector", "text", "quote"?, "at"?, "page"? }`): one call, every id printed.
-- On words: `--quote "exact words"` pins those words. Ask something: `--question`, or choices with `--choice "A" --choice "B" --recommend B` (the pick comes back in your next wait). On a board: `--board <name> --frame <id> <selector> "text"`, or `-` in place of the selector for a pin on the frame itself.
-- A pin ticked as done by the person is told in your next wait ("ticked: 2 of your 5 pins"): nothing to do. "<name> said: do it" is their "Do it" tap on your pin: do what it proposes, then `reply <id> --done`.
-- Say in your reply how many pins you left (one line).
+Leave your own pins with `LAB pin <selector> "<point>" [--page /path]` when asked what you'd improve, or when something is worth a look (a bug, a review note, what you just changed). Not for status or answers (`reply`).
+- One point per pin, numbered ("1. …"), 8 at most per ask.
+- Read the selector from the file; never guess it. Prefer an id (`#pricing h2`). With the page open a browser checks it: `pin` waits up to 3 s and says `pin <id> matched nothing on /page: <selector>` (the next wait too): fix and pin again. `--no-check` skips the wait.
+- Many at once: `LAB pin --file points.json` (a list of `{ selector, text, quote?, at?, page? }`). On words: `--quote "exact words"`. To ask: `--question`, or `--choice "A" --choice "B" --recommend B` (the pick comes back in your next wait). On a board: `--board <name> --frame <id> <selector> "text"` (`-` for the frame itself).
+- "ticked: 2 of your 5 pins" in a wait: nothing to do. "<name> said: do it" (their "Do it" tap on your pin): do what it proposes, then `reply <id> --done`.
+- Say how many pins you left.
 
 ## Instead of an Artifact ("use lab")
 
@@ -66,12 +65,10 @@ Start local, always. The page stays on this computer (for a phone, add `--wifi`,
 
 ## Boards (options, widths, flows)
 
-A board shows pages side by side as frames. Use one when the person asks for options or variants, one page at several widths, or a flow. Don't describe options in a reply: draw them.
+A board shows pages side by side as frames. Use one when the person asks for options or variants (`--variants`), one page at several widths (`--widths`), a flow or storyboard (`--flow`, one frame per step) or a deck (a frame per slide). Don't describe options in a reply: draw them. Words alone (a plan, a list, a question) stay in the reply.
 
-When to open a board rather than answer in a reply: options that are looks (variants, `--variants`), one page at several widths (`--widths`), a flow or storyboard of steps (`--flow`, one frame per step), or a deck of slides (a frame per slide). Words alone (a plan, a list, a question) stay in the reply.
-
-- Options: `LAB board new "<topic>" --of /page --variants 3`. Frame `a` is the page as it is now (the real page, labelled "now", not a copy): never edit a for a variant, since that changes the real page; the lab copies the page into `.lab/boards/<board>/b.html`, `c.html`, `d.html` and prints the link. Edit those files; never write the page out again yourself. Three unless asked (six at most), each different in one way: name it with `LAB board add <board> b --label "<what differs>"`. Save b first, so the person sees it while you make c.
-- Behind a dev server (or a page that is no plain HTML file) the page can't be copied: each variant is the live page with `?lab-variant=<frame>` (b, c, d…). Render your versions by branching on `new URLSearchParams(location.search).get('lab-variant')` in the page's source; when one is picked, keep its branch and remove the branching.
+- Options: `LAB board new "<topic>" --of /page --variants 3`. Frame `a` is the real page as it is now: never edit it for a variant. The lab copies the page into `.lab/boards/<board>/b.html`, `c.html`… and prints the link. Edit those files; never write the page out again yourself. Three unless asked (six at most), each different in one way: name it with `LAB board add <board> b --label "<what differs>"`. Save b first, so the person sees it while you make c.
+- Behind a dev server (or a page that is no plain HTML file) a variant is the live page with `?lab-variant=<frame>`: branch on `new URLSearchParams(location.search).get('lab-variant')` in its source; a pick: keep its branch, remove the branching.
 - Widths: `--widths 390,820,1280`. A flow: `--flow /a,/b,/c`. These show the real pages; nothing is copied.
 - The lab places frames. Give an order (`--after`), never positions.
 - A pin on a frame names its frame and file: change that frame only.

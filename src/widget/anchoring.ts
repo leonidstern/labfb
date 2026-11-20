@@ -654,8 +654,7 @@ function around(target: Element): Pick<Anchor, 'inside' | 'section' | 'block'> {
 export function fillAt(anchor) {
   const node = findTarget(anchor);
   if (!node) return null;
-  const rect = node.getBoundingClientRect();
-  const out: Partial<Anchor> = { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height), element: openingTag(node), ...around(node) };
+  const out: Partial<Anchor> = { ...placeOf(node, anchor), element: openingTag(node), ...around(node) };
   if (node !== document.body && (node.textContent || '').length < 400 && !anchor.quote) out.text = short(node.textContent, 80);
   return out;
 }
@@ -967,6 +966,10 @@ export function foundAt(anchor) {
   if (!node || node === at) return null;
   // Never saved into another section than the pin's own: that would move it silently (it stays shown there, unsaved).
   if (anchor.section && sectionIn(node) !== anchor.section) return null;
+  return placeOf(node, anchor);
+}
+// Where a pin sits on its element, as the lab keeps it: the element's path, its place on the page, its height.
+function placeOf(node, anchor) {
   const rect = node.getBoundingClientRect();
   return { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height) };
 }

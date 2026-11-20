@@ -8,7 +8,7 @@ export const MAX_VARIANTS = 6;
 /** The query parameter that tells a live page which variant it is drawing (boards of a page that cannot be copied). */
 export const VARIANT = 'lab-variant';
 const live = (f: Frame) => f.src.includes(`?${VARIANT}=`);
-const LIVE_SAID = `Each variant frame is the live page with ?${VARIANT}=<frame>; render your versions by branching on new URLSearchParams(location.search).get('${VARIANT}') in the page's source (frame a, "now", has no parameter: leave it as the page is). Remove the branching when one is picked.`;
+const LIVE_SAID = `Each variant frame is the live page with ?${VARIANT}=<frame>; branch on new URLSearchParams(location.search).get('${VARIANT}') in the page's source (frame a is the page as it is: leave it). Remove the branching when one is picked.`;
 /** The text a person gave, as a board name: "Pricing hero" is pricing-hero. */
 export const slug = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'board';
 const idOf = (n: number) => (n < 26 ? String.fromCharCode(97 + n) : `z${n - 24}`);
@@ -53,13 +53,12 @@ export const frameLine = (b: Board, f: Frame, file?: string | null) => {
   // others' files or branching to clean up.
   const gonecopies = b.frames.filter((g) => g.state === 'archived' && copy(g)).map((g) => g.id);
   const gonelive = b.frames.some((g) => g.state === 'archived' && live(g));
+  const done = 'resolve it with no words (resolve <id>).';
   const put = live(f)
-    ? `Keep the ${f.id} branch (?${VARIANT}=${f.id}) in ${page}'s source and remove the ${VARIANT} branching, then resolve it with no words (resolve <id>).`
-    : copy(f)
-      ? `Put ${f.id}'s change into ${page}, then resolve it with no words (resolve <id>).`
-      : others.some((g) => copy(g) || live(g))
-        ? `Keep ${page} as it is: change nothing in it.${gonecopies.length ? ` Delete the variant files (.lab/boards/${b.name}/${gonecopies.map((i) => `${i}.html`).join(', ')}).` : ''}${gonelive ? ` Remove any ${VARIANT} branching you added to its source.` : ''} Then resolve it with no words (resolve <id>).`
-        : `Put ${f.id}'s change into ${page}, then resolve it with no words (resolve <id>).`;
+    ? `Keep the ${f.id} branch (?${VARIANT}=${f.id}) in ${page}'s source and remove the ${VARIANT} branching, then ${done}`
+    : copy(f) || !others.some((g) => copy(g) || live(g))
+      ? `Put ${f.id}'s change into ${page}, then ${done}`
+      : `Keep ${page} as it is: change nothing in it.${gonecopies.length ? ` Delete the variant files (.lab/boards/${b.name}/${gonecopies.map((i) => `${i}.html`).join(', ')}).` : ''}${gonelive ? ` Remove any ${VARIANT} branching you added to its source.` : ''} Then ${done}`;
   const kept = gonecopies.length ? ', files kept' : '';
   return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived${kept}. ` : ''}${b.of ? put : ''}`.trimEnd() : line;
 };
