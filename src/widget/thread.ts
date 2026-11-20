@@ -224,7 +224,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     const box = W.el('div', { class: `item msg${W.mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(W.agentOf(item) ? { 'data-agent': W.agentOf(item) } : {}) });
     box.append(W.nameLine(item.name, false));
     // An answer to a later message in the thread quotes it, as the chat does (Leo, 17 Nov: "show what you replied on").
-    const to = item.to && W.repliesOf(c.id).find((x) => x.id === item.to);
+    const to = item.to && [c, ...W.repliesOf(c.id)].find((x) => x.id === item.to); // the pin itself too: it may be the question
     if (to) {
       const q = W.el('span', { class: 'quote' });
       q.append(W.el('b', {}, String(to.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(to.text.replace(/\s+/g, ' ').slice(0, 90)));
@@ -372,7 +372,25 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       setTimeout(() => undo.isConnected && undo.replaceWith(resolve), left);
       first = undo;
     }
-    actions.append(...(W.S.isAdmin ? [first, del] : [first]));
+    // "Do it" on a pin the agent left itself (labit pin): hands it back to the agent's next wait as "<name> said: do it".
+    const said = [c, ...W.repliesOf(c.id)].filter((m) => m.session).map((m) => m.createdAt).sort().pop() || '';
+    const asked = W.repliesOf(c.id).some((r) => r.doit && !r.session && r.createdAt > said); // already told, and the agent has not answered since
+    const doIt = c.session && !c.resolved ? W.el('button', { class: 'btn', type: 'button', ...(asked ? { disabled: '' } : {}) }, asked ? 'told' : 'Do it') : null;
+    doIt?.addEventListener('click', async () => {
+      const name = String(W.store.get('lab-name') || '').trim();
+      if (!name) return void ((doIt.textContent = 'your name first'), W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true }));
+      doIt.disabled = true;
+      try {
+        const { comment } = await W.send({ name, text: 'Do it', parent: c.id, doit: true });
+        W.S.comments.push(comment);
+        W.markSeen([comment]);
+        W.render();
+      } catch {
+        doIt.disabled = false;
+        failed(doIt);
+      }
+    });
+    actions.append(...(doIt ? [doIt] : []), first, ...(W.S.isAdmin ? [del] : []));
     body.append(actions);
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).
@@ -436,7 +454,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
 // answers (20 Nov, no Keep) as a reply, "Picked B: …" (the letter is for the agent, who listed them), with
 // picked: { of, n } (lib/schema.mjs), but only after 5 s: the card says "Picked B · undo" meanwhile, and the pick goes
 // at once when the card closes (or the page is hidden). On a computer 1 to 6 pick that choice of the open thread card (the
-// same as a tap, with its undo), and Enter picks the ticked row (the agent's recommend, or the one tried last), unless a
+// same as a tap, with its undo), and Enter picks the ticked row (the agent's recommend, or the one tried last), and the arrow keys move the tick (pointing tries a row; so do they), unless a
 // text box or a button has the focus (comments.js, pickByKey, pickTicked). On a phone a touch that
 // moved (a scroll) answers nothing.
 // With quoted words on the page the rows are also tried in it (trial.ts). The page chat draws a question the same way
@@ -444,7 +462,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
 // The open question in a thread: the agent's last message with choices that nobody has picked on yet.
 const pickOf = (c, ask) => W.repliesOf(c.id).filter((r) => r.picked?.of === ask.id).pop();
 export function openAsk(c) {
-  const asks = W.repliesOf(c.id).filter((r) => r.session && Array.isArray(r.choices) && r.choices.length);
+  const asks = [c, ...W.repliesOf(c.id)].filter((r) => r.session && Array.isArray(r.choices) && r.choices.length); // the pin itself asks when the agent pinned it with --choice
   const ask = asks[asks.length - 1];
   return ask && !pickOf(c, ask) && !c.resolved ? ask : null;
 }
@@ -502,6 +520,13 @@ export function pickTicked(): boolean {
   return Boolean(live?.ticked?.());
 }
 
+/** ArrowDown / ArrowUp on a computer: the ticked row of the open thread card's question moves one row (tried in the page), stopping at the ends. Whether it took the key (an open question is there). */
+export function moveTicked(dir: 1 | -1): boolean {
+  if (W.coarse) return false;
+  const live = W.S.openCard && ([...W.S.openCard.querySelectorAll('.choices.live')].pop() as { move?: (d: 1 | -1) => boolean } | undefined);
+  return Boolean(live?.move?.(dir));
+}
+
 // The rows of a question, under it. Answered (or an older one): the rows as they were, the pick ticked. Open: rows to
 // try; a tap answers. host: the card of the thread (its tie is drawn again as words change), or the chat.
 export function choicesEl(c, ask, host, chat = false) {
@@ -522,7 +547,7 @@ export function choicesEl(c, ask, host, chat = false) {
   const nowIs = inPlace ? ask.choices.findIndex((t) => same(t, exact)) : -1;
   const rows: { n: number; el: HTMLButtonElement }[] = [];
   const row = (n: number, text: string, hint = '') => {
-    const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement;
+    const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(n >= 0 ? { 'data-l': `${String.fromCharCode(97 + n)})` } : {}), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement; // a) b) c), as the agent lists them
     const now = inPlace && (n === -1 || n === nowIs);
     const words = W.el('span', { class: 'tx', dir: 'auto' }, text);
     const nw = now ? W.el('span', { class: 'nw' }, ' · now') : null;
@@ -646,6 +671,13 @@ export function choicesEl(c, ask, host, chat = false) {
   (box as unknown as { ticked: () => boolean }).ticked = () => {
     if (cur < 0 || cur >= ask.choices.length) return false;
     if (pending?.ask !== ask.id) answer(cur); // a pick already waiting: Enter is still taken, undo first
+    return true;
+  };
+  (box as unknown as { move: (d: 1 | -1) => boolean }).move = (d) => {
+    if (pending?.ask === ask.id) return true; // a pick waiting: the arrows are still taken (no scroll), undo first
+    const at = rows.findIndex((r) => r.n === cur);
+    const next = at < 0 ? (d > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, at + d));
+    if (next !== at) select(rows[next].n);
     return true;
   };
   select(cur);
