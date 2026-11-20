@@ -256,10 +256,21 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const unfolded: Set<string> = (W.S.unfolded ||= new Set());
   for (const slot of W.foldStatus(all, () => c.id, unfolded)) {
     if (slot.fold) {
-      body.append(W.foldRow(slot, () => (unfolded.has(slot.fold) ? unfolded.delete(slot.fold) : unfolded.add(slot.fold), W.render())));
+      // Open: its messages follow the row (drawn on the next render). A tap shows or hides them in place.
+      let els: HTMLElement[] = [];
+      const row = W.foldRow(slot, unfolded, (open) => {
+        if (open) {
+          els = slot.items.map((item) => itemEl(item));
+          row.after(...els);
+        } else {
+          for (const n of els) n.remove();
+          els = [];
+        }
+      });
+      body.append(row);
       for (const item of slot.items) {
         shown.add(item.id);
-        if (slot.open) body.append(itemEl(item));
+        if (slot.open) els.push(body.appendChild(itemEl(item)));
       }
       continue;
     }
@@ -270,8 +281,11 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   }
   card.sync = () => {
     // A new question with choices, or a pick (from another device): the card is drawn again, so the rows are right.
-    // So is an answer after status messages (they fold now) and a status after one (the older ones fold).
-    if (W.repliesOf(c.id).some((r) => !shown.has(r.id) && (r.choices || r.picked || (r.session && W.repliesOf(c.id).some((x) => W.isStatus(x)))))) return W.render();
+    if (W.repliesOf(c.id).some((r) => !shown.has(r.id) && (r.choices || r.picked))) return W.render();
+    // A status, or an answer after statuses (they fold now): the card is drawn again so they fold, unless words are typed
+    // in a box, which a redraw would take; then it is appended in place like any reply and folds on the next render.
+    const written = [...card.querySelectorAll('textarea')].some((t) => (t as HTMLTextAreaElement).value.trim());
+    if (!written && W.repliesOf(c.id).some((r) => !shown.has(r.id) && r.session && W.repliesOf(c.id).some((x) => W.isStatus(x)))) return W.render();
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 48;
     for (const r of W.repliesOf(c.id)) {
       if (shown.has(r.id)) continue;

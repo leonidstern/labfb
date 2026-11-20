@@ -119,7 +119,94 @@ for (const [n, eng] of (process.env.ENGINES || 'webkit,chromium').split(',').ent
     await until(async () => (await chatRows()).some((t) => /chat answer/.test(t)), 3000);
     cr = await chatRows();
     check(eng, 'in the chat the answer folds the status into "1 update ›"', cr.some((t) => t === '[1 update ›]') && !cr.some((t) => /on it, chat/.test(t)), JSON.stringify(cr));
+
+    // Two threads interleaved in the chat fold into one row each (not one row per adjacent run), and a tap on a row keeps
+    // the chat where it was: no jump to the end, no entrance animation for the messages it opens.
+    const long = (w) => `${w} ${'a long note that fills the chat so it scrolls. '.repeat(14)}`;
+    const note = (text) => fetch(L.B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: L.B }, body: JSON.stringify({ page: '/index', name: 'Leo', text, anchor: { kind: 'page', width: 1000, height: 700, dpr: 1 } }) }).then((r) => r.json()).then((j) => j.comment.id);
+    const A = await note(long('Alpha'));
+    const B = await note(long('Bravo'));
+    await L.cli('wait', '--timeout', '5');
+    for (const n of [1, 2, 3]) {
+      await L.cli('reply', A, `status A${n}`, '--on-it');
+      await L.cli('reply', B, `status B${n}`, '--on-it');
+    }
+    await L.cli('reply', A, 'answer to alpha');
+    await L.cli('reply', B, 'answer to bravo');
+    await until(async () => (await chatRows()).some((t) => /answer to bravo/.test(t)), 4000);
+    cr = await chatRows();
+    check(eng, 'interleaved threads fold into one row each in the chat', cr.filter((t) => t === '[3 updates ›]').length === 2 && !cr.some((t) => /status [AB]\d/.test(t)), JSON.stringify(cr));
+    // A last thread D, short, near the bottom: the chat stays scrolled to its end with D's fold row in view.
+    const D = await note('Delta');
+    await L.cli('wait', '--timeout', '5');
+    await L.cli('reply', D, 'status D1', '--on-it');
+    await L.cli('reply', D, 'status D2', '--on-it');
+    await L.cli('reply', D, 'answer to delta');
+    await until(async () => (await chatRows()).some((t) => /answer to delta/.test(t)), 4000);
+    await sleep(300);
+    const chatBox = () => shadow(() => { const b = r.querySelector('.chatwin .msgs'); const u = [...b.querySelectorAll('.updates')].pop(); const kids = [...b.children]; const at = kids.indexOf(u); return { sc: b.scrollTop, over: b.scrollHeight > b.clientHeight, top: Math.round(u.getBoundingClientRect().top - b.getBoundingClientRect().top), open: u.getAttribute('aria-expanded') === 'true', opened: kids.slice(at + 1, at + 3).filter((n) => n.matches('.msg')).length, fresh: kids.slice(at + 1, at + 3).filter((n) => n.classList.contains('fresh')).length, focused: r.activeElement === u, visible: u.matches(':focus-visible'), outline: getComputedStyle(u).outlineStyle }; });
+    await shadow(() => { const b = r.querySelector('.chatwin .msgs'); b.scrollTop = b.scrollHeight; [...b.querySelectorAll('.updates')].pop().focus({ preventScroll: true }); });
+    await sleep(200);
+    const c0 = await chatBox();
+    await p.keyboard.press('Enter');
+    await until(async () => (await chatBox()).open, 2000);
+    const c1 = await chatBox();
+    check(eng, 'the chat has something to scroll (precondition)', c0.over === true, JSON.stringify(c0));
+    check(eng, 'opening a fold row in the chat at the bottom keeps the tapped row where it was', c1.top === c0.top && c1.sc === c0.sc, `${JSON.stringify(c0)} -> ${JSON.stringify(c1)}`);
+    check(eng, 'and the messages it opens do not fade in as new', c1.opened === 2 && c1.fresh === 0, JSON.stringify(c1));
+    check(eng, 'the keyboard focus stays on the fold row after it redraws, with a visible outline', c1.focused && c1.visible && c1.outline === 'solid', JSON.stringify(c1));
+    await p.keyboard.press('Enter');
+    await until(async () => !(await chatBox()).open, 2000);
+    check(eng, 'and again after it folds', await shadow(() => { const u = [...r.querySelectorAll('.chatwin .msgs .updates')].pop(); return r.activeElement === u && u.getAttribute('aria-expanded') === 'false'; }));
+    await p.keyboard.press('Escape');
+
+    // A thread: the same for its sheet, and a status or an answer that arrives while you type is added in place.
+    const pins = () => shadow(() => { return r.querySelectorAll('button.pin').length; });
+    const before = await pins();
+    const T = await L.post(`Charlie ${'a long note that fills the sheet so it scrolls even when the updates are open. '.repeat(40)}`, '#c');
+    await until(async () => (await pins()) > before);
+    await L.cli('wait', '--timeout', '5');
+    await shadow(() => { [...r.querySelectorAll('button.pin')].pop().click(); });
+    await until(async () => Boolean(await shadow(() => { return r.querySelector('.card textarea'); })), 3000);
+    await shadow(() => { const t = r.querySelector('.card textarea'); t.focus(); t.__keep = 1; });
+    await p.keyboard.type('half a thought');
+    await L.cli('reply', T, 'status C1', '--on-it');
+    await until(async () => /status C1/.test(((await card())?.rows || []).join('|')), 4000);
+    await L.cli('reply', T, 'status C2', '--on-it');
+    await L.cli('reply', T, 'answer to charlie');
+    await until(async () => /answer to charlie/.test(((await card())?.rows || []).join('|')), 4000);
+    const typing = await shadow(() => { const t = r.querySelector('.card textarea'); return { same: t?.__keep === 1, value: t?.value, focused: r.activeElement === t, rows: [...r.querySelectorAll('.card .body .msg')].map((n) => n.textContent.replace(/\s+/g, ' ').trim().slice(0, 30)) }; });
+    check(eng, 'a status and an answer arriving while you type leave the box, its words and its focus alone', typing.same && typing.value === 'half a thought' && typing.focused, JSON.stringify(typing));
+    check(eng, 'and both appear in the thread in place', typing.rows.some((t) => /status C1/.test(t)) && typing.rows.some((t) => /answer to cha/.test(t)), JSON.stringify(typing.rows));
+    // Clear the box and let go of it: the next draw folds the statuses.
+    await shadow(() => { const t = r.querySelector('.card textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); t.blur(); });
+    await L.cli('reply', T, 'one more thing');
+    await until(async () => (await card())?.rows.some((t) => t === '[2 updates ›]'), 4000);
+    rows = (await card())?.rows || [];
+    check(eng, 'next draw: the statuses fold into one row before the answer', rows.some((t) => t === '[2 updates ›]'), JSON.stringify(rows));
+    // The sheet on a phone has a fixed height: read at its end, a tap on a fold row must not carry the sheet to the end.
     await p.close();
+    const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await mctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+    const m = await mctx.newPage();
+    await m.goto(L.B + '/');
+    await until(() => m.evaluate(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim'))), 3000);
+    const mshadow = (fn, arg) => m.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot, a), [fn.toString().replace(/^[^{]*{|}$/g, ''), arg]);
+    await until(async () => (await mshadow(() => { return r.querySelectorAll('button.pin').length; })) > 0, 3000);
+    await mshadow(() => { [...r.querySelectorAll('button.pin')].pop().click(); });
+    await until(async () => Boolean(await mshadow(() => { return r.querySelector('.card .updates'); })), 4000);
+    await sleep(1200); // the sheet settles (reads synced, its slide-in done) before the focus is set
+    const sheet = () => mshadow(() => { const b = r.querySelector('.card .body'); const u = b.querySelector('.updates'); return { sc: b.scrollTop, over: b.scrollHeight > b.clientHeight, top: Math.round(u.getBoundingClientRect().top - b.getBoundingClientRect().top), open: u.getAttribute('aria-expanded') === 'true', focused: r.activeElement === u, visible: u.matches(':focus-visible'), outline: getComputedStyle(u).outlineStyle }; });
+    await mshadow(() => { const b = r.querySelector('.card .body'); b.scrollTop = b.scrollHeight; r.querySelector('.card .updates').focus({ preventScroll: true }); });
+    await sleep(300);
+    const s0 = await sheet();
+    await m.keyboard.press('Enter');
+    await until(async () => (await sheet()).open, 2000);
+    const s1 = await sheet();
+    check(eng, 'the phone sheet has something to scroll (precondition)', s0.over === true, JSON.stringify(s0));
+    check(eng, 'opening a fold row in a sheet read at its end keeps the tapped row where it was', s1.top === s0.top && s1.sc === s0.sc, `${JSON.stringify(s0)} -> ${JSON.stringify(s1)}`);
+    check(eng, 'the sheet keeps the keyboard focus on the row, with a visible outline', s1.focused && s1.visible && s1.outline === 'solid', JSON.stringify(s1));
+    await mctx.close();
   } finally {
     await browser.close();
     L.stop();

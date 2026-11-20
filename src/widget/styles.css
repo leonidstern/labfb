@@ -297,6 +297,7 @@ button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; colo
 /* The agent's folded "on it" messages: one small muted row ("2 updates ›"), a tap opens them in place. */
 .msgs > .updates { align-self: flex-start; background: none; border: 0; padding: 2px 4px; margin: 0; font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_muted); cursor: pointer; border-radius: var(--_radius); }
 .msgs > .updates:hover, .msgs > .updates:focus-visible { color: var(--_fg); }
+.msgs > .updates:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; } /* keyboard focus is seen on the small row */
 /* Something just sent eases in; the arrow flies off and comes back. */
 .fresh { animation: lab-in var(--_t-base) var(--_ease); } /* a message arrives as a card does */
 .send.sent .arr { animation: lab-fly var(--_t-slow) var(--_ease); }

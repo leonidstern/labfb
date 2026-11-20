@@ -55,8 +55,9 @@ export function drawChat() {
   if (W.chatEl.hidden && W.chatEl.contains(W.root.activeElement)) (W.root.activeElement as HTMLElement).blur(); // a closed chat keeps no focus, so keys work again
   if (W.chatEl.hidden) return;
   const box = W.$('.msgs', W.chatEl);
-  // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back.
-  const atEnd = opening || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+  // Opens at the newest; later it follows new messages only while you're at the bottom, not while you read back (nor
+  // when a fold row was just tapped: the messages it opens are not new, and the row stays where it is).
+  const atEnd = opening || (!W.S.foldToggle && box.scrollHeight - box.scrollTop - box.clientHeight < 48);
   const before = new Set(opening ? [] : [...(box.children as HTMLCollectionOf<HTMLElement>)].map((n) => n.dataset.id));
   // A message already on screen that hasn't changed keeps its own node: a redraw for one new message used to rebuild
   // every bubble (a phone showed the chat blink as messages arrived).
@@ -70,10 +71,10 @@ export function drawChat() {
   // The agent's "on it" messages fold into one muted row once an answer follows them (as in a thread).
   const slots = W.foldStatus(msgs, rootId, unfolded).flatMap((s) => (s.fold ? [s, ...(s.open ? s.items.map((m) => ({ m })) : [])] : [s]));
   W.patchKids(box, slots.flatMap((slot) => {
-    if (slot.fold) return [W.foldRow(slot, () => (unfolded.has(slot.fold) ? unfolded.delete(slot.fold) : unfolded.add(slot.fold), W.render()))];
+    if (slot.fold) return [W.foldRow(slot, unfolded)];
     const m = slot.m;
     const root = m.parent ? byId.get(m.parent) : m;
-    const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${before.size && !before.has(m.id) ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
+    const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${before.size && !before.has(m.id) && !W.S.foldToggle ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
     // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
     // "Done" answer closes the thread.
     b.append(W.nameLine(m.name, false));
