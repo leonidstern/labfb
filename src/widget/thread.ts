@@ -454,7 +454,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
 // answers (20 Nov, no Keep) as a reply, "Picked B: …" (the letter is for the agent, who listed them), with
 // picked: { of, n } (lib/schema.mjs), but only after 5 s: the card says "Picked B · undo" meanwhile, and the pick goes
 // at once when the card closes (or the page is hidden). On a computer 1 to 6 pick that choice of the open thread card (the
-// same as a tap, with its undo), and Enter picks the ticked row (the agent's recommend, or the one tried last), unless a
+// same as a tap, with its undo), and Enter picks the ticked row (the agent's recommend, or the one tried last), and the arrow keys move the tick (pointing tries a row; so do they), unless a
 // text box or a button has the focus (comments.js, pickByKey, pickTicked). On a phone a touch that
 // moved (a scroll) answers nothing.
 // With quoted words on the page the rows are also tried in it (trial.ts). The page chat draws a question the same way
@@ -520,6 +520,13 @@ export function pickTicked(): boolean {
   return Boolean(live?.ticked?.());
 }
 
+/** ArrowDown / ArrowUp on a computer: the ticked row of the open thread card's question moves one row (tried in the page), stopping at the ends. Whether it took the key (an open question is there). */
+export function moveTicked(dir: 1 | -1): boolean {
+  if (W.coarse) return false;
+  const live = W.S.openCard && ([...W.S.openCard.querySelectorAll('.choices.live')].pop() as { move?: (d: 1 | -1) => boolean } | undefined);
+  return Boolean(live?.move?.(dir));
+}
+
 // The rows of a question, under it. Answered (or an older one): the rows as they were, the pick ticked. Open: rows to
 // try; a tap answers. host: the card of the thread (its tie is drawn again as words change), or the chat.
 export function choicesEl(c, ask, host, chat = false) {
@@ -540,7 +547,7 @@ export function choicesEl(c, ask, host, chat = false) {
   const nowIs = inPlace ? ask.choices.findIndex((t) => same(t, exact)) : -1;
   const rows: { n: number; el: HTMLButtonElement }[] = [];
   const row = (n: number, text: string, hint = '') => {
-    const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement;
+    const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(n >= 0 ? { 'data-l': `${String.fromCharCode(97 + n)})` } : {}), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement; // a) b) c), as the agent lists them
     const now = inPlace && (n === -1 || n === nowIs);
     const words = W.el('span', { class: 'tx', dir: 'auto' }, text);
     const nw = now ? W.el('span', { class: 'nw' }, ' · now') : null;
@@ -664,6 +671,13 @@ export function choicesEl(c, ask, host, chat = false) {
   (box as unknown as { ticked: () => boolean }).ticked = () => {
     if (cur < 0 || cur >= ask.choices.length) return false;
     if (pending?.ask !== ask.id) answer(cur); // a pick already waiting: Enter is still taken, undo first
+    return true;
+  };
+  (box as unknown as { move: (d: 1 | -1) => boolean }).move = (d) => {
+    if (pending?.ask === ask.id) return true; // a pick waiting: the arrows are still taken (no scroll), undo first
+    const at = rows.findIndex((r) => r.n === cur);
+    const next = at < 0 ? (d > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, at + d));
+    if (next !== at) select(rows[next].n);
     return true;
   };
   select(cur);

@@ -32,7 +32,7 @@ Start it with `npx @leonidstern/labit@latest`. Use `@latest` on the other comman
    A pin with an `action:` line came from a button on the page (`data-lab-action`): do what it names, then answer `--done`. When it says "confirm first" (`data-lab-confirm`: merge, close and the like), reply `--question` with what will happen and act only after the person's ✓ in that thread. Action buttons go on pages you write.
    When the answer is one of a few things (copy, a name, a risky step such as a delete, a merge or a migration), ask with choices, not an open question: `LAB reply <id> "<question>" --choice "<A>" --hint "<why>" --choice "<B>" --recommend A`.
    - 2 to 6 choices, one short line each; `--hint` (after its choice, up to 120 characters) adds a muted second line. Always `--recommend` the one you'd take.
-   - One open question per pin: ask, wait for the pick, then ask the next.
+   - One open question per pin: ask, wait for the pick, then ask the next. Ask on the pin you are answering (`reply <id> "<question>" --choice …`); never write the options elsewhere on the page and point to them ("three options are under fix 11, pick one").
    - The wait shows the pick as `Picked B: …`: make that change, then `LAB resolve <id>` with no words. Say something only if it isn't obvious or you couldn't do it (`--done "…"` or `--question`).
    - Options that are looks (a layout, a colour, spacing) don't go in choices: make a board (Boards, below) and let the person pick a frame.
    To suggest something about the page yourself ("what I'd improve"), don't put a list in a reply: leave your own pins (Your own pins, below).

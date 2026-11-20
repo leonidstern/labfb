@@ -12,7 +12,7 @@ const DIR = tmp('labit-keys-');
 const PORT = claimPort(7930, 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>k</title><h1>Keys</h1><p>text</p>');
-fs.writeFileSync(path.join(DIR, 'ask.html'), '<!doctype html><meta charset="utf-8"><title>a</title><h1 id="h">Pick</h1><p>text</p>');
+fs.writeFileSync(path.join(DIR, 'ask.html'), '<!doctype html><meta charset="utf-8"><title>a</title><h1 id="h">Pick</h1><p>text</p><div style="height:3000px"></div>');
 // canvas-proposals' "Pause and ¼ speed": a looping press with its word inside and a toast, in a box (Measure off here).
 fs.writeFileSync(path.join(DIR, 'press.html'), '<!doctype html><meta charset="utf-8"><title>p</title><h1>Press</h1><div id="demo" style="position:relative;padding:40px;width:400px;height:120px;background:#eee"><span id="press" style="display:inline-block;padding:6px 12px;background:#141414;color:#fff"><b id="word">Buy</b></span><div id="toast" style="position:absolute;right:12px;bottom:12px">Order placed</div></div><script>for (const id of ["press", "toast"]) document.getElementById(id).animate([{ transform: "scale(1)" }, { transform: "scale(.94)" }, { transform: "scale(1)" }], { duration: 1200, iterations: Infinity });</script>');
 fs.writeFileSync(path.join(DIR, 'anim.html'), '<!doctype html><meta charset="utf-8"><title>m</title><style>@keyframes spin { to { rotate: 1turn } } #s, #t { width: 40px; height: 40px; background: red; animation: spin 2s linear infinite }</style><h1>Moving</h1><div id="s"></div><div id="t"></div><p>text</p>');
@@ -131,9 +131,44 @@ try {
       check(eng, 'in the reply box J, K, 2 and 6 are typed, and pick nothing', (await sh('return r.activeElement.value')) === 'jk26' && (await row()) === 1 && (await picks()).length === 0 && (await note()) === '');
       await sh('r.activeElement.value = ""; r.activeElement.blur()');
       await sh('r.querySelectorAll(".choice")[1].focus()'); // the focus on a row, not a text box
-      for (const k of ['j', 'k', 'ArrowDown', 'ArrowUp']) await a.keyboard.press(k);
+      for (const k of ['j', 'k']) await a.keyboard.press(k);
       await sleep(300);
-      check(eng, 'J K and the arrows do nothing on the card', (await row()) === 1 && (await picks()).length === 0, String(await row()));
+      check(eng, 'J and K do nothing on the card', (await row()) === 1 && (await picks()).length === 0, String(await row()));
+      // The arrows move the ticked row (stopping at the ends) and never scroll the page.
+      const down = [];
+      for (const k of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'ArrowUp', 'ArrowUp', 'ArrowDown']) {
+        await a.keyboard.press(k);
+        down.push(await row());
+      }
+      check(eng, 'ArrowDown / ArrowUp move the ticked row one at a time and stop at the ends', down.join() === '2,2,1,0,0,1' && (await picks()).length === 0, down.join());
+      check(eng, 'the arrows did not scroll the page', (await a.evaluate(() => scrollY)) === 0);
+      const pressed = await a.evaluate(() => new Promise((res) => {
+        addEventListener('keydown', (e) => setTimeout(() => res(e.defaultPrevented), 0), { once: true, capture: false });
+        document.dispatchEvent(Object.assign(new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true, bubbles: true, composed: true })));
+      }));
+      check(eng, 'an arrow taken by the question is not left to scroll (default prevented)', pressed === true);
+      await a.keyboard.press('ArrowUp'); // back on the agent's pick
+      // Enter answers the row the arrows moved to.
+      await a.keyboard.press('ArrowDown');
+      await sh('r.activeElement?.blur?.()');
+      await a.keyboard.press('Enter');
+      await sleep(400);
+      check(eng, 'Enter answers the row the arrows moved to: "Picked C · undo"', (await note()) === 'Picked C · undo' && (await picks()).length === 0, await note());
+      await a.keyboard.press('ArrowUp'); // while a pick waits, the arrows move nothing
+      await sleep(200);
+      check(eng, 'an arrow while a pick waits is ignored', (await note()) === 'Picked C · undo');
+      await sh('r.querySelector(".choices .note .btn.undo").click()');
+      await sleep(300);
+      check(eng, 'undo puts the tick back on the row the arrows left it on', (await note()) === '' && (await row()) === 2 && (await picks()).length === 0, String(await row()));
+      await a.keyboard.press('ArrowUp');
+      check(eng, 'the arrows move again after undo', (await row()) === 1);
+      // In the reply box the arrows are the box's own.
+      await a.keyboard.press('r');
+      await a.keyboard.press('ArrowDown');
+      check(eng, 'in the reply box the arrows move nothing', (await row()) === 1);
+      await sh('r.activeElement.value = ""; r.activeElement.blur()');
+      await a.keyboard.press('Shift+ArrowDown');
+      check(eng, 'Shift with an arrow moves nothing', (await row()) === 1);
       await a.keyboard.press('9'); // no ninth choice: nothing
       await a.keyboard.press('4'); // no fourth choice: nothing
       await sleep(200);

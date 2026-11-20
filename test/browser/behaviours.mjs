@@ -399,6 +399,18 @@ for (const eng of ['webkit', 'chromium']) {
     await sleep(250);
     check(eng, 'stepping to a longer version and back never moves the paragraph below', atC === below && (await belowAt()) === below, `${below} → ${atC} → ${await belowAt()}`);
     check(eng, 'a try adds and removes no node, and moves no pin', pinsBefore.length > 3 && (await nodes()) === countBefore && (await pinsAt()) === pinsBefore, `${countBefore} → ${await nodes()}; ${pinsBefore} → ${await pinsAt()}`);
+    // The arrow keys move the ticked row and try it in the page like pointing does (first row: the words as they are now).
+    await q.keyboard.press('ArrowDown');
+    await sleep(300);
+    c = await card();
+    const viaKey = await q.evaluate(() => document.querySelector('#a').textContent);
+    check(eng, 'ArrowDown ticks the next row and tries it in the page', c.on === 1 && /labit puts this short guide on the page, not in chat/.test(viaKey) && !(await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.some((x) => x.picked), JSON.stringify([c.on, viaKey.slice(0, 60)]));
+    await q.keyboard.press('ArrowUp');
+    await sleep(300);
+    c = await card();
+    check(eng, 'ArrowUp ticks the row before and the page shows its words again', c.on === 0 && /labit puts the full guide on the page, not in chat/.test(await q.evaluate(() => document.querySelector('#a').textContent)), String(c.on));
+    await tap(1); // the first version tried again for the check below
+    await sleep(250);
     // A script error on the page leaves a try as it is.
     await q.evaluate(() => setTimeout(() => { throw new Error('boom'); }, 0));
     await sleep(200);
