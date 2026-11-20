@@ -1160,8 +1160,8 @@ const sessionFrom = (req) => {
 let session = null;
 // Your rules for answers go to each session once, and again only when they change (Leo, 17 Nov: ~250 tokens a pin).
 const rulesSent = new Map();
-// How to answer goes to each session in full once, and again after half an hour (a long session may have dropped it
-// from what it remembers); in between, one short line (~70 tokens less a pin).
+// How to answer goes to each session in full once (again when the lab restarts or the session changes); after that, one
+// short line (~70 tokens less a pin).
 const toldAt = new Map();
 // Sessions that have had the suggest-rule line (it waits for the first reply in a thread, so it has its own mark).
 const suggestTold = new Set();
@@ -1714,21 +1714,21 @@ async function unseen(scope = pages(), who = '') {
   if (!given.length && !missed.length) return null;
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
-  const full = !(now - toldAt.get(who) < 1800000);
+  const full = !toldAt.has(who);
   const rules = rulesOnce();
   // The suggest-rule line only matters once a thread has a reply: said in full the first time one comes (or on a full
   // hand-off), not again.
   const suggest = given.some((f) => f.c.parent) && (full || !suggestTold.has(who));
   // The standing lines (how to read, answer, report progress, write) are said in full to a session the first time it
-  // hears, and again only when the lab restarts, the session changes or half an hour has passed; after that, one line.
+  // hears, and again only when the lab restarts or the session changes; after that, one line.
   const standing = full
     ? `\n\nRead each thread whole (every message and reply, not only the newest) before answering; the page, URL or #section is where a pin sits, not what it asks.` +
       `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question] [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` +
       // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked
-      // lost (Leo, 18 Nov). An --on-it first turns the ring and the pill at once.
-      `\nWork that takes more than a minute (a build, a restart, a PR): first ${CMD} reply <id> --on-it "<what you'll do>" on each, then start.` +
+      // lost (Leo, 18 Nov). A --progress line first turns the ring and the pill at once.
+      `\nWork that takes more than a minute (a build, a restart, a PR): first ${CMD} reply <id> --progress "<what you'll do>" on each, then start; keep it current as you go.` +
       `\n${WRITE_SHORT}`
-    : `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question] [--wait]; the standing lines (read threads whole, --on-it before long work, short answers) and rules as before.`;
+    : `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question] [--wait]; the standing lines (read threads whole, --progress before long work, short answers) and rules as before.`;
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${groups.length ? `${groups.join('\n')}\n\n` : ''}${blocks.join('\n\n')}` +
     standing +
     (given.some((f) => f.c.picked) ? `\nA pick ("Picked B: …"): make that change, then ${CMD} resolve <id> with no words; words only if something isn't obvious or you couldn't do it.` : '') +
