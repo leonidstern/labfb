@@ -224,7 +224,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     const box = W.el('div', { class: `item msg${W.mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(W.agentOf(item) ? { 'data-agent': W.agentOf(item) } : {}) });
     box.append(W.nameLine(item.name, false));
     // An answer to a later message in the thread quotes it, as the chat does (Leo, 17 Nov: "show what you replied on").
-    const to = item.to && W.repliesOf(c.id).find((x) => x.id === item.to);
+    const to = item.to && [c, ...W.repliesOf(c.id)].find((x) => x.id === item.to); // the pin itself too: it may be the question
     if (to) {
       const q = W.el('span', { class: 'quote' });
       q.append(W.el('b', {}, String(to.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(to.text.replace(/\s+/g, ' ').slice(0, 90)));
@@ -372,7 +372,25 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       setTimeout(() => undo.isConnected && undo.replaceWith(resolve), left);
       first = undo;
     }
-    actions.append(...(W.S.isAdmin ? [first, del] : [first]));
+    // "Do it" on a pin the agent left itself (labit pin): hands it back to the agent's next wait as "<name> said: do it".
+    const said = [c, ...W.repliesOf(c.id)].filter((m) => m.session).map((m) => m.createdAt).sort().pop() || '';
+    const asked = W.repliesOf(c.id).some((r) => r.doit && !r.session && r.createdAt > said); // already told, and the agent has not answered since
+    const doIt = c.session && !c.resolved ? W.el('button', { class: 'btn', type: 'button', ...(asked ? { disabled: '' } : {}) }, asked ? 'told' : 'Do it') : null;
+    doIt?.addEventListener('click', async () => {
+      const name = String(W.store.get('lab-name') || '').trim();
+      if (!name) return void ((doIt.textContent = 'your name first'), W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true }));
+      doIt.disabled = true;
+      try {
+        const { comment } = await W.send({ name, text: 'Do it', parent: c.id, doit: true });
+        W.S.comments.push(comment);
+        W.markSeen([comment]);
+        W.render();
+      } catch {
+        doIt.disabled = false;
+        failed(doIt);
+      }
+    });
+    actions.append(...(doIt ? [doIt] : []), first, ...(W.S.isAdmin ? [del] : []));
     body.append(actions);
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).
@@ -444,7 +462,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
 // The open question in a thread: the agent's last message with choices that nobody has picked on yet.
 const pickOf = (c, ask) => W.repliesOf(c.id).filter((r) => r.picked?.of === ask.id).pop();
 export function openAsk(c) {
-  const asks = W.repliesOf(c.id).filter((r) => r.session && Array.isArray(r.choices) && r.choices.length);
+  const asks = [c, ...W.repliesOf(c.id)].filter((r) => r.session && Array.isArray(r.choices) && r.choices.length); // the pin itself asks when the agent pinned it with --choice
   const ask = asks[asks.length - 1];
   return ask && !pickOf(c, ask) && !c.resolved ? ask : null;
 }
