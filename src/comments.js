@@ -11,6 +11,7 @@ import {
   anchorAt,
   drawZone,
   foundAt,
+  spotChanged,
   goToBlock,
   inPage,
   ease,
@@ -414,7 +415,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (c.resolved || looked.has(c.id) || !(S.isAdmin || edit) || !c.anchor?.selector) continue;
       looked.add(c.id);
       const anchor = foundAt(c.anchor);
-      if (anchor) send({ action: 'move', id: c.id, found: true, anchor, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
+      // Its words or element were changed or taken away (the agent's edit): the lab says so on the pin's next wait.
+      const changed = spotChanged(c.anchor);
+      if (anchor || changed) send({ action: 'move', id: c.id, found: true, ...(anchor ? { anchor } : {}), ...(changed ? { changed } : {}), edit }).then(({ comment }) => Object.assign(c, comment), () => {});
     }
   };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.

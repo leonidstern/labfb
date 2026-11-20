@@ -722,3 +722,23 @@ test('a hand-off of several pins names the pins that point at the same file, onl
     rm([dir, home]);
   }
 });
+
+test("a pin whose words the agent's edit changed is said to the agent on its next wait, and stays open", async () => {
+  await up();
+  const made = await post({ page: '/index', name: 'Leo', text: 'check the letter', anchor: { selector: '#g > span', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<span class="k">', text: 'A', section: '5 · Letters' } });
+  const first = await run(['wait', '--timeout', '10']);
+  assert.match(first.out, /check the letter/);
+  assert.doesNotMatch(first.out, /spot changed/);
+  const report = (changed) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'move', id: made.comment.id, edit: made.edit, found: true, changed }) });
+  assert.equal((await report({ was: 'A', now: 'a)', element: '<span class="k">' })).status, 200);
+  const heard = await run(['wait', '--timeout', '10']);
+  assert.match(heard.out, /spot changed: .* — your edit changed the spot of pin \d+ \("A" in section "5 · Letters"\): it now sits on <span class="k"> "a\)" in the same section\. Check it still fits, or re-pin\./);
+  assert.equal((await report({ was: 'A', now: 'a)', element: '<span class="k">' })).status, 200);
+  assert.doesNotMatch((await run(['wait', '--timeout', '1'])).out, /spot changed/, 'the same report again is not told twice');
+  assert.equal((await report({ was: 'A', gone: true })).status, 200);
+  assert.match((await run(['wait', '--timeout', '10'])).out, /its words or element are gone from the page/);
+  const now = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === made.comment.id);
+  assert.equal(now.resolved, false, 'the pin stays open');
+  assert.equal(now.anchor.selector, '#g > span', 'a report with no new spot moves nothing');
+  await run(['reply', made.comment.id, 'Done: checked', '--resolve']);
+});
