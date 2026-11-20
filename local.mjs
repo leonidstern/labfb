@@ -1716,8 +1716,8 @@ async function unseen(scope = pages(), who = '') {
     `\n\nRead each thread whole (every message and reply, not only the newest) before answering; the page, URL or #section is where a pin sits, not what it asks.` +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
     // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked
-    // lost (Leo, 18 Nov). An --on-it first turns the ring and the pill at once.
-    `\nWork that takes more than a minute (a build, a restart, a PR): first ${CMD} reply <id> --on-it "<what you'll do>" on each, then start.` +
+    // lost (Leo, 18 Nov). A --progress line first turns the ring and the pill at once, without a message (Leo, 20 Nov: less noise).
+    `\nWork that takes more than a minute (a build, a restart, a PR): first ${CMD} reply <id> --progress "<what you're doing>" on each (a status line, not a message), then start. A plain "go" or pick gets no words: resolve it when done.` +
     (given.some((f) => f.c.parent) ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     (full ? `\n${WRITE_SHORT}` : '') + (rules || '');
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
