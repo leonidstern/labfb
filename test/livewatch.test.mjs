@@ -3,16 +3,11 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { LAB, site, rm, sleep, up } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-livewatch-'));
-const PORT = 8490 + Math.floor(Math.random() * 20);
-const B = `http://localhost:${PORT}`;
+const { DIR, PORT, B } = site('livewatch', 8490, 20);
 fs.writeFileSync(path.join(DIR, 'pricing.html'), '<!doctype html><title>P</title><h1>Pricing</h1>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
 const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, stdio: 'ignore' });
@@ -21,18 +16,11 @@ const abort = new AbortController();
 after(() => {
   abort.abort();
   server.kill();
-  fs.rmSync(DIR, { recursive: true, force: true, maxRetries: 5 });
+  rm([DIR], { maxRetries: 5 });
 });
 
 const ready = (async () => {
-  for (let i = 0; i < 100; i++) {
-    try {
-      await fetch(B + '/');
-      break;
-    } catch {
-      await sleep(100);
-    }
-  }
+  await up(B + '/', { tries: 100, fail: false });
   const res = await fetch(B + '/_lab/live', { signal: abort.signal });
   const reader = res.body.getReader();
   const dec = new TextDecoder();

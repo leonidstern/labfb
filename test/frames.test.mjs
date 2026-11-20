@@ -2,17 +2,12 @@
 // security policy) on pages, and leaves other files as they are.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { claimPort, tmp, rm, spawnLab, up as answers } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-frames-'));
-const UP = 9500 + Math.floor(Math.random() * 100);
-const PORT = UP + 150;
+const DIR = tmp('frames');
+const UP = claimPort(9500, 100);
+const PORT = claimPort(9650, 100);
 const B = `http://localhost:${PORT}`;
 const guard = { 'x-frame-options': 'DENY', 'content-security-policy': "frame-ancestors 'none'" };
 const upstream = http
@@ -22,22 +17,13 @@ const upstream = http
       : r.writeHead(200, { 'content-type': 'text/html', ...guard }).end('<!doctype html><html><body><h1>dev</h1></body></html>'),
   )
   .listen(UP);
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT), '--proxy', String(UP)], { cwd: DIR, env: process.env });
+const server = spawnLab(DIR, PORT, { args: ['--proxy', String(UP)] });
 after(() => {
   server.kill();
   upstream.close();
-  fs.rmSync(DIR, { recursive: true, force: true });
+  rm([DIR]);
 });
-const up = async () => {
-  for (let i = 0; i < 80; i++) {
-    try {
-      return await fetch(B + '/_lab/state');
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  throw new Error('lab did not start');
-};
+const up = () => answers(B + '/_lab/state');
 
 test('a proxied page can be framed; other files keep their headers', async () => {
   await up();
