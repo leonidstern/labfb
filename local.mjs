@@ -1600,7 +1600,9 @@ async function threadsText(page, threads, who = '') {
   const RARE = /^(looks|colours|viewport|selector \(at comment time\)):/;
   const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`))).map((b) => b.split('\n').filter((l) => !RARE.test(l)).join('\n'));
   const ids = threads.filter((id) => parts.some((b) => b.split('\n')[0].endsWith(`· id ${id}`)));
-  return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids } : null;
+  // Each pin's number (as the page's cards count them) and the file it points at, for the hand-off's "Same file:" line.
+  const pins = parts.map((b) => ({ id: b.split('\n')[0].split('· id ').pop().trim(), n: Number(/^(\d+)\./.exec(b)?.[1]) || 0 }));
+  return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids, pins, file: /^file: (.+)$/m.exec(head)?.[1] || '' } : null;
 }
 // One thread for a reply: the opening comment with its spot, then its messages in order (name · time · state · id: text),
 // the new ones marked. A long thread keeps the opening comment and its last messages (at least THREAD_TAIL, and every
@@ -1674,13 +1676,20 @@ async function unseen(scope = pages(), who = '') {
   };
   const replies = fresh.filter(known);
   const whole = fresh.filter((f) => !known(f));
+  const sameFile = new Map(); // file -> [{ page, n }]: the pins of this hand-off that point at it
   for (const page of new Set(whole.map((f) => f.page))) {
     const block = await threadsText(page, [...new Set(whole.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))], who);
     if (block) {
       blocks.push(block.text);
       block.ids.forEach((id) => sent.add(`${page}\n${id}`));
+      if (block.file) sameFile.set(block.file, [...(sameFile.get(block.file) || []), ...block.pins.filter((p) => p.n).map((p) => ({ page, n: p.n }))]);
     }
   }
+  // Pins on the same file are one job for one writer: say so once ("Same file: options.html: 2, 5, 7"), only for 2 or more.
+  const groups = [...sameFile].filter(([, pins]) => pins.length > 1).map(([file, pins]) => {
+    const pages = new Set(pins.map((p) => p.page));
+    return `Same file: ${file}: ${pins.map((p) => (pages.size > 1 ? `${p.n} on ${p.page}` : p.n)).join(', ')}`;
+  });
   const when = (c) => `${new Date(c.createdAt).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
   // A reply in a thread this session has: the thread again, short (its spot, every message in order, the new ones
   // marked), so the agent answers what the thread last asked. One line with the thread's first words, before, and an
@@ -1711,7 +1720,7 @@ async function unseen(scope = pages(), who = '') {
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const full = !(now - toldAt.get(who) < 1800000);
   const rules = rulesOnce();
-  const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${blocks.join('\n\n')}` +
+  const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${groups.length ? `${groups.join('\n')}\n\n` : ''}${blocks.join('\n\n')}` +
     `\n\nRead each thread whole (every message and reply, not only the newest) before answering; the page, URL or #section is where a pin sits, not what it asks.` +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
     // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked

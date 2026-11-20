@@ -202,3 +202,26 @@ test('tool calls put a progress line on the pins being worked on, once a minute 
   expect(w.posts.length).toBe(2);
   expect(w.posts[1].text).toBe('running npm test');
 });
+
+test('while a helper runs and the session makes no tool call, its line is renewed once a minute; the next tool call of its own ends that', async ($, on) => {
+  const clock = mock.clock(on);
+  const w = world(on, { working: [{ page: '/a', id: 'c1' }], last: 'S1' });
+  on('tool.call', () => ({ result: {} }));
+  await $.session.start({ cwd: '/p/sub', surface: 'terminal', isInteractive: true } as any);
+  await turnStart($);
+  await $.tool.call({ tool: 'Agent', description: 'build the page' } as any);
+  await clock.advance(1000);
+  expect(w.posts.map((p) => p.text)).toEqual(['helper: build the page']);
+  await clock.advance(30000);
+  expect(w.posts.length).toBe(1); // within the minute
+  await clock.advance(40000);
+  expect(w.posts.map((p) => p.text)).toEqual(['helper: build the page', 'helper: build the page']); // renewed with no tool call
+  await clock.advance(60000);
+  expect(w.posts.length).toBe(3);
+  await $.tool.call({ tool: 'Edit', file_path: '/p/src/a.js', old_string: 'a', new_string: 'b' } as any);
+  await clock.advance(1000);
+  expect(w.posts.length).toBe(3); // its own line is throttled with the minute ...
+  await clock.advance(120000);
+  expect(w.posts.length).toBe(3); // ... and nothing renewed any more: the helper is done
+  await turnEnd($);
+});

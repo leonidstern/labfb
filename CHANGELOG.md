@@ -4,6 +4,9 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- **Pins on the same file are named together.** When a wait hands over several pins, a line above them says which share a file (`Same file: options.html: 2, 5, 7`), only for groups of two or more, so one helper can take the group.
+- **Helpers, in the skill.** One listener answers every pin itself and hands only long, independent jobs (builds, research) to helpers: one helper per group of pins on the same file, one writer per file, a `--progress` line on each pin a helper works on, and the main agent sends every reply.
+- **A progress line is a sign of work, always.** The plugin's hook now renews a helper's line once a minute while the session waits on it, so a long build inside a helper no longer ends in "Still waiting for your answer … no sign for 3 min" while it runs. The hand-off's reminder and the 2-minute "not answered" check both count a line from the agent or the hook (tests added).
 - **Drawings are quick actions.** The agent gets an `action:` line from the mark: X, strike or scribble remove; circle, box or a wavy line fix; underline rewrites; a side line reworks the block; an arrow moves (beside what's there); a caret adds. Words in the thread win.
 - **A drawing sends with Enter, no words needed.** Its box opens with the lines; Enter sends it as what it reads as ("circled"), or type a few words first.
 - **The agent is told where to look.** On a plain HTML page each comment gets `in file: page.html:30`, and an arrow's ends name their card or section. In sims this cut a third of Haiku's time in the model.
