@@ -37,6 +37,7 @@ Start it with `npx @leonidstern/labit@latest`, so the person gets the newest ver
    - Options that are looks (a layout, a colour, spacing), not words: don't describe them in choices. Offer or make a board (`LAB board new "<topic>" --of /page --variants 3`, below) and let the person pick a frame. Words stay `--choice`.
    To suggest or ask something about the page yourself ("what I'd improve"), don't put a list in a reply: leave your own pins with `LAB pin <selector> "1. <point>" [--page /path]`, one pin per point, numbered, each on its spot. It prints the pin's id.
 5. Start `wait` again right away, so the page never says "no agent listening" while you are around. If `wait` says the page was closed (no page for an hour), stop listening: start again only when the person asks.
+   **Helpers.** One listener answers every pin itself: you read the thread, edit the file and send the reply. Hand a helper (a subagent) only a long job that stands on its own, such as a build or research, never a quick edit. When a hand-off says `Same file: <file>: 2, 5, 7`, those pins are one job for one helper, and only one writer touches a file at a time. While a helper works on a pin, keep `LAB reply <id> --progress "<what the helper is on>"` on each of its pins. The helper never replies: you read what it did, then send every reply yourself.
 
 ## Instead of an Artifact ("use lab")
 

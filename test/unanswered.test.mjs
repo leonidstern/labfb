@@ -78,3 +78,24 @@ test('a reply from the session that was not answering clears it', async () => {
   await call('/_lab/api/comments', { page: '/design', parent: comment.id, name: 'ghost', text: 'on it', intent: 'on-it' }, 'ghost');
   assert.equal((await state()).silent.length, 0, 'answering again');
 });
+
+// A progress line is a sign of work, from the agent (labit reply --progress, signed with its session) or from the plugin's
+// hook (the agent's key, no session): the pin stays handed, nobody is named as not answering, and it does not go out again.
+test('a progress line inside the window, the agent\'s or the hook\'s, keeps the hand-off: not marked unanswered', async () => {
+  const progress = (id, text, who) => (who ? call('/_lab/api/comments', { page: '/design', action: 'progress', id, text }, who) : hook(id, text));
+  const hook = (id, text) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': serverJson(DIR).agent, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/design', action: 'progress', id, text }) });
+  for (const [who, text] of [['lineman', 'drawing 2 of 4'], ['', 'helper: build the page']]) {
+    const { comment } = await post(`progress by ${who || 'the hook'}`);
+    const a = await waitAcked(who || 'hooked');
+    assert.match(a.text, /progress by/);
+    await sleep(500);
+    const r = await progress(comment.id, text, who);
+    assert.ok(r.status < 300, `${r.status}`);
+    await sleep(2200); // past ANSWER_MS from the hand-off
+    const c = await find(comment.id);
+    assert.ok(c.handedAt, 'stays handed to the session working on it');
+    assert.equal(c.unanswered, undefined, 'not marked as not answered');
+    assert.deepEqual((await state()).silent.map((q) => q.label).filter((l) => /lineman|hooked/.test(l)), [], 'its session is not named as silent');
+    await call('/_lab/api/comments', { page: '/design', parent: comment.id, name: 'x', text: 'done', intent: 'done' }, who || 'hooked');
+  }
+});
