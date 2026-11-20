@@ -298,10 +298,11 @@ try {
     check(eng, 'the bar gliding sideways did not move the page', sy === 0, String(sy));
     await P.shadow(() => { r.querySelector('.chat-btn').hidden = false; r.querySelector('.chat-btn').click(); });
     await sleep(700);
-    // While a sheet is open on a phone the bar steps away (visibility: hidden), so the sheet's handle and its swipe down
-    // are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"); its place is the dimmed page's.
-    const sheet = await P.shadow(() => { const c = r.querySelector('.chatwin'); const b = r.querySelector('.sbar'); const k = b.getBoundingClientRect(); const hit = r.elementFromPoint(innerWidth / 2, k.top + k.height / 2); return { open: !c.hidden, scrim: getComputedStyle(r.querySelector('.scrim')).display, bar: getComputedStyle(b).visibility, hit: hit?.closest('.sbar') ? 'bar' : hit?.className }; });
-    check(eng, 'chat sheet open: dimmed page, the bar steps away (not tappable over the sheet)', sheet.open && sheet.scrim === 'block' && sheet.bar === 'hidden' && sheet.hit !== 'bar', JSON.stringify(sheet));
+    // While a sheet is open on a phone the bar steps away (slid up and faded out, not tappable; it eases back as the sheet
+    // goes, Leo 20 Nov), so the sheet's handle and its swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping
+    // down chat"); its place is the dimmed page's.
+    const sheet = await P.shadow(() => { const c = r.querySelector('.chatwin'); const b = r.querySelector('.sbar'); const k = b.getBoundingClientRect(); const hit = r.elementFromPoint(innerWidth / 2, k.top + k.height / 2); return { open: !c.hidden, scrim: getComputedStyle(r.querySelector('.scrim')).display, bar: getComputedStyle(b).visibility === 'hidden' || (Number(getComputedStyle(b).opacity) === 0 && getComputedStyle(b).pointerEvents === 'none') ? 'away' : 'shown', hit: hit?.closest('.sbar') ? 'bar' : hit?.className }; });
+    check(eng, 'chat sheet open: dimmed page, the bar steps away (not tappable over the sheet)', sheet.open && sheet.scrim === 'block' && sheet.bar === 'away' && sheet.hit !== 'bar', JSON.stringify(sheet));
     const sy0 = await P.p.evaluate(() => scrollY);
     await P.p.touchscreen.tap(195, 22);
     await sleep(900);
