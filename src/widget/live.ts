@@ -366,7 +366,7 @@ export function startLive() {
     };
     // An HTML page: fetch it and change only what differs, in place (scroll, open things and typed text stay). A
     // changed script or stylesheet list can't be patched safely: then it's a normal reload.
-    const ownStyles = () => new Set([W.fonts, W.pinCursorStyle]);
+    const ownStyles = () => new Set([W.pageStyle, W.pinCursorStyle]);
     const scriptsOf = (doc) => [...doc.querySelectorAll('script:not([data-lab])')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
     const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
     const keepOut = (n) => n === W.host || (n.nodeType === 1 && n.localName === 'script');
@@ -589,9 +589,6 @@ export function startLive() {
           sectionsAt = v.sections;
           W.S.syncSections?.();
         }
-        // Experiments switched on or off (the ⋯ menu here or in another tab): start what came on, reload for what went off.
-        // An older lab sends no flags.
-        if (Array.isArray(v.flags)) W.S.syncFlags?.(v.flags, reload);
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
         // A lab with listeners can still have none for this page (a wait with --page for another one): this page says
@@ -607,7 +604,6 @@ export function startLive() {
         // model). The session's name is its own line there.
         const agent = quiet && mode === 'quiet' ? quiet.label : s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
         const name = s && s.name !== (s.agent || 'Claude') ? s.name : '';
-        W.S.agent = s ? agent : '';
         pill = { mode, agent, name, resume: s?.resume || '', away: s && !here ? 'no agent on this page' : 'no agent listening' };
         paintWho();
         who.classList.remove('stale');

@@ -17,7 +17,6 @@
   /* Motion: one set of durations and curves, and every transition and animation below uses it (docs/motion.md). Set
      --lab-t-quick, --lab-t-base, --lab-t-slow, --lab-t-loop, --lab-t-hold or --lab-ease, --lab-ease-out, --lab-ease-in,
      --lab-ease-settle, --lab-ease-pop the same way as the colours. */
-  --_t-instant: var(--lab-t-instant, 0ms);   /* no motion: the state changes at once */
   --_t-quick: var(--lab-t-quick, 120ms);     /* a hover, a fade, a press: small and local */
   --_t-base: var(--lab-t-base, 200ms);       /* something appears, moves a little, or a box changes size */
   --_t-slow: var(--lab-t-slow, 300ms);       /* a sheet, a flight, a pin changing face: the biggest movement */
@@ -309,7 +308,6 @@ button.btn.undo { color: var(--_fg); }
 *::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--_fg) 40%, transparent); }
 *::-webkit-scrollbar-corner { background: transparent; }
 @supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; } }
-.chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
@@ -711,28 +709,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .msg button :is(svg, svg *) { color: inherit; } /* the widget gives every element its text colour, the icon parts too */
 /* The ⋯ menu opens with which lab this is (labs & pages, ⌘K, is switcher.ts, its styles in switcher.css). */
 .more-menu .lab-head { margin: 2px 10px 4px; padding-bottom: 6px; border-bottom: var(--_hair); font-size: 12px; font-weight: 600; color: var(--_fg); }
-/* Experiments (lib/flags.ts) in the ⋯ menu: the item with how many are on, then its list in the menu's place: a back
-   row, a switch a flag (its one line, and why it can't be switched when the project sets it), a note for guests. */
-.more-menu .exp-cnt { font-size: 12px; letter-spacing: 0; font-variant-numeric: tabular-nums; color: var(--_green-fg); }
-.more-menu .exp-cnt.zero { color: var(--_muted); }
-.more-menu button.exp-back { color: var(--_muted); font-weight: 500; margin-bottom: 2px; border-bottom: var(--_hair); border-radius: var(--_r-s) var(--_r-s) 0 0; }
-.more-menu button.exp { white-space: normal; max-width: 280px; align-items: center; }
-.more-menu .exp-words { display: grid; gap: 2px; color: inherit; }
-.more-menu .exp-why { font-size: 11px; letter-spacing: .006em; color: var(--_muted); }
-.more-menu .exp-sw { flex: none; position: relative; width: 28px; height: 16px; border-radius: 8px; background: var(--_line);
-  transition: background-color var(--_t-quick) var(--_ease-out); }
-.more-menu .exp-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--_bg); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform var(--_t-quick) var(--_ease); }
-.more-menu button.exp[aria-checked='true'] .exp-sw { background: var(--_green-fg); }
-.more-menu button.exp[aria-checked='true'] .exp-sw::after { transform: translateX(12px); }
-.more-menu button.exp:disabled .exp-sw { opacity: .4; }
-.more-menu .exp-note { margin: 4px 10px 2px; padding-top: 6px; border-top: var(--_hair); font-size: 11px; color: var(--_muted); max-width: 260px; }
-@media (pointer: coarse) {
-  .more-menu .exp-sw { width: 40px; height: 24px; border-radius: 12px; }
-  .more-menu .exp-sw::after { width: 20px; height: 20px; }
-  .more-menu button.exp[aria-checked='true'] .exp-sw::after { transform: translateX(16px); }
-  .more-menu .exp-why { font-size: 13px; }
-}
 
 /* The section bar (sections.ts): the page's sections along the top, the current one filled; new = a filled green dot,
    updated = a ring. Above the dimmed page of a sheet (the scrim is 2), so it stays lit and tappable. Drawn inside .ui, so a
@@ -802,10 +778,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 }
 
 /* Your actions (lib/actions.ts): as many as fit, "…" on one line; "…" grows the line into the
-   whole list; hold or right-click a row to edit it in place, + add. */
+   whole list. */
 .quick { white-space: nowrap; }
 /* The "…" list (Leo, 19 Nov, "c" Growing sheet): the line itself grows into it, in the sheet or box, above the text
-   field, no floating surface: rows of name over a muted prompt, hairlines between, no pencil (hold or right-click edits), "+ add" and "done" last.
+   field, no floating surface: rows of name over a muted prompt, hairlines between, "done" last.
    Its height eases in comments.js (--_t-base); a long list scrolls inside its cap. */
 .acts:not(:where(.row)) { display: block; margin: 0 0 6px; max-height: min(340px, 60vh); overflow-y: auto; overscroll-behavior: contain; }
 .acts .quick { margin: 0 0 2px; padding: 2px 0; }
@@ -818,42 +794,15 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .acts .use { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .acts .use b { font-weight: 400; font-size: 12px; letter-spacing: 0; color: var(--_fg); }
 .acts .use span { font-size: 11px; letter-spacing: .006em; color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.acts .use { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } /* a hold edits: no callout, no word picked */
-.acts .act-hint { flex: 1; min-width: 0; text-align: center; font-size: 11px; color: var(--_muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.acts .act-foot { position: sticky; bottom: 0; display: flex; align-items: center; background: var(--_bg); } /* "+ add" and "done" stay in reach when the list scrolls */
-.acts:not(:where(.row)) .add { color: var(--_muted); }
+.acts .act-foot { position: sticky; bottom: 0; display: flex; align-items: center; background: var(--_bg); } /* "done" stays in reach when the list scrolls */
 .acts:not(:where(.row)) .fold { margin-left: auto; color: var(--_muted); }
-.acts:not(:where(.row)) .add:hover, .acts:not(:where(.row)) .fold:hover { background: var(--_soft); color: var(--_fg); }
+.acts:not(:where(.row)) .fold:hover { background: var(--_soft); color: var(--_fg); }
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
   .float > .acts:not(:where(.row)) { flex: 0 1 auto; min-height: 0; margin: 0; padding: 0 12px 10px; max-height: min(420px, 55vh); }
   .acts:not(:where(.row)) button { padding: 6px 4px; }
   .acts .use { min-height: 44px; align-content: center; }
   .acts .use b { font-size: 14px; letter-spacing: -.011em; }
   .acts .use span { font-size: 13px; letter-spacing: -.003em; }
-  .acts .act-hint { font-size: 13px; letter-spacing: -.003em; }
-  .acts:not(:where(.row)) .add, .acts:not(:where(.row)) .fold { min-height: 44px; padding-inline: 4px 12px; font-size: 14px; letter-spacing: -.011em; }
+  .acts:not(:where(.row)) .fold { min-height: 44px; padding-inline: 4px 12px; font-size: 14px; letter-spacing: -.011em; }
   .acts:not(:where(.row)) .fold { padding-inline: 12px 4px; }
-}
-.act-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; row-gap: 2px; }
-.act-fields input, .act-fields textarea { display: block; width: 100%; min-width: 0; box-sizing: border-box; border: 0; margin: 0; padding: 0;
-  background: none; outline: none; font: inherit; font-size: 12px; line-height: 17px; letter-spacing: 0; color: var(--_fg); }
-.act-fields textarea { grid-column: 1 / -1; resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
-.act-fields input::placeholder, .act-fields textarea::placeholder { color: var(--_muted); opacity: 1; }
-.act-fields .cnt { font-size: 11px; color: var(--_muted); font-variant-numeric: tabular-nums; }
-.acts:not(:where(.row)) .act-fields .del { padding: 0 2px; font-size: 11px; color: var(--_muted); }
-.acts:not(:where(.row)) .act-fields .del:hover { color: var(--_fg); }
-.act-fields .k, .act-fields .why { grid-column: 1 / -1; font-size: 11px; color: var(--_muted); }
-.act-fields .why:empty { display: none; }
-.act-fields .why { color: var(--_red); }
-.acts .act.gone { align-items: center; gap: 2px; padding: 6px 8px; font-size: 12px; color: var(--_muted); }
-.acts .act.gone:hover { background: none; }
-.acts:not(:where(.row)) .act.gone .undo { padding: 0 2px; color: var(--_fg); text-decoration: underline; text-underline-offset: 2px; }
-.acts .act.gone .why { margin-left: 8px; font-size: 11px; color: var(--_red); }
-@media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
-  .acts .act.act-edit { padding: 8px 4px; }
-  /* 16px fields keep iOS from zooming the page when one is focused */
-  .act-fields input, .act-fields textarea { font-size: 16px; line-height: 21px; letter-spacing: -.019em; }
-  .acts:not(:where(.row)) .act-fields .del { min-height: 32px; font-size: 13px; letter-spacing: -.003em; }
-  .act-fields .cnt, .act-fields .k, .act-fields .why { font-size: 12px; }
-  .acts .act.gone { min-height: 44px; padding: 0 4px; font-size: 14px; }
 }

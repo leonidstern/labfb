@@ -78,7 +78,7 @@ export function drawChat() {
     const b = W.el('div', { class: `msg${W.mine(m) && !m.session ? ' mine' : ''}${before.size && !before.has(m.id) && !W.S.foldToggle ? ' fresh' : ''}`, 'data-id': m.id, ...(W.agentOf(m) ? { 'data-agent': W.agentOf(m) } : {}) });
     // No done mark by the agent's name (Leo, 15 Nov): your own message's green ✓ already says it was answered, and a
     // "Done" answer closes the thread.
-    b.append(W.nameLine(m.name, false));
+    b.append(W.nameLine(m.name));
     // A reply shows what it answers, as in Telegram: the name and the start of that message; a tap there jumps to it.
     if (m.parent && root) {
       const q = W.el('div', { class: 'quote' });

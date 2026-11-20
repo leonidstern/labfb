@@ -17,13 +17,11 @@ import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './l
 import { alive, setWifi } from './lib/labcall.ts';
 import { DO_IT, PROGRESS_MS, UNMATCHED, numberOf, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
-import { loadSettings, changedShortcuts, seedActions, savePersonal, savePersonalFlag } from './lib/settings.ts';
-import { FLAGS, flagsOn } from './lib/flags.ts';
+import { loadSettings, changedShortcuts, seedActions, savePersonal } from './lib/settings.ts';
 import { runCommand } from './lib/commands.ts';
 import { findDevServer as find, tilde, othersNote } from './lib/devserver.ts';
 import * as B from './lib/board.ts';
 import * as act from './lib/boardact.ts';
-import { listFrom } from './lib/actions.ts';
 import { proxy as makeProxy } from './lib/proxy.ts';
 import { newer, fetchNotes } from './lib/update.ts';
 
@@ -185,7 +183,6 @@ if (pos[0] === 'settings') {
   const changed = changedShortcuts(SET.shortcuts);
   const show = (k, v) =>
     k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
-      : k === 'flags' ? (flagsOn(v).map((f) => `${f} (${SETTINGS.flagFrom[f] === 'project' ? 'labit.json' : 'yours'})`).join(', ') || 'none on')
       : k === 'actions' ? v.map((a) => a.name).join(' ') || '(none)'
       : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
@@ -193,7 +190,7 @@ if (pos[0] === 'settings') {
   console.log(`Project: ${SETTINGS.files.project ? home(SETTINGS.files.project) : `no labit.json in ${home(HERE)} or above`}\nYours:   ${home(SETTINGS.files.personal)}${fs.existsSync(SETTINGS.files.personal) ? '' : ' (not made yet)'}\n`);
   const w = Math.max(...Object.keys(SET).map((k) => k.length));
   for (const [k, v] of Object.entries(SET)) console.log(`${k.padEnd(w)}  ${show(k, v).padEnd(20)}  ${src(SETTINGS.from[k])}`);
-  console.log(`\nYour actions, in order (edit them in your settings.json):`);
+  console.log(`\nYour actions, in order (set them in labit.json or your settings.json):`);
   for (const a of SET.actions) console.log(`  ${a.name.padEnd(7)}  ${a.prompt}`);
   console.log(`\nA flag or variable wins over labit.json, which wins over your file. See docs/settings.md.`);
   process.exit(SETTINGS.problems.length ? 1 : 0);
@@ -1246,7 +1243,7 @@ stateParts.handed = () => {
 const saveHanded = saveState;
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(isObj(labState.handed) ? labState.handed : {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, labit: VERSION, flags: flagsOn(SET.flags), reads: readsRev, sections: sectionsRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, labit: VERSION, reads: readsRev, sections: sectionsRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1818,17 +1815,8 @@ function announce(page, c) {
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
 // Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box. Names
-// and prompts are yours, so the attribute is escaped as the flags' is.
-// Read per page: the "…" menu can change the list while the lab runs (PUT /_lab/api/actions).
+// and prompts are yours, so the attribute is escaped (the tag can't be talked out of being a tag).
 const actionsAttr = () => ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
-// What is being tried in this lab: every flag, its state, and whether the project's labit.json sets it (then the ⋯
-// menu's Experiments list shows it read-only: the project wins over your own settings).
-// The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
-// in one of them would end the attribute halfway. & and < go too, so the tag can't be talked out of being a tag.
-const flagsAttr = () => {
-  const json = JSON.stringify(Object.fromEntries(Object.entries(FLAGS).map(([k, f]) => [k, { name: f.name, on: SET.flags[k] === true, ...(SETTINGS.flagFrom[k] === 'project' ? { project: true } : {}) }])));
-  return ` data-flags='${json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
-};
 // Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
 // of main (EDGE, from a script that builds one, e.g. "main ab303fa").
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${EDGE ? ` · edge: ${EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
@@ -1841,7 +1829,7 @@ const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${actionsAttr()}${flagsAttr()}${LABIT_ATTR}${updateAttr()}${PROXY ? ' data-proxied="1"' : ''} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${actionsAttr()}${LABIT_ATTR}${updateAttr()}${PROXY ? ' data-proxied="1"' : ''} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -2265,42 +2253,6 @@ const handler = async (req, res) => {
       if (body.page) q.set('to', landing('/' + String(body.page).replace(/^\/+/, '')));
       const tail = q.size ? `?${q}` : '';
       return answer(res, { name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) });
-    }
-    // The ⋯ menu's Experiments list: a flag turned on or off by the person at this computer (with the lab's key), saved
-    // in their own settings file so it holds in every lab they run. A flag the project's labit.json sets is the
-    // project's: refused here. Every open page hears the new state on the live stream and starts or stops the feature.
-    if (pathname === '/_lab/flags' && req.method === 'POST') {
-      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
-      const { flag, on } = await sent(req);
-      if (typeof flag !== 'string' || !Object.hasOwn(FLAGS, flag) || typeof on !== 'boolean') return res.writeHead(400).end('flag: one of ' + Object.keys(FLAGS).join(', ') + '; on: true or false');
-      if (SETTINGS.flagFrom[flag] === 'project') return res.writeHead(409).end(`${flag} is set by the project's labit.json`);
-      let file;
-      try {
-        file = savePersonalFlag(flag, on);
-      } catch (e) {
-        return res.writeHead(500).end(`could not save it: ${e.message}`);
-      }
-      SET.flags = { ...SET.flags, [flag]: on };
-      if (on) SETTINGS.flagFrom[flag] = 'personal';
-      else delete SETTINGS.flagFrom[flag];
-      console.log(`[lab] experiment ${flag}: ${on ? 'on' : 'off'} (${file.replace(os.homedir(), '~')})`);
-      broadcast();
-      return answer(res, { flags: flagsOn(SET.flags) });
-    }
-    // Your actions (lib/actions.ts) from a comment box's "…" menu: the whole list, in its order, saved in your own
-    // settings. This computer with the lab's key only, as the Experiments switch: never a guest, never the agent's key.
-    if (pathname === '/_lab/api/actions' && req.method === 'PUT') {
-      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
-      const out = listFrom(await sent(req));
-      if ('why' in out) return res.writeHead(400).end(out.why);
-      try {
-        savePersonal('actions', out.actions);
-      } catch (e) {
-        return res.writeHead(500).end(`could not save it: ${e.message}`);
-      }
-      SET.actions = out.actions;
-      console.log(`[lab] your actions: ${out.actions.map((a) => a.name).join(' ') || '(none)'} (${SETTINGS.files.personal.replace(os.homedir(), '~')})`);
-      return answer(res, { actions: out.actions });
     }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.

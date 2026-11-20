@@ -273,7 +273,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   };
   const itemEl = (item) => {
     const box = W.el('div', { class: `item msg${W.mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(W.agentOf(item) ? { 'data-agent': W.agentOf(item) } : {}) });
-    box.append(W.nameLine(item.name, false));
+    box.append(W.nameLine(item.name));
     // An answer to a later message in the thread quotes it, as the chat does (Leo, 17 Nov: "show what you replied on").
     const to = item.to && [c, ...W.repliesOf(c.id)].find((x) => x.id === item.to); // the pin itself too: it may be the question
     if (to) {

@@ -29,6 +29,15 @@ for (const eng of engines()) {
   const browser = await pw[eng].launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 664 }, isMobile: true, hasTouch: true });
   await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tess'));
+  // Counts the touch listeners added to the dimmed page (the scrim): they are for the page's whole life.
+  await ctx.addInitScript(() => {
+    /** @type {any} */ (window).__scrimTouch = 0;
+    const add = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function (type, ...rest) {
+      if (/^touch/.test(type) && /** @type {any} */ (this).classList?.contains?.('scrim')) /** @type {any} */ (window).__scrimTouch++;
+      return add.call(this, type, ...rest);
+    };
+  });
   const p = await ctx.newPage();
   await p.goto(B + '/');
   await p.waitForFunction(() => document.querySelector('[data-lab-comments]')?.shadowRoot?.querySelector('.pin'), null, { timeout: 20000 });
@@ -82,6 +91,32 @@ for (const eng of engines()) {
   check(eng, 'a long thread scrolls under a finger moving down', !c.cancelled, JSON.stringify(c));
   const d = await swipe(0.8, 0.5); // up at the end of the messages: nothing further to scroll
   check(eng, 'at the end of a long thread, a move up is cancelled', d.cancelled, JSON.stringify(d));
+  // Every redraw while a sheet is open (a reply arriving) draws the sheet again: the scrim gets no more listeners.
+  const scrims = () => p.evaluate(() => /** @type {any} */ (window).__scrimTouch);
+  const n1 = await scrims();
+  for (let i = 0; i < 3; i++) {
+    await post({ text: `Another reply ${i}`, parent: long.id });
+    await p.waitForTimeout(800);
+  }
+  const n2 = await scrims();
+  check(eng, 'the dimmed page has its 4 touch listeners once, however often the sheet is drawn', n1 === 4 && n2 === n1, `${n1} then ${n2}`);
+  // And a pull on the dimmed page still moves the open sheet (a made-up finger on the scrim, above the sheet).
+  const pulled = await p.evaluate(() => {
+    const root = document.querySelector('[data-lab-comments]').shadowRoot;
+    const scrim = root.querySelector('.scrim');
+    const send = (type, y, last) => {
+      const e = new Event(type, { bubbles: true, cancelable: true, composed: true });
+      Object.defineProperty(e, 'touches', { value: last ? [] : [{ clientX: 100, clientY: y }] });
+      scrim.dispatchEvent(e);
+    };
+    send('touchstart', 20);
+    send('touchmove', 60);
+    send('touchmove', 140);
+    const moved = root.querySelector('.card:not(.out)')?.style.transform || '';
+    send('touchend', 140, true);
+    return moved;
+  });
+  check(eng, 'a pull on the dimmed page still pulls the open sheet', /translateY\(\d/.test(pulled), pulled);
   await close();
   await browser.close();
 }
