@@ -2,23 +2,20 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFile, execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { LAB, claimPort, tmp, rm, sleep, cli } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-onboard-')));
+const DIR = fs.realpathSync(tmp('onboard'));
 fs.mkdirSync(path.join(DIR, 'src'));
 fs.writeFileSync(path.join(DIR, 'package.json'), JSON.stringify({ name: 'app', scripts: { dev: 'vite' } }));
 const kids = [];
 after(() => {
   kids.forEach((k) => k.kill());
-  fs.rmSync(DIR, { recursive: true, force: true });
+  rm([DIR]);
 });
 
-const run = (args) =>
-  new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: DIR }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
+const run = (args) => cli(args, { cwd: DIR });
 const hasLsof = (() => {
   try {
     execFileSync('lsof', ['-v'], { stdio: 'ignore' });
@@ -36,12 +33,12 @@ test('a project whose dev server is not running is refused, not served as files'
 });
 
 test('in a project, a bare run finds the dev server running in that folder', { skip: !hasLsof && 'needs lsof' }, async () => {
-  const devPort = 5700 + Math.floor(Math.random() * 90);
-  const labPort = String(5800 + Math.floor(Math.random() * 90));
+  const devPort = claimPort(5700, 90);
+  const labPort = String(claimPort(5800, 90));
   // A stand-in dev server, running in the project like `npm run dev` would.
   const dev = spawn(process.execPath, ['-e', `require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');s.end('<h1>dev page</h1>')}).listen(${devPort},'127.0.0.1')`], { cwd: DIR });
   kids.push(dev);
-  await new Promise((r) => setTimeout(r, 400));
+  await sleep(400);
   const lab = spawn(process.execPath, [LAB, '--no-open', '--port', labPort], { cwd: DIR });
   kids.push(lab);
   let out = '';
@@ -52,7 +49,7 @@ test('in a project, a bare run finds the dev server running in that folder', { s
     try {
       html = await (await fetch(`http://localhost:${labPort}/`)).text();
     } catch {
-      await new Promise((r) => setTimeout(r, 100));
+      await sleep(100);
     }
   }
   assert.match(out, new RegExp(`dev server for this project on :${devPort}`), out);
@@ -61,13 +58,13 @@ test('in a project, a bare run finds the dev server running in that folder', { s
 });
 
 test('a folder with no index.html at the top lists its pages, not its folders, and opens the first one', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-pages-')));
+  const dir = fs.realpathSync(tmp('pages'));
   fs.mkdirSync(path.join(dir, 'site/about'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'lib'));
   fs.writeFileSync(path.join(dir, 'lib/x.js'), '');
   fs.writeFileSync(path.join(dir, 'site/index.html'), '<title>Home</title><h1>home</h1>');
   fs.writeFileSync(path.join(dir, 'site/about/team.html'), '<h1>team</h1>');
-  const port = String(6700 + Math.floor(Math.random() * 90));
+  const port = String(claimPort(6700, 90));
   const lab = spawn(process.execPath, [LAB, '--no-open', '--port', port], { cwd: dir });
   kids.push(lab);
   let out = '';
@@ -77,7 +74,7 @@ test('a folder with no index.html at the top lists its pages, not its folders, a
     try {
       html = await (await fetch(`http://localhost:${port}/`)).text();
     } catch {
-      await new Promise((r) => setTimeout(r, 100));
+      await sleep(100);
     }
   }
   assert.match(html, /href="\/site\/"><span class="lab-page-t">Home</); // a page with a title shows it, not its file
@@ -86,14 +83,14 @@ test('a folder with no index.html at the top lists its pages, not its folders, a
   assert.doesNotMatch(html, /lib/);
   assert.match(out, /opening site\/index\.html/);
   assert.match(await (await fetch(`http://localhost:${port}/site/`)).text(), /_lab\/comments\.js/);
-  fs.rmSync(dir, { recursive: true, force: true });
+  rm([dir]);
 });
 
 test('a running lab is listed for the Lab panel: a registry file while it runs, its pages with open comments', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-reg-')));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  const dir = fs.realpathSync(tmp('reg'));
+  const home = tmp('home');
   fs.writeFileSync(path.join(dir, 'index.html'), '<title>Start</title><h1>start</h1>');
-  const port = String(4990 + Math.floor(Math.random() * 9));
+  const port = String(claimPort(4990, 9));
   const lab = spawn(process.execPath, [LAB, '--no-open', '--port', port], { cwd: dir, env: { ...process.env, LABIT_HOME: home } });
   kids.push(lab); // stopped by after() also when an assertion below fails
   let info = null;
@@ -101,7 +98,7 @@ test('a running lab is listed for the Lab panel: a registry file while it runs, 
     try {
       info = await (await fetch(`http://localhost:${port}/_lab/pages`)).json();
     } catch {
-      await new Promise((r) => setTimeout(r, 100));
+      await sleep(100);
     }
   }
   const reg = path.join(home, 'servers', `${port}.json`);
@@ -115,24 +112,23 @@ test('a running lab is listed for the Lab panel: a registry file while it runs, 
   lab.kill();
   await new Promise((r) => lab.on('exit', r));
   assert.ok(!fs.existsSync(reg), 'registry file removed on exit');
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.rmSync(home, { recursive: true, force: true });
+  rm([dir, home]);
 });
 
 test('a folder that a running lab already serves opens that lab instead of starting another', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-nest-')));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  const dir = fs.realpathSync(tmp('nest'));
+  const home = tmp('home');
   fs.mkdirSync(path.join(dir, 'sub'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<title>Top</title>');
   fs.writeFileSync(path.join(dir, 'sub', 'index.html'), '<title>Sub</title>');
   const env = { ...process.env, LABIT_HOME: home };
-  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(6800 + Math.floor(Math.random() * 90))], { cwd: dir, env });
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(claimPort(6800, 90))], { cwd: dir, env });
   kids.push(lab);
   // The lab moves up a port when its first pick is busy: read the one it took from its registry file.
   const reg = path.join(home, 'servers');
-  for (let i = 0; i < 50 && !(fs.existsSync(reg) && fs.readdirSync(reg).length); i++) await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 50 && !(fs.existsSync(reg) && fs.readdirSync(reg).length); i++) await sleep(100);
   const port = String(JSON.parse(fs.readFileSync(path.join(reg, fs.readdirSync(reg)[0]), 'utf8')).port);
-  const run2 = (args, cwd) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd, env }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
+  const run2 = (args, cwd) => cli(args, { cwd, env });
   const nested = await run2(['--no-open'], path.join(dir, 'sub'));
   assert.equal(nested.code, 0);
   assert.match(nested.out, new RegExp(`already served by the lab for .*: http://localhost:${port}/sub/`));
@@ -142,65 +138,64 @@ test('a folder that a running lab already serves opens that lab instead of start
   lab.kill();
   await new Promise((r) => lab.on('exit', r));
   assert.match((await run2(['list'], dir)).out, /No labs running/);
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.rmSync(home, { recursive: true, force: true });
+  rm([dir, home]);
 });
 
 test('pages lists this folder\'s labs only, unless --all', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  const home = tmp('home');
   const env = { ...process.env, LABIT_HOME: home };
   const mk = (name) => {
-    const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `labit-${name}-`)));
+    const d = fs.realpathSync(tmp(name));
     fs.writeFileSync(path.join(d, 'index.html'), `<title>${name}</title>`);
     return d;
   };
   const [a, b] = [mk('alpha'), mk('beta')];
-  for (const [d, p] of [[a, 6900], [b, 6950]]) kids.push(spawn(process.execPath, [LAB, '--no-open', '--port', String(p + Math.floor(Math.random() * 40))], { cwd: d, env }));
+  for (const [d, p] of [[a, 6900], [b, 6950]]) kids.push(spawn(process.execPath, [LAB, '--no-open', '--port', String(claimPort(p, 40))], { cwd: d, env }));
   const reg = path.join(home, 'servers');
-  for (let i = 0; i < 50 && !(fs.existsSync(reg) && fs.readdirSync(reg).length === 2); i++) await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 50 && !(fs.existsSync(reg) && fs.readdirSync(reg).length === 2); i++) await sleep(100);
   const pagesIn = (cwd, extra = []) => new Promise((resolve) => execFile(process.execPath, [LAB, 'pages', ...extra], { cwd, env }, (err, stdout) => resolve(fs.readFileSync(stdout.trim(), 'utf8'))));
   const mine = await pagesIn(a);
   assert.match(mine, /\[alpha\]/);
   assert.doesNotMatch(mine, /beta/);
   const all = await pagesIn(a, ['--all']);
   assert.match(all, /\*\*labit-alpha-.*\[alpha\][\s\S]*\*\*labit-beta-.*\[beta\]/s);
-  for (const d of [a, b]) fs.rmSync(d, { recursive: true, force: true });
+  rm([a, b]);
 });
 
 test('a mistyped flag is refused for every command, not posted as text', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-flag-'));
-  const r = await new Promise((resolve) => execFile(process.execPath, [LAB, 'reply', 'abc', 'Done', '--resolv'], { cwd: dir }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
+  const dir = tmp('flag');
+  const r = await cli(['reply', 'abc', 'Done', '--resolv'], { cwd: dir });
   assert.equal(r.code, 1);
   assert.match(r.out, /Unknown option --resolv/);
-  fs.rmSync(dir, { recursive: true, force: true });
+  rm([dir]);
 });
 
 test('preview with a bare --proxy writes a bare --proxy', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-preview-'));
+  const dir = tmp('preview');
   await new Promise((resolve) => execFile(process.execPath, [LAB, 'preview', '.', '--proxy'], { cwd: dir }, resolve));
   const lab = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'launch.json'), 'utf8')).configurations.find((c) => c.name === 'lab');
   const args = lab.args || lab.runtimeArgs;
   assert.equal(args.at(-1), '--proxy');
   assert.ok(!args.includes(true), 'no boolean in the args');
-  fs.rmSync(dir, { recursive: true, force: true });
+  rm([dir]);
 });
 
 test('a newer version on npm is announced as the lab starts', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-latest-'));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  const dir = tmp('latest');
+  const home = tmp('home');
   fs.writeFileSync(path.join(dir, 'index.html'), '<h1>x</h1>');
   // What a check would have found (kept for a day), so the test needs no network.
   fs.writeFileSync(path.join(home, 'latest.json'), JSON.stringify({ version: '99.0.0', at: Date.now() }));
   const env = { ...process.env, LABIT_HOME: home };
   delete env.CI;
   delete env.LABIT_NO_UPDATE_CHECK;
-  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(7600 + Math.floor(Math.random() * 90))], { cwd: dir, env });
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(claimPort(7600, 90))], { cwd: dir, env });
   kids.push(lab);
   let out = '';
   lab.stdout.on('data', (d) => (out += d));
-  for (let i = 0; i < 40 && !/is out/.test(out); i++) await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 40 && !/is out/.test(out); i++) await sleep(100);
   assert.match(out, /labit 99\.0\.0 is out \(you have [\d.]+\): npx @leonidstern\/labit@latest/);
-  fs.rmSync(dir, { recursive: true, force: true });
+  rm([dir]);
 });
 
 test('the npm package ships the widget and the lab screens\' stylesheet', () => {

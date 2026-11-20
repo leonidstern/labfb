@@ -41,18 +41,18 @@ const untilRoot = (p, fn, ms) =>
     const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
     return Boolean(r) && new Function('r', `return (${src})(r)`)(r);
   }, fn.toString(), ms);
-const barUp = (p, ms = 700) => untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-bar').classList.contains('on') && e.getAnimations().length === 0 && r.querySelectorAll('.fd').length === 1; }, ms);
-const dlgUp = (p, ms = 700) => untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.getAnimations().length === 0 && r.querySelectorAll('.fd').length === 1; }, ms);
+// The comment card on selected words is up and still, the cursor in its box.
+const cardUp = (p, ms = 700) => untilRoot(p, (r) => { const f = r.querySelectorAll('.float'); return f.length === 1 && f[0].getAnimations().length === 0 && r.activeElement?.localName === 'textarea'; }, ms);
 // Until the page has a comment with this text (sent).
 async function untilSent(text, ms) {
   for (const end = Date.now() + ms; Date.now() < end && !(await comments()).some((x) => x.text === text); ) await sleep(40);
 }
-// What the widget shows: the bar, the dialog, an area drawn, a pin or box for a point.
+// What the widget shows: a comment card on lit (selected) words, an area drawn, a pin or box for a point.
 const look = (p) =>
   inRoot(p, (r) => {
-    const e = r.querySelector('.fd');
-    const on = (s) => Boolean(e && !e.hidden && e.querySelector(s)?.classList.contains('on'));
-    return { bar: on('.p-bar'), dlg: on('.p-dlg'), zone: r.querySelectorAll('.zone.draft').length, draftPin: r.querySelectorAll('.pin.draft').length, box: r.querySelectorAll('.float').length };
+    const box = r.querySelectorAll('.float').length;
+    const lit = Boolean(globalThis.CSS?.highlights?.has('lab-quote'));
+    return { dlg: box === 1 && lit, zone: r.querySelectorAll('.zone.draft').length, draftPin: r.querySelectorAll('.pin.draft').length, box };
   });
 const span = (p, sel, text) =>
   p.evaluate(([sel, text]) => {
@@ -110,7 +110,7 @@ try {
         await dragWords(p, '#t', 'words to drag');
         await untilRoot(p, (r) => r.querySelectorAll('.zone.draft').length === 1, 500);
         const l = await look(p);
-        check(eng, 'a plain drag over words marks an area, no bar', l.zone === 1 && !l.bar && !l.dlg, JSON.stringify(l));
+        check(eng, 'a plain drag over words marks an area, no card on the words', l.zone === 1 && !l.dlg, JSON.stringify(l));
         check(eng, '…and selects none of the page\'s text', (await p.evaluate(() => String(getSelection()))) === '');
         await p.keyboard.type('over words');
         await p.keyboard.press('Enter');
@@ -120,11 +120,11 @@ try {
       });
       await scene(browser, async (p) => {
         const s = await dragWords(p, '#t', 'words to drag', true);
-        await barUp(p);
+        await cardUp(p);
         const l = await look(p);
-        check(eng, 'Shift-drag over words opens the dialog at once (no bar), no area', l.dlg && !l.bar && !l.zone && !l.draftPin, JSON.stringify(l));
+        check(eng, 'Shift-drag over words opens the comment card at once on them, no area', l.dlg && !l.zone && l.draftPin === 1, JSON.stringify(l));
         await p.keyboard.type('shifted');
-        await dlgUp(p);
+        await cardUp(p);
         await p.keyboard.press('Enter');
         await untilSent('shifted', 700);
         const c = (await comments()).find((x) => x.text === 'shifted');
@@ -162,9 +162,9 @@ try {
       });
       await scene(browser, async (p) => {
         await dragWords(p, '#t', 'ords to dra', true); // starts and ends inside words
-        await barUp(p);
+        await cardUp(p);
         await p.keyboard.type('snap');
-        await dlgUp(p);
+        await cardUp(p);
         await p.keyboard.press('Enter');
         await untilSent('snap', 700);
         const c = (await comments()).find((x) => x.text === 'snap');
@@ -172,9 +172,9 @@ try {
       });
       await scene(browser, async (p) => {
         await dragWords(p, '#t', 'aragra', true); // inside "paragraph" only
-        await barUp(p);
+        await cardUp(p);
         await p.keyboard.type('inside');
-        await dlgUp(p);
+        await cardUp(p);
         await p.keyboard.press('Enter');
         await untilSent('inside', 700);
         const c = (await comments()).find((x) => x.text === 'inside');
@@ -184,7 +184,7 @@ try {
         await dragTo(p, [700, 40], [900, 120]); // right of the column: nothing to select there
         await untilRoot(p, (r) => r.querySelectorAll('.zone.draft').length === 1, 400);
         const l = await look(p);
-        check(eng, 'a drag from empty space marks an area, no bar', l.zone === 1 && !l.bar, JSON.stringify(l));
+        check(eng, 'a drag from empty space marks an area, no card on the words', l.zone === 1, JSON.stringify(l));
         await p.keyboard.type('area');
         await p.keyboard.press('Enter');
         await untilSent('area', 700);
@@ -196,7 +196,7 @@ try {
         await p.mouse.click(s.first.left + 10, s.first.top + 10);
         await untilRoot(p, (r) => r.querySelectorAll('.float').length === 1, 500);
         const l = await look(p);
-        check(eng, 'a plain click on words places a point pin, no bar', l.box === 1 && !l.bar && !l.dlg, JSON.stringify(l));
+        check(eng, 'a plain click on words places a point pin, no card on the words', l.box === 1 && !l.dlg, JSON.stringify(l));
         await p.keyboard.type('point');
         await p.keyboard.press('Enter');
         await untilSent('point', 700);
@@ -215,7 +215,7 @@ try {
           await sleep(600);
           const lit = await p.evaluate(() => Boolean(CSS.highlights?.get('lab-quote')?.size));
           const l = await look(p);
-          check(eng, `a click on a word with ${dx},${dy} px of jitter is a point pin: no quote lit, no dialog row`, !lit && l.box === 1 && !l.dlg && !l.bar, JSON.stringify([lit, l]));
+          check(eng, `a click on a word with ${dx},${dy} px of jitter is a point pin: no quote lit, no dialog row`, !lit && l.box === 1 && !l.dlg, JSON.stringify([lit, l]));
           await p.keyboard.type(`jit${dx}${dy}`);
           await p.keyboard.press('Enter');
           await sleep(700);
@@ -230,14 +230,14 @@ try {
         await p.mouse.dblclick((s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2);
         await sleep(300);
         const l = await look(p);
-        check(eng, 'a double-click on a word without Shift selects nothing and shows no bar', !l.bar && !l.dlg && (await p.evaluate(() => String(getSelection()))) === '', JSON.stringify(l));
+        check(eng, 'a double-click on a word without Shift selects nothing and shows no card on the words', !l.dlg && (await p.evaluate(() => String(getSelection()))) === '', JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'quite a few');
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await sleep(300);
         const l = await look(p);
-        check(eng, 'a triple-click without Shift shows no bar', !l.bar, JSON.stringify(l));
+        check(eng, 'a triple-click without Shift opens no card on the words', !l.dlg, JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#t', 'paragraph');
@@ -247,11 +247,11 @@ try {
         await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector('#t')); return c.userSelect !== 'none' && c.webkitUserSelect !== 'none'; }, null, { timeout: 1500, polling: 'raf' }).catch(() => {});
         await p.mouse.dblclick((s.first.left + s.first.right) / 2, s.first.top + s.first.height / 2);
         await p.keyboard.up('Shift');
-        await barUp(p, 900);
+        await cardUp(p, 900);
         const l = await look(p);
-        check(eng, 'Shift + double-click on a word opens the dialog (one box, none left from the first click)', l.dlg && !l.bar && l.box === 1 && !l.draftPin, JSON.stringify(l));
+        check(eng, 'Shift + double-click on a word opens the comment card (one box, none left from the first click)', l.dlg && l.box === 1 && l.draftPin === 1, JSON.stringify(l));
         await p.keyboard.type('word');
-        await dlgUp(p);
+        await cardUp(p);
         await p.keyboard.press('Enter');
         await untilSent('word', 700);
         const c = (await comments()).find((x) => x.text === 'word');
@@ -265,9 +265,9 @@ try {
         await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector('#t')); return c.userSelect !== 'none' && c.webkitUserSelect !== 'none'; }, null, { timeout: 1500, polling: 'raf' }).catch(() => {});
         await p.mouse.click(s.first.left + 10, s.first.top + 10, { clickCount: 3 });
         await p.keyboard.up('Shift');
-        await untilRoot(p, (r) => { const e = r.querySelector('.fd'); return Boolean(e) && !e.hidden && e.querySelector('.p-dlg').classList.contains('on') && e.classList.contains('settled'); }, 1500);
+        await cardUp(p, 1500);
         const l = await look(p);
-        check(eng, 'Shift + triple-click selects the paragraph and opens the dialog at once', l.dlg && !l.bar, JSON.stringify(l));
+        check(eng, 'Shift + triple-click selects the paragraph and opens the comment card at once', l.dlg, JSON.stringify(l));
       });
       await scene(browser, async (p) => {
         const f = await p.locator('#field').boundingBox();
@@ -275,14 +275,14 @@ try {
         await sleep(500);
         const l = await look(p);
         const picked = await p.evaluate(() => document.querySelector('#field').value.slice(document.querySelector('#field').selectionStart, document.querySelector('#field').selectionEnd));
-        check(eng, 'a drag inside the page\'s own input selects its text and is not touched', picked.length > 3 && !l.bar && !l.zone, `${picked} ${JSON.stringify(l)}`);
+        check(eng, 'a drag inside the page\'s own input selects its text and is not touched', picked.length > 3 && !l.zone, `${picked} ${JSON.stringify(l)}`);
       });
       await scene(browser, async (p) => {
         const s = await span(p, '#lnk', 'link right');
         await dragTo(p, [s.first.left + 2, s.first.top + 8], [s.last.right, s.last.top + 8]);
         await sleep(500);
         const l = await look(p);
-        check(eng, 'a drag that starts on a link leaves the page\'s own drag (no bar, no area)', !l.bar && !l.zone, JSON.stringify(l));
+        check(eng, 'a drag that starts on a link leaves the page\'s own drag (no bar, no area)', !l.zone, JSON.stringify(l));
       });
       check(eng, 'every change to what the page shows was redrawn', !missed.length, missed.splice(0).join('\n'));
     } finally {

@@ -4,9 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
-
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
+import { LAB } from './harness.mjs';
 
 test('labit skill prints SKILL.md without its frontmatter', async () => {
   const { stdout } = await promisify(execFile)(process.execPath, [LAB, 'skill']);

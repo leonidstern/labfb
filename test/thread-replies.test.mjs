@@ -3,38 +3,26 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { choiceSpills } from '../lib/args.ts';
+import { site, tmp, rm, spawnLab, sleep, up, serverJson, cli as command } from './harness.mjs';
+import { choiceSpills, parseArgs, replyChoices } from '../lib/args.ts';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-thread-')); // nobody's real ~/.config
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-thread-lab-'));
-const PORT = 9150 + Math.floor(Math.random() * 40); // clear of the other test files' ranges
+const HOME = tmp('thread'); // nobody's real ~/.config
+const { DIR, PORT, B } = site('thread-lab', 9150, 40);
 const env = { ...process.env, XDG_CONFIG_HOME: HOME, PORT: '' };
-const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'package.json'), '{}');
 fs.writeFileSync(path.join(DIR, 'bar.html'), '<!doctype html><title>Bar</title><p id="x">Hi</p>');
-const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--new', '--port', String(PORT)], { cwd: DIR, env });
+const lab = spawnLab(DIR, PORT, { flags: ['--new'], env });
 after(() => {
   lab.kill();
-  for (const d of [HOME, DIR]) fs.rmSync(d, { recursive: true, force: true });
+  rm([HOME, DIR]);
 });
-const cli = (...args) => new Promise((done) => execFile(process.execPath, [LAB, ...args], { cwd: DIR, env }, (err, out, errOut) => done({ code: err?.code ?? 0, out: out + errOut })));
+const cli = (...args) => command(args, { cwd: DIR, env });
 const post = async (body) => (await (await fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/bar', ...body }) })).json()).comment;
 const thread = async () => (await (await fetch(`${B}/_lab/api/comments?page=/bar`)).json()).comments;
 
 test('answering a reply by its id says which message it answers; answering the pin does not', async () => {
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(B + '/');
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
+  await up(B + '/', { fail: false });
   const pin = await post({ name: 'leo', text: 'the menu', anchor: { kind: 'element', selector: '#x', x: 0.5, y: 0.5 } });
   assert.equal((await cli('reply', pin.id, 'Changed the menu.')).code, 0);
   const where = await post({ name: 'leo', text: 'where is it', parent: pin.id });
@@ -100,7 +88,7 @@ test('seven, empty and 301-character choices are refused', async () => {
     assert.notEqual(r.code, 0, bad.join('|').slice(0, 30));
   }
   // The server says no on its own too: someone who talks to it directly (the agent's header) gets a 400, not a cut list.
-  const agent = (body) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent }, body: JSON.stringify({ page: '/bar', name: 'Claude', text: 'Which?', parent: pin.id, ...body }) });
+  const agent = (body) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': serverJson(DIR).agent }, body: JSON.stringify({ page: '/bar', name: 'Claude', text: 'Which?', parent: pin.id, ...body }) });
   for (const body of [{ choices: seven }, { choices: ['a'] }, { choices: ['a', ''] }, { choices: ['a', long] }, { choices: ['a', 'b'], recommend: 2 }, { choices: ['a', 'b'], recommend: 'B' }, { choices: ['a', 'b'], recommend: -1 }, { recommend: 0 }]) {
     assert.equal((await agent(body)).status, 400, JSON.stringify(body).slice(0, 60));
   }
@@ -116,7 +104,7 @@ test('a second pick: the agent reads the latest', async () => {
   const ask = (await thread()).find((c) => c.text === 'Which tone?');
   await cli('wait', '--timeout', '5'); // the question and what came before are read; only the picks are new
   const one = await post({ name: 'leo', text: 'Picked A: Hi', parent: ask.id, to: ask.id, picked: 0 });
-  await new Promise((r) => setTimeout(r, 15)); // the latest is by time
+  await sleep(15); // the latest is by time
   const two = await post({ name: 'leo', text: 'Picked B: Hello', parent: ask.id, to: ask.id, picked: 1 });
   assert.equal(one.picked.n, 0);
   assert.equal(two.picked.n, 1);
@@ -129,6 +117,33 @@ test('a second pick: the agent reads the latest', async () => {
   assert.match(await (await fetch(`${B}/_lab/agent/bar`)).text(), /^ {2}picked: none, keep the words as they are \(leo\)$/m);
   const w = await cli('wait', '--timeout', '5');
   assert.match(w.out, new RegExp(`Picked B: Hello.*\\(their pick on your question id ${ask.id}\\)`));
+});
+
+// Each choice may carry a short description (--hint, right after its --choice): stored as hints, parallel to choices.
+test('--hint follows its choice and is stored as hints', async () => {
+  const parse = (...a) => replyChoices(parseArgs(a).opts);
+  assert.deepEqual(parse('--choice', 'Tabs', '--hint', 'less scrolling', '--choice', 'List', '--choice', 'Grid', '--hint', '-wide'), { choices: ['Tabs', 'List', 'Grid'], hints: ['less scrolling', '', '-wide'] });
+  assert.deepEqual(parse('--choice', 'A', '--choice', 'B', '--recommend', 'B'), { choices: ['A', 'B'], recommend: 1 }); // no hints: no field
+  assert.deepEqual(parse('--choice', 'A', '--hint', 'x', '--choice', 'B', '--recommend', '1').hints, ['x', '']);
+  // Refused: a hint before any choice, none with no choices, two for one choice, an empty one, 121 characters.
+  for (const bad of [['--hint', 'x', '--choice', 'A', '--choice', 'B'], ['--hint', 'x'], ['--choice', 'A', '--hint', 'x', '--hint', 'y', '--choice', 'B'], ['--choice', 'A', '--hint', ' ', '--choice', 'B'], ['--choice', 'A', '--hint', 'x'.repeat(121), '--choice', 'B']]) assert.ok(parse(...bad) instanceof Error, bad.join(' ').slice(0, 40));
+  assert.ok(!(parse('--choice', 'A', '--hint', 'x'.repeat(120), '--choice', 'B') instanceof Error));
+  const pin = await post({ name: 'leo', text: 'which layout?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } });
+  const sent = await cli('reply', pin.id, 'Which layout?', '--choice', 'Tabs', '--hint', 'less  scrolling', '--choice', 'List', '--recommend', 'A');
+  assert.equal(sent.code, 0, sent.out);
+  assert.match(sent.out, /A\) Tabs \(less scrolling\)/);
+  const ask = (await thread()).find((c) => c.text === 'Which layout?');
+  assert.deepEqual([ask.choices, ask.hints, ask.recommend], [['Tabs', 'List'], ['less scrolling', ''], 0]);
+  assert.match(await (await fetch(`${B}/_lab/agent/bar`)).text(), /^ {2}A\) Tabs — less scrolling \(your pick\)$/m);
+  // A question with no hint stores none; the server refuses hints that don't fit the choices.
+  const plain = await cli('reply', pin.id, 'Plain?', '--choice', 'a', '--choice', 'b');
+  assert.equal(plain.code, 0, plain.out);
+  assert.equal((await thread()).find((c) => c.text === 'Plain?').hints, undefined);
+  const agent = (body) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent }, body: JSON.stringify({ page: '/bar', name: 'Claude', text: 'Which?', parent: pin.id, choices: ['a', 'b'], ...body }) });
+  for (const hints of [['x'], ['x', 'y', 'z'], ['x', 1], 'x', ['x', 'y'.repeat(121)]]) assert.equal((await agent({ hints })).status, 400, JSON.stringify(hints).slice(0, 30));
+  assert.equal((await agent({ hints: ['x', ''] })).status, 201);
+  // A person's reply can't carry hints, whatever it sends.
+  assert.equal((await post({ name: 'leo', text: 'hm', parent: pin.id, hints: ['x'] })).hints, undefined);
 });
 
 // A note on a spot or an element has no quoted words: the choices show as rows, and the agent is told so.

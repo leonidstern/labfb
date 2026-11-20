@@ -3,34 +3,23 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { claimPort, tmp, rm, spawnLab, up as answers } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const mk = (flags) => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-boardpage-')));
+  const dir = fs.realpathSync(tmp('boardpage'));
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags }));
   return dir;
 };
 const [ON] = [mk({})];
-const base = 9900 + Math.floor(Math.random() * 100);
-const procs = [ON].map((d, i) => spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(base + i * 100)], { cwd: d, env: process.env }));
+const base = claimPort(9900, 100);
+const procs = [ON].map((d) => spawnLab(d, base));
 after(() => {
   procs.forEach((p) => p.kill());
-  for (const d of [ON]) fs.rmSync(d, { recursive: true, force: true });
+  rm([ON]);
 });
-const up = async (port) => {
-  for (let i = 0; i < 80; i++) {
-    try {
-      return await fetch(`http://localhost:${port}/_lab/state`);
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  throw new Error('lab did not start');
-};
+const up = (port) => answers(`http://localhost:${port}/_lab/state`);
 
 test('the board page is a shell: the one board (boardview.js) first, then the widget under the board key', async () => {
   await up(base);
