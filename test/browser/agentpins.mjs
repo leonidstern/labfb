@@ -88,7 +88,7 @@ try {
       check(eng, 'after the page is edited the pin is still on its own paragraph', pinAt && pinAt.y > where.top - 30 && pinAt.y < where.bottom + 30, JSON.stringify([pinAt, where]));
       await p.close();
 
-      // 4: a pin that asks shows its choices; Keep sends the pick under it.
+      // 4: a pin that asks shows its choices; a tap sends the pick under it.
       await wipe('/ask');
       const q = (await asAgent('/ask', { text: 'Which heading?', intent: 'question', choices: ['Plans', 'Pricing'], recommend: 1, anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5, element: '<h1 id="t">' } })).comment;
       ({ p, sh } = await open('/ask'));
@@ -97,11 +97,11 @@ try {
       await sh(() => { r.querySelector('button.pin').click(); });
       await sleep(700);
       const rows = await sh(() => { return [...r.querySelectorAll('.choice')].map((x) => x.textContent); });
-      check(eng, 'its card shows the choices as rows with a Keep', rows.length === 2 && rows[0].startsWith('Plans') && Boolean(await sh(() => { return Boolean(r.querySelector('.keep')); })), JSON.stringify(rows));
-      await sh(() => { r.querySelectorAll('.choice')[0].click(); r.querySelector('.keep').click(); });
+      check(eng, 'its card shows the choices as rows', rows.length === 2 && rows[0].startsWith('Plans'), JSON.stringify(rows));
+      await sh(() => { r.querySelectorAll('.choice')[0].click(); }); // a tap answers; the pick is sent 5 s later (undo until then)
       let pick;
-      for (let i = 0; i < 30 && !pick; i++) { await sleep(150); pick = (await list('/ask')).find((x) => x.picked); }
-      check(eng, 'Keep sends the pick under the pin itself', pick?.parent === q.id && pick.picked.of === q.id && pick.picked.n === 0 && /^Picked A: Plans/.test(pick.text), JSON.stringify(pick));
+      for (let i = 0; i < 60 && !pick; i++) { await sleep(150); pick = (await list('/ask')).find((x) => x.picked); }
+      check(eng, 'a tap sends the pick under the pin itself', pick?.parent === q.id && pick.picked.of === q.id && pick.picked.n === 0 && /^Picked A: Plans/.test(pick.text), JSON.stringify(pick));
       await sleep(500);
       const quoted = await sh(() => { return r.querySelector('.msg .quote')?.textContent || ''; });
       check(eng, 'the pick shows the question it answers, the pin itself, as a quote', /Which heading\?/.test(quoted), quoted);
