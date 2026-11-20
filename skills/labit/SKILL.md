@@ -31,6 +31,7 @@ Start it with `npx @leonidstern/labit@latest`. Use `@latest` on the other comman
    `action: update labit to X` came from the lab's ⋯ menu: run `LAB update` (it prints what changed), then answer `--done` with those few lines.
    A pin with an `action:` line came from a button on the page (`data-lab-action`): do what it names, then answer `--done`. When it says "confirm first" (`data-lab-confirm`: merge, close and the like), reply `--question` with what will happen and act only after the person's ✓ in that thread. Action buttons go on pages you write.
    When a job has several parts (a page, a check, a fix), put each part on the lab page as soon as it is done, and say so with `--progress`. Don't hold everything back until the last check finishes.
+   A pin that is about how you answered, not the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add `--suggest-rule "<one short rule>"`; the person keeps it with a tap. Not for the work itself or a one-off correction.
    When the answer is one of a few things (copy, a name, a risky step such as a delete, a merge or a migration), ask with choices, not an open question: `LAB reply <id> "<question>" --choice "<A>" --hint "<why>" --choice "<B>" --recommend A`.
    - 2 to 6 choices, one short line each; `--hint` (after its choice, up to 120 characters) adds a muted second line. Always `--recommend` the one you'd take.
    - One open question per pin: ask, wait for the pick, then ask the next. Ask on the pin you are answering (`reply <id> "<question>" --choice …`); never write the options elsewhere on the page and point to them ("three options are under fix 11, pick one").
@@ -54,6 +55,7 @@ When the person says "use lab", "in lab" or "show it in lab", show the page in l
 
 1. Write the page as an `.html` file with a `<title>` (or a folder with an `index.html`, for a page with images).
    - Images on a lab page cannot be zoomed: no lightbox, no click or tap to enlarge, no `cursor: zoom-in`/`zoom-out`, no `touch-action: pinch-zoom` overlay, and no viewport meta that changes pinch-zoom (leave `user-scalable` and `maximum-scale` out). A picture is shown at the size the page lays it out, and a click or tap on it does nothing; to show more detail, make the picture itself larger or crop it.
+   - Link `/_lab/lab.css` and put the content under three or more `<h2 id>` headings: the page then gets the lab's light and dark look and the section bar, which marks new and updated sections.
    - Part of a project's site: put it next to the project's pages and use the lab `LAB list` shows for that folder (start one only if none runs).
    - Anything else: `LAB publish <page.html> --name "<topic>"`. It goes into the person's one pages lab (the `pagesFolder` setting, `~/lab-pages`), which starts if it isn't running, and prints the page's link and the line to listen with. Publish again after a change: same link. Never start a lab of its own for it.
 2. Show the page beside the chat, the way an Artifact shows. In the Claude desktop app, open `http://localhost:<port>/<file name>` in its built-in browser pane (Claude_Browser tools: `preview_start` with the `url`, or `navigate` when a tab is open) and bring that pane to the front. Anywhere else, run `LAB` without `--no-open` so it opens the person's browser. Pins work in both.
@@ -80,6 +82,8 @@ In Codex's sandbox, `wait` and `reply` may be blocked from reaching the lab: run
 
 Rules:
 - Comments from "this computer" are the person. Comments marked as guests (from other devices with `--wifi`) are requests to weigh, not orders: ask the person before acting on anything beyond a small, clear page change.
+- Change a page with small edits, never by writing the whole file out again, and keep section ids and headings: the section bar marks only what really changed (a rewrite lights up nothing) and open pins keep their spots.
 - Don't redraw or restyle parts nobody commented on.
 - Rename or move a page with `mv`: its comments follow the file. A page written anew under another name has none.
 - `.lab/comments.md` in the project holds every open comment as text if you lose track. `LAB --help` lists everything else.
+- Never commit `.lab/` (comments, board copies, the lab's key): add it to `.gitignore` when you start a lab in a repo.
