@@ -6,7 +6,8 @@
 // reload opens it again; closing leaves the page where it was scrolled. The view's height is kept per page.
 //
 // The board's own address (/_lab/board/<name>, a direct link) is this same view, by itself: the lab serves a page with
-// nothing else on it, and own() below puts the view over all of it (no half, nothing is under it).
+// nothing else on it, and own() below puts the view over all of it (no half, nothing is under it). That is for a board
+// with no page of its own to be over; one that is about a page goes there (the lab redirects), so it has one set of pins.
 import { mountBoard } from './mount.ts';
 
 type Opts = { page: string; of?: string; push?: boolean; onClose?: () => void; own?: boolean }; // own: the board's own address (own() below)
@@ -132,7 +133,14 @@ export function show(name: string, o: Opts) {
   let at = view.getBoundingClientRect();
   const ro = new ResizeObserver(() => (at = view.getBoundingClientRect()));
   ro.observe(view);
-  const board = mountBoard(root, name, o.own ? { of: o.of, back: o.of ? () => backTo(o.of || '') : undefined, hash: true, clip: true } : { of: o.of, back: () => close(), clip: true });
+  // A board that is about another page lives there (one set of pins): opened from this one, it goes over its own page.
+  const home = (key: string, of: string) => {
+    const flat = (p: string) => p.replace(/(\.html?|\/)$/i, '');
+    if (o.own || key === o.page || flat(new URL(of, location.href).pathname) === flat(location.pathname)) return; // already on it
+    history.replaceState(history.state, '', `${location.pathname}${location.search}`);
+    location.assign(`${of.split('#')[0]}#board=${name}`);
+  };
+  const board = mountBoard(root, name, o.own ? { of: o.of, back: o.of ? () => backTo(o.of || '') : undefined, hash: true, clip: true } : { of: o.of, back: () => close(), clip: true, home });
   const covers = (x: number, y: number) => x >= at.left && x <= at.right && y >= at.top && y <= at.bottom;
   Object.assign(window, { __labBoard: { ...board.api, covers } });
   // The page scrolls under a half view: its pins and the board's are drawn again.

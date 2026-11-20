@@ -181,7 +181,7 @@ const cli = (dir, ...args) =>
 test('board new --variants copies the page, prints the link, and each file is the page plus a base', async () => {
   const r = await cli(DIR, 'new', 'Pricing hero', '--of', '/pricing', '--variants', '3');
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /^# Board pricing-hero · Pricing hero\nurl: http:\/\/localhost:\d+\/_lab\/board\/pricing-hero\n/);
+  assert.match(r.out, /^# Board pricing-hero · Pricing hero\nurl: http:\/\/localhost:\d+\/pricing#board=pricing-hero \(the board opens over its page: its pins are that page's\)\n/);
   // Frame a is the page as it is now (the real page, not a copy); the variants sit beside it.
   assert.match(r.out, /\na {2}\/pricing {2}1280×800 {2}"now"\n/);
   assert.match(r.out, /\nb {2}b\.html {2}1280×800\n/);
@@ -220,8 +220,8 @@ test('variants behind a dev server (or of a page that is no .html file) are the 
   const picked = await inPx('pick', 'live', 'c');
   assert.match(picked.out, /Picked c\. Archived a, b/);
   assert.match((await inPx('list', 'live')).out, /\nc {2}\/pricing\?lab-variant=c {2}1280×800 {2}picked\n/);
-  // The pick comes back to the agent as a pin on the board, saying which branch won.
-  const t = await (await fetch(`http://localhost:${PPX}/_lab/agent/_board/live`)).text();
+  // The pick comes back to the agent as a pin on the board, saying which branch won (the board is over its page: the page's pin).
+  const t = await (await fetch(`http://localhost:${PPX}/_lab/agent/pricing`)).text();
   assert.match(t, /^picked: a, b archived\. Keep the c branch \(\?lab-variant=c\) in \/pricing's source and remove the lab-variant branching, then resolve it with no words \(resolve <id>\)\.$/m);
 });
 
@@ -229,7 +229,7 @@ test('picking frame a, the page as it is now, keeps the page and says what to cl
   const made = await cli(DIR, 'new', 'Keep now', '--of', '/pricing', '--variants', '2');
   const name = /# Board (\S+)/.exec(made.out)[1];
   assert.match((await cli(DIR, 'pick', name, 'a')).out, /Picked a\. Archived b, c \(files kept\)\./);
-  const t = await (await fetch(`${B}/_lab/agent/_board/${name}`)).text();
+  const t = await (await fetch(`${B}/_lab/agent/pricing`)).text();
   assert.match(t, /^picked: b, c archived, files kept\. Keep pricing\.html as it is: change nothing in it\. Delete the variant files \(\.lab\/boards\/[^/]+\/b\.html, c\.html\)\. Then resolve it with no words \(resolve <id>\)\.$/m);
   assert.doesNotMatch(t, /Put a's change/);
   // Live variants: no files to keep; the page's own branching is what goes.
@@ -237,7 +237,7 @@ test('picking frame a, the page as it is now, keeps the page and says what to cl
   const live = await cli(PX, 'new', 'Keep now live', '--of', '/pricing', '--variants', '2');
   const n2 = /# Board (\S+)/.exec(live.out)[1];
   assert.match((await cli(PX, 'pick', n2, 'a')).out, /^Picked a\. Archived b, c\.$/m);
-  const t2 = await (await fetch(`http://localhost:${PPX}/_lab/agent/_board/${n2}`)).text();
+  const t2 = await (await fetch(`http://localhost:${PPX}/_lab/agent/pricing`)).text();
   assert.match(t2, /^picked: b, c archived\. Keep \/pricing as it is: change nothing in it\. Remove any lab-variant branching you added to its source\. Then resolve it with no words \(resolve <id>\)\.$/m);
 });
 
@@ -295,14 +295,16 @@ test('a board pin keeps signed numbers; the board text lists frames in order, th
   const made = await cli(DIR, 'new', 'Set', '--of', '/pricing', '--widths', '390,1280');
   const name = /# Board (\S+)/.exec(made.out)[1];
   await cli(DIR, 'add', name, 'b', '--label', 'Wide');
-  const c = await pin(`/_board/${name}`, { text: 'these should share a header', anchor: { kind: 'board', frame: 'b', fx: -120, fy: 40, bx: -1640, by: 7, board: name } });
+  // A board about a page lives on that page: its pins are the page's, the board text is `labit board list <name>`.
+  const c = await pin('/pricing', { text: 'these should share a header', anchor: { kind: 'board', frame: 'b', fx: -120, fy: 40, bx: -1640, by: 7, board: name } });
   assert.equal(c.comment.anchor.kind, 'board');
   assert.deepEqual([c.comment.anchor.fx, c.comment.anchor.fy, c.comment.anchor.bx], [-120, 40, -1640]);
-  const t = await text(`/_board/${name}`);
-  assert.match(t, new RegExp(`^# Board ${name} · Set\\nurl: http://localhost:\\d+/_lab/board/${name}\\nof: /pricing \\(file pricing\\.html\\)\\n`));
-  assert.match(t, /\na {2}\/pricing {2}390×844\n/);
-  assert.match(t, /\nb {2}\/pricing {2}1280×800 {2}"Wide"\n/);
-  assert.match(t, /^on: the board, not a page$/m);
+  const t = await text('/pricing');
+  const l = (await cli(DIR, 'list', name)).out;
+  assert.match(l, new RegExp(`^# Board ${name} · Set\\nurl: http://localhost:\\d+/pricing#board=${name} \\(the board opens over its page: its pins are that page's\\)\\nof: /pricing \\(file pricing\\.html\\)\\n`));
+  assert.match(l, /\na {2}\/pricing {2}390×844\n/);
+  assert.match(l, /\nb {2}\/pricing {2}1280×800 {2}"Wide"\n/);
+  assert.match(t, new RegExp(`^on: the board ${name} over this page, not the page itself$`, 'm'));
   assert.match(t, /^near: frame b "Wide" \(\/pricing at 1280×800\), 120 px left of its left edge, 40 px below its top$/m);
   assert.doesNotMatch(t, /selector \(at comment time\)|where on element/);
   // a pin on a page, made on a board
@@ -358,7 +360,7 @@ test('pick: one frame is picked and the rest archived, files kept; the pick come
   assert.match(got, /near: frame b \(b\.html at 1280×800\)/);
   assert.match(got, /picked: a, c, d archived, files kept\. Put b's change into pricing\.html, then resolve it with no words \(resolve <id>\)\./);
   assert.match((await cli(DIR, 'pick', name, 'b')).out, /already picked/);
-  assert.equal((await (await fetch(`${B}/_lab/api/comments?page=/_board/${name}`)).json()).comments.length, 1, 'a second pick posts nothing');
+  assert.equal((await (await fetch(`${B}/_lab/api/comments?page=/pricing`)).json()).comments.filter((c) => c.anchor.board === name).length, 1, 'a second pick posts nothing (the pin is on the board\'s page)');
   const two = await cli(DIR, 'new', 'Pick two', '--of', '/pricing', '--variants', '3');
   const n2 = /# Board (\S+)/.exec(two.out)[1];
   assert.match((await cli(DIR, 'pick', n2, 'a', 'b')).out, /Kept a, b\. Archived c, d/);

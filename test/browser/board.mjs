@@ -19,9 +19,9 @@ const server = startLab(DIR, labEnv());
 await labUp(B);
 const put = (name, frames, extra = {}) => fetch(`${B}/_lab/api/board?name=${name}`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ v: 1, rev: 0, frames, ...extra }) }).then((r) => r.json());
 const grid = (n) => Array.from({ length: n }, (_, i) => ({ id: 'f' + i, src: '/pricing', w: 300, h: 300, x: (i % 5) * 340, y: Math.floor(i / 5) * 340 }));
-await put('ten', grid(10), { of: '/pricing' });
-await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }], { of: '/pricing' });
-await put('two', [{ id: 'a', src: '/pricing', w: 300, h: 300, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 300, h: 300, x: 500, y: 0 }], { of: '/pricing' });
+await put('ten', grid(10));
+await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }]); // no page: a board about a page opens over it (boardhome.mjs)
+await put('two', [{ id: 'a', src: '/pricing', w: 300, h: 300, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 300, h: 300, x: 500, y: 0 }]);
 await put('wide', [{ id: 'a', src: '/pricing', w: 1000, h: 700, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 1000, h: 700, x: 4000, y: 3000 }]);
 try {
   for (const eng of engines()) {
@@ -108,7 +108,7 @@ try {
       const saved = await p.evaluate(() => ({ same: window.__same === 1, text: [...document.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelector('h1')?.textContent) }));
       check(eng, 'a save does not reload the board; frames of that page follow', saved.same && saved.text.some((t) => t === 'Pricing two'), JSON.stringify(saved));
       // ----- the board file changes: the board follows
-      await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }, { id: 'd', src: '/checkout', w: 820, h: 1180 }], { of: '/pricing', rev: (await (await fetch(`${B}/_lab/api/board?name=three`)).json()).rev });
+      await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }, { id: 'd', src: '/checkout', w: 820, h: 1180 }], { rev: (await (await fetch(`${B}/_lab/api/board?name=three`)).json()).rev });
       await sleep(2500);
       check(eng, 'a frame added to the board file shows up', (await p.evaluate(() => document.querySelectorAll('#lab-board .f').length)) === 4);
       // ----- a board that does not exist
