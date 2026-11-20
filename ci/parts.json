@@ -11,6 +11,7 @@
     "ink.ts": "drawing pins (hold D and drag): the lines as they are drawn and over a saved drawing, and the drawing as an area comment",
     "drag.ts": "dragging to mark an area (or, holding D, a drawing) with a mouse or pen, the ink at the end of a drag, and the words selected with Shift + drag offered as a comment",
     "draw.ts": "what a drawing's lines read as (circled, arrow, underlined…); its own file (public/_lab/draw.js), loaded when D is first pressed",
+    "keys.ts": "the Shift and Alt keys: Shift (drag to quote words) with its cursor and Alt (Option) with its crosshair",
     "list.ts": "the list of pins (a sheet on phones)",
     "live.ts": "the live stream: listening badge, mode, who is heard",
     "messages.ts": "one message in a thread or the chat",

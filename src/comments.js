@@ -43,6 +43,7 @@ import { inkSvg } from './widget/ink.ts';
 import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } from './widget/drag.ts';
+import { bindKeys } from './widget/keys.ts';
 import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, slowEls } from './widget/motion.ts';
 
 (() => {
@@ -120,6 +121,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get placeBar() { return placeBar; },
     get position() { return position; },
     get readable() { return readable; },
+    get recheck() { return recheck; },
     get reflow() { return reflow; },
     letPin,
     get render() { return render; },
@@ -139,6 +141,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get store() { return store; },
     get syncReads() { return syncReads; },
     get takeBack() { return takeBack; },
+    get typing() { return typing; },
     UNDO_MS,
     get tabTitle() { return tabTitle; },
     get threads() { return threads; },
@@ -2211,59 +2214,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.
   fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
-  // Letting go of Shift keeps text selectable a moment longer, so a selection made with it isn't dropped before its
-  // comment opens.
-  /** @type {any} */
-  S.shiftOff = 0;
-  // The Shift cursor (lab-shift-cur) follows the key exactly, with no such wait: let go of Shift and the pin pointer is back
-  // at once (Leo, 18 Nov). Browsers repaint a still pointer's cursor only when the page under it changes, so the element
-  // under it gets a same-frame style flip.
-  const shiftCur = (on) => {
-    const de = document.documentElement;
-    if (de.classList.contains('lab-shift-cur') === on) return;
-    de.classList.toggle('lab-shift-cur', on);
-    const t = S.mouse && document.elementFromPoint(S.mouse.x, S.mouse.y);
-    if (t instanceof HTMLElement) {
-      const was = t.style.cursor;
-      t.style.cursor = 'default';
-      void t.offsetWidth;
-      t.style.cursor = was;
-    }
-    recheck();
-  };
-  // Shift's own key events are the truth for "is Shift held": right after a Shift keyup, Linux WebKit can still send the
-  // next press with shiftKey set, which kept text selectable for a plain click (a CI-only flake). Shift pressed in
-  // another window (no keydown seen here) still counts, as shiftUp stays false.
-  S.shiftUp = false;
-  const shiftKey = (e) => {
-    if (e.key === 'Shift') S.shiftUp = e.type === 'keyup';
-    clearTimeout(S.shiftOff);
-    shiftCur(e.shiftKey);
-    if (e.shiftKey) document.documentElement.classList.add('lab-shift');
-    else S.shiftOff = setTimeout(() => (document.documentElement.classList.remove('lab-shift'), recheck()), 400);
-  };
-  addEventListener('keydown', shiftKey, true);
-  addEventListener('keyup', shiftKey, true);
-  addEventListener('pointermove', (e) => shiftCur(e.shiftKey && !S.shiftUp), { capture: true, passive: true }); // Shift pressed or let go while another window had focus
-  document.addEventListener('visibilitychange', () => shiftCur(false));
-  // A press without Shift is never a selection: drop the Shift state at once, not 400 ms later (a click right after typing
-  // a capital letter, or after a screenshot shortcut, used to select the page's text).
-  addEventListener('pointerdown', (e) => {
-    // A Shift press on the page starts new words: the caret a box of the widget leaves (at the widget, the page's end)
-    // stretched the selection from there instead, and the next quote after a comment came to nothing.
-    if (e.shiftKey && !S.shiftUp) return S.on && !typing(e) && getSelection()?.removeAllRanges(), shiftKey(e);
-    clearTimeout(S.shiftOff);
-    document.documentElement.classList.remove('lab-shift');
-    shiftCur(false);
-  }, true);
-  addEventListener('blur', () => ((S.shiftUp = false), document.documentElement.classList.remove('lab-shift'), shiftCur(false)));
-  // The same, for engines that start a selection before restyling after the press (Linux WebKit kept one now and then):
-  // in comment mode, a selection on the page starts only with Shift; fields and the widget select as always.
-  addEventListener('selectstart', (e) => {
-    const de = document.documentElement;
-    const t = /** @type {Element | null} */ (e.target instanceof Element ? e.target : /** @type {Node} */ (e.target)?.parentElement ?? null);
-    if (de.classList.contains('lab-pinning') && !de.classList.contains('lab-shift') && !t?.closest('input, textarea, select, [contenteditable], [data-lab-comments]')) e.preventDefault();
-  }, true);
+  bindKeys(W);
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
   fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
@@ -2291,11 +2242,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // so with the page unselectable all the time an open comment tinted half the page (iOS 27 simulator, 17 Nov).
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
   fonts.textContent += `@media (pointer: coarse) { html.lab-pinning.lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
-  const setAlt = (down) => document.documentElement.classList.toggle('lab-alt', Boolean(down));
-  addEventListener('keydown', (e) => e.key === 'Alt' && setAlt(true), true);
-  addEventListener('keyup', (e) => e.key === 'Alt' && setAlt(false), true);
-  addEventListener('pointermove', (e) => setAlt(e.altKey), { capture: true, passive: true }); // Option pressed while another window had focus
-  addEventListener('blur', () => setAlt(false));
 
   const start = () => {
     document.head.append(fonts, pinCursorStyle);
