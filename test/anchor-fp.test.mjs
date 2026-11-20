@@ -29,9 +29,10 @@ test('setup', async () => {
 });
 
 test('a pin keeps its fingerprint, cleaned: hashes and counts only, capped', async () => {
-  const ok = (await api({ text: 'a', anchor: { ...base, fp: { ...FP, b: 'x'.repeat(300), junk: 1 } } })).comment.anchor.fp;
+  const ok = (await api({ text: 'a', anchor: { ...base, fp: { ...FP, b: 'x'.repeat(300), a: 1, s: 3, r: ['ab12', '<b>', 'zz9', 'q'.repeat(20)], junk: 1 } } })).comment.anchor.fp;
   assert.deepEqual([ok.h, ok.t, ok.u, ok.k, ok.x, ok.l, ok.o], ['abc12', 'Team', 2, 1, 'zz9', 1, [0, 1]]);
   assert.equal(ok.b.length, 100);
+  assert.deepEqual([ok.a, ok.s, ok.r], [1, 3, ['ab12', 'zz9']], 'twins told apart, look-alikes, who stood around it: hashes only');
   assert.equal(ok.junk, undefined);
   const odd = (await api({ text: 'b', anchor: { ...base, fp: { ...FP, h: '<script>', x: 'A B', l: 99, u: -4, o: [-1, 'x'] } } })).comment.anchor.fp;
   assert.deepEqual([odd.h, odd.x, odd.l, odd.u, odd.o], ['', '', 3, 0, [0, 1]]);
