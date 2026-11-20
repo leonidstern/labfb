@@ -97,6 +97,64 @@ try {
       check(eng, 'twins in two sections: searched inside its own box first', !r.at.moved && r.at.top >= r.top && r.at.top <= r.bottom, JSON.stringify(r));
       await p.close();
 
+      // 2b. A word edited ("A" to "a)") while the same word stands in another section: the pin stays in its own section,
+      // on its span, and the other section's twin is neither shown nor saved as its new spot.
+      p = await open(ctx, `<div id="g"><h2>5 · Letters</h2><div class="card"><span class="k">A</span><span class="k">B</span></div>
+        <h2>8 · Letters in rings</h2><div class="card"><span class="k">A</span><span class="k">B</span></div></div>`);
+      r = await p.evaluate(() => {
+        const first = document.querySelector('#g .card .k').getBoundingClientRect();
+        const a = A.anchorAt(first.left + 2, first.top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        document.querySelector('#g .card .k').textContent = 'a)';
+        const node = A.findTarget(a);
+        const cards = [...document.querySelectorAll('#g .card')];
+        return { section: a.section, inside: a.inside, inFirst: cards[0].contains(node), inSecond: cards[1].contains(node), saved: A.foundAt(a), moved: A.position(a).moved || false, told: A.spotChanged(a) };
+      });
+      check(eng, 'an edited word is told to the lab (was, now, its element), in the same section', r.told?.was === 'A' && r.told.now === 'a)' && r.told.element === '<span class="k">' && !r.told.away && !r.told.gone, JSON.stringify(r.told));
+      check(eng, 'an edited word: the pin stays on its span in its own section, not on the twin in another', r.section === '5 · Letters' && r.inFirst && !r.inSecond && r.saved === null && !r.moved, JSON.stringify(r));
+      // Its span is gone too (a new first row): the nearest of its kind in the same section, still not the other one.
+      r = await p.evaluate(() => {
+        const first = document.querySelector('#g .card .k');
+        const a = A.anchorAt(first.getBoundingClientRect().left + 2, first.getBoundingClientRect().top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        a.text = 'A';
+        first.replaceWith(Object.assign(document.createElement('i'), { textContent: 'x' }));
+        const node = A.findTarget(a);
+        const cards = [...document.querySelectorAll('#g .card')];
+        return { found: node && node.textContent, inFirst: Boolean(node) && cards[0].contains(node), saved: A.foundAt(a), told: A.spotChanged(a) };
+      });
+      check(eng, 'its span removed: the lab is told its words changed, and the other section is not named as its place', r.told?.was === 'A' && !r.told.away, JSON.stringify(r.told));
+      check(eng, 'its span removed: never the twin in another section', r.inFirst && r.saved === null, JSON.stringify(r));
+      // Its section is gone altogether (the heading was removed): then another section's twin may be it.
+      r = await p.evaluate(() => {
+        const cards = document.querySelectorAll('#g .card');
+        const second = cards[1].querySelector('.k').getBoundingClientRect();
+        const a = A.anchorAt(second.left + 2, second.top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        a.section = 'A section that was removed';
+        a.selector = '#nowhere';
+        const node = A.findTarget(a);
+        return { found: node && node.textContent, anywhere: Boolean(node) };
+      });
+      check(eng, 'its section gone: found in another one, as before', r.anywhere, JSON.stringify(r));
+      // Untouched words say nothing; removed ones are told as gone.
+      r = await p.evaluate(() => {
+        const k = document.querySelectorAll('#g .card')[1].querySelector('.k');
+        const a = A.anchorAt(k.getBoundingClientRect().left + 2, k.getBoundingClientRect().top + 2);
+        a.kind = 'element';
+        delete a.quote;
+        const same = A.spotChanged(a);
+        const card = k.parentElement;
+        const sel = a.selector;
+        card.remove();
+        return { same, gone: A.spotChanged({ ...a, selector: sel }) };
+      });
+      check(eng, 'words still there: nothing to tell; element gone: told as gone', r.same === null && r.gone?.gone === true && r.gone.was === 'A', JSON.stringify(r));
+      await p.close();
+
       // 3. A pin on a word: words added before it in the same paragraph, the pin stays on the word.
       p = await open(ctx, '<p id="t" style="width:400px">Some words here and the target word sits in the middle of this line of text.</p>');
       r = await p.evaluate(() => {
