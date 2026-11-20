@@ -158,9 +158,21 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     // The box grows with its words by itself (field-sizing, styles.css).
     // Once the words scroll, the box goes to the wide layout (name and arrow on a row of their own) so the scrollbar sits at
     // the box's right edge, not left of the name; it stays wide until the words are clearly shorter (no flapping at the edge).
-    const tall = one && (text.scrollHeight > 200 || (box.classList.contains('tall') && text.scrollHeight > 160));
+    // Its tallest is the max-height the box has where it is (200 px, less in a short window), not a fixed 200: with a
+    // fixed number, words between the two were cut off at the top with no scrollbar (a long paste, Leo 20 Nov).
+    // Safari grows the field (field-sizing) but not always the box around it: a pasted message of a few lines stuck out
+    // above the box (Leo 20 Nov). A height for one layout, then none, makes it measure the box again; the field keeps
+    // growing by itself, no height left on it.
+    text.style.height = `${text.scrollHeight}px`;
+    void box.offsetHeight;
+    text.style.height = '';
+    const cap = parseFloat(getComputedStyle(text).maxHeight) || 200;
+    const tall = one && (text.scrollHeight > cap || (box.classList.contains('tall') && text.scrollHeight > cap - 40));
     if (tall !== box.classList.contains('tall')) box.classList.toggle('tall', tall);
-    text.style.overflowY = text.scrollHeight > 200 ? 'auto' : 'hidden'; // a scrollbar only once the box is at its tallest (max-height 200)
+    const over = text.scrollHeight > cap + 1;
+    text.style.overflowY = over ? 'auto' : 'hidden'; // a scrollbar only once the box is at its tallest
+    // Words added at the end (typing, a long paste) keep the cursor in view: Safari left the box scrolled to the top.
+    if (over && root.activeElement === text && text.selectionEnd === text.value.length) text.scrollTop = text.scrollHeight;
     if (glide) {
       const to = sendBtn.getBoundingClientRect();
       const timing = { duration: d.ms('base'), easing: d.ease() };

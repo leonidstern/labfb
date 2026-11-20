@@ -242,7 +242,7 @@ button.btn.undo { color: var(--_fg); }
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
 /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
 .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
-                min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; field-sizing: content; } /* it grows with its words, no script */
+                min-height: 0; max-height: min(200px, max(80px, 30vh)); overflow-y: auto; outline: none; display: block; field-sizing: content; } /* it grows with its words, no script */
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
 .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; }
