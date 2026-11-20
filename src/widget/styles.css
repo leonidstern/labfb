@@ -155,8 +155,8 @@ button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; backgroun
 .card > .body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; }
 .card > .foot { flex: none; }
 /* A question with choices (labit reply --choice), V1 "plain list" (Leo, 18 Nov): no bubble, no letters, no tags. The
-   question, the versions as a plain list of rows (the page's own words muted, "· now"), a tick on the one shown, one
-   no Keep (a tap answers). An answered question keeps its rows, the pick ticked in green. On quoted words the card opens in the
+   question, the versions as a plain list of rows (the page's own words muted, "· now"), a tick on the one shown; a tap
+   answers (no Keep button), with an undo for 5 s. An answered question keeps its rows, the pick ticked in green. On quoted words the card opens in the
    margin (.margin) and a thin line (.tie) runs from the words to it. */
 .msg.asks, .msg.asks[data-agent] { max-width: none; align-self: stretch; background: none; padding: 0; border-radius: 0; } /* over the agent's wash */
 .msg.asks > b { display: none; }
@@ -168,8 +168,8 @@ button.choice { display: flex; align-items: baseline; gap: 8px; width: 100%; mar
                 background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background var(--_fade); }
 button.choice::before { content: ''; flex: none; width: 14px; text-align: center; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--_fg); }
 button.choice.on { background: var(--_soft); } button.choice.on::before { content: '✓'; } /* on: the rows' soft wash, and the tick of a pick-several list */
-button.choice:hover:not(:disabled) { background: var(--_soft); }
-button.choice:disabled { cursor: default; opacity: .4; }
+button.choice:hover:not(:disabled, [aria-disabled]) { background: var(--_soft); }
+button.choice:disabled, button.choice[aria-disabled] { cursor: default; opacity: .4; } /* aria-disabled while a pick waits: a focused row keeps its focus */
 button.choice.now { color: var(--_muted); }
 button.choice.picked { opacity: 1; }
 button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
@@ -179,12 +179,9 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .choice .cx { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
 .choice .ln { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .choice .hint { font-size: 12px; letter-spacing: 0; line-height: 1.3; color: var(--_muted); overflow-wrap: anywhere; } /* a short description under the words (--hint) */
-button.choice.else { color: var(--_muted); } button.choice.else.armed { background: var(--_soft); } /* "Something else…": the last row, muted */
-button.choice.else.picked { color: var(--_fg); }
-.choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); min-height: 1.35em; padding-left: 10px; } /* always a line tall: a note never makes the card taller */
+.choices .note { font-size: 12px; letter-spacing: 0; color: var(--_muted); min-height: 1.35em; padding-left: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* always one line tall: a note never makes the card taller */
 .choices .note.idle { visibility: hidden; }
 .choices .note .btn.undo { margin-left: 1px; }
-              font-size: 12px; font-weight: 600; letter-spacing: 0; cursor: pointer; transition: opacity var(--_fade); }
 .card.margin { width: 280px; }
 /* Tied to its pin (thread.ts tieToPin): the browser keeps it there. Where the script puts it, from the pin's
    corner (--lab-cx / --lab-cy; a box's other place --lab-ux / --lab-uy); above (its bottom at --lab-ay), or in from the

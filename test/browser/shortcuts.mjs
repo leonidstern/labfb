@@ -140,7 +140,7 @@ try {
       await a.goto(B + '/ask');
       await sleep(1200);
       const sh = (fn) => a.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot), fn);
-      const row = () => sh('return [...r.querySelectorAll(".choice:not(.else)")].findIndex((x) => x.classList.contains("on"))');
+      const row = () => sh('return [...r.querySelectorAll(".choice")].findIndex((x) => x.classList.contains("on"))');
       const note = () => sh('return r.querySelector(".choices .note")?.textContent.trim()');
       const picks = async () => (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => c.picked);
       await sh('r.querySelector("button.pin").click()');
@@ -176,6 +176,18 @@ try {
       const got = await picks();
       check(eng, '1 picks the first choice and sends after 5 s', got.length === 1 && got[0].picked.n === 0 && got[0].picked.of === q.id && /^Picked A: one/.test(got[0].text), JSON.stringify(got.map((c) => [c.picked, c.text])));
       check(eng, 'no Keep button', await sh('return !r.querySelector("button.keep")'));
+      // A question in the page chat has no keys: 1 to 6 pick only the open thread card's question, so 1 keeps its pointer toggle.
+      await a.keyboard.press('Escape'); // the thread card closes
+      await sleep(300);
+      const chatRoot = (await send({ name: 'leo', text: 'and the footer?', anchor: { kind: 'page', width: 1000, height: 700, dpr: 1 } })).comment;
+      await send({ name: 'Claude', text: 'Footer: which?', parent: chatRoot.id, choices: ['Dark', 'Light'], recommend: 1 }, true);
+      await sleep(1200);
+      await sh('r.querySelector(".chat-btn, button[aria-label^=chat]")?.click()'); // the chat
+      await sleep(700);
+      const inChat = await sh('return r.querySelectorAll(".msgs .choices.live").length');
+      await a.keyboard.press('1');
+      await sleep(400);
+      check(eng, 'a question in the chat is not answered by 1 to 6', inChat === 1 && (await sh('return r.querySelector(".msgs .choices .note")?.textContent.trim()')) === '' && (await picks()).length === 1, String(inChat));
       // With the pointer switched on by 1 (comment / pointer) when no question is open: 1 still toggles it.
       await a.close();
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/ask', action: 'delete', id: c.id }) });

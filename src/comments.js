@@ -542,7 +542,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
-        res = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ page: S.page, ...payload }) });
+        // A pick (thread.ts) may go as the page is hidden or closed: keepalive lets the request finish.
+        res = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ page: S.page, ...payload }), keepalive: payload.picked !== undefined });
       } catch {
         if (tries >= 150) throw new Error("couldn't reach the lab; your text is still here");
         await new Promise((r) => setTimeout(r, 2000));

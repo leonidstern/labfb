@@ -146,23 +146,6 @@ test('--hint follows its choice and is stored as hints', async () => {
   assert.equal((await post({ name: 'leo', text: 'hm', parent: pin.id, hints: ['x'] })).hints, undefined);
 });
 
-// "Something else" (picked n -2): the person's own words answer the question; the agent reads them as the pick.
-test('picked -2 is something else, in their words', async () => {
-  const pin = await post({ name: 'leo', text: 'which colour?', anchor: { kind: 'text', selector: '#x', x: 0.5, y: 0.5, quote: { exact: 'Hi', prefix: '', suffix: '' } } });
-  const sent = await cli('reply', pin.id, 'Which colour?', '--choice', 'Red', '--choice', 'Blue');
-  assert.equal(sent.code, 0, sent.out);
-  const ask = (await thread()).find((c) => c.text === 'Which colour?');
-  await cli('wait', '--timeout', '5');
-  assert.match(await (await fetch(`${B}/_lab/agent/bar`)).text(), /^ {2}picked: not yet$/m);
-  const odd = await post({ name: 'leo', text: 'x', parent: ask.id, to: ask.id, picked: -3 }); // out of range: just words
-  assert.equal(odd.picked, undefined);
-  const else_ = await post({ name: 'leo', text: 'Green, but a bit darker than the logo', parent: ask.id, to: ask.id, picked: -2 });
-  assert.deepEqual(else_.picked, { of: ask.id, n: -2 });
-  assert.match(await (await fetch(`${B}/_lab/agent/bar`)).text(), /^ {2}picked: something else: Green, but a bit darker than the logo \(leo\)$/m);
-  const w = await cli('wait', '--timeout', '5');
-  assert.match(w.out, new RegExp(`Green, but a bit darker.*\\(their own words, "something else", on your question id ${ask.id}\\)`, 's'));
-});
-
 // A note on a spot or an element has no quoted words: the choices show as rows, and the agent is told so.
 test('a note without quoted words gets the note', async () => {
   const pin = await post({ name: 'leo', text: 'which colour?', anchor: { kind: 'element', selector: '#x', x: 0.5, y: 0.5 } });

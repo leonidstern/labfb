@@ -1,6 +1,6 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
 import { stickToEnd } from './stick.ts';
-import { choicesEl, sendElse, takeArmed } from './thread.ts';
+import { choicesEl } from './thread.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -110,10 +110,7 @@ export function drawChat() {
         placeholder: 'message',
         draftKey: `lab-typing:${W.S.page}:chat`,
         onSubmit: async (name, text) => {
-          // "Something else…" tapped under a question: these words answer it (picked -2), not a new message.
-          const to = takeArmed();
-          const answer = to ? await sendElse(to, name, text) : null;
-          const { comment } = answer ? { comment: answer } : await W.send({ name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } });
+          const { comment } = await W.send({ name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } });
           W.S.comments.push(comment);
           W.markSeen([comment]);
           box.scrollTop = box.scrollHeight;

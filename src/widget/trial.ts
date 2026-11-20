@@ -174,15 +174,24 @@ export function triesInPlace(c) {
 // Phones keep their sheet. Returns whether the card is placed by the quote, so the caller leaves it be.
 const MARGIN_W = 280;
 const GAP = 8;
-/** The card kept inside the window: GAP from its left edge (and right), and never past its bottom (nor above its top). */
-function clampToView(card) {
+/** The card kept inside the window: GAP from its left and right edges always; from the top and bottom only when that
+ *  does not put it over the quoted words (rects, client px), else it stays where it is and the page can scroll. */
+function clampToView(card, rects: DOMRect[]) {
   const w = card.offsetWidth;
   const h = card.offsetHeight;
   const view = document.documentElement;
-  const left = parseFloat(card.style.left);
-  if (Number.isFinite(left)) card.style.left = `${Math.max(scrollX + GAP, Math.min(left, scrollX + view.clientWidth - w - GAP))}px`;
+  // Its left is inline (a margin card) or the browser's, from its pin (a card under the words, which loses that tie
+  // right after): read where it is now and keep it there.
+  const inline = parseFloat(card.style.left);
+  const left = Number.isFinite(inline) ? inline : card.getBoundingClientRect().left + scrollX;
+  const into = Math.max(scrollX + GAP, Math.min(left, scrollX + view.clientWidth - w - GAP));
+  if (!Number.isFinite(inline) || Math.abs(into - left) > 1) card.style.left = `${into}px`;
   const top = parseFloat(card.style.top);
-  if (Number.isFinite(top)) card.style.top = `${Math.max(scrollY + GAP, Math.min(top, scrollY + view.clientHeight - h - GAP))}px`;
+  if (!Number.isFinite(top)) return;
+  const to = Math.max(scrollY + GAP, Math.min(top, scrollY + view.clientHeight - h - GAP));
+  const x = into;
+  const over = (y: number) => rects.some((r) => r.bottom + scrollY > y && r.top + scrollY < y + h && (r.right + scrollX > x && r.left + scrollX < x + w));
+  if (to !== top && !over(to)) card.style.top = `${to}px`;
 }
 export function placeAsk(card, c): boolean {
   if (W.coarse) return false;
@@ -198,14 +207,14 @@ export function placeAsk(card, c): boolean {
     const h = card.offsetHeight;
     card.classList.add('under');
     card.style.top = `${under + h > W.contentEnd() ? Math.max(scrollY + 8, rects[0].top + scrollY - 10 - h) : under}px`;
-    clampToView(card);
+    clampToView(card, rects);
     return true;
   }
   card.classList.add('margin');
   const top = rects[0].top + scrollY;
   card.style.left = `${left + scrollX}px`;
   card.style.top = `${Math.max(scrollY + 8, Math.min(top, W.contentEnd() - card.offsetHeight - 8))}px`;
-  clampToView(card);
+  clampToView(card, rects);
   card.style.transformOrigin = '0 14px';
   const tie = W.el('div', { class: 'tie', 'aria-hidden': 'true' });
   W.layer.append(tie);

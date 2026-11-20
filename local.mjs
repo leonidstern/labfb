@@ -99,8 +99,7 @@ For the agent, from the project (any folder under it):
   labit reply <id> "question" --choice "A words" [--hint "short why"] --choice "B words" [--choice …] [--recommend B]
       Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each one in the sentence
       first) and the pick comes back in your next wait as "Picked B: …". --hint (up to 120 characters, right after the
-      --choice it describes) shows as a small second line. --recommend marks your own pick. The person may also answer
-      "something else" in their own words: the wait then shows "picked: something else: <their words>".
+      --choice it describes) shows as a small second line. --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
@@ -1623,7 +1622,7 @@ function threadText(page, root, replies, fresh, spot, when) {
   for (const r of replies.slice(from)) {
     const state = r.session ? STATE[r.intent] : '';
     // A pick on a question with choices says which question it answers (the words already say which choice).
-    const pick = r.picked ? (r.picked.n === -2 ? ` (their own words, "something else", on your question id ${r.picked.of})` : ` (their pick on your question id ${r.picked.of})`) : '';
+    const pick = r.picked ? ` (their pick on your question id ${r.picked.of})` : '';
     out.push(`- ${who(r)} · ${when(r)}${state ? ` · ${state}` : ''} · id ${r.id}: ${body(r.text)}${pick}${fresh.has(r.id) ? '  ← new' : ''}`);
   }
   return out.join('\n');
