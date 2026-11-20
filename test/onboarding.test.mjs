@@ -200,5 +200,5 @@ test('a newer version on npm is announced as the lab starts', async () => {
 
 test('the npm package ships the widget and the lab screens\' stylesheet', () => {
   const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  for (const f of ['public/_lab/comments.js', 'public/_lab/lab.css']) assert.ok(pkg.files.includes(f), `${f} is in package.json files`);
+  for (const f of ['public/_lab/comments.js.br', 'public/_lab/lab.css']) assert.ok(pkg.files.includes(f), `${f} is in package.json files`);
 });
