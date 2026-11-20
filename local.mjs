@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { apiOn, BODY_MAX, callApi, decoderFor, encodingFor, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
+import { apiOn, BODY_MAX, callApi, decoderFor, encodingFor, onLan, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
@@ -989,12 +989,13 @@ const sameOrigin = (req) => {
 };
 const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 // --wifi listens on every address, and a Mac on IPv6 has public ones (the Host check is easy to fake, so it isn't a lock):
-// only this computer and devices on the local network get in, whatever the router's firewall lets through.
+// only this computer and devices on the local network get in, whatever the router's firewall lets through. (The local
+// network is the private ranges, and what this computer's own interfaces are on: `labit invite` prints those addresses.)
 const nearby = (req) => {
   const a = String(req.socket.remoteAddress || '').toLowerCase().replace(/^::ffff:/, '');
   if (a === '::1' || a.startsWith('127.')) return true;
   if (!WIFI) return false;
-  return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a));
+  return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a)) || onLan(a);
 };
 // A phone on the same wifi may come from its public IPv6 address: it shares this Mac's /64 network prefix.
 const prefix64 = (a) => {

@@ -1,6 +1,7 @@
 // Shared by local.mjs and bench/serve.mjs: the comments API on an in-memory store, and plain file serving.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import zlib from 'node:zlib';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 
@@ -33,6 +34,21 @@ export async function callApi(fn: Handler, req: IncomingMessage, url: string, ex
   // Always the socket's own address: a forwarded-for header from the client would let it pick its own rate-limit key.
   headers.set('x-forwarded-for', req.socket.remoteAddress || 'unknown');
   return fn(new Request(url, { method: req.method, headers, body: /GET|HEAD/.test(req.method || '') ? undefined : Buffer.concat(chunks) }));
+}
+
+// Whether an IPv4 address is a device on the same network as this computer: the same subnet as one of its own
+// interfaces (a hotspot or an office may hand out addresses that are not the private ranges), or in 100.64.0.0/10
+// (Tailscale, carrier NAT). A subnet wider than a /16 does not count, so a computer with a public address on a big
+// network does not let the neighbourhood in.
+const num = (ip: string) => ip.split('.').reduce((n, x) => n * 256 + Number(x), 0);
+export function onLan(addr: string, nets: ReturnType<typeof os.networkInterfaces> = os.networkInterfaces()): boolean {
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(addr)) return false;
+  if ((num(addr) >>> 22) === num('100.64.0.0') >>> 22) return true;
+  return Object.values(nets).flat().some((n) => {
+    if (!n || n.family !== 'IPv4' || n.internal) return false;
+    const mask = num(n.netmask);
+    return mask >= num('255.255.0.0') && (num(addr) & mask) === (num(n.address) & mask);
+  });
 }
 
 // A page's text is read in the charset it says it has (the Content-Type's, else its own <meta>): a page saved as
