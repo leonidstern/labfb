@@ -18,6 +18,7 @@ A round of fixes and trims on top of 0.7.0: pins that stay put, questions you an
 - **One board.** The board page and the board that opens over a page are the same view; pin placing and panning on a board no longer lay the page out once per pin.
 - **Phones.** A thread or the chat opens at the right message and stays there, the sheet opens taller, the bars and the listening pill follow a sheet away and back.
 - **Steadier cards.** A pin and its card no longer lift on hover or pop when placed, a pin at the right edge opens its box to its left, a long paste in the reply box scrolls inside it, the section bar only scrolls on a tap and marks only new content, a pin whose words change stays in its section and the agent is told.
+- **Links that work on your phone.** A link to this lab in a reply (`localhost`, `127.0.0.1`) opens on the device you read it on, and a link to the same page is a `#section` shortcut that scrolls there, so nothing points at a dead address any more; the skill tells agents to write `#section`.
 - **Shortcuts.** The ¼ speed key can be rebound like the others; ⌥ and a moving cursor no longer send the motion control far away.
 
 ### Removed
