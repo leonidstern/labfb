@@ -370,7 +370,7 @@ button.btn.undo { color: var(--_fg); }
        background: var(--_green-fg); color: var(--_bg); box-shadow: 0 0 0 1.5px var(--_bg); font: 700 9.5px/1 system-ui, sans-serif;
        letter-spacing: 0; pointer-events: none; animation: lab-arrive var(--_t-quick) var(--_ease-out); }
 /* one floating pill (lab.css .lab-button is the same) */
-.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 9px 12px; background: var(--_bg); box-shadow: var(--_shadow);
+.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 0 12px; min-height: 37px; /* the bar's height, so the two line up */ background: var(--_bg); box-shadow: var(--_shadow);
         font: inherit; font-size: 13px; letter-spacing: -.006em; white-space: nowrap;
         display: inline-flex; gap: 6px; align-items: center; color: var(--_fg); text-decoration: none; cursor: default; }
 .listener span { color: var(--_muted); }
