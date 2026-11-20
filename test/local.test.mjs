@@ -650,3 +650,75 @@ test('stale: a pin the agent said it is on, with no sign since, comes back in it
     rm([dir, home]);
   }
 });
+
+// A progress line counts as a sign of work, whoever wrote it: the agent (labit reply --progress) or the plugin's hook
+// (a POST with the agent key and no session, "helper: …" from a subagent's tool calls). The "no sign" clock restarts at it.
+test('stale: a progress line, the agent\'s or the hook\'s, is a sign of work: no reminder while it is newer than the window', async () => {
+  const dir = fs.realpathSync(tmp('stale-progress'));
+  const home = tmp('home');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
+  const port = String(claimPort(4810, 90));
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '2000', LAB_SETTLE_MS: '0' };
+  const lab = spawnLab(dir, port, { env });
+  const base = `http://localhost:${port}`;
+  const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
+  const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const pin = async (text) => (await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page: '/index', name: 'Leo', text, anchor }) })).json()).comment.id;
+  // What the plugin's hook sends: the agent's key, no session.
+  const hook = (id, text) => fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', host: `localhost:${port}`, 'x-lab-admin': serverJson(dir).agent, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/index', action: 'progress', id, text }) });
+  try {
+    await answers(base + '/', { tries: 50, fail: false });
+    const id = await pin('make it red');
+    assert.match(await cli(['wait', '--timeout', '5']), new RegExp(id), 'handed over');
+    // No on-it, no reply: only the hook's lines, each newer than the window when the next wait looks.
+    await sleep(1500);
+    assert.equal((await hook(id, 'helper: build the page')).status, 200);
+    await sleep(1500); // 3 s since the hand-off, 1.5 s since the line
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'the hook line is a sign');
+    await sleep(1000);
+    assert.equal((await hook(id, 'running npm test')).status, 200);
+    await sleep(1500);
+    assert.doesNotMatch(await cli(['wait', '--timeout', '1']), /Still waiting/, 'a second line, again within the window');
+    // Truly no sign for longer than the window: the reminder, with how long and the last line.
+    await sleep(2300);
+    const out = await cli(['wait', '--timeout', '3']);
+    assert.match(out, /^# Still waiting for your answer/m);
+    assert.match(out, new RegExp(`id ${id} "make it red" · no sign for 0 min, last: running npm test`));
+  } finally {
+    lab.kill();
+    rm([dir, home]);
+  }
+});
+
+test('a hand-off of several pins names the pins that point at the same file, only for groups of two or more', async () => {
+  const dir = fs.realpathSync(tmp('same-file'));
+  const home = tmp('home');
+  for (const name of ['index', 'options', 'solo']) fs.writeFileSync(path.join(dir, `${name}.html`), `<!doctype html><title>${name}</title><h1 id="t">${name}</h1>`);
+  const port = String(claimPort(4810, 90));
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_SETTLE_MS: '0' };
+  const lab = spawnLab(dir, port, { env });
+  const base = `http://localhost:${port}`;
+  const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
+  const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const pin = async (page, text) => (await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page, name: 'Leo', text, anchor }) })).json()).comment.id;
+  try {
+    await answers(base + '/', { tries: 50, fail: false });
+    // One pin: no group line.
+    const one = await pin('/solo', 'a lone pin');
+    const lone = await cli(['wait', '--timeout', '5']);
+    assert.match(lone, new RegExp(one));
+    assert.doesNotMatch(lone, /Same file:/, 'one pin is no group');
+    await cli(['reply', one, 'ok', '--done']);
+    // Three on options, two on index, one on solo: two groups, solo left out.
+    for (const [page, text] of [['/options', 'one'], ['/index', 'two'], ['/options', 'three'], ['/solo', 'four'], ['/options', 'five'], ['/index', 'six']]) await pin(page, text);
+    const out = await cli(['wait', '--timeout', '5']);
+    assert.match(out, /^Same file: options\.html: 1, 2, 3$/m);
+    assert.match(out, /^Same file: index\.html: 1, 2$/m);
+    assert.doesNotMatch(out, /Same file: solo/);
+    assert.equal((out.match(/^Same file:/gm) || []).length, 2);
+    assert.ok(out.indexOf('Same file: options') < out.indexOf('## 1.'), 'said before the pins');
+  } finally {
+    lab.kill();
+    rm([dir, home]);
+  }
+});
