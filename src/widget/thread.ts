@@ -510,7 +510,7 @@ export function choicesEl(c, ask, host, chat = false) {
       const line = W.el('span', { class: 'ln' });
       line.append(words, ...(nw ? [nw] : []));
       const cx = W.el('span', { class: 'cx' });
-      cx.append(line, W.el('span', { class: 'hint', dir: 'auto' }, hint));
+      cx.append(line, W.el('span', { class: 'desc', dir: 'auto' }, hint));
       b.append(cx);
     } else b.append(words, ...(nw ? [nw] : []));
     if (now) b.classList.add('now');
