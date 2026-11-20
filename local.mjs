@@ -16,7 +16,7 @@ import { pageIds } from './lib/ids.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive } from './lib/labcall.ts';
-import { DO_IT, UNMATCHED, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
+import { DO_IT, PROGRESS_MS, UNMATCHED, numberOf, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
@@ -48,13 +48,14 @@ const newerBuild = () => {
 const HELP = `labit ${VERSION}: comment on local pages, your agent (Claude, Codex, Cursor…) answers on the pins.
 Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
 
-  labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
+  labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi | --no-wifi] [--no-open] [folder]
       Run it in your project. With a dev server (Astro, Next, Vite…) running there, comments go on top of it: it
       finds the one run from this folder, even with other projects' servers running (--proxy <port> picks one).
       A folder of HTML files is served as it is at http://localhost:4400 and reloads when files change. The folder
       is this one unless you name another.
       --wifi lets phones and laptops on the same wifi comment as guests, each with a one-time link (labit invite).
-      The pages still travel in the clear.
+      The pages still travel in the clear. On a lab already running for the folder, --wifi turns it on in that lab
+      (it restarts in place: same port, name, comments), and --no-wifi turns it off; no second lab starts.
       A folder a running lab already serves opens in that lab; --new starts a separate one.
       --name sets the lab's topic ("Lab navigation"), shown in labs & pages (⌘K) instead of the folder, and kept
       in .lab/state.json.
@@ -78,7 +79,8 @@ Run it as npx @leonidstern/labit …, or node local.mjs … from a clone.
   labit preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
   labit invite [name] [--page /path]
-      A one-time link for a phone on the same wifi (--wifi labs only): one use, ten minutes. Hand it over as a link.
+      A one-time link for a phone on the same wifi: one use, ten minutes. Hand it over as a link. On a lab that is
+      open to this computer only it first turns the wifi on in that lab (it restarts in place, same address).
       The link carries a name — the one you give, or yours — so the phone that opens it starts out named.
 
 For the agent, from the project (any folder under it):
@@ -190,6 +192,7 @@ if (fromFile('proxy')) opts.proxy = SET.proxy;
 if (fromFile('folder') && !pos.length) pos.push(SET.folder);
 if (fromFile('open') && !SET.open) opts['no-open'] = true;
 if (fromFile('wifi') && SET.wifi) opts.wifi = true;
+if (opts['no-wifi']) opts.wifi = false;
 if (fromFile('batchSeconds')) process.env.LAB_SETTLE_MS = String(SET.batchSeconds * 1000);
 if (fromFile('stopListeningAfterMinutes')) process.env.LAB_CLOSE_GRACE = String(SET.stopListeningAfterMinutes * 60);
 if (fromFile('remindAfterMinutes')) process.env.LAB_REMIND_MS = String(SET.remindAfterMinutes * 60000);
@@ -353,16 +356,24 @@ const ignoreLab = () => {
 ignoreLab();
 
 // One server per folder: two would overwrite each other's comments.
-const alreadyHere = (running) => {
+const alreadyHere = async (running) => {
   // Started by the preview pane on another port: say why it can't open, so the pane doesn't wait on nothing.
   if (process.env.PORT && !opts.port && Number(process.env.PORT) !== running.port)
     die(`[lab] already running for this folder at http://localhost:${running.port}. Stop that one (Ctrl+C) to open it here.`);
+  // --wifi / --no-wifi on a lab that runs: that lab switches (same port, name, comments), never a second one.
+  if (opts.wifi !== undefined) {
+    const { setWifi } = await import('./lib/labcall.ts');
+    const done = await setWifi(ROOT, Boolean(opts.wifi), {}, (m) => console.log(`[lab] ${m}`));
+    if ('error' in done) die(`[lab] could not switch the wifi ${opts.wifi ? 'on' : 'off'}: ${done.error}`);
+    console.log(`[lab] ${done.changed ? 'wifi is now' : 'already running for this folder, wifi is'} ${opts.wifi ? `on: http://localhost:${running.port} (a phone needs a one-time link: ${CMD} invite)` : 'off: http://localhost:' + running.port}`);
+    process.exit(0);
+  }
   console.log(`[lab] already running for this folder: http://localhost:${running.port}`);
   process.exit(0);
 };
 {
   const running = await runningServer();
-  if (running) alreadyHere(running);
+  if (running) await alreadyHere(running);
 }
 // .lab/lock is taken before the store is read and held until this lab exits, so two started at once can't both load
 // the comments and then overwrite each other's (server.json comes only once the lab listens). A lock whose holder
@@ -387,9 +398,9 @@ const readLock = () => {
 for (let tries = 0; !takeLock(); tries++) {
   const held = readLock();
   // The holder answers (on the port it wrote in the lock once it listened): this folder's lab is running.
-  if (held?.port && (await answersHere(held.port))) alreadyHere(held);
+  if (held?.port && (await answersHere(held.port))) await alreadyHere(held);
   const running = await runningServer();
-  if (running) alreadyHere(running);
+  if (running) await alreadyHere(running);
   // Gone, or alive a minute without answering (a lab that hangs, or another program that got its pid): taken over.
   // Only the lock as it was read is removed, so two labs taking over the same stale lock can't remove each other's.
   // A lock with nothing readable in it yet is a lab that has only just made it; left like that for seconds, a dead one.
@@ -1660,7 +1671,8 @@ async function unseen(scope = pages(), who = '') {
   // a pin after 5 minutes, and the agent hears of it after these 3. sign: [when it last showed a sign, its last progress line].
   const signOf = (c) => {
     const [person, agent] = [lastBy(c, false), lastBy(c, true)];
-    const [at, line] = [c.progress?.at || '', c.progress?.text];
+    // A status line is a sign only while it is renewed (PROGRESS_MS); lapsed, the pin is as quiet as before it.
+    const [at, line] = [now - Date.parse(c.progress?.at) < PROGRESS_LIFE ? c.progress.at : '', c.progress?.text];
     if (person >= agent) return [[c.handedAt, at].sort().pop(), line];
     return c.progress || commentsOf(c._page).some((r) => r.parent === c.id && r.session && r.intent === 'working' && r.createdAt === agent) ? [[agent, at].sort().pop(), line] : null;
   };
@@ -1873,6 +1885,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
 // A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made one after another go
 // over together, in one round trip, instead of one wake-up each.
 const SETTLE_MS = Number(process.env.LAB_SETTLE_MS ?? 2000);
+const PROGRESS_LIFE = Number(process.env.LAB_PROGRESS_MS ?? PROGRESS_MS); // a status line is a sign this long
 const REMIND_MS = Number(process.env.LAB_REMIND_MS ?? 180000); // a handed pin with no answer comes back after this
 let settleTimer = null;
 function wake() {
@@ -1902,7 +1915,8 @@ const setComment = (page, id, patch) => {
 };
 
 function announce(page, c) {
-  const n = commentsOf(page).filter((x) => !x.parent && !x.resolved).findIndex((x) => x.id === (c.parent || c.id)) + 1;
+  const all = commentsOf(page);
+  const n = numberOf(all.find((x) => x.id === (c.parent || c.id)) || c, all);
   console.log(`[lab] ${c.parent ? `reply on ${n}` : `comment ${n}`} on ${fileFor(page) || page} · ${c.name} (${c.from}): ${c.text.replace(/\s+/g, ' ')}`);
 }
 
@@ -2328,6 +2342,20 @@ const handler = async (req, res) => {
       }
       return res.writeHead(204).end();
     }
+    // `labit invite` / `labit --wifi` / `--no-wifi`: this lab starts again in its own place with the wifi on or off
+    // (handOver, as for a newer build: same folder, port and name; waits and open pages carry on). 200 when it already is.
+    if (pathname === '/_lab/wifi' && req.method === 'POST') {
+      if (!isAgent(req)) return res.writeHead(403).end('forbidden');
+      const on = (await sent(req)).on === true;
+      if (on === WIFI) return answer(res, { changed: false });
+      if (process.env.LAB_DEV || process.platform === 'win32') return res.writeHead(409).end(`this lab can't restart itself: stop it and start it again with ${on ? '--wifi' : '--no-wifi'}`);
+      if (Date.now() - switchedAt > 30000) {
+        switchedAt = Date.now();
+        console.log(`[lab] turning the wifi ${on ? 'on' : 'off'}: starting this lab again in its place`);
+        handOver(process.execPath, [...process.execArgv, ENTRY], [on ? '--wifi' : '--no-wifi']);
+      }
+      return res.writeHead(202).end('switching');
+    }
     if (pathname === '/_lab/invite') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
       if (!WIFI) return res.writeHead(404).end('this lab is open to this computer only');
@@ -2414,14 +2442,14 @@ const handler = async (req, res) => {
       const heard = new Set(waiters.flatMap((w) => scopeOf(w)));
       const fresh = freshIn(pages().filter((p) => !heard.has(p)));
       const ids = fresh.map(({ c }) => c.id).sort();
-      // The threads handed to the agent and being worked on (no answer since the person's last words, or only "on it"):
-      // the plugin's hook keeps a progress line on them while its session (helpers too) runs tools.
+      // The threads someone claimed (a status line from --progress, or an "on it" reply, since the person's last words):
+      // the plugin's hook renews that line while its own session runs tools. A pin nobody claimed gets none.
       const working = pages().flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).flatMap((c) => {
         const msgs = commentsOf(page).filter((r) => r.parent === c.id);
         const lastAt = (mine) => [c, ...msgs].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
         const reply = msgs.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).pop();
         const answered = reply && reply.createdAt > lastAt(false);
-        return !answered || reply.intent === 'working' ? [{ page, id: c.id }] : [];
+        return answered ? (reply.intent === 'working' ? [{ page, id: c.id }] : []) : c.progress ? [{ page, id: c.id }] : [];
       }));
       return answer(res, {
         working,
@@ -2955,7 +2983,7 @@ server.on('listening', async () => {
   await persist();
   console.log(`[lab] ${origin}  ·  labit ${VERSION}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
   console.log(WIFI ? `[lab] other devices on this wifi need a one-time link: run \`${CMD} invite\`, or ask Claude for one`
-    : '[lab] only this computer can open it (--wifi lets phones on the same wifi in)');
+    : `[lab] only this computer can open it (\`${CMD} invite\` lets a phone on the same wifi in)`);
   console.log(`[lab] your agent: run \`${CMD} wait\` in the background from ${ROOT}; it ends with the next comment.`);
   console.log(`[lab] agents without the labit plugin or skill: read \`${CMD} skill\` once, for how to answer pins.`);
   // Open a page, not a list of folders: the project's main page when there's no index.html at the top.
@@ -3017,15 +3045,16 @@ process.on('SIGUSR2', () => {
   followed = true;
 });
 // Starts `command` (node and a script, or npx and a version) in this lab's place and goes once it says it loaded.
-const handOver = (command, first) => {
+let switchedAt = 0;
+const handOver = (command, first, more = []) => {
   /** @type {number | 'ignore'} */
   let out = 'ignore';
   try {
     out = fs.openSync(path.join(LAB, 'lab.log'), 'a');
   } catch {}
-  const args = process.argv.slice(2).filter((a) => a !== '--no-open');
+  const args = process.argv.slice(2).filter((a) => a !== '--no-open' && !(more.length && /^--(no-)?wifi$/.test(a)));
   followed = false;
-  spawn(command, [...first, ...args, '--no-open', '--port', String(PORT)], {
+  spawn(command, [...first, ...args, ...more, '--no-open', '--port', String(PORT)], {
     cwd: process.cwd(),
     env: { ...process.env, LABIT_TAKEOVER: String(process.pid), LABIT_EXIT_WITH_PARENT: '', LABIT_EDGE: '' },
     detached: true,

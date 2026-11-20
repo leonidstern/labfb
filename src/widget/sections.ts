@@ -236,7 +236,7 @@ export function startSections() {
   const chip = (s: Sec) => {
     const b = el('button', { class: 'sb-chip', type: 'button' });
     b.dataset.s = s.key;
-    b.append(el('i', { class: 'sb-dot' }), el('span', { class: 'sb-t' }, s.label), el('span', { class: 'sb-w' }));
+    b.append(el('span', { class: 'sb-t' }, s.label), el('span', { class: 'sb-w' }));
     b.onclick = () => {
       read(s);
       dispatchEvent(new CustomEvent('lab-goto', { detail: s.h })); // goes there, as a #id link in a message does

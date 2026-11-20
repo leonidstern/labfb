@@ -162,7 +162,7 @@ test('commands that name nothing, or something that is not there, say so in a li
     [['reply', '-1', 'x'], /No open comment|Unknown option/], [['reply', '__proto__', 'x'], /No open comment|thread not found/], [['reply', 'constructor', 'x'], /No open comment|thread not found/], [['resolve'], /No open comment/],
     [['reply', p.id], /Reply text is missing/], [['reply', p.id, '   '], /required|missing|Could not reply/], [['reply', p.id, 'x', '--resolv'], /Unknown option --resolv/],
     [['reply', p.id, 'x', '--done', '--question'], /one of --done/], [['reply', p.id, 'q', '--choice', 'only one'], /at least two/], [['reply', p.id, 'q', '--recommend', 'B'], /goes with --choice/],
-    [['pin'], /Say where/], [['pin', 'h1'], /Pin text is missing/], [['pin', 'h1', 'x', '--page', '/../../etc/passwd'], /No page/], [['invite'], /this computer only/],
+    [['pin'], /Say where/], [['pin', 'h1'], /Pin text is missing/], [['pin', 'h1', 'x', '--page', '/../../etc/passwd'], /No page/],
     [['board', 'nope'], /Usage/], [['board', 'list', '../../package'], /No board/],
   ]) {
     const r = await cli(lab, 'sess-a', ...args);

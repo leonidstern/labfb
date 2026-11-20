@@ -8,9 +8,9 @@ import path from 'node:path';
 import { choiceSpills, FOREGROUND_CAP, letter, listenPages, replyChoices, replyIntent, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
 import { askPages, keyFor, runningLabs, type Lab } from './labs.ts';
-import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
+import { findLab, labAck, labCall, setWifi, WAIT_SAID } from './labcall.ts';
 import { read as readBoard } from './board.ts';
-import { UNMATCHED } from './schema.mjs';
+import { numberOf, UNMATCHED } from './schema.mjs';
 
 type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
 
@@ -250,8 +250,15 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // A link for a phone on the same wifi: one use, ten minutes. Claude hands it over in chat; the lab must be --wifi.
     // `invite <name>` says who is coming, so their phone starts out named; with none, your own name goes along.
     if (cmd === 'invite') {
-      const out = await call('/_lab/invite', { name: [ref, ...words].filter(Boolean).join(' '), page: opts.page || '' });
-      if (out.status === 404) die('This lab is open to this computer only. Start it with --wifi to let a phone in.');
+      const ask = () => call('/_lab/invite', { name: [ref, ...words].filter(Boolean).join(' '), page: opts.page || '' });
+      let out = await ask();
+      // A lab open to this computer only switches to wifi itself (same port, name and comments): never a second lab.
+      if (out.status === 404) {
+        const done = await setWifi(dir, true, session, console.log);
+        if ('error' in done) die(`Could not turn wifi on for this lab: ${done.error}`);
+        console.log('On the wifi only a device with a one-time link gets in, and the pages travel as plain http. `' + CMD + ' --no-wifi` turns it off again.\n');
+        out = await ask();
+      }
       if (out.status >= 300) die(`Could not make a link: ${out.text}`);
       const { links, name } = JSON.parse(out.text);
       console.log(links.join('\n'));
@@ -455,8 +462,9 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       const hits = Object.entries(data)
         .filter(([page]) => !want || page === want)
         .map(([page, list]) => {
-          const open = Object.values(list).filter((c) => !c.parent && !c.resolved).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-          return open[Number(ref) - 1] && { page, id: open[Number(ref) - 1].id };
+          const all = Object.values(list) as any[];
+          const pin = all.find((c) => !c.parent && !c.resolved && numberOf(c, all) === Number(ref));
+          return pin && { page, id: pin.id };
         })
         .filter(Boolean);
       if (hits.length > 1) die(`Comment ${ref} is on several pages (${hits.map((h) => h.page).join(', ')}). Add --page <path>.`);

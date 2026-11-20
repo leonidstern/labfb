@@ -73,7 +73,7 @@ const allowed = (kind, v) => (parts.values[kind] || {})[v] !== undefined;
 const COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\([^)]*\)/gi;
 const RADIUS = /^(0|50%|inherit|var\(--[\w-]+\)( var\(--[\w-]+\)| 0)*|max\(0px, calc\(var\(--[\w-]+\) - \d+px\)\))( !important)?$/;
 const SIZES = /^((10|11|12|13|14|15|16|17|24)px|inherit)( !important)?$/;
-const lab = ['lab.css', read(path.join(ROOT, 'public/_lab/lab.css')).replace(/\/\*[\s\S]*?\*\//g, '')];
+const lab = ['lab.css', read(path.join(ROOT, 'src/lab.css')).replace(/\/\*[\s\S]*?\*\//g, '')];
 for (const [f, css] of [...sheets, lab]) for (const block of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
   for (const d of block[2].matchAll(/([\w-]+)\s*:\s*([^;]+)/g)) {
     const [p, v] = [d[1], d[2].trim().replace(/\s+/g, ' ')];
