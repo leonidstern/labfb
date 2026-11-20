@@ -502,7 +502,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
      bottom, are kept up to date from visualViewport); their bottom part is solid down past the screen's edge,
      behind the home bar, the keyboard and Safari's toolbar, so nothing of the page shows below the box. */
   :host { --_safe: env(safe-area-inset-bottom, 0px); --_kb: var(--lab-kb, 0px);
-          --_sheet-max: calc(min(88dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb)); }
+          --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb));
+          /* A thread opens taller than the chat, the list and the switcher (which keep --_sheet-max): more of a long thread
+             in view, the top 120px of the screen still the page's. On a phone on its side the same height as the rest. */
+          --_thread-max: calc(min(88dvh, var(--lab-vh, 100dvh) - 120px) + var(--_kb)); }
+  @media (max-height: 500px) { :host { --_thread-max: var(--_sheet-max); } }
   :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
   /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
      panning the page can't push it up and nothing of the page shows above or below it. */
@@ -511,12 +515,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-kb]) .float { top: auto !important; height: auto !important; }
   .card, .float { position: fixed; top: auto !important; width: auto; max-width: none;
                   max-height: var(--_sheet-max); display: flex; flex-direction: column; padding: 8px 0 0; z-index: 3; }
+  .card { max-height: var(--_thread-max); }
   /* The same 12 px sides as the chat's, so a thread's reply box sits exactly where the chat's message box does. */
   .card > .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 4px; margin-right: 0; }
   /* A thread keeps one height, as the chat does (Leo, 15 Nov: it jumped while the chat stays put): the sheet's full
      height whatever its length, a short thread sitting by the reply box, so new replies and the keyboard never
      move its top. */
-  .card { height: var(--_sheet-max); }
+  .card { height: var(--_thread-max); }
   .card > .foot, .float > .composer { flex: none; padding: 0 12px var(--_pb); }
   .card > .foot { margin-top: 0; padding-top: 6px; }
   .card .composer { margin-top: 0; }
@@ -774,7 +779,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }
 }
 /* Phones: a choice is a 44 pt row to tap, Keep a full-size button under them (V1: not stuck, so it never covers a row). */
-@media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
+@media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); --_thread-max: var(--_sheet-max); } button.choice { min-height: 44px; align-items: center; }
 }
 
 /* Your actions (lib/actions.ts): as many as fit, "…" on one line; "…" grows the line into the
