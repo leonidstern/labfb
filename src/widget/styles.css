@@ -539,7 +539,12 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chatwin .tabs { touch-action: none; }
   .msgs, .card > .body { touch-action: pan-y; }
 
-  :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
+  /* The listening pill and the hints step away with the bar and come back in step with the sheet as a finger drags it
+     down (--lab-p), instead of popping back once it has gone (Leo, 20 Nov: "harsh… don't show pill animation like
+     slowly swiping it with finger"). */
+  :is(.listener, .left) { transition: opacity var(--_t-base) var(--_ease-out), transform var(--_t-slow) var(--_ease-settle); }
+  :host([data-sheet]) :is(.listener, .left) { opacity: var(--lab-p, 0); transform: translateY(calc(24px * (1 - var(--lab-p, 0)))); pointer-events: none; }
+  :host([data-sheet]) .hint { visibility: hidden; } /* a hint is centred by its transform: it just steps out */
   /* The bar steps down under the screen's edge while a sheet is open and comes back as the sheet goes: --lab-p is
      how far the sheet is on its way out (0 open, 1 gone), set while a finger drags it and while it slides away,
      so the bar rises with it, in step, instead of after it (Leo, 15 Nov). */
@@ -707,7 +712,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar[data-board] { visibility: hidden; pointer-events: none; }
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
-@media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
+/* It slides up and fades as the sheet opens and eases back down as the sheet goes, with the sheet's own --lab-p (0 open,
+   1 gone) while it is dragged or slides away, as the bottom bar does: it used to vanish and pop back (Leo, 20 Nov: "nav
+   is harsh coming back"). */
+@media (pointer: coarse) {
+  :host([data-sheet]) .sbar { transform: translateY(calc(-100% * (1 - var(--lab-p, 0)))); opacity: var(--lab-p, 0); pointer-events: none;
+                              transition: transform var(--_t-base) var(--_ease-in), opacity var(--_t-base) var(--_ease-out); }
+  .sbar { transition: opacity var(--_t-slow) var(--_ease-out), transform var(--_t-slow) var(--_ease-settle); }
+}
 /* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .sb-wrap .sb-nav { flex: 1; }
@@ -765,7 +777,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
 }
 
-/* Your actions (lib/actions.ts): as many as fit, "…", and select's done on one line; "…" grows the line into the
+/* Your actions (lib/actions.ts): as many as fit, "…" on one line; "…" grows the line into the
    whole list; hold or right-click a row to edit it in place, + add. */
 .quick { white-space: nowrap; }
 .quick[hidden] { display: none; }
@@ -824,4 +836,3 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .act-fields .cnt, .act-fields .k, .act-fields .why { font-size: 12px; }
   .acts .act.gone { min-height: 44px; padding: 0 4px; font-size: 14px; }
 }
-.quick button.sel { background: none; padding-inline: 6px; margin-left: auto; }

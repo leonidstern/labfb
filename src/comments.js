@@ -44,7 +44,6 @@ import { inFrame, startFrame } from './widget/frame.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { inkAnchor, inkSvg, liveInk } from './widget/ink.ts';
-import { bindSelect, pick, selectChips, selectMode } from './widget/select.ts';
 import { NAME_MAX, SEED } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget/wordink.ts';
@@ -161,7 +160,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const part = (name) => (parts[name] ??= import(new URL(`${name}.js`, script?.src || location.href).href));
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
+  const KEYS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', pin: 'c' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -512,6 +511,22 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     goFace();
     setPinning();
   };
+  // A thread or the chat opened at its newest message stays there while its words settle (a phone's sheet grows into
+  // place and long messages lay out after the first frame): Leo, 20 Nov, the last message was half hidden. It lets go at
+  // the first touch or wheel, or after a second.
+  function stayAtEnd(box) {
+    let until = performance.now() + 1000;
+    const stop = () => (until = 0);
+    box.addEventListener('touchstart', stop, { once: true, passive: true });
+    box.addEventListener('wheel', stop, { once: true, passive: true });
+    const end = () => (performance.now() < until ? (box.scrollTop = box.scrollHeight) : ro?.disconnect());
+    const ro = 'ResizeObserver' in window ? new ResizeObserver(end) : null;
+    ro?.observe(box);
+    for (const k of box.children) ro?.observe(k);
+    requestAnimationFrame(() => requestAnimationFrame(end));
+    setTimeout(() => ro?.disconnect(), 1100);
+  }
+  S.stayAtEnd = stayAtEnd;
   function begin(anchor) {
     if (!anchor.moment) {
       const moment = S.momentFor?.(anchor); // the moment as the pin goes down, not as it is sent
@@ -732,11 +747,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       void switcher().then((m) => m?.openSwitcher());
     });
   }
-  // Select (V) from the ⋯ menu too, so a phone, which has no V, can turn it on (Leo, 19 Nov). Shown while the select
-  // flag is on.
-  const selectBtn = el('button', { type: 'button', class: 'select-btn' });
-  selectBtn.append('select', el('kbd', { 'aria-hidden': 'true' }, KEYS.select.toUpperCase()));
-  selectBtn.addEventListener('click', () => (setMenu(false), selectMode(true)));
   // Experiments (lib/flags.ts) in the ⋯ menu: "experiments" with how many are on; a click turns the menu into the list,
   // a switch a flag with its one line, and a back row at its head. A switch saves in your own settings (every lab you
   // run) and applies at once: the lab tells every open page, which starts what came on and reloads for what went off.
@@ -790,7 +800,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const startFlag = (name) => {
     if (started.has(name) || !host.isConnected) return;
     started.add(name);
-    if (name === 'select') bindSelect(W); // select mode (V)
     if (name === 'inkOnText' && S.loaded) render(); // switched on from the ⋯ menu: the notes on words turn to ink (wordink.ts)
   };
   // The lab's word on which flags are on (live stream, or the answer to a switch here).
@@ -809,7 +818,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   function placeBar() {
     const inMenu = !S.on ? []
       : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), ...(flag('select') ? [selectBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
+      : [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
@@ -957,7 +966,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   function render() {
     newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
     if (win.__labDebug) unseen = new Map();
-    if (S.selDraft && S.draft !== S.selDraft) pick(null, false); // the picked block's box closed: the block is let go
     const dragged = S.grabbing;
     S.line = null; // where each thread stands with the agent is worked out again (list.ts lineUp)
     // A question's choice tried in the page (thread.ts): the page's own words are back before anything is read or drawn;
@@ -1075,7 +1083,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       const news = unread(c);
       const movable = !zone && (S.isAdmin || store.get(`lab-edit:${c.id}`));
       const sg = lineUp().get(c.id) || { s: null, n: 0, at: '', line: '' }; // where it stands with the agent: sent, got (picked up), now (working), wait, stale, asks or done
-      const state = sg.s;
+      // A question you've read goes back to a plain pin: amber is for one still unread (Leo, 20 Nov: "orange pin after
+      // opening should become regular"), as selected words' ink already does (wordink.ts).
+      const state = sg.s === 'asks' && !news.length ? null : sg.s;
       const tip = coarse || (state !== 'now' && state !== 'stale') ? '' : lineOf(sg); // hovering a working ring says what it is doing
       const born = !old.has(c.id);
       const pin = old.get(c.id) || el('button', { type: 'button' });
@@ -1230,6 +1240,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           const asks = openAsk(c) ? [...body.querySelectorAll('.msg.asks')].pop() : null;
           const first = asks || (coarse ? null : body.querySelector('.fresh, .newline'));
           body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
+          if (!first) stayAtEnd(body);
         }
         if (coarse && S.cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
         swipeDown(card, () => ((S.openId = null), (S.cardFull = false), render()), true);
@@ -1253,7 +1264,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (zone && anchor.ink) add(inkSvg(anchor.ink, zone)); // a drawing shows its lines, with no draft pin
       else add(drawZone(zone, 'draft'));
       quoted = zone ? null : anchor; // an area lights no single word
-      if (!draft.select && !anchor.ink) {
+      if (!anchor.ink) {
         const pin = el('div', { class: `pin draft${anim}${draftInk ? ' on-ink' : ''}` }, initial(store.get('lab-name')));
         pin.style.left = `${left}px`;
         pin.style.top = `${top}px`;
@@ -1267,7 +1278,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
         // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
         // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
-        autofocus: !S.pinnedByHold && !draft.select, // select: the keys (Tab, Esc, Enter) stay with the page until the box is tapped
+        autofocus: !S.pinnedByHold,
         draftKey: `lab-typing:${S.page}:new`,
         empty: anchor.ink ? inkSaid(anchor.ink.mark) : '',
         onSubmit: async (name, said) => {
@@ -1909,11 +1920,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
     const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
-    // Select mode (flag select): V picks blocks instead of pinning; V again, or Esc twice, leaves it (select.ts).
-    if (flag('select') && S.on && !S.draft && actionOf(e) === 'select' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
-      e.preventDefault();
-      return void selectMode();
-    }
     if (actionOf(e) === 'toggle' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!S.on);
@@ -1941,10 +1947,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     }
     // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
-    // C is comment, always (Leo, 19 Nov): out of select mode or the pointer, a click pins again. 1 still switches.
+    // C is comment, always (Leo, 19 Nov): out of the pointer, a click pins again. 1 still switches.
     if (S.on && act === 'pin' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
-      if (S.selecting) selectMode(false);
       if (S.cursorMode) setCursor(false);
       return;
     }
@@ -2126,7 +2131,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (d.ink) {
       S.drew = true;
       // Shift held as the pen lifts: a stroke that runs about straight becomes a straight line, flat, upright or at 45°
-      // (Leo's pick S1, 20 Nov). A curl or a loop stays as drawn.
+      // (Leo's pick S1, 20 Nov); a rough box or loop a clean rectangle or ellipse (S2). Anything else stays as drawn.
       const st = S.inking?.strokes.at(-1);
       if (e.shiftKey && st?.length > 1) {
         const [a, b] = [st[0], st.at(-1)];
@@ -2137,6 +2142,16 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           const w = st.reduce((n, p) => n + (p.w || 3), 0) / st.length;
           st.splice(0, st.length, { x: a.x, y: a.y, w }, { x: a.x + chord * Math.cos(ang), y: a.y + chord * Math.sin(ang), w });
           S.inking.paint();
+        } else {
+          // A rough box or loop comes out neat: a rectangle or an ellipse (Leo's pick S2). The reading part is loaded
+          // with D, so this lands well before the drawing is read, a second later.
+          const ink = S.inking;
+          part('draw').then(({ neaten }) => {
+            const neat = neaten?.(st);
+            if (!neat || !ink.strokes.includes(st)) return;
+            st.splice(0, st.length, ...neat);
+            ink.paint();
+          }).catch(() => {});
         }
       }
       clearTimeout(S.inkTimer);
@@ -2452,12 +2467,11 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       return b;
     };
     {
-      // Your list, in its order: as many chips as fit on one line (measured; select's ↑ ↓ go first), then "…". "…"
+      // Your list, in its order: as many chips as fit on one line (measured), then "…". "…"
       // grows the line into the whole list (tap = use it) and, on this computer, hold or right-click a row to edit it, "+ add"
       // (saved in your settings through the lab, PUT /_lab/api/actions; a new one goes at the end).
       const mayEdit = Boolean(adminToken && ACTSAPI);
       const menu = el('div', { class: 'acts', hidden: '' });
-      const spill = el('div', { class: 'quick' }); // select's ↑ ↓ when the line has no room for them
       const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
       const chips = LIST.map(chip);
       let shown = LIST.length;
@@ -2588,7 +2602,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       // line says how, muted, in the room between "+ add" and "done" (so nothing moves when it goes).
       function fill() {
         editing?.close();
-        menu.replaceChildren(...(spill.children.length ? [spill] : []));
+        menu.replaceChildren();
         const list = el('div', { class: 'act-list' });
         for (const i of LIST.keys()) {
           const a = LIST[i];
@@ -2696,16 +2710,14 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         openMenu(menu.hidden, now);
       });
       menu.addEventListener('keydown', (e) => e.key === 'Escape' && !(/** @type {Element} */ (e.target)).closest('.act-edit') && (e.stopPropagation(), openMenu(false)));
-      row.append(...chips, dots, ...(draft.select ? selectChips() : []));
+      row.append(...chips, dots);
       let tries = 0;
       const measure = () => {
         if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
         row.after(menu);
         const over = () => row.scrollWidth > row.clientWidth + 1;
-        let at = null; // ↑ before ↓, however many go
-        for (const b of [...row.querySelectorAll('.sel:not([data-a=done])')].reverse()) if (over()) at = spill.insertBefore(b, at);
         while (over() && shown) chips[--shown].remove();
-        dots.hidden = shown === LIST.length && !spill.children.length && !mayEdit;
+        dots.hidden = shown === LIST.length && !mayEdit;
         [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
       };
       queueMicrotask(measure);
@@ -2735,8 +2747,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // "when comment still 'undo' clicking outside opening another comment"): no new pin there; the sent one stays, and the
   // next click pins as usual. A link or the page's own control still acts (onPageClick prevents nothing).
   S.undoLetGo = 0; // when a press let a sent pin's undo card go: that press's click starts no pin
-  // Select mode takes a press on the page before this sees it (select.ts): its pick lets the card go the same way, so the
-  // card's reply box doesn't keep the keys (Tab steps the picks).
   S.letUndoGo = (e, draw = true) => {
     if (S.draft || !S.undo || S.openId !== S.undo.id || S.undo.touched || e.composedPath().includes(host)) return false;
     S.undo = null;
@@ -3052,11 +3062,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     fonts.textContent += inkCss(); // ink on words: the bands, and the selection drawn as sent ink (wordink.ts)
-    if (flag('select')) startFlag('select');
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
     startSections(); // the section bar: what is new or updated on the page since you read it
-    for (const name of flagNames) if (flag(name)) startFlag(name); // select (lib/flags.ts)
+    for (const name of flagNames) if (flag(name)) startFlag(name); // (lib/flags.ts)
     scanForFramework();
     if (!S.components) {
       addEventListener('load', scanForFramework, { once: true });
