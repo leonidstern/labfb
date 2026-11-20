@@ -204,7 +204,13 @@ for (const [n, eng] of engines().entries()) {
     // Gone quiet: 6 minutes with no sign → grey still ring; the pill says so and what came last; a new line brings it back.
     await L.cli('reply', ids[1], '--progress', 'drawing W1–W6 · 3 of 4');
     await ringIs(1, 'ring');
-    await p.clock.runFor(6.5 * 60 * 1000);
+    // A status line is a sign for 3 minutes unless it is renewed: still working at 2.5, grey (the same look) just after 3.
+    await p.clock.runFor(2.5 * 60 * 1000);
+    await ringsAre(['', 'ring', 'ring wait']);
+    await p.clock.runFor(60 * 1000);
+    await ringsAre(['', 'ring stale', 'ring wait']);
+    check(eng, 'a status line not renewed for 3 min lapses: the grey ring, and the pill says no update for 3 min', await pillIs(/no update for 3 min · last: drawing W1–W6 · 3 of 4/), await pill());
+    await p.clock.runFor(3 * 60 * 1000);
     await ringsAre(['', 'ring stale', 'ring wait']);
     check(eng, 'no sign for 5+ min: a grey still ring (the one waiting behind it is not grey)', (await ringOf(1)) === 'ring stale' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill says how long and what came last', await pillIs(/no update for 6 min · last: drawing W1–W6 · 3 of 4 · 1 waiting/), await pill());

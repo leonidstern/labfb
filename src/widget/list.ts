@@ -1,4 +1,5 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import { PROGRESS_MS } from '../../lib/schema.mjs';
 import { scrollPageTo } from './sheets.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,7 +78,8 @@ export const workState = (c) => {
   const said = answered && answer.intent;
   if (c.resolved || said === 'done') return ['done', answered ? answer.createdAt : c.createdAt];
   if (said === 'question') return ['asks', answer.createdAt];
-  if (said === 'working' || c.progress) return ['now', [said === 'working' && answer.createdAt, c.progress?.at].filter(Boolean).sort().at(-1)];
+  // A progress line is a sign for PROGRESS_MS, then it lapses: only its time is kept (build() greys it).
+  if (said === 'working' || c.progress) return ['now', [said === 'working' && answer.createdAt, (c.progress && (Date.now() - Date.parse(c.progress.at) < PROGRESS_MS || !said)) && c.progress.at].filter(Boolean).sort().at(-1)];
   // Handed over and nothing came back within the lab's two minutes (local.mjs ANSWER_MS): it goes to the next wait.
   if (!answered && c.unanswered && c.unanswered >= lastPerson && !(c.handedAt > c.unanswered)) return ['missed', c.unanswered];
   if (!answered && c.handedAt && c.handedAt >= lastPerson) return ['got', c.handedAt];
@@ -103,7 +105,8 @@ function build() {
   pend.forEach((e, i) => {
     if (live.length || i) Object.assign(e, { s: 'wait', n: i + (live.length ? 1 : 0) });
   });
-  for (const e of [...live, ...pend]) if (e.s !== 'wait' && Date.now() - Date.parse(e.at) > STALE_MS) e.s = 'stale';
+  // No sign: 5 minutes for a pin picked up, PROGRESS_MS when its only sign is a status line that was not renewed.
+  for (const e of [...live, ...pend]) if (e.s !== 'wait' && Date.now() - Date.parse(e.at) > (e.at === e.c.progress?.at ? PROGRESS_MS : STALE_MS)) e.s = 'stale';
   return out;
 }
 // Kept until the next drawing (or the 10 s tick) sets W.S.line to null: stamps and pins ask for it many times a drawing.

@@ -16,7 +16,7 @@ import { pageIds } from './lib/ids.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive } from './lib/labcall.ts';
-import { DO_IT, UNMATCHED, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
+import { DO_IT, PROGRESS_MS, UNMATCHED, numberOf, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
@@ -1660,7 +1660,8 @@ async function unseen(scope = pages(), who = '') {
   // a pin after 5 minutes, and the agent hears of it after these 3. sign: [when it last showed a sign, its last progress line].
   const signOf = (c) => {
     const [person, agent] = [lastBy(c, false), lastBy(c, true)];
-    const [at, line] = [c.progress?.at || '', c.progress?.text];
+    // A status line is a sign only while it is renewed (PROGRESS_MS); lapsed, the pin is as quiet as before it.
+    const [at, line] = [now - Date.parse(c.progress?.at) < PROGRESS_LIFE ? c.progress.at : '', c.progress?.text];
     if (person >= agent) return [[c.handedAt, at].sort().pop(), line];
     return c.progress || commentsOf(c._page).some((r) => r.parent === c.id && r.session && r.intent === 'working' && r.createdAt === agent) ? [[agent, at].sort().pop(), line] : null;
   };
@@ -1873,6 +1874,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
 // A new pin wakes a listening agent after a short quiet spell (LAB_SETTLE_MS, 2 s): pins made one after another go
 // over together, in one round trip, instead of one wake-up each.
 const SETTLE_MS = Number(process.env.LAB_SETTLE_MS ?? 2000);
+const PROGRESS_LIFE = Number(process.env.LAB_PROGRESS_MS ?? PROGRESS_MS); // a status line is a sign this long
 const REMIND_MS = Number(process.env.LAB_REMIND_MS ?? 180000); // a handed pin with no answer comes back after this
 let settleTimer = null;
 function wake() {
@@ -1902,7 +1904,8 @@ const setComment = (page, id, patch) => {
 };
 
 function announce(page, c) {
-  const n = commentsOf(page).filter((x) => !x.parent && !x.resolved).findIndex((x) => x.id === (c.parent || c.id)) + 1;
+  const all = commentsOf(page);
+  const n = numberOf(all.find((x) => x.id === (c.parent || c.id)) || c, all);
   console.log(`[lab] ${c.parent ? `reply on ${n}` : `comment ${n}`} on ${fileFor(page) || page} · ${c.name} (${c.from}): ${c.text.replace(/\s+/g, ' ')}`);
 }
 
@@ -2414,14 +2417,14 @@ const handler = async (req, res) => {
       const heard = new Set(waiters.flatMap((w) => scopeOf(w)));
       const fresh = freshIn(pages().filter((p) => !heard.has(p)));
       const ids = fresh.map(({ c }) => c.id).sort();
-      // The threads handed to the agent and being worked on (no answer since the person's last words, or only "on it"):
-      // the plugin's hook keeps a progress line on them while its session (helpers too) runs tools.
+      // The threads someone claimed (a status line from --progress, or an "on it" reply, since the person's last words):
+      // the plugin's hook renews that line while its own session runs tools. A pin nobody claimed gets none.
       const working = pages().flatMap((page) => commentsOf(page).filter((c) => !c.parent && !c.resolved && c.handedAt).flatMap((c) => {
         const msgs = commentsOf(page).filter((r) => r.parent === c.id);
         const lastAt = (mine) => [c, ...msgs].filter((m) => Boolean(m.session) === mine).map((m) => m.createdAt).sort().pop() || '';
         const reply = msgs.filter((m) => m.session).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).pop();
         const answered = reply && reply.createdAt > lastAt(false);
-        return !answered || reply.intent === 'working' ? [{ page, id: c.id }] : [];
+        return answered ? (reply.intent === 'working' ? [{ page, id: c.id }] : []) : c.progress ? [{ page, id: c.id }] : [];
       }));
       return answer(res, {
         working,

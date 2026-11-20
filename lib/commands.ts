@@ -10,7 +10,7 @@ import { mySession } from './agents.ts';
 import { askPages, keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
 import { read as readBoard } from './board.ts';
-import { UNMATCHED } from './schema.mjs';
+import { numberOf, UNMATCHED } from './schema.mjs';
 
 type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
 
@@ -455,8 +455,9 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       const hits = Object.entries(data)
         .filter(([page]) => !want || page === want)
         .map(([page, list]) => {
-          const open = Object.values(list).filter((c) => !c.parent && !c.resolved).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-          return open[Number(ref) - 1] && { page, id: open[Number(ref) - 1].id };
+          const all = Object.values(list) as any[];
+          const pin = all.find((c) => !c.parent && !c.resolved && numberOf(c, all) === Number(ref));
+          return pin && { page, id: pin.id };
         })
         .filter(Boolean);
       if (hits.length > 1) die(`Comment ${ref} is on several pages (${hits.map((h) => h.page).join(', ')}). Add --page <path>.`);
