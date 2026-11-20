@@ -53,7 +53,7 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
 // unread, and once the thread has its answer it folds (foldStatus). Old records work: the intent is all it reads.
 export const isStatus = (m: any): boolean => Boolean(m?.parent && m.session && m.intent === 'working');
 
-export type Slot = { m: any } | { fold: string; n: number; items: any[]; open: boolean };
+type Slot = { m: any } | { fold: string; n: number; items: any[]; open: boolean };
 
 // Lays a list of messages out with its status runs folded. A run is consecutive status messages in one thread (other
 // threads' messages between them don't break it: in the chat, interleaved threads fold into one row each). When the
