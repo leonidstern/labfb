@@ -99,7 +99,7 @@ button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; backgroun
 .pin.ink:is(:hover, .open) path:not(.hit) { stroke-width: 4px; }
 /* A sent drawing settles (Leo's pick 7, drawing-lines lab, 20 Nov): bold as it lands, then it sinks to 35% so the page
    reads again; full on hover or open. */
-.pin.ink path:not(.hit) { opacity: .35; transition: opacity .25s ease; animation: lab-ink-settle .6s ease .5s backwards; }
+.pin.ink path:not(.hit) { opacity: .35; transition: opacity var(--_t-base) var(--_ease); animation: lab-ink-settle var(--_t-slow) var(--_ease-out) var(--_t-hold) backwards; }
 .pin.ink:is(:hover, .open) path:not(.hit) { opacity: 1; animation: none; }
 @keyframes lab-ink-settle { from { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .pin.ink path:not(.hit) { animation: none; } }
