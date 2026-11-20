@@ -37,6 +37,10 @@ test('intent from words, explicit intent wins, a person never gets one', async (
   assert.equal((await agent({ name: 'C', text: 'On it, soon', parent: t.id, page: '/p' })).intent, 'working');
   assert.equal((await agent({ name: 'C', text: 'Done: x', parent: t.id, page: '/p', intent: 'question' })).intent, 'question');
   assert.equal((await agent({ name: 'C', text: 'Doner', parent: t.id, page: '/p' })).intent, undefined);
+  // "On it" opening a real answer is not a status: only a short line without a full stop reads as one.
+  assert.equal((await agent({ name: 'C', text: 'On it, fixed by moving the header up. Reload to see it.', parent: t.id, page: '/p' })).intent, undefined);
+  assert.equal((await agent({ name: 'C', text: `On it, ${'x'.repeat(80)}`, parent: t.id, page: '/p' })).intent, undefined);
+  assert.equal((await agent({ name: 'C', text: 'On it, rebuilding', parent: t.id, page: '/p' })).intent, 'working');
   const p = await person({ name: 'Leo', text: 'Done thanks', parent: t.id, page: '/p', intent: 'done' });
   assert.equal(p.intent, undefined);
   assert.equal((await get(t.id)).resolved, false);

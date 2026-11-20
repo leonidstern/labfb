@@ -36,11 +36,6 @@ export function drawList() {
   const all = W.threads();
   W.paintWho?.(); // the pill's words and a phone sheet's line follow the agent's work
   paintLines();
-  W.goBtn.hidden = !W.S.on;
-  if (!W.goBtn.firstElementChild) W.goBtn.replaceChildren(W.el('span', { class: 'gp' }, '+'), W.el('kbd', { 'aria-hidden': 'true' }, W.KEYS.comment));
-  W.goFace();
-  W.goBtn.classList.toggle('cursor', W.S.cursorMode);
-  W.goBtn.setAttribute('aria-pressed', String(!W.S.cursorMode));
   const freshAll = all.filter((c) => !W.isPage(c)).reduce((n, c) => n + W.unread(c).length, 0); // a new message in a done thread counts too
   // The middle shows how many are new (a click goes to the next one). The pills keep their place whatever the counts:
   // with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.

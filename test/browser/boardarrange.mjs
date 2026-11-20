@@ -29,56 +29,51 @@ try {
       const p = await ctx.newPage();
       const kids = () => p.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.dataset.id));
       const centre = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }, id);
-      const sel = async (id) => { const [x, y] = await centre(id); await p.mouse.click(x, y); await sleep(100); };
+      // A frame is opened by a click on its label (a click on the frame itself pins); Escape leaves it.
+      const open = async (id) => { const r = await p.locator(`#lab-board .f[data-id="${id}"] .t`).boundingBox(); await p.mouse.click(r.x + 8, r.y + r.height / 2); await sleep(400); };
       const wait = async (fn, ms = 4000) => { for (let i = 0; i < ms / 100; i++) { if (await fn()) return true; await sleep(100); } return false; };
       await put('arr', three(), { of: '/pricing' });
       await p.goto(B + '/_lab/board/arr');
       await sleep(2000);
       // ----- frames stay put: no arrow key and no drag moves one
-      await sel('a');
       const was = JSON.stringify(file('arr').frames.map((f) => [f.x, f.y]));
       const at0 = await centre('a');
       await p.keyboard.press('ArrowRight');
       await p.keyboard.press('Shift+ArrowDown');
       const [cx, cy] = at0;
+      await p.keyboard.down('Space'); // the hand: a plain drag on a frame draws an area, as on a page
       await p.mouse.move(cx, cy);
       await p.mouse.down();
       await p.mouse.move(cx + 120, cy + 40, { steps: 6 });
       await p.mouse.up();
+      await p.keyboard.up('Space');
       await sleep(800);
       const sx = (await centre('a'))[0] - at0[0];
-      check(eng, 'arrow keys and a drag move no frame (a drag pans the board)', JSON.stringify(file('arr').frames.map((f) => [f.x, f.y])) === was, JSON.stringify([was, sx]));
-      await sel('a');
+      check(eng, 'arrow keys and a drag move no frame (a Space drag pans the board)', JSON.stringify(file('arr').frames.map((f) => [f.x, f.y])) === was, JSON.stringify([was, sx]));
+      await open('a');
+      check(eng, 'a click on a frame\'s label opens it: the ring and the size list show on it only', await p.evaluate(() => __labBoard.entered() === 'a' && document.querySelectorAll('#lab-board .f.sel').length === 1 && document.querySelectorAll('#lab-board .t u').length > 0));
       // ----- size from the label's list
       await p.evaluate(() => [...document.querySelectorAll('#lab-board .f.sel .t u')].find((u) => u.textContent === '820').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, composed: true, clientX: 5, clientY: 5 })));
       await wait(() => file('arr').frames[0].w === 820);
       check(eng, 'a size picked from the label list sets width and its preset height', file('arr').frames[0].w === 820 && file('arr').frames[0].h === 1180, JSON.stringify(file('arr').frames[0]));
-      // ----- duplicate, undo
+      // ----- no Delete / ⌘D on frames any more; ⌘Z undoes the size
+      await p.keyboard.press('Escape');
+      await sleep(300);
       const n0 = file('arr').frames.length;
-      const ids0 = file('arr').frames.map((f) => f.id);
       await p.keyboard.press('Control+KeyD');
-      await wait(() => file('arr').frames.length === n0 + 1);
-      const d = file('arr').frames.find((f) => !ids0.includes(f.id));
-      const ax = (await p.evaluate(() => Number(document.querySelector('#lab-board .f[data-id="a"]').style.left.replace('px', ''))));
-      check(eng, 'Ctrl/⌘ D duplicates the frame as a variant with a new id, 80 px to its right', d && d.variantOf === 'a' && d.x === ax + 820 + 80 && d.src === '/pricing', JSON.stringify([d, ax]));
+      await p.keyboard.press('Delete');
       await sleep(600);
+      check(eng, 'Ctrl/⌘ D and Delete do nothing to frames (no duplicate, nothing archived)', file('arr').frames.length === n0 && file('arr').frames.every((f) => f.state !== 'archived'), JSON.stringify(file('arr').frames.map((f) => [f.id, f.state])));
       await p.keyboard.press('Control+KeyZ');
-      await wait(async () => file('arr').frames.find((f) => f.id === d.id)?.state === 'archived' && (await kids()).length === 3);
-      check(eng, 'Ctrl/⌘ Z archives the duplicate (a frame is never dropped)', file('arr').frames.find((f) => f.id === d.id).state === 'archived' && (await kids()).length === 3, JSON.stringify([await kids(), file('arr').frames.map((f) => [f.id, f.state, f.x])]));
-      // ----- archive, undo
-      for (let i = 0; i < 4 && (await p.evaluate(() => __labBoard.selected())) !== 'c'; i++) await p.keyboard.press('Tab');
-      await p.keyboard.press('Backspace');
-      await wait(async () => file('arr').frames.find((f) => f.id === 'c').state === 'archived' && !(await kids()).includes('c'));
-      check(eng, 'Backspace archives the selected frame; it leaves the board', file('arr').frames.find((f) => f.id === 'c').state === 'archived' && !(await kids()).includes('c'), JSON.stringify(await kids()));
-      await p.keyboard.press('Control+KeyZ');
-      await wait(async () => file('arr').frames.find((f) => f.id === 'c').state === 'live' && (await kids()).includes('c'));
-      check(eng, 'Ctrl/⌘ Z brings it back', file('arr').frames.find((f) => f.id === 'c').state === 'live' && (await kids()).includes('c'));
+      await wait(() => file('arr').frames[0].w === 390);
+      check(eng, 'Ctrl/⌘ Z puts the size back', file('arr').frames[0].w === 390 && file('arr').frames[0].h === 844, JSON.stringify(file('arr').frames[0]));
       // ----- a change made elsewhere first: theirs is shown, ours is not made
       const cur = await (await fetch(`${B}/_lab/api/board?name=arr`)).json();
       await fetch(`${B}/_lab/api/board?name=arr`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ ...cur, title: 'other', rev: cur.rev }) });
       await p.evaluate(() => { /* the board has not heard of it yet */ });
-      await sel('b');
-      await p.keyboard.press('ArrowLeft');
+      await wait(async () => (await kids()).includes('b'));
+      await open('b');
+      await p.keyboard.press('Escape');
       await sleep(1500);
       check(eng, 'the board keeps working after another writer got in first', (await kids()).length >= 3 && file('arr').title === 'other');
       // ----- the edge: past it the board just stops, no give and no settling back (Leo, 19 Nov: "remove weird bounce")

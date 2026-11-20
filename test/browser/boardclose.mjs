@@ -1,7 +1,7 @@
 // A click outside closes what is open on a board, as it does on a page (Leo, 19 Nov: "clicking outside comment should
 // work here same as on page", "same with chat"): an open thread, a new comment's box and the chat close on a click on
-// the empty canvas or on a frame, in pointer mode and in comment mode; that click only closes (it selects nothing and
-// starts no comment); a pan or a drag is no click and closes nothing; a press inside an entered frame closes too.
+// the empty canvas or on a frame (a board is always in comment mode, like a page); that click only closes (it starts no
+// comment); a pan or a drag is no click and closes nothing; a press inside an entered frame closes too.
 // On the board page and in a page's board view. Not part of `npm test`.
 // Run: node test/browser/boardclose.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
@@ -26,7 +26,7 @@ try {
     try {
       for (const [where, url] of [['board page', `${B}/_lab/board/pricing?of=%2Fcanvas`], ['board view', `${B}/canvas#board=pricing`]]) {
         const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
-        await ctx.addInitScript(() => { localStorage.setItem('lab-name', 'zz-close'); localStorage.setItem('lab-on', '1'); localStorage.setItem('lab-cursor', ''); });
+        await ctx.addInitScript(() => { localStorage.setItem('lab-name', 'zz-close'); localStorage.setItem('lab-on', '1'); });
         const p = await ctx.newPage();
         p.on('pageerror', (e) => console.log('pageerror', e.message));
         await p.goto(url);
@@ -39,14 +39,11 @@ try {
         });
         const rect = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }, id);
         const pinAt = () => p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.pin:not(.draft)').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-        const pinning = () => p.evaluate(() => Boolean(window.__labBoardWidget.pinning()));
-        const mode = async (comment) => { if ((await pinning()) !== comment) { await p.keyboard.press('Digit1'); await sleep(200); } };
         const a = await rect('a');
         const b = await rect('b');
         const empty = { x: b.x + b.w * 0.7, y: a.y - 60 }; // the canvas above frame b, clear of the open card
         // a pin on frame a (comment mode: a click, words, Enter)
         if (!(await look()).pins) {
-          await mode(true);
           await p.mouse.click(a.x + 40, a.y + a.h / 4);
           await sleep(400);
           await p.keyboard.type('a note');
@@ -64,9 +61,8 @@ try {
           await sleep(3000);
         }
         const open = async () => { const at = await pinAt(); await p.mouse.click(at.x, at.y); await sleep(350); };
-        for (const comment of [false, true]) {
-          const m = comment ? 'comment mode' : 'pointer mode';
-          await mode(comment);
+        {
+          const m = 'comment mode';
           // ----- an open thread: a click on the empty canvas closes it, and only that
           await open();
           const s0 = await look();
@@ -81,22 +77,15 @@ try {
           s = await look();
           check(eng, `${where}, ${m}: a click on a frame closes it too, selecting nothing and starting no comment`, !s.card && !s.draft && s.sel === s0.sel, JSON.stringify(s));
           // ----- a pan is no click: two fingers on the trackpad (the wheel) move the board and close nothing; nor does a
-          // drag that is no click (pointer mode; in comment mode a drag draws an area, as on a page)
+          // drag (a drag draws an area, as on a page)
           await open();
           const c0 = (await look()).cam;
           await p.mouse.move(empty.x, empty.y);
           await p.mouse.wheel(40, 30);
           await sleep(300);
           s = await look();
-          let ok = s.card && (s.cam.x !== c0.x || s.cam.y !== c0.y);
-          if (!comment) {
-            await p.mouse.down();
-            await p.mouse.move(empty.x - 60, empty.y + 20, { steps: 5 });
-            await p.mouse.up();
-            await sleep(300);
-            ok = ok && (await look()).card;
-          }
-          check(eng, `${where}, ${m}: a pan${comment ? '' : ', and a drag that is no click,'} closes nothing`, ok, JSON.stringify([c0, s]));
+          const ok = s.card && (s.cam.x !== c0.x || s.cam.y !== c0.y);
+          check(eng, `${where}, ${m}: a pan closes nothing`, ok, JSON.stringify([c0, s]));
           await p.keyboard.press('Escape');
           await sleep(250);
           await p.keyboard.press('Shift+Digit1');
@@ -111,7 +100,6 @@ try {
           check(eng, `${where}, ${m}: a click on the canvas closes the chat, and only that`, c1.chat && !s.chat && !s.draft && s.sel === c1.sel, JSON.stringify([c1, s]));
         }
         // ----- a new comment's box (comment mode): the next click outside only closes it
-        await mode(true);
         await p.mouse.click(b.x + b.w / 3, b.y + b.h / 3);
         await sleep(400);
         const d0 = await look();
@@ -120,10 +108,8 @@ try {
         let s = await look();
         check(eng, `${where}: a click outside a new comment's box closes it and starts no other`, d0.draft && !s.draft && !s.card, JSON.stringify([d0, s]));
         // ----- an entered frame: a press inside its page closes the open thread
-        await mode(false);
-        await p.mouse.click(b.x + b.w / 2, b.y + b.h / 2);
-        await sleep(150);
-        await p.keyboard.press('Enter');
+        const lb = await p.locator('#lab-board .f[data-id="b"] .t').boundingBox();
+        await p.mouse.click(lb.x + 8, lb.y + lb.height / 2); // the label opens the frame
         await sleep(600);
         await open();
         const e0 = await look();
