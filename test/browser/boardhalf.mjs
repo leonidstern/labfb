@@ -53,15 +53,13 @@ try {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
-      await ctx.addInitScript(() => { localStorage.setItem('lab-name', 'zz-half'); localStorage.setItem('lab-on', '1'); localStorage.setItem('lab-cursor', ''); });
+      await ctx.addInitScript(() => { localStorage.setItem('lab-name', 'zz-half'); localStorage.setItem('lab-on', '1'); });
       const p = await ctx.newPage();
       p.on('pageerror', (e) => console.log('pageerror', e.message));
       const root = '[...document.querySelectorAll("*")].find((n) => n.shadowRoot?.querySelector(".scrim")).shadowRoot';
       const pins = () => p.evaluate(`[...${root}.querySelectorAll('.pin:not(.draft)')].length`);
-      const pinning = () => p.evaluate(() => Boolean(window.__labBoardWidget?.pinning()));
       const note = async (x, y, words) => {
         const n = await pins();
-        if (!(await pinning())) await p.keyboard.press('Digit1');
         await sleep(200);
         await p.mouse.click(x, y);
         await sleep(400);

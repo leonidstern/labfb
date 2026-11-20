@@ -233,36 +233,17 @@ for (const eng of ['webkit', 'chromium']) {
   check(eng, 'T opens the chat, on a Cyrillic layout too', await chatOpen());
   await p.keyboard.press('Escape');
   await sleep(200);
-  // C is comment (Leo, 19 Nov): from the pointer, C brings the comment back; 1 still switches.
-  const pointer = () => shadow(() => { return r.querySelector('.go-btn').classList.contains('cursor'); });
+  // One way to pin (Leo, 20 Nov): no comment/pointer switch in the bar, and 1, 2, 3 and C do nothing; a click pins.
   await p.keyboard.press('1');
-  await untilShadow(p, (r) => r.querySelector('.go-btn').classList.contains('cursor'), null, 300);
-  const wasPointer = await pointer();
-  await p.keyboard.press('c');
-  await untilShadow(p, (r) => !r.querySelector('.go-btn').classList.contains('cursor'), null, 300);
-  const after = await pointer(), chatAfter = await chatOpen();
-  check(eng, 'C goes back to comment from the pointer, and opens no chat', wasPointer && !after && !chatAfter, JSON.stringify({ wasPointer, after, chatAfter }));
   await p.keyboard.press('2');
-  const keys = await shadow(() => { return r.querySelector('.go-btn').textContent.replace(/\s/g, ''); });
-  const goLeft = await shadow(() => { return document.documentElement.classList.contains('lab-go') || r.querySelector('.go-btn').classList.contains('cursor'); });
-  await p.keyboard.press('1');
-  await sleep(100);
-  await p.mouse.click(500, 400);
-  await sleep(300);
-  const pinnedInPointer = await shadow(() => { return Boolean(r.querySelector('.float')); });
-  await p.keyboard.press('1');
-  await sleep(100);
-  await p.mouse.click(500, 400);
-  await sleep(400);
-  const pinnedAgain = await shadow(() => { return Boolean(r.querySelector('.float')); });
-  await p.keyboard.press('Escape');
-  await sleep(300);
-  check(eng, 'there is no go mode: 2 does nothing; key 1 once is the pointer (a click pins nothing), again it is the comment (a click pins); the switch shows (1)', !goLeft && /\(?1\)?$/.test(keys) && !pinnedInPointer && pinnedAgain, keys);
   await p.keyboard.press('3');
+  await p.keyboard.press('c');
   await sleep(100);
+  const noSwitch = await shadow(() => { return !r.querySelector('.go-btn') && !r.querySelector('.over-btn'); });
   await p.mouse.click(500, 400);
   await sleep(400);
-  check(eng, '3 does nothing now: a click still pins', await shadow(() => { return Boolean(r.querySelector('.float')); }));
+  const pinnedPlain = await shadow(() => { return Boolean(r.querySelector('.float')); });
+  check(eng, 'there is no pointer mode: no switch in the bar, keys 1, 2, 3 and C do nothing, and a click pins', noSwitch && pinnedPlain && !(await chatOpen()), JSON.stringify({ noSwitch, pinnedPlain }));
   await p.keyboard.press('Escape');
   await sleep(300);
 
@@ -309,19 +290,24 @@ for (const eng of ['webkit', 'chromium']) {
   check(eng, 'option-click on a pin resolves its thread without opening it', clicked && Boolean(afterOne?.resolved) && !cardOpen, JSON.stringify({ clicked, resolved: afterOne?.resolved, cardOpen }));
   await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', action: 'reopen', id: afterOne?.id }) });
   await untilApi((c) => c.text === 'from elsewhere' && !c.resolved, 700);
-  // Pin over controls: off, a control keeps its own pointer and the menu says how to pin there once; on, it shows the pin
+  // A control keeps its own click: a plain click on a summary opens the details and pins nothing; option-click pins on it.
+  await p.keyboard.press('Escape');
+  await sleep(300);
+  const before = await p.evaluate(() => document.querySelector('#d').open);
   const sum = await p.locator('#d summary').boundingBox();
   await p.mouse.move(sum.x + 8, sum.y + 6);
-  await p.mouse.move(sum.x + 10, sum.y + 7);
-  await sleep(150);
-  const overOff = await shadow(() => { return { hint: r.querySelector('.over-btn kbd')?.textContent || '', ctl: document.documentElement.classList.contains('lab-ctl'), over: document.documentElement.classList.contains('lab-over') }; });
-  await shadow(() => { r.querySelector('.over-btn').click(); });
-  await p.mouse.move(sum.x + 12, sum.y + 8);
-  await sleep(150);
-  const overOn = await shadow(() => { return { hint: r.querySelector('.over-btn kbd')?.textContent || '', over: document.documentElement.classList.contains('lab-over'), cursor: getComputedStyle(document.querySelector('#d summary')).cursor }; });
-  await shadow(() => { r.querySelector('.over-btn').click(); });
-  check(eng, 'pin over controls: the menu shows option-click while off, the pin shows over a control while on',
-    overOff.hint.endsWith('click') && overOff.ctl && !overOff.over && !overOn.hint && overOn.over && /^(none|crosshair)$/.test(overOn.cursor), JSON.stringify([overOff, overOn]));
+  await p.mouse.click(sum.x + 10, sum.y + 7);
+  await sleep(400);
+  const plain = await shadow(() => { return { pin: Boolean(r.querySelector('.float')), open: document.querySelector('#d').open }; });
+  await p.keyboard.down('Alt');
+  await p.mouse.click(sum.x + 10, sum.y + 7);
+  await p.keyboard.up('Alt');
+  await sleep(400);
+  const withAlt = await shadow(() => { return { pin: Boolean(r.querySelector('.float')), open: document.querySelector('#d').open }; });
+  await p.keyboard.press('Escape');
+  await sleep(300);
+  check(eng, 'a click on a control goes to the page and pins nothing; option-click pins on it, and the page does not get that click',
+    !plain.pin && plain.open === !before && withAlt.pin && withAlt.open === plain.open, JSON.stringify([before, plain, withAlt]));
 
   // A pin is one element for as long as its thread is on the page: opening, closing and pointing at it (and away) redraw
   // the widget, but the pin and its running animation carry on, not start again (Leo, 18 Nov).

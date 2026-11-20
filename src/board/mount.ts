@@ -40,7 +40,7 @@ const css = `
 #lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
 #lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
-#lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
+#lab-board .t{cursor:pointer;position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
 #lab-board .t u{text-decoration:none;cursor:pointer;margin-left:.5em;opacity:.6}
@@ -286,7 +286,9 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       box.dataset.id = f.id;
       inner.appendChild(card(c));
       box.append(inner);
-      text('div', '', box).className = 't';
+      const tag = text('div', '', box);
+      tag.className = 't';
+      tag.setAttribute('data-uncommentable', ''); // the label opens its frame: no pin there
       world.append(box);
       return c;
     });
@@ -327,15 +329,15 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     for (const c of cards) if (!c.frame) c.inner.replaceChildren(card(c));
   }).catch(() => {});
 
-  // The label above a frame; on the selected one a plain list of sizes to pick from.
+  // The label above a frame (a click on it opens the frame to use it); on the open one a plain list of sizes to pick from.
   const SIZES: Record<number, number> = { 390: 844, 820: 1180, 1280: 800, 1440: 900 };
   const editable = () => Boolean(document.querySelector('script[data-admin]')); // this computer's browser; a guest only looks
   function paint(c: Card) {
     const t = c.box.querySelector('.t') as HTMLElement;
     t.textContent = label(c.f);
-    if (c.f.id !== selected || !editable()) return;
-    for (const w of Object.keys(SIZES)) t.append(' ', Object.assign(document.createElement('u'), { textContent: w, className: +w === c.f.w ? 'on' : '' }));
     t.dataset.id = c.f.id;
+    if (c.f.id !== entered || !editable()) return;
+    for (const w of Object.keys(SIZES)) t.append(' ', Object.assign(document.createElement('u'), { textContent: w, className: +w === c.f.w ? 'on' : '' }));
   }
   const copy = (fs: Frame[]) => fs.map((f) => ({ ...f }));
   // Every change is the whole board put back with the rev it was read at; a frame is never dropped, only archived. A frame the
@@ -362,33 +364,21 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     });
   };
   const mutate = (id: string, fn: (f: Frame) => void) => change((fs) => fn(fs.find((f) => f.id === id)!));
-  const nextId = (fs: Frame[]) => {
-    for (let n = 0; ; n++) {
-      const id = String.fromCharCode(97 + (n % 26)) + (n >= 26 ? Math.floor(n / 26) : '');
-      if (!fs.some((f) => f.id === id)) return id;
-    }
-  };
-  const dup = (id: string) =>
-    change((fs) => {
-      const f = fs.find((g) => g.id === id)!;
-      const n = { ...f, id: nextId(fs), x: (f.x || 0) + f.w + 80, y: f.y, variantOf: f.id, auto: false, state: 'live' };
-      fs.splice(fs.indexOf(f) + 1, 0, n);
-      setTimeout(() => select(n.id), 400);
-    });
-  const archive = (id: string) => (select(''), mutate(id, (f) => (f.state = 'archived')));
   // ⌘Z: the frames as they were; one added since is archived (a frame is never dropped).
   const undoLast = () => {
     const was = undo.pop();
     if (was) change((fs) => fs.splice(0, fs.length, ...was, ...fs.filter((f) => !was.some((g) => g.id === f.id)).map((f) => ({ ...f, state: 'archived' }))), false);
   };
 
-  // ---------- selecting and entering ----------
+  // ---------- the frame the camera is on, and entering ----------
+  // Frames aren't selected (Leo, 20 Nov: "do not select frames"): a click on the board pins, as on a page. \`selected\` is
+  // only the frame Tab last moved to, never drawn; the open (entered) frame wears the ring.
   const find = (id: string) => cards.find((c) => c.f.id === id);
   function select(id: string) {
     if (entered && entered !== id) leave();
     selected = id;
     for (const c of cards) {
-      c.box.classList.toggle('sel', c.f.id === id);
+      c.box.classList.toggle('sel', c.f.id === entered);
       paint(c);
     }
   }
@@ -401,6 +391,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (!c) return;
     select(id);
     entered = id;
+    select(id); // the ring and the sizes, now that it is open
     c.box.classList.add('in');
     if (!c.frame) live(c); // a card is woken to be entered, cap or not
     else focusIn(c);
@@ -411,7 +402,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     entered = '';
     done.hidden = true;
     if (!c) return;
-    c.box.classList.remove('in');
+    c.box.classList.remove('in', 'sel');
+    paint(c);
     // The keys stay with the frame's document until focus is moved back: M, ⇧B and Esc would go to the wrong one.
     (c.frame?.contentWindow as unknown as { __labSpot?: { clear?: () => void } } | null | undefined)?.__labSpot?.clear?.();
     c.frame?.blur();
@@ -490,15 +482,18 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (zoomBox.classList.contains('open')) zoomBox.classList.remove('open');
     measure();
     theirs = false;
-    if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget()?.pinning()) {
+    // Option held pins on anything, frames too, as on a page (Leo, 20 Nov: selecting a frame took the comment away).
+    const tag = !e.altKey && (e.target as HTMLElement).closest?.('.t') as HTMLElement | null;
+    const size = tag && (e.target as HTMLElement).closest('u');
+    if (size && editable()) return void (eat(e), mutate(tag.dataset.id!, (f) => ((f.w = +size.textContent!), (f.h = SIZES[f.w])))); // a size from the open frame's list
+    if (tag && tag.dataset.id) return void (eat(e), enter(tag.dataset.id)); // a frame's label opens it
+    if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget() && (e.altKey || boardWidget()!.pinning())) {
       lastDown = performance.now();
-      theirs = true; // comment mode, no Space: the widget's own click (a pin) and drag (an area)
+      theirs = true; // comment mode or Option, no Space: the widget's own click (a pin) and drag (an area)
       return;
     }
     eat(e);
     lastDown = performance.now();
-    const size = (e.target as HTMLElement).closest?.('u');
-    if (size && editable()) return mutate((e.target as HTMLElement).parentElement!.dataset.id!, (f) => ((f.w = +size.textContent!), (f.h = SIZES[f.w]))); // a size from the list
     (document.activeElement as HTMLElement | null)?.blur?.();
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     root.setPointerCapture?.(e.pointerId);
@@ -561,7 +556,13 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     }
     if (d.held) {
       const w = boardWidget();
-      if (w && e.type === 'pointerup') setTimeout(() => (w.hold || w.place)(d.x, d.y), 0);
+      // After the click the lift still sends (it takes the focus off the comment box that opens, and the box closes on that):
+      // the comment is opened by that click (below), or after 150 ms if none comes.
+      if (w && e.type === 'pointerup') {
+        const open = () => ((afterClick = null), clearTimeout(late), (w.hold || w.place)(d.x, d.y));
+        const late = window.setTimeout(open, 150);
+        afterClick = () => setTimeout(open, 0);
+      }
       return;
     }
     if (d.far && coarse && focus && e.type === 'pointerup' && Math.abs(e.clientX - d.x) > 48 && Math.abs(e.clientX - d.x) > 2 * Math.abs(e.clientY - d.y) && !entered) return step(e.clientX < d.x ? 1 : -1); // a swipe on a phone: the next frame
@@ -571,15 +572,20 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     // outside comment should work here same as on page", "same with chat"). A drag (a pan) is no tap and closes nothing.
     if (widget?.dismiss?.()) return;
     if (widget?.pinning() && e.pointerType !== 'touch') return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
-    // A tap selects the frame under it (or nothing); a second one close by and soon enters it.
+    // No pin (comments hidden, or a finger): a double tap opens the frame under it to use it; a single one does nothing.
     const again = performance.now() - tap.at < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24;
     tap = { at: performance.now(), x: e.clientX, y: e.clientY };
-    if (again && d.id && d.id === selected) return enter(d.id);
-    select(d.id);
+    if (again && d.id) enter(d.id);
   };
   on('pointerup', up, true);
   on('pointercancel', up, true);
-  on('click', (e: MouseEvent) => mine(e) && !theirs && !ours(e) && eat(e), true);
+  let afterClick: (() => void) | null = null; // what the click that follows a hold's lift opens
+  on('click', (e: MouseEvent) => {
+    const f = afterClick;
+    afterClick = null;
+    f?.();
+    if (mine(e) && !theirs && !ours(e)) eat(e);
+  }, true);
   on('dblclick', (e: MouseEvent) => mine(e) && eat(e), true);
   on('contextmenu', (e: MouseEvent) => mine(e) && e.preventDefault(), true);
   // A mouse or trackpad. Pinch on a trackpad arrives as a wheel with ctrlKey (Chrome, Firefox); ⌘ or Ctrl and a wheel zoom.
@@ -627,7 +633,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     focus = true;
   };
   const press = (e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'> & { repeat?: boolean }, fromFrame = false): boolean => {
-    const [cmd, sel] = [e.metaKey || e.ctrlKey, find(selected)];
+    const cmd = e.metaKey || e.ctrlKey;
     if (cmd && !e.altKey && !e.shiftKey && !entered && editable()) {
       if (e.code === 'KeyZ') {
         undoLast();
@@ -635,10 +641,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       }
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
-    if (sel && !entered && editable() && (e.key === 'Backspace' || e.key === 'Delete')) {
-      archive(selected);
-      return true;
-    }
     const digit = /^Digit(\d)$/.exec(e.code)?.[1];
     if (e.shiftKey && digit === '1') go(fitAll(boxes(), view));
     else if (e.shiftKey && digit === '2') go(zoomAt(cam, view.w / 2, view.h / 2, 1, boxes(), view));
@@ -650,19 +652,11 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     else if (e.key === 'Escape') {
       // Heard in the frame, which keeps an Esc its page used (a menu closing) to itself: this one is ours.
       if (entered) leave();
-      else if (selected) select('');
       else if (opts.back && !coarse) back(); // an empty board's Esc goes back to the page, as ⇧B does
       else return false;
     } else return false;
     return true;
   };
-  // ⌘D / Ctrl D duplicates the selected frame. In capture: Control-D is also the widget's "next new comment".
-  on('keydown', (e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyD' && selected && !entered && editable() && !typing(e)) {
-      eat(e);
-      dup(selected);
-    }
-  }, true);
   on('keydown', (e: KeyboardEvent) => {
     if (e.key === ' ' && !typing(e) && !(entered && document.activeElement instanceof HTMLIFrameElement)) {
       e.preventDefault(); // the hand, not a scroll

@@ -99,8 +99,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     get drawList() { return drawList; },
     get el() { return el; },
     get fonts() { return fonts; },
-    get goBtn() { return goBtn; },
-    get goFace() { return goFace; },
     get goTo() { return goTo; },
     get host() { return host; },
     get isNew() { return isNew; },
@@ -161,7 +159,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const part = (name) => (parts[name] ??= import(new URL(`${name}.js`, script?.src || location.href).href));
   // Shortcuts, action → key: these defaults, with what a project or you changed (labit.json or your settings.json
   // `shortcuts`, passed by the lab as data-keys; docs/settings.md).
-  const KEYS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', select: 'v', pin: 'c' };
+  const KEYS = { toggle: 'm', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', select: 'v' };
   try {
     Object.assign(KEYS, JSON.parse(script?.dataset.keys || '{}'));
   } catch {}
@@ -267,7 +265,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     <div class="scrim"></div>
     <div class="layer"></div>
     <div class="motions"></div>
-    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · ${KEYS.comment} comment / pointer · ${KEYS.toggle} hide</div>
+    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · hold ${/Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt'} to pin on anything · ${KEYS.toggle} hide</div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -275,8 +273,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
-      <button class="secondary over-btn" type="button" aria-pressed="false" title="a click on the page's own links and buttons places a comment too, instead of being theirs (option-click always does)">pin over controls</button>
-      <button class="secondary go-btn" type="button" hidden title="1 switches between comment and pointer (clicks are the page's own)">mode</button>
       <button class="toggle" type="button"></button>
       <button class="secondary more" type="button" hidden aria-label="more options" aria-expanded="false" aria-controls="lab-more">⋯</button>
     </div>
@@ -307,11 +303,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const copyBtn = $('.copy-all');
   // The bar's "new" pill: J/K step through the new comments, R replies, E resolves.
   const listBtn = /** @type {HTMLButtonElement} */ ($('.list-btn'));
-  const goBtn = $('.go-btn');
   const doneBtn = /** @type {HTMLButtonElement} */ ($('.done-btn'));
   const motions = $('.motions');
   const movedBtn = /** @type {HTMLButtonElement} */ ($('.moved-btn'));
-  const overBtn = $('.over-btn');
   const tabTitle = { base: '' };
   // Done pins show unless hidden (Leo, 17 Nov): closed ones are faded on the page, and D hides them.
   S.showDone = store.get('lab-hide-done') !== '1';
@@ -471,46 +465,16 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     }
   }, 10000);
 
-  // Pointer (key 1 switches to it and back): pins stay shown, but a click is the page's own (follow a link, try a button): nothing is pinned.
-  // Option-click still pins. 1 comment leaves it.
-  S.cursorMode = store.get('lab-cursor') === '1' || S.board; // a board opens as a pointer; 1 is the comment mode, and not remembered
-  // The page's own links and buttons keep their clicks, so a demo or a card still works while comments are on
-  // (Leo, 16 Nov). With this on they do not: a click there places a comment, as option-click always has.
-  S.overControls = store.get('lab-over') === '1';
-  // While it is off the item shows how to pin over a control anyway, once: option-click (Leo, 17 Nov).
-  const OPTION = /Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt';
-  const sayOver = () => {
-    overBtn.replaceChildren(S.overControls ? 'controls keep clicks' : 'pin over controls', ...(S.overControls ? [] : [el('kbd', { 'aria-hidden': 'true' }, `${OPTION} click`)]));
-    overBtn.setAttribute('aria-pressed', String(S.overControls));
-  };
-  const setOver = (v) => {
-    S.overControls = v;
-    store.set('lab-over', v ? '1' : '');
-    sayOver();
-    setPinning(); // the pointer over controls follows the switch (lab-over)
-    S.ctlTarget = null; // what the mouse is over is worked out again: the answer has just changed
-    S.recheckCtl?.(); // without waiting for the mouse to move
-    setPinning();
-  };
-  sayOver();
+  // One way to pin (Leo, 20 Nov): a click pins, on a page or a board, the page's own links and buttons keep their
+  // clicks, and holding Option pins on anything, controls too. No switch, no keys, no pointer mode.
+  S.cursorMode = false;
   // Switching only changes the button and the pointer: nothing on the page is redrawn, so nothing flickers.
   // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
   const setPinning = () => {
     const placing = S.on && !S.cursorMode && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
     document.documentElement.classList.toggle('lab-pinning', placing);
-    // "Pin over controls" on: the page's own links, buttons and clickable cards show the pin too, not their hand: a click
-    // there pins, so the pointer says so (Leo, 17 Nov: "still controls giving me hand").
-    document.documentElement.classList.toggle('lab-over', placing && S.overControls);
     recheck();
-  };
-  const setCursor = (v) => {
-    S.cursorMode = v;
-    quiet('cursorMode'); // the button and the pointer change; nothing is redrawn
-    if (!S.board) store.set('lab-cursor', v ? '1' : '');
-    goBtn.classList.toggle('cursor', v);
-    goFace();
-    setPinning();
   };
   function begin(anchor) {
     if (!anchor.moment) {
@@ -809,7 +773,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   function placeBar() {
     const inMenu = !S.on ? []
       : expOpen ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), ...(flag('select') ? [selectBtn] : []), doneBtn, movedBtn, overBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
+      : [...(labHead ? [labHead, labsBtn] : []), ...(flag('select') ? [selectBtn] : []), doneBtn, movedBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
     // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
@@ -824,14 +788,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       b.classList.toggle('first', first && !b.hidden);
       if (!b.hidden) first = false;
     }
-  }
-  // The switch shows what a click will place: your comment pin (your initial) or nothing (the pointer); key 1 (or a click) flips it.
-  function goFace() {
-    const gp = goBtn.querySelector('.gp');
-    if (gp) gp.textContent = initial(store.get('lab-name')) || '+';
-    // Read out as what a click places, not the letter on it.
-    goBtn.setAttribute('aria-label', `a click places: ${S.cursorMode ? 'nothing (pointer)' : 'a comment'}`);
-    goBtn.setAttribute('aria-keyshortcuts', KEYS.comment);
   }
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
@@ -1404,7 +1360,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       e.stopPropagation();
     }
   }, true);
-  goBtn.addEventListener('click', () => setCursor(!S.cursorMode));
   // Pause (Leo, 19 Nov: "not in menu", "maybe with option pressed"): a small control on the moving thing itself, in
   // labit's layer over the page (nothing moves): pause / play · ¼ · its moment in ms, for that element and what is
   // inside it. Computers: on the video or loop under the pointer while ⌥ is held (⌥ is Measure's key too; a click on the
@@ -1849,7 +1804,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   if (coarse) new MutationObserver(() => drawMotion()).observe(host, { attributeFilter: ['data-sheet'] }); // a sheet opens: the controls go
   doneBtn.addEventListener('click', toggleDone);
   movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
-  overBtn.addEventListener('click', () => setOver(!S.overControls));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
   const showAgain = () => {
     if (S.on) return;
@@ -1939,23 +1893,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (typed?.value.trim()) return shake(typed.closest('.card, .float'));
       return stepNew(e.shiftKey ? -1 : 1);
     }
-    // 1 switches between comment and pointer: once the pointer, again the comment (the key is a setting).
     const act = actionOf(e);
-    // C is comment, always (Leo, 19 Nov): out of select mode or the pointer, a click pins again. 1 still switches.
-    if (S.on && act === 'pin' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
-      e.preventDefault();
-      if (S.selecting) selectMode(false);
-      if (S.cursorMode) setCursor(false);
-      return;
-    }
-    if (S.on && act === 'comment' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
-      e.preventDefault();
-      setCursor(!S.cursorMode);
-      return;
-    }
     // The list's keys, with comments shown and nothing typed: L list, T chat, J/K next/previous, R reply, E resolve.
     // By the key's place, not its letter, so the keys work with any layout (Russian, Greek…): the C key is C (keyOf).
-    // The keys (Leo, 2026-11-15/16), marked in the bar's words: cha(t) (C was chat until 19 Nov; Leo: C is comment), ne(w) (Shift-W: the one before), 1 comment / pointer,
+    // The keys (Leo, 2026-11-15/16), marked in the bar's words: cha(t) (C was chat until 19 Nov), ne(w) (Shift-W: the one before),
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
     // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
     if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || act === 'done' || !e.shiftKey)) { // ⇧D draws too: Shift straightens (below)
@@ -2000,12 +1941,11 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const sayCtl = (t) =>
     document.documentElement.classList.toggle(
       'lab-ctl',
-      !S.overControls && !host.contains(/** @type {Node} */ (t)) && t !== host && control(t),
+      !host.contains(/** @type {Node} */ (t)) && t !== host && control(t),
     );
-  // Said again without waiting for the mouse to move (the switch in the ⋯ menu changes the answer under it).
+  // Said again without waiting for the mouse to move.
   S.recheckCtl = () => S.mouse && sayCtl(document.elementFromPoint(S.mouse.x, S.mouse.y));
   const control = (t) => {
-    if (S.overControls) return false; // with the switch on, nothing on the page keeps its click
     const hand = !document.documentElement.classList.contains('lab-ink-over'); // over inked words the hand is ours (wordink.ts)
     for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
       if (n.matches(INTERACTIVE) || (hand && getComputedStyle(n).cursor === 'pointer')) return true;
@@ -2945,9 +2885,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
       `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
       // Holding Option (Alt) pins links and controls too: the drawn pin shows over them (the system pointer hides).
-      // The same with "pin over controls" on, without the key (lab-over; not while Shift selects words).
-      `html:is(.lab-alt, .lab-over:not(.lab-shift)) body, html:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
-      `html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body, html.lab-drawn:is(.lab-alt, .lab-over:not(.lab-shift)) body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
+      `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
+      `html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable. With ink on words (lab-ink-on, wordink.ts) the text stays selectable and only
@@ -3142,7 +3081,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       pin.style.visibility = (covered || position(info.c.anchor || {}).clipped) && S.openId !== id ? 'hidden' : '';
     }
   };
-  Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))), dismiss } });
+  Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))), dismiss } });
   addEventListener('lab-board-moved', (e) => {
     const d = /** @type {CustomEvent} */ (e).detail;
     if (!S.on) return;

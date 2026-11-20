@@ -158,9 +158,7 @@ win over yours, key by key.
 | Action | Default | Does |
 | --- | --- | --- |
 | `toggle` | `m` | Show or hide comments |
-| `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
 | `chat` | `t` | Open the chat |
-| `pin` | `c` | Comment mode: a click places a comment. Leaves select mode or the pointer |
 | `next` | `w` | The next new comment (with Shift: the one before) |
 | `pause` | `p` | Pause the page's videos and animations, or play what was paused (each one also has its own control: hold ⌥ over it on a computer, in its corner on a phone) |
 | `slow` | `s` | Play the page's videos and animations at ¼ speed, or back at full speed (the ¼ in a thing's own control slows only it); a pin made while paused carries the moment in ms |
