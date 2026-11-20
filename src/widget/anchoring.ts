@@ -888,7 +888,8 @@ function search(a, fp: Fp, at: Element | null, tag: string, co: (n: Element) => 
   const old = fp.t.match(/\w{3,}/g) || [];
   const kept = (r: Scored) => (r.T ?? 0) >= 0.5 || !old.length || old.filter((w) => words(r.c).includes(w)).length * 3 >= old.length || r.Q >= 0.35 || (!a.fp && !a.file && secOk(r)); // a third of its old words (a new element in its place says none)
   const inPlace = ok.filter((r) => kept(r) && ((isAt(r) && (mine(r) || (r.T ?? 0) >= 0.6)) || ((r.N ?? 0) >= 1 && was0 && was1) || (u > 1 && (r.X ?? 0) >= 0.9 && r.c.localName === tag)));
-  if (inPlace.length && (inPlace.length === 1 || isAt(inPlace[0])) && inPlace[0].s >= LOW) return { node: (inPlace.find(isAt) || inPlace[0]).c };
+  const own = inPlace.filter(secOk); // a twin in another section is not it
+  if (own.length && (own.length === 1 || isAt(own[0])) && own[0].s >= LOW) return { node: (own.find(isAt) || own[0]).c };
   // Its own words (nobody else's), partly, somewhere else in its section.
   return top.s >= LOW && (top.T ?? 0) >= 0.75 && u < 2 && !fp.s && clear && kept(top) && (!a.section || inSection(top.c, a.section)) ? { node: top.c } : { node: null };
 }
@@ -1143,7 +1144,7 @@ export function spotChanged(anchor) {
   const was = short(anchor.quote?.exact || anchor.text || anchor.zoneText || anchor.fp?.t || '', 80);
   const { node, sure, alike } = proof(anchor);
   if (!node) return position(anchor).moved && was ? { was, gone: true } : null;
-  if (sure) return null;
+  if (sure && (!anchor.quote?.exact || quoteRange(anchor, node, true))) return null; // its quoted words are still there too
   const now = sectionIn(node);
   return { was, now: short(node.textContent, 80), element: openingTag(node), ...(alike ? { alike: true } : {}), ...(anchor.section && !inSection(node, anchor.section) ? { away: true, in: now } : {}) };
 }

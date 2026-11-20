@@ -269,12 +269,13 @@ try {
         swap('<div class="intro">Intro words, then the special phrase sits here, and more after.</div>');
         const sure = { at: A.position(a), word: wordAt('special') };
         swap('<div class="intro">Intro words, then the precious phrase sits here, and more after.</div>');
-        const guess = { at: A.position(a), word: wordAt('precious') };
+        const box = document.querySelector('.intro').getBoundingClientRect();
+        const guess = { at: A.position(a), word: { top: box.top + scrollY, bottom: box.bottom + scrollY }, node: A.findTarget(a)?.className };
         swap('<div class="intro">Nothing of it is left.</div>');
         return { quote: a.quote, sure, guess, gone: A.position(a) };
       });
       check(eng, 'element gone, words still there in the same company: the pin sits on them', !r.sure.at.moved && r.sure.at.top >= r.sure.word.top && r.sure.at.top <= r.sure.word.bottom && r.sure.at.left >= r.sure.word.left && r.sure.at.left <= r.sure.word.right, JSON.stringify(r.sure));
-      check(eng, 'element gone, words edited but their company is there: the pin waits beside them, as moved', r.guess.at.moved === true && r.guess.at.top >= r.guess.word.top && r.guess.at.top <= r.guess.word.bottom, JSON.stringify(r.guess));
+      check(eng, 'element made another tag and a word edited: the pin follows to it (its words nearly as they were)', r.guess.node === 'intro' && !r.guess.at.moved && r.guess.at.top >= r.guess.word.top && r.guess.at.top <= r.guess.word.bottom, JSON.stringify(r.guess));
       check(eng, 'element and words gone: moved, at its old height', r.gone.moved === true, JSON.stringify(r.gone));
       await p.close();
 
