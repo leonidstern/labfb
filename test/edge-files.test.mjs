@@ -166,7 +166,6 @@ test('a 10 MB page: served whole with the comment layer once, compressed too, wi
   // It is a page like any other: listed with its title, takes a pin, has its agent text, and a save is heard.
   assert.equal((await raw(PORT, '/_lab/pages')).json.pages.find((p) => p.path === '/big')?.title, 'big page');
   assert.equal((await pinOn(lab, '/big', 'on the big page')).status, 201);
-  assert.equal((await raw(PORT, '/_lab/api/looked', { method: 'POST', body: JSON.stringify({ name: 'Leo', page: '/big', ids: [['top', 'big']] }), headers: { 'content-type': 'application/json', origin: lab.B } })).status, 200);
   const agent = await raw(PORT, '/_lab/agent/big');
   assert.equal(agent.status, 200);
   assert.match(agent.text, /^file: big\.html$/m);

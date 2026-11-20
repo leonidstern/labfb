@@ -221,7 +221,7 @@ test('a JSON body that is null, a number, a string or a list is the sender\'s mi
   const asAgent = { 'x-lab-admin': agent, 'x-lab-agent': '1' };
   const ends = [
     ['/_lab/api/comments', 'POST', {}], ['/_lab/bye', 'POST', {}], ['/_lab/me', 'POST', {}], ['/_lab/rule', 'POST', {}], ['/_lab/api/reads', 'POST', {}], ['/_lab/api/sections', 'POST', {}],
-    ['/_lab/api/looked', 'POST', {}], ['/_lab/flags', 'POST', own], ['/_lab/api/actions', 'PUT', own], ['/_lab/labs', 'POST', own],
+    ['/_lab/flags', 'POST', own], ['/_lab/api/actions', 'PUT', own], ['/_lab/labs', 'POST', own],
     ['/_lab/ack', 'POST', asAgent], ['/_lab/wait', 'POST', asAgent],
   ];
   const bad = [];

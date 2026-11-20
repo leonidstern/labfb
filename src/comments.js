@@ -29,7 +29,7 @@ import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
@@ -38,7 +38,7 @@ import { inFrame, startFrame } from './widget/frame.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { inkSvg } from './widget/ink.ts';
-import { NAME_MAX, SEED } from '../lib/actions.ts';
+import { NAME_MAX } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } from './widget/drag.ts';
 import { bindBoardCam, showBoard } from './widget/boardcam.ts';
@@ -63,7 +63,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     : new Proxy(state, {
         set(o, k, v) {
           o[k] = v;
-          if (unseen && !unseen.has(k) && /^(openId|draft|chatOpen|comments|on|showDone|page|seen|cursorMode|isAdmin)$/.test(String(k))) {
+          if (unseen && !unseen.has(k) && /^(openId|draft|chatOpen|comments|on|showDone|page|seen|isAdmin)$/.test(String(k))) {
             const e = Error(String(k));
             unseen.set(k, e);
             requestAnimationFrame(() => requestAnimationFrame(() => unseen?.get(k) === e && unseen.delete(k) && (win.__labMissed ||= []).push(e.stack)));
@@ -73,7 +73,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       });
   const UNDO_MS = 3000; // a sent pin can be taken back this long (takeBack)
   S.undo = null; // { id, until, text, anchor, touched }: the pin this tab just sent, while undo is on offer
-  S.quietOpen = false;
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
@@ -115,7 +114,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get loadChanges() { return loadChanges; },
     get markSeen() { return markSeen; },
     get ms() { return ms; },
-    get ease() { return ease; },
     get mine() { return mine; },
     get motions() { return motions; },
     get nameLine() { return nameLine; },
@@ -139,7 +137,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get say() { return say; },
     get script() { return script; },
     get send() { return send; },
-    get sheetMode() { return sheetMode; },
     get showAgain() { return showAgain; },
     get stampOf() { return stampOf; },
     get foldRow() { return foldRow; },
@@ -181,7 +178,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // Your one list of actions (settings.json `actions`, passed as data-actions; lib/actions.ts, docs/settings.md): as many
   // chips as fit, the rest behind "…".
   const actButton = (name) => el('button', { type: 'button', 'data-k': name }, name);
-  let LIST = SEED;
+  let LIST = [];
   try {
     const l = JSON.parse(script?.dataset.actions || 'null');
     if (Array.isArray(l)) LIST = l;
@@ -273,11 +270,11 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // ---------- DOM ----------
   const host = document.createElement('div');
   host.setAttribute('data-lab-comments', '');
-  host.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;z-index:2147483000;';
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `
     <style>${styles}</style>
     <div class="scrim"></div>
+    <i class="fit" aria-hidden="true"></i>
     <div class="layer"></div>
     <div class="motions"></div>
     <div class="ui"><div class="hint" role="status" hidden></div>
@@ -463,7 +460,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     if (![...now.values()].some((e) => BUSY.has(e.s))) return;
     if ([...now].some(([id, e]) => pinsById.has(id) && S.rings.get(id) !== e.s)) return shownAgain();
     W.paintWho?.();
-    paintLines();
     for (const [id, pin] of pinsById) {
       const tip = pin.querySelector('.tip');
       if (tip) tip.textContent = lineOf(now.get(id));
@@ -472,12 +468,11 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
 
   // One way to pin (Leo, 20 Nov): a click pins, on a page or a board, the page's own links and buttons keep their
   // clicks, and holding Option pins on anything, controls too. No switch, no keys, no pointer mode.
-  S.cursorMode = false;
   // Switching only changes the button and the pointer: nothing on the page is redrawn, so nothing flickers.
   // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
   const setPinning = () => {
-    const placing = S.on && !S.cursorMode && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
+    const placing = S.on && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
     document.documentElement.classList.toggle('lab-pinning', placing);
     recheck();
   };
@@ -635,7 +630,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // The link an agent reads: every open comment on this page as plain text.
   const agentLink = () => new URL('/_lab/agent' + S.page, new URL(API, location.href)).href;
 
-  async function copy(textPromise, button) {
+  async function copy(textPromise) {
     const textValue = await textPromise;
     try {
       await navigator.clipboard.writeText(textValue);
@@ -648,16 +643,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       document.execCommand('copy');
       area.remove();
     }
-    if (moreMenu.contains(button)) return say('link copied'); // the ⋯ menu closes on a pick: say it in the hint strip
-    // "copied" for a moment in the same box: the button keeps its width, so nothing beside it moves.
-    const label = button.textContent;
-    button.style.width = `${button.getBoundingClientRect().width}px`;
-    button.style.justifyContent = 'center';
-    button.textContent = 'copied';
-    setTimeout(() => {
-      button.textContent = label;
-      button.style.width = button.style.justifyContent = '';
-    }, 1400);
+    say('link copied');
   }
 
   // ---------- render ----------
@@ -1117,8 +1103,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
         // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
         // The reply box takes the cursor on a computer. Phones don't (no keyboard popping up over what you came to read,
         // Leo 15 Nov); a keyboard already up while stepping to the next one stays up.
-        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && !S.quietOpen && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
-        S.quietOpen = false; // opened by a send, for its undo (takeBack): the cursor stays where it was
+        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
         S.openCard = card;
         if (appear && !S.stepping) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_thread-max))`;
@@ -1318,7 +1303,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     S.on = true;
     store.set('lab-on', '1');
   };
-  copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
+  copyBtn.addEventListener('click', () => copy(agentLink()));
   // The list opens on "new" each time.
   // A #block link in a message: go to that block on the page. A phone's sheet covers the page, so it closes first.
   addEventListener('lab-goto', (e) => {
@@ -1461,7 +1446,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       !host.contains(/** @type {Node} */ (t)) && t !== host && control(t),
     );
   // Said again without waiting for the mouse to move.
-  S.recheckCtl = () => S.mouse && sayCtl(document.elementFromPoint(S.mouse.x, S.mouse.y));
   const control = (t) => {
     for (let n = t instanceof Element ? t : null; n && n !== document.body && n !== document.documentElement; n = n.parentElement)
       if (n.matches(INTERACTIVE) || getComputedStyle(n).cursor === 'pointer') return true;
@@ -1906,7 +1890,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   };
   // Computers: Shift + drag (or Shift + double or triple click) selects words; letting go opens the comment dialog.
   document.addEventListener('mouseup', (e) => {
-    if (S.on && !S.cursorMode && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
+    if (S.on && e.shiftKey && !S.shiftUp && e.button === 0 && !draftHasText() && !e.composedPath().includes(host)) setTimeout(offerSelection, 0);
   }, true);
   // A sent pin's card, opened by the send for its undo and not touched since, lets go on a press on the page, at once, so a
   // drag over words it covered still selects them (a4c5ddc). The click that press makes only lets it go (Leo, 19 Nov:
@@ -1935,7 +1919,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       render();
       return;
     }
-    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
+    if ((!S.on && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
     if (S.lastTouch && Date.now() - S.lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || S.ctlClick) return;
@@ -2005,12 +1989,28 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     }
     flushPins();
   };
+  // The host sits at the page's top left corner (styles.css :host), as its box's own: a page that makes <body> or <html>
+  // the box an absolute child counts from (position: relative, transform, filter, contain, will-change, a margin on it)
+  // moves that corner, and every pin with it. Zoom does the same (`zoom` on the page scales what is drawn inside it).
+  // So the host is measured where it stands, and set back at the page's corner, zoomed the other way.
+  const fitProbe = $('.fit');
+  const fitVars = { x: 0, y: 0, z: 1 };
+  const fit = () => {
+    const k = fitProbe.getBoundingClientRect().width / 100;
+    if (k > 0 && Math.abs(k - 1) > 0.001) host.style.setProperty('--lab-fz', String((fitVars.z = Math.min(10, Math.max(0.1, fitVars.z / k)))));
+    const r = host.getBoundingClientRect();
+    const [dx, dy] = [r.left + scrollX, r.top + scrollY];
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    host.style.setProperty('--lab-fx', `${(fitVars.x -= dx)}px`);
+    host.style.setProperty('--lab-fy', `${(fitVars.y -= dy)}px`);
+  };
   S.frame = 0;
   let reflowAll = false; // something but a scroll asked (a resize, the page's size): every pin is placed again
   const reflow = (scrolled) => {
     reflowAll ||= scrolled !== true;
     cancelAnimationFrame(S.frame);
     S.frame = requestAnimationFrame(() => {
+      fit();
       const scrolledOnly = !reflowAll;
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (S.draft || root.activeElement || S.grabbing || isTrying()) return; // words tried in place: the pins stay put
@@ -2029,7 +2029,10 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
   const navigated = () => {
-    if (!host.isConnected && document.body) document.body.append(host);
+    if (!host.isConnected && document.body) {
+      document.body.append(host);
+      fit();
+    }
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
     S.routed?.(); // the section bar (sections.ts)
@@ -2058,10 +2061,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // --lab-font on the host element, data-font="Name" (a font the page already loads) or data-font-url (a woff2).
   // @font-face is ignored inside a shadow root, so a data-font-url face goes in the document.
   const fonts = document.createElement('style');
-  if (script?.dataset.fontUrl)
-    fonts.textContent = `@font-face{font-family:'lab comments';font-display:swap;src:url('${new URL(script.dataset.fontUrl, script.src || location.href)}') format('woff2');}`;
-  const fontName = script?.dataset.fontUrl ? 'lab comments' : script?.dataset.font;
-  if (fontName) host.style.setProperty('--lab-font', `'${fontName.replace(/'/g, '')}', system-ui, sans-serif`);
 
   // A comment pin as the pointer over everything you can comment on (links and controls keep theirs): the white
   // teardrop with a +, clicking at its point. Holding Shift gives the text cursor back for selecting words.
@@ -2164,6 +2163,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     document.head.append(fonts, pinCursorStyle);
     refreshPinCursor();
     document.body.append(host);
+    fit();
     // The page's own selection while commenting, and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';

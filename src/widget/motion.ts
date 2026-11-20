@@ -422,7 +422,6 @@ const redrawMotionSoon = () => motionAgain || (motionAgain = requestAnimationFra
 export function bindMotion(w: unknown) {
   W = w;
   S = W.S;
-  S.seekMoment = seekMoment;
   S.momentChip = momentChip;
   S.momentFor = momentFor;
   for (const type of ['animationstart', 'transitionrun', 'play']) addEventListener(type, () => (S.slow || slowEls.size > 0) && slowAll(), true);

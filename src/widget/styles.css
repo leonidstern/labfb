@@ -1,6 +1,11 @@
 /* Theme: set --lab-accent, --lab-accent-fg, --lab-bg, --lab-fg, --lab-radius, --lab-font or --lab-font-features on the
    [data-lab-comments] element (or on :root). Everything else is mixed from those. */
-:host { all: initial;
+:host { /* Nothing of the page reaches in: !important in a shadow root beats the page's own !important on the host (an inner
+     context wins the important ones), so a page's div, *, body > *, [data-lab-comments] or all: unset rule can neither style
+     what inherits from here (italic, caps, centred, rtl, visibility, pointer-events) nor hide, move, scale or fade the
+     widget. --lab-fx/fy/fz are set by the widget (comments.js fit) when a page's own box or zoom moves the corner. */
+  all: initial !important; display: block !important; position: absolute !important; left: var(--lab-fx, 0px) !important; top: var(--lab-fy, 0px) !important;
+  width: 0 !important; height: 0 !important; z-index: 2147483000 !important; direction: ltr !important; unicode-bidi: normal !important; zoom: var(--lab-fz, 1) !important;
   --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
   --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
   --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
@@ -41,6 +46,7 @@
 ::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
 button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
+.fit { position: absolute; left: 0; top: 0; width: 100px; height: 0; visibility: hidden; pointer-events: none; } /* measures what a page's zoom or transform makes of 100 px (comments.js fit) */
 .ui { display: contents; }
 /* Pinch-zoomed (sheets.ts zoomFit): the bar, chat and list are laid out on the unzoomed screen as always, then drawn
    1/zoom as big where the screen shows now. Only what's on it takes taps; the page between stays the page's. */
@@ -368,8 +374,6 @@ button.btn.undo { color: var(--_fg); }
 .newline::before, .newline::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
 /* The left side: who's listening, then copy link; the right side is the bar. */
 .left { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
-.left .copy-all { border: 0; border-radius: var(--_radius); padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_muted);
-                  box-shadow: var(--_shadow); font: inherit; font-size: 13px; letter-spacing: -.006em; font-weight: 500; white-space: nowrap; }
 /* A reload is ready but held while you read or type: a "!" on the labit mark (or the ⋯) says so; a tap takes it. It
    floats (live.ts places it on the mark's corner), so nothing moves when it comes. */
 .has-upd { position: relative; cursor: pointer !important; }
@@ -407,7 +411,6 @@ button.btn.undo { color: var(--_fg); }
 .listener .c { display: block; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--_muted); overflow-wrap: anywhere; user-select: all; }
 .listener:is(:hover, :focus-visible) .w { opacity: 1; translate: none; }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
-.agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
 .mark .eye, .agentmark .eye { fill: var(--_bg); }
 .listener .mark { fill: var(--_green-fg); }
