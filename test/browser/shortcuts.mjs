@@ -177,7 +177,6 @@ try {
       // Pause: no ⋯ menu row; holding ⌥ over a moving thing shows its control (pause · ¼ · ms) in its top right corner,
       // which stops only that one and never pins; let go and a paused one keeps a ▶. P stops them all, a comment written
       // while paused tells the agent so (anchor.paused, atMs); P again plays. S slows all to ¼.
-      await p.evaluate(() => localStorage.removeItem('lab-cursor')); // the steps above leave the pointer on (key 1 toggles it)
       await p.goto(B + '/anim');
       await untilRoot(p, (r) => Boolean(r.querySelector('.motions')), 2500);
       // A long comment scrolls inside its box: the scrollbar sits at the box's right edge, not left of the name and arrow.

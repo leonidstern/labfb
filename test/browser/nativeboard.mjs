@@ -41,8 +41,6 @@ try {
       const sh = (fn) => p.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot), fn);
       const rect = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; }, id);
       const a = await rect('a');
-      await p.keyboard.press('Digit1'); // comment mode
-      await sleep(200);
       await p.mouse.click(a.x + 100, a.y + 150);
       await p.waitForFunction(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot; return Boolean(r.querySelector('textarea')); }, null, { timeout: 4000 }).catch(() => {});
       await p.keyboard.type('too tight here');
@@ -56,9 +54,7 @@ try {
       const on = (pp, fr) => Math.abs(pp.x - spot(fr).x) < 3 && Math.abs(pp.y - spot(fr).y) < 3;
       const p1 = await pinAt();
       check(eng, hides ? 'a board pin on a frame is held by the browser, on its spot' : 'a board pin is placed by the script here (no anchor positioning), on its spot', p1.held === hides && on(p1, a), JSON.stringify({ p1, want: spot(a) }));
-      // Pan: Space + drag on the empty board (pointer mode). No redraw by the widget while the camera moves, and the pin stays on its spot.
-      await p.keyboard.press('Digit1'); // back to the pointer (1 toggles; Esc on a board goes back to its page)
-      await sleep(200);
+      // Pan: Space + drag on the empty board (Space held). No redraw by the widget while the camera moves, and the pin stays on its spot.
       await p.evaluate(() => {
         window.labMeasured = 0;
         for (const [proto, fn] of [[Element.prototype, 'getBoundingClientRect'], [Range.prototype, 'getClientRects']]) {

@@ -43,7 +43,6 @@ for (const [n, eng] of engines('chromium').entries()) {
     await until(() => p.evaluate(() => [...document.querySelectorAll('*')].some((x) => x.shadowRoot?.querySelector('.scrim'))));
     await sleep(300);
     const write = async (words) => {
-      if (!(await p.evaluate(() => document.documentElement.classList.contains('lab-pinning')))) await p.keyboard.press('1');
       const b = await p.locator('#b').boundingBox();
       await p.mouse.click(b.x + 30, b.y + b.height / 2);
       await until(() => shadow(() => { return Boolean(r.querySelector('.float textarea')); }));
@@ -152,7 +151,6 @@ for (const [n, eng] of engines('chromium').entries()) {
       await until(() => q.evaluate(() => [...document.querySelectorAll('*')].some((x) => x.shadowRoot?.querySelector('.scrim'))));
       await sleep(300);
       const admin = await q.evaluate(() => Boolean(document.querySelector('script[data-admin]')));
-      if (!(await q.evaluate(() => document.documentElement.classList.contains('lab-pinning')))) await q.keyboard.press('1');
       const b = await q.locator('#b').boundingBox();
       await q.mouse.click(b.x + 30, b.y + b.height / 2);
       await until(() => gs(() => { return Boolean(r.querySelector('.float textarea')); }));

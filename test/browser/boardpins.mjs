@@ -33,8 +33,6 @@ try {
       const sh = (fn) => p.evaluate((f) => new Function('r', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot), fn);
       const rect = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; }, id);
       const a = await rect('a');
-      await p.keyboard.press('Digit1'); // a board opens as a pointer; 1 is the comment mode
-      await sleep(200);
       // a tap in comment mode on frame a, 100 px right and 150 px down of its corner (screen px)
       await p.mouse.click(a.x + 100, a.y + 150);
       await p.waitForFunction(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot; return Boolean(r.querySelector('textarea')); }, null, { timeout: 4000 }).catch(() => {});

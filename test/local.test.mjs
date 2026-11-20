@@ -227,7 +227,7 @@ test('a reply goes in the short thread form only to the session that has its thr
   assert.match(b, /^## /m, 'the whole thread for a session that never had it');
   assert.match(b, /^Answer each: .* reply <id> .* add --wait to the last one/m, 'how to answer, in full the first time a session hears');
   assert.match(b, /Read each thread whole \(every message and reply/, 'told to read the whole conversation before answering, not to guess from the page');
-  assert.match(b, /^Work that takes more than a minute .*: first .* reply <id> --progress /m, 'a progress line first, before long work');
+  assert.match(b, /^If it will take more than about a minute .*: send one .* reply <id> --progress /m, 'a status line first, before long work');
   assert.match(b, /^Write answers short/m);
   assert.match(b, /tighten the spacing under the title/);
   assert.match(b, /a bit more/);
@@ -239,8 +239,8 @@ test('a reply goes in the short thread form only to the session that has its thr
   assert.match(b2, /^- Leo · .* · id \w+: a bit more$/m, 'earlier words, unmarked');
   assert.match(b2, /^- Leo · .* · id \w+: and less on mobile {2}← new$/m);
   assert.doesNotMatch(b2, /^# New comments/m, 'no heading for comments when there are only replies');
-  assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --on-it \| --question\] \[--wait\]; .*as before\.$/m, 'then one short line');
-  assert.doesNotMatch(b2, /Write answers short|run in |Read each thread whole|Work that takes more than a minute|suggest-rule/, 'the standing lines said once');
+  assert.match(b2, /^Answer each: .* reply <id> "what you did" \[--done \| --question\] \[--wait\]; .*as before\.$/m, 'then one short line');
+  assert.doesNotMatch(b2, /Write answers short|run in |Read each thread whole|If it will take more than about a minute|suggest-rule/, 'the standing lines said once');
   await sleep(500);
   assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, '.lab/state.json'), 'utf8')).handed[comment.id][1], 'sess-b', 'which session has the thread: kept beside the comments');
   const seen = (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments.find((c) => c.id === comment.id);

@@ -294,6 +294,10 @@ button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; colo
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
 /* A long chat lays out only the messages near the screen; each keeps its last height while away. */
 .msgs > .msg { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+/* The agent's folded "on it" messages: one small muted row ("2 updates ›"), a tap opens them in place. */
+.msgs > .updates { align-self: flex-start; background: none; border: 0; padding: 2px 4px; margin: 0; font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_muted); cursor: pointer; border-radius: var(--_radius); }
+.msgs > .updates:hover, .msgs > .updates:focus-visible { color: var(--_fg); }
+.msgs > .updates:focus-visible { outline: 2px solid var(--_accent); outline-offset: 1px; } /* keyboard focus is seen on the small row */
 /* Something just sent eases in; the arrow flies off and comes back. */
 .fresh { animation: lab-in var(--_t-base) var(--_ease); } /* a message arrives as a card does */
 .send.sent .arr { animation: lab-fly var(--_t-slow) var(--_ease); }
@@ -383,7 +387,6 @@ kbd { font-size: 10px; letter-spacing: .012em; line-height: 17px; min-width: 0; 
 kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar:hover kbd { opacity: .75; }
 .bar button kbd { margin-left: -4px; } /* the hint sits close to its word: chat (c) */
-.bar button.go-btn kbd { font-size: inherit; line-height: inherit; opacity: 1; margin-left: 0; } /* (1) reads like (c)hat and ne(w) */
 /* One bar of segments, a hairline between them; the less used ones in the ⋯ menu above it (phones too: same bar, bigger to tap). */
 .bar > button { box-shadow: inset .5px 0 0 var(--_line); border-radius: 0; background: none; padding: 8px 12px; gap: 6px; }
 .bar > button.first { box-shadow: none; }
@@ -402,15 +405,6 @@ kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
 .bar .cnt { font-size: 12px; letter-spacing: 0; font-weight: 400; line-height: 16px; text-align: center; background: none; color: var(--_fg); font-variant-numeric: tabular-nums; }
 .bar .cnt.zero { color: var(--_muted); }
 .bar .cnt:not(.zero) { color: var(--_green-fg); } /* something new: green, the go pin's green (Leo, 17 Nov) */
-.gp { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 11px 11px 11px 2px; font-size: 10px; letter-spacing: .012em; font-weight: 600;
-      color: var(--_green-fg); box-shadow: inset 0 0 0 1.25px var(--_green-fg); transition: background-color var(--_fade), color var(--_fade); }
-/* 1, comment: your own pin, small: your initial in a white pin with the pins' edge. */
-.go-btn:not(.cursor) .gp { color: var(--_fg); background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); font-size: 10px; letter-spacing: .012em; }
-/* 3, cursor: the switch is the very pin of 1 (white, the pins' 1 px edge, the same bold letters), saying "off" in
-   grey. It had a thicker, darker ring and regular letters, which read as another control (Leo, 16 Nov). */
-.go-btn.cursor .gp { color: transparent; background: var(--_bg); box-shadow: inset 0 0 0 1px var(--_edge); position: relative; }
-.go-btn.cursor .gp::after { content: 'off'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--_muted);
-                            font-size: 10px; font-weight: 600; letter-spacing: 0; }
 .more { font-size: 15px !important; letter-spacing: .05em; }
 .more-menu { position: fixed; right: 16px; bottom: 60px; display: grid; min-width: 180px; padding: 4px; background: var(--_bg);
              border-radius: var(--_radius); box-shadow: var(--_shadow); animation: lab-in var(--_t-base) var(--_ease); }
@@ -488,7 +482,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host { --_radius: calc(var(--lab-radius, 12px) * 1.8); --_r-s: 11px; }
   *, *::before, *::after { corner-shape: squircle; }
   .pin, .pin .ring, .pin.new::after, .send, .bar .toggle:not(.secondary)::before,
-  .msg :is(.stamp, .stamp-room) .ring, .gp { corner-shape: round; } /* circles stay circles */
+  .msg :is(.stamp, .stamp-room) .ring { corner-shape: round; } /* circles stay circles */
 }
 @keyframes lab-pin { from { transform: scale(1.1); } }
 /* One ring that grows and fades; --_halo sets its colour (a sent pin's is green). */
