@@ -225,8 +225,10 @@ test('a body of the wrong shape is 422 with its reason; a title and a label are 
   assert.doesNotMatch(r.json.title, /\n/);
   const f = r.json.frames[0];
   assert.deepEqual([f.label.length, f.state, f.variantOf, f.extra], [80, 'live', undefined, undefined]);
-  // The board's page puts only its name in the HTML, never the title or a label.
-  const page = await raw(PORT, '/_lab/board/shape');
+  // A board about a page goes to that page. The board page of one with no page puts only its name in the HTML, never the title or a label.
+  assert.equal((await raw(PORT, '/_lab/board/shape')).status, 302);
+  assert.equal((await put('name=plain', { v: 1, title: 'a title', frames: [frame('a', { label: '<script>alert(1)</script>' })] })).status, 200);
+  const page = await raw(PORT, '/_lab/board/plain');
   assert.equal(page.status, 200);
   assert.doesNotMatch(page.text, /<script>alert\(1\)|a title/);
   await alive();

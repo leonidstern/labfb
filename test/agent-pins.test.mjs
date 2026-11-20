@@ -224,12 +224,12 @@ test('8: --board pins on a frame\'s element, on a frame, or on the board itself'
   // On a frame itself (no element) and on the board.
   const onFrame = await pin('--board', name, '--frame', 'c', '-', 'this one is too wide', '--at', '40,20');
   assert.equal(onFrame.code, 0, onFrame.out);
-  const f = (await all(`/_board/${name}`)).find((x) => x.id === idOf(onFrame.out));
+  const f = (await all('/pricing')).find((x) => x.id === idOf(onFrame.out));
   assert.deepEqual([f.anchor.kind, f.anchor.frame, f.anchor.fx, f.anchor.fy, f.anchor.board], ['board', 'c', 40, 20, name]);
   const alone = await pin('--board', name, '-', 'move these apart', '--at', '-300,50');
-  const b = (await all(`/_board/${name}`)).find((x) => x.id === idOf(alone.out));
+  const b = (await all('/pricing')).find((x) => x.id === idOf(alone.out));
   assert.deepEqual([b.anchor.kind, b.anchor.bx, b.anchor.by, b.anchor.frame], ['board', -300, 50, undefined]);
-  const text = await (await fetch(`${B}/_lab/agent/_board/${name}`)).text();
+  const text = await (await fetch(`${B}/_lab/agent/pricing`)).text(); // a board about a page: its pins are the page's
   assert.match(text, /near: frame c .*40 px right of its left edge, 20 px below its top/);
   assert.match(text, /at: -300,50 on the board/);
   // Text alone with --board and --frame is a pin on the frame.

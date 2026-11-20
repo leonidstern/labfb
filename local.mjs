@@ -814,14 +814,15 @@ const boardText = async (page, text) => {
   const of = (board) => (board.of ? fileFor(boardPage(board.of.split('#')[0])) : null);
   const f = b && frame && b.frames.find((g) => g.id === frame);
   if (f) text = text.replace(/^(page: .*)$/m, `$1\n${act.frameLine(b, f, of(b))}`);
-  else if (b && !frame) text = `${act.text(b, { origin, file: of(b), pins: (g) => (g.src.startsWith('/_lab/') ? commentsOf(`/_board/${name}/${g.id}`).filter((c) => !c.parent && !c.resolved).length : 0) })}\n${text}`;
-  return text.replace(/^(near: frame |seen on: board ([^,\n]+), frame )([a-z][a-z0-9]*)(.*)$/gm, (all, lead, named, id, tail) => {
-    const bd = boardGet(named || name);
+  else if (b && !frame) text = `${act.text(b, { origin, file: of(b), home: boardHome(b) != null, pins: (g) => (g.src.startsWith('/_lab/') ? commentsOf(`/_board/${name}/${g.id}`).filter((c) => !c.parent && !c.resolved).length : 0) })}\n${text}`;
+  let cur = page.startsWith('/_board/') ? name : ''; // a pin on a page's board says which board in the line before
+  return text.split('\n').map((l) => l.replace(/^on: the board (\S+) over this page/, (all, n) => ((cur = n), all)).replace(/^(near: frame |seen on: board ([^,\n]+), frame )([a-z][a-z0-9]*)(.*)$/, (all, lead, named, id, tail) => {
+    const bd = (named || cur) && boardGet(named || cur);
     const g = bd?.frames.find((x) => x.id === id);
     if (!g) return all;
     const more = lead === 'near: frame ' && g.state === 'picked' ? `\n${act.frameLine(bd, g, of(bd)).split('\n')[1]}` : '';
     return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${g.src.startsWith('/_lab/') ? `${id}.html` : g.src} at ${g.w}×${g.h})${tail}${more}`;
-  });
+  })).join('\n');
 };
 // Who last looked (the last three, newest first), and whether before or after the file's last save (what they saw
 // may be older than the agent's latest edit): `looked: Leo 14:02 (before the last save)`. Then, for an HTML file, the
@@ -1455,6 +1456,30 @@ const boardGet = (name) => {
   }
   return boardCache.get(name);
 };
+// One board, one set of comments: a board that is about a page (of) lives on that page, over it (#board=<name>), and its
+// pins are the page's. Its own address goes there, and what was pinned on that address before moves to the page's file
+// (whole: ids, threads and replies; numbers go on after the page's own; the file as it was is kept beside it, once).
+// A board with no page, or one whose page this lab doesn't have, keeps its own page and pins.
+// A page as a board's page key spells it: /pricing.html is /pricing, / is /index.
+const boardPage = (p) => (p === '/' ? '/index' : p.replace(/\.html?$/i, '').replace(/\/$/, ''));
+const boardHome = (b) => {
+  const k = b?.of && boardPage(b.of.split(/[?#]/)[0]);
+  return k && (PROXY || fileFor(k)) ? k : null;
+};
+function gather(b) {
+  const to = boardHome(b);
+  const own = `/_board/${b?.name}`;
+  const from = to && db.get(`lab:comments:${own}`);
+  if (!from?.size) return false;
+  const bak = path.join(STORE, `${storeName(own)}.bak-board`);
+  if (!fs.existsSync(bak)) writeAtomic(bak, `{"v":${SCHEMA},"page":${JSON.stringify(own)},"comments":{${[...from].map(([id, v]) => `${JSON.stringify(id)}:${v}`).join(',')}}}`);
+  const into = db.get(`lab:comments:${to}`) || db.set(`lab:comments:${to}`, new Map()).get(`lab:comments:${to}`);
+  let num = Math.max(0, ...commentsOf(to).filter((c) => !c.parent).map((c) => c.num || 0));
+  for (const c of commentsOf(own)) if (!into.has(c.id)) into.set(c.id, JSON.stringify(c.parent || !c.num ? c : { ...c, num: ++num }));
+  db.delete(`lab:comments:${own}`);
+  for (const p of [own, to]) persist(p).catch((e) => console.error('[lab] could not save comments:', e.message));
+  return true;
+}
 let boardWatching = false;
 const watchBoards = () => {
   if (boardWatching || !fs.existsSync(B.dirOf(ROOT))) return;
@@ -1531,6 +1556,7 @@ const claimed = (who = '') => {
 const covers = (listed, key) => {
   if (listed.includes(key)) return true;
   const board = /^\/_board\/([^/]+)/.exec(key)?.[1];
+  if (!board) return (boardList ??= B.names(ROOT).flatMap((n) => boardGet(n) || [])).some((b) => boardHome(b) === key && covers(listed, `/_board/${b.name}`)); // a board's pins are its page's
   const of = board && boardGet(board)?.of;
   return Boolean(board) && (listed.includes(`/_board/${board}`) || listed.includes(`/_lab/board/${board}`) || Boolean(of && listed.includes(boardPage(of.split('#')[0]))));
 };
@@ -2205,8 +2231,9 @@ const boardApi = async (req, res, url) => {
     boardCache.clear();
     boardList = null;
     watchBoards();
+    if (out.board) gather(boardGet(out.board.name));
     if (out.picked) await pickedPin(out.board, out.picked);
-    return json(out.error ? 422 : 200, out);
+    return json(out.error ? 422 : 200, { ...out, home: boardHome(out.board) || undefined });
   }
   const page = url.searchParams.get('page');
   const name = url.searchParams.get('name') || (page && B.nameOf(page));
@@ -2214,7 +2241,7 @@ const boardApi = async (req, res, url) => {
   if (!name || !B.NAME.test(name) || (page && !B.labPath(page))) return json(400, { error: 'name a board (?name=) or a page (?page=/x)' });
   if (req.method === 'GET') {
     const was = boardGet(name);
-    if (was) return json(200, { ...B.place(was), exists: true });
+    if (was) return json(200, { ...B.place(was), exists: true, home: boardHome(was) });
     if (!page) return json(404, { error: `no board ${name}` });
     return json(200, { ...B.place({ v: 1, name, rev: 0, of: page, frames: [{ id: 'a', src: page, w: 1440, h: 900, state: 'live' }] }), exists: false });
   }
@@ -2237,17 +2264,15 @@ const pickedPin = async (board, frame) => {
   const res = await api.POST(new Request('http://localhost/api', {
     method: 'POST',
     headers: { host: 'localhost', 'content-type': 'application/json', 'x-lab-agent': '0', 'x-forwarded-for': '127.0.0.1', 'x-lab-stamp-key': process.env.LAB_STAMP_KEY, 'x-lab-stamp': encodeURIComponent(JSON.stringify({ from: 'this computer' })) },
-    body: JSON.stringify({ page: `/_board/${board.name}`, name: myName || 'Someone', text: `Picked ${frame.id}`, anchor: { kind: 'board', board: board.name, frame: frame.id, fx: 0, fy: 0 }, nonce: `pick-${board.rev}-${board.name}-${frame.id}`.slice(0, 40) }),
+    body: JSON.stringify({ page: boardHome(board) || `/_board/${board.name}`, name: myName || 'Someone', text: `Picked ${frame.id}`, anchor: { kind: 'board', board: board.name, frame: frame.id, fx: 0, fy: 0 }, nonce: `pick-${board.rev}-${board.name}-${frame.id}`.slice(0, 40) }),
   }));
   if (!res.ok) return;
   const { comment } = await res.json();
-  announce(`/_board/${board.name}`, comment);
-  persist(`/_board/${board.name}`).catch((e) => console.error('[lab] could not save comments:', e.message));
+  announce(boardHome(board) || `/_board/${board.name}`, comment);
+  persist(boardHome(board) || `/_board/${board.name}`).catch((e) => console.error('[lab] could not save comments:', e.message));
   broadcast();
   wake();
 };
-// A page as a board's page key spells it: /pricing.html is /pricing, / is /index.
-const boardPage = (p) => (p === '/' ? '/index' : p.replace(/\.html?$/i, '').replace(/\/$/, ''));
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
 const keyOk = (req) => sameKey(String(req.headers['x-lab-admin'] || ''), TOKEN);
 // Archiving a lab from the switcher (and the API's "stop"): every open wait ends with 423, which tells the agent the person stopped it (it
@@ -2694,6 +2719,12 @@ const handler = async (req, res) => {
       // under the board's key, like any page; it is a page of its own, never one of the lab's pages.
       const bp = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})$/.exec(pathname);
       if (bp && (req.method === 'GET' || req.method === 'HEAD')) {
+        const bd = boardGet(bp[1]);
+        if (boardHome(bd)) {
+          if (gather(bd)) (broadcast(), wake());
+          res.writeHead(302, { location: `${bd.of.split('#')[0]}#board=${bd.name}`, 'cache-control': 'no-store' });
+          return res.end();
+        }
         const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>board ${bp[1]}</title><style>html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#f7f7f7}@media (prefers-color-scheme:dark){html,body{background:#1b1b1a}}</style></head><body><script type="module">import{own}from"/_lab/boardview.js";own("${bp[1]}")</script></body></html>`;
         return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, inject(withIcon(html), widget(`/_board/${bp[1]}`, isLoopback(req), nameFor(req), true)));
       }
@@ -2913,6 +2944,8 @@ const handler = async (req, res) => {
 // Passing pages and websockets through to the dev server lives in lib/proxy.ts, loaded only when there is one.
 const proxy = PROXY && (await import('./lib/proxy.ts')).proxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback, nameFor, dress: holdFirst });
 
+// What was pinned on a board's own address, for a board that is about a page, moves to that page (see gather).
+for (const n of B.names(ROOT)) gather(boardGet(n));
 const server = http.createServer(handler);
 server.on('upgrade', (req, socket, head) => {
   // A websocket opened by another site's page is not the app's own (the same rule as for writes).
