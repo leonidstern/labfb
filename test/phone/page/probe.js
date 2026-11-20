@@ -3,6 +3,7 @@
 // selected, where the pins and the comment boxes are, and where the page's own paragraphs sit on the screen. It sends
 // that to the runner's sink, which checks it. The page is the test's own; the widget is untouched.
 (() => {
+  if (self !== top) return; // a frame (a board's pages are iframes) records nothing: its lines would pass for the page's
   const SINK = `http://${location.hostname}:${Number(location.port) + 1}/log`;
   // A name of its own, so the widget never asks and never uses anyone's real name.
   try { if (!localStorage.getItem('lab-name')) localStorage.setItem('lab-name', 'phone-check'); } catch {}
@@ -11,6 +12,12 @@
   const r = (e) => (e ? (({ left, top, width, height }) => ({ x: Math.round(left), y: Math.round(top), w: Math.round(width), h: Math.round(height) }))(e.getBoundingClientRect()) : null);
   const desc = (e) => (e ? `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).join('.') : ''}` : null);
   const shadow = () => document.querySelector('[data-lab-comments]')?.shadowRoot || null;
+  const bv = () => {
+    const v = document.querySelector('[data-lab-board-view]');
+    if (!v) return null;
+    const s = v.shadowRoot;
+    return { ...r(v), close: r(s?.querySelector('.bv-close')), closeText: s?.querySelector('.bv-close')?.textContent, size: r(s?.querySelector('.bv-size')), sizeText: s?.querySelector('.bv-size')?.textContent, frames: [...(s?.querySelectorAll('#lab-board .f') || [])].map((f) => ({ id: f.dataset.id, ...r(f) })) };
+  };
   const snap = (why, extra) => {
     const sr = shadow();
     const vv = visualViewport;
@@ -25,10 +32,11 @@
       vh: Math.round(vv.height), vt: Math.round(vv.offsetTop), vs: +vv.scale.toFixed(3),
       ae: desc(ae), inner: inner ? desc(inner) + (inner.closest?.('.float') ? '@float' : inner.closest?.('.card') ? '@card' : inner.closest?.('.chatwin') ? '@chat' : '') : null,
       sel: String(getSelection?.() || '').slice(0, 40),
-      pins: visible('.pin').map((p) => ({ ...r(p), c: p.className })),
+      pins: visible('.pin').map((p) => ({ ...r(p), c: p.className, fixed: p.style.position === 'fixed' })), // fixed: a pin of a board's frame (held to the screen)
       sbar: r(visible('.sbar')[0]), chip: r(visible('.sb-chip[data-st="new"]')[0]), chipsNew: visible('.sb-chip[data-st="new"]').length, // the section bar, and a section in it that is new
       float: r(visible('.float')[0]), card: r(visible('.card')[0]), chat: r(visible('.chatwin')[0]),
-      rows: visible('.choice').map(r), keep: r(visible('.keep')[0]), // a question's choices and its Keep button
+      rows: visible('.choice').map(r), keep: r(visible('.keep')[0]), // a question's choices; a Keep button must not exist any more (a tap answers)
+      hash: location.hash, bv: bv(), // a board opened over the page (src/board/overlay.ts): the view, its buttons, its frames
       scrimOn: (() => { const s = sr?.querySelector('.scrim'); return Boolean(s && getComputedStyle(s).display !== 'none' && +getComputedStyle(s).opacity > 0); })(),
       chatBtn: r(visible('.chat-btn')[0]), toggle: r(visible('.toggle')[0]),
       // The quoted words are lit (CSS highlight) on text that can't be selected: Safari then paints whole blocks green.
