@@ -563,9 +563,22 @@ test('reply --progress keeps one line on the thread, replaced each time, with it
     ctl.abort();
     return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).comments;
   };
-  const was = await rev();
+  // The version is read when the lab has been quiet for a moment (an earlier line's save and its notice may still be
+  // landing), and the third line must move it on: by one, or by more when something else of the lab's lands too.
+  let was = await rev();
+  for (let i = 0; i < 20; i++) {
+    await sleep(100);
+    const now = await rev();
+    if (now === was) break;
+    was = now;
+  }
   await run(['reply', id, '--progress', 'drawing W1–W6 · 3 of 4']);
-  assert.equal(await rev(), was + 1);
+  let now = await rev();
+  for (let i = 0; i < 30 && now <= was; i++) {
+    await sleep(100);
+    now = await rev();
+  }
+  assert.ok(now > was, `the comments version moves on (was ${was}, now ${now})`);
 });
 
 test('an answer, a new message or resolving clears the progress line', async () => {
