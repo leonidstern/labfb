@@ -498,7 +498,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
      bottom, are kept up to date from visualViewport); their bottom part is solid down past the screen's edge,
      behind the home bar, the keyboard and Safari's toolbar, so nothing of the page shows below the box. */
   :host { --_safe: env(safe-area-inset-bottom, 0px); --_kb: var(--lab-kb, 0px);
-          --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb)); }
+          --_sheet-max: calc(min(88dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb)); }
   :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
   /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
      panning the page can't push it up and nothing of the page shows above or below it. */
