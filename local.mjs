@@ -14,9 +14,18 @@ import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
-import { alive } from './lib/labcall.ts';
+import { alive, setWifi } from './lib/labcall.ts';
 import { DO_IT, PROGRESS_MS, UNMATCHED, numberOf, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
+import { loadSettings, changedShortcuts, seedActions, savePersonal, savePersonalFlag } from './lib/settings.ts';
+import { FLAGS, flagsOn } from './lib/flags.ts';
+import { runCommand } from './lib/commands.ts';
+import { findDevServer as find, tilde, othersNote } from './lib/devserver.ts';
+import * as B from './lib/board.ts';
+import * as act from './lib/boardact.ts';
+import { listFrom } from './lib/actions.ts';
+import { proxy as makeProxy } from './lib/proxy.ts';
+import { newer, fetchNotes } from './lib/update.ts';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -137,14 +146,12 @@ const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
 // labit.json in the project and ~/.config/labit/settings.json fill in what the flags and variables leave out, by
 // setting them here, so everything below (and the commands) reads them as before.
 const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'update', 'settings', 'skill'];
-const { loadSettings, changedShortcuts, seedActions, savePersonal, savePersonalFlag } = await import('./lib/settings.ts');
 // Your list of actions is written into your settings once, when a lab starts (or `labit settings` shows it) with none there yet.
 if (!pos[0] || !COMMANDS.includes(pos[0]) || pos[0] === 'settings') {
   try {
     if (seedActions()) console.error('[labit] your actions (go, fix, remove…) are now in your settings.json: edit them there');
   } catch {}
 }
-const { FLAGS, flagsOn } = await import('./lib/flags.ts');
 const SETTINGS = loadSettings(HERE, {
   port: opts.port !== undefined && opts.port !== true ? Number(opts.port) : undefined,
   proxy: opts.proxy !== undefined ? String(opts.proxy) : undefined,
@@ -194,7 +201,6 @@ if (pos[0] === 'settings') {
 
 // The commands that answer and exit (publish, preview, list, pages, wait, reply, resolve, pin, invite): lib/commands.ts.
 if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', 'invite', 'board', 'update'].includes(pos[0])) {
-  const { runCommand } = await import('./lib/commands.ts');
   await runCommand({ pos, opts, HERE, CMD, ME, die });
 }
 
@@ -273,7 +279,6 @@ if (opts.dev && !process.env.LAB_DEV) {
 // Which port is this project's dev server: lib/devserver.ts asks lsof, loaded only when there's a server to find
 // (a bare --proxy, or a project with a dev script and no pages), so starting on a folder of pages skips it.
 const findDevServer = async () => {
-  const { findDevServer: find, tilde, othersNote } = await import('./lib/devserver.ts');
   return { ...find(ROOT, Number(opts.port) || 4400), tilde, othersNote };
 };
 
@@ -313,7 +318,6 @@ const STORE = path.join(LAB, 'comments'); // the comments, one file per page
 const ARCHIVE = path.join(LAB, 'archive'); // done threads a month old, one file per page
 const SERVER = path.join(LAB, 'server.json');
 // Boards (lib/board.ts): pages side by side as frames, in .lab/boards.
-const B = await import('./lib/board.ts');
 fs.mkdirSync(LAB, { recursive: true });
 // Git skips the folder by itself: .lab/.gitignore holds `*`, so nobody has to add .lab to the project's .gitignore.
 const ignoreLab = () => {
@@ -330,7 +334,6 @@ const alreadyHere = async (running) => {
     die(`[lab] already running for this folder at http://localhost:${running.port}. Stop that one (Ctrl+C) to open it here.`);
   // --wifi / --no-wifi on a lab that runs: that lab switches (same port, name, comments), never a second one.
   if (opts.wifi !== undefined) {
-    const { setWifi } = await import('./lib/labcall.ts');
     const done = await setWifi(ROOT, Boolean(opts.wifi), {}, (m) => console.log(`[lab] ${m}`));
     if ('error' in done) die(`[lab] could not switch the wifi ${opts.wifi ? 'on' : 'off'}: ${done.error}`);
     console.log(`[lab] ${done.changed ? 'wifi is now' : 'already running for this folder, wifi is'} ${opts.wifi ? `on: http://localhost:${running.port} (a phone needs a one-time link: ${CMD} invite)` : 'off: http://localhost:' + running.port}`);
@@ -768,7 +771,6 @@ const lineHints = (text, file) => {
 const boardText = async (page, text) => {
   if (!page.startsWith('/_board/') && !/^(near|seen on):/m.test(text)) return text;
   const [, , name, frame] = page.split('/');
-  const act = await import('./lib/boardact.ts');
   const b = page.startsWith('/_board/') && boardGet(name);
   if (b) text = text.replace(/^page: .*$/m, `page: ${origin}/_lab/board/${name}${frame ? `/${frame}` : ''}`);
   const of = (board) => (board.of ? fileFor(boardPage(board.of.split('#')[0])) : null);
@@ -2091,7 +2093,7 @@ const boardApi = async (req, res, url) => {
     if (!isAgent(req) && !(isLoopback(req) && keyOk(req))) return plain(res, 403, 'forbidden');
     const b = await sent(req);
     const env = { root: ROOT, origin, proxied: Boolean(PROXY), open: (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length, titleOf: (p) => { const f = fileFor(boardPage(p)); return f ? titleOf(path.join(ROOT, f)) : ''; }, fileOf: (p) => fileFor(boardPage(p)) };
-    const out = (await import('./lib/boardact.ts')).act(String(b.action), b, env);
+    const out = act.act(String(b.action), b, env);
     boardCache.clear();
     boardList = null;
     watchBoards();
@@ -2287,7 +2289,7 @@ const handler = async (req, res) => {
     // settings. This computer with the lab's key only, as the Experiments switch: never a guest, never the agent's key.
     if (pathname === '/_lab/api/actions' && req.method === 'PUT') {
       if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
-      const out = (await import('./lib/actions.ts')).listFrom(await sent(req));
+      const out = listFrom(await sent(req));
       if ('why' in out) return res.writeHead(400).end(out.why);
       try {
         savePersonal('actions', out.actions);
@@ -2763,7 +2765,7 @@ const handler = async (req, res) => {
 
 // ---------- in front of a dev server (--proxy) ----------
 // Passing pages and websockets through to the dev server lives in lib/proxy.ts, loaded only when there is one.
-const proxy = PROXY && (await import('./lib/proxy.ts')).proxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback, nameFor, dress: holdFirst });
+const proxy = PROXY && makeProxy({ PROXY, origin: () => origin, widget, keyFor, isLoopback, nameFor, dress: holdFirst });
 
 // What was pinned on a board's own address, for a board that is about a page, moves to that page (see gather).
 for (const n of B.names(ROOT)) gather(boardGet(n));
@@ -2809,7 +2811,7 @@ async function newerVersion() {
       return null;
     }
   }
-  return (await import('./lib/update.ts')).newer(latest, VERSION) ? latest : null;
+  return newer(latest, VERSION) ? latest : null;
 }
 server.on('listening', async () => {
   newerVersion().then(async (v) => {
@@ -2817,7 +2819,6 @@ server.on('listening', async () => {
     const offer = CMD.startsWith('npx') || process.env.LABIT_OFFER_UPDATE; // a clone or a build updates its own way
     console.log(`[lab] labit ${v} is out (you have ${VERSION}): ${offer ? 'update from the ⋯ menu' : 'npx @leonidstern/labit@latest'}`);
     if (!offer) return;
-    const { fetchNotes } = await import('./lib/update.ts');
     UPDATE = { version: v, notes: (await fetchNotes(v, VERSION)) || [] };
   });
   origin = `http://localhost:${PORT}`;
