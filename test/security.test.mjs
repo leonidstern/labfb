@@ -252,33 +252,6 @@ test('dot files, .lab/ and paths outside the folder are never served', async () 
   }
 });
 
-// Last looks (since you looked): open to a device the lab lets in, as the read marks are, with the same guards, and a body is capped.
-test('looked: over 400 KB is 413; another origin 403; "__proto__" is just a name', async () => {
-  await up();
-  const sent = (body, headers = {}) => raw('/_lab/api/looked', { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body), headers: { 'content-type': 'application/json', origin: `http://localhost:${PORT}`, ...headers } });
-  const small = { name: 'Leo', page: '/index', ids: [['hi', 'Hi']] };
-  assert.equal((await sent(small)).status, 200);
-  assert.equal((await sent(small, { origin: 'https://evil.example' })).status, 403, 'another origin');
-  assert.equal((await sent(small, { 'content-type': 'text/plain' })).status, 403, 'JSON only');
-  assert.equal((await sent({ ...small, ids: [['x', 'x'.repeat(400 * 1024)]] })).status, 413, 'a body over 400 KB');
-  assert.equal((await sent('{"name":"Leo"')).status, 400, 'not JSON');
-  assert.equal((await sent({ name: 'Leo', page: '/../../etc/passwd', ids: [] })).status, 400, 'a path that is not a page of this lab');
-  assert.equal((await sent({ ...small, page: 'index' })).status, 400);
-  // A name or a round id like __proto__ is a key and nothing else.
-  assert.equal((await sent({ ...small, name: '__proto__', ids: [['__proto__', 'proto']] })).status, 200);
-  const get = async (q) => JSON.parse((await raw(`/_lab/api/looked?${q}`)).text);
-  assert.deepEqual((await get('name=__proto__&page=/index')).ids, [['__proto__', 'proto']], 'an id called __proto__ is just an id');
-  assert.deepEqual(await get('name=constructor&page=/index'), {}, 'nothing inherited');
-  assert.deepEqual(await get('name=Leo&page=/index&snap=__proto__'), {});
-  assert.deepEqual(await get('name=Leo&page=__proto__'), {});
-  assert.equal(({}).proto, undefined);
-  assert.equal((await sent({ ...small, name: 'Leo' })).status, 200, 'and the lab still answers');
-  // A lab keeps looks for 200 names a page, and says so after that.
-  let last = 200;
-  for (let i = 0; i < 205 && last === 200; i++) last = (await sent({ ...small, name: `person ${i}` })).status;
-  assert.equal(last, 429, 'too many names');
-});
-
 test("the agent's endpoints need the lab's key", async () => {
   assert.equal((await raw('/_lab/wait', { method: 'POST', body: '{"timeout":1}', headers: { 'content-type': 'application/json', origin: `http://localhost:${PORT}` } })).status, 403);
 });
@@ -394,15 +367,15 @@ test('a link is minted only for the agent on this computer, and only on a --wifi
   assert.ok(links.length && links.every((l) => /^http:\/\/[^/]+:\d+\/_lab\/j\/[0-9a-f]{32}$/.test(l)), links.join(' '));
 });
 
-test('looked: a guest needs a pass, and with one reads and writes like anybody the lab lets in', { skip: !lan && 'no local network address to come in on' }, async () => {
+test('sections: a guest needs a pass, and with one reads and writes like anybody the lab lets in', { skip: !lan && 'no local network address to come in on' }, async () => {
   const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
   const cookie = r.cookie.split(';')[0];
-  const asGuest = (headers, body) => wraw('/_lab/api/looked' + (body ? '' : '?name=Mira&page=/index'), { host: lan, method: body ? 'POST' : 'GET', body, headers: { origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json', ...headers } });
-  const look = JSON.stringify({ name: 'Mira', page: '/index', ids: [['guest', 'guest look']] });
+  const asGuest = (headers, body) => wraw('/_lab/api/sections' + (body ? '' : '?name=Mira&page=/index'), { host: lan, method: body ? 'POST' : 'GET', body, headers: { origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json', ...headers } });
+  const look = JSON.stringify({ name: 'Mira', page: '/index', sections: { guest: 'guest mark' } });
   assert.equal((await asGuest({}, look)).status, 403, 'no pass, no write');
   assert.equal((await asGuest({}, undefined)).status, 403, 'no pass, no read');
-  assert.equal((await asGuest({ cookie }, look)).status, 200, 'with the pass');
-  assert.deepEqual(JSON.parse((await asGuest({ cookie }, undefined)).text).ids, [['guest', 'guest look']]);
+  assert.equal((await asGuest({ cookie }, look)).status, 204, 'with the pass');
+  assert.deepEqual(JSON.parse((await asGuest({ cookie }, undefined)).text).sections, { guest: 'guest mark' });
   assert.equal((await asGuest({ cookie, origin: 'https://evil.example' }, look)).status, 403, "and the pass doesn't open it to other sites");
 });
 
@@ -426,14 +399,14 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
 });
 
-test('a guest who keeps using the lab stays in: a pin or a look renews the pass, not only a page load', { skip: !lan && 'no local network address to come in on' }, async () => {
+test('a guest who keeps using the lab stays in: a pin or a mark renews the pass, not only a page load', { skip: !lan && 'no local network address to come in on' }, async () => {
   const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
   const cookie = r.cookie.split(';')[0];
-  const look = JSON.stringify({ name: 'Mira', page: '/index', ids: [['renew', 'renew look']] });
-  const post = await wraw('/_lab/api/looked', { host: lan, method: 'POST', body: look, headers: { cookie, origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json' } });
-  assert.equal(post.status, 200);
+  const look = JSON.stringify({ name: 'Mira', page: '/index', sections: { renew: 'renew mark' } });
+  const post = await wraw('/_lab/api/sections', { host: lan, method: 'POST', body: look, headers: { cookie, origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json' } });
+  assert.equal(post.status, 204);
   assert.match(post.cookie || '', new RegExp(`^lab_guest_${WPORT}=[0-9a-f]{16}\\.[0-9a-f]{32}; Path=/; Max-Age=86400`), 'a write from an open tab starts the day again');
-  const read = await wraw('/_lab/api/looked?name=Mira&page=/index', { host: lan, headers: { cookie } });
+  const read = await wraw('/_lab/api/sections?name=Mira&page=/index', { host: lan, headers: { cookie } });
   assert.match(read.cookie || '', new RegExp(`^lab_guest_${WPORT}=`), 'and so does a read');
 });
 

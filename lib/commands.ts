@@ -11,6 +11,7 @@ import { askPages, keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, setWifi, WAIT_SAID } from './labcall.ts';
 import { read as readBoard } from './board.ts';
 import { numberOf, UNMATCHED } from './schema.mjs';
+import { loadSettings } from './settings.ts';
 
 type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
 
@@ -56,7 +57,6 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   if (pos[0] === 'publish') {
     const src = pos[1] && path.resolve(pos[1]);
     if (!src || !fs.existsSync(src)) die(`Usage: ${CMD} publish <page.html | folder> [--name "topic"]`);
-    const { loadSettings } = await import('./settings.ts');
     const home = String(loadSettings(HERE, {}).values.pagesFolder || '~/lab-pages').replace(/^~(?=$|\/)/, os.homedir());
     fs.mkdirSync(home, { recursive: true });
     const root = fs.realpathSync(home);

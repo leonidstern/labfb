@@ -36,7 +36,6 @@ export const goTo = (c, keys = false) => {
 export function drawList() {
   const all = W.threads();
   W.paintWho?.(); // the pill's words and a phone sheet's line follow the agent's work
-  paintLines();
   const freshAll = all.filter((c) => !W.isPage(c)).reduce((n, c) => n + W.unread(c).length, 0); // a new message in a done thread counts too
   // The middle shows how many are new (a click goes to the next one). The pills keep their place whatever the counts:
   // with nothing new or done they stay, quiet and disabled, so nothing in the bar moves.
@@ -129,11 +128,6 @@ export function pillLine() {
   const all = [...lineUp().values()];
   const top = all.filter((e) => e.s === 'now' || e.s === 'stale').sort((a, b) => b.at.localeCompare(a.at))[0];
   return { text: top ? lineOf(top) : '', key: top ? `${top.c.id}${top.s}${top.line}` : '', waiting: all.filter((e) => e.s === 'wait').length };
-}
-// Off (Leo, 19 Nov: "in comment waiting queue in top near new - remove it, it disrupts modal"): the line pushed the
-// sheet's content down as it came and went. The pin's own ring and the chat still say where the agent is.
-export function paintLines() {
-  for (const n of W.root.querySelectorAll('.agentline')) Object.assign(n, { hidden: true, textContent: '' });
 }
 
 export const stepNew = (dir) => {

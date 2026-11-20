@@ -12,7 +12,6 @@ const { outputFiles } = await esbuild.build({
   entryPoints: ['local.mjs'],
   bundle: true,
   minify: true,
-  keepNames: true,
   format: 'esm',
   platform: 'node',
   target: 'node22',
