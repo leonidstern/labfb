@@ -39,13 +39,16 @@ const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif',
   '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
+  '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.wasm': 'application/wasm', '.pdf': 'application/pdf',
+  '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.ico': 'image/x-icon',
+  '.xml': 'application/xml', '.webmanifest': 'application/manifest+json',
   '.ts': 'text/plain; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
 };
 
 // Text goes compressed when the browser takes it (brotli, else gzip), and every file carries an ETag: the browser
 // keeps a copy but asks each time ("no-cache"), so a reload gets a 304 "not changed" in place of the file, and a file
 // that changed is always sent fresh. (15 Nov: a page view on this lab was ~460 kB plus every picture again.)
-const SQUEEZE = /^(text\/|application\/(json|javascript)|image\/svg)/;
+const SQUEEZE = /^(text\/|application\/(json|javascript|xml|manifest\+json)|image\/svg)/;
 export const encodingFor = (req: IncomingMessage): '' | 'br' | 'gzip' => {
   const a = String(req.headers['accept-encoding'] || '');
   return /\bbr\b/.test(a) ? 'br' : /\bgzip\b/.test(a) ? 'gzip' : '';
