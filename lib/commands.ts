@@ -188,7 +188,9 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
 
   // ---------- Claude's side: wait, reply, resolve, pin ----------
   if (['wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
-    const [cmd, ref, ...words] = pos;
+    // `pin move <id> <selector>` and `pin gone <id>` settle a pin that is already there; any other `pin` makes one.
+    const settle = pos[0] === 'pin' && (pos[1] === 'move' || pos[1] === 'gone') ? pos[1] : '';
+    const [cmd, ref, ...words] = settle ? [pos[0], ...pos.slice(2)] : pos;
     const lab = myLab();
     const { dir } = lab;
     let { server } = lab;
@@ -276,7 +278,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // The widget finds the element by its selector and draws the pin with labit's mark (it has a session: the agent's).
     // One pin: pin <selector> "text" [--quote "words"] [--question | --choice A --choice B [--recommend B]] [--at x,y];
     // many: pin --file points.json; on a board: pin --board <name> [--frame b] <selector|-> "text".
-    if (cmd === 'pin') {
+    if (cmd === 'pin' && !settle) {
       const usage = `${CMD} pin <selector> "text" [--page /path] | pin --file points.json | pin --board <name> --frame <id> <selector> "text"`;
       type Point = { selector?: string; text?: string; quote?: string; at?: unknown; page?: unknown; question?: boolean; choices?: unknown; recommend?: unknown };
       let points: Point[];
@@ -472,6 +474,29 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       hit = hits[0];
     }
     if (!hit) die(`No open comment ${ref || ''}${want ? ` on ${want}` : ''}. See .lab/comments.md.`);
+    // pin move / pin gone: the agent that changed the page settles a pin the page was unsure of (its words changed, a copy,
+    // a spot that cannot be told). move puts it on the element <selector> finds (and --quote on words in it); gone says
+    // its spot has been removed: the page draws a ghost where it stood. Nothing is told to the agent about it again.
+    if (settle) {
+      const pin = data[hit.page]?.[hit.id] as { anchor?: Record<string, unknown> } | undefined;
+      const old = pin?.anchor || {};
+      if (old.kind === 'page' || old.kind === 'board') die(`That pin is on the ${old.kind === 'page' ? 'page as a whole' : 'board'}: it has no element to ${settle === 'gone' ? 'mark gone' : 'move'}.`);
+      let anchor: Record<string, unknown>;
+      if (settle === 'gone') {
+        if (words.length) die(`${CMD} pin gone <id> takes no more words.`);
+        anchor = { ...old, gone: true };
+      } else {
+        if (words.length !== 1 || !words[0].trim()) die(`Say where: ${CMD} pin move <id> <selector> [--quote "words"] [--page /path]`);
+        if (opts.quote !== undefined && (typeof opts.quote !== 'string' || !opts.quote.trim())) die('--quote takes the exact words.');
+        const exact = typeof opts.quote === 'string' ? opts.quote.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+        const { board, frame, docX, docY } = old;
+        anchor = { kind: exact ? 'text' : 'element', selector: words[0].trim(), x: 0.5, y: 0.5, docX, docY, board, frame, ...(exact ? { quote: { exact, prefix: '', suffix: '' } } : {}) };
+      }
+      const out = await call('/_lab/api/comments', { page: hit.page, action: 'move', id: hit.id, anchor });
+      if (out.status >= 300) die(`Could not ${settle === 'gone' ? 'mark it gone' : 'move it'}: ${out.text}`);
+      console.log(settle === 'gone' ? `Marked gone on ${hit.page}: the page shows a ghost where it stood. Answer it as usual (${CMD} reply ${hit.id} --done).` : `Moved to ${anchor.selector} on ${hit.page}: a browser with the page open finds it there.`);
+      process.exit(0);
+    }
     // --progress: the line the page shows while you work, kept on the thread (the latest only), not a message.
     const progress = cmd === 'reply' && opts.progress !== undefined;
     if (progress) {

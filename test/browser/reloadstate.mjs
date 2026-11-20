@@ -77,6 +77,34 @@ try {
       check(eng, 'nothing is left in sessionStorage', (await pg.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith('lab-scroll:')).length)) === 0);
       await pg.close();
 
+      // A thread open when the reload comes (the "!" taken with it open) is back beside its pin from its first frame:
+      // it used to be placed from the page's corner, its pin not being in the layer yet, and sat there for 3 s or more.
+      await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'tester', text: 'Comment', anchor: { selector: '#target', x: 0.3, y: 0.5, docX: 0.3, docY: 900, width: 1000, element: '<h2 id="target">' } }) });
+      const th = await open('/');
+      const inRoot = (fn) => th.evaluate((src) => {
+        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.more'))?.shadowRoot;
+        return r ? new Function('r', `return (${src})(r)`)(r) : null;
+      }, fn.toString());
+      const box = (sel) => inRoot(new Function('r', `const b = r.querySelector('${sel}')?.getBoundingClientRect(); return b ? { x: Math.round(b.x), y: Math.round(b.y), w: b.width } : null;`));
+      await th.evaluate(() => { document.getElementById('target').scrollIntoView(); scrollBy(0, -200); });
+      await th.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.pin')), null, { timeout: 5000 }).catch(() => {});
+      await sleep(600);
+      const pin = await box('.pin');
+      await th.mouse.click(pin.x + 10, pin.y + 10);
+      await sleep(1800);
+      const before = await box('.card');
+      save('index.html', page('three'));
+      await sleep(1500);
+      const upd = await box('.has-upd');
+      check(eng, 'with a thread open the reload waits, with its "!" (control)', Boolean(before && upd && (await th.evaluate(() => window.__kept === 1))), JSON.stringify({ before, upd }));
+      if (upd) await th.mouse.click(upd.x + 8, upd.y + 8);
+      await th.waitForFunction(() => !window.__kept && [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.card')), null, { timeout: 8000 }).catch(() => {});
+      await sleep(500); // well inside the 3 s it used to take
+      const after = await box('.card');
+      const pinAfter = await box('.pin');
+      check(eng, 'after the reload the open thread is beside its pin, where it was', Boolean(before && after && Math.abs(after.x - before.x) < 3 && Math.abs(after.y - before.y) < 3), JSON.stringify({ before, after, pin, pinAfter }));
+      await th.close();
+
       // A page that is short when it loads and builds itself 700 ms later.
       const late = await open('/late');
       await sleep(900);

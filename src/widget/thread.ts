@@ -60,6 +60,9 @@ function bindThreadScroll() {
       rests.forEach((at, node) => {
         if (!node.isConnected) return rests.delete(node);
         if (at.frozen) return;
+        // Not measured yet (the page scrolled right after the card was drawn, as a reload putting the scroll back
+        // does): measured now, or it would be held at no offset at all, on top of its pin.
+        if (!at.x && !at.y) rest(node);
         at.frozen = true;
         node.style.setProperty('position-try-fallbacks', 'none');
         node.style.left = `calc(anchor(left) + ${px(at.x)})`;
@@ -77,6 +80,9 @@ export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined,
     letBox(node);
     return node.style.removeProperty('position-anchor');
   }
+  // A thread open at the first draw (after a reload, or with a reply half written): its pin is new and not in the
+  // layer yet, so it has no place to measure. It goes in now; the layer's redraw keeps it where it belongs.
+  if (!pin.isConnected) W.layer.append(pin);
   let to: Element | null = kind === 'card' ? holdBox(node, pin) : null;
   if (to) node.style.removeProperty('position-anchor'); // tied by the page's rule now: an inline one would win
   if (!to) {
@@ -225,6 +231,9 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   card.append(W.el('div', { class: 'handle' }), body, foot);
   // Written while the page was paused: the moment, as a chip; clicked, the page pauses there again (comments.js).
   if (c.anchor?.moment && W.S.momentChip) card.insertBefore(W.S.momentChip(c.anchor.moment, true), body);
+  // Why its pin is not plainly on its spot, in one line.
+  const why = { lost: 'its spot is gone', hidden: 'hidden right now: its spot is not shown', unsure: 'unsure: it may not be the spot it was made on', changed: 'its words changed: check it still fits' }[W.position(c.anchor || {}).why as string];
+  if (why && !c.resolved) card.insertBefore(W.el('div', { class: 'spotnote' }, why), body);
   card.addEventListener('click', (e) => e.stopPropagation());
   // Messages as in the chat: bubbles (yours on the right), the time and ✓ ✓✓ in the corner, ✅ on a done answer, and
   // a "new" line above the first one you haven't read. The thread's number (as in the agent text) leads its time.
