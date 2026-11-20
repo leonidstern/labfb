@@ -2721,7 +2721,10 @@ const handler = async (req, res) => {
       if (bp && (req.method === 'GET' || req.method === 'HEAD')) {
         const bd = boardGet(bp[1]);
         if (boardHome(bd)) {
-          if (gather(bd)) (broadcast(), wake());
+          if (gather(bd)) {
+            broadcast();
+            wake();
+          }
           res.writeHead(302, { location: `${bd.of.split('#')[0]}#board=${bd.name}`, 'cache-control': 'no-store' });
           return res.end();
         }

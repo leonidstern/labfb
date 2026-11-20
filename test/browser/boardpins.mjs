@@ -18,7 +18,7 @@ fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
 const server = startLab(DIR, labEnv());
 await labUp(B);
 const put = (name, frames, extra = {}) => fetch(`${B}/_lab/api/board?name=${name}`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ v: 1, rev: 0, frames, ...extra }) }).then((r) => r.json());
-await put('pins', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 600 }], { of: '/pricing' });
+await put('pins', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 600 }]); // no page: it keeps its own address and pins (a board about a page: boardhome.mjs)
 try {
   for (const eng of engines()) {
     const browser = await pw[eng].launch();
