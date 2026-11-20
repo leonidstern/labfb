@@ -325,9 +325,12 @@ const SERVER = path.join(LAB, 'server.json');
 const B = await import('./lib/board.ts');
 fs.mkdirSync(LAB, { recursive: true });
 // Git skips the folder by itself: .lab/.gitignore holds `*`, so nobody has to add .lab to the project's .gitignore.
-try {
-  fs.writeFileSync(path.join(LAB, '.gitignore'), '*\n', { flag: 'wx' });
-} catch {}
+const ignoreLab = () => {
+  try {
+    fs.writeFileSync(path.join(LAB, '.gitignore'), '*\n', { flag: 'wx' });
+  } catch {}
+};
+ignoreLab();
 
 // One server per folder: two would overwrite each other's comments.
 const alreadyHere = (running) => {
@@ -417,9 +420,23 @@ const AGENT_KEY = randomBytes(16).toString('hex');
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
 const writeAtomic = (file, text, mode) => {
-  try {
+  const write = () => {
     fs.writeFileSync(file + '.tmp', text, mode ? { mode } : undefined);
     fs.renameSync(file + '.tmp', file);
+  };
+  try {
+    try {
+      write();
+    } catch (e) {
+      // Its folder is gone: a build that starts from an empty folder took .lab with everything else. Made again while
+      // the served folder is there (one deleted for good is not brought back). A running lab's .lab also gets back
+      // its .gitignore and the file the commands find the lab by.
+      if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'ENOENT' || !fs.existsSync(ROOT)) throw e;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      write();
+      ignoreLab();
+      if (origin && file !== SERVER && !fs.existsSync(SERVER)) saveServer();
+    }
   } catch (e) {
     fs.rmSync(file + '.tmp', { force: true }); // a half-written copy would hold on to the space a full disk needs back
     throw e;
@@ -1895,7 +1912,13 @@ const holdFirst = (html) => {
 const pagesUnder = (top) => {
   const out = [];
   const walk = (dir, depth) => {
-    for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+    let list;
+    try {
+      list = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // gone while the lab looked (a build clearing its output, the served folder deleted): no pages there
+    }
+    for (const d of list) {
       if (d.name.startsWith('.') || d.name === 'node_modules') continue;
       const full = path.join(dir, d.name);
       if (d.isDirectory() && depth < 6) walk(full, depth + 1);
