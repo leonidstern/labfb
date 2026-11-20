@@ -104,10 +104,12 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
   if (node.getAttribute('data-lab-anchor') !== name) node.setAttribute('data-lab-anchor', name); // put back after a live patch
   const part = pin.getAttribute('part') || `lp${(++count).toString(36)}`;
   pin.setAttribute('part', part);
-  const r = node.getBoundingClientRect();
   const pct = (n: number) => `${Math.round(n * 10000) / 100}%`;
-  const at = share
-    ? `left:anchor(${pct(share.x)}, -10000px)!important;top:anchor(${pct(share.y)}, -10000px)!important`
+  // Only an offset needs the element's box: a share doesn't, and reading a box after the last pin was written lays the
+  // page out again, once per pin (600 pins on a board: 17 s in Chrome).
+  const r = share ? null : node.getBoundingClientRect();
+  const at = !r
+    ? `left:anchor(${pct(share!.x)}, -10000px)!important;top:anchor(${pct(share!.y)}, -10000px)!important`
     : `left:calc(anchor(left, -10000px) + ${px(left - scrollX - r.left)})!important;top:calc(anchor(top, -10000px) + ${px(top - scrollY - r.top)})!important`;
   const rule =
     `[data-lab-anchor="${name}"]{anchor-name:--${name}}` +

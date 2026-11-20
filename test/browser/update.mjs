@@ -4,28 +4,14 @@
 // Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/update.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  // On CI a missing browser is a failure: a skip there would pass with nothing run.
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-upd-'));
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+const DIR = tmp('labit-upd-');
+const HOME = tmp('labit-home-');
 const PORT = claimPort(7940, 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><meta charset="utf-8"><title>u</title><h1 id="t">Update</h1><p>text</p>');
@@ -35,9 +21,7 @@ fs.writeFileSync(path.join(HOME, 'latest.json'), JSON.stringify({ version: '9.9.
 // npx stand-in that says it was asked: the page must never run it.
 const NPX = path.join(HOME, 'npx');
 fs.writeFileSync(NPX, `#!/bin/sh\necho "$2" > "${path.join(HOME, 'asked')}"\n`, { mode: 0o755 });
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: HOME, LABIT_NO_UPDATE_CHECK: '', LABIT_OFFER_UPDATE: '1', LABIT_NPX: NPX, LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const server = startLab(DIR, labEnv({ LABIT_HOME: HOME, LABIT_NO_UPDATE_CHECK: '', LABIT_OFFER_UPDATE: '1', LABIT_NPX: NPX }));
 // The offer is in the page once the lab has looked for what changed (a few seconds at most, offline).
 let offered = false;
 for (let i = 0; i < 100 && !offered; i++) {
@@ -46,16 +30,11 @@ for (let i = 0; i < 100 && !offered; i++) {
   } catch {}
   if (!offered) await sleep(100);
 }
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 const comments = async () => (await (await fetch(B + '/_lab/api/comments?page=/index')).json()).comments;
 
 try {
   check('lab', 'the lab offers 9.9.9 in the page', offered);
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
@@ -118,5 +97,4 @@ try {
   fs.rmSync(DIR, { recursive: true, force: true });
   fs.rmSync(HOME, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

@@ -2,51 +2,22 @@
 // them still takes taps (Leo, 19 Nov: "on mobile zooms breaks our windows"). The page starts zoomed in (initial-scale), as
 // a pinch leaves it: no engine Playwright drives can pinch. Run: node test/browser/zoom.mjs (needs playwright).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  try {
-    return require('playwright');
-  } catch {
-    try {
-      return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
-    } catch {
-      console.log('playwright is not installed: skipped');
-      process.exit(0);
-    }
-  }
-})();
+const pw = playwright();
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-zoom-'));
+const DIR = tmp('labit-zoom-');
 const PORT = String(claimPort(6010, 30));
 const B = `http://localhost:${PORT}`;
 const ZOOM = 2.5;
 const paras = Array.from({ length: 60 }, (_, i) => `<p id="p${i}">paragraph ${i} with some words to read</p>`).join('');
 fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=${ZOOM}"><title>Z</title><body style="margin:20px">${paras}</body>`);
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env });
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+const server = startLab(DIR, labEnv({}, { settings: false }), { root: '.', port: PORT });
+await labUp(B);
 
-for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+for (const eng of engines()) {
   const browser = await pw[eng].launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 664 }, isMobile: true, hasTouch: true });
   const p = await ctx.newPage();
@@ -88,5 +59,4 @@ for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
 }
 server.kill();
 fs.rmSync(DIR, { recursive: true, force: true });
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();
