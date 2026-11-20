@@ -189,36 +189,15 @@ export function seedActions(): boolean {
   return true;
 }
 
-/** Turns a flag on or off in your own settings file (the Experiments list in the ⋯ menu), keeping the rest of the
- *  file. Off leaves no trace: off is the absence of a flag. A file that isn't JSON is left alone (it throws) rather than
- *  written over. Returns the file. */
-export function savePersonalFlag(flag: string, on: boolean): string {
-  if (!(flag in FLAGS)) throw new Error(`${flag} is not something being tried now`);
-  const file = personalFile();
-  let data: Record<string, unknown> = {};
-  if (fs.existsSync(file)) {
-    data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${file}: not an object of settings`);
-  }
-  const flags = (data.flags && typeof data.flags === 'object' && !Array.isArray(data.flags) ? data.flags : {}) as Record<string, unknown>;
-  if (on) flags[flag] = true;
-  else delete flags[flag];
-  if (Object.keys(flags).length) data.flags = flags;
-  else delete data.flags;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
-  return file;
-}
-
-/** Sets one setting in your own file, keeping the rest. */
-export function savePersonal(key: string, value: unknown) {
+/** Changes one key of your own settings file, keeping the rest; returns the file. A file that is there but can't be read
+ *  as settings is left as it is (it throws): writing one key over it would drop the rest. */
+function editPersonal(key: string, edit: (data: Record<string, unknown>) => void): string {
   const file = personalFile();
   let data: Record<string, unknown> = {};
   let src: string | null = null;
   try {
     src = fs.readFileSync(file, 'utf8');
   } catch {}
-  // A file that is there but can't be read as settings is left as it is: writing one key over it would drop the rest.
   if (src !== null) {
     try {
       data = JSON.parse(src);
@@ -227,6 +206,27 @@ export function savePersonal(key: string, value: unknown) {
     }
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${file} does not hold settings: fix it, then ${key} can be saved`);
   }
-  data[key] = value;
+  edit(data);
   writeAtomic(file, JSON.stringify(data, null, 2) + '\n');
+  return file;
+}
+
+/** Turns a flag on or off in your own settings file (the Experiments list in the ⋯ menu). Off leaves no trace: off is
+ *  the absence of a flag. Returns the file. */
+export function savePersonalFlag(flag: string, on: boolean): string {
+  if (!(flag in FLAGS)) throw new Error(`${flag} is not something being tried now`);
+  return editPersonal('flags', (data) => {
+    const flags = { ...(data.flags && typeof data.flags === 'object' && !Array.isArray(data.flags) ? data.flags : {}) } as Record<string, unknown>;
+    if (on) flags[flag] = true;
+    else delete flags[flag];
+    if (Object.keys(flags).length) data.flags = flags;
+    else delete data.flags;
+  });
+}
+
+/** Sets one setting in your own file, keeping the rest. */
+export function savePersonal(key: string, value: unknown) {
+  editPersonal(key, (data) => {
+    data[key] = value;
+  });
 }

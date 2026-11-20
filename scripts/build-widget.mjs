@@ -8,20 +8,13 @@
 //   node scripts/build-widget.mjs --outfile=<file> [--watch]
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const outfile = arg('outfile') || 'public/_lab/comments.js';
 const watch = process.argv.includes('--watch');
 
-const tool = (name) => {
-  const bin = (process.env.PATH || '').split(path.delimiter).find((d) => fs.existsSync(path.join(d, name)) && fs.existsSync(path.join(d, '..', name, 'package.json')));
-  if (!bin) {
-    console.error(`${name} not found: run this with npm run build (npx -p esbuild@… -p terser@… node scripts/build-widget.mjs)`);
-    process.exit(1);
-  }
-  return createRequire(path.join(bin, '..', name, 'package.json'))(name);
-};
+import { tool } from './npx-tools.mjs';
+
 const esbuild = tool('esbuild');
 const terser = tool('terser');
 
