@@ -492,7 +492,11 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
      bottom, are kept up to date from visualViewport); their bottom part is solid down past the screen's edge,
      behind the home bar, the keyboard and Safari's toolbar, so nothing of the page shows below the box. */
   :host { --_safe: env(safe-area-inset-bottom, 0px); --_kb: var(--lab-kb, 0px);
-          --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb)); }
+          --_sheet-max: calc(min(72dvh, var(--lab-vh, 100dvh) - 24px) + var(--_kb)); --_pb: calc(12px + var(--_safe) + var(--_kb));
+          /* A thread opens taller than the chat, the list and the switcher (which keep --_sheet-max): more of a long thread
+             in view, the top 120px of the screen still the page's. On a phone on its side the same height as the rest. */
+          --_thread-max: calc(min(88dvh, var(--lab-vh, 100dvh) - 120px) + var(--_kb)); }
+  @media (max-height: 500px) { :host { --_thread-max: var(--_sheet-max); } }
   :host([data-kb]) { --_safe: 0px; --_kb: 0px; --_pb: 10px; }
   /* Keyboard up: a thread, the list and the chat fill exactly what the screen shows, like a native composer, so iOS
      panning the page can't push it up and nothing of the page shows above or below it. */
@@ -501,12 +505,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-kb]) .float { top: auto !important; height: auto !important; }
   .card, .float { position: fixed; top: auto !important; width: auto; max-width: none;
                   max-height: var(--_sheet-max); display: flex; flex-direction: column; padding: 8px 0 0; z-index: 3; }
+  .card { max-height: var(--_thread-max); }
   /* The same 12 px sides as the chat's, so a thread's reply box sits exactly where the chat's message box does. */
   .card > .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 4px; margin-right: 0; }
   /* A thread keeps one height, as the chat does (Leo, 15 Nov: it jumped while the chat stays put): the sheet's full
      height whatever its length, a short thread sitting by the reply box, so new replies and the keyboard never
      move its top. */
-  .card { height: var(--_sheet-max); }
+  .card { height: var(--_thread-max); }
   .card > .foot, .float > .composer { flex: none; padding: 0 12px var(--_pb); }
   .card > .foot { margin-top: 0; padding-top: 6px; }
   .card .composer { margin-top: 0; }
@@ -529,7 +534,12 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chatwin .tabs { touch-action: none; }
   .msgs, .card > .body { touch-action: pan-y; }
 
-  :host([data-sheet]) :is(.hint, .listener, .left) { visibility: hidden; }
+  /* The listening pill and the hints step away with the bar and come back in step with the sheet as a finger drags it
+     down (--lab-p), instead of popping back once it has gone (Leo, 20 Nov: "harsh… don't show pill animation like
+     slowly swiping it with finger"). */
+  :is(.listener, .left) { transition: opacity var(--_t-base) var(--_ease-out), transform var(--_t-slow) var(--_ease-settle); }
+  :host([data-sheet]) :is(.listener, .left) { opacity: var(--lab-p, 0); transform: translateY(calc(24px * (1 - var(--lab-p, 0)))); pointer-events: none; }
+  :host([data-sheet]) .hint { visibility: hidden; } /* a hint is centred by its transform: it just steps out */
   /* The bar steps down under the screen's edge while a sheet is open and comes back as the sheet goes: --lab-p is
      how far the sheet is on its way out (0 open, 1 gone), set while a finger drags it and while it slides away,
      so the bar rises with it, in step, instead of after it (Leo, 15 Nov). */
@@ -697,7 +707,14 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .sbar[data-board] { visibility: hidden; pointer-events: none; }
 /* Phones: while a sheet is open (chat, a thread, a new comment) the bar steps away, so the sheet's handle and its
    swipe down are free (Leo, 19 Nov: "tab bar blocking me from swiping down chat"). */
-@media (pointer: coarse) { :host([data-sheet]) .sbar { visibility: hidden; } }
+/* It slides up and fades as the sheet opens and eases back down as the sheet goes, with the sheet's own --lab-p (0 open,
+   1 gone) while it is dragged or slides away, as the bottom bar does: it used to vanish and pop back (Leo, 20 Nov: "nav
+   is harsh coming back"). */
+@media (pointer: coarse) {
+  :host([data-sheet]) .sbar { transform: translateY(calc(-100% * (1 - var(--lab-p, 0)))); opacity: var(--lab-p, 0); pointer-events: none;
+                              transition: transform var(--_t-base) var(--_ease-in), opacity var(--_t-base) var(--_ease-out); }
+  .sbar { transition: opacity var(--_t-slow) var(--_ease-out), transform var(--_t-slow) var(--_ease-settle); }
+}
 /* The bar's scrolling line (a phone): faded edges where there is more, a dot where something new is past the edge. */
 .sb-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .sb-wrap .sb-nav { flex: 1; }
@@ -752,10 +769,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }
 }
 /* Phones: a choice is a 44 pt row to tap, Keep a full-size button under them (V1: not stuck, so it never covers a row). */
-@media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
+@media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); --_thread-max: var(--_sheet-max); } button.choice { min-height: 44px; align-items: center; }
 }
 
-/* Your actions (lib/actions.ts): as many as fit, "…", and select's done on one line; "…" grows the line into the
+/* Your actions (lib/actions.ts): as many as fit, "…" on one line; "…" grows the line into the
    whole list; hold or right-click a row to edit it in place, + add. */
 .quick { white-space: nowrap; }
 .quick[hidden] { display: none; }
@@ -814,4 +831,3 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .act-fields .cnt, .act-fields .k, .act-fields .why { font-size: 12px; }
   .acts .act.gone { min-height: 44px; padding: 0 4px; font-size: 14px; }
 }
-.quick button.sel { background: none; padding-inline: 6px; margin-left: auto; }

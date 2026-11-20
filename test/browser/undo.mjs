@@ -4,59 +4,33 @@
 // Not part of `npm test`. Run: node test/browser/undo.mjs (needs playwright; NODE_PATH can point at a node_modules that
 // has it; ENGINES=webkit,chromium for both). One line per check; exits 1 if any fails.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
-})();
+const pw = playwright();
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 const until = async (ok, ms = 6000) => {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) if (await ok()) return true;
   return false;
 };
 
 async function lab(n) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-undo-'));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-'));
+  const dir = tmp('labit-undo-');
+  const home = tmp('labit-home-');
   const port = String(claimPort(6700 + n * 40, 30));
   const B = `http://localhost:${port}`;
-  const env = { ...process.env, LAB_SETTLE_MS: '0', LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
+  const env = labEnv({ LAB_SETTLE_MS: '0', LABIT_HOME: home }, { settings: false });
   const html = '<!doctype html><meta charset="utf-8"><title>p</title><body style="margin:40px"><p id="a">first line</p><p id="b" style="margin-top:120px">second line</p></body>';
   fs.writeFileSync(path.join(dir, 'index.html'), html);
   fs.writeFileSync(path.join(dir, 'guest.html'), html); // the guest's checks, on a page of their own
-  const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', port], { cwd: dir, env });
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(B + '/');
-      break;
-    } catch {
-      await sleep(100);
-    }
-  }
+  const server = startLab(dir, env, { root: '.', port });
+  await labUp(B);
   const comments = (page = '/index') => fetch(B + `/_lab/api/comments?page=${page}`).then((r) => r.json()).then((j) => j.comments || []);
   return { B, comments, stop: () => (server.kill(), fs.rmSync(dir, { recursive: true, force: true }), fs.rmSync(home, { recursive: true, force: true })) };
 }
 
-for (const [n, eng] of (process.env.ENGINES || 'chromium').split(',').entries()) {
+for (const [n, eng] of engines('chromium').entries()) {
   const L = await lab(n);
   const browser = await pw[eng].launch();
   try {
@@ -187,4 +161,4 @@ for (const [n, eng] of (process.env.ENGINES || 'chromium').split(',').entries())
     L.stop();
   }
 }
-process.exit(failed ? 1 : 0);
+finish('');

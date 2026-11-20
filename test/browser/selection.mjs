@@ -5,30 +5,16 @@
 // Not part of `npm test`; CI runs it in the `browser` job. Run: node test/browser/selection.mjs   (needs the playwright
 // package; NODE_PATH can point at a node_modules that has it). Prints one line per check and exits 1 if any fails.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  // On CI a missing browser is a failure: a skip there would pass with nothing run.
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-selection-'));
+const DIR = tmp('labit-selection-');
 const PORT = String(claimPort(5800, 190)); // below 6000: browsers refuse that port (X11), and the page never loads
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
+const env = labEnv({}, { settings: false });
 const PAGE = `<!doctype html><meta charset="utf-8"><title>selection</title>
 <style>body{margin:30px;max-width:420px;font:18px/1.6 Georgia,serif}</style>
 <p id="t">Plain words to drag across in this paragraph of text, quite a few of them.</p>
@@ -38,23 +24,10 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>selection</title>
 let scenes = 0;
 let PG = '/index';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env, stdio: 'ignore' }); // its log is not read: a full pipe would stop it
+const server = startLab(DIR, env, { root: '.', port: PORT, stdio: 'ignore' }); // its log is not read: a full pipe would stop it
 fs.writeFileSync(path.join(DIR, 'index.html'), PAGE);
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
+await labUp(B);
 const missed = []; // changes to what the page shows that no redraw followed (window.__labDebug)
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 const comments = async () => (await (await fetch(`${B}/_lab/api/comments?page=${PG}`)).json()).comments;
 const inRoot = (p, fn) =>
   p.evaluate((src) => {
@@ -130,7 +103,7 @@ async function scene(browser, run) {
 }
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       await scene(browser, async (p) => {
@@ -320,5 +293,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

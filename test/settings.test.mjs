@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { LAB, claimPort, tmp as folder, rm, sleep, cli as command } from './harness.mjs';
 import { loadSettings, seedActions } from '../lib/settings.ts';
 import { SEED, NAME_MAX, PROMPT_MAX, LIST_MAX, listFrom } from '../lib/actions.ts';
@@ -97,6 +98,29 @@ test('shortcuts merge key by key (the project\'s over yours over the defaults); 
   assert.equal(s.values.shortcuts.pause, 'o', 'pause is an action again: the project can move it');
   assert.ok(!s.problems.some((p) => /\.pause /.test(p)), 'and it is not reported');
   assert.ok(s.problems.some((p) => /"x" is used twice/.test(p)));
+});
+
+// The shortcuts are listed three times: lib/settings.ts (what a file may set), the widget's KEYS (what the page
+// answers to) and the table in docs/settings.md. One missing from the first can't be changed: `slow` was (20 Nov).
+test('the shortcuts in settings, in the widget and in docs/settings.md are the same actions and keys', () => {
+  const lib = setup().load().values.shortcuts;
+  const text = (f) => fs.readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8');
+  const table = /const KEYS = \{([^}]*)\};/.exec(text('../src/comments.js'));
+  assert.ok(table, 'src/comments.js has its KEYS table');
+  const widget = [...table[1].matchAll(/(\w+):\s*'([^']*)'/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(widget, Object.entries(lib), 'the widget\'s KEYS and SHORTCUTS in lib/settings.ts, in the same order');
+  const section = text('../docs/settings.md').split(/^## Shortcuts$/m)[1]?.split(/^## /m)[0] || '';
+  const docs = [...section.matchAll(/^\| `(\w+)` \| `(\w)` \|/gm)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(Object.fromEntries(docs), lib, 'the table in docs/settings.md');
+  assert.equal(docs.length, widget.length, 'each action once in the docs');
+});
+
+test('slow is a shortcut a file can move, and its key is checked like the others', () => {
+  let s = setup({ shortcuts: { slow: 'Q' } }).load();
+  assert.equal(s.values.shortcuts.slow, 'q');
+  assert.deepEqual(s.problems, []);
+  s = setup({ shortcuts: { chat: 's' } }).load();
+  assert.ok(s.problems.some((p) => /"s" is used twice \(slow too\)/.test(p)), 'another action on S is said');
 });
 
 test('labit.json is found from a folder inside the project; an old zoom setting is named and ignored', () => {

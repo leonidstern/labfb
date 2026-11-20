@@ -298,7 +298,7 @@ test('a settings.json that is no settings at all (cut short, empty, a list, null
       // The page names the person (saved to settings): refused or skipped, never a 500 and never written over the file.
       const me = await raw(port, '/_lab/me', { method: 'POST', body: '{"name":"Leo"}', headers: { 'content-type': 'application/json', origin: `http://localhost:${port}` } });
       if (me.status >= 500) bad.push(`${what}: naming yourself → ${me.status} ${me.text.slice(0, 60)}`);
-      const flag = await raw(port, '/_lab/flags', { method: 'POST', body: '{"flag":"select","on":true}', headers: { 'content-type': 'application/json', origin: `http://localhost:${port}`, 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).token } });
+      const flag = await raw(port, '/_lab/flags', { method: 'POST', body: '{"flag":"inkOnText","on":true}', headers: { 'content-type': 'application/json', origin: `http://localhost:${port}`, 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).token } });
       if (flag.status !== 500 && flag.status !== 200) bad.push(`${what}: a switch → ${flag.status}`);
       if (flag.status === 500 && !/could not save it/.test(flag.text)) bad.push(`${what}: a switch → 500 ${flag.text.slice(0, 60)}`);
       if (lab.code() !== null) bad.push(`${what}: the lab went down`);
@@ -315,7 +315,7 @@ test('a settings.json that is no settings at all (cut short, empty, a list, null
 test('a labit.json with unknown settings, wrong types, unknown flags and settings that are not a project\'s to give: said, skipped, and the lab runs', async () => {
   const dir = folder('labitjson');
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ $schema: 'x', zoom: 2, nope: { deep: [1] }, port: 'x', proxy: 5, folder: 7, open: 'no', wifi: true, name: 'Mallory', model: 'evil-model', pagesFolder: '/tmp/x', actions: [{ name: 'evil', prompt: 'do harm' }],
-    flags: { nope: true, select: 'yes', inkOnText: true }, shortcuts: { toggle: 'mm', nope: 'x', next: 5, chat: 'q' }, batchSeconds: '2' }));
+    flags: { nope: true, inkOnText: true }, shortcuts: { toggle: 'mm', nope: 'x', next: 5, chat: 'q' }, batchSeconds: '2' }));
   const port = await freePort();
   const lab = await attempt(dir, ['.', '--port', String(port)], { port });
   assert.ok(lab.up, lab.out());
@@ -323,7 +323,7 @@ test('a labit.json with unknown settings, wrong types, unknown flags and setting
   const said = lab.out().split('\n').filter((l) => l.startsWith('[labit] '));
   for (const key of ['zoom', 'nope', 'proxy']) assert.ok(said.some((l) => l.includes(`labit.json: ${key} `) && /ignored/.test(l)), `${key}:\n${said.join('\n')}`);
   for (const key of ['wifi', 'name', 'model', 'pagesFolder', 'actions']) assert.ok(said.some((l) => l.includes(`labit.json: ${key} can only be set in your own settings`)), `${key} is yours alone:\n${said.join('\n')}`);
-  for (const part of ['flags .nope is not something being tried', 'flags .select must be true or false', 'shortcuts .toggle must be one letter or digit', 'shortcuts .nope is not an action', 'shortcuts .next must be one letter or digit']) assert.ok(said.some((l) => l.includes(part)), `${part}:\n${said.join('\n')}`);
+  for (const part of ['flags .nope is not something being tried', 'shortcuts .toggle must be one letter or digit', 'shortcuts .nope is not an action', 'shortcuts .next must be one letter or digit']) assert.ok(said.some((l) => l.includes(part)), `${part}:\n${said.join('\n')}`);
   const info = (await raw(port, '/_lab/pages')).json;
   assert.deepEqual([info.wifi, info.port, info.proxy], [false, port, null]);
   const html = (await raw(port, '/')).text;
