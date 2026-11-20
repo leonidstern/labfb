@@ -96,6 +96,24 @@ try {
       s = await state();
       check(eng, 'a 320 px window, a 300-word draft: the words scroll in the box and Send stays inside the window', fits(s) && s.send <= s.h - 4 && s.ta < 200, JSON.stringify(s));
       await close();
+      // A long paste: the words past the box's tallest scroll (no words cut off at the top without a scrollbar) and the
+      // cursor at their end stays in view. In a short window the tallest is under 200 px (180 at 360 px), so a medium paste, 180-200 px of words, counts too.
+      const scroller = () => p.evaluate(() => {
+        const t = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.float textarea');
+        return { sh: t.scrollHeight, ch: t.clientHeight, st: Math.round(t.scrollTop), ov: getComputedStyle(t).overflowY };
+      });
+      const scrolls = (t) => t.sh <= t.ch + 1 || (t.ov === 'auto' && t.st + t.ch >= t.sh - 2);
+      for (const [h, words] of [[800, 200], [360, 36]]) {
+        await p.setViewportSize({ width: 1000, height: h });
+        await sleep(300);
+        await p.evaluate(() => { const t = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.float textarea'); if (t) t.value = ''; });
+        await open(400, 200);
+        await p.keyboard.insertText(Array.from({ length: words }, (_, i) => `pasted${i}`).join(' '));
+        await sleep(400);
+        const t = await scroller();
+        check(eng, `a ${h} px window, a ${words}-word paste: words past the box's tallest scroll, the cursor at the end in view`, t.sh > t.ch && scrolls(t), JSON.stringify(t));
+        await close();
+      }
       await ctx.close();
     } finally {
       await browser.close();
