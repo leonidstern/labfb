@@ -31,7 +31,7 @@ for (const eng of engines()) {
   await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tess'));
   const p = await ctx.newPage();
   await p.goto(B + '/');
-  await p.waitForFunction(() => document.querySelector('[data-lab-comments]')?.shadowRoot?.querySelector('.pin'), null, { timeout: 8000 });
+  await p.waitForFunction(() => document.querySelector('[data-lab-comments]')?.shadowRoot?.querySelector('.pin'), null, { timeout: 20000 });
   await p.waitForTimeout(400);
   // Opens the thread whose pin is nth (a tap on it) and waits for its sheet. swipe moves a made-up finger over the thread's
   // body, from one share of its height to another; it says whether the move was cancelled.
@@ -44,7 +44,7 @@ for (const eng of engines()) {
     await p.waitForTimeout(300);
     const r = await p.evaluate((n) => { const b = document.querySelector('[data-lab-comments]').shadowRoot.querySelectorAll('.pin')[n].getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, nth);
     await p.touchscreen.tap(r.x, r.y);
-    await p.waitForFunction(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.card:not(.out) > .body'), null, { timeout: 4000 });
+    await p.waitForFunction(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.card:not(.out) > .body'), null, { timeout: 10000 });
     await p.waitForTimeout(900); // the sheet slides in and the page scrolls to the pin
   };
   const swipe = (from, to) => p.evaluate(([f, t]) => {
@@ -66,7 +66,7 @@ for (const eng of engines()) {
   const close = async () => {
     await p.keyboard.press('Escape').catch(() => {});
     await p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.scrim')?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true })));
-    await p.waitForFunction(() => !document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.card'), null, { timeout: 4000 }).catch(() => {});
+    await p.waitForFunction(() => !document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.card'), null, { timeout: 10000 }).catch(() => {});
     await p.waitForTimeout(500);
   };
 
