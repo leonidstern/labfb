@@ -228,13 +228,21 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // latest message from a person, so "Done." after the person wrote again is a new answer, not a retry.
     // The name on the agent's own pins and replies: the agent, and its session's name when that is another.
     const signed = () => `${process.env.LAB_AGENT_NAME || session.agent}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
-    // One wait: the lab's answer is said, and confirmed as shown.
+    // One wait: the lab's answer is said, and confirmed as shown. A wait sits open for as long as it is allowed to; in an
+    // agent's foreground that is the person's whole turn, so without --bg it is held to a minute (waitSeconds, args.ts,
+    // says why it can't just be detected).
     const listen = async () => {
       const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
       const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true }, 20);
       console.log(WAIT_SAID[out.status] ?? out.text);
       await labAck(server, out.delivery, session);
-      return { status: out.status, capped };
+      if (capped && out.status === 204)
+        console.log(
+          `\nThat wait was held to ${FOREGROUND_CAP} seconds. Run it in the background (your app's own way of doing that) and ` +
+            'add --bg for the full wait: in the foreground this command holds your turn open, and the person cannot ' +
+            'say anything to you until it ends.',
+        );
+      return out.status;
     };
     const nonceOf = (...parts: unknown[]) =>
       createHash('sha256').update(JSON.stringify([session.id || session.name, ...parts])).digest('hex').slice(0, 32);
@@ -260,15 +268,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     }
 
     if (cmd === 'wait') {
-      // A wait sits open for as long as it is allowed to; in an agent's foreground that is the person's whole turn,
-      // so without --bg it is held to a minute. See waitSeconds in args.ts for why it can't just be detected.
-      const { status, capped } = await listen();
-      if (capped && status === 204)
-        console.log(
-          `\nThat wait was held to ${FOREGROUND_CAP} seconds. Run it in the background (your app's own way of doing that) and ` +
-            'add --bg for the full wait: in the foreground this command holds your turn open, and the person cannot ' +
-            'say anything to you until it ends.',
-        );
+      const status = await listen();
       process.exit(status < 300 || status === 409 || status === 410 || status === 423 ? 0 : 1);
     }
 
@@ -509,11 +509,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // --wait: answer and listen again in one command (one round trip less per pin). It listens where --page or
     // --pages says, as wait does: `reply <id> --wait --page /x` used to listen on every page but /x's claim, so a
     // session listening on one page stopped hearing it after its first answer (Leo, 18 Nov).
-    if (opts.wait) {
-      const { status, capped } = await listen();
-      if (capped && status === 204)
-        console.log(`\nThat wait was held to ${FOREGROUND_CAP} seconds: run the command in the background and add --bg for the full wait.`);
-    }
+    if (opts.wait) await listen();
     process.exit(0);
   }
 }

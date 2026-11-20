@@ -101,13 +101,11 @@ to tap. Only the computer running the lab can switch them: a guest on your wifi 
 Or write it in a file: the project's `labit.json` for everyone on the project, or your own settings file. A file you
 edit by hand is read when the lab starts. A flag the project's `labit.json` sets wins over yours, on or off: the menu
 shows that switch greyed, with "set by the project's labit.json" under it. `labit settings` lists which are on and
-whose each is: `flags  inkOnText (yours)`.
+whose each is: `flags  <name> (yours)`.
 
-| Flag | What it is |
-| --- | --- |
-| `inkOnText` | a comment on selected words shows no pin: the words carry its state as ink under them. Turn it on in `labit.json`: `{ "flags": { "inkOnText": true } }` |
+Nothing is being tried at the moment: no flag exists, and the ⋯ menu has no **experiments** row until one does.
 
-`select` (select mode, `V`) was dropped (20 Nov): an old `select` in a `flags` setting gets the "not something being tried now" warning, and a `select` shortcut the "not an action" one. `native` was kept (20 Nov), so the browser always does it: pins on an element are tied to it with CSS anchor positioning, cards and the comment box are tied to their pin, the ⋯ menu and labs & pages are popovers on a computer, the comment box grows by itself, and navigation comes from the Navigation API. `sectionBar` was kept, so the section bar has no switch: it shows by itself on a lab page with three or more sections, and `<meta name="lab-sections" content="on|off">` (or `data-lab-sections` on `<html>` or `<body>`) says so for one page; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
+`inkOnText` (a comment on selected words as ink under them, not a pin) was dropped (20 Nov): selecting words for a comment gives a pin on them, as it always did, and an old `inkOnText` in a `flags` setting gets the "not something being tried now" warning. `select` (select mode, `V`) was dropped (20 Nov): an old `select` in a `flags` setting gets the "not something being tried now" warning, and a `select` shortcut the "not an action" one. `native` was kept (20 Nov), so the browser always does it: pins on an element are tied to it with CSS anchor positioning, cards and the comment box are tied to their pin, the ⋯ menu and labs & pages are popovers on a computer, the comment box grows by itself, and navigation comes from the Navigation API. `sectionBar` was kept, so the section bar has no switch: it shows by itself on a lab page with three or more sections, and `<meta name="lab-sections" content="on|off">` (or `data-lab-sections` on `<html>` or `<body>`) says so for one page; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.

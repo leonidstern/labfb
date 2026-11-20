@@ -13,10 +13,6 @@ type Quote = {
   pageLineNo?: number;
   lines?: number;
   label?: string;
-  /** Picked by selecting them (shown as ink on the words), not the word under a click. */
-  selected?: boolean;
-  /** The last words of a selection cut at 300 characters: the ink runs from `exact` to them. */
-  tail?: string;
 };
 
 /** Everything a pin remembers about its spot. Saved with the comment and read by agents. */
@@ -1022,7 +1018,6 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
   const want = q.exact.replace(/\s+/g, '');
   if (!want) return null;
   const tail = (q.prefix || '').replace(/\s+/g, '').slice(-12);
-  const last = (q.tail || '').replace(/\s+/g, '');
   let stale = false;
   for (let n = from, up = 0; n && up < 4; n = n.parentElement, up++) {
     const { text, at } = lettersOf(n, fresh);
@@ -1039,25 +1034,12 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
         stale = true;
         continue;
       }
-      // A long selection saved only its start and its last words: the range runs on to them.
-      const j = last ? text.indexOf(last, i + want.length) : -1;
-      if (j >= 0) {
-        const [end, k] = at[j + last.length - 1];
-        range.setEnd(end, k + 1);
-      }
       if (!tail || text.slice(0, i).endsWith(tail)) return range;
       first ||= range;
     }
     if (first && !strict) return first;
   }
   return stale && !fresh ? quoteRange(anchor, from, strict, true) : null;
-}
-// A text comment's words where its pin finds them (as spotOf does: strictly on the page itself or a big container),
-// for the ink drawn on them (wordink.ts). Null when they're gone: the pin shows instead.
-export function wordsRange(anchor) {
-  const node = findTarget(anchor);
-  const box = node || (/^<(body|html)[\s>]/.test(anchor.element || '') ? document.body : null);
-  return box && quoteRange(anchor, box, !anchor.docW && /^(html|body|main)$/.test(box.localName));
 }
 // The quoted words of a text comment as a Range in the page now, or null (a question's choices are tried in their place:
 // src/widget/thread.ts). Found as the pin and the highlight find them.
@@ -1157,7 +1139,7 @@ export const readable = (text) => {
 };
 // A drag that starts or ends inside a word takes the whole word (as most editors do; Leo, 18 Nov), so a note is on
 // "Send … carry", not "nd … ca". A drag that stays inside one word keeps exactly its letters. Letters, digits, marks,
-// apostrophes and _ are a word's. The quote (comments.js) and the ink drawn while selecting (wordink.ts) both use it.
+// apostrophes and _ are a word's. The quote (comments.js) uses it.
 const grow = (node: Node, i: number, step: number) => {
   const d = node.nodeType === 3 ? (node as Text).data : '';
   while (/[\p{L}\p{N}\p{M}'’_]/u.test(d[step < 0 ? i - 1 : i] ?? ' ')) i += step;
