@@ -162,7 +162,7 @@ button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; backgroun
 .msg.asks > b { display: none; }
 .msg.asks .p { font-weight: 600; }
 .msg.asks .stamp { bottom: auto; top: 3px; right: 0; }
-.choices { display: grid; gap: 8px; margin: 8px 0 2px; }
+.choices { display: grid; gap: 8px; margin: 8px 0 2px; max-width: 85%; } /* as wide as the messages */
 .choices .rows { display: grid; gap: 2px; }
 button.choice { display: flex; align-items: baseline; gap: 8px; width: 100%; margin: 0; padding: 7px 10px; border: 0; border-radius: var(--_r-s);
                 background: none; text-align: left; cursor: pointer; color: var(--_fg); line-height: 1.35; transition: background var(--_fade); }

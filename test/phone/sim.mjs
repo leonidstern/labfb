@@ -292,7 +292,7 @@ if (cmd === 'serve') {
       ];
     } },
     // A question with choices (src/widget/thread.ts, trial.ts) on a phone: a sheet of at most half the screen, 44 pt rows,
-    // a tap tries the words in the sentence (which stays in view above the sheet), Keep sends the pick. `go ask-open` after
+    // a tap on a row sends the pick at once (no Keep). `go ask-open` after
     // calibrate. The question sits on words in paragraph p20; the page is scrolled so they are in the lower part of the
     // screen, where a tall sheet would cover them.
     { name: 'ask-open', setup: async () => {
@@ -313,17 +313,7 @@ if (cmd === 'serve') {
         ['no keyboard just for reading', kbDown(end), `covers ${kb(end)}px`],
       ];
     } },
-    { name: 'ask-try', say: (s) => { const r = s.rows[1]; return r ? `tap ${fmt(dev(s, r.x + r.w / 2, r.y + r.h / 2))} (row A, "the sleepy dog while the band": the first row is the words as they are; the rows below it are partly under the reply box)` : 'no rows on screen'; }, expect: async (ss) => {
-      const end = ss.at(-1);
-      const q = end.t.p20;
-      const words = await inPage(`document.querySelector('#p20').textContent`);
-      return [
-        ['the tapped row\'s words stand in the sentence', /the sleepy dog while the band/.test(words || ''), words],
-        ['the sentence stays in view above the sheet', Boolean(q && end.card && q.y >= 0 && q.y + q.h <= end.card.y + 2), JSON.stringify({ p20: q, card: end.card })],
-        ['the sheet did not move or change size', Boolean(end.card) && end.card.h <= end.vh / 2 + 2, JSON.stringify(end.card)],
-      ];
-    } },
-    { name: 'ask-keep', say: (s) => { const k = s.keep; return k ? `tap ${fmt(dev(s, k.x + k.w / 2, k.y + k.h / 2))} (Keep)` : 'no Keep button on screen'; }, expect: async (ss) => {
+    { name: 'ask-pick', say: (s) => { const r = s.rows[1]; return r ? `tap ${fmt(dev(s, r.x + r.w / 2, r.y + r.h / 2))} (row A: a tap answers at once, no Keep)` : 'no rows on screen'; }, expect: async (ss) => {
       const cs = await comments();
       const pick = cs.find((c) => c.picked);
       const words = await inPage(`document.querySelector('#p20').textContent`);

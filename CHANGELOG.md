@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- **A tap answers a question.** A question's choices send on tap, no Keep; pointing at one on a computer still tries it in the sentence. The rows are as wide as the messages.
 - **Drawings are quick actions.** The agent gets an `action:` line from the mark: X, strike or scribble remove; circle, box or a wavy line fix; underline rewrites; a side line reworks the block; an arrow moves (beside what's there); a caret adds. Words in the thread win.
 - **A drawing sends with Enter, no words needed.** Its box opens with the lines; Enter sends it as what it reads as ("circled"), or type a few words first.
 - **The agent is told where to look.** On a plain HTML page each comment gets `in file: page.html:30`, and an arrow's ends name their card or section. In sims this cut a third of Haiku's time in the model.

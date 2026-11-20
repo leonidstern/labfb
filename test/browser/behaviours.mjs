@@ -412,15 +412,17 @@ for (const eng of ['webkit', 'chromium']) {
     let c = await card();
     const geo = await quoteRects();
     check(eng, 'a question opens in the margin, clear of the words', c && /margin/.test(c.cls) && c.tie && c.left >= geo.para.right + 28 && c.right <= 1000 - 8 && c.right - c.left === 280 && Math.abs(c.top - geo.para.top) <= 10, JSON.stringify([c?.cls, c?.tie, c?.left, c?.right, c?.top, geo.para]));
-    check(eng, 'a question (V1 plain list): no bubble, plain rows, the page\'s words "· now" ticked, no letters, tags or hint, one Keep that always says Keep', c && c.rows.length === 4 && c.rows[0] === 'the full guide on the page · now' && c.rows.slice(1).every((t, i) => t === choices[i]) && !c.keys && /rgba\(0, 0, 0, 0\)|transparent/.test(c.bubble) && c.name === 'none' && c.on === 0 && c.keep === 'Keep' && !c.keepOff, JSON.stringify(c));
+    check(eng, 'a question (V1 plain list): no bubble, plain rows, the page\'s words "· now" ticked, no letters, tags or hint, no Keep (a tap answers)', c && c.rows.length === 4 && c.rows[0] === 'the full guide on the page · now' && c.rows.slice(1).every((t, i) => t === choices[i]) && !c.keys && /rgba\(0, 0, 0, 0\)|transparent/.test(c.bubble) && c.name === 'none' && c.on === 0 && c.keep === undefined, JSON.stringify(c));
     const pinsBefore = await pinsAt();
     const countBefore = await nodes();
     const belowAt = () => q.evaluate(() => Math.round(document.querySelector('#b').getBoundingClientRect().top + scrollY));
-    const tap = (i) => sq(() => { r.querySelectorAll('.choice')[a].click(); }, i);
+    // Pointing at a row tries it in the page; a tap answers (below).
+    const tap = (i) => sq(() => { r.querySelectorAll('.choice')[a].dispatchEvent(new PointerEvent('pointerenter')); }, i);
+    const answer = (i) => sq(() => { r.querySelectorAll('.choice')[a].click(); }, i);
     await tap(1); // from the words now to the first version, the agent's pick
     await sleep(250);
     c = await card();
-    check(eng, 'tapping a version ticks it and Keep says Keep', c.on === 1 && c.keep === 'Keep', JSON.stringify([c.on, c.keep]));
+    check(eng, 'pointing at a version tries it and sends nothing', c.on === 0 && !(await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.some((x) => x.picked), JSON.stringify([c.on]));
     const tried = await q.evaluate(() => ({ text: document.querySelector('#a').textContent, link: document.querySelector('#lnk') === window.__lnk, linkText: document.querySelector('#lnk')?.textContent, linkIn: document.querySelector('#a').contains(document.querySelector('#lnk')) }));
     check(eng, 'trying B swaps only the differing words; the link keeps its word', /labit puts this short guide on the page, not in chat/.test(tried.text) && tried.linkIn && tried.linkText === 'guide', JSON.stringify(tried));
     // Stepping through versions of different lengths never moves the page below: the block holds its tallest height
@@ -441,27 +443,25 @@ for (const eng of ['webkit', 'chromium']) {
     await sleep(400);
     check(eng, 'Escape puts the paragraph back exactly, and closes the card', (await html()) === original && (await card()) === null, (await html()).slice(0, 120));
 
-    // Keep on the page's own words (the "now" row, as the card opens) keeps them as they are.
+    // A tap on the page's own words (the "now" row) keeps them as they are.
     await sq(() => { r.querySelector('button.pin').click(); });
     await sleep(600);
-    await sq(() => { r.querySelector('button.keep').click(); });
+    await answer(0);
     await sleep(900);
     const asIs = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
-    check(eng, 'Keep on the page\'s own words keeps them as they are', asIs.length === 1 && asIs[0].picked.n === -1 && asIs[0].text.startsWith('Keep as is') && (await html()) === original, JSON.stringify(asIs.map((x) => [x.picked, x.text])));
+    check(eng, 'a tap on the page\'s own words keeps them as they are', asIs.length === 1 && asIs[0].picked.n === -1 && asIs[0].text.startsWith('Keep as is') && (await html()) === original, JSON.stringify(asIs.map((x) => [x.picked, x.text])));
     for (const x of asIs) await post({ page: '/ask', action: 'delete', id: x.id });
     await q.keyboard.press('Escape');
     await sleep(400);
 
-    // Keep B sends the pick; the words are the page's until the agent writes the file.
+    // A tap on B sends the pick at once; the words are the page's until the agent writes the file.
     await sq(() => { r.querySelector('button.pin').click(); });
     await sleep(600);
-    await tap(2);
-    await sleep(150);
-    await sq(() => { r.querySelector('button.keep').click(); });
+    await answer(2);
     await sleep(900);
     const got = (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((x) => x.picked);
     c = await card();
-    check(eng, 'Keep B sends the pick', got.length === 1 && got[0].picked.of === asked.id && got[0].picked.n === 1 && got[0].text.startsWith('Picked B: ') && (await html()) === original, JSON.stringify(got.map((x) => [x.picked, x.text])));
+    check(eng, 'a tap on B sends the pick', got.length === 1 && got[0].picked.of === asked.id && got[0].picked.n === 1 && got[0].text.startsWith('Picked B: ') && (await html()) === original, JSON.stringify(got.map((x) => [x.picked, x.text])));
     check(eng, 'after the pick the rows are disabled and the pick is marked', c && c.disabled && c.picked === 1 && c.cls.includes('margin'), JSON.stringify(c && [c.disabled, c.picked, c.cls]));
     await post({ page: '/ask', action: 'delete', id: got[0].id });
     await q.keyboard.press('Escape');
@@ -476,7 +476,7 @@ for (const eng of ['webkit', 'chromium']) {
     await sleep(1800);
     const after = await q.evaluate(() => ({ text: document.querySelector('#a').textContent, third: document.querySelector('#c').textContent }));
     c = await card();
-    check(eng, 'an HTML save mid-try: patch applied, same row tried in the new words', /Third paragraph, edited\./.test(after.third) && /this short guide on the page/.test(after.text) && c && /margin/.test(c.cls) && c.on === 1, JSON.stringify([after, c?.on]));
+    check(eng, 'an HTML save mid-try: patch applied, the row pointed at is tried in the new words', /Third paragraph, edited\./.test(after.third) && /this short guide on the page/.test(after.text) && c && /margin/.test(c.cls) && c.on === 0, JSON.stringify([after, c?.on]));
     write('ask.html', body(para.replace('labit puts the <a id="lnk" href="#g">full guide</a> on the page, not in chat.', 'Nothing of it is left.') + fill));
     await sleep(1800);
     c = await card();
@@ -539,7 +539,7 @@ for (const eng of ['webkit', 'chromium']) {
     const before = await mine();
     await sq(() => { r.querySelector('button.pin').click(); });
     await sleep(700);
-    await sq(() => { r.querySelectorAll('.choice')[1].click(); });
+    await sq(() => { r.querySelectorAll('.choice')[1].dispatchEvent(new PointerEvent('pointerenter')); });
     await sleep(200);
     const row = await sq(() => { return { cls: r.querySelector('.card').className, rows: [...r.querySelectorAll('.choice')].map((x) => x.textContent) }; });
     check(eng, 'a quote across two blocks: rows only, no "now" row, nothing changed in the page', !/margin/.test(row.cls) && row.rows.length === 2 && !row.rows.some((t) => t?.endsWith('now')) && (await mine()) === before, JSON.stringify(row));
@@ -550,7 +550,7 @@ for (const eng of ['webkit', 'chromium']) {
     await sleep(1200);
     await sq(() => { r.querySelector('button.pin').click(); });
     await sleep(700);
-    await sq(() => { r.querySelectorAll('.choice')[1].click(); });
+    await sq(() => { r.querySelectorAll('.choice')[1].dispatchEvent(new PointerEvent('pointerenter')); });
     await sleep(250);
     const raw = await sq(() => { return { tx: [...r.querySelectorAll('.choice .tx')].map((x) => [x.textContent, x.getAttribute('dir'), x.children.length]) }; });
     const inPage = await q.evaluate(() => ({ c: document.querySelector('#c').textContent, imgs: document.querySelectorAll('#c img').length, bs: document.querySelectorAll('#c b').length, x: window.__x }));
