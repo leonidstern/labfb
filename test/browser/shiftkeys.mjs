@@ -26,14 +26,10 @@ try {
       await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('.scrim')), null, { timeout: 5000 });
       await sleep(400);
       const ls = (k) => p.evaluate((x) => localStorage.getItem(x), k);
-      // Shift and a digit are the board's: ⇧1, ⇧2 and ⇧0 do nothing here, a plain 1 still switches pointer and comment.
+      // Shift and a digit are the board's: ⇧1, ⇧2 and ⇧0 do nothing here (and a plain 1 does nothing on a page any more).
       for (const d of ['1', '2', '0']) await p.keyboard.press(`Shift+Digit${d}`);
       await sleep(150);
-      check(eng, 'Shift+1, Shift+2 and Shift+0 do not switch the pointer', !(await ls('lab-cursor')));
-      await p.keyboard.press('Digit1');
-      await sleep(150);
-      check(eng, 'a plain 1 still switches to the pointer', (await ls('lab-cursor')) === '1');
-      await p.keyboard.press('Digit1');
+      check(eng, 'Shift+1, Shift+2 and Shift+0 do nothing', !(await ls('lab-cursor')));
       // Shift+D and Shift+M belong to the board; a plain D still shows and hides done pins.
       await p.keyboard.press('Shift+KeyD');
       await p.keyboard.press('Shift+KeyM');

@@ -23,7 +23,7 @@ try {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
-      await ctx.addInitScript(() => { localStorage.setItem('lab-name', 'leo'); localStorage.setItem('lab-on', '1'); localStorage.setItem('lab-cursor', ''); });
+      await ctx.addInitScript(() => { localStorage.setItem('lab-name', 'leo'); localStorage.setItem('lab-on', '1'); });
       // The pin is not stored: its POST is read and aborted.
       const posts = [];
       await ctx.route('**/_lab/api/comments**', (r) => {
@@ -40,18 +40,13 @@ try {
       await sleep(300);
       const y0 = await p.evaluate(() => scrollY);
       const url0 = p.url();
-      // Pointer mode: a click follows the link (comment mode would pin on it). 1 switches the mode.
-      const mode = async () => p.evaluate(() => Boolean(window.__labBoardWidget?.pinning()));
-      if (await mode()) await p.keyboard.press('Digit1');
-      await sleep(200);
+      // A click on the page's own link follows it (the page is in comment mode, but a link keeps its click).
       await p.click('#go');
       await p.waitForFunction(() => document.querySelector('[data-lab-board-view] #lab-board .f[data-id="b"]'), null, { timeout: 6000 });
       await sleep(800);
       const st = await p.evaluate(() => ({ path: location.pathname, hash: location.hash, view: Boolean(document.querySelector('[data-lab-board-view]')), pills: [...document.querySelectorAll('*')].filter((n) => n.shadowRoot?.querySelector('.scrim')).length }));
       check(eng, 'the link opens the board over the same page, one widget', st.path === '/canvas' && st.hash === '#board=pricing' && st.view && st.pills === 1, JSON.stringify(st));
-      // comment mode, then a tap on frame b
-      if (!(await mode())) await p.keyboard.press('Digit1');
-      await sleep(200);
+      // a tap on frame b pins
       const b = await p.evaluate(() => { const r = document.querySelector('#lab-board .f[data-id="b"]').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
       await p.mouse.click(b.x + 60, b.y + 80);
       await sleep(400);
@@ -92,7 +87,6 @@ try {
       await p.evaluate(() => document.getElementById('go').scrollIntoView({ block: 'center' }));
       await sleep(200);
       const y2 = await p.evaluate(() => scrollY);
-      if (await mode()) await p.keyboard.press('Digit1');
       await p.click('#go');
       await p.waitForFunction(() => document.querySelector('[data-lab-board-view] #lab-board'), null, { timeout: 6000 });
       await sleep(500);
