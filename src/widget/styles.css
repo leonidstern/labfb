@@ -304,11 +304,6 @@ button.btn.undo { color: var(--_fg); }
 *::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--_fg) 40%, transparent); }
 *::-webkit-scrollbar-corner { background: transparent; }
 @supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--_fg) 24%, transparent) transparent; } }
-/* Ink on selected words instead of a pin (wordink.ts): the band is the page's (a highlight). The pin stays, unseen, at its
-   spot: only its new-reply dot shows, and Tab shows the pin itself. */
-button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; color: transparent; pointer-events: none; }
-.pin.on-ink:not(:focus-visible) > *, button.pin.on-ink:not(:focus-visible)::before { display: none; }
-.pin.draft.on-ink { visibility: hidden; }
 .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
