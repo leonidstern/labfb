@@ -1250,7 +1250,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // or a pick gives focus back to the button.
   // On a computer the menu is a popover the ⋯ button opens: the browser closes it on a press elsewhere or Esc, gives
   // focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
-  const popMenu = !coarse; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
+  const popMenu = !coarse && CSS.supports('overlay', 'auto'); // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer); Safari has no `overlay`, so a popover would close in one frame: it stays in the bar too, and fades (goOut)
   if (popMenu) {
     moreMenu.popover = 'auto';
     /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
