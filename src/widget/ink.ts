@@ -61,15 +61,31 @@ function head(pts: number[], w: number, h: number) {
   return [p];
 }
 // A line as one path, or, with widths, a path a segment so each can be as wide as the pen was there.
+// Curves through the kept points (Catmull-Rom), from point i to i+1: a thinned line (80 points at most) stops looking
+// jagged (Leo's pick G, 20 Nov). The line you click (.hit) stays straight segments.
+function curve(pts: number[], i: number) {
+  const n = pts.length / 2;
+  const P = (k: number) => [pts[Math.max(0, Math.min(n - 1, k)) * 2], pts[Math.max(0, Math.min(n - 1, k)) * 2 + 1]];
+  const [a, b, c, e] = [P(i - 1), P(i), P(i + 1), P(i + 2)];
+  const r = (v: number) => Math.round(v * 10) / 10;
+  return `C${r(b[0] + (c[0] - a[0]) / 6)} ${r(b[1] + (c[1] - a[1]) / 6)} ${r(c[0] - (e[0] - b[0]) / 6)} ${r(c[1] - (e[1] - b[1]) / 6)} ${c[0]} ${c[1]}`;
+}
+const smooth = (pts: number[]) => {
+  const n = pts.length / 2;
+  if (n < 3) return line(pts);
+  let d = `M${pts[0]} ${pts[1]}`;
+  for (let i = 0; i < n - 1; i++) d += curve(pts, i);
+  return d;
+};
 function widths(pts: number[], w?: number[]) {
-  if (!w || w.length * 2 !== pts.length) return [path(line(pts))];
+  if (!w || w.length * 2 !== pts.length) return [path(smooth(pts))];
   const out: SVGPathElement[] = [];
   for (let i = 1; i < w.length; i++) {
-    const p = path(line(pts.slice((i - 1) * 2, i * 2 + 2)));
+    const p = path(`M${pts[(i - 1) * 2]} ${pts[(i - 1) * 2 + 1]}${curve(pts, i - 1)}`);
     p.style.strokeWidth = `${((w[i - 1] + w[i]) / 20).toFixed(1)}px`;
     out.push(p);
   }
-  return out.length ? out : [path(line(pts))];
+  return out.length ? out : [path(smooth(pts))];
 }
 
 // The strokes as they are drawn, in page coordinates (kept that way as they come in, so a scroll mid-stroke leaves the

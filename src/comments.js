@@ -1294,7 +1294,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
           // Undo for 3 s (takeBack): its card opens quietly (no reply cursor) with undo in the resolve key's place, and
           // closes when they are up, unless it was touched meanwhile.
-          if (S.isAdmin || edit) {
+          // A tapped action (go, fix, remove…) closes at once, no undo card (Leo, 20 Nov: "if action close it right away";
+          // on a phone the card stayed up once touched and had to be closed by hand to get to the next pin). Command-Z
+          // still takes it back on a computer.
+          if ((S.isAdmin || edit) && !anchor.act) {
             const u = { id: comment.id, until: Date.now() + UNDO_MS, text: said, anchor, touched: false };
             S.undo = u;
             S.openId = comment.id;
