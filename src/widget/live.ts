@@ -74,9 +74,12 @@ export function startLive() {
         sessionStorage.removeItem(key);
         if (kept.open) W.S.openId = kept.open;
         if (kept.chat) W.S.chatOpen = true;
-        const y = +(kept.y ?? kept);
+        // The section bar's room (sections.ts) may not be kept yet on a page that builds itself late: the scroll is
+        // put back without it, and stays right when the room comes (the bar holds what is in view).
+        const pad = () => parseFloat(getComputedStyle(document.documentElement).paddingTop) || 0;
+        const y = () => +(kept.y ?? kept) - (+kept.pad || 0) + pad();
         const x = +kept.x || 0;
-        let todo = [...(kept.page || []).map(putBack), () => (scrollTo(x, y), Math.abs(scrollY - y) < 2 && Math.abs(scrollX - x) < 2)];
+        let todo = [...(kept.page || []).map(putBack), () => (scrollTo(x, y()), Math.abs(scrollY - y()) < 2 && Math.abs(scrollX - x) < 2)];
         let tries = 0;
         const go = () => {
           todo = todo.filter((job) => !job());
@@ -155,7 +158,7 @@ export function startLive() {
     };
     const now = () => {
       try {
-        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, x: scrollX, open: W.S.openId, chat: W.S.chatOpen, page: pageState() }));
+        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, x: scrollX, pad: parseFloat(getComputedStyle(document.documentElement).paddingTop) || 0, open: W.S.openId, chat: W.S.chatOpen, page: pageState() }));
       } catch {}
       location.reload();
     };

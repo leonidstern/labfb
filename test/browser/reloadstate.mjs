@@ -26,9 +26,17 @@ save('index.html', page('one'));
 const app = `setTimeout(() => (document.getElementById('late').innerHTML = ${JSON.stringify(lines(150))}), 700);`;
 save('app.js', app);
 save('late.html', '<!doctype html><meta charset="utf-8"><title>l</title><h1>Late</h1><div id="late"></div><script src="app.js"></script>');
+// Lab pages (they link lab.css) with sections: one builds them 250 ms after it loads, one has two and gets a third.
+const bsec = (n) => `<h2 id="bh${n}">Section ${n}</h2>${[1, 2, 3, 4, 5, 6].map((k) => `<p id="b${n}${k}">Paragraph ${n}${k}. The quick brown fox jumps over the lazy dog and keeps going for a while.</p>`).join('')}`;
+const labHead = '<!doctype html><meta charset="utf-8"><title>b</title><link rel="stylesheet" href="/_lab/lab.css">';
+const barLate = (word) => `${labHead}<h1>Late ${word}</h1><main id="m"></main><script>setTimeout(() => (document.getElementById('m').innerHTML = ${JSON.stringify([1, 2, 3, 4, 5].map(bsec).join(''))}), 250)</script>`;
+const barPlain = (n) => `${labHead}<h1>Plain</h1>${Array.from({ length: n }, (_, i) => bsec(i + 1)).join('')}${lines(30)}`;
+save('barlate.html', barLate('one'));
+save('barplain.html', barPlain(2));
 save('labit.json', JSON.stringify({ port: PORT }));
 const server = startLab(DIR, labEnv());
 await labUp(B);
+const post = (page, id, tag = 'p') => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page, name: 'tester', text: 'Comment', anchor: { selector: '#' + id, x: 0.3, y: 0.5, docX: 0.3, docY: 900, width: 1000, element: `<${tag} id="${id}">` } }) });
 try {
   for (const eng of engines()) {
     const browser = await pw[eng].launch();
@@ -79,7 +87,7 @@ try {
 
       // A thread open when the reload comes (the "!" taken with it open) is back beside its pin from its first frame:
       // it used to be placed from the page's corner, its pin not being in the layer yet, and sat there for 3 s or more.
-      await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'tester', text: 'Comment', anchor: { selector: '#target', x: 0.3, y: 0.5, docX: 0.3, docY: 900, width: 1000, element: '<h2 id="target">' } }) });
+      await post('/index', 'target', 'h2');
       const th = await open('/');
       const inRoot = (fn) => th.evaluate((src) => {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.more'))?.shadowRoot;
@@ -115,6 +123,45 @@ try {
       await sleep(2000);
       const ly = await late.evaluate(() => Math.round(scrollY));
       check(eng, 'a page built after it loads gets its scroll back', Math.abs(ly - 3000) < 3, `3000 -> ${ly}`);
+      // The section bar keeps 38 px of room at the top of a lab page. On a page that builds its headings after it loads
+      // the room comes late: the pins go with the page at once (not 38 px too high until the next redraw), and a reload
+      // puts the scroll back to the pixel (it was saved with the room, and put back before the room was there).
+      await post('/barlate', 'b32');
+      const off = (pg, id) => pg.evaluate((id) => {
+        const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.more'))?.shadowRoot;
+        const p = r?.querySelector('.pin')?.getBoundingClientRect();
+        const e = document.getElementById(id)?.getBoundingClientRect();
+        return { pin: p && e ? Math.round(p.y - e.y) : null, top: e ? Math.round(e.y) : null, room: parseFloat(getComputedStyle(document.documentElement).paddingTop) };
+      }, id);
+      const bl = await open('/barlate');
+      await sleep(700); // built at 250 ms, the bar and its room soon after; the redraw that used to put the pins right is at 3 s
+      const early = await off(bl, 'b32');
+      await sleep(3000);
+      const settled = await off(bl, 'b32');
+      check(eng, 'the room comes late (control)', settled.room > 0, JSON.stringify(settled));
+      check(eng, 'the pins go with the page when the room comes, before the next redraw', early.pin !== null && early.pin === settled.pin, JSON.stringify({ early, settled }));
+      await bl.evaluate(() => { document.getElementById('bh3').scrollIntoView(); scrollBy(0, -120); });
+      await sleep(1800);
+      const was = await off(bl, 'b32');
+      save('barlate.html', barLate('two'));
+      await bl.waitForFunction(() => !window.__kept, null, { timeout: 8000 }).catch(() => {});
+      await sleep(1500);
+      const now = await off(bl, 'b32');
+      check(eng, 'a late-built page with a section bar: the reload puts the scroll back to the pixel, the pins on their words', Math.abs(now.top - was.top) < 2 && now.pin === was.pin, JSON.stringify({ was, now }));
+      await bl.close();
+
+      // An edit gives a lab page its third heading: the bar comes, with its room, while the save cross-fades in (nothing
+      // can be hit then). What is in view stays where it is.
+      const bp = await open('/barplain');
+      await bp.evaluate(() => { document.getElementById('bh2').scrollIntoView(); scrollBy(0, -120); });
+      await sleep(1800);
+      const held = await off(bp, 'b22');
+      save('barplain.html', barPlain(3));
+      await bp.waitForFunction(() => parseFloat(getComputedStyle(document.documentElement).paddingTop) > 0, null, { timeout: 8000 }).catch(() => {});
+      await sleep(600);
+      const still = await off(bp, 'b22');
+      check(eng, 'the bar comes with a third heading: what is in view stays where it is', still.room > 0 && Math.abs(still.top - held.top) < 2 && (await bp.evaluate(() => window.__kept === 1)), JSON.stringify({ held, still }));
+      await bp.close();
       await ctx.close();
     } finally {
       await browser.close();
