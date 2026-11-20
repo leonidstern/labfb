@@ -1,0 +1,90 @@
+// A phone's open thread keeps the page where it is (Leo, 20 Nov: "comments not fixed to pin and can scroll with me"). With
+// the keyboard up Safari pans the page under a sheet whatever its overflow says, and the pin the thread belongs to leaves
+// the screen: so a finger moving up or down on the sheet where nothing in it scrolls is the sheet's, never the page's.
+// A thread that does scroll still scrolls. The touches are made up (no engine Playwright drives pans like Safari does):
+// the check is that the move is cancelled, the one thing that stops the pan. Run: node test/browser/sheetpan.mjs
+// (needs playwright). Not part of `npm test`; CI runs it in the `browser` job.
+import fs from 'node:fs';
+import path from 'node:path';
+import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, check, finish } from './harness.mjs';
+
+const pw = playwright({ ciFails: true });
+
+const DIR = tmp('labit-sheetpan-');
+const PORT = String(claimPort(6040, 30));
+const B = `http://localhost:${PORT}`;
+const paras = Array.from({ length: 60 }, (_, i) => `<p id="p${i}">paragraph ${i} with some words to read</p>`).join('');
+fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>S</title><body style="margin:20px">${paras}</body>`);
+const server = startLab(DIR, labEnv({}, { settings: false }), { root: '.', port: PORT });
+await labUp(B);
+
+const post = (body) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', ...body }) }).then((r) => r.json()).then((j) => j.comment);
+const spot = (id) => ({ selector: `#${id}`, x: 0.2, y: 0.5, docX: 40, docY: 100, width: 390, element: `<p id="${id}">` });
+await post({ text: 'A short one', anchor: spot('p3') });
+const long = await post({ text: 'A long thread', anchor: spot('p9') });
+for (let i = 0; i < 14; i++) await post({ text: `Reply number ${i}. ` + 'Some words that wrap onto more than one line. '.repeat(3), parent: long.id });
+
+for (const eng of engines()) {
+  const browser = await pw[eng].launch();
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 664 }, isMobile: true, hasTouch: true });
+  await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tess'));
+  const p = await ctx.newPage();
+  await p.goto(B + '/');
+  await p.waitForFunction(() => document.querySelector('[data-lab-comments]')?.shadowRoot?.querySelector('.pin'), null, { timeout: 8000 });
+  await p.waitForTimeout(400);
+  // Opens the thread whose pin is nth (a tap on it) and waits for its sheet. swipe moves a made-up finger over the thread's
+  // body, from one share of its height to another; it says whether the move was cancelled.
+  const open = async (nth) => {
+    await p.evaluate(() => scrollTo(0, 0));
+    await p.evaluate((n) => {
+      const pin = document.querySelector('[data-lab-comments]').shadowRoot.querySelectorAll('.pin')[n];
+      scrollTo(0, Math.max(0, pin.getBoundingClientRect().top + scrollY - 200));
+    }, nth);
+    await p.waitForTimeout(300);
+    const r = await p.evaluate((n) => { const b = document.querySelector('[data-lab-comments]').shadowRoot.querySelectorAll('.pin')[n].getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, nth);
+    await p.touchscreen.tap(r.x, r.y);
+    await p.waitForFunction(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.card:not(.out) > .body'), null, { timeout: 4000 });
+    await p.waitForTimeout(900); // the sheet slides in and the page scrolls to the pin
+  };
+  const swipe = (from, to) => p.evaluate(([f, t]) => {
+    const body = document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.card:not(.out) > .body');
+    const r = body.getBoundingClientRect();
+    const at = (share) => ({ clientX: r.left + r.width / 2, clientY: r.top + r.height * share });
+    const send = (type, share, last) => {
+      const e = new Event(type, { bubbles: true, cancelable: true, composed: true });
+      Object.defineProperty(e, 'touches', { value: last ? [] : [at(share)] });
+      body.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    const y0 = scrollY;
+    send('touchstart', f);
+    const cancelled = send('touchmove', t);
+    send('touchend', t, true);
+    return { cancelled, moved: scrollY - y0 };
+  }, [from, to]);
+  const close = async () => {
+    await p.keyboard.press('Escape').catch(() => {});
+    await p.evaluate(() => document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.scrim')?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true })));
+    await p.waitForFunction(() => !document.querySelector('[data-lab-comments]').shadowRoot.querySelector('.card'), null, { timeout: 4000 }).catch(() => {});
+    await p.waitForTimeout(500);
+  };
+
+  await open(0);
+  const a = await swipe(0.8, 0.5); // up, where a one-message thread has nothing to scroll
+  check(eng, 'a thread with nothing to scroll: a move up on it is cancelled', a.cancelled, JSON.stringify(a));
+  const b = await swipe(0.5, 0.52);
+  check(eng, '... and a tiny move down in its middle', b.cancelled, JSON.stringify(b));
+  await close();
+
+  await open(1);
+  const c = await swipe(0.5, 0.7); // down: the messages scroll up (they open at the newest, so there is room above)
+  check(eng, 'a long thread scrolls under a finger moving down', !c.cancelled, JSON.stringify(c));
+  const d = await swipe(0.8, 0.5); // up at the end of the messages: nothing further to scroll
+  check(eng, 'at the end of a long thread, a move up is cancelled', d.cancelled, JSON.stringify(d));
+  await close();
+  await browser.close();
+}
+server.kill();
+fs.rmSync(DIR, { recursive: true, force: true });
+finish();
