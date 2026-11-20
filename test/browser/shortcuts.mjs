@@ -131,7 +131,7 @@ try {
       });
       check(eng, 'with the bar showing, the changed toggle key (h) is a letter, not a shortcut', typed === 'h' && (await look(p)).on === onBefore, `${typed}`);
       // A question's rows (src/widget/thread.ts, V1 plain list): no keys on the card. J K, the arrows, 1 to 6 and Enter move
-      // nothing and keep nothing; a tap picks a row and Keep sends it.
+      // nothing and send nothing; a tap on a row sends it.
       const key = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
       const send = (body, agent) => fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, ...(agent ? { 'x-lab-admin': key, 'x-lab-agent': '1' } : {}) }, body: JSON.stringify({ page: '/ask', ...body }) }).then((r) => r.json());
       const asked = (await send({ name: 'leo', text: 'which?', anchor: { kind: 'element', selector: '#h', x: 0.5, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="h">' } })).comment;
@@ -155,13 +155,11 @@ try {
       for (const k of ['j', 'k', 'ArrowDown', 'ArrowUp', '3', '1']) await a.keyboard.press(k);
       await sleep(300);
       check(eng, 'J K, the arrows and 1 to 6 do nothing on the card', (await row()) === 1 && (await picks()).length === 0, String(await row()));
+      check(eng, 'no Keep button', await sh('return !r.querySelector("button.keep")'));
       await sh('r.querySelectorAll(".choice")[2].click()');
-      await sleep(150);
-      check(eng, 'a tap ticks its row; Keep reads Keep and is on', (await row()) === 2 && (await sh('const k = r.querySelector("button.keep"); return k.textContent === "Keep" && !k.disabled')));
-      await sh('r.querySelector("button.keep").click()');
       await sleep(800);
       const got = await picks();
-      check(eng, 'Keep sends the row ticked', got.length === 1 && got[0].picked.n === 2 && got[0].picked.of === q.id, JSON.stringify(got.map((c) => c.picked)));
+      check(eng, 'a tap sends its row at once', got.length === 1 && got[0].picked.n === 2 && got[0].picked.of === q.id, JSON.stringify(got.map((c) => c.picked)));
       await a.close();
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/ask', action: 'delete', id: c.id }) });
       // Pause: no ⋯ menu row; holding ⌥ over a moving thing shows its control (pause · ¼ · ms) in its top right corner,

@@ -446,7 +446,11 @@ function choicesEl(c, ask, card) {
   const back = keptRow(ask);
   let cur = back ?? (inPlace ? (nowIs >= 0 ? nowIs : -1) : ask.recommend ?? -1);
   const words = (n: number) => (n < 0 ? exact : ask.choices[n]);
-  const show = (n: number) => inPlace && tryRow(c, ask, n, n < 0 || n === nowIs ? null : words(n), card);
+  let shown = cur; // the row in the page: the one pointed at, else cur
+  const show = (n: number) => {
+    shown = n;
+    return inPlace && tryRow(c, ask, n, n < 0 || n === nowIs ? null : words(n), card);
+  };
   const note = W.el('span', { class: 'note', hidden: '' });
   box.append(note);
   const select = (n: number) => {
@@ -491,7 +495,7 @@ function choicesEl(c, ask, card) {
   if (!W.coarse) list.addEventListener('pointerleave', () => show(cur));
   select(cur);
   // After a hot save the words may be gone (or be back): the card is drawn again so its rows and place match them.
-  onReshow(() => box.isConnected && (triesInPlace(c) === inPlace ? show(cur) : W.render()));
+  onReshow(() => box.isConnected && (triesInPlace(c) === inPlace ? show(shown) : W.render()));
   return box;
 }
 
