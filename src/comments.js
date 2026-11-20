@@ -458,7 +458,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (S.openCard?.isConnected) S.openCard.sync();
       if (S.chatOpen) drawChat();
       drawList(); // the bar's counts and the tab's "(3)" keep up even while a box has the cursor (a tab left in the background)
-      S.paintSections?.(); // and the section bar's ink for unread pins
     }
   }
 
@@ -1053,7 +1052,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     setPinning();
     copyBtn.hidden = !S.on || !S.isAdmin || list.every((c) => c.resolved);
     drawList();
-    S.paintSections?.(); // the section bar's ink for unread pins (sections.ts)
     drawChat();
     if (!S.on) return done();
     list.forEach((c) => {
@@ -1241,8 +1239,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         swipeDown(card, () => ((S.openId = null), (S.cardFull = false), render()), true);
         markSeen(news);
         if (news.length) {
-          drawList(); // opened is read: the "N new" pill, the tab title and the section bar's ink count it off at once
-          S.paintSections?.();
+          drawList(); // opened is read: the "N new" pill and the tab title count it off at once
         }
         quoted = zone ? null : c.anchor; // an area's outline says what it's on; only selected words get the highlight
       }
