@@ -3,49 +3,37 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { claimPort, tmp, rm, spawnLab, up } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-me-')); // nobody's real ~/.config
+const HOME = tmp('me'); // nobody's real ~/.config
 const ME = path.join(HOME, 'labit', 'settings.json'); // the setting `name` in your own settings (me.json before 17 Nov)
 const labs = [];
 const dirs = [HOME];
+const [ONE, TWO, OLD] = [0, 1, 2].map(() => claimPort(4711, 30)); // three labs, each on its own port
 
 const startLab = async (port, home = HOME) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-lab-'));
+  const dir = tmp('lab');
   dirs.push(dir);
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1>Hello</h1>');
-  const server = spawn(process.execPath, [LAB, '.', '--no-open', '--new', '--port', String(port)], {
-    cwd: dir,
-    env: { ...process.env, XDG_CONFIG_HOME: home },
-  });
+  const server = spawnLab(dir, port, { flags: ['--new'], env: { ...process.env, XDG_CONFIG_HOME: home } });
   labs.push(server);
-  for (let i = 0; i < 60; i++) {
-    try {
-      const res = await fetch(`http://localhost:${port}/`);
-      return { port, html: await res.text() };
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  throw new Error(`lab on ${port} did not start`);
+  const res = await up(`http://localhost:${port}/`, { tries: 60, fail: `lab on ${port} did not start` });
+  return { port, html: await res.text() };
 };
 
 after(() => {
   for (const s of labs) s.kill();
-  for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+  rm(dirs);
 });
 
 test('a lab tells the page nothing until it knows who you are', async () => {
-  const { html } = await startLab(4711);
+  const { html } = await startLab(ONE);
   assert.doesNotMatch(html, /data-me=/);
 });
 
 test('a name given once is kept for this computer and handed to the next lab', async () => {
-  const res = await fetch('http://localhost:4711/_lab/me', {
+  const res = await fetch(`http://localhost:${ONE}/_lab/me`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ name: 'leo' }),
@@ -54,15 +42,15 @@ test('a name given once is kept for this computer and handed to the next lab', a
   assert.equal(JSON.parse(fs.readFileSync(ME, 'utf8')).name, 'leo');
 
   // The lab that was already running says so now…
-  assert.match(await (await fetch('http://localhost:4711/')).text(), /data-me="leo"/);
+  assert.match(await (await fetch(`http://localhost:${ONE}/`)).text(), /data-me="leo"/);
   // …and so does a lab started after it, in another folder on another port.
-  const next = await startLab(4712);
+  const next = await startLab(TWO);
   assert.match(next.html, /data-me="leo"/);
 });
 
 test('an empty or oversized name is refused, and the kept one stands', async () => {
   for (const name of ['', '   ', 'x'.repeat(61), 42, null]) {
-    const res = await fetch('http://localhost:4711/_lab/me', {
+    const res = await fetch(`http://localhost:${ONE}/_lab/me`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -73,10 +61,10 @@ test('an empty or oversized name is refused, and the kept one stands', async () 
 });
 
 test('a name kept in the old me.json is still known', async () => {
-  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-me-old-'));
+  const old = tmp('me-old');
   dirs.push(old);
   fs.mkdirSync(path.join(old, 'labit'));
   fs.writeFileSync(path.join(old, 'labit', 'me.json'), JSON.stringify({ name: 'ada' }));
-  const { html } = await startLab(4713, old);
+  const { html } = await startLab(OLD, old);
   assert.match(html, /data-me="ada"/);
 });

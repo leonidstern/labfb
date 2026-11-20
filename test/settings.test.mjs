@@ -3,22 +3,20 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
+import { LAB, claimPort, tmp as folder, rm, sleep, cli as command } from './harness.mjs';
 import { loadSettings, seedActions } from '../lib/settings.ts';
 import { SEED, NAME_MAX, PROMPT_MAX, LIST_MAX, listFrom } from '../lib/actions.ts';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const dirs = [];
 const kids = [];
 after(() => {
   for (const k of kids) k.kill();
-  for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+  rm(dirs);
 });
 const tmp = (name) => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `labit-set-${name}-`)));
+  const d = fs.realpathSync(folder(`set-${name}`));
   dirs.push(d);
   return d;
 };
@@ -112,8 +110,7 @@ test('labit.json is found from a folder inside the project; an old zoom setting 
   assert.ok(s.problems.some((p) => /\.zoom is not an action/.test(p)));
 });
 
-const cli = (cwd, args, env = {}) =>
-  new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd, env: { ...process.env, PORT: '', ...env } }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
+const cli = (cwd, args, env = {}) => command(args, { cwd, env: { ...process.env, PORT: '', ...env } });
 
 test('`labit settings` shows each value and where it came from, and fails on a problem', async () => {
   const { proj, cfg } = setup({ port: 4700, shortcuts: { chat: 'x' } }, { name: 'Leo', model: 'Opus 5.5' });
@@ -133,7 +130,7 @@ test('`labit settings` shows each value and where it came from, and fails on a p
 });
 
 test('a lab started with a labit.json: its port, its shortcuts on the page, its batchSeconds', async () => {
-  const port = 7400 + Math.floor(Math.random() * 200); // clear of the other test files' ranges
+  const port = claimPort(7400, 200); // clear of the other test files' ranges
   const { proj, cfg } = setup({ port, shortcuts: { chat: 'x' }, batchSeconds: 0 });
   fs.writeFileSync(path.join(proj, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hi</h1>');
   const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg };
@@ -143,12 +140,12 @@ test('a lab started with a labit.json: its port, its shortcuts on the page, its 
   let html = '';
   for (let i = 0; i < 80 && !html; i++) {
     html = await fetch(B + '/').then((r) => r.text(), () => '');
-    if (!html) await new Promise((r) => setTimeout(r, 100));
+    if (!html) await sleep(100);
   }
   assert.ok(html, `the lab answers on ${port}, the port in labit.json`);
   assert.match(html, /data-keys='\{"chat":"x"\}'/, 'only the changed key goes to the page');
   const waiting = cli(proj, ['wait', '--timeout', '10'], { XDG_CONFIG_HOME: cfg });
-  await new Promise((r) => setTimeout(r, 500));
+  await sleep(500);
   const t0 = Date.now();
   await fetch(B + '/_lab/api/comments', {
     method: 'POST',
@@ -212,14 +209,14 @@ test('actions from the "…" menu: the whole list checked, in its order, or noth
 test('PUT /_lab/api/actions: this computer with the lab key only; saved in your settings, the page has it at once', async () => {
   const dir = tmp('put');
   const cfg = tmp('put-cfg');
-  const port = 7750 + Math.floor(Math.random() * 100);
+  const port = claimPort(7750, 100);
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1>Hi</h1>');
   kids.push(spawn(process.execPath, [LAB, '--no-open', '--new', '--port', String(port)], { cwd: dir, env: { ...process.env, PORT: '', XDG_CONFIG_HOME: cfg } }));
   const B = `http://localhost:${port}`;
   let html = '';
   for (let i = 0; i < 80 && !html; i++) {
     html = await fetch(B + '/').then((r) => r.text(), () => '');
-    if (!html) await new Promise((r) => setTimeout(r, 100));
+    if (!html) await sleep(100);
   }
   const key = html.match(/data-admin="([^"]+)"/)?.[1] || '';
   assert.ok(key, "this computer's page has the key");
