@@ -296,7 +296,10 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       shown.add(r.id);
       W.markSeen([r]);
     }
-    if (atEnd) body.scrollTop = body.scrollHeight; // at the newest: the new one comes into view
+    if (atEnd) { // at the newest: the new one comes into view, and stays while its words settle
+      body.scrollTop = body.scrollHeight;
+      W.S.stayAtEnd?.(body);
+    }
   };
   // Resolve: admins, and whoever started the thread (its key is kept in their browser). Delete: admins.
   const ownKey = W.store.get(`lab-edit:${c.id}`);
@@ -425,7 +428,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
           W.render();
           // The card is drawn again: keep it where you were, at the newest message, with the cursor in the box.
           const again = W.S.openCard?.querySelector('.body');
-          if (again) again.scrollTop = again.scrollHeight;
+          if (again) { again.scrollTop = again.scrollHeight; W.S.stayAtEnd?.(again); }
           W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true });
           return { keep: true };
         }
@@ -437,6 +440,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
         added.classList.add('fresh');
         items[items.length - 1].after(added);
         body.scrollTop = body.scrollHeight; // the reply just sent is in view above the box
+        W.S.stayAtEnd?.(body);
         return { keep: true };
       },
     }),
