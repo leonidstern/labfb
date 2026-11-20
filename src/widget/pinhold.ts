@@ -1,15 +1,15 @@
 // Part of the comment widget (src/comments.js bundles it).
 //
-// Pins the browser holds: a pin on an element of the page is tied to that element with CSS anchor
-// positioning, so the browser keeps it on its spot through scrolling the page, on a sticky header, and on a parent that
-// moves. No script runs for that. The script still
+// Pins the browser holds: a pin on an element that moves on its own (sticky, fixed, transformed or animated, see moves)
+// is tied to that element with CSS anchor positioning, so the browser keeps it on its spot: on a sticky header, on a
+// parent that slides, on a board's frame under its camera. No script runs for that. The script still
 // finds the spot (anchoring.ts, position) when the pins are drawn or the page changes size, and writes it here as an
 // offset from the element's corner: on words, in a gap between two blocks, on an area or a share of the element alike.
 //
 // Two things make it reach the page:
 // - the pin is fixed: an absolute pin's containing block is the widget's own host, which no element of the page is in;
 // - its rule is in the page's style sheet, by ::part: anchor names given in the page are not seen from the shadow root.
-// So does a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
+// A pin on still content is placed in the page by the script, as is a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
 // dialog, popover or full screen (the top layer is laid out after the pin, so it can't be its anchor). An element whose
 // anchor attribute a live patch took away parks its pins off screen (anchor()'s fallback) until they are placed again.
 // A pin inside a box that cuts off what overflows it (a box that scrolls, a carousel) is placed by the script too: the
@@ -43,6 +43,19 @@ const cutOff = (node: Element) => {
   }
   return false;
 };
+// The element moves on its own while the page scrolls or stands still: it, or a box around it, is sticky or fixed, or
+// transformed or animated (a board's frames under its camera, a carousel, a header that slides). Only such a pin is
+// held: a pin on still content is placed in the page by the script and scrolls with it for free, where a held one is
+// laid out again at every scroll step (Leo, 20 Nov, measured: 0 vs 320 ms of layout for 40 pins over one scroll).
+const moves = (node: Element) => {
+  for (let el: Element | null = node; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    const s = getComputedStyle(el);
+    if (s.position === 'sticky' || s.position === 'fixed') return true;
+    if (s.transform !== 'none' || s.translate !== 'none' || s.scale !== 'none' || s.rotate !== 'none') return true;
+    if (s.animationName !== 'none' && el.getAnimations().length) return true;
+  }
+  return false;
+};
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
 const inTopLayer = (node: Element) => {
   try {
@@ -66,7 +79,7 @@ export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, lef
   let read = seen.get(node);
   if (read?.pass !== pass) {
     const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
-    seen.set(node, (read = { pass, no: Boolean(own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || cutOff(node) }));
+    seen.set(node, (read = { pass, no: Boolean(own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || cutOff(node) || (!share && !moves(node)) }));
   }
   if (read.no) {
     letPin(pin);
