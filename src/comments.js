@@ -34,6 +34,7 @@ import {
 } from './widget/anchoring.ts';
 import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { momentText } from '../lib/moment.mjs';
+import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
@@ -834,12 +835,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // The work tab: what the agent is on now (handed to it, not answered yet, or answered "On it"), what's next (sent,
   // not handed yet) and what's done today (resolved, or answered "Done"), from what the lab records on each thread.
   S.newFrom = null;
-  // Open comments are numbered 1, 2, 3… in order, the same for everyone, admins and the agent text.
-  const numberOf = (c) =>
-    S.comments
-      .filter((x) => !x.parent && !x.resolved)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      .indexOf(c) + 1;
+  // A pin's number: the one it was made with (the same for everyone, admins and the agent text; never shared by two pins).
+  const numberOf = (c) => pinNumber(c, S.comments);
 
   // Unread: comments and replies by someone else that this browser hasn't opened yet (kept per page).
   const seenKey = () => `lab-seen:${S.page}`;

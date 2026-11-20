@@ -652,7 +652,7 @@ test('stale: a pin the agent said it is on, with no sign since, comes back in it
 });
 
 // A progress line counts as a sign of work, whoever wrote it: the agent (labit reply --progress) or the plugin's hook
-// (a POST with the agent key and no session, "helper: …" from a subagent's tool calls). The "no sign" clock restarts at it.
+// (a POST with the agent key and no session). The "no sign" clock restarts at it, for as long as the line is renewed.
 test('stale: a progress line, the agent\'s or the hook\'s, is a sign of work: no reminder while it is newer than the window', async () => {
   const dir = fs.realpathSync(tmp('stale-progress'));
   const home = tmp('home');
@@ -684,6 +684,36 @@ test('stale: a progress line, the agent\'s or the hook\'s, is a sign of work: no
     const out = await cli(['wait', '--timeout', '3']);
     assert.match(out, /^# Still waiting for your answer/m);
     assert.match(out, new RegExp(`id ${id} "make it red" · no sign for 0 min, last: running npm test`));
+  } finally {
+    lab.kill();
+    rm([dir, home]);
+  }
+});
+
+test('a progress line that is not renewed lapses: it stops counting as a sign (the reminder comes as if it was never there), and /_lab/pending lists only pins somebody claimed', async () => {
+  const dir = fs.realpathSync(tmp('lapse'));
+  const home = tmp('home');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
+  const port = String(claimPort(4810, 90));
+  const env = { ...process.env, LABIT_HOME: home, LABIT_NO_UPDATE_CHECK: '1', PORT: '', LAB_REMIND_MS: '2000', LAB_PROGRESS_MS: '500', LAB_SETTLE_MS: '0' };
+  const lab = spawnLab(dir, port, { env });
+  const base = `http://localhost:${port}`;
+  const cli = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve(stdout + stderr)));
+  const anchor = { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' };
+  const pin = async (text) => (await (await fetch(base + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ page: '/index', name: 'Leo', text, anchor }) })).json()).comment.id;
+  const working = async () => (await (await fetch(base + '/_lab/pending', { headers: { host: `localhost:${port}`, 'x-lab-admin': serverJson(dir).agent, 'x-lab-agent': '1' } })).json()).working.map((w) => w.id);
+  try {
+    await answers(base + '/', { tries: 50, fail: false });
+    const id = await pin('make it red');
+    assert.match(await cli(['wait', '--timeout', '5']), new RegExp(id), 'handed over');
+    assert.deepEqual(await working(), [], 'nobody said anything on it: not listed, so the plugin adds no line');
+    await sleep(1500);
+    await cli(['reply', id, '--progress', 'building']); // 1.5 s after the hand-off: a sign, for 0.5 s
+    assert.deepEqual(await working(), [id], 'a claimed pin is listed');
+    await sleep(800); // 2.3 s since the hand-off, 0.8 s since the line: it lapsed, so the hand-off's own time counts
+    const out = await cli(['wait', '--timeout', '3']);
+    assert.match(out, /^# Still waiting for your answer/m, 'a lapsed line does not hold the reminder back');
+    assert.match(out, new RegExp(`id ${id} "make it red" · no sign for 0 min, last: building`));
   } finally {
     lab.kill();
     rm([dir, home]);

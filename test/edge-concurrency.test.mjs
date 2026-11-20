@@ -34,7 +34,7 @@ const raw = (port, p, { method = 'GET', headers = {}, body, signal } = {}) =>
     req.end(body);
   });
 const DIR = tmp('many');
-for (const n of ['index', 'p1', 'p2', 'p3', 'p4', 'p5', 'kill']) fs.writeFileSync(path.join(DIR, `${n}.html`), `<!doctype html><title>${n}</title><h1>${n}</h1>`);
+for (const n of ['index', 'p1', 'p2', 'p3', 'p4', 'p5', 'nums', 'kill']) fs.writeFileSync(path.join(DIR, `${n}.html`), `<!doctype html><title>${n}</title><h1>${n}</h1>`);
 const PORT = await freePort();
 const startLab = async () => {
   let out = '';
@@ -92,6 +92,21 @@ test('50 pins sent at the same moment to one page: 50 answers, 50 ids, all in th
   const md = fs.readFileSync(path.join(DIR, '.lab/comments.md'), 'utf8');
   for (const id of ids) assert.ok(md.includes(`· id ${id}`), `comments.md has ${id}`);
   assert.equal((await raw(PORT, '/_lab/pages')).json.pages.find((p) => p.path === '/index').open, 50);
+});
+
+test('pins made at the same moment each get their own number, and a resolved pin\'s number is not given again', async () => {
+  const first = await Promise.all(Array.from({ length: 20 }, (_, i) => pin('/nums', `numbered ${i}`)));
+  const nums = first.map((r) => r.json.comment.num);
+  assert.equal(new Set(nums).size, 20, `20 numbers, none twice: ${nums.join(',')}`);
+  assert.ok(nums.every(Number.isInteger));
+  // Resolve the lowest ones, then make three more at once: they come after every number used, not into the gaps.
+  const low = first.filter((r) => r.json.comment.num <= 3).map((r) => r.json.comment.id);
+  for (const id of low) await send({ page: '/nums', action: 'resolve', id }, owner());
+  const more = await Promise.all([1, 2, 3].map((i) => pin('/nums', `later ${i}`)));
+  const later = more.map((r) => r.json.comment.num);
+  assert.equal(new Set(later).size, 3);
+  assert.ok(Math.min(...later) > Math.max(...nums), `${later.join(',')} come after ${Math.max(...nums)}`);
+  assert.equal(new Set((await list('/nums')).map((c) => c.num)).size, 23, 'and the list agrees');
 });
 
 test('50 pins at once across five pages, with 30 readers in between: each page gets its ten, and every read is a whole list', async () => {

@@ -11,9 +11,10 @@
 // starts the moment the current one ends), so a long build never leaves pins sitting. Only a pin that is still
 // unheard on two looks in a row is queued then, so an agent about to run `wait` itself isn't woken for nothing.
 //
-// Progress: while this session (or a helper it started) runs tools, the pins handed to it and not answered get a short
-// progress line by themselves ("editing comments.js", "running tests"), at most one per pin a minute. A pin then goes
-// grey ("no update") only when the work has really stopped, not when the agent forgot `reply --progress`.
+// Progress: a pin somebody claimed (the agent said `reply --progress` or `--on-it` on it) keeps its status line alive while
+// this session itself runs tools: "session activity", at most one renewal per pin a minute. The lab counts a status line
+// as a sign only for 3 minutes (PROGRESS_MS), so a session that moved on to something else lets it lapse and the pin goes
+// grey. A helper's tool calls never renew it, and a pin nobody claimed gets no line.
 //
 // Labs: the one in the session's folder (.lab/server.json, or above), and every lab whose registry file
 // (~/.labit/servers/<port>.json, what `labit list` reads) names this session as its listener, so it also works when the
@@ -32,7 +33,6 @@ let heard = ''; // port:key seen unheard while busy, on the look before
 let timer: { cancel: () => void } | null = null;
 const PROGRESS_MS = 60000; // a pin's progress line is renewed once a minute at most
 const WORKING_MS = 15000; // how long the list of pins being worked on is kept before it is asked for again
-let helperLine = ''; // "helper: …" of the last helper this turn started, renewed while the turn runs
 let working: { lab: Lab; page: string; id: string }[] = [];
 let workingAt = -Infinity;
 const noted = new Map<string, number>(); // lab port + pin id -> when its line was last written
@@ -85,12 +85,11 @@ async function labsFor($: any, me: string): Promise<Lab[]> {
   return labs.slice(0, MAX_LABS);
 }
 
-// The status line a tool call puts on a pin: just "working" (the pin shows "working · 1 min ago"). Leo, 20 Nov: the raw
-// command ("running timeout 175 sh -c …") read as noise; option 2, plain "working", picked.
-const lineFor = (e: any): string => (e && e.tool ? 'working' : '');
+// The status line a tool call renews on a pin: only that the session is active (the pin shows "session activity · 1 min
+// ago"), never the call itself: a command is not an answer, and helpers' commands are about other work.
+const LINE = 'session activity';
 
-// Put a progress line on the pins being worked on (at most one per pin a minute). The lab counts a line as a sign of
-// work: it restarts the "no sign" clock of the reminders, and a pin with a fresh line is not handed again.
+// Renew the status line of the pins somebody claimed (the lab lists only those; at most one renewal per pin a minute).
 async function note($: any, line: string): Promise<void> {
   const now = await $.clock.now();
   if (now - workingAt > WORKING_MS) {
@@ -120,19 +119,9 @@ async function note($: any, line: string): Promise<void> {
   }
 }
 
+// Only the session's own tool calls count: a helper it started (agentId set) works on whatever it was given.
 async function progress($: any, e: any): Promise<void> {
-  const line = lineFor(e);
-  if (!line) return;
-  // The session's own tool call: a helper it waited on is done (or it works on its own again); a new helper sets it again.
-  if (e.agentId === undefined) helperLine = String(e.tool || '') === 'Agent' ? line : '';
-  await note($, line);
-}
-
-// While a helper this session started runs, the session itself is idle (waiting for it) and a long job of the helper's
-// (a build, a test run) makes no tool call for minutes: the helper's line is renewed once a minute, so the pins it works
-// on don't count as unattended. Ends with the session's next tool call of its own, or the turn.
-async function keepAlive($: any): Promise<void> {
-  if (helperLine && busy) await note($, helperLine);
+  if (e?.tool && e.agentId === undefined) await note($, LINE);
 }
 
 async function look($: any): Promise<void> {
@@ -189,7 +178,6 @@ export const register: Register = (on) => {
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) {
       busy = true;
-      helperLine = '';
       submittedAt = 0;
       queued = false;
     }
@@ -198,7 +186,6 @@ export const register: Register = (on) => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) {
       busy = false;
-      helperLine = '';
       if (queued) {
         queued = false;
         submittedAt = await $.clock.now(); // the queued wake's turn should start now; if it doesn't, it counts as lost
@@ -210,7 +197,6 @@ export const register: Register = (on) => {
     const out = await next(e);
     timer?.cancel();
     timer = $.clock.every(EVERY_MS, () => {
-      void keepAlive($).catch(() => {});
       void look($).catch(() => {});
     });
     return out;
