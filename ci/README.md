@@ -44,3 +44,11 @@ Dependency and README-claim failures are left to you.
 | type errors | — | 180 (from here only down) |
 | runtime dependencies | 0 | 0 |
 | README claims that don't match | 4 | 0 |
+
+## Native features (`ci/native.mjs`, in `test.yml`)
+
+What Safari's engine (WebKit) and Chrome's (Chromium) can do natively that labit could use: 36 features (anchor
+positioning, popover, invoker commands, field-sizing, scroll-driven animations, `if()`, customizable select…), each
+probed in both engines and searched for in `src/`. The table goes to the job's summary, with two lists: in both
+engines and not used yet (candidates), and used but missing in an engine. Only the second fails the job. Run it
+locally with `node ci/native.mjs` (needs playwright). A new candidate is one line in `FEATURES`.

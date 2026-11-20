@@ -4,6 +4,16 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- **Drawings are quick actions.** The agent gets an `action:` line from the mark: X, strike or scribble remove; circle, box or a wavy line fix; underline rewrites; a side line reworks the block; an arrow moves (beside what's there); a caret adds. Words in the thread win.
+- **A drawing sends with Enter, no words needed.** Its box opens with the lines; Enter sends it as what it reads as ("circled"), or type a few words first.
+- **The agent is told where to look.** On a plain HTML page each comment gets `in file: page.html:30`, and an arrow's ends name their card or section. In sims this cut a third of Haiku's time in the model.
+- **Drawn lines are a red pen**, as wide as you pressed (a pen's pressure, or slower = wider), and settle to 35% once sent, full on hover or open. Arrows get a clean head at the tip, whatever the hand drew.
+- **Hold Shift while drawing** and a line drawn about straight comes out straight, flat, upright or at 45°.
+- **Lines are smooth curves** through the kept points, so thinned lines stop looking jagged. The line you tap to open a drawing is 28 px wide, about a fingertip.
+- **A tapped action closes at once** (go, fix, remove…): no undo card to close by hand on a phone. Command-Z still takes it back on a computer.
+- **Drawing edge cases fixed:** loops that stop short or run past their start, wavy and slightly crooked lines, a palm on the glass, a scroll mid-stroke, a stroke into a frame or off the window, D typed into the box, a cancelled stroke, a loop ending on its own start, long scribbles and ten-stroke drawings kept whole, drawing over links, buttons and earlier lines.
+- One board. `/_lab/board/<name>` is now the same board view a page's board link opens, over an empty page: a bar with the board's name, and "‹ back" when the address names its page (`?of=`). ⇧B, Esc on an empty board and the browser's back go there as before, and the camera stays in the address. The package ships one board file (`boardview.js`), not two.
+
 ## 0.7.0 · 2026-11-19
 
 The first release under a new license, and a big one: boards, select mode, drawn pins, one list of actions, undo, and labs that wake your agent and follow their install. MCP and cloud labs are parked. The full list of changes as they landed is at the end.
