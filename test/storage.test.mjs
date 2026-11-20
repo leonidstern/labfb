@@ -3,44 +3,34 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { LAB, H1 as anchor, claimPort, tmp, rm, spawnLab, sleep, up, serverJson } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const dirs = [];
 const running = new Set();
 after(() => {
   for (const s of running) s.kill();
-  for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+  rm(dirs);
 });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let nextPort = 7100 + Math.floor(Math.random() * 250); // clear of 5060 and 5061, which fetch refuses ("bad port")
+const nextPort = () => claimPort(7100, 266); // clear of 5060 and 5061, which fetch refuses ("bad port")
 const folder = () => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-storage-'));
+  const d = tmp('storage');
   dirs.push(d);
   fs.writeFileSync(path.join(d, 'index.html'), '<!doctype html><h1>Hi</h1>');
   return d;
 };
 // A lab on the folder, once it answers; stop() ends it and waits for it to exit.
 async function start(dir, env = {}) {
-  const port = nextPort++;
-  const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port)], { cwd: dir, env: { ...process.env, PORT: String(port), ...env } });
+  const port = nextPort();
+  const server = spawnLab(dir, port, { env: { ...process.env, PORT: String(port), ...env } });
   running.add(server);
   let log = '';
   server.stdout.on('data', (d) => (log += d));
   server.stderr.on('data', (d) => (log += d));
   const B = `http://localhost:${port}`;
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(B + '/');
-      break;
-    } catch {
-      await sleep(100);
-    }
-  }
-  const token = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).token;
+  await up(B + '/', { fail: false });
+  const token = serverJson(dir).token;
   const post = (body, admin) =>
     fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, ...(admin ? { 'x-lab-admin': token } : {}) }, body: JSON.stringify(body) }).then((r) => r.json());
   const list = async (page) => (await (await fetch(`${B}/_lab/api/comments?page=${encodeURIComponent(page)}`, { headers: { 'accept-encoding': 'br' } })).json()).comments;
@@ -49,9 +39,9 @@ async function start(dir, env = {}) {
       server.once('exit', () => (running.delete(server), resolve()));
       server.kill('SIGTERM');
     });
-  return { B, post, list, stop, log: () => log, alive: () => server.exitCode === null, agent: () => JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).agent };
+  return { B, post, list, stop, log: () => log, alive: () => server.exitCode === null, agent: () => serverJson(dir).agent };
 }
-const anchor = { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1>' };
+
 const until = async (check, what) => {
   for (let i = 0; i < 50; i++) {
     if (check()) return;
@@ -95,7 +85,8 @@ test('a lab with the old comments.json is not started over it: it says how to mo
   const dir = folder();
   fs.mkdirSync(path.join(dir, '.lab'));
   fs.writeFileSync(path.join(dir, '.lab/comments.json'), '{}');
-  const out = await new Promise((resolve) => execFile(process.execPath, [LAB, '.', '--no-open', '--port', String(nextPort)], { cwd: dir, env: { ...process.env, PORT: String(nextPort++) } }, (err, o, e) => resolve({ code: err?.code ?? 0, text: o + e })));
+  const port = String(nextPort());
+  const out = await new Promise((resolve) => execFile(process.execPath, [LAB, '.', '--no-open', '--port', port], { cwd: dir, env: { ...process.env, PORT: port } }, (err, o, e) => resolve({ code: err?.code ?? 0, text: o + e })));
   assert.notEqual(out.code, 0);
   assert.match(out.text, /labit@0\.6\.2/);
   assert.ok(!fs.existsSync(path.join(dir, '.lab/comments')), 'nothing started beside it');

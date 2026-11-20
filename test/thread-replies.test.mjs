@@ -3,38 +3,26 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { site, tmp, rm, spawnLab, sleep, up, serverJson, cli as command } from './harness.mjs';
 import { choiceSpills } from '../lib/args.ts';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-thread-')); // nobody's real ~/.config
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-thread-lab-'));
-const PORT = 9150 + Math.floor(Math.random() * 40); // clear of the other test files' ranges
+const HOME = tmp('thread'); // nobody's real ~/.config
+const { DIR, PORT, B } = site('thread-lab', 9150, 40);
 const env = { ...process.env, XDG_CONFIG_HOME: HOME, PORT: '' };
-const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'package.json'), '{}');
 fs.writeFileSync(path.join(DIR, 'bar.html'), '<!doctype html><title>Bar</title><p id="x">Hi</p>');
-const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--new', '--port', String(PORT)], { cwd: DIR, env });
+const lab = spawnLab(DIR, PORT, { flags: ['--new'], env });
 after(() => {
   lab.kill();
-  for (const d of [HOME, DIR]) fs.rmSync(d, { recursive: true, force: true });
+  rm([HOME, DIR]);
 });
-const cli = (...args) => new Promise((done) => execFile(process.execPath, [LAB, ...args], { cwd: DIR, env }, (err, out, errOut) => done({ code: err?.code ?? 0, out: out + errOut })));
+const cli = (...args) => command(args, { cwd: DIR, env });
 const post = async (body) => (await (await fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/bar', ...body }) })).json()).comment;
 const thread = async () => (await (await fetch(`${B}/_lab/api/comments?page=/bar`)).json()).comments;
 
 test('answering a reply by its id says which message it answers; answering the pin does not', async () => {
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(B + '/');
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
+  await up(B + '/', { fail: false });
   const pin = await post({ name: 'leo', text: 'the menu', anchor: { kind: 'element', selector: '#x', x: 0.5, y: 0.5 } });
   assert.equal((await cli('reply', pin.id, 'Changed the menu.')).code, 0);
   const where = await post({ name: 'leo', text: 'where is it', parent: pin.id });
@@ -100,7 +88,7 @@ test('seven, empty and 301-character choices are refused', async () => {
     assert.notEqual(r.code, 0, bad.join('|').slice(0, 30));
   }
   // The server says no on its own too: someone who talks to it directly (the agent's header) gets a 400, not a cut list.
-  const agent = (body) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent }, body: JSON.stringify({ page: '/bar', name: 'Claude', text: 'Which?', parent: pin.id, ...body }) });
+  const agent = (body) => fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-agent': '1', 'x-lab-admin': serverJson(DIR).agent }, body: JSON.stringify({ page: '/bar', name: 'Claude', text: 'Which?', parent: pin.id, ...body }) });
   for (const body of [{ choices: seven }, { choices: ['a'] }, { choices: ['a', ''] }, { choices: ['a', long] }, { choices: ['a', 'b'], recommend: 2 }, { choices: ['a', 'b'], recommend: 'B' }, { choices: ['a', 'b'], recommend: -1 }, { recommend: 0 }]) {
     assert.equal((await agent(body)).status, 400, JSON.stringify(body).slice(0, 60));
   }
@@ -116,7 +104,7 @@ test('a second pick: the agent reads the latest', async () => {
   const ask = (await thread()).find((c) => c.text === 'Which tone?');
   await cli('wait', '--timeout', '5'); // the question and what came before are read; only the picks are new
   const one = await post({ name: 'leo', text: 'Picked A: Hi', parent: ask.id, to: ask.id, picked: 0 });
-  await new Promise((r) => setTimeout(r, 15)); // the latest is by time
+  await sleep(15); // the latest is by time
   const two = await post({ name: 'leo', text: 'Picked B: Hello', parent: ask.id, to: ask.id, picked: 1 });
   assert.equal(one.picked.n, 0);
   assert.equal(two.picked.n, 1);
