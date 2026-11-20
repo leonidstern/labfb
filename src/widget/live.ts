@@ -161,25 +161,29 @@ export function startLive() {
     let beat = 0;
     // The pill is the mark, with its status as a badge on the mark's corner (Leo, 20 Nov: "lets try this", icon only; "like we had
     // with !"): how many pins wait, or a sign: ! the agent went quiet, … it isn't answering, - nobody listens, ~ reconnecting. Its
-    // words open over the pill while the pointer is on it (the .w box, out of the flow, so nothing beside it moves): "talking to
-    // Claude", the status line, "no update for 6 min · last: …". They stay in the pill's label for screen readers and the tooltip.
-    // From the lab's state (mode, agent) and the agent's work on this page (list.ts pillLine).
+    // words show in a box above the pill the moment the pointer is on it (the .w box, like a pin's: no browser tooltip, which waits
+    // a second, and the pill never grows): "talking to Claude", the status line, "no update for 6 min · last: …", and under
+    // them what the state means (.d). The words stay in the pill's label for screen readers. From the lab's state (mode, agent)
+    // and the agent's work on this page (list.ts pillLine).
     let pill = null;
+    let detail = ''; // what the state means, and the session's name: the second line of the box
     const SIGNS = { '!': 'M6 3.25v3.25M6 8.75h.01', '…': 'M3.4 6h.01M6 6h.01M8.6 6h.01', '-': 'M3.75 6h4.5', '~': 'M8.6 6.6A2.6 2.6 0 1 1 6.3 4M5.1 2.8l1.3 1.2-1.3 1.2' };
     const TONE = { '!': 'amber', '…': 'amber', '-': 'grey', '~': 'grey' };
     const show = (parts: (string | Node)[], n = '') => {
-      const sig = [...parts.map((x) => (typeof x === 'string' ? x : x.textContent)), n].join('|');
+      const sig = [...parts.map((x) => (typeof x === 'string' ? x : x.textContent)), n, detail].join('|');
       if (lbl.dataset.sig === sig) return;
       lbl.dataset.sig = sig;
-      lbl.replaceChildren(span('', 'w'));
-      lbl.firstElementChild.append(...parts);
+      const w = span('', 'w');
+      w.append(span('', 't'), ...(detail ? [span(detail, 'd')] : []));
+      w.firstElementChild.append(...parts);
+      lbl.replaceChildren(w);
       cb.className = `cb ${TONE[n] || ''}`;
       cb.innerHTML = SIGNS[n] ? `<svg viewBox="0 0 12 12" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="${SIGNS[n]}" stroke="var(--_bg)" stroke-width="${n === '…' ? 2 : 1.5}"/></svg>` : n ? `<span>${n}</span>` : '';
       if (n) who.dataset.n = n;
       else delete who.dataset.n;
     };
     // What a screen reader and the tooltip get: the words, and the count the badge shows.
-    const said = () => (lbl.textContent || '') + (/^\d+$/.test(who.dataset.n || '') ? ` · ${who.dataset.n} waiting` : '');
+    const said = () => (lbl.querySelector('.t')?.textContent || '') + (/^\d+$/.test(who.dataset.n || '') ? ` · ${who.dataset.n} waiting` : '');
     const paintWho = () => {
       if (!pill) return;
       const { mode, agent, away } = pill;
@@ -194,6 +198,7 @@ export function startLive() {
     // (Leo, 18 Nov: the black rabbit came and went at random, from these).
     const showAway = (word) => {
       pill = null; // the pill's own words are not painted over it until the next state
+      detail = '';
       lbl.dataset.sig = '';
       show([span(word)], '~');
       whoLabel(word);
@@ -534,6 +539,12 @@ export function startLive() {
         const name = s && s.name !== (s.agent || 'Claude') ? s.name : '';
         W.S.agent = s ? agent : '';
         pill = { mode, agent, away: s && !here ? 'no agent on this page' : 'no agent listening' };
+
+        // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
+        // How to get one listening again: what to say to the agent, for this page.
+        // The mark's colour says the state; the tooltip names it (Leo, 18 Nov).
+        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'quiet' ? 'Not answering: pins handed to it got no reply in 2 minutes; they go to the next wait (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
+        detail = mode === 'away' ? `${state} To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : [state, name && `session: ${name}`, s?.resume].filter(Boolean).join('\n');
         paintWho();
         who.classList.remove('stale');
         W.chatBtn.classList.remove('stale');
@@ -546,11 +557,6 @@ export function startLive() {
         whoLabel(said()); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
-        // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
-        // How to get one listening again: what to say to the agent, for this page.
-        // The mark's colour says the state; the tooltip names it (Leo, 18 Nov).
-        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'quiet' ? 'Not answering: pins handed to it got no reply in 2 minutes; they go to the next wait (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
-        who.title = mode === 'away' ? `${state} To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : [state, name && `session: ${name}`, s?.resume].filter(Boolean).join('\n');
         who.hidden = false;
       }
     }

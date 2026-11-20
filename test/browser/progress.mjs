@@ -53,7 +53,7 @@ for (const [n, eng] of engines().entries()) {
     const ringOf = async (i) => (await pins())[i]?.[0];
     const tipOf = async (i) => (await pins())[i]?.[1];
     // The words that open over the pill, and the badge the collapsed pill shows (how many wait, or ! once the agent went quiet).
-    const pill = () => shadow(() => { const w = r.querySelector('.listener'); return (w?.querySelector('.lbl')?.textContent || '') + (w?.dataset.n ? ` [${w.dataset.n}]` : ''); });
+    const pill = () => shadow(() => { const w = r.querySelector('.listener'); return (w?.querySelector('.lbl .t')?.textContent || '') + (w?.dataset.n ? ` [${w.dataset.n}]` : ''); });
     const pillIs = (re) => until(async () => re.test(await pill()), 8000);
     const ringIs = (i, ring) => until(async () => (await ringOf(i)) === ring);
     // All the rings at once, so the check after it doesn't catch one pin a moment behind another.
@@ -63,7 +63,7 @@ for (const [n, eng] of engines().entries()) {
     await until(async () => (await pins()).length === 3);
     check(eng, 'sent pins wear no ring', (await pins()).every(([ring]) => ring === ''), JSON.stringify(await pins()));
     // The listening mark: grey when no agent listens (not black), and its tooltip names the state.
-    const mark = () => shadow(() => { const w = r.querySelector('.listener'); return { title: w?.title || '', fill: w?.querySelector('.mark') ? getComputedStyle(w.querySelector('.mark')).fill : '' }; });
+    const mark = () => shadow(() => { const w = r.querySelector('.listener'); return { title: w?.querySelector('.d')?.textContent || '', fill: w?.querySelector('.mark') ? getComputedStyle(w.querySelector('.mark')).fill : '' }; });
     await until(async () => /^Away/.test((await mark()).title));
     const away = await mark();
     check(eng, 'away: a grey mark and the tooltip says Away', /^Away/.test(away.title) && /rgba\(/.test(away.fill), JSON.stringify(away));
@@ -87,14 +87,16 @@ for (const [n, eng] of engines().entries()) {
     await ringsAre(['ring', 'ring wait', 'ring wait']);
     check(eng, 'working (progress): the green ring turns; the others still wait', (await ringOf(0)) === 'ring' && (await ringOf(1)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill reads the line (no name, no age) and a badge for the queue', await pillIs(/^drawing W1–W6 · 2 of 4 \[2\]$/), await pill());
-    // Icon only: the words are not drawn until the pointer is on the pill, and then open over it without moving what is beside it.
-    const open = () => shadow(() => { const w = r.querySelector('.listener'); const t = w.querySelector('.w'); const b = w.getBoundingClientRect(); return { shown: getComputedStyle(t).opacity === '1' && getComputedStyle(t).visibility === 'visible', pill: Math.round(b.width), words: Math.round(t.getBoundingClientRect().width), next: Math.round(r.querySelector('.left .copy-all')?.getBoundingClientRect().left ?? -1), x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+    // Icon only: the words are not drawn until the pointer is on the pill, and then they come at once, in a box above it like a pin's tip.
+    // The pill does not grow, and the browser's own tooltip (it waits a second) is not used.
+    const open = () => shadow(() => { const w = r.querySelector('.listener'); const t = w.querySelector('.w'); const b = w.getBoundingClientRect(); const tb = t.getBoundingClientRect(); return { shown: getComputedStyle(t).opacity === '1', pill: Math.round(b.width), above: tb.bottom <= b.top, title: w.title, x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
     const shut = await open();
-    check(eng, 'collapsed: the pill is the mark and a badge, no words drawn', !shut.shown && shut.pill < 90, JSON.stringify(shut));
+    check(eng, 'collapsed: the pill is the mark and a badge, no words drawn', !shut.shown && shut.pill < 60, JSON.stringify(shut));
     await p.mouse.move(shut.x, shut.y);
+    const t0 = Date.now();
     await until(async () => (await open()).shown);
     const wide = await open();
-    check(eng, 'on the pill: the line opens over it; the pill and what is beside it do not move', wide.shown && wide.words > wide.pill + 80 && wide.pill === shut.pill && wide.next === shut.next, JSON.stringify([shut, wide]));
+    check(eng, 'on the pill: its words show at once in a box above it, the pill does not grow, no browser tooltip', wide.shown && wide.above && wide.pill === shut.pill && wide.title === '' && Date.now() - t0 < 600, JSON.stringify([shut, wide]) + ` ${Date.now() - t0} ms`);
     await p.mouse.move(5, 300);
     await until(async () => !(await open()).shown);
     check(eng, 'hovering the ring shows the same line', (await tipOf(0)) === 'drawing W1–W6 · 2 of 4 · just now', await tipOf(0));
@@ -233,7 +235,7 @@ for (const [n, eng] of engines().entries()) {
     // A named session: the pill has no name in its words; the name is in its tooltip.
     for (const id of ids) await L.cli('reply', id, 'Done', '--done');
     const named = L.cli('wait', '--name', 'ooze', '--timeout', '4');
-    const pillTip = () => shadow(() => { const w = r.querySelector('.listener'); return { words: w?.querySelector('.lbl')?.textContent || '', title: w?.title || '' }; });
+    const pillTip = () => shadow(() => { const w = r.querySelector('.listener'); return { words: w?.querySelector('.lbl .t')?.textContent || '', title: w?.querySelector('.d')?.textContent || '' }; });
     await until(async () => /session: ooze/.test((await pillTip()).title), 3000);
     const nm = await pillTip();
     check(eng, 'a named session: the pill has no name in its words, the tooltip has it', /session: ooze/.test(nm.title) && !/ooze/.test(nm.words), JSON.stringify(nm));

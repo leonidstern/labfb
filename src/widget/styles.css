@@ -381,9 +381,8 @@ button.btn.undo { color: var(--_fg); }
 .listener .lbl { display: contents; }
 /* Icon only (Leo, 20 Nov): the pill is the mark, with its status as a badge on the mark's corner, ringed like the update "!" (.upd):
    the number of pins waiting, or a sign: ! the agent went quiet, … it isn't answering, − nobody listens, ↻ reconnecting. The words
-   open over the pill while the pointer is on it. .w is out of the flow, over the pill's own box, so nothing beside the pill moves
-   whatever it says. */
-.listener .mark { position: relative; z-index: 2; transform: translate(-3px, 3px); } /* above the words' box, so the mark stays put as it opens; low and left, so the badge sits over its corner and not its ears */
+   show in a box above the pill the moment the pointer is on it (like a pin's tip), so the pill never grows. */
+.listener .mark { position: relative; z-index: 2; transform: translate(-3px, 3px); } /* low and left, so the badge sits over its corner and not its ears */
 .listener .cb { position: absolute; right: 2px; top: 2px; z-index: 3; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; corner-shape: round; /* a circle, not a squircle */
         background: currentColor; color: var(--_green-fg); box-shadow: 0 0 0 1.5px var(--_bg); }
 .listener .cb:empty { display: none; }
@@ -392,11 +391,13 @@ button.btn.undo { color: var(--_fg); }
 .listener .cb svg { width: 13px; height: 13px; display: block; }
 .listener .cb :is(svg, svg *) { color: inherit; } /* the sheet's * sets a colour on every element, the disc included */
 .listener.has-upd .cb { visibility: hidden; } /* the update's "!" takes the corner */
-.listener .w { position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; width: max-content; max-width: min(420px, 50vw); display: flex; gap: 6px; align-items: center;
-        padding: 0 12px 0 34px; border-radius: var(--_radius); background: var(--_bg); box-shadow: var(--_shadow); color: var(--_fg); white-space: nowrap;
-        opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--_fade), visibility var(--_t-instant) var(--_ease) var(--_t-quick); }
-.listener .w > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.listener:is(:hover, :focus-visible) .w { opacity: 1; visibility: visible; transition-delay: var(--_t-instant); }
+.listener .w { position: absolute; left: -4px; bottom: calc(100% + 10px); z-index: 6; width: max-content; max-width: 280px; padding: 6px 9px; border-radius: var(--_r-s);
+        background: var(--_bg); box-shadow: var(--_shadow); color: var(--_fg); font-size: 12px; letter-spacing: 0; line-height: 1.35; text-align: left; white-space: normal;
+        pointer-events: none; opacity: 0; translate: 0 2px; transition: opacity var(--_fade), translate var(--_fade); }
+.listener .t { display: flex; flex-wrap: wrap; column-gap: 4px; color: var(--_fg); }
+.listener .t span { color: inherit; }
+.listener .d { display: block; margin-top: 4px; color: var(--_muted); white-space: pre-line; overflow-wrap: anywhere; }
+.listener:is(:hover, :focus-visible) .w { opacity: 1; translate: none; }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
 .agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
