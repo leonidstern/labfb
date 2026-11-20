@@ -5,50 +5,23 @@
 // On the board page and in a page's board view. Not part of `npm test`.
 // Run: node test/browser/boardclose.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
-})();
+const pw = playwright();
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-boardclose-'));
+const DIR = tmp('labit-boardclose-');
 const PORT = claimPort(8330, 30);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'pricing.html'), '<!doctype html><meta charset="utf-8"><title>Pricing</title><h1>Pricing one</h1><p>Plan two</p>');
 fs.writeFileSync(path.join(DIR, 'canvas.html'), '<!doctype html><meta charset="utf-8"><title>Canvas</title><h1>Canvas</h1><a id="go" href="/_lab/board/pricing?of=%2Fcanvas">open the board</a>');
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, flags: { board: true } }));
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+const server = startLab(DIR, labEnv());
+await labUp(B);
 await fetch(`${B}/_lab/api/board?name=pricing`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ v: 1, rev: 0, of: '/canvas', frames: [{ id: 'a', src: '/pricing', w: 390, h: 600, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 820, h: 600, x: 500, y: 0 }] }) });
 try {
-  for (const eng of (process.env.ENGINES || 'chromium,webkit').split(',')) {
+  for (const eng of engines('chromium,webkit')) {
     const browser = await pw[eng].launch();
     try {
       for (const [where, url] of [['board page', `${B}/_lab/board/pricing?of=%2Fcanvas`], ['board view', `${B}/canvas#board=pricing`]]) {
@@ -168,5 +141,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

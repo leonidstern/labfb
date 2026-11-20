@@ -139,17 +139,29 @@ test('a comment about the page as a whole has no spot in the agent text', async 
   assert.ok(after.includes(`page: ${B}/index`));
 });
 
+// The lab's live stream (/_lab/live): the newest version of one counter in its first events. One read can hold more
+// than one event (the lab sends the version, then a change straight after), or half of one, so whole events only.
+const live = async (field) => {
+  const ctl = new AbortController();
+  const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  while (!text.includes('\n\n')) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  ctl.abort();
+  const events = text.split('\n\n').slice(0, -1).map((e) => e.replace(/^data: /, '').trim()).filter((e) => e.startsWith('{'));
+  return JSON.parse(events.at(-1))[field];
+};
+
 test('read marks are shared by name: a phone and a Mac with the same name see the same new and read', async () => {
   await up();
   const reads = (q) => fetch(`${B}/_lab/api/reads?${q}`).then((r) => r.json());
   const mark = (body) => fetch(B + '/_lab/api/reads', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify(body) });
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).reads;
-  };
+  const rev = () => live('reads');
   const { comment } = await post({ page: '/index', name: 'Sam', text: 'read me', anchor: { selector: '#t', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1 id="t">' } });
   const id = comment.id;
   const before = await rev();
@@ -400,13 +412,7 @@ test('a last look is kept by name and page', async () => {
 
 test('a look bumps looked in the live state, so other tabs and devices check again', async () => {
   await up();
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).looked;
-  };
+  const rev = () => live('looked');
   const before = await rev();
   assert.equal(typeof before, 'number');
   await look({ name: 'Leo', page: '/index', ids: [['rev', 'check']] });
@@ -454,13 +460,7 @@ test('section marks are checked: a name, a page of this lab, an object, a size',
 
 test('a section mark bumps sections in the live state, and only when something changed', async () => {
   await up();
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).sections;
-  };
+  const rev = () => live('sections');
   const before = await rev();
   assert.equal(typeof before, 'number');
   await sec({ name: 'Leo', page: '/index', sections: { rev: 'one' } });
@@ -556,16 +556,23 @@ test('reply --progress keeps one line on the thread, replaced each time, with it
   assert.equal(c.progress.text, 'drawing W1–W6 · 2 of 4', 'the latest replaces the last');
   assert.equal((await threadsOf()).length, before);
   // The page is told: the lab's comments version moves, so open pages fetch the change.
-  const rev = async () => {
-    const ctl = new AbortController();
-    const res = await fetch(B + '/_lab/live', { signal: ctl.signal });
-    const { value } = await res.body.getReader().read();
-    ctl.abort();
-    return JSON.parse(new TextDecoder().decode(value).replace(/^data: /, '')).comments;
-  };
-  const was = await rev();
+  const rev = () => live('comments');
+  // The version is read when the lab has been quiet for a moment (an earlier line's save and its notice may still be
+  // landing), and the third line must move it on: by one, or by more when something else of the lab's lands too.
+  let was = await rev();
+  for (let i = 0; i < 20; i++) {
+    await sleep(100);
+    const now = await rev();
+    if (now === was) break;
+    was = now;
+  }
   await run(['reply', id, '--progress', 'drawing W1–W6 · 3 of 4']);
-  assert.equal(await rev(), was + 1);
+  let now = await rev();
+  for (let i = 0; i < 30 && now <= was; i++) {
+    await sleep(100);
+    now = await rev();
+  }
+  assert.ok(now > was, `the comments version moves on (was ${was}, now ${now})`);
 });
 
 test('an answer, a new message or resolving clears the progress line', async () => {

@@ -2,29 +2,15 @@
 // Chrome's. No lab server: the module is bundled on its own and run on small pages. Not part of `npm test`; CI runs it
 // in the `browser` job. Run: node test/browser/anchoring.mjs   (needs playwright; NODE_PATH can point at one).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { playwright, engines, tmp, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  try {
-    return require('playwright');
-  } catch {
-    try {
-      return require(require.resolve('playwright', { paths: (process.env.NODE_PATH || '').split(path.delimiter) }));
-    } catch {
-      // On CI a missing browser is a failure: a skip there would pass with nothing run.
-      console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-      process.exit(process.env.CI ? 1 : 0);
-    }
-  }
-})();
+const pw = playwright({ ciFails: true });
 
 const WIDGET = fileURLToPath(new URL('../../src/widget/', import.meta.url));
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-anchoring-'));
+const TMP = tmp('labit-anchoring-');
 const OUT = path.join(TMP, 'anchoring.js');
 // The anchoring module with the part that tries a question's choices in the page (trial.ts), in one bundle: they share
 // the module's state, as they do in the widget.
@@ -32,12 +18,6 @@ const SRC = path.join(TMP, 'entry.ts');
 fs.writeFileSync(SRC, `export * from ${JSON.stringify(WIDGET + 'anchoring.ts')};\nexport { bindTrial, tryRow, untry } from ${JSON.stringify(WIDGET + 'trial.ts')};\n`);
 execFileSync('npx', ['--yes', 'esbuild@0.25.12', SRC, '--bundle', '--format=iife', '--global-name=A', `--outfile=${OUT}`, '--log-level=warning']);
 const BUNDLE = fs.readFileSync(OUT, 'utf8');
-
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 
 // A page with the module bound to a stand-in widget, and helpers to pin and to place a pin.
 const open = async (ctx, body) => {
@@ -69,7 +49,7 @@ const open = async (ctx, body) => {
 };
 
 try {
-  for (const eng of (process.env.ENGINES || 'chromium,webkit').split(',')) {
+  for (const eng of engines('chromium,webkit')) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 900, height: 700 } });
@@ -305,5 +285,4 @@ try {
 } finally {
   fs.rmSync(TMP, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();
