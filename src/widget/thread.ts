@@ -220,7 +220,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     const box = W.el('div', { class: `item msg${W.mine(item) && !item.session ? ' mine' : ''}`, 'data-id': item.id, ...(W.agentOf(item) ? { 'data-agent': W.agentOf(item) } : {}) });
     box.append(W.nameLine(item.name, false));
     // An answer to a later message in the thread quotes it, as the chat does (Leo, 17 Nov: "show what you replied on").
-    const to = item.to && W.repliesOf(c.id).find((x) => x.id === item.to);
+    const to = item.to && [c, ...W.repliesOf(c.id)].find((x) => x.id === item.to); // the pin itself too: it may be the question
     if (to) {
       const q = W.el('span', { class: 'quote' });
       q.append(W.el('b', {}, String(to.name || '').replace(/\s*·\s*session\s+\S+$/i, '')), document.createTextNode(to.text.replace(/\s+/g, ' ').slice(0, 90)));
@@ -339,7 +339,9 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       first = undo;
     }
     // "Do it" on a pin the agent left itself (labit pin): hands it back to the agent's next wait as "<name> said: do it".
-    const doIt = c.session && !c.resolved ? W.el('button', { class: 'btn', type: 'button', title: 'Tell the agent to go ahead with this' }, 'Do it') : null;
+    const said = [c, ...W.repliesOf(c.id)].filter((m) => m.session).map((m) => m.createdAt).sort().pop() || '';
+    const asked = W.repliesOf(c.id).some((r) => r.doit && !r.session && r.createdAt > said); // already told, and the agent has not answered since
+    const doIt = c.session && !c.resolved ? W.el('button', { class: 'btn', type: 'button', title: 'Tell the agent to go ahead with this', ...(asked ? { disabled: '' } : {}) }, asked ? 'told' : 'Do it') : null;
     doIt?.addEventListener('click', async () => {
       const name = String(W.store.get('lab-name') || '').trim();
       if (!name) return void ((doIt.textContent = 'your name first'), W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true }));

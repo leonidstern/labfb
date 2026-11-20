@@ -1719,8 +1719,11 @@ async function unseen(scope = pages(), who = '') {
   if (!given.length && !missed.length) return null;
   // People who ticked (resolved) pins the agent left itself since its last wait: "ticked: 2 of your 5 pins". Said with
   // what else goes out, once each (a tick alone wakes nobody).
-  const ticks = scope.flatMap((page) => commentsOf(page).filter((c) => !c.parent && c.session && c.resolved && c.resolvedBy !== 'agent' && c.resolvedAt > (c.tickedAt || '')).map((c) => ({ page, c })));
-  const own = scope.reduce((n, page) => n + commentsOf(page).filter((c) => !c.parent && c.session).length, 0);
+  // Only this session's own pins count (another session's pins on the page are not its to hear about); M is the ones still
+  // open and the ones just ticked.
+  const mine = (c) => !c.parent && c.session && (!who || whoOf(c.session) === who);
+  const ticks = scope.flatMap((page) => commentsOf(page).filter((c) => mine(c) && c.resolved && c.resolvedBy !== 'agent' && c.resolvedAt > (c.tickedAt || '')).map((c) => ({ page, c })));
+  const own = scope.reduce((n, page) => n + commentsOf(page).filter((c) => mine(c) && !c.resolved).length, 0) + ticks.length;
   // First line: how many things this message holds, so an agent that only reads part of it can tell.
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const full = !(now - toldAt.get(who) < 1800000);

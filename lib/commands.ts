@@ -10,7 +10,7 @@ import { mySession } from './agents.ts';
 import { keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
 import { read as readBoard } from './board.ts';
-import { describe, parseHtml, quoteIn, select, type El } from './htmlsel.ts';
+import { describe, MAX_HTML, parseHtml, quoteIn, select, type El } from './htmlsel.ts';
 import { pageIds } from './ids.ts';
 
 type Ctx = { pos: string[]; opts: Opts; HERE: string; CMD: string; ME: string; die: (msg: string) => never };
@@ -268,6 +268,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (opts.file !== undefined) {
         if (typeof opts.file !== 'string') die(`--file takes a JSON file of pins: ${CMD} pin --file points.json (a list of { "selector", "text", "quote"?, "at"?, "page"? })`);
         if (ref || words.length) die('--file holds the pins: leave out the selector and text on the command line.');
+        const each = ['quote', 'at', 'question', 'choice', 'recommend'].filter((k) => opts[k] !== undefined);
+        if (each.length) die(`${each.map((k) => `--${k}`).join(', ')} go${each.length === 1 ? 'es' : ''} on a single pin: in --file put ${each.length === 1 ? 'it' : 'them'} in each pin's own entry ("quote", "at", "question", "choices", "recommend").`);
         let list: unknown;
         try {
           list = JSON.parse(fs.readFileSync(path.resolve(opts.file), 'utf8'));
@@ -327,7 +329,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
         if (hit) return { path: hit.path, file: fileOf(hit) };
         return die(`No page ${want} in this lab. Its pages: ${list()}.`);
       };
-      const parsed = new Map<string, El | null>(); // a page's file, read once
+      const parsed = new Map<string, El | null>(); // a page's file, read once; null when too big or unreadable
       const rootOf = (file: string) => {
         if (!parsed.has(file)) {
           try {
@@ -410,28 +412,37 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
         let anchor: Record<string, unknown> = selector ? { kind: 'element', selector, x, y, ...spot } : spot;
 
         // The selector against the page's HTML: it must match something, and what is there is saved with the pin so it
-        // is found again after the page is edited.
+        // is found again after the page is edited. Anything the check can't be sure of is said, and the pin saved as given.
         if (selector && !opts['no-check']) {
-          const html = !proxied && file && /\.html?$/i.test(file) && fs.existsSync(file) ? rootOf(file) : null;
+          const readable = !proxied && file && /\.html?$/i.test(file) && fs.existsSync(file);
+          const html = readable ? rootOf(file) : null;
           const where = path.relative(dir, file) || file;
-          if (!html) notes.add(proxied ? 'Could not check the selector: this lab is in front of a dev server, so the page is not a file here. The pin is saved as given.' : `Could not check the selector against ${page}: it is not a plain HTML file of this folder. The pin is saved as given.`);
+          if (!html) notes.add(proxied ? 'Could not check the selector: this lab is in front of a dev server, so the page is not a file here. The pin is saved as given.' : readable ? `Could not check the selector: ${where} is too big to read here (over ${MAX_HTML / 1e6} MB). The pin is saved as given.` : `Could not check the selector against ${page}: it is not a plain HTML file of this folder. The pin is saved as given.`);
           else {
-            const hit = select(html, selector);
-            if (hit === null) notes.add(`Could not check "${selector}": it uses something this check does not read. The pin is saved as given.`);
-            else if (!hit.length) {
-              const ids = pageIds(fs.readFileSync(file, 'utf8')).slice(0, 8).map((id) => `#${id}`);
-              fail(`"${selector}" matches nothing in ${where}.${ids.length ? ` Ids on that page: ${ids.join(', ')}.` : ''} Read the selector from the file, or add --no-check if the page draws it with JavaScript.`);
-            } else {
-              if (hit.length > 1) notes.add(`"${selector}" matches ${hit.length} elements in ${where}: the pin goes on the first. A more exact selector (an id) names one.`);
-              const d = describe(html, hit[0]);
-              const same = { element: d.element, ...(d.inside ? { inside: d.inside } : {}), ...(d.section ? { section: d.section } : {}), ...(d.block ? { block: d.block } : {}) };
-              if (!pt.quote) Object.assign(anchor, same, d.text ? { text: d.text } : {});
-              else {
-                const q = quoteIn(hit[0], pt.quote);
-                if (!q) fail(`The words "${pt.quote}" are not in the text of "${selector}" in ${where}. Copy them from the file.`);
-                if (q.times > 1) notes.add(`"${pt.quote}" stands ${q.times} times in "${selector}": the pin goes on the first. Add words around it to name one.`);
-                Object.assign(anchor, same, { kind: 'text', quote: q.quote });
+            try {
+              const hit = select(html, selector);
+              if (hit === null) notes.add(`Could not check "${selector}": it uses something this check does not read. The pin is saved as given.`);
+              else if (!hit.length) {
+                const ids = pageIds(fs.readFileSync(file, 'utf8')).slice(0, 8).map((id) => `#${id}`);
+                fail(`"${selector}" matches nothing in ${where}.${ids.length ? ` Ids on that page: ${ids.join(', ')}.` : ''} Read the selector from the file, or add --no-check if the page draws it with JavaScript.`);
+              } else {
+                if (hit.length > 1) notes.add(`"${selector}" matches ${hit.length} elements in ${where}: the pin goes on the first. A more exact selector (an id) names one.`);
+                const d = describe(html, hit[0]);
+                const same = { element: d.element, ...(d.inside ? { inside: d.inside } : {}), ...(d.section ? { section: d.section } : {}), ...(d.block ? { block: d.block } : {}) };
+                if (!pt.quote) Object.assign(anchor, same, d.text ? { text: d.text } : {});
+                else {
+                  const q = quoteIn(hit[0], pt.quote);
+                  if (q === null) fail(`The words "${pt.quote}" are not in the text of "${selector}" in ${where}. Copy them from the file.`);
+                  else if (q === 'unsure') notes.add(`The text of "${selector}" has an HTML entity this check does not know, so "${pt.quote}" could not be placed in it. The quote is saved as given.`);
+                  else {
+                    if (q.times > 1) notes.add(`"${pt.quote}" stands ${q.times} times in "${selector}": the pin goes on the first. Add words around it to name one.`);
+                    Object.assign(anchor, same, { kind: 'text', quote: q.quote });
+                  }
+                }
               }
+            } catch (e) {
+              if (e instanceof RangeError) notes.add(`Could not check "${selector}": the page is nested too deep to read. The pin is saved as given.`);
+              else throw e;
             }
           }
         }
@@ -443,12 +454,16 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       });
 
       const out: string[] = [];
+      // A batch cut short (a refused pin, the lab gone) says what was saved before it stopped, whatever stopped it.
+      process.once('exit', (code) => {
+        if (code && out.length && out.length < ready.length) console.log(`${out.join('\n')}\n${out.length} of ${ready.length} saved. Run the same command again to save the rest: the ones saved are not made twice.`);
+      });
       for (const r of ready) {
         const res = await call('/_lab/api/comments', {
-          page: r.page, name, text: r.text, anchor: r.anchor, nonce: nonceOf(r.page, r.selector, r.text, JSON.stringify(r.anchor)),
+          page: r.page, name, text: r.text, anchor: r.anchor, nonce: nonceOf(r.page, r.selector, r.text, JSON.stringify(r.anchor), JSON.stringify([r.asked, r.question])),
           ...(r.question ? { intent: 'question' } : {}), ...(r.asked || {}),
         });
-        if (res.status >= 300) die(`Could not pin: ${res.text}`);
+        if (res.status >= 300) die(`Could not pin${ready.length > 1 ? ` ${out.length + 1}` : ''}: ${res.text}`);
         const { comment } = JSON.parse(res.text);
         const words = r.anchor.quote ? ` (on the words "${(r.anchor.quote as { exact: string }).exact}")` : '';
         const asks = r.asked ? ` (asks: ${r.asked.choices.map((c, n) => `${letter(n)}) ${c}`).join('  ')}${r.asked.recommend !== undefined ? `; your pick: ${letter(r.asked.recommend)}` : ''})` : r.question ? ' (a question)' : '';

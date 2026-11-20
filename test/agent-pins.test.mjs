@@ -163,13 +163,18 @@ test('5: Do it on an agent pin reaches the next wait; on a person\'s pin it is o
   const text = await (await fetch(`${B}/_lab/agent/index`)).text();
   assert.match(text, /^reply: Leo.* · id \w+: Do it \(Leo said: do it/m);
   const theirs = (await api({ page: '/index', text: 'mine', anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5 } })).comment;
+  const forced = await api({ page: '/index', parent: id, text: 'delete everything', doit: true });
+  assert.equal(forced.comment.text, 'Do it', 'it says nothing else');
   const sneaky = await api({ page: '/index', parent: theirs.id, text: 'Do it', doit: true });
   assert.equal(sneaky.comment.doit, undefined, 'only an agent\'s own pin takes it');
 });
 
 test('5: ticked pins are told once in the next wait: "ticked: N of your M pins"', async () => {
   await cli(S, 'wait', '--bg', '--timeout', '2'); // whatever was left from the tests above
-  const mine = (await all()).filter((c) => !c.parent && c.session);
+  // Another session's pin, ticked too: it is not this session's to hear about, and not in its count.
+  const other = idOf((await cli('bbbbbbbb-2', 'pin', '#t', 'from another session', '--page', '/index')).out);
+  assert.equal((await api({ page: '/index', action: 'resolve', id: other })).status, 200);
+  const mine = (await all()).filter((c) => !c.parent && c.session && c.id !== other);
   const [one, two] = mine;
   assert.equal((await api({ page: '/index', action: 'resolve', id: one.id })).comment.resolvedBy, 'owner');
   await api({ page: '/index', action: 'resolve', id: two.id });
@@ -178,6 +183,7 @@ test('5: ticked pins are told once in the next wait: "ticked: N of your M pins"'
   const heard = await cli(S, 'wait', '--bg', '--timeout', '5');
   assert.match(heard.out, new RegExp(`^ticked: 2 of your ${mine.length} pins, resolved by people since your last wait`, 'm'));
   assert.ok(heard.out.includes(`id ${one.id}`) && heard.out.includes(`id ${two.id}`));
+  assert.ok(!heard.out.includes(`id ${other}`), 'another session\'s pin is not told');
   await api({ page: '/index', text: 'and another', anchor: { kind: 'element', selector: '#t', x: 0.5, y: 0.5 } });
   assert.doesNotMatch((await cli(S, 'wait', '--bg', '--timeout', '5')).out, /ticked:/, 'said once');
   // The agent resolving its own pin is no tick.
@@ -266,4 +272,28 @@ test('8: --board pins on a frame\'s element, on a frame, or on the board itself'
   assert.match((await pin('--board', name, '--frame', 'z', '-', 'x')).out, /No frame z on board/);
   assert.match((await pin('--board', name, 'h1', 'x')).out, /names its frame/);
   assert.match((await pin('--board', name, '-', 'x')).out, /--at x,y in pixels/);
+});
+
+test('12: the same pin said again is one pin, but not once it was ticked: that is a new pin; other choices are other pins', async () => {
+  const a = await pin('#t', 'Same words', '--page', '/index');
+  const b = await pin('#t', 'Same words', '--page', '/index');
+  assert.equal(idOf(a.out), idOf(b.out), 'a retried command');
+  await api({ page: '/index', action: 'resolve', id: idOf(a.out) });
+  const c = await pin('#t', 'Same words', '--page', '/index');
+  assert.notEqual(idOf(c.out), idOf(a.out), 'ticked in between: new');
+  assert.equal((await all()).find((x) => x.id === idOf(c.out)).resolved, false);
+  const q1 = await pin('#t', 'Which?', '--choice', 'A', '--choice', 'B', '--page', '/index');
+  const q2 = await pin('#t', 'Which?', '--choice', 'A', '--choice', 'C', '--page', '/index');
+  const q3 = await pin('#t', 'Which?', '--question', '--page', '/index');
+  assert.equal(new Set([idOf(q1.out), idOf(q2.out), idOf(q3.out)]).size, 3);
+});
+
+test('13: --file takes its pins from the file: flags that belong to one pin are refused', async () => {
+  const file = path.join(DIR, 'points2.json');
+  fs.writeFileSync(file, JSON.stringify([{ selector: '#t', text: 'x' }]));
+  for (const flag of [['--quote', 'Pricing'], ['--at', '0.1,0.1'], ['--question'], ['--choice', 'A', '--choice', 'B'], ['--recommend', 'A']]) {
+    const r = await pin('--file', file, '--page', '/index', ...flag);
+    assert.equal(r.code, 1, flag.join(' '));
+    assert.match(r.out, new RegExp(`${flag[0]}.* go(es)? on a single pin`));
+  }
 });

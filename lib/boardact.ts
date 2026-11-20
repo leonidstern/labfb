@@ -45,9 +45,23 @@ export const frameLine = (b: Board, f: Frame, file?: string | null) => {
   const beside = b.frames.filter((g) => g.id !== f.id && g.state !== 'archived').map((g) => g.id);
   const gone = b.frames.filter((g) => g.state === 'archived').map((g) => g.id);
   const line = `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, `${f.w}×${f.h}`, f.label && `"${f.label}"`, beside.length && `beside ${beside.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
-  // A variant of the live page: its code is a branch in the page's own source, so the pick says which one to keep.
-  const put = live(f) ? `Keep the ${f.id} branch (?${VARIANT}=${f.id}) in ${file || b.of?.split('#')[0] || 'the page'}'s source and remove the ${VARIANT} branching, then reply --done.` : `Put ${f.id}'s change into ${file || b.of?.split('#')[0]}, then reply --done.`;
-  return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived${live(f) ? '' : ', files kept'}. ` : ''}${b.of ? put : ''}`.trimEnd() : line;
+  const copy = (g: Frame) => g.src.startsWith('/_lab/');
+  const others = b.frames.filter((g) => g.id !== f.id);
+  const page = file || b.of?.split('#')[0] || 'the page';
+  // What to do about the pick. A copy's change goes into the page; a live variant's code is a branch in the page's own
+  // source (keep that one, drop the branching); frame a, the page as it is now, is the page itself: nothing to put in, the
+  // others' files or branching to clean up.
+  const gonecopies = b.frames.filter((g) => g.state === 'archived' && copy(g)).map((g) => g.id);
+  const gonelive = b.frames.some((g) => g.state === 'archived' && live(g));
+  const put = live(f)
+    ? `Keep the ${f.id} branch (?${VARIANT}=${f.id}) in ${page}'s source and remove the ${VARIANT} branching, then reply --done.`
+    : copy(f)
+      ? `Put ${f.id}'s change into ${page}, then reply --done.`
+      : others.some((g) => copy(g) || live(g))
+        ? `Keep ${page} as it is: change nothing in it.${gonecopies.length ? ` Delete the variant files (.lab/boards/${b.name}/${gonecopies.map((i) => `${i}.html`).join(', ')}).` : ''}${gonelive ? ` Remove any ${VARIANT} branching you added to its source.` : ''} Then reply --done.`
+        : `Put ${f.id}'s change into ${page}, then reply --done.`;
+  const kept = gonecopies.length ? ', files kept' : '';
+  return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived${kept}. ` : ''}${b.of ? put : ''}`.trimEnd() : line;
 };
 
 // ---------- the changes ----------
@@ -170,7 +184,7 @@ export function act(action: string, a: Ask, e: Env): Done {
     if (same) return { text: `${ids.join(', ')} is already ${ids.length === 1 ? 'picked' : 'kept'}.`, board: b };
     for (const f of b.frames) f.state = ids.includes(f.id) ? (ids.length === 1 ? 'picked' : 'live') : 'archived';
     const gone = b.frames.filter((f) => f.state === 'archived').map((f) => f.id);
-    return done(`${ids.length === 1 ? `Picked ${ids[0]}` : `Kept ${ids.join(', ')}`}.${gone.length ? ` Archived ${gone.join(', ')} (files kept).` : ''}`, ids.length === 1 ? { picked: frameOf(b, ids[0]) } : {});
+    return done(`${ids.length === 1 ? `Picked ${ids[0]}` : `Kept ${ids.join(', ')}`}.${gone.length ? ` Archived ${gone.join(', ')}${b.frames.some((f) => gone.includes(f.id) && f.src.startsWith('/_lab/')) ? ' (files kept)' : ''}.` : ''}`, ids.length === 1 ? { picked: frameOf(b, ids[0]) } : {});
   }
   return no(`Unknown board action ${action}. Use new, add, move, pick or list.`);
 }

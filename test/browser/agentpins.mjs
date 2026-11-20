@@ -102,6 +102,9 @@ try {
       let pick;
       for (let i = 0; i < 30 && !pick; i++) { await sleep(150); pick = (await list('/ask')).find((x) => x.picked); }
       check(eng, 'Keep sends the pick under the pin itself', pick?.parent === q.id && pick.picked.of === q.id && pick.picked.n === 0 && /^Picked A: Plans/.test(pick.text), JSON.stringify(pick));
+      await sleep(500);
+      const quoted = await sh(() => { return r.querySelector('.msg .quote')?.textContent || ''; });
+      check(eng, 'the pick shows the question it answers, the pin itself, as a quote', /Which heading\?/.test(quoted), quoted);
       await p.close();
 
       // 5: Do it.
@@ -115,6 +118,9 @@ try {
       await sh(() => { [...r.querySelectorAll('.acts .btn')].find((x) => x.textContent === 'Do it').click(); });
       let reply;
       for (let i = 0; i < 30 && !reply; i++) { await sleep(150); reply = (await list('/doit')).find((x) => x.doit); }
+      await sleep(400);
+      const after = await sh(() => { const b = [...r.querySelectorAll('.acts .btn')].find((x) => /^(Do it|told)$/.test(x.textContent)); return b ? [b.textContent, b.disabled] : null; });
+      check(eng, 'once told, the button stays down until the agent answers', after && after[0] === 'told' && after[1] === true, JSON.stringify(after));
       check(eng, 'Do it sends a reply marked doit under the pin', reply?.parent === d.id && reply.text === 'Do it' && !reply.session, JSON.stringify(reply));
       await p.close();
       await ctx.close();
