@@ -1999,11 +1999,15 @@ const refuse = (status, why) => Object.assign(new Error(why), { status });
 const sent = async (req) => {
   const body = await sentWithin(req, BODY_MAX);
   if (body === null) throw refuse(413, 'too big');
+  let data;
   try {
-    return JSON.parse(body || '{}');
+    data = JSON.parse(body || '{}');
   } catch {
     throw refuse(400, 'not JSON');
   }
+  // null has no fields to read: every caller tripped on it (a 500 with a TypeError's text, 20 Nov).
+  if (data === null) throw refuse(400, 'not a JSON object');
+  return data;
 };
 // The body of a request, or null when it is longer than `max` bytes (the rest is read and dropped, so the sender gets its answer).
 const sentWithin = async (req, max) => {
@@ -2148,7 +2152,14 @@ const handler = async (req, res) => {
     const own = !PROXY || url.pathname.startsWith('/_lab/');
     if (req.method !== 'GET' && req.method !== 'HEAD' && (!sameOrigin(req) || (own && !(req.headers['content-type'] || '').startsWith('application/json'))))
       return plain(res, 403, 'forbidden');
-    const pathname = decodeURIComponent(url.pathname);
+    // A path that can't be decoded (/%, /%zz) is the sender's mistake, not a 500 with the error's text. Behind --proxy
+    // the app's own paths go on to the dev server as they came.
+    let pathname = url.pathname;
+    try {
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      if (own) return plain(res, 400, 'bad path');
+    }
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
     if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '', url.searchParams.get('to') || '');
     if (!mayIn(req)) return gate(res);
@@ -2541,7 +2552,8 @@ const handler = async (req, res) => {
         return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
           inject(withIcon(fs.readFileSync(file, 'utf8')), widget(`/_board/${m[1]}/${m[2]}`, isLoopback(req), nameFor(req), inFrame(req))));
       }
-      if (pathname === '/_lab/api/board') return boardApi(req, res, url);
+      // Awaited: what it throws (a body that is not JSON, or too long) is answered below. Not awaited, it ended the lab.
+      if (pathname === '/_lab/api/board') return await boardApi(req, res, url);
       // The board page itself: a shell that board.js (public/_lab/board.js) fills from /_lab/api/board. The widget rides on it
       // under the board's key, like any page; it is a page of its own, never one of the lab's pages.
       const bp = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})$/.exec(pathname);

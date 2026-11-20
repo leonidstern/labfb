@@ -31,7 +31,7 @@ export function check(raw: any, name: string, was?: Board | null): Board | strin
   const frames: Frame[] = [];
   for (const f of raw.frames) {
     if (!f || typeof f.id !== 'string' || !FRAME.test(f.id) || frames.some((g) => g.id === f.id)) return `frame ids are lowercase letters and digits, each once (got ${JSON.stringify(f?.id)})`;
-    if (!labPath(f.src)) return `frame ${f.id}: src is a path on this lab, like /pricing (got ${JSON.stringify(f.src).slice(0, 60)})`;
+    if (!labPath(f.src)) return `frame ${f.id}: src is a path on this lab, like /pricing (got ${String(JSON.stringify(f.src)).slice(0, 60)})`;
     if (f.src.startsWith('/_lab/') && !f.src.startsWith(`/_lab/board/${name}/`)) return `frame ${f.id}: src may only be a page or one of this board's own variants`;
     const w = px(f.w, 200, 4000) ?? 1280;
     const out: Frame = { id: f.id, src: f.src, w, h: px(f.h, 200, 4000) ?? heightFor(w) };
