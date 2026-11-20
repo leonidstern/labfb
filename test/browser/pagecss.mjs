@@ -1,7 +1,7 @@
 // The widget against a hostile page: a page's own CSS (a * rule, !important, a transform on <body>, zoom, html font-size)
 // can't change how the widget looks or where its pins stand (Leo, 20 Nov: "sometimes its own styles can be changed or
 // broken by changes on that lab"). Each page here breaks one way a page can reach in; the same pin and its open card are
-// measured on a calm page and on each of them. Not part of `npm test`; CI runs it in the `browser` job.
+// measured on a calm page and on each of them. The board view (a board's own box over the page) is held to the same. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/pagecss.mjs (needs playwright; NODE_PATH can point at one).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -44,6 +44,9 @@ fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
 const server = startLab(DIR, labEnv({ LABIT_EXIT_WITH_PARENT: undefined }));
 await labUp(B);
 const post = async (page, body) => (await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page, name: 'Sam', ...body }) })).json();
+// A board about each page: one frame, opened over the page by #board=<name>.
+fs.writeFileSync(path.join(DIR, 'frame.html'), '<!doctype html><meta charset="utf-8"><title>Frame</title><h1>A frame</h1>');
+for (const name of Object.keys(PAGES)) await fetch(`${B}/_lab/api/board?name=b${name}`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ v: 1, rev: 0, of: `/${name}`, frames: [{ id: 'a', src: '/frame', w: 390, h: 844, x: 0, y: 0, label: 'A frame' }] }) });
 for (const name of Object.keys(PAGES)) await post(`/${name}`, { text: 'a pin', anchor: { selector: '#a', x: 0.1, y: 0.5, docX: 0.1, docY: 60, width: 1000, element: '<p id="a">' } });
 
 // What it looks like: every part of the widget with the properties a page's rules reach by inheritance.
@@ -119,6 +122,53 @@ try {
           return { light: document.documentElement.querySelectorAll('i').length - before, shadow: [...root.querySelectorAll('i')].filter((n) => !n.classList.contains('fit')).length };
         });
         check(eng, `${kind}: a heading pointed at is marked inside the widget`, band.light === 0 && band.shadow > 0, JSON.stringify(band));
+        await ctx.close();
+      }
+      // The board view: the same page with a board open over it. Its box fills the window, and every part looks and measures as on a calm page.
+      {
+        const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+        await ctx.addInitScript(() => {
+          localStorage.setItem('lab-name', 'leo');
+          localStorage.setItem('lab-on', '1');
+        });
+        const view = async (name) => {
+          const p = await ctx.newPage();
+          await p.goto(`${B}/${name}.html#board=b${name}`);
+          await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f iframe'), null, { timeout: 8000 }).catch(() => {});
+          await sleep(600);
+          const out = await p.evaluate((props) => {
+            const host = document.querySelector('[data-lab-board-view]');
+            if (!host?.shadowRoot) return { noview: true };
+            const hr = host.getBoundingClientRect();
+            const hs = getComputedStyle(host);
+            const seen = {};
+            const parts = Object.fromEntries([...host.shadowRoot.querySelectorAll('*')].filter((n) => n.localName !== 'style').map((n) => {
+              const key = `${n.localName}.${[...n.classList].join('.')}`;
+              seen[key] = (seen[key] || 0) + 1;
+              const cs = getComputedStyle(n);
+              const r = n.getBoundingClientRect();
+              return [`${key}#${seen[key]}`, { ...Object.fromEntries(props.map((q) => [q, cs.getPropertyValue(q)])), box: [r.x, r.y, r.width, r.height].map(Math.round).join(',') }];
+            }));
+            return { host: { display: hs.display, position: hs.position, visibility: hs.visibility, opacity: hs.opacity, transform: hs.transform, box: [hr.x, hr.y, hr.width, hr.height].map(Math.round).join(',') }, parts };
+          }, PROPS.filter((q) => q !== 'cursor'));
+          await p.close();
+          return out;
+        };
+        const calm = await view('calm');
+        check(eng, 'board: the calm page has its board to compare', Boolean(calm.parts && calm.parts['iframe.#1'] && Object.keys(calm.parts).length > 10), `${Object.keys(calm.parts || {}).length} parts`);
+        // (A page that gives <body> a transform, a filter or contain makes it the box a fixed one counts from: the view is
+        // drawn in that box, as any fixed element of the page is, so those pages aren't asked of it.)
+        for (const name of Object.keys(PAGES).filter((n) => n !== 'calm' && !/^body(transform|filter|contain)$/.test(n))) {
+          const r = await view(name);
+          if (r.noview) {
+            check(eng, `board: ${name}: the view is on the page`, false);
+            continue;
+          }
+          check(eng, `board: ${name}: the view is a plain box over the whole window`, r.host.display === 'flex' && r.host.position === 'fixed' && r.host.visibility === 'visible' && r.host.opacity === '1' && r.host.transform === 'none' && r.host.box === calm.host.box, JSON.stringify(r.host));
+          const off = [];
+          for (const [part, props] of Object.entries(calm.parts)) for (const q of Object.keys(props)) if (r.parts[part]?.[q] !== props[q]) off.push(`${part} ${q}: ${props[q]} → ${r.parts[part]?.[q]}`);
+          check(eng, `board: ${name}: every part looks and measures as on the calm page`, !off.length, `${Object.keys(r.parts).length} parts, ${off.length} differ${off.length ? `, e.g. ${off.slice(0, 3).join('; ')}` : ''}`);
+        }
         await ctx.close();
       }
     } finally {

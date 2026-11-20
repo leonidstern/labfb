@@ -27,8 +27,8 @@ try {
       const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'tester'));
       const p = await ctx.newPage();
-      const kids = () => p.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.dataset.id));
-      const centre = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }, id);
+      const kids = () => p.evaluate(() => [...document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f')].map((f) => f.dataset.id));
+      const centre = (id) => p.evaluate((i) => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }, id);
       // A frame is opened by a click on its label (a click on the frame itself pins); Escape leaves it.
       const open = async (id) => { const r = await p.locator(`#lab-board .f[data-id="${id}"] .t`).boundingBox(); await p.mouse.click(r.x + 8, r.y + r.height / 2); await sleep(400); };
       const wait = async (fn, ms = 4000) => { for (let i = 0; i < ms / 100; i++) { if (await fn()) return true; await sleep(100); } return false; };
@@ -51,9 +51,9 @@ try {
       const sx = (await centre('a'))[0] - at0[0];
       check(eng, 'arrow keys and a drag move no frame (a Space drag pans the board)', JSON.stringify(file('arr').frames.map((f) => [f.x, f.y])) === was, JSON.stringify([was, sx]));
       await open('a');
-      check(eng, 'a click on a frame\'s label opens it: the ring and the size list show on it only', await p.evaluate(() => __labBoard.entered() === 'a' && document.querySelectorAll('#lab-board .f.sel').length === 1 && document.querySelectorAll('#lab-board .t u').length > 0));
+      check(eng, 'a click on a frame\'s label opens it: the ring and the size list show on it only', await p.evaluate(() => __labBoard.entered() === 'a' && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f.sel').length === 1 && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .t u').length > 0));
       // ----- size from the label's list
-      await p.evaluate(() => [...document.querySelectorAll('#lab-board .f.sel .t u')].find((u) => u.textContent === '820').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, composed: true, clientX: 5, clientY: 5 })));
+      await p.evaluate(() => [...document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f.sel .t u')].find((u) => u.textContent === '820').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, composed: true, clientX: 5, clientY: 5 })));
       await wait(() => file('arr').frames[0].w === 820);
       check(eng, 'a size picked from the label list sets width and its preset height', file('arr').frames[0].w === 820 && file('arr').frames[0].h === 1180, JSON.stringify(file('arr').frames[0]));
       // ----- no Delete / ⌘D on frames any more; ⌘Z undoes the size
@@ -79,7 +79,7 @@ try {
       // ----- the edge: past it the board just stops, no give and no settling back (Leo, 19 Nov: "remove weird bounce")
       await p.keyboard.press('Shift+Digit2');
       await sleep(300);
-      const edge = async () => p.evaluate(() => { const r = document.querySelector('#lab-board .world').getBoundingClientRect(); return r.left; });
+      const edge = async () => p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .world').getBoundingClientRect(); return r.left; });
       await p.mouse.move(600, 400);
       for (let i = 0; i < 6; i++) await p.mouse.wheel(3000, 0);
       await sleep(60);

@@ -61,7 +61,13 @@ const css = `
 /** The board called name in root (an element with id lab-board, positioned: it is the board's box). destroy() lets go of
  * every listener and the frames. */
 export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}) {
-  if (!document.getElementById('lab-board-css')) document.head.append(Object.assign(document.createElement('style'), { id: 'lab-board-css', textContent: css }));
+  // Its parts live in a shadow root when the view has one (overlay.ts): the sheet goes there, and what the page's event
+  // listeners see of a press is the host, so a press is read from its composed path (src(), below).
+  const scope = root.getRootNode() as Document | ShadowRoot;
+  if (!scope.getElementById('lab-board-css')) (scope instanceof ShadowRoot ? scope : document.head).append(Object.assign(document.createElement('style'), { id: 'lab-board-css', textContent: css }));
+  const inside = (e: Event, n: Node | null) => Boolean(n) && e.composedPath().includes(n!);
+  const src = (e: Event) => e.composedPath()[0] as HTMLElement; // what was pressed, through the shadow root
+  const focused = () => (scope instanceof ShadowRoot ? scope.activeElement : document.activeElement) as HTMLElement | null;
   const ac = new AbortController();
   const signal = ac.signal;
   const on = <K extends string>(type: K, fn: (e: never) => void, o: AddEventListenerOptions | boolean = {}) => addEventListener(type, fn as EventListener, { ...(typeof o === 'boolean' ? { capture: o } : o), signal });
@@ -432,7 +438,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     zoomBox.append(b);
   }
   root.append(zoomBox);
-  const ours = (e: Event) => e.target instanceof Node && zoomBox.contains(e.target); // its own clicks, not the board's
+  const ours = (e: Event) => inside(e, zoomBox); // its own clicks, not the board's
 
   // ---------- input: the board owns its surface (these run before the widget's own listeners) ----------
   // Points are the box's own: the screen's less where the box is.
@@ -443,7 +449,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     const y = ly(e) / cam.z - cam.y;
     return cards.find((c) => x >= c.f.x && x <= c.f.x + c.f.w && y >= c.f.y && y <= c.f.y + c.f.h)?.f.id || '';
   };
-  const mine = (e: Event) => e.target instanceof Node && (root.contains(e.target) || e.target === handLayer);
+  const mine = (e: Event) => inside(e, root) || inside(e, handLayer);
   const pts = new Map<number, { x: number; y: number }>();
   let down: { x: number; y: number; id: string; far: boolean; at: number; t: number; held?: boolean; hand?: boolean } | null = null;
   let holdTimer = 0;
@@ -470,7 +476,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       handLayer.id = 'lab-hand';
       handLayer.setAttribute('data-uncommentable', '');
       Object.assign(handLayer.style, { left: `${ox}px`, top: `${oy}px`, width: `${view.w}px`, height: `${view.h}px` });
-      document.documentElement.append(handLayer);
+      (scope instanceof ShadowRoot ? scope : document.documentElement).append(handLayer);
     } else if (!space && handLayer && !down?.hand) {
       handLayer.remove();
       handLayer = null;
@@ -480,13 +486,13 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const eat = (e: Event) => (e.stopImmediatePropagation(), e.preventDefault());
 
   on('pointerdown', (e: PointerEvent) => {
-    if (!mine(e) || ours(e) || entered && e.target instanceof HTMLIFrameElement) return;
+    if (!mine(e) || ours(e) || entered && src(e) instanceof HTMLIFrameElement) return;
     if (zoomBox.classList.contains('open')) zoomBox.classList.remove('open');
     measure();
     theirs = false;
     // Option held pins on anything, frames too, as on a page (Leo, 20 Nov: selecting a frame took the comment away).
-    const tag = !e.altKey && (e.target as HTMLElement).closest?.('.t') as HTMLElement | null;
-    const size = tag && (e.target as HTMLElement).closest('u');
+    const tag = !e.altKey && src(e).closest?.('.t') as HTMLElement | null;
+    const size = tag && src(e).closest('u');
     if (size && editable()) return void (eat(e), mutate(tag.dataset.id!, (f) => ((f.w = +size.textContent!), (f.h = SIZES[f.w])))); // a size from the open frame's list
     if (tag && tag.dataset.id) return void (eat(e), enter(tag.dataset.id)); // a frame's label opens it
     if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget() && (e.altKey || boardWidget()!.pinning())) {
@@ -497,6 +503,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     eat(e);
     lastDown = performance.now();
     (document.activeElement as HTMLElement | null)?.blur?.();
+    focused()?.blur?.();
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     root.setPointerCapture?.(e.pointerId);
     if (pts.size === 2) {
@@ -660,7 +667,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     return true;
   };
   on('keydown', (e: KeyboardEvent) => {
-    if (e.key === ' ' && !typing(e) && !(entered && document.activeElement instanceof HTMLIFrameElement)) {
+    if (e.key === ' ' && !typing(e) && !(entered && focused() instanceof HTMLIFrameElement)) {
       e.preventDefault(); // the hand, not a scroll
       if (!space) {
         space = true;
@@ -668,7 +675,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       }
       return;
     }
-    if (e.defaultPrevented || typing(e) || (entered && document.activeElement instanceof HTMLIFrameElement)) return;
+    if (e.defaultPrevented || typing(e) || (entered && focused() instanceof HTMLIFrameElement)) return;
     if (press(e)) e.preventDefault();
   });
   on('keyup', (e: KeyboardEvent) => e.key === ' ' && space && ((space = false), hand()));

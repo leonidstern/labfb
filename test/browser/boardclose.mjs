@@ -30,14 +30,14 @@ try {
         const p = await ctx.newPage();
         p.on('pageerror', (e) => console.log('pageerror', e.message));
         await p.goto(url);
-        await p.waitForFunction(() => window.__labBoard && window.__labBoardWidget && document.querySelector('#lab-board .f[data-id="b"]'), null, { timeout: 8000 });
+        await p.waitForFunction(() => window.__labBoard && window.__labBoardWidget && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="b"]'), null, { timeout: 8000 });
         await sleep(1200);
         const look = () => p.evaluate(() => {
           const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
           const chat = r?.querySelector('.chatwin');
           return { card: Boolean(r?.querySelector('.card:not(.out)')), draft: Boolean(r?.querySelector('.float:not(.out)')), chat: Boolean(chat && !chat.hidden && chat.offsetHeight), pins: r?.querySelectorAll('.pin:not(.draft)').length || 0, sel: window.__labBoard.selected(), cam: window.__labBoard.camera() };
         });
-        const rect = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }, id);
+        const rect = (id) => p.evaluate((i) => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }, id);
         const pinAt = () => p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.pin:not(.draft)').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
         const a = await rect('a');
         const b = await rect('b');
