@@ -3,30 +3,16 @@
 // Run: node test/browser/fluid.mjs   (needs the playwright package; NODE_PATH can point at a node_modules that has it).
 // Prints one line per check and exits 1 if any fails. docs: the spec is labit-md-research/specs/a-fluid-dialog.md.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  // On CI a missing browser is a failure: a skip there would pass with nothing run.
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-let DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-fluid-'));
+let DIR = tmp('labit-fluid-');
 const PORT = String(claimPort(5500, 300));
 let B = `http://localhost:${PORT}`;
-const env = { ...process.env, XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
+const env = labEnv({ PORT: undefined, LABIT_EXIT_WITH_PARENT: undefined });
 const LONG = 'This is a very long paragraph meant to be selected whole, it keeps going and going with plenty of words so that the selection runs over several lines of the window, and then it goes on a little more for good measure, with yet more words to be sure that it is over three hundred characters long, until finally it ends.';
 const PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>fluid</title>
 <style>body{margin:30px;max-width:520px;font:18px/1.6 Georgia,serif} #box{height:96px;overflow:auto;border:1px solid #999} #field{width:200px}</style>
@@ -44,22 +30,9 @@ const PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content
 // Every scene's page exists before the lab starts: it watches files it already knows for saves.
 for (let i = 0; i <= 100; i++) fs.writeFileSync(path.join(DIR, i ? `s${i}.html` : 'index.html'), PAGE);
 
-const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env, stdio: 'ignore' }); // its log is not read: a full pipe would stop it
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
+const server = startLab(DIR, env, { root: '.', port: PORT, stdio: 'ignore' }); // its log is not read: a full pipe would stop it
+await labUp(B);
 const missed = []; // changes to what the page shows that no redraw followed (window.__labDebug)
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 // Each scene has a page of its own (its pins and kept words are per page), so what one leaves can't reach the next.
 let PG = '/index';
 let scenes = 0;
@@ -191,7 +164,7 @@ async function scene(eng, browser, opts, run) {
 }
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       // Selecting opens the dialog
@@ -601,5 +574,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

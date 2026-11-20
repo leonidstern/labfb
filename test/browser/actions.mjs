@@ -4,57 +4,31 @@
 // Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/actions.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const env = labEnv();
 const PAGE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>a</title><h1>PRs</h1>' +
   '<p>#224 <button id="merge" data-lab-action="merge #224" data-lab-confirm onclick="document.title=\'ran\'">merge</button>' +
   ' <button id="explain" data-lab-action="explain #224" data-lab-action-note="in two lines">explain</button></p>';
 const labs = [];
 const lab = async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-actions-')));
+  const dir = fs.realpathSync(tmp('labit-actions-'));
   const port = claimPort(7400, 400);
   fs.writeFileSync(path.join(dir, 'index.html'), PAGE);
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ port }));
-  labs.push({ dir, server: spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: dir, env }) });
+  labs.push({ dir, server: startLab(dir, env) });
   const b = `http://localhost:${port}`;
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(b + '/');
-      break;
-    } catch {
-      await sleep(100);
-    }
-  }
+  await labUp(b);
   return b;
-};
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
 };
 const boxText = (p) => p.evaluate(() => [...document.querySelectorAll('[data-lab-comments]')].map((n) => n.shadowRoot?.querySelector('.float textarea')?.value).find((v) => v !== undefined) ?? null);
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const B = await lab(); // a lab per engine: no pin from the other one
     const browser = await pw[eng].launch();
     try {
@@ -104,5 +78,4 @@ try {
     fs.rmSync(l.dir, { recursive: true, force: true });
   }
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

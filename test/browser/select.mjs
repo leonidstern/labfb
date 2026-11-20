@@ -4,27 +4,14 @@
 // chips send a pin on the block with the action's prompt for the agent; Esc lets go and leaves. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/select.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { SEED, listFrom } from '../../lib/actions.ts';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
-})();
+const pw = playwright();
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-select-b-')));
+const DIR = fs.realpathSync(tmp('labit-select-b-'));
 const PORT = claimPort(7930, 30);
 const B = `http://localhost:${PORT}`;
 const page = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><body style="font:20px sans-serif">${body}`;
@@ -34,17 +21,8 @@ const reset = () => {
 reset();
 fs.writeFileSync(path.join(DIR, 'other.html'), page('o', '<h1>Other</h1>'));
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT, flags: { select: true } }));
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
+const server = startLab(DIR, labEnv());
+await labUp(B);
 const until = async (fn, ms = 3000) => {
   for (let t = 0; t < ms; t += 50) {
     if (await fn()) return true;
@@ -52,14 +30,9 @@ const until = async (fn, ms = 3000) => {
   }
   return false;
 };
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
 
 try {
-  for (const eng of (process.env.ENGINES || 'chromium').split(',')) {
+  for (const eng of engines('chromium')) {
     const browser = await pw[eng].launch();
     try {
       reset();
@@ -299,4 +272,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-process.exit(failed ? 1 : 0);
+finish('');
