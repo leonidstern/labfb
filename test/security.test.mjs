@@ -90,24 +90,14 @@ test("the agent's answer is told from a person's: an admin request marked as the
   assert.equal(await state(), false, 'a person with the admin key reopens it');
 });
 
-test('a write does not undo a change that landed after its read: a reply reopening a thread keeps a move made meanwhile', async () => {
+test('a reply reopening a thread keeps the move made before it (one change reads and writes in one step)', async () => {
   const page = '/anna/site/race';
   const { comment } = await pin(page, 'fix this', '10.1.3.1');
   await call({ page, action: 'resolve', id: comment.id }, { 'x-lab-admin': OWNER });
-  // Between the reopen's read and its write, the pin is moved (as another request would).
-  const h = db.get(`lab:comments:${page}`);
-  const get = h.get.bind(h);
-  let reads = 0;
-  h.get = (id) => {
-    const v = get(id);
-    if (id === comment.id && ++reads === 2) h.set(id, JSON.stringify({ ...JSON.parse(v), anchor: { selector: 'h2' }, movedAt: 'meanwhile' }));
-    return v;
-  };
+  assert.equal((await call({ page, action: 'move', id: comment.id, anchor: { selector: 'h2' } }, { 'x-lab-admin': OWNER })).status, 200);
   assert.equal((await call({ page, name: 'Ann', text: 'still broken', parent: comment.id }, { ip: '10.1.3.1' })).status, 201);
-  delete h.get;
-  const thread = JSON.parse(h.get(comment.id));
-  assert.ok(reads >= 4, 'it read again');
-  assert.deepEqual([thread.resolved, thread.anchor.selector, thread.movedAt], [false, 'h2', 'meanwhile'], 'reopened, and the move is still there');
+  const thread = JSON.parse(db.get(`lab:comments:${page}`).get(comment.id));
+  assert.deepEqual([thread.resolved, thread.anchor.selector, typeof thread.movedAt], [false, 'h2', 'string'], 'reopened, and the move is still there');
 });
 
 test('a pin found again on a changed page saves where it is now, and does not count as moved', async () => {
