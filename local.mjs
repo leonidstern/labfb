@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
@@ -17,6 +17,7 @@ import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive } from './lib/labcall.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
+import { sameKey } from './lib/comments-api.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -1036,8 +1037,7 @@ const guestOk = (req) => {
   for (const n of [`lab_guest_${PORT}`, 'lab_guest']) {
     const raw = new RegExp(`(?:^|;\\s*)${n}=([0-9a-f]{16})\\.([0-9a-f]{32})(?:\\s*;|$)`).exec(all);
     if (!raw) continue;
-    const want = Buffer.from(sign(raw[1])), got = Buffer.from(raw[2]);
-    if (want.length === got.length && timingSafeEqual(want, got)) return raw[1];
+    if (sameKey(sign(raw[1]), raw[2])) return raw[1];
   }
   return false;
 };
@@ -1071,11 +1071,7 @@ const redeem = (req, res, code, me = '', to = '') => {
   if (NAME_OK(me)) cookies.push(`lab_me_${PORT}=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
   return res.writeHead(302, { location: landing(to), 'set-cookie': cookies }).end();
 };
-const isAgent = (req) => {
-  const sent = Buffer.from(String(req.headers['x-lab-admin'] || ''));
-  const key = Buffer.from(AGENT_KEY);
-  return req.headers['x-lab-agent'] === '1' && sent.length === key.length && timingSafeEqual(sent, key);
-};
+const isAgent = (req) => req.headers['x-lab-agent'] === '1' && sameKey(String(req.headers['x-lab-admin'] || ''), AGENT_KEY);
 const sessionFrom = (req) => {
   try {
     const s = JSON.parse(decodeURIComponent(req.headers['x-lab-session'] || ''));
@@ -2112,11 +2108,7 @@ const pickedPin = async (board, frame) => {
 // A page as a board's page key spells it: /pricing.html is /pricing, / is /index.
 const boardPage = (p) => (p === '/' ? '/index' : p.replace(/\.html?$/i, '').replace(/\/$/, ''));
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
-const keyOk = (req) => {
-  const got = Buffer.from(String(req.headers['x-lab-admin'] || ''));
-  const key = Buffer.from(TOKEN);
-  return got.length === key.length && timingSafeEqual(got, key);
-};
+const keyOk = (req) => sameKey(String(req.headers['x-lab-admin'] || ''), TOKEN);
 // Archiving a lab from the switcher (and the API's "stop"): every open wait ends with 423, which tells the agent the person stopped it (it
 // shouldn't wait again until asked). Pins stay where they are.
 const stopListening = () => {
