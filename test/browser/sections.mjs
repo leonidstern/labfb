@@ -165,9 +165,9 @@ try {
     check(eng, 'the same name on another device: what was read is read', !(await D.states()).match(/new|updated/), await D.states());
     const M = await open(await context(), '/', `mira-${eng}`);
     check(eng, 'another name has its own: a first visit reads it all', !(await M.states()).match(/new|updated/), await M.states());
-    // The looks are untouched.
+    // The agent's text names nobody.
     const text = await (await fetch(`${B}/_lab/agent/index`)).text();
-    check(eng, "marks are not the agent's looks (no person in its text)", !/looked: /.test(text) && !new RegExp(ME).test(text), text.split('\n').filter((l) => /looked/.test(l)).join('|'));
+    check(eng, "marks are not in the agent's text (no person)", !/looked: /.test(text) && !new RegExp(ME).test(text), text.split('\n').filter((l) => /looked/.test(l)).join('|'));
     // Another device reads something new: this one hears it.
     write('index.html', page({ body: sec('speed', 'Speed', 'Words of Speed, now longer.') + sec('cost', 'Cost') + sec('risk', 'Risk', 'Risk changed.') + sec('plan', 'Next steps') + sec('extra', 'Appendix') + sec('z', 'Last words') + sec('q', 'Questions') }));
     await until(async () => (await D.states()).includes('Questions:new'));

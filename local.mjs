@@ -12,7 +12,6 @@ import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile } f
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
-import { pageIds } from './lib/ids.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive } from './lib/labcall.ts';
@@ -98,7 +97,7 @@ For the agent, from the project:
       .lab/boards/<board>/) | --widths 390,820,1280 | --flow /a,/b,/c. add <board> <frame|/page|file.html>
       [--label] [--width] [--after]; move <board> <frame> --after <frame>; pick <board> <frame>; list [<board>].
 
-.lab/ in the folder holds the comments (comments.md, comments/), archive/, looked/, state.json, server.json
+.lab/ in the folder holds the comments (comments.md, comments/), archive/, state.json, server.json
 and key (owner-only). Delete it to start over.`;
 
 // ---------- arguments ----------
@@ -652,7 +651,7 @@ const fidOf = (rel) => {
 };
 function rehome() {
   let byFid = null;
-  for (const page of PROXY ? [] : new Set([...pages(), ...looked.keys()])) {
+  for (const page of PROXY ? [] : new Set(pages())) {
     const [was, fid] = homes.get(page) || [];
     const rel = fileIndex.get(page);
     if (rel) {
@@ -660,7 +659,6 @@ function rehome() {
       if (now === fid && rel === was) continue;
       homes.set(page, [rel, now]);
       unsaved.add(page);
-      if (looked.has(page)) saveLooks(page);
       continue;
     }
     byFid ||= new Map([...fileIndex].map(([key, f]) => [fidOf(f), key]));
@@ -680,13 +678,6 @@ function rehome() {
       mine[to] ||= mine[page];
       delete mine[page];
       saveSections();
-    }
-    // The looks go with the page, in a file named for the new page.
-    if (looked.has(page)) {
-      if (!looked.has(to)) looked.set(to, looked.get(page));
-      looked.delete(page);
-      fs.rmSync(lookFile(page), { force: true });
-      saveLooks(to);
     }
     console.log(`[lab] ${was} is now ${fileIndex.get(to)}: its comments went with it`);
     for (const p of [page, to]) persist(p).catch((e) => console.error('[lab] could not save comments:', e.message));
@@ -734,7 +725,7 @@ const agentText = async (page) => {
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
   const file = fileFor(page);
-  const lines = [file && `file: ${file}`, ...lookLines(page, file)].filter(Boolean);
+  const lines = [file && `file: ${file}`].filter(Boolean);
   const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
   return boardText(page, file ? lineHints(out, file) : out);
 };
@@ -792,27 +783,6 @@ const boardText = async (page, text) => {
     const more = lead === 'near: frame ' && g.state === 'picked' ? `\n${act.frameLine(bd, g, of(bd)).split('\n')[1]}` : '';
     return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${g.src.startsWith('/_lab/') ? `${id}.html` : g.src} at ${g.w}×${g.h})${tail}${more}`;
   })).join('\n');
-};
-// Who last looked (the last three, newest first), and whether before or after the file's last save (what they saw
-// may be older than the agent's latest edit): `looked: Leo 14:02 (before the last save)`. Then, for an HTML file, the
-// ids in it each has not seen, so the agent can point at them: `unseen by Leo: #v3, #pricing` (at most 5 each).
-const lookLines = (page, file) => {
-  const rec = looked.get(page);
-  if (!rec) return [];
-  const who = Object.values(rec.who).sort((a, b) => b.at - a.at).slice(0, 3);
-  let st, now;
-  try {
-    st = file && fs.statSync(path.join(ROOT, file));
-    if (st && /\.html?$/i.test(file) && st.size <= 2e6) now = pageIds(fs.readFileSync(path.join(ROOT, file), 'utf8'));
-  } catch {}
-  const at = (w) => `${w.name} ${new Date(w.at).toTimeString().slice(0, 5)}${st ? ` (${w.at < st.mtimeMs ? 'before' : 'after'} the last save)` : ''}`;
-  const unseen = (w) => {
-    const ids = rec.snaps[w.snap]?.ids;
-    const had = new Set(ids?.map((n) => n[0]));
-    const fresh = ids && now ? now.filter((id) => !had.has(id)) : [];
-    return fresh.length && `unseen by ${w.name}: ${fresh.slice(0, 5).map((id) => `#${id}`).join(', ')}${fresh.length > 5 ? ` (+${fresh.length - 5} more)` : ''}`;
-  };
-  return [who.length && `looked: ${who.map(at).join(', ')}`, ...who.map(unseen)];
 };
 
 // lab: this run of the lab (a restart is a new one); widget: what the comment widget's script is, with the parts it
@@ -1229,22 +1199,6 @@ const archivePage = (page, on) => {
 };
 // Kept in objects with no prototype: a name or page like "__proto__" is just a key (it once could poison every object).
 const bare = (o) => Object.assign(Object.create(null), o);
-// Side files (last looks) are written whole through a .tmp, and one that can't be read is put aside like a
-// page's file, not taken for empty and then written over.
-const readSide = (file, what) => {
-  let text;
-  try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch {
-    return null; // not made yet
-  }
-  try {
-    const data = JSON.parse(text);
-    if (data && typeof data === 'object' && !Array.isArray(data)) return data;
-  } catch {}
-  putAside(file, what);
-  return null;
-};
 const reads = (() => {
   const out = Object.create(null);
   for (const [name, pagesOf] of Object.entries(isObj(labState.reads) ? labState.reads : {})) if (isObj(pagesOf)) out[name] = bare(pagesOf);
@@ -1255,66 +1209,7 @@ stateParts.reads = () => reads;
 let readsBroadcast = 0;
 let readsRev = 0;
 const plainName = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
-// A side file is saved whole, a moment after its last change.
-const saver = (file, data, what) => {
-  let timer;
-  return () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      try {
-        writeAtomic(file, JSON.stringify(data()));
-      } catch (e) {
-        console.error(`[lab] could not save ${what}:`, e.message);
-      }
-    }, 300);
-  };
-};
 const saveReads = saveState;
-// New since you looked: each person's last look at a page (the ids on it, each with its label), so a phone and a Mac
-// with the same name agree on what is new. .lab/looked/<same file name as .lab/comments/>.json as
-//   { v: 1, page, file, fid, snaps: { id: { at, by, ids: [[id, label]…] } }, who: { plain name: { name, snap, at } } }
-// A snap's id is a hash of its ids, so two people who looked at the same page share one. A snap from before ids has
-// `blocks` (text) and no `ids`: the widget takes the page's ids as seen then. A snap nobody points to goes, except the
-// newest few (the rounds: what the page held at each look); a name nobody has touched for a month goes at start.
-const LOOKED = path.join(LAB, 'looked');
-const LOOKS = { ids: 4000, body: 400 * 1024, names: 200, pages: 1000, keep: 5, days: 30 };
-const looked = new Map();
-let lookedRev = 0;
-const pruneLooks = (rec) => {
-  for (const [name, w] of Object.entries(rec.who)) if (Date.now() - w.at > LOOKS.days * 864e5) delete rec.who[name];
-  const used = new Set(Object.values(rec.who).map((w) => w.snap));
-  const newest = new Set(Object.entries(rec.snaps).sort((a, b) => b[1].at - a[1].at).slice(0, LOOKS.keep).map(([id]) => id));
-  for (const id of Object.keys(rec.snaps)) if (!used.has(id) && !newest.has(id)) delete rec.snaps[id];
-};
-if (fs.existsSync(LOOKED)) {
-  for (const name of fs.readdirSync(LOOKED)) {
-    if (!name.endsWith('.json')) continue; // half-written .tmp files and damaged ones put aside
-    const file = path.join(LOOKED, name);
-    const f = readSide(file, `looked/${name}`);
-    if (!f) continue;
-    if (f.v !== 1 || typeof f.page !== 'string' || !f.page.startsWith('/') || !f.snaps || typeof f.snaps !== 'object' || !f.who || typeof f.who !== 'object') {
-      putAside(file, `looked/${name}`);
-      continue;
-    }
-    const rec = { snaps: bare(f.snaps), who: bare(f.who) };
-    pruneLooks(rec);
-    looked.set(f.page, rec);
-    if (typeof f.file === 'string' && /^[\d.]+$/.test(f.fid) && !homes.has(f.page)) homes.set(f.page, [f.file, f.fid]);
-  }
-}
-fs.mkdirSync(LOOKED, { recursive: true });
-const lookFile = (page) => path.join(LOOKED, storeName(page));
-const lookSavers = new Map();
-const saveLooks = (page) => {
-  if (!lookSavers.has(page))
-    lookSavers.set(page, saver(lookFile(page), () => {
-      const home = homes.get(page);
-      return { v: 1, page, ...(home && { file: home[0], fid: home[1] }), ...looked.get(page) };
-    }, 'looks'));
-  lookSavers.get(page)();
-};
-/** @type {any} */
-let lookedBroadcast = 0;
 let lookedIndexed = 0;
 // Sections read, per person (the section bar): state.json's sections, as { name: { page: { section id: text hash } } }. A
 // section whose id is not there is new; one whose hash differs from the page's now is updated; one that matches is read.
@@ -1347,7 +1242,7 @@ stateParts.handed = () => {
 const saveHanded = saveState;
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(isObj(labState.handed) ? labState.handed : {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, labit: VERSION, flags: flagsOn(SET.flags), reads: readsRev, looked: lookedRev, sections: sectionsRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, labit: VERSION, flags: flagsOn(SET.flags), reads: readsRev, sections: sectionsRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1377,7 +1272,7 @@ if (!PROXY) watchTree(ROOT, (event, file) => {
       fileIndex = null;
       fileMemo.clear();
       indexStale = false;
-      const known = pages()[0] ?? [...looked.keys()][0];
+      const known = pages()[0];
       if (known) fileFor(known); // listed again at once, so a renamed page's comments and looks go with it now
     }
     const hotOnly = !otherSaved.size && hotSaved.size > 0 && hotSaved.size <= 50; // more than the list holds: a reload
@@ -1600,7 +1495,7 @@ const boardTold = new Map(); // session + board -> the frames text it was given 
 async function threadsText(page, threads, who = '') {
   const text = await agentText(page);
   const [frames, rest] = text.startsWith('# Board') ? text.split(/\n(?=# Comments)/) : ['', text];
-  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked|unseen by .*):/.test(l)).join('\n');
+  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked):/.test(l)).join('\n');
   if (frames && boardTold.get(`${who}\n${page}`) !== frames) {
     boardTold.set(`${who}\n${page}`, frames);
     head = `${frames.trim()}\n${head}`;
@@ -2739,52 +2634,6 @@ const handler = async (req, res) => {
       const name = plainName(url.searchParams.get('name'));
       const ids = (name && reads[name]?.[url.searchParams.get('page') || '']) || [];
       return answer(res, { ids });
-    }
-    // Last looks, by name and page (see LOOKED, above): GET ?name=&page= gives that person's last look and the rounds
-    // before it; &snap= one round's ids. POST { name, page, ids: [[id, label]…] } makes now their last look. Open to any device the
-    // lab lets in, as the read marks are; the page must be one of this lab's.
-    if (pathname === '/_lab/api/looked') {
-      if (req.method === 'POST') {
-        const body = await sentWithin(req, LOOKS.body);
-        if (body === null) return plain(res, 413, 'too big', { connection: 'close' });
-        let b;
-        try {
-          b = JSON.parse(body || '{}');
-        } catch {
-          return plain(res, 400, 'not JSON');
-        }
-        const name = plainName(b?.name);
-        const page = String(b?.page || '').slice(0, 500);
-        if (!name || !page.startsWith('/') || !Array.isArray(b.ids)) return plain(res, 400, 'name, page and ids needed');
-        if (b.ids.length > LOOKS.ids) return plain(res, 413, 'too many ids');
-        // A page saved a moment ago may not be in the file list yet (the watcher is a beat behind): look again, at most every 2 s.
-        if (!isLabPage(page)) return plain(res, 400, 'a page of this lab needed');
-        if (!looked.has(page) && looked.size >= LOOKS.pages) return plain(res, 429, 'too many pages');
-        const rec = looked.get(page) || { snaps: bare(), who: bare() };
-        if (!(name in rec.who) && Object.keys(rec.who).length >= LOOKS.names) return plain(res, 429, 'too many names');
-        const ids = b.ids.map((n) => (Array.isArray(n) ? [String(n[0]).slice(0, 200), String(n[1] ?? '').slice(0, 80)] : [String(n).slice(0, 200), '']));
-        const id = createHash('sha1').update(JSON.stringify(ids.map((n) => n[0]))).digest('hex').slice(0, 12);
-        const at = Date.now();
-        const shown = String(b.name).replace(/\s+/g, ' ').trim().slice(0, 60);
-        rec.snaps[id] ||= { at, by: shown, ids };
-        rec.who[name] = { name: shown, snap: id, at };
-        pruneLooks(rec);
-        looked.set(page, rec);
-        const rel = fileFor(page);
-        if (rel && !homes.has(page)) homes.set(page, [rel, fidOf(rel)]); // so a renamed page takes its looks along
-        lookedRev++;
-        saveLooks(page);
-        // One broadcast per moment: every open tab of that name checks again.
-        if (!lookedBroadcast) lookedBroadcast = setTimeout(() => ((lookedBroadcast = 0), broadcast()), 100);
-        return answer(res, { at });
-      }
-      const rec = looked.get(url.searchParams.get('page') || '');
-      const snap = url.searchParams.get('snap');
-      const mine = rec?.who[plainName(url.searchParams.get('name'))];
-      if (snap) return answer(res, rec?.snaps[snap] ? { snap, at: rec.snaps[snap].at, ids: rec.snaps[snap].ids || null } : {});
-      if (!rec || !mine || !rec.snaps[mine.snap]) return answer(res, {});
-      const rounds = Object.entries(rec.snaps).sort((a, b) => b[1].at - a[1].at).map(([id, s]) => ({ snap: id, at: s.at, by: s.by }));
-      return answer(res, { snap: mine.snap, at: mine.at, ids: rec.snaps[mine.snap].ids || null, rounds }); // null: a look from before ids
     }
     // Sections read, by name and page (see sections, above): GET ?name=&page= gives { sections: { id: hash } }, or {} when
     // that person has none for the page yet (a first visit); POST { name, page, sections: { id: hash } } sets those
