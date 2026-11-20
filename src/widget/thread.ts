@@ -79,6 +79,9 @@ export function placeBeside(node, left, top, pin?: HTMLElement | null) {
     node.style.left = `${Math.max(scrollX + 12, Math.min(left - 14, right - width))}px`;
     node.style.top = `${top + 10 + h > end ? Math.max(scrollY + 8, top - 40 - h) : top + 10}px`;
   }
+  // Whole inside the screen (8 px in), where the script is the one placing it (no pin to tie it to).
+  const low = scrollY + document.documentElement.clientHeight - 8 - h;
+  node.style.top = `${Math.max(scrollY + 8, Math.min(parseFloat(node.style.top), low))}px`;
   tieToPin(node, pin, 'beside', { cx: left + 36, cy: top - 37, ux: left - 14, uy: top + 10, ay: top - 40 });
 }
 
