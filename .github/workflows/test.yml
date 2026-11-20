@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - run: npm run build # the page script is built from src/, not kept in git
       - run: node --check local.mjs && node --check src/comments.js && node --check public/_lab/comments.js && node --check lib/comments-api.mjs
       - run: npm test
 
@@ -118,6 +119,7 @@ jobs:
           node-version: 22
       - if: steps.pick.outputs.go == 'true'
         run: npm install --no-save --no-audit --no-fund playwright@1.65.1
+      - run: npm run build # the page script is built from src/, not kept in git
       - name: Run ${{ matrix.group.name }}
         if: steps.pick.outputs.files != ''
         # A file that fails runs once more before the job fails: eight browsers on one Mac make a timing check miss now

@@ -18,6 +18,7 @@ import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './l
 import { alive } from './lib/labcall.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
+import { ensureBuilt } from './lib/build.ts';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -3018,5 +3019,6 @@ if (!process.env.LAB_DEV && !process.env.LABIT_NO_FOLLOW && process.platform !==
 process.on('SIGINT', bye);
 process.on('SIGTERM', bye);
 process.on('SIGHUP', bye); // the terminal it ran in closed
+ensureBuilt(REPO); // a checkout: the page script is built from src/, not kept in git (lib/build.ts)
 PORT = skipLabs(PORT);
 server.listen(PORT, WIFI ? undefined : '127.0.0.1');
