@@ -69,7 +69,7 @@ export function sendBody(req: IncomingMessage, res: ServerResponse, status: numb
 const squeezed = new Map<string, Buffer>(); // file + etag + encoding → compressed bytes, so a file is compressed once per change
 let squeezedBytes = 0;
 const SQUEEZED_MAX = 10e6; // at most 10 MB kept: the oldest go first (a busy evening held ~25 MB of old versions)
-const keepSqueezed = (key: string, out: Buffer) => {
+const keepSqueezed = (key: string, out: Buffer): Buffer => {
   squeezed.set(key, out);
   squeezedBytes += out.length;
   for (const [k, v] of squeezed) {
@@ -77,7 +77,22 @@ const keepSqueezed = (key: string, out: Buffer) => {
     squeezed.delete(k);
     squeezedBytes -= v.length;
   }
+  return out;
 };
+// A page script the npm package ships brotli-packed (<name>.js.br, scripts/build-widget.mjs) and a checkout has plain: the
+// answer sendFile gives for <name>.js, made from the packed file. To a browser that takes brotli the packed bytes go as they
+// are; to one that doesn't they are unpacked (once per file) and sent plain or gzipped. No range answers: a script goes whole.
+export function sendPacked(req: IncomingMessage, res: ServerResponse, file: string): void {
+  const stat = fs.statSync(`${file}.br`);
+  const etag = `W/"${stat.size.toString(36)}-${Math.round(stat.mtimeMs).toString(36)}"`;
+  if (req.headers['if-none-match'] === etag) return void res.writeHead(304, { 'cache-control': 'no-cache', etag }).end();
+  const enc = encodingFor(req);
+  const key = `${file} ${etag} `;
+  const unpacked = () => squeezed.get(`${key}plain`) ?? keepSqueezed(`${key}plain`, zlib.brotliDecompressSync(fs.readFileSync(`${file}.br`)));
+  const out = squeezed.get(`${key}${enc || 'plain'}`) ?? keepSqueezed(`${key}${enc || 'plain'}`, enc === 'br' ? fs.readFileSync(`${file}.br`) : enc === 'gzip' ? squeeze(unpacked(), 'gzip') : unpacked());
+  res.writeHead(200, { 'content-type': TYPES['.js'], 'accept-ranges': 'bytes', 'cache-control': 'no-cache', etag, vary: 'accept-encoding', ...(enc && { 'content-encoding': enc }), 'content-length': out.length });
+  res.end(req.method === 'HEAD' ? undefined : out);
+}
 // One file, with byte ranges (video seeking). A bad range gets 416, never a crash.
 export function sendFile(req: IncomingMessage, res: ServerResponse, file: string): void {
   const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';

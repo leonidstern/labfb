@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
+import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
@@ -792,9 +792,11 @@ const boardText = async (page, text) => {
 // just catch up after a restart.
 const widgetRev = () => {
   try {
+    // A checkout has the scripts plain; the npm package has them packed (<name>.js.br, scripts/build-widget.mjs).
     const dir = path.join(REPO, 'public/_lab');
-    const hash = createHash('sha1').update(fs.readFileSync(path.join(dir, 'comments.js')));
-    for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.js') && f !== 'comments.js').sort()) hash.update(f).update(fs.readFileSync(path.join(dir, f)));
+    const all = fs.readdirSync(dir);
+    const hash = createHash('sha1');
+    for (const f of all.filter((f) => f.endsWith('.js') || (f.endsWith('.js.br') && !all.includes(f.slice(0, -3)))).sort()) hash.update(f).update(fs.readFileSync(path.join(dir, f)));
     return hash.digest('hex').slice(0, 10);
   } catch {
     return '';
@@ -2740,6 +2742,7 @@ const handler = async (req, res) => {
     if (!fs.existsSync(file) && fs.existsSync(file + '.html')) file += '.html';
     // A browser asks for /favicon.ico on its own (for a tab, a bookmark, history): a folder without one gets labit's.
     if (!fs.existsSync(file) && pathname === '/favicon.ico') return res.writeHead(302, { location: '/_lab/favicon.svg' }).end();
+    if (lab && file.endsWith('.js') && !fs.existsSync(file) && fs.existsSync(`${file}.br`)) return sendPacked(req, res, file); // the npm package's page scripts
     if (!fs.existsSync(file)) return notFound(req, res, pathname);
     file = fs.realpathSync(file);
     if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
