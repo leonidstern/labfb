@@ -270,11 +270,11 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // ---------- DOM ----------
   const host = document.createElement('div');
   host.setAttribute('data-lab-comments', '');
-  host.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;z-index:2147483000;';
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `
     <style>${styles}</style>
     <div class="scrim"></div>
+    <i class="fit" aria-hidden="true"></i>
     <div class="layer"></div>
     <div class="motions"></div>
     <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · hold ${/Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt'} to pin on anything · ${KEYS.toggle} hide</div>
@@ -1998,12 +1998,28 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     }
     flushPins();
   };
+  // The host sits at the page's top left corner (styles.css :host), as its box's own: a page that makes <body> or <html>
+  // the box an absolute child counts from (position: relative, transform, filter, contain, will-change, a margin on it)
+  // moves that corner, and every pin with it. Zoom does the same (`zoom` on the page scales what is drawn inside it).
+  // So the host is measured where it stands, and set back at the page's corner, zoomed the other way.
+  const fitProbe = $('.fit');
+  const fitVars = { x: 0, y: 0, z: 1 };
+  const fit = () => {
+    const k = fitProbe.getBoundingClientRect().width / 100;
+    if (k > 0 && Math.abs(k - 1) > 0.001) host.style.setProperty('--lab-fz', String((fitVars.z = Math.min(10, Math.max(0.1, fitVars.z / k)))));
+    const r = host.getBoundingClientRect();
+    const [dx, dy] = [r.left + scrollX, r.top + scrollY];
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    host.style.setProperty('--lab-fx', `${(fitVars.x -= dx)}px`);
+    host.style.setProperty('--lab-fy', `${(fitVars.y -= dy)}px`);
+  };
   S.frame = 0;
   let reflowAll = false; // something but a scroll asked (a resize, the page's size): every pin is placed again
   const reflow = (scrolled) => {
     reflowAll ||= scrolled !== true;
     cancelAnimationFrame(S.frame);
     S.frame = requestAnimationFrame(() => {
+      fit();
       const scrolledOnly = !reflowAll;
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (S.draft || root.activeElement || S.grabbing || isTrying()) return; // words tried in place: the pins stay put
@@ -2022,7 +2038,10 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
   const navigated = () => {
-    if (!host.isConnected && document.body) document.body.append(host);
+    if (!host.isConnected && document.body) {
+      document.body.append(host);
+      fit();
+    }
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
     S.routed?.(); // the section bar (sections.ts)
@@ -2154,6 +2173,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     refreshPinCursor();
     if (S.on) showHint();
     document.body.append(host);
+    fit();
     // The page's own selection while commenting, and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
