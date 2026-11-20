@@ -4,7 +4,6 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
-- **A smaller package, same look (−2.3 KB packed).** `/_lab/lab.css` is built (minified) from `src/lab.css`, which keeps the comments (−1.9 KB); the widget's stylesheet loses the space inside custom properties and `var()` fallbacks, eight `[hidden]` rules the global `[hidden]` rule already covers, the section bar's hidden status dot and word, a duplicate `@position-try` and two unprefixed-already `-webkit-` properties (−0.4 KB). Screenshots of 19 widget states, light and dark, desktop and 390 px phone, WebKit and Chromium, are pixel-identical to before.
 - **A smaller package (−1.3 KB).** The server bundle drops code nothing reaches: the page-script builder that only a checkout uses is no longer in the npm bundle, the comments API works on the lab's own store directly (no Redis-style command layer), the lab's mark is read from the tab icon file instead of a second copy, and `--help` and a few helpers say the same things in fewer words. Nothing you can use changed.
 - Ink on selected words (the `inkOnText` experiment) is gone. Selecting words for a comment gives a pin on them, as it always did; an old `inkOnText` in a settings file gets the "not something being tried now" note and nothing else.
 - The server bundle (`dist/local.mjs`) gets the same name shortening the page script has (`scripts/build-cli.mjs`): the npm package is 1.7 KB smaller.
