@@ -10,8 +10,10 @@ type Handler = (event: string, file: string) => void;
 
 /** onEvent(event, file): file is relative to root, as fs.watch's recursive watcher reports it. */
 export function watchTree(root: string, onEvent: Handler, skip: (rel: string) => boolean = () => false): { close: () => void } {
+  const skipped = (rel: string) => rel.split(path.sep).some((_, i, parts) => skip(parts.slice(0, i + 1).join(path.sep)));
   if (process.platform !== 'linux') {
-    const w = fs.watch(root, { recursive: true }, (event, file) => file && onEvent(event, String(file)));
+    // The native watcher sees everything under root: what skip() names is dropped here, as on Linux it is never watched.
+    const w = fs.watch(root, { recursive: true }, (event, file) => file && !skipped(String(file)) && onEvent(event, String(file)));
     return { close: () => w.close() };
   }
   const watchers = new Map<string, fs.FSWatcher>();

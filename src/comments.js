@@ -2777,6 +2777,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (!host.isConnected && document.body) document.body.append(host);
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
+    S.routed?.(); // the section bar (sections.ts)
     if (pageNow() === S.page) return;
     S.page = pageNow();
     S.seen = readSeen();
@@ -3007,7 +3008,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   if (S.board) {
     Object.assign(window, { __labBoardWidget: { pinning: () => S.on && !S.cursorMode, holding: () => S.on /* a phone's hold comments in either mode, as on a page */, hold: (/** @type {number} */ x, /** @type {number} */ y) => { if (S.cursorMode) setCursor(false); if (S.draft || S.openId) closeOrNudge(); else begin(anchorAt(x, y)); }, place: (/** @type {number} */ x, /** @type {number} */ y) => (S.draft || S.openId ? closeOrNudge() : begin(anchorAt(x, y))) } });
     // The camera moved: the pins are drawn again, unless the browser holds every one (flag native: tied to their frames).
-    const allHeld = () => !S.openId && !S.draft && pinsById.size > 0 && [...pinsById.values()].every((p) => heldPin(p));
+    // An open card tied to its pin (flag native: a sent pin's undo card, a thread) goes with it too, so it needs no redraw.
+    const cardHeld = () => !S.openId || Boolean(layer.querySelector('.card[data-held]:not(.out)'));
+    const allHeld = () => cardHeld() && !S.draft && pinsById.size > 0 && [...pinsById.values()].every((p) => heldPin(p));
     // When the frames themselves changed (detail.layout: one gone, replaced or resized), every pin is placed again.
     addEventListener('lab-board-moved', (e) => S.on && (/** @type {CustomEvent} */ (e).detail?.layout || !allHeld()) && (S.moveFrame ||= requestAnimationFrame(() => ((S.moveFrame = 0), render()))));
   }
