@@ -5,30 +5,16 @@
 // the host gets its own label back. Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/updbadge.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  // On CI a missing browser is a failure: a skip there would pass with nothing run.
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-updbadge-'));
+const DIR = tmp('labit-updbadge-');
 const PORT = String(claimPort(5600, 190)); // below 6000: browsers refuse that port (X11)
 const B = `http://localhost:${PORT}`;
-const env = { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
+const env = labEnv({}, { settings: false });
 const UPD_LABEL = 'update waiting, tap to load';
 const SESSION_URL = 'https://claude.ai/code/session_updbadge';
 const write = (f, t) => fs.writeFileSync(path.join(DIR, f), t);
@@ -37,21 +23,8 @@ write('data.json', '{"a":0}'); // a file the page may fetch: a save of it reload
 let saves = 0;
 const save = () => write('data.json', JSON.stringify({ a: ++saves }));
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', PORT], { cwd: DIR, env, stdio: 'ignore' });
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+const server = startLab(DIR, env, { root: '.', port: PORT, stdio: 'ignore' });
+await labUp(B);
 const waitFor = async (ok, ms) => {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(40)) if (await ok()) return true;
   return false;
@@ -107,7 +80,7 @@ const agentListens = () => {
 };
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       // A computer: the badge sits on the pill's mark.
@@ -221,5 +194,4 @@ try {
   await sleep(300); // the lab writes its .lab files as it stops
   fs.rmSync(DIR, { recursive: true, force: true, maxRetries: 5 });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

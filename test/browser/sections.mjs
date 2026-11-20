@@ -6,33 +6,19 @@
 // Run: node test/browser/sections.mjs   (needs the playwright package; NODE_PATH can point at a node_modules that has it).
 // ENGINES=webkit,chromium picks the engines (both by default).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
-})();
+const pw = playwright();
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sections-')));
-const OFF_DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sections-off-')));
+const DIR = fs.realpathSync(tmp('labit-sections-'));
+const OFF_DIR = fs.realpathSync(tmp('labit-sections-off-'));
 const PORT = claimPort(5700, 200);
 const B = `http://localhost:${PORT}`;
 const OFF = `http://localhost:${PORT + 200}`;
-const env = { ...process.env, PORT: '', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const env = labEnv();
 const write = (f, t, dir = DIR) => fs.writeFileSync(path.join(dir, f), t);
 // Four sections far apart (each a screen and a half), after a title.
 const sec = (id, title, words = `Words of ${title}.`) => `<section id="${id}"><h2>${title}</h2><p>${words}</p></section>`;
@@ -68,7 +54,7 @@ write('index.html', page(), OFF_DIR);
 // A dev server behind --proxy: an app that switches routes with pushState and draws its headings late.
 const APP_PORT = PORT + 600;
 const PX = `http://localhost:${PORT + 400}`;
-const PX_DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sections-px-')));
+const PX_DIR = fs.realpathSync(tmp('labit-sections-px-'));
 fs.writeFileSync(path.join(PX_DIR, 'labit.json'), JSON.stringify({ port: PORT + 400 }));
 const route = (names) => names.map((n) => sec(n.toLowerCase(), n)).join('');
 const app = http.createServer((req, res) => {
@@ -78,23 +64,11 @@ const app = http.createServer((req, res) => {
   res.writeHead(200, { 'content-type': 'text/html' });
   res.end(page({ meta, body, head: 'header{position:static}' }));
 }).listen(APP_PORT);
-const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env });
-const offServer = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: OFF_DIR, env });
-const pxServer = spawn(process.execPath, [LAB, '--new', '--no-open', '--proxy', String(APP_PORT)], { cwd: PX_DIR, env });
+const server = startLab(DIR, env);
+const offServer = startLab(OFF_DIR, env);
+const pxServer = startLab(PX_DIR, env, { args: ['--proxy', String(APP_PORT)] });
 for (const base of [B, OFF, PX])
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(base + '/');
-      break;
-    } catch {
-      await sleep(100);
-    }
-  }
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+  await labUp(base);
 const until = async (f, ms = 6000) => {
   for (let t = 0; t < ms; t += 150) {
     if (await f().catch(() => false)) return true; // a reload mid-look (a rebuilt widget) is another try
@@ -104,7 +78,7 @@ const until = async (f, ms = 6000) => {
 };
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     const ME = `tess-${eng}`;
     const context = (extra = {}) => browser.newContext({ viewport: { width: 1100, height: 700 }, reducedMotion: 'reduce', ...extra });
@@ -391,5 +365,4 @@ try {
   await sleep(100);
   for (const d of [DIR, OFF_DIR, PX_DIR]) fs.rmSync(d, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all ok');
-process.exit(failed ? 1 : 0);
+finish('all ok');
