@@ -38,7 +38,7 @@ try {
       const ten = await p.evaluate(() => ({ live: __labBoard.live().length, cards: document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f').length, scroll: [scrollX, scrollY], hosts: document.querySelectorAll('[data-lab-comments]').length, bodyOverflow: getComputedStyle(document.body).overflow }));
       check(eng, 'ten frames: all ten are on the board, at most 8 are alive', ten.cards === 10 && ten.live === 8, JSON.stringify(ten));
       check(eng, 'the board page has one widget (its own), none in the frames', ten.hosts === 1, String(ten.hosts));
-      const inner = await p.evaluate(() => [...document.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelectorAll('[data-lab-comments]').length));
+      const inner = await p.evaluate(() => [...document.querySelector('[data-lab-board-view]').shadowRoot.querySelectorAll('iframe')].map((f) => f.contentDocument?.querySelectorAll('[data-lab-comments]').length));
       check(eng, 'no frame has a widget in it', inner.every((n) => n === 0), JSON.stringify(inner));
       const titleCard = await p.evaluate(() => [...document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f')].map((f) => f.querySelector('.c')?.textContent).filter(Boolean));
       check(eng, 'a frame not alive is a title card: label, size, no count', titleCard.length === 2 && titleCard.every((t) => /\/pricing/.test(t) && /300 × 300/.test(t) && !/comment|pin|\d+ open/i.test(t)), JSON.stringify(titleCard));
@@ -69,7 +69,7 @@ try {
       const after = under(z1, 700, 300);
       check(eng, 'Ctrl + wheel zooms about the cursor', z1.z > fit.z && Math.abs(before[0] - after[0]) < 0.5 && Math.abs(before[1] - after[1]) < 0.5, JSON.stringify([fit.z, z1.z, before, after]));
       check(eng, 'a pinch never zooms the page (no gesture reached it)', (await p.evaluate(() => visualViewport.scale)) === 1);
-      // ----- Tab, enter by the label, leave (focus goes back to the board); frames are never selected
+      // ----- Tab, enter with Enter, leave (focus goes back to the board); frames are never selected
       await p.keyboard.press('Shift+Digit1');
       await sleep(200);
       await p.keyboard.press('Tab');
@@ -79,8 +79,12 @@ try {
       const lab = await p.locator('#lab-board .f[data-id="f0"] .t').boundingBox();
       await p.mouse.click(lab.x + 8, lab.y + lab.height / 2);
       await sleep(400);
+      const clicked = await p.evaluate(() => ({ entered: __labBoard.entered(), ring: document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .f.sel').length, chips: document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelectorAll('#lab-board .t u').length }));
+      check(eng, 'a click on the frame\'s label opens nothing: no ring, no size list', clicked.entered === '' && clicked.ring === 0 && clicked.chips === 0, JSON.stringify(clicked));
+      await p.keyboard.press('Enter');
+      await sleep(400);
       const inFrame = await p.evaluate(() => ({ entered: __labBoard.entered(), pe: getComputedStyle(__labBoard.frame('f0')).pointerEvents, focus: document.querySelector('[data-lab-board-view]').shadowRoot.activeElement === __labBoard.frame('f0') }));
-      check(eng, 'a click on the frame\'s label gives the page in the frame the pointer and the focus', inFrame.entered === 'f0' && inFrame.pe === 'auto' && inFrame.focus, JSON.stringify(inFrame));
+      check(eng, 'Enter on the frame Tab moved to gives the page in the frame the pointer and the focus', inFrame.entered === 'f0' && inFrame.pe === 'auto' && inFrame.focus, JSON.stringify(inFrame));
       await p.keyboard.press('Escape');
       await sleep(250);
       const out = await p.evaluate(() => ({ entered: __labBoard.entered(), pe: getComputedStyle(__labBoard.frame('f0')).pointerEvents, body: document.activeElement === document.body, sel: __labBoard.selected() }));
@@ -151,7 +155,7 @@ try {
       const showing = await p.evaluate(() => [...document.querySelectorAll('*')].map((n) => n.shadowRoot?.querySelector('.ptr')).find(Boolean)?.classList.contains('show'));
       check(eng, 'the drawn pin shows on the board', showing === true);
       const label = await curAt(f0.x + 10, f0.y - 8);
-      check(eng, 'the frame label keeps its own hand', label.cursor === 'pointer', JSON.stringify(label));
+      check(eng, 'the frame label is plain text: no hand', label.cursor !== 'pointer', JSON.stringify(label));
       await p.mouse.move(600, 760);
       await p.keyboard.down('Space');
       await sleep(200);

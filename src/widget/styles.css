@@ -8,7 +8,7 @@
   width: 0 !important; height: 0 !important; z-index: 2147483000 !important; direction: ltr !important; unicode-bidi: normal !important; zoom: var(--lab-fz, 1) !important;
   --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
   --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
-  --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
+  --_pill-h: 37px /* the bar's height: the bar, the ⋯ and the listening mark are all this tall */; --_radius: var(--lab-radius, 12px); --_r-s: 6px /* two corners in all: 6 px small (keys, rows, tabs, text buttons), 12 px boxes and buttons; circles only for dots */;
   /* Washes of black (white in dark mode), four steps: soft, hover, line, muted, as lab.css. */
   --_green: rgb(52, 199, 89); --_green-fg: rgb(36, 160, 70); /* labit's green: pins and dots, and the text-sized form of it (the listening mark) */
   --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_edge: var(--lab-edge, #c7c7cc); --_muted: var(--lab-muted, rgba(0,0,0,.50));
@@ -291,7 +291,7 @@ button.btn.undo { color: var(--_fg); }
 .error { color: var(--_red); font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }
-.bar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
+.bar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: stretch; min-height: var(--_pill-h); /* with comments hidden the one "comments" segment was 34 px, 3 px under the pill beside it (Leo, 20 Nov) */ background: var(--_bg); border-radius: var(--_radius); box-shadow: var(--_shadow); overflow: hidden; }
 .bar button { border: 0; cursor: pointer; color: var(--_fg); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center;
               letter-spacing: -.006em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--_t-quick) var(--_ease-out); }
 /* The list and the chat: a header, a part that scrolls, and (the chat) a box at the bottom that doesn't. */
@@ -381,7 +381,7 @@ button.btn.undo { color: var(--_fg); }
        background: var(--_green-fg); color: var(--_bg); box-shadow: 0 0 0 1.5px var(--_bg); font: 700 9.5px/1 system-ui, sans-serif;
        letter-spacing: 0; pointer-events: none; animation: lab-arrive var(--_t-quick) var(--_ease-out); }
 /* one floating pill (lab.css .lab-button is the same) */
-.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 0; width: 37px; height: 37px; justify-content: center; /* the bar's height, so the two line up */ background: var(--_bg); box-shadow: var(--_shadow);
+.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 0; width: var(--_pill-h); height: var(--_pill-h); justify-content: center; /* the bar's height, so the two line up */ background: var(--_bg); box-shadow: var(--_shadow);
         font: inherit; font-size: 13px; letter-spacing: -.006em; white-space: nowrap;
         display: inline-flex; gap: 6px; align-items: center; color: var(--_fg); text-decoration: none; cursor: default; }
 .listener span { color: var(--_muted); }
@@ -393,13 +393,13 @@ button.btn.undo { color: var(--_fg); }
 /* Icon only (Leo, 20 Nov): the pill is the mark, with its status as a badge on the mark's corner, ringed like the update "!" (.upd):
    the number of pins waiting, or a sign: ! the agent went quiet, … it isn't answering, − nobody listens, ↻ reconnecting. The words
    show in a box above the pill the moment the pointer is on it (like a pin's tip), so the pill never grows. */
-.listener .mark { position: relative; z-index: 2; transform: translate(-3px, 3px); } /* low and left, so the badge sits over its corner and not its ears */
-.listener .cb { position: absolute; right: 2px; top: 2px; z-index: 3; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; corner-shape: round; /* a circle, not a squircle */
-        background: currentColor; color: var(--_green-fg); box-shadow: 0 0 0 1.5px var(--_bg); }
+.listener .mark { position: relative; z-index: 2; transform: translate(-5px, 3px); } /* low and left, so the badge sits over its corner and not its ears */
+.listener .cb { position: absolute; right: 5px; top: 5px; z-index: 3; width: 9px; height: 9px; display: grid; place-items: center; border-radius: 50%; corner-shape: round; /* a circle, not a squircle */
+        background: currentColor; color: var(--_green-fg); box-shadow: 0 0 0 1px var(--_bg); }
 .listener .cb:empty { display: none; }
 .listener .cb.amber { color: var(--_amber); } .listener .cb.grey { color: color-mix(in srgb, var(--_fg) 50%, var(--_bg)); } /* --_muted is see-through: the disc would show twice */
-.listener .cb span { color: var(--_bg); font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: 0; }
-.listener .cb svg { width: 13px; height: 13px; display: block; }
+.listener .cb span { color: var(--_bg); font: 700 7px/1 system-ui, sans-serif; letter-spacing: 0; }
+.listener .cb svg { width: 9px; height: 9px; display: block; }
 .listener .cb :is(svg, svg *) { color: inherit; } /* the sheet's * sets a colour on every element, the disc included */
 .listener.has-upd .cb { visibility: hidden; } /* the update's "!" takes the corner */
 .listener .w { position: absolute; left: -4px; bottom: calc(100% + 10px); z-index: 6; width: max-content; max-width: 280px; padding: 6px 9px; border-radius: var(--_r-s);
