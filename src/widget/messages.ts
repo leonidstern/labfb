@@ -7,6 +7,9 @@ type Deps = {
   repliesOf: (id: string) => any[];
   lineUp: () => Map<string, { s: string; n: number }>;
   ord: (n: number) => string;
+  render: () => void;
+  S: any;
+  root: ParentNode;
 };
 
 // Set once by the widget at startup (bindMessages).
@@ -44,4 +47,83 @@ export const stampOf = (m: any, root: any, prefix = ''): HTMLElement => {
     }
   }
   return stamp;
+};
+
+// An agent's status message: its "on it" (reply --on-it, stored as intent "working"). Not an answer, so it is never
+// unread, and once the thread has its answer it folds (foldStatus). Old records work: the intent is all it reads.
+export const isStatus = (m: any): boolean => Boolean(m?.parent && m.session && m.intent === 'working');
+
+type Slot = { m: any } | { fold: string; n: number; items: any[]; open: boolean };
+
+// Lays a list of messages out with its status runs folded. A run is consecutive status messages in one thread (other
+// threads' messages between them don't break it: in the chat, interleaved threads fold into one row each). When the
+// thread has a non-status agent message after the run, the whole run becomes one slot { fold, n, items, open } where its
+// first message was (open: the person tapped it, so the messages show in place); with no answer yet it folds all but its
+// latest, which stays where it is so you can see it is working. rootOf names a message's thread.
+export function foldStatus(msgs: any[], rootOf: (m: any) => string, openKeys: Set<string>): Slot[] {
+  const byRoot = new Map<string, any[]>();
+  for (const m of msgs) {
+    const k = rootOf(m);
+    if (!byRoot.has(k)) byRoot.set(k, []);
+    byRoot.get(k)!.push(m);
+  }
+  const folds = new Map<any, Slot>(); // a run's first folded message → the row that stands for the run
+  const hidden = new Set<any>();
+  for (const list of byRoot.values()) {
+    for (let i = 0; i < list.length; ) {
+      if (!isStatus(list[i])) {
+        i++;
+        continue;
+      }
+      let j = i;
+      while (j < list.length && isStatus(list[j])) j++;
+      const run = list.slice(i, j);
+      const answered = list.slice(j).some((x) => x.session && !isStatus(x));
+      const gone = answered ? run : run.slice(0, -1);
+      if (gone.length) {
+        const key = `fold-${gone[0].id}`;
+        folds.set(gone[0], { fold: key, n: gone.length, items: gone, open: openKeys.has(key) });
+        for (const g of gone) hidden.add(g);
+      }
+      i = j;
+    }
+  }
+  const out: Slot[] = [];
+  for (const m of msgs) {
+    const f = folds.get(m);
+    if (f) out.push(f);
+    else if (!hidden.has(m)) out.push({ m });
+  }
+  return out;
+}
+
+// The row that stands for a fold: "2 updates ›" (muted), "1 update ›"; open, it reads "‹" and the messages follow it.
+// A tap flips it in `unfolded`. With inPlace (a thread) the row changes itself and inPlace(open) shows or removes the
+// messages after it: nothing is drawn again, so the scroll, the focus and what is typed stay as they are. Without it (the
+// chat) the list is drawn again, which replaces the button: the new one takes the keyboard focus back by its data-id,
+// and S.foldToggle tells the chat to leave its scroll alone (no stick to the end, no entrance animation for the messages
+// it opens).
+export const foldRow = (slot: Extract<Slot, { fold: string }>, unfolded: Set<string>, inPlace?: (open: boolean) => void): HTMLElement => {
+  const label = (open: boolean) => `${slot.n} update${slot.n === 1 ? '' : 's'} ${open ? '‹' : '›'}`;
+  const b = d.el('button', { class: `updates${slot.open ? ' open' : ''}`, type: 'button', 'data-id': slot.fold, 'aria-expanded': String(slot.open) }, label(slot.open));
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = !unfolded.has(slot.fold);
+    if (open) unfolded.add(slot.fold);
+    else unfolded.delete(slot.fold);
+    if (inPlace) {
+      b.classList.toggle('open', open);
+      b.setAttribute('aria-expanded', String(open));
+      b.textContent = label(open);
+      return inPlace(open);
+    }
+    d.S.foldToggle = true;
+    try {
+      d.render();
+    } finally {
+      d.S.foldToggle = false;
+    }
+    (d.root.querySelector(`.updates[data-id="${slot.fold}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
+  });
+  return b;
 };
