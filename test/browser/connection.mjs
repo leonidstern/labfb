@@ -98,6 +98,28 @@ try {
       check(eng, 'leaving the page says bye: a listening agent hears the page closed', /page was closed/.test(ended) && Date.now() - t0 < 6000, `${ended.trim()} after ${Date.now() - t0} ms`);
       await ctx.close();
 
+      // ---- a comment made after the page read its list and before the stream's first message ----
+      const ctx3 = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+      await ctx3.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+      const p3 = await ctx3.newPage();
+      let letGo;
+      const held = new Promise((r) => (letGo = r));
+      let streamAsked = false;
+      await p3.route('**/_lab/live**', async (route) => {
+        streamAsked = true;
+        await held;
+        await route.continue().catch(() => {});
+      });
+      await p3.goto(B + '/');
+      await until(() => streamAsked);
+      const gotList = await until(async () => (await pinsOf(p3)) >= 0);
+      await sleep(300); // the list is in; the stream has not said anything yet
+      const listed = await pinsOf(p3);
+      await post(`while the stream connected in ${eng}`);
+      letGo();
+      check(eng, 'a comment made before the stream first speaks still shows, no reload', gotList && (await until(async () => (await pinsOf(p3)) === listed + 1, 5000)), `pins ${listed} → ${await pinsOf(p3)}`);
+      await ctx3.close();
+
       // ---- eight tabs of one lab: one stream for all, handed over when its tab goes ----
       const ctx2 = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx2.addInitScript(() => localStorage.setItem('lab-name', 'leo'));

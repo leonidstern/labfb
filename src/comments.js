@@ -391,6 +391,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       S.comments = data.comments || [];
+      S.rev = res.headers.has('x-lab-rev') ? Number(res.headers.get('x-lab-rev')) : null; // the lab's comments version this list is as of
       S.isAdmin = Boolean(data.admin);
       // A thread you were part-way through writing in opens again: the page may have reloaded under you
       // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.

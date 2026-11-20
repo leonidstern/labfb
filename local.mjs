@@ -2678,7 +2678,10 @@ const handler = async (req, res) => {
       const listRev = pageRev.get(listPage) || 0;
       const kind = `${isLoopback(req) ? 'here' : 'guest'} ${encodingFor(req)} ${req.headers['x-lab-admin'] || ''}`;
       const kept = listing && cachedList(listPage, kind);
-      if (kept) return res.writeHead(kept.status, kept.headers).end(kept.out);
+      // The list says which comments version it is as of (x-lab-rev), so a page that opened it can ask what came after
+      // (/changes) when the live stream's first message says the lab is further on. A kept list is as of now: its page hasn't changed.
+      if (kept) return res.writeHead(kept.status, { ...kept.headers, 'x-lab-rev': String(version.comments) }).end(kept.out);
+      const listAt = String(version.comments); // before the list is read: a change made while it is built is replayed, not missed
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
       // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does), and the
       // API hears from the lab alone who speaks, the agent or a person: a page can't say it is the agent.
@@ -2710,7 +2713,7 @@ const handler = async (req, res) => {
         broadcast();
         wake();
       }
-      const head = { 'content-type': out.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' };
+      const head = { 'content-type': out.headers.get('content-type') || 'application/json', 'cache-control': 'no-store', ...(listing ? { 'x-lab-rev': listAt } : {}) };
       let body = text;
       // Another device sees comments without the agent's session details.
       if (req.method === 'GET' && out.ok && !isLoopback(req) && /json/.test(out.headers.get('content-type') || '')) {

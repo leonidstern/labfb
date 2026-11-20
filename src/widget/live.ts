@@ -602,6 +602,7 @@ export function startLive() {
           else hotUpdate(v.hotFiles || []);
         }
         hotAt = hot;
+        commentsRev ??= W.S.rev ?? null; // the list's own version: what was written since it was read is fetched below, not lost
         // One version on and it names the pages it changed, none of them this one: nothing to fetch. (An older lab sends
         // no commentPages; more than one version on, the pages in between aren't known.)
         const elsewhere = v.comments === commentsRev + 1 && Array.isArray(v.commentPages) && !v.commentPages.includes(W.S.page);
