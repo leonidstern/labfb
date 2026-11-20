@@ -60,6 +60,8 @@ When the person says "use lab", "in lab" or "show it in lab", show the page in l
 4. Give the person the page's URL in one line, then send the page list and listen and answer as in Local lab, steps 2 to 5.
 5. For later changes, edit the file in the project, or publish a published page again. The page reloads by itself.
 
+A lab page never goes off the lab with the widget. The widget needs the lab server (`/_lab/api/comments`, `/_lab/live`), so as an Artifact or on static hosting it only shows "reconnecting" and "could not save", and no pin reaches you. When the person does ask for an Artifact or hosted copy of a lab page: publish the page's own source file, not the HTML fetched from the lab (the lab adds the widget script, the section bar and the admin token when it serves). If only served HTML exists, remove `comments.js`, the `data-lab` style and script, `data-admin` and the `/_lab/` links, and inline `lab.css` if the page uses its `--lab-*` tokens. Say it is a read-only copy: pins and replies stay on the local lab.
+
 Start local, always. The page stays on this computer (for a phone, add `--wifi`, then run `LAB invite` and give the person the link it prints: it lets one device in, once, within ten minutes). labit has no hosted labs for now, so to share a page with someone elsewhere, ask the person how they want it shared. Make an Artifact only if they ask for one.
 
 ## Boards (options, widths, flows)
