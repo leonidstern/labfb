@@ -380,3 +380,76 @@ test('git stays clean: a repo that ignores .lab sees nothing of boards', async (
   await cli(DIR, 'pick', 'clean', 'b');
   assert.equal(g('status', '--porcelain').trim(), '');
 });
+
+// ----- slide sizes and decks -----
+const diskOf = (name) => JSON.parse(fs.readFileSync(path.join(DIR, `.lab/boards/${name}.json`), 'utf8'));
+
+test('--size: slide 1920×1080, slide-720 1280×720, phone 390×844, on new and add; unknown is refused', async () => {
+  const sz = (out) => out.split('\n').filter((l) => /^[a-z] {2}/.test(l)).map((l) => l.split(/ {2}/)[2]);
+  assert.deepEqual(sz((await cli(DIR, 'new', 'Slides sized', '--flow', '/pricing,/cart', '--size', 'slide')).out), ['1920×1080', '1920×1080']);
+  assert.deepEqual(sz((await cli(DIR, 'new', 'Small slides', '--of', '/pricing', '--variants', '2', '--size', 'slide-720')).out).slice(1), ['1280×720', '1280×720']);
+  assert.deepEqual(sz((await cli(DIR, 'new', 'Phone sized', '--of', '/pricing', '--size', 'phone')).out), ['390×844']);
+  assert.match((await cli(DIR, 'add', 'slides-sized', '/pricing', '--size', 'slide-720')).out, /Added c/);
+  assert.deepEqual(diskOf('slides-sized').frames.map((f) => [f.w, f.h]), [[1920, 1080], [1920, 1080], [1280, 720]]);
+  assert.match((await cli(DIR, 'add', 'slides-sized', 'c', '--size', 'phone')).out, /Changed c\./);
+  assert.deepEqual([diskOf('slides-sized').frames[2].w, diskOf('slides-sized').frames[2].h], [390, 844]);
+  const bad = await cli(DIR, 'new', 'Bad size', '--flow', '/pricing', '--size', 'huge');
+  assert.equal(bad.code, 1);
+  assert.match(bad.out, /--size is one of slide, slide-720, phone/);
+  assert.match((await cli(DIR, 'new', 'Wide size', '--of', '/pricing', '--widths', '390', '--size', 'slide')).out, /--widths already sets the sizes/);
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) assert.match((await cli(DIR, 'new', 'Proto', '--flow', '/pricing', '--size', name)).out, /--size is one of/, name);
+  // the lab places 1920-wide frames without overlap
+  const placed = (await get(B, 'name=slides-sized')).body.frames;
+  assert.ok(placed[1].x >= placed[0].x + 1920 || placed[1].y > placed[0].y);
+});
+
+test('deck: N blank slide frames, one html each plus one slides.css, numbered', async () => {
+  const r = await cli(DIR, 'deck', 'Q3 review', '--slides', '4');
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /^# Board q3-review · Q3 review\n/);
+  const d = diskOf('q3-review');
+  assert.deepEqual(d.frames.map((f) => [f.id, f.w, f.h, f.label, f.src]), ['a', 'b', 'c', 'd'].map((id, i) => [id, 1920, 1080, String(i + 1), `/_lab/board/q3-review/${id}`]));
+  const dir = path.join(DIR, '.lab/boards/q3-review');
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['a.html', 'b.html', 'c.html', 'd.html', 'slides.css']);
+  assert.match(fs.readFileSync(path.join(dir, 'c.html'), 'utf8'), /<link rel="stylesheet" href="\/_lab\/board\/q3-review\/slides\.css">[\s\S]*<h1>Title<\/h1><div class="body"><p>Body<\/p><\/div><p class="n">3<\/p>/);
+  assert.match(fs.readFileSync(path.join(dir, 'slides.css'), 'utf8'), /1920px[\s\S]*var\(--lab-/);
+  const page = await fetch(`${B}/_lab/board/q3-review/b`);
+  assert.match(await page.text(), /class="slide"/);
+  const css = await fetch(`${B}/_lab/board/q3-review/slides.css`);
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /text\/css/);
+  assert.equal((await fetch(`${B}/_lab/board/nosuch/slides.css`)).status, 404);
+  assert.match(r.out, /slides: edit \.lab\/boards\/q3-review\/<frame>\.html/);
+  const again = await cli(DIR, 'deck', 'Q3 review', '--slides', '2');
+  assert.match(again.out, /# Board q3-review-2/, 'a second deck of the same topic never overwrites the first');
+  assert.equal((await cli(DIR, 'deck', 'Too many', '--slides', '31')).code, 1);
+  assert.equal((await cli(DIR, 'deck', 'Zero', '--slides', '0')).code, 1);
+  assert.equal((await cli(DIR, 'deck', '--slides', '3')).code, 1);
+  const thirty = await cli(DIR, 'deck', 'Thirty', '--slides', '30');
+  assert.equal(thirty.code, 0, thirty.out);
+  assert.equal(diskOf('thirty').frames.length, 30);
+});
+
+test('deck words: --slides must be a whole number; a flag that does nothing where it is given is refused', async () => {
+  for (const bad of [['--slides'], ['--slides', 'abc'], ['--slides', '2.5'], ['--slides', '3x']]) assert.equal((await cli(DIR, 'deck', 'Bad count', ...bad)).code, 1, bad.join(' '));
+  assert.equal(fs.existsSync(path.join(DIR, '.lab/boards/bad-count')), false);
+  assert.match((await cli(DIR, 'new', 'Ign two', '--size', 'slide')).out, /--size has nothing to size/);
+  assert.match((await cli(DIR, 'pick', 'slides-sized', 'a', '--size', 'slide')).out, /--size goes with board new or board add, not board pick/);
+  assert.match((await cli(DIR, 'deck', 'Ign deck', '--slides', '2', '--size', 'phone')).out, /--size goes with/);
+  assert.match((await cli(DIR, 'add', 'slides-sized', 'a', '--slides', '3')).out, /--slides goes with board deck/);
+});
+
+test('deck: never writes into a board folder that is already there; --add appends a blank slide to a deck only', async () => {
+  fs.mkdirSync(path.join(DIR, '.lab/boards/stale'), { recursive: true });
+  fs.writeFileSync(path.join(DIR, '.lab/boards/stale/a.html'), 'mine');
+  const r = await cli(DIR, 'deck', 'Stale', '--slides', '1');
+  assert.match(r.out, /# Board stale-2/);
+  assert.equal(fs.readFileSync(path.join(DIR, '.lab/boards/stale/a.html'), 'utf8'), 'mine');
+  const add = await cli(DIR, 'deck', 'stale-2', '--add');
+  assert.match(add.out, /Added slide 2 as b/);
+  assert.deepEqual(diskOf('stale-2').frames.map((f) => [f.id, f.label, f.w, f.h]), [['a', '1', 1920, 1080], ['b', '2', 1920, 1080]]);
+  assert.match(fs.readFileSync(path.join(DIR, '.lab/boards/stale-2/b.html'), 'utf8'), /<p class="n">2<\/p>/);
+  assert.match((await cli(DIR, 'deck', 'slides-sized', '--add')).out, /not a deck/);
+  assert.match((await cli(DIR, 'deck', 'nosuch', '--add')).out, /No board nosuch/);
+  assert.equal((await cli(DIR, 'deck', 'stale-2', '--add', '--slides', '3')).code, 1);
+});

@@ -22,6 +22,7 @@ const grid = (n) => Array.from({ length: n }, (_, i) => ({ id: 'f' + i, src: '/p
 await put('ten', grid(10));
 await put('three', [{ id: 'a', src: '/pricing', w: 390, h: 844 }, { id: 'b', src: '/pricing', w: 820, h: 1180 }, { id: 'c', src: '/checkout', w: 390, h: 844 }]); // no page: a board about a page opens over it (boardhome.mjs)
 await put('two', [{ id: 'a', src: '/pricing', w: 300, h: 300, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 300, h: 300, x: 500, y: 0 }]);
+await put('slidephone', [{ id: 'a', src: '/pricing', w: 1920, h: 1080 }, { id: 'b', src: '/checkout', w: 1920, h: 1080 }, { id: 'c', src: '/pricing', w: 390, h: 844 }]);
 await put('wide', [{ id: 'a', src: '/pricing', w: 1000, h: 700, x: 0, y: 0 }, { id: 'b', src: '/pricing', w: 1000, h: 700, x: 4000, y: 3000 }]);
 try {
   for (const eng of engines()) {
@@ -170,6 +171,11 @@ try {
       const first = await q.evaluate(() => ({ cam: __labBoard.camera(), live: __labBoard.live(), vv: visualViewport.scale }));
       const widths = await q.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => f.offsetWidth));
       check(eng, 'phone: the first view is every frame, 390 wide, the ones in view alive', widths.length > 1 && widths.every((w) => w === 390) && first.live.length >= 1 && first.cam.z < 0.9 && first.vv === 1, JSON.stringify({ ...first, widths }));
+      // slides on a phone keep their size (never cut to a phone's corner); a frame of phone size is still drawn at a phone's width
+      await q.goto(B + '/_lab/board/slidephone');
+      await sleep(2500);
+      const slides = await q.evaluate(() => [...document.querySelectorAll('#lab-board .f')].map((f) => [f.offsetWidth, f.offsetHeight, parseFloat(f.style.left)]));
+      check(eng, 'phone: slide frames keep 1920×1080, side by side in order, a phone-sized one stays 390', slides.length === 3 && slides[0][0] === 1920 && slides[0][1] === 1080 && slides[1][0] === 1920 && slides[1][2] === 1920 + 80 && slides[2][0] === 390 && slides[2][2] === 2 * (1920 + 80), JSON.stringify(slides));
       await ph.close();
     } finally {
       await browser.close();

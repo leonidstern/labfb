@@ -12,6 +12,8 @@ export const NAME = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 export const FRAME = /^[a-z][a-z0-9]{0,5}$/;
 export const MAX_FRAMES = 60;
 export const SIZES: Record<number, number> = { 390: 844, 820: 1180, 1280: 800, 1440: 900 }; // phone, tablet, laptop, desktop
+/** --size: a frame's width and height by name (a slide is 16:9). */
+export const PRESETS: Record<string, [number, number]> = { slide: [1920, 1080], 'slide-720': [1280, 720], phone: [390, 844] };
 const GAP = 80;
 const ROW = 4800;
 

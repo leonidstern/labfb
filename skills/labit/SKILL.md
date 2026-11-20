@@ -69,6 +69,7 @@ A board shows pages side by side as frames. Use one when the person asks for opt
 - Options: `LAB board new "<topic>" --of /page --variants 3`. Frame `a` is the real page as it is now: never edit it for a variant. The lab copies the page into `.lab/boards/<board>/b.html`, `c.html`… and prints the link. Edit those files; never write the page out again. Three unless asked (six at most), each different in one way: name it with `LAB board add <board> b --label "<what differs>"`. Save b first, so the person sees it while you make c.
 - Behind a dev server (or a page that is no plain HTML file) a variant is the live page with `?lab-variant=<frame>`: branch on `new URLSearchParams(location.search).get('lab-variant')` in its source; a pick: keep its branch, remove the branching.
 - Widths: `--widths 390,820,1280`. A flow: `--flow /a,/b,/c`. These show the real pages; nothing is copied.
+- `--size slide` (1920×1080), `slide-720` or `phone` sets the frame size on `board new` and `board add`. A deck: `LAB board deck "<topic>" --slides 8` makes blank slides, one `.html` each in `.lab/boards/<board>/` (a title and a body) sharing `slides.css`: edit those files. One more slide: `LAB board deck <board> --add` (at the end; `board move` reorders).
 - The lab places frames. Give an order (`--after`), never positions.
 - A pin on a frame names its frame and file: change that frame only.
 - A board made `--of` a page opens over that page, and its pins are that page's (the `url:` it prints). A board with no page has its own address and pins.

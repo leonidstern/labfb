@@ -269,7 +269,14 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     const shown = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
     // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
     // page). Only how it's drawn here: what is saved is the board as read (save sends board.frames).
-    const next = coarse ? [...shown].sort((p, q) => p.y - q.y || p.x - q.x).map((f, i) => ({ ...f, x: i * (390 + 80), y: 0, w: 390, h: 844 })) : shown;
+    // (A frame of its own size, a slide's 1920 wide, keeps it: cut to a phone's corner it showed nothing of itself.)
+    let at = 0;
+    const next = coarse ? [...shown].sort((p, q) => p.y - q.y || p.x - q.x).map((f) => {
+      const big = f.w > 820;
+      const out = { ...f, x: at, y: 0, w: big ? f.w : 390, h: big ? f.h : 844 };
+      at += out.w + 80;
+      return out;
+    }) : shown;
     const old = new Map(cards.map((c) => [c.f.id, c]));
     cards = next.map((f) => {
       const was = old.get(f.id);

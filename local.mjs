@@ -101,10 +101,11 @@ For the agent, from the project:
       On a board: a frame's element, a frame (-), or the board; --at in pixels.
   labit update
       Move this folder's lab onto the newer release its ⋯ menu offers.
-  labit board new|add|move|pick|list ...
+  labit board new|deck|add|move|pick|list ...
       Options, widths and flows as frames: new "<topic>" --of /page --variants 3 (edit the copies in
-      .lab/boards/<board>/) | --widths 390,820,1280 | --flow /a,/b,/c. add <board> <frame|/page|file.html>
-      [--label] [--width] [--after]; move <board> <frame> --after <frame>; pick <board> <frame>; list [<board>].
+      .lab/boards/<board>/) | --widths 390,820,1280 | --flow /a,/b,/c. --size slide|slide-720|phone sets frame size.
+      deck "<topic>" --slides 8: blank slides (one .html each plus slides.css); deck <board> --add: one more.
+      add <board> <frame|/page|file.html> [--label] [--size] [--width] [--after]; move <board> <frame> --after <frame>; pick <board> <frame>; list [<board>].
 
 .lab/ in the folder holds the comments (comments.md, comments/), archive/, state.json, server.json
 and key (owner-only). Delete it to start over.`;
@@ -1355,12 +1356,13 @@ const watchBoards = () => {
   let timer;
   try {
     watchTree(B.dirOf(ROOT), (event, file) => {
-      const m = /^([a-z0-9][a-z0-9_-]*)(?:\.json|[\\/]([a-z][a-z0-9]*)\.html)$/.exec(file || '');
+      const m = /^([a-z0-9][a-z0-9_-]*)(?:\.json|[\\/]([a-z][a-z0-9]*)\.html|[\\/]slides\.css)$/.exec(file || '');
       if (!m) return; // a half-written .tmp, a file that is not a board's
       names.add(m[1]);
       boardCache.delete(m[1]);
       boardList = null;
       if (m[2]) hot.add(`/_lab/board/${m[1]}/${m[2]}`);
+      else if (file.endsWith('slides.css')) for (const f of boardGet(m[1])?.frames || []) if (f.src.startsWith('/_lab/')) hot.add(f.src); // a deck's style: every slide reloads
       clearTimeout(timer);
       timer = setTimeout(() => {
         version = { ...version, boards: version.boards + 1, boardNames: [...names], ...(hot.size ? { hot: (version.hot || 0) + 1, hotFiles: [...hot].map((path) => ({ path, kind: 'html' })) } : {}) };
@@ -2571,6 +2573,12 @@ const handler = async (req, res) => {
     // ---------- boards: a variant's page, and the board's data (lib/board.ts) ----------
     // /_lab/board/<name> is the board page, /_lab/board/<name>/<frame> a variant's own page.
     if (pathname.startsWith('/_lab/board/') || pathname === '/_lab/api/board') {
+      const css = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})\/slides\.css$/.exec(pathname); // a deck's one shared style file
+      if (css && (req.method === 'GET' || req.method === 'HEAD')) {
+        const file = path.join(path.dirname(B.frameFile(ROOT, css[1], 'a')), 'slides.css');
+        if (!fs.existsSync(file)) return notFound(req, res, pathname);
+        return sendBody(req, res, 200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' }, fs.readFileSync(file));
+      }
       const m = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})\/([a-z][a-z0-9]*)$/.exec(pathname);
       if (m && (req.method === 'GET' || req.method === 'HEAD')) {
         const file = B.frameFile(ROOT, m[1], m[2]);
