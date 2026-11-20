@@ -4,6 +4,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Select mode is gone (it was the flag `select`, **V**, and select in the ⋯ menu): the code, its styles and its key with it. The quick actions on pins, words and areas stay. An old `select` under `flags` in `labit.json` or your settings is now said at start as "not something being tried now" and otherwise ignored, and a `select` under `shortcuts` as "not an action".
 - **Undo a tap on a question.** A tap shows "Picked B · undo" for 5 s; the pick goes after that, or at once when the card closes. Undo puts the rows back.
 - **Questions in the chat.** The agent's question with choices shows its rows in the page chat too, and picks work the same.
 - **A question card no longer focuses its reply box on a computer**, so keys 1 to 6 pick right away.

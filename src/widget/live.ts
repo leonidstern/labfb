@@ -45,7 +45,7 @@ export function startLive() {
     // for a new widget script or comments schema, and follows the lab's comments and the board file.
     const board = Boolean(W.S.board); // exactly /_board/<name>: a variant opened by itself is a page like any other
     const busy = () =>
-      frame ? W.S.busy() || performance.now() - touchedAt < 1500 : W.S.draft || W.S.selecting || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
+      frame ? W.S.busy() || performance.now() - touchedAt < 1500 : W.S.draft || W.S.grabbing || W.S.openId || W.S.chatOpen || (W.coarse && /^(textarea|input)$/.test(W.root.activeElement?.localName || '')) ||
       [...W.root.querySelectorAll('textarea')].some((t) => t.value.trim()) || performance.now() - touchedAt < 1500;
     let reloadWhenShown = false;
     let reloadTimer: any = 0;

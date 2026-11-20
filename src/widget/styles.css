@@ -765,7 +765,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
 }
 
-/* Your actions (lib/actions.ts): as many as fit, "…", and select's done on one line; "…" grows the line into the
+/* Your actions (lib/actions.ts): as many as fit, "…" on one line; "…" grows the line into the
    whole list; hold or right-click a row to edit it in place, + add. */
 .quick { white-space: nowrap; }
 .quick[hidden] { display: none; }
@@ -824,4 +824,3 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .act-fields .cnt, .act-fields .k, .act-fields .why { font-size: 12px; }
   .acts .act.gone { min-height: 44px; padding: 0 4px; font-size: 14px; }
 }
-.quick button.sel { background: none; padding-inline: 6px; margin-left: auto; }

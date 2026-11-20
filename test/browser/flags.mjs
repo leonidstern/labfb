@@ -47,7 +47,7 @@ const check = (eng, name, ok, detail = '') => {
 
 try {
   // A page without the lab's key (not this computer's browser) can't switch anything.
-  const sw = await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: 'select', on: true }) });
+  const sw = await fetch(B + '/_lab/flags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flag: 'inkOnText', on: true }) });
   check('lab', 'POST /_lab/flags without the key is refused', sw.status === 403, String(sw.status));
   // An agent's pin, left the way an agent leaves one.
   execFileSync(process.execPath, [LAB, 'pin', '#t', 'a question from the agent'], { cwd: DIR, env: { ...env, PORT: String(PORT) }, stdio: 'pipe' });
@@ -81,26 +81,22 @@ try {
         root.querySelector('.exp-btn').click();
         await new Promise((res) => setTimeout(res, 100));
         const m = root.querySelector('.more-menu');
-        const sw = m.querySelector('[role="switch"][data-flag="select"]');
+        const sw = m.querySelector('[role="switch"][data-flag="inkOnText"]');
         return { open: !m.hidden, back: Boolean(m.querySelector('.exp-back')), sw: sw?.getAttribute('aria-checked'), disabled: sw?.disabled, words: sw?.textContent || '' };
       });
       check(eng, 'experiments opens its list in the menu', list.open && list.back);
-      check(eng, 'a switch for select, off, that this computer may switch', list.sw === 'false' && list.disabled === false, JSON.stringify(list));
-      check(eng, 'with its one line', /select mode/.test(list.words), list.words);
+      check(eng, 'a switch for inkOnText, off, that this computer may switch', list.sw === 'false' && list.disabled === false, JSON.stringify(list));
+      check(eng, 'with its one line', /ink on selected words/.test(list.words), list.words);
       const on = await (await r()).evaluate(async (root) => {
-        root.querySelector('[data-flag="select"]').click();
+        root.querySelector('[data-flag="inkOnText"]').click();
         await new Promise((res) => setTimeout(res, 800));
-        return { checked: root.querySelector('[data-flag="select"]').getAttribute('aria-checked'), menuOpen: !root.querySelector('.more-menu').hidden };
+        return { checked: root.querySelector('[data-flag="inkOnText"]').getAttribute('aria-checked'), menuOpen: !root.querySelector('.more-menu').hidden };
       });
       check(eng, 'switched on, the menu stays open', on.checked === 'true' && on.menuOpen, JSON.stringify(on));
-      // Select mode works at once: V picks blocks, with no reload.
-      await p.keyboard.press('Escape');
-      await p.keyboard.press('v');
+      // The flag starts at once: the page wears ink on words, with no reload.
       await sleep(300);
-      const selecting = await p.evaluate(() => document.documentElement.classList.contains('lab-selecting'));
-      check(eng, 'the feature starts at once, no reload', selecting && (await p.evaluate(() => window.labMark)) === 1, String(selecting));
-      await p.keyboard.press('v'); // and out of it again
-      await sleep(200);
+      const inked = await p.evaluate(() => document.documentElement.classList.contains('lab-ink-on'));
+      check(eng, 'the feature starts at once, no reload', inked && (await p.evaluate(() => window.labMark)) === 1, String(inked));
       await (await r()).evaluate(async (root) => {
         if (root.querySelector('.more-menu').hidden) root.querySelector('.more').click();
         await new Promise((res) => setTimeout(res, 300));
@@ -108,13 +104,13 @@ try {
         await new Promise((res) => setTimeout(res, 100));
       });
       const saved = JSON.parse(fs.readFileSync(path.join(env.XDG_CONFIG_HOME, 'labit', 'settings.json'), 'utf8'));
-      check(eng, 'saved in your own settings', saved.flags?.select === true, JSON.stringify(saved));
+      check(eng, 'saved in your own settings', saved.flags?.inkOnText === true, JSON.stringify(saved));
       check(eng, 'labit.json is as it was', JSON.parse(fs.readFileSync(path.join(DIR, 'labit.json'), 'utf8')).flags === undefined);
       // Off: the page goes back to the lab for itself and comes back without it.
-      await (await r()).evaluate((root) => root.querySelector('[data-flag="select"]').click());
+      await (await r()).evaluate((root) => root.querySelector('[data-flag="inkOnText"]').click());
       await p.waitForFunction(() => !window.labMark, null, { timeout: 5000 }).catch(() => {});
       await sleep(1500);
-      const off = await (await r()).evaluate((root) => ({ since: document.documentElement.classList.contains('lab-selecting'), item: root.querySelector('.exp-btn')?.textContent || '' }));
+      const off = await (await r()).evaluate((root) => ({ since: document.documentElement.classList.contains('lab-ink-on'), item: root.querySelector('.exp-btn')?.textContent || '' }));
       check(eng, 'switched off, the page reloads without it', !(await p.evaluate(() => window.labMark)) && !off.since && off.item === 'experiments0', JSON.stringify(off));
       await p.goto('about:blank');
       await ctx.close();
