@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
+import { apiOn, BODY_MAX, callApi, decoderFor, encodingFor, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
@@ -1927,9 +1927,14 @@ const pagesUnder = (top) => {
   });
 };
 const urlOf = (rel) => '/' + rel.split(path.sep).map(encodeURIComponent).join('/').replace(/(^|\/)index\.html?$/i, '$1');
+// A page file as text, in the charset it names (see decoderFor).
+const htmlOf = (file) => {
+  const bytes = fs.readFileSync(file);
+  return decoderFor(bytes).decode(bytes);
+};
 const titleOf = (file) => {
   try {
-    const head = fs.readFileSync(file, 'utf8').slice(0, 4000);
+    const head = htmlOf(file).slice(0, 4000);
     return head.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1].trim() || '';
   } catch {
     return '';
@@ -2756,7 +2761,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject((inFrame(req) ? withIcon : (h) => withRoom(withIcon(h)))(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
+        inject((inFrame(req) ? withIcon : (h) => withRoom(withIcon(h)))(htmlOf(file)), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
     }
     sendFile(req, res, file);
   } catch (e) {

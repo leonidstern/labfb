@@ -35,6 +35,19 @@ export async function callApi(fn: Handler, req: IncomingMessage, url: string, ex
   return fn(new Request(url, { method: req.method, headers, body: /GET|HEAD/.test(req.method || '') ? undefined : Buffer.concat(chunks) }));
 }
 
+// A page's text is read in the charset it says it has (the Content-Type's, else its own <meta>): a page saved as
+// iso-8859-1 and read as UTF-8 showed every é as a replacement mark. What the lab sends on is always UTF-8, with a header
+// that says so (a header outranks the page's <meta>). `head` is the start of the bytes; a name nobody knows reads as UTF-8.
+export function decoderFor(head: Uint8Array, type = ''): TextDecoder {
+  const meta = /<meta[^>]*charset=["']?([\w-]+)/i.exec(Buffer.from(head.subarray(0, 1024)).toString('latin1'))?.[1];
+  try {
+    // A <meta> that says utf-16 is read as utf-8 by browsers too (the bytes it sits in are ASCII-like).
+    return new TextDecoder(/charset=["']?([\w-]+)/i.exec(type)?.[1] || (/^utf-?16/i.test(meta || '') ? '' : meta) || 'utf-8');
+  } catch {
+    return new TextDecoder();
+  }
+}
+
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif',

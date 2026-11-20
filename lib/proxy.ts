@@ -6,6 +6,7 @@ import http from 'node:http';
 import net from 'node:net';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 import type { Duplex } from 'node:stream';
+import { decoderFor } from './dev.ts';
 
 type ProxyOptions = {
   PROXY: URL;
@@ -41,7 +42,9 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
         res.writeHead(r.statusCode || 502, r.headers);
         return void r.pipe(res);
       }
-      const out = { ...r.headers, 'cache-control': 'no-store' };
+      // The page is read in the charset the dev server named and goes on as UTF-8, so the header says so.
+      const type = r.headers['content-type'] || '';
+      const out = { ...r.headers, 'content-type': type.replace(/;\s*charset=[^;]*/i, '') + '; charset=utf-8', 'cache-control': 'no-store' };
       delete out['content-length'];
       delete out['content-encoding'];
       delete out['content-security-policy']; // it would block the widget's script
@@ -51,12 +54,13 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
       // The widget's script goes after the page; a copy of it the page already loads is taken out, even when its
       // tag comes split across two pieces: an unfinished <script tag is held back until the next piece.
       const strip = (t: string) => t.replace(/<script\b[^>]*\bsrc=["'][^"']*\/_lab\/comments\.js["'][^>]*>\s*<\/script>\s*/gi, '');
-      const decoder = new TextDecoder();
+      let decoder: TextDecoder | undefined;
       let held = '';
       // The lab's reload-holder has to be the first script on the page, before the dev server's own client, so it
       // goes into the first piece — the page is streamed, and by the last piece the head is long gone.
       let first = true;
       r.on('data', (chunk: Buffer) => {
+        decoder ??= decoderFor(chunk, type);
         let t = held + decoder.decode(chunk, { stream: true });
         if (first) {
           first = false;
@@ -71,7 +75,7 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
         held = t.slice(cut);
       });
       r.on('end', () => {
-        const tail = strip(held + decoder.decode()) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req), req.headers['sec-fetch-dest'] === 'iframe');
+        const tail = strip(held + (decoder?.decode() ?? '')) + widget(pageKey(url.pathname), isLoopback(req), nameFor(req), req.headers['sec-fetch-dest'] === 'iframe');
         // A page that arrived in one piece never saw a data event with a head in it; dress it here instead.
         res.end(first ? dress(tail) : tail);
       });
