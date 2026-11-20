@@ -4,6 +4,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { claimPort, tmp, rm, spawnLab, up as answers } from './harness.mjs';
 
 const mk = (flags) => {
