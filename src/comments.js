@@ -1985,7 +1985,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (k === 'slow') return setSlow(!S.slow);
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
-      if (k === 'done') return void ((S.dKey = true), (S.drew = false), part('draw')); // on release (below): held, D draws (draw.ts)
+      if (k === 'done') return void ((S.dKey = true), (S.dShift = e.shiftKey), (S.drew = false), part('draw')); // on release (below): held, D draws (draw.ts); ⇧D tapped alone stays the board's
       if (k === 'reply' && S.openId) /** @type {HTMLElement | null} */ (root.querySelector('.card textarea'))?.focus({ preventScroll: true });
       else if (k === 'resolve' && S.openId && S.isAdmin) [.../** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('.card .btn'))].find((b) => /^(resolve|reopen)$/.test(b.textContent))?.click();
       return;
@@ -2203,7 +2203,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (!S.dKey || actionOf(e) !== 'done') return;
     S.dKey = false;
     if (S.inking && !S.drag) endInk();
-    else if (!S.drew && !S.drag) toggleDone(); // the pen still down: it's a drawing, done pins stay as they are
+    else if (!S.drew && !S.drag && !S.dShift) toggleDone(); // the pen still down: it's a drawing, done pins stay as they are; ⇧D alone does nothing here
   }, true);
   addEventListener('blur', () => (S.dKey = false));
   // The drawing's box is open and focused, nothing typed yet: D pressed again types a "d" there. If a stroke starts
