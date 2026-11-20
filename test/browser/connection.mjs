@@ -120,6 +120,29 @@ try {
       check(eng, 'a comment made before the stream first speaks still shows, no reload', gotList && (await until(async () => (await pinsOf(p3)) === listed + 1, 5000)), `pins ${listed} → ${await pinsOf(p3)}`);
       await ctx3.close();
 
+      // ---- a reply shows once when the stream brings it before the POST's answer does ----
+      const ctx4 = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+      await ctx4.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+      const p4 = await ctx4.newPage();
+      await p4.route('**/_lab/api/comments', async (route) => {
+        if (route.request().method() !== 'POST') return route.continue();
+        const res = await route.fetch(); // the lab has saved and told the stream by the time the page hears
+        await sleep(300);
+        await route.fulfill({ response: res });
+      });
+      await p4.goto(B + '/');
+      const inShadow = (fn, arg) => p4.evaluate(([f, a]) => new Function('r', 'a', f)([...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot, a), [`return (${fn})(r, a)`, arg]);
+      await until(() => inShadow((r) => r && r.querySelectorAll('button.pin').length > 0));
+      await inShadow((r) => r.querySelector('button.pin').click());
+      await until(() => inShadow((r) => Boolean(r.querySelector('.card textarea'))));
+      await inShadow((r) => r.querySelector('.card textarea').focus());
+      await p4.keyboard.type(`said once in ${eng}`);
+      await p4.keyboard.press('Enter');
+      await sleep(1800);
+      const bubbles = await inShadow((r, a) => [...r.querySelectorAll('.card .msg')].filter((m) => m.textContent.includes(a)).length, `said once in ${eng}`);
+      check(eng, 'a reply the stream brought before the POST answered shows once', bubbles === 1, `${bubbles} bubbles`);
+      await ctx4.close();
+
       // ---- eight tabs of one lab: one stream for all, handed over when its tab goes ----
       const ctx2 = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx2.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
