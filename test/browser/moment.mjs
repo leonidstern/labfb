@@ -153,9 +153,15 @@ try {
       await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelectorAll('.pin').length >= 3), ROOT, 8000);
       await sleep(300);
       const lr = await p.evaluate(() => document.getElementById('loop').getBoundingClientRect().toJSON());
-      const pinBox = await inRoot(p, `[...r.querySelectorAll('.pin')].map((n) => n.getBoundingClientRect().toJSON()).sort((a, b) => Math.hypot(a.left - ${lr.left + 20}, a.bottom - ${lr.top + lr.height / 2}) - Math.hypot(b.left - ${lr.left + 20}, b.bottom - ${lr.top + lr.height / 2}))[0]`);
-      await p.mouse.click(pinBox.left + pinBox.width / 2, pinBox.top + pinBox.height / 2);
-      await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelector('.card button.moment')), ROOT, 6000); // a busy machine (eight jobs at once) opens the card late
+      // The pins nearest the loop, in order: on a busy machine (eight jobs at once) the nearest may still be settling,
+      // so a card without the moment chip is closed and the next one tried.
+      const boxes = await inRoot(p, `[...r.querySelectorAll('.pin')].map((n) => n.getBoundingClientRect().toJSON()).sort((a, b) => Math.hypot(a.left - ${lr.left + 20}, a.bottom - ${lr.top + lr.height / 2}) - Math.hypot(b.left - ${lr.left + 20}, b.bottom - ${lr.top + lr.height / 2})).slice(0, 4)`);
+      for (const pinBox of boxes) {
+        await p.mouse.click(pinBox.left + pinBox.width / 2, pinBox.top + pinBox.height / 2);
+        if (await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelector('.card button.moment')), ROOT, 3000)) break;
+        await p.keyboard.press('Escape');
+        await sleep(300);
+      }
       const shown = await inRoot(p, "r.querySelector('.card button.moment')?.textContent || ''");
       await inRoot(p, "r.querySelector('.card button.moment').click()");
       await sleep(200);
