@@ -11,7 +11,7 @@ import { writeAtomic } from './board.ts';
 
 // The widget's own table (KEYS in src/comments.js), in its order (of two actions on one key the first keeps it), and
 // the one in docs/settings.md: test/settings.test.mjs holds the three together.
-const SHORTCUTS = { toggle: 'm', comment: '1', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e', pin: 'c' };
+const SHORTCUTS = { toggle: 'm', chat: 't', next: 'w', pause: 'p', slow: 's', done: 'd', reply: 'r', resolve: 'e' };
 type Kind = 'number' | 'boolean' | 'string';
 // Each setting: its type, its default, and where it may be set (a project can't name you or open your lab to the
 // wifi; your own file can't say which folder or dev server a project uses).
@@ -84,7 +84,7 @@ const check = (key: string, v: unknown, file: string, problems: string[]): unkno
     if (!v || typeof v !== 'object' || Array.isArray(v)) return bad('must be an object of action → key');
     const out: Record<string, string> = {};
     for (const [action, key1] of Object.entries(v)) {
-      if (action === 'pointer') continue; // the old key 3: key 1 now switches between comment and pointer; a leftover setting is ignored, not said
+      if (action === 'pointer' || action === 'comment' || action === 'pin') continue; // the old keys (3, 1, C): pages have no pointer mode any more; a leftover setting is ignored, not said
       if (!(action in SHORTCUTS)) bad(`.${action} is not an action (${Object.keys(SHORTCUTS).join(', ')})`);
       else if (typeof key1 !== 'string' || !/^[a-z0-9]$/i.test(key1)) bad(`.${action} must be one letter or digit`);
       else out[action] = key1.toLowerCase();
