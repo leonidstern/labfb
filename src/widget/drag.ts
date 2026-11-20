@@ -35,7 +35,7 @@ export function startDrag(e) {
   if (e.composedPath().includes(W.host) && !(S.dKey && e.composedPath().some((n) => n instanceof Element && n.matches('.ink .hit')))) return;
   // Holding D, a press on a link or a button draws too: circling a broken button is the point (sims, 20 Nov).
   if (!e.altKey && !S.dKey && W.control(e.target)) return;
-  if (e.target instanceof Element && e.target.closest(W.OFF)) return;
+  if (W.isOff(e)) return;
   if (S.drag) return; // one pointer at a time: a palm on the glass while the pen draws is not a second stroke
   S.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false, ink: S.dKey, id: e.pointerId };
   if (S.dKey) clearTimeout(S.inkTimer); // another stroke of the same drawing

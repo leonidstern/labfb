@@ -42,12 +42,12 @@ try {
       const url0 = p.url();
       // A click on the page's own link follows it (the page is in comment mode, but a link keeps its click).
       await p.click('#go');
-      await p.waitForFunction(() => document.querySelector('[data-lab-board-view] #lab-board .f[data-id="b"]'), null, { timeout: 6000 });
+      await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="b"]'), null, { timeout: 6000 });
       await sleep(800);
       const st = await p.evaluate(() => ({ path: location.pathname, hash: location.hash, view: Boolean(document.querySelector('[data-lab-board-view]')), pills: [...document.querySelectorAll('*')].filter((n) => n.shadowRoot?.querySelector('.scrim')).length }));
       check(eng, 'the link opens the board over the same page, one widget', st.path === '/canvas' && st.hash === '#board=pricing' && st.view && st.pills === 1, JSON.stringify(st));
       // a tap on frame b pins
-      const b = await p.evaluate(() => { const r = document.querySelector('#lab-board .f[data-id="b"]').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
+      const b = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="b"]').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
       await p.mouse.click(b.x + 60, b.y + 80);
       await sleep(400);
       await p.keyboard.type('frame b note');
@@ -64,7 +64,7 @@ try {
       const h1 = await p.evaluate(() => document.querySelector('[data-lab-board-view]').getBoundingClientRect().height);
       check(eng, 'full / half makes the view half the window', Math.abs(h1 - 400) < 4, String(h1));
       // the grip on its edge: dragged up to 70%
-      const g = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view] .bv-grip').getBoundingClientRect(); return { x: r.x + r.width / 3, y: r.y + r.height / 2 }; });
+      const g = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('.bv-grip').getBoundingClientRect(); return { x: r.x + r.width / 3, y: r.y + r.height / 2 }; });
       await p.mouse.move(g.x, g.y);
       await p.mouse.down();
       await p.mouse.move(g.x, 240, { steps: 5 });
@@ -73,7 +73,7 @@ try {
       const h2 = await p.evaluate(() => document.querySelector('[data-lab-board-view]').getBoundingClientRect().height);
       check(eng, 'the grip resizes it', Math.abs(h2 - 560) < 6, String(h2));
       await p.reload();
-      await p.waitForFunction(() => document.querySelector('[data-lab-board-view] #lab-board'), null, { timeout: 6000 });
+      await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board'), null, { timeout: 6000 });
       await sleep(500);
       const h3 = await p.evaluate(() => document.querySelector('[data-lab-board-view]').getBoundingClientRect().height);
       check(eng, 'a reload opens it again at the size kept for the page', Math.abs(h3 - h2) < 6, `${h3} vs ${h2}`);
@@ -88,7 +88,7 @@ try {
       await sleep(200);
       const y2 = await p.evaluate(() => scrollY);
       await p.click('#go');
-      await p.waitForFunction(() => document.querySelector('[data-lab-board-view] #lab-board'), null, { timeout: 6000 });
+      await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board'), null, { timeout: 6000 });
       await sleep(500);
       await p.mouse.wheel(0, 600); // over the board: pans it, never the page
       await sleep(200);
@@ -97,7 +97,7 @@ try {
       const after = await p.evaluate(() => ({ y: scrollY, view: Boolean(document.querySelector('[data-lab-board-view]')), hash: location.hash }));
       check(eng, 'Esc closes it and the page is where it was scrolled', !after.view && !after.hash && Math.abs(after.y - y2) < 2 && p.url() === url0, JSON.stringify({ ...after, y2, y1, y0 }));
       await p.click('#go');
-      await p.waitForFunction(() => document.querySelector('[data-lab-board-view] #lab-board'), null, { timeout: 6000 });
+      await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board'), null, { timeout: 6000 });
       await p.goBack();
       await sleep(500);
       const back = await p.evaluate(() => ({ y: scrollY, view: Boolean(document.querySelector('[data-lab-board-view]')), path: location.pathname }));

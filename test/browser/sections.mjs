@@ -186,7 +186,8 @@ try {
     const gone = await MO.shadow(() => { const c = [...r.querySelectorAll('.sb-nav .sb-chip')].find((x) => x.querySelector('.sb-t').textContent === 'Answers'); const bg = getComputedStyle(c.querySelector('.sb-t'), '::before').backgroundColor; return { st: c.dataset.st || '', bg }; });
     const alpha = (c) => { const m = /rgba?\(([^)]+)\)|color\(srgb ([^)]+)\)/.exec(c) || []; const v = (m[1] || m[2] || '').split(/[ ,/]+/).filter(Boolean); return v.length > 3 ? parseFloat(v[3]) : c === 'transparent' ? 0 : 1; };
     check(eng, 'a tap on a "new" name clears it within 300 ms: no status, no ink', gone.st === '' && alpha(gone.bg) < 0.02, JSON.stringify(gone));
-    const head = await MO.p.evaluate(() => { const ink = document.querySelector('html > [data-lab-comments] i'); const h = [...document.querySelectorAll('h2')].find((x) => x.textContent === 'Answers'); return { ink: Boolean(ink), outline: getComputedStyle(h).outlineStyle, bg: ink ? getComputedStyle(ink).backgroundColor : '' }; });
+    // The ink is drawn inside the widget (a page's own rules don't reach it).
+    const head = await MO.p.evaluate(() => { const ink = document.querySelector('body > [data-lab-comments]').shadowRoot.querySelector('div[style*="2147483646"] > i'); const h = [...document.querySelectorAll('h2')].find((x) => x.textContent === 'Answers'); return { ink: Boolean(ink), outline: getComputedStyle(h).outlineStyle, bg: ink ? getComputedStyle(ink).backgroundColor : '' }; });
     check(eng, 'the heading it goes to wears a green half ink, no box', head.ink && head.outline === 'none' && /36, 160, 70|0\.14\d* 0\.62\d* 0\.27/.test(head.bg), JSON.stringify(head));
     await MO.p.context().close();
 

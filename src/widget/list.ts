@@ -121,13 +121,13 @@ const age = (at) => {
 export const ord = (n) => n + (['th', 'st', 'nd', 'rd'][((n % 100) - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
 // The line for one thread as it stands: its progress and age, or "no update for 6 min · last: …" once it has gone quiet.
 export const lineOf = (e) => (e.s === 'stale' ? `no update for ${mins(e.at)}${e.line ? ` · last: ${e.line}` : ''}` : e.line ? `${e.line} · ${age(e.at)}` : '');
-// What the pill and a phone's sheet say about the agent's work: the line of the thread it signed most recently (it reads
-// "no update for…" when even that one went quiet), how many wait, and a key that changes when the line is another (the
-// pill fades then, not for the age ticking on). text is '' when there is no line to show.
+// What the pill's box says about the agent's work: the line of the thread it signed most recently (when even that one went
+// quiet, "No update for 6 min" and, as last, what it said then), and how many wait.
 export function pillLine() {
   const all = [...lineUp().values()];
   const top = all.filter((e) => e.s === 'now' || e.s === 'stale').sort((a, b) => b.at.localeCompare(a.at))[0];
-  return { text: top ? lineOf(top) : '', key: top ? `${top.c.id}${top.s}${top.line}` : '', waiting: all.filter((e) => e.s === 'wait').length };
+  const stale = top?.s === 'stale';
+  return { text: !top ? '' : stale ? `No update for ${mins(top.at)}` : top.line, last: stale && top.line ? `Last: ${top.line}` : '', stale, waiting: all.filter((e) => e.s === 'wait').length };
 }
 
 export const stepNew = (dir) => {

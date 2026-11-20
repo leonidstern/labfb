@@ -15,20 +15,24 @@ type Open = { name: string; view: HTMLElement; destroy: () => void; onClose?: ()
 let cur: Open | null = null;
 let lastOpts: Opts | null = null; // a forward to #board=<name> opens it as the last one was
 
+// The view is a shadow host (like the comment widget, src/widget/styles.css): the board, its bar and its frames' labels are
+// drawn inside it, so no rule of the page's (div, button, *, all: unset, !important) reaches them. !important on :host beats
+// the page's own !important on the host (an inner shadow context wins the important declarations); the height is the
+// --bv-h variable, set inline by paintSize. cursor: inherit keeps the page's pin pointer over the board.
 const CSS = `
-[data-lab-board-view]{position:fixed;left:0;right:0;bottom:0;height:100%;z-index:2147482000;display:flex;flex-direction:column;overscroll-behavior:none;background:#f7f7f7;color:#1d1d1b;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08);font:500 13px/1 system-ui,-apple-system,sans-serif}
-[data-lab-board-view] .bv-bar{position:relative;flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08)}
-[data-lab-board-view].full .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
-[data-lab-board-view] .bv-bar button{font:inherit;color:inherit;background:transparent;border:0;border-radius:999px;padding:7px 11px;cursor:pointer}
-[data-lab-board-view] .bv-bar button:hover{background:rgba(0,0,0,.06)}
-[data-lab-board-view] .bv-name{flex:1;text-align:center;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:normal}
-[data-lab-board-view] .bv-grip{position:absolute;left:0;right:0;top:-5px;height:10px;cursor:ns-resize;touch-action:none;z-index:1}
-[data-lab-board-view] .bv-grip::after{content:"";position:absolute;left:50%;top:7px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:currentColor;opacity:.25}
-[data-lab-board-view].full .bv-grip{top:env(safe-area-inset-top,0px)}
-[data-lab-board-view].full .bv-grip::after{top:3px}
-[data-lab-board-view] .bv-box{position:relative;flex:1;min-height:0}
-[data-lab-board-view] #lab-board{position:absolute}
-@media (prefers-color-scheme:dark){[data-lab-board-view]{background:#1b1b1a;color:#e9e8e4}[data-lab-board-view] .bv-bar button:hover{background:rgba(255,255,255,.08)}[data-lab-board-view] .bv-bar{border-color:rgba(255,255,255,.08)}}
+:host{all:initial!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
+.bv-bar{position:relative;flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08)}
+:host(.full) .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
+.bv-bar button{font:inherit;color:inherit;background:transparent;border:0;border-radius:999px;padding:7px 11px;cursor:pointer}
+.bv-bar button:hover{background:rgba(0,0,0,.06)}
+.bv-name{flex:1;text-align:center;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:normal}
+.bv-grip{position:absolute;left:0;right:0;top:-5px;height:10px;cursor:ns-resize;touch-action:none;z-index:1}
+.bv-grip::after{content:"";position:absolute;left:50%;top:7px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:currentColor;opacity:.25}
+:host(.full) .bv-grip{top:env(safe-area-inset-top,0px)}
+:host(.full) .bv-grip::after{top:3px}
+.bv-box{position:relative;flex:1;min-height:0}
+.bv-box #lab-board{position:absolute}
+@media (prefers-color-scheme:dark){:host{background:#1b1b1a!important;color:#e9e8e4!important}.bv-bar button:hover{background:rgba(255,255,255,.08)}.bv-bar{border-color:rgba(255,255,255,.08)}}
 `;
 const MIN = 0.25; // the least of the window it is dragged down to
 const sizeKey = (page: string) => `lab-board-size:${page}`;
@@ -57,7 +61,6 @@ export function show(name: string, o: Opts) {
   if (!document.body) return void addEventListener('DOMContentLoaded', () => show(name, o), { once: true });
   if (cur?.name === name) return;
   if (cur) teardown();
-  if (!document.getElementById('lab-board-view-css')) document.head.append(Object.assign(document.createElement('style'), { id: 'lab-board-view-css', textContent: CSS }));
   const pushed = o.push !== false;
   if (pushed) history.pushState({ ...(history.state && typeof history.state === 'object' ? history.state : {}), labBoard: name }, '', `${location.pathname}${location.search}#board=${name}`);
   const restoration = history.scrollRestoration;
@@ -96,9 +99,9 @@ export function show(name: string, o: Opts) {
   box.className = 'bv-box';
   const root = document.createElement('div');
   box.append(root);
-  view.append(bar, box);
+  view.attachShadow({ mode: 'open' }).append(Object.assign(document.createElement('style'), { textContent: CSS }), bar, box);
   const paintSize = () => {
-    view.style.height = size >= 1 ? '100%' : `${size * 100}%`;
+    view.style.setProperty('--bv-h', size >= 1 ? '100%' : `${size * 100}%`);
     view.classList.toggle('full', size >= 1);
     toggle.textContent = size >= 1 ? 'half' : 'full';
   };
@@ -127,7 +130,11 @@ export function show(name: string, o: Opts) {
   });
   // The view's bar never scrolls the page behind (the board itself pans on the wheel).
   bar.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+  // A page's zoom on <html> or <body> scales what is drawn in the view: it zooms the other way, by what 100 px comes out as
+  // (a probe, left in the shadow root).
   document.body.append(view);
+  const k = view.shadowRoot!.appendChild(Object.assign(document.createElement('i'), { style: 'position:absolute;width:100px;height:0;visibility:hidden' })).getBoundingClientRect().width / 100;
+  if (k > 0 && Math.abs(k - 1) > 0.001) view.style.setProperty('--bv-z', String(Math.min(10, Math.max(0.1, 1 / k))));
   // Where the view is, kept (it is asked for every pin of the page as the page scrolls under a half view). Watched
   // before the board watches its own box, so the board's word of a new size finds this one already right.
   let at = view.getBoundingClientRect();

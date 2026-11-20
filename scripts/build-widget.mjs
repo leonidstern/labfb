@@ -8,6 +8,7 @@
 //   node scripts/build-widget.mjs --outfile=<file> [--watch]
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const outfile = arg('outfile') || 'public/_lab/comments.js';
@@ -81,4 +82,15 @@ await labCss();
 if (watch) {
   for (const o of builds) await (await esbuild.context(o)).watch();
   fs.watch('src/lab.css', () => void labCss());
-} else await Promise.all(builds.map((o) => esbuild.build(o)));
+} else {
+  await Promise.all(builds.map((o) => esbuild.build(o)));
+  // The npm package carries each script brotli-packed (<name>.js.br, package.json "files"): npm's gzip leaves 8 KB more in
+  // it. The lab sends the packed bytes as they are to a browser that takes brotli and unpacks them for one that doesn't
+  // (sendPacked in lib/dev.ts); a checkout serves the plain .js beside them. Same bytes in, same bytes out, so a repeat
+  // build writes identical files.
+  for (const o of builds) {
+    const plain = fs.readFileSync(o.outfile);
+    const params = { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_LGWIN]: 24, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: plain.length };
+    fs.writeFileSync(`${o.outfile}.br`, zlib.brotliCompressSync(plain, { params }));
+  }
+}

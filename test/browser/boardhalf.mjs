@@ -53,9 +53,9 @@ try {
       }
       await p.goto(B + '/canvas#board=pricing');
       await p.reload(); // the address only gained its #board: the page is read again, and opens it
-      await p.waitForFunction(() => window.__labBoard && document.querySelector('[data-lab-board-view] #lab-board .f[data-id="b"]'), null, { timeout: 8000 });
+      await p.waitForFunction(() => window.__labBoard && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="b"]'), null, { timeout: 8000 });
       await sleep(1200);
-      const rect = (sel) => p.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, b: r.bottom }; }, sel);
+      const rect = (sel) => p.evaluate((s) => { const r = (s.startsWith('#lab-board') ? document.querySelector('[data-lab-board-view]').shadowRoot : document).querySelector(s).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, b: r.bottom }; }, sel);
       const b0 = await rect('#lab-board .f[data-id="b"]');
       if ((await pins()) < 2) await note(b0.x + b0.w / 2, b0.y + b0.h / 2, 'on the board');
       // What is seen of the pins, each frame while fn runs: [board pin x, y, its position, page pin shown, page pin y, camera z, frame b's x, y]
@@ -65,7 +65,7 @@ try {
           const all = [...r.querySelectorAll('.pin:not(.draft)')];
           const board = all.find((q) => q.style.position === 'fixed');
           const page = all.find((q) => q.style.position !== 'fixed');
-          const f = document.querySelector('#lab-board .f[data-id="b"]');
+          const f = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="b"]');
           window.__seen = [];
           const tick = () => {
             if (!window.__seen) return;
@@ -84,7 +84,7 @@ try {
       const spread = (rows, i) => Math.max(...rows.map((r) => r[i])) - Math.min(...rows.map((r) => r[i]));
 
       // ----- the canvas: dots that go with the camera
-      const dots = () => p.evaluate(() => { const d = document.querySelector('#lab-board .dots'); const s = d && getComputedStyle(d); return d ? { img: s.backgroundImage, size: parseFloat(s.backgroundSize), pos: s.backgroundPosition, z: window.__labBoard.camera().z, kids: d.children.length } : null; });
+      const dots = () => p.evaluate(() => { const d = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .dots'); const s = d && getComputedStyle(d); return d ? { img: s.backgroundImage, size: parseFloat(s.backgroundSize), pos: s.backgroundPosition, z: window.__labBoard.camera().z, kids: d.children.length } : null; });
       const d0 = await dots();
       check(eng, 'the canvas is a grid of dots: one background, sized by the zoom', Boolean(d0) && /radial-gradient/.test(d0.img) && d0.kids === 0 && Math.abs(d0.size - 32 * d0.z) < 0.5, JSON.stringify(d0));
 
@@ -119,7 +119,7 @@ try {
       check(eng, 'half view: a pan takes the pin along with its frame, never a frame behind', spread(pans, 6) > 20 && Math.max(...off.map((o) => Math.abs(o[0] - off[0][0]))) < 0.6 && Math.max(...off.map((o) => Math.abs(o[1] - off[0][1]))) < 0.6, JSON.stringify([spread(pans, 6), off[0], off[off.length - 1]]));
 
       // ----- the view's edge dragged: what is on the screen stays where it is, nothing is fitted again mid-drag
-      const g = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view] .bv-grip').getBoundingClientRect(); return { x: r.x + r.width / 3, y: r.y + r.height / 2 }; });
+      const g = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('.bv-grip').getBoundingClientRect(); return { x: r.x + r.width / 3, y: r.y + r.height / 2 }; });
       const drag = await watch(async () => {
         await p.mouse.move(g.x, g.y);
         await p.mouse.down();

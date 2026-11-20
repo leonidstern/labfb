@@ -30,14 +30,14 @@ try {
         const p = await ctx.newPage();
         p.on('pageerror', (e) => console.log('pageerror', e.message));
         await p.goto(url);
-        await p.waitForFunction(() => window.__labBoard && window.__labBoardWidget && document.querySelector('#lab-board .f[data-id="b"]'), null, { timeout: 8000 });
+        await p.waitForFunction(() => window.__labBoard && window.__labBoardWidget && document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="b"]'), null, { timeout: 8000 });
         await sleep(1200);
         const look = () => p.evaluate(() => {
           const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
           const chat = r?.querySelector('.chatwin');
           return { card: Boolean(r?.querySelector('.card:not(.out)')), draft: Boolean(r?.querySelector('.float:not(.out)')), chat: Boolean(chat && !chat.hidden && chat.offsetHeight), pins: r?.querySelectorAll('.pin:not(.draft)').length || 0, sel: window.__labBoard.selected(), cam: window.__labBoard.camera() };
         });
-        const rect = (id) => p.evaluate((i) => { const r = document.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }, id);
+        const rect = (id) => p.evaluate((i) => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector(`#lab-board .f[data-id="${i}"]`).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }, id);
         const pinAt = () => p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot.querySelector('.pin:not(.draft)').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
         const a = await rect('a');
         const b = await rect('b');
@@ -108,12 +108,13 @@ try {
         let s = await look();
         check(eng, `${where}: a click outside a new comment's box closes it and starts no other`, d0.draft && !s.draft && !s.card, JSON.stringify([d0, s]));
         // ----- an entered frame: a press inside its page closes the open thread
-        const lb = await p.locator('#lab-board .f[data-id="b"] .t').boundingBox();
-        await p.mouse.click(lb.x + 8, lb.y + lb.height / 2); // the label opens the frame
-        await sleep(600);
+        await p.evaluate((i) => { for (let n = 0; n < 9 && __labBoard.selected() !== i; n++) __labBoard.key({ key: 'Tab', code: 'Tab' }); __labBoard.key({ key: 'Enter', code: 'Enter' }); }, 'b'); // Tab to it, Enter opens it (a click on its label does not)
+        await p.evaluate(() => __labBoard.key({ key: '!', code: 'Digit1', shiftKey: true })); // Tab moved the camera to it: all in view again
+        await sleep(900);
+        const bNow = await rect('b');
         await open();
         const e0 = await look();
-        await p.mouse.click(b.x + b.w / 2, b.y + b.h / 2 + 40);
+        await p.mouse.click(bNow.x + bNow.w / 2, bNow.y + bNow.h / 2 + 40);
         await sleep(450);
         s = await look();
         check(eng, `${where}: a press inside an entered frame closes the open thread`, e0.card && !s.card && (await p.evaluate(() => window.__labBoard.entered())) === 'b', JSON.stringify([e0, s]));

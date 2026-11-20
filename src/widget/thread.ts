@@ -132,7 +132,8 @@ export function grab(pin, now) {
       const x = ev.clientX - tip.dx;
       const y = ev.clientY - tip.dy;
       const under = document.elementsFromPoint(x, y).find((n) => n !== W.host);
-      if (ev.type === 'pointercancel' || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(W.OFF)) return W.render();
+      const deep = under?.shadowRoot && under.matches('[data-lab-board-view]') ? under.shadowRoot.elementFromPoint(x, y) : under; // a board's view: what is under the point inside it
+      if (ev.type === 'pointercancel' || x < 0 || y < 0 || x > innerWidth || y > innerHeight || deep?.closest(W.OFF)) return W.render();
       const before = c.anchor;
       c.anchor = W.anchorAt(x, y);
       W.render();

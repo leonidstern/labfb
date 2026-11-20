@@ -80,6 +80,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get FLAGS() { return FLAGS; },
     get FLAGSAPI() { return FLAGSAPI; },
     get OFF() { return OFF; },
+    get isOff() { return isOff; },
     get S() { return S; },
     get actionOf() { return actionOf; },
     get adminToken() { return adminToken; },
@@ -271,14 +272,14 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // ---------- DOM ----------
   const host = document.createElement('div');
   host.setAttribute('data-lab-comments', '');
-  host.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;z-index:2147483000;';
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `
     <style>${styles}</style>
     <div class="scrim"></div>
+    <i class="fit" aria-hidden="true"></i>
     <div class="layer"></div>
     <div class="motions"></div>
-    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · hold ${/Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt'} to pin on anything · ${KEYS.toggle} hide</div>
+    <div class="ui"><div class="hint" role="status" hidden></div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -308,7 +309,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       hide();
     }, ms('quick'));
   };
-  if (matchMedia('(pointer: coarse)').matches) hint.textContent = 'hold to comment';
   const toggleBtn = $('.toggle');
   const bar = /** @type {HTMLElement} */ (root.querySelector('.bar'));
   const moreBtn = $('.more');
@@ -1234,20 +1234,12 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const sheetMode = matchMedia('(pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px)');
 
   // ---------- events ----------
-  const showHint = () => {
-    if (store.get('lab-hint-seen') === '1') return;
-    hint.classList.remove('out');
-    hint.hidden = false;
-    store.set('lab-hint-seen', '1');
-    setTimeout(() => goOut(hint, () => (hint.hidden = true)), 5000);
-  };
   const setOn = (value) => {
     S.on = value;
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
     S.checkSections?.(); // hidden comments: no section bar
-    if (S.on) showHint();
     S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
     render();
@@ -1468,12 +1460,14 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   };
   // data-uncommentable: no new pins or areas start inside this part of the page (same attribute as Claude artifacts).
   const OFF = '[data-uncommentable]';
+  // Is this press on a part marked so? Through shadow roots (a board's view has one), where the press's own target is the host.
+  const isOff = (e) => e.composedPath().some((n) => n instanceof Element && n.matches(OFF));
   bindDrag(W);
 
   // Option (Alt) presses are for commenting: the page never sees them, so a menu item or a button doesn't run
   // and close itself before the pin lands on it.
   const optionPress = (e) => e.altKey && !e.metaKey && !e.ctrlKey && e.button === 0 && !e.composedPath().includes(host) &&
-    !(e.target instanceof Element && e.target.closest(OFF));
+    !isOff(e);
   for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
     addEventListener(type, (e) => {
       if (!optionPress(e)) return;
@@ -1561,7 +1555,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       stopPress();
       S.pinnedByHold = false;
       if (e.pointerType === 'touch') S.lastTouch = Date.now();
-      if (e.pointerType !== 'touch' || S.draft || !(e.target instanceof Element) || e.composedPath().includes(host) || e.target.closest(OFF)) return;
+      if (e.pointerType !== 'touch' || S.draft || !(e.target instanceof Element) || e.composedPath().includes(host) || isOff(e)) return;
       const { clientX: x, clientY: y } = e;
       pressing(true);
       S.press = {
@@ -1938,7 +1932,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     if (S.lastTouch && Date.now() - S.lastTouch < 800) return; // phones: a tap scrolls and reads; holding pins (below)
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || S.ctlClick) return;
-    if (e.target instanceof Element && e.target.closest(OFF)) return;
+    if (isOff(e)) return;
     if (String(getSelection?.() || '').trim()) return;
     showAgain();
     if (S.dKey && S.drew) return; // D held and something drawn (or cancelled): a click is part of that, not a pin
@@ -2004,12 +1998,28 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     }
     flushPins();
   };
+  // The host sits at the page's top left corner (styles.css :host), as its box's own: a page that makes <body> or <html>
+  // the box an absolute child counts from (position: relative, transform, filter, contain, will-change, a margin on it)
+  // moves that corner, and every pin with it. Zoom does the same (`zoom` on the page scales what is drawn inside it).
+  // So the host is measured where it stands, and set back at the page's corner, zoomed the other way.
+  const fitProbe = $('.fit');
+  const fitVars = { x: 0, y: 0, z: 1 };
+  const fit = () => {
+    const k = fitProbe.getBoundingClientRect().width / 100;
+    if (k > 0 && Math.abs(k - 1) > 0.001) host.style.setProperty('--lab-fz', String((fitVars.z = Math.min(10, Math.max(0.1, fitVars.z / k)))));
+    const r = host.getBoundingClientRect();
+    const [dx, dy] = [r.left + scrollX, r.top + scrollY];
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    host.style.setProperty('--lab-fx', `${(fitVars.x -= dx)}px`);
+    host.style.setProperty('--lab-fy', `${(fitVars.y -= dy)}px`);
+  };
   S.frame = 0;
   let reflowAll = false; // something but a scroll asked (a resize, the page's size): every pin is placed again
   const reflow = (scrolled) => {
     reflowAll ||= scrolled !== true;
     cancelAnimationFrame(S.frame);
     S.frame = requestAnimationFrame(() => {
+      fit();
       const scrolledOnly = !reflowAll;
       // Keep an open composer's text: only re-place when nothing is being typed.
       if (S.draft || root.activeElement || S.grabbing || isTrying()) return; // words tried in place: the pins stay put
@@ -2028,7 +2038,10 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
   // and the layer comes back if the page swapped out <body>.
   const navigated = () => {
-    if (!host.isConnected && document.body) document.body.append(host);
+    if (!host.isConnected && document.body) {
+      document.body.append(host);
+      fit();
+    }
     if (!fonts.isConnected) document.head.append(fonts);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
     S.routed?.(); // the section bar (sections.ts)
@@ -2158,8 +2171,8 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const start = () => {
     document.head.append(fonts, pinCursorStyle);
     refreshPinCursor();
-    if (S.on) showHint();
     document.body.append(host);
+    fit();
     // The page's own selection while commenting, and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
