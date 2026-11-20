@@ -124,8 +124,9 @@ export function startLive() {
     // dot blinks now and then while an agent listens, the ears twitch while one works. The words sit in .lbl, so
     // changing them never rebuilds (and restarts) the mark.
     const MARK = '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">' + MARK_PATHS + '</svg>';
-    who.innerHTML = MARK + '<div class="lbl"></div>';
+    who.innerHTML = MARK + '<span class="cb"></span><div class="lbl"></div>';
     const lbl = who.querySelector('.lbl') as HTMLElement;
+    const cb = who.querySelector('.cb') as HTMLElement;
     // The pill's label, kept aside while it says "update waiting" (the "!" badge) and put back after.
     const whoLabel = (t: string) => (updOn === who ? (who.dataset.updLabel = t) : who.setAttribute('aria-label', t));
     who.hidden = true;
@@ -158,32 +159,55 @@ export function startLive() {
     }
     let stream = null;
     let beat = 0;
-    // The pill's words, from the lab's state (mode, agent) and the agent's work on this page (list.ts
-    // pillLine): while it works on a pin it reads "Claude · drawing W1–W6 · 40 s ago · 2 waiting", and "· no update for
-    // 6 min · last: …" once that one went quiet. The line has a fixed width (styles.css .prog), so nothing beside it moves.
+    // The pill is the mark, with its status as a badge on the mark's corner (Leo, 20 Nov: "lets try this", icon only; "like we had
+    // with !"): how many pins wait, or a sign: ! the agent went quiet, … it isn't answering, - nobody listens, ~ reconnecting. Its
+    // words show in a box above the pill the moment the pointer is on it (the .w box, like a pin's: no browser tooltip, which waits
+    // a second, and the pill never grows): "talking to Claude", the status line, "no update for 6 min · last: …", and under
+    // them what the state means (.d). The words stay in the pill's label for screen readers. From the lab's state (mode, agent)
+    // and the agent's work on this page (list.ts pillLine).
     let pill = null;
+    const SIGNS = { '!': 'M6 3.25v3.25M6 8.75h.01', '…': 'M3.4 6h.01M6 6h.01M8.6 6h.01', '-': 'M3.75 6h4.5', '~': 'M8.6 6.6A2.6 2.6 0 1 1 6.3 4M5.1 2.8l1.3 1.2-1.3 1.2' };
+    const TONE = { '!': 'amber', '…': 'amber', '-': 'grey', '~': 'grey' };
+    // The box: line 1 (.t), what else is worth knowing (.d, muted), and a command to copy (.c).
+    const show = (head: string, n = '', more: string[] = [], cmd = '') => {
+      const sig = [head, n, ...more, cmd].join('|');
+      if (lbl.dataset.sig === sig) return;
+      lbl.dataset.sig = sig;
+      lbl.replaceChildren(span('', 'w'));
+      lbl.firstElementChild.append(span(head, 't'), ...(more.length ? [span(more.join('\n'), 'd')] : []), ...(cmd ? [span(cmd, 'c')] : []));
+      cb.className = `cb ${TONE[n] || ''}`;
+      cb.innerHTML = SIGNS[n] ? `<svg viewBox="0 0 12 12" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="${SIGNS[n]}" stroke="var(--_bg)" stroke-width="${n === '…' ? 2 : 1.5}"/></svg>` : n ? `<span>${n}</span>` : '';
+      if (n) who.dataset.n = n;
+      else delete who.dataset.n;
+    };
+    // What a screen reader gets: the first line, and the count the badge shows.
+    const said = () => (lbl.querySelector('.t')?.textContent || '') + (/^\d+$/.test(who.dataset.n || '') ? ` · ${who.dataset.n} waiting` : '');
     const paintWho = () => {
       if (!pill) return;
-      const { mode, agent, away } = pill;
-      const { text, key, waiting } = mode === 'working' ? pillLine() : { text: '', key: '', waiting: 0 };
-      const more = waiting ? ` · ${waiting} waiting` : '';
-      const sig = [mode, agent, text ? 'p' : more].join('|');
-      if (lbl.dataset.sig !== sig) {
-        lbl.dataset.sig = sig;
-        lbl.replaceChildren(...(mode === 'listening' ? [span('talking to'), agent] : mode === 'quiet' ? [agent, span("isn't answering")] : mode === 'working' ? (text ? [agent, span('', 'prog')] : [agent, span(`is working${more}`)]) : [span(away)]));
+      const { mode, agent, away, name, resume } = pill;
+      const { text, last, stale, waiting } = mode === 'working' ? pillLine() : { text: '', last: '', stale: false, waiting: 0 };
+      const n = mode === 'working' ? (stale ? '!' : waiting ? String(Math.min(waiting, 99)) : '') : mode === 'quiet' ? '…' : mode === 'away' ? '-' : '';
+      const [who2, model] = agent.split(' · ');
+      const lines = [];
+      const how = `labit wait --page ${W.S.page}`;
+      let head = '';
+      if (mode === 'listening') {
+        head = `${who2} is listening`;
+        if (model) lines.push(model);
+      } else if (mode === 'quiet') {
+        head = `${who2} isn't answering`;
+        lines.push('Pins go to the next agent that listens.');
+      } else if (mode === 'working') {
+        head = text || `${who2} is working`;
+        if (last) lines.push(last);
+        if (waiting) lines.push(`${waiting} waiting`);
+      } else {
+        head = away[0].toUpperCase() + away.slice(1);
+        lines.push(`Tell an agent: listen for pins on ${location.origin}${W.S.page}`);
       }
-      const prog = lbl.querySelector('.prog') as HTMLElement | null;
-      if (prog) {
-        const words = `· ${text}${more}`;
-        // Another line fades out and in (200 ms); the age ticking on just changes.
-        if (!prog.dataset.k || prog.dataset.k === key) Object.assign(prog, { textContent: words });
-        else {
-          prog.classList.add('out');
-          setTimeout(() => (prog.classList.remove('out'), (prog.textContent = words)), 200);
-        }
-        prog.dataset.k = key;
-      }
-      whoLabel(lbl.textContent || '');
+      if (name) lines.push(`Session ${name}`);
+      show(head, n, lines, mode === 'away' ? how : resume || '');
+      whoLabel(said());
     };
     W.paintWho = paintWho;
     // The status pill says "reconnecting" while the live connection is down; the next message puts it right.
@@ -192,7 +216,7 @@ export function startLive() {
     const showAway = (word) => {
       pill = null; // the pill's own words are not painted over it until the next state
       lbl.dataset.sig = '';
-      lbl.replaceChildren(span(word));
+      show(word, '~');
       whoLabel(word);
       who.classList.add('stale');
       W.chatBtn.classList.add('stale');
@@ -438,7 +462,7 @@ export function startLive() {
         if (stream) return; // a tab with its own stream listens to that
         if (d.t === 'state') got(d.v);
         if (d.t === 'beat') beat = Date.now();
-        if (d.t === 'down') showAway('reconnecting');
+        if (d.t === 'down') showAway('Reconnecting');
       };
     const connect = () => {
       if (stream) return;
@@ -449,7 +473,7 @@ export function startLive() {
         if (leading) bc?.postMessage({ t: 'beat' });
       });
       stream.onerror = () => {
-        showAway('reconnecting');
+        showAway('Reconnecting');
         if (leading) bc?.postMessage({ t: 'down' });
       };
       stream.onmessage = (e) => {
@@ -523,12 +547,12 @@ export function startLive() {
         const quiet = (v.silent || []).find((q) => !q.pages || q.pages.includes(W.S.page));
         const mode = s && here ? (quiet ? 'quiet' : v.mode || 'listening') : 'away';
         W.S.unheard = mode === 'away';
-        // "talking to Claude · Sonnet 5.5": the agent, and the model the session said it runs on. The session's name
-        // isn't in the words (owner, 18 Nov); it is in the pill's tooltip.
+        // "Claude · Sonnet 5.5": the agent, and the model the session said it runs on (the box says "Claude is listening", then the
+        // model). The session's name is its own line there.
         const agent = quiet && mode === 'quiet' ? quiet.label : s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
         const name = s && s.name !== (s.agent || 'Claude') ? s.name : '';
         W.S.agent = s ? agent : '';
-        pill = { mode, agent, away: s && !here ? 'no agent on this page' : 'no agent listening' };
+        pill = { mode, agent, name, resume: s?.resume || '', away: s && !here ? 'no agent on this page' : 'no agent listening' };
         paintWho();
         who.classList.remove('stale');
         W.chatBtn.classList.remove('stale');
@@ -537,15 +561,11 @@ export function startLive() {
         W.listBtn.dataset.agent = mode;
         W.chatBtn.dataset.agent = mode; // phones: with the list parked, the chat button carries the agent's mark
         if (W.coarse && !W.chatBtn.querySelector('.mark')) W.chatBtn.insertAdjacentHTML('afterbegin', MARK);
-        if (W.coarse) W.chatBtn.title = lbl.textContent || ''; // phones: the light on the chat button says who's listening
-        whoLabel(lbl.textContent || ''); // the words stay for screen readers when only the light shows
+        if (W.coarse) W.chatBtn.title = said(); // phones: the light on the chat button says who's listening
+        whoLabel(said()); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
         // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
-        // How to get one listening again: what to say to the agent, for this page.
-        // The mark's colour says the state; the tooltip names it (Leo, 18 Nov).
-        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'quiet' ? 'Not answering: pins handed to it got no reply in 2 minutes; they go to the next wait (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
-        who.title = mode === 'away' ? `${state} To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : [state, name && `session: ${name}`, s?.resume].filter(Boolean).join('\n');
         who.hidden = false;
       }
     }
@@ -571,7 +591,7 @@ export function startLive() {
     const freshStream = () => {
       stream?.close();
       stream = null;
-      showAway('reconnecting');
+      showAway('Reconnecting');
       connect();
     };
     const check = (slept = false) => {
