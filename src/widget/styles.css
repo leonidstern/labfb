@@ -156,7 +156,7 @@ button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; backgroun
 .card > .foot { flex: none; }
 /* A question with choices (labit reply --choice), V1 "plain list" (Leo, 18 Nov): no bubble, no letters, no tags. The
    question, the versions as a plain list of rows (the page's own words muted, "· now"), a tick on the one shown, one
-   Keep at the end. An answered question keeps its rows, the pick ticked in green. On quoted words the card opens in the
+   no Keep (a tap answers). An answered question keeps its rows, the pick ticked in green. On quoted words the card opens in the
    margin (.margin) and a thin line (.tie) runs from the words to it. */
 .msg.asks, .msg.asks[data-agent] { max-width: none; align-self: stretch; background: none; padding: 0; border-radius: 0; } /* over the agent's wash */
 .msg.asks > b { display: none; }
@@ -781,7 +781,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 }
 /* Phones: a choice is a 44 pt row to tap, Keep a full-size button under them (V1: not stuck, so it never covers a row). */
 @media (pointer: coarse) { .card.asking { --_sheet-max: calc(min(50dvh, var(--lab-vh, 100dvh) / 2) + var(--_kb)); } button.choice { min-height: 44px; align-items: center; }
-  button.keep { padding: 10px 16px; font-size: 14px; } }
+}
 
 /* Your actions (lib/actions.ts): as many as fit, "…", and select's done on one line; "…" grows the line into the
    whole list; hold or right-click a row to edit it in place, + add. */
