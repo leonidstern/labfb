@@ -78,4 +78,6 @@ test('reply --choice --wait returns the pick', async () => {
   assert.match(out, /Asked with A\) Hi {2}B\) Hello {2}\(your pick: B\)/);
   assert.match(out, /Picked B: Hello \(their pick on your question id /);
   assert.ok(out.includes(`(their pick on your question id ${ask.id})`));
+  assert.match(out, /^A pick .*: make that change, then .* resolve <id> with no words; words only if/m, 'one rule for a pick: change it, resolve with no words');
+  assert.match(out, /resolve <id> with no words \(words only if/, 'the same rule where the question was asked');
 });

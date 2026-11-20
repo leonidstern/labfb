@@ -33,7 +33,7 @@ Start it with `npx @leonidstern/labit@latest`, so the person gets the newest ver
    When the answer is one of a few things, ask with choices, not an open question: `LAB reply <id> "<question>" --choice "<A>" --hint "<why>" --choice "<B>" --recommend A`. Good for copy or wording, a name, a risky step (a delete, a merge, a migration).
    - 2 to 6 choices, one short line each; `--hint` (after its choice, up to 120 characters) adds a muted second line. Always `--recommend` the one you'd take.
    - One open question per pin: ask, wait for the pick, then ask the next.
-   - The wait shows the pick as `Picked B: …`: do that, then reply `--done`.
+   - The wait shows the pick as `Picked B: …`: make that change, then `LAB resolve <id>` with no words (the ✓ is the answer). Say something only if it isn't obvious or you couldn't do it (`--done "…"` or `--question`).
    - Options that are looks (a layout, a colour, spacing), not words: don't describe them in choices. Offer or make a board (`LAB board new "<topic>" --of /page --variants 3`, below) and let the person pick a frame. Words stay `--choice`.
    To suggest or ask something about the page yourself ("what I'd improve"), don't put a list in a reply: leave your own pins with `LAB pin <selector> "1. <point>" [--page /path]`, one pin per point, numbered, each on its spot. It prints the pin's id.
 5. Start `wait` again right away, so the page never says "no agent listening" while you are around. If `wait` says the page was closed (no page for an hour), stop listening: start again only when the person asks.
@@ -60,7 +60,7 @@ A board shows pages side by side as frames. Use one when the person asks for opt
 - Widths: `--widths 390,820,1280`. A flow: `--flow /a,/b,/c`. These show the real pages; nothing is copied.
 - The lab places frames. Give an order (`--after`), never positions.
 - A pin on a frame names its frame and file: change that frame only.
-- "Picked b" comes as a pin: put b's change into the real page, then reply `--done`. The lab archives the others. Never delete variant files.
+- "Picked b" comes as a pin: put b's change into the real page, then `LAB resolve <id>` with no words (words only if something isn't obvious or you couldn't do it). The lab archives the others. Never delete variant files.
 
 In Codex's sandbox, `wait` and `reply` may be blocked from reaching the lab: run Codex with `-c sandbox_workspace_write.network_access=true`.
 

@@ -100,7 +100,8 @@ For the agent, from the project (any folder under it):
       During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
   labit reply <id> "question" --choice "A words" [--hint "short why"] --choice "B words" [--choice …] [--recommend B]
       Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each one in the sentence
-      first) and the pick comes back in your next wait as "Picked B: …". --hint (up to 120 characters, right after the
+      first) and the pick comes back in your next wait as "Picked B: …": make that change, then resolve <id> with no words
+      (words only if something isn't obvious or you couldn't do it). --hint (up to 120 characters, right after the
       --choice it describes) shows as a small second line. --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
@@ -1730,6 +1731,7 @@ async function unseen(scope = pages(), who = '') {
     : `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question] [--wait]; the standing lines (read threads whole, --on-it before long work, short answers) and rules as before.`;
   const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${groups.length ? `${groups.join('\n')}\n\n` : ''}${blocks.join('\n\n')}` +
     standing +
+    (given.some((f) => f.c.picked) ? `\nA pick ("Picked B: …"): make that change, then ${CMD} resolve <id> with no words; words only if something isn't obvious or you couldn't do it.` : '') +
     (suggest ? `\nA reply about how you answered rather than the work (too long, unclear, didn't show or link it, the same misread twice): answer it and add --suggest-rule "<one short rule>"; they keep it with a tap. Not for the work itself or a one-off correction.` : '') +
     (rules || '');
   // The threads handed over: the page shows them as being worked on until the agent answers or resolves them.
