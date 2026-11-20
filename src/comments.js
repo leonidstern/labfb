@@ -485,6 +485,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // words settle (it opened at 734 px of a box that grew 500 px a frame later, and neither the new message nor the last
   // one was in view).
   const staying = new WeakMap(); // a box's running stay, so a newer one replaces it
+  const stays = new Set(); // every running stay: a tap that opens folded updates lets go of them all (they'd pull the list to the end)
   function stayAtEnd(box, at = () => box.scrollHeight) {
     staying.get(box)?.();
     let until = performance.now() + 1000;
@@ -496,16 +497,20 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     ro?.observe(box);
     for (const k of box.children) ro?.observe(k);
     const timer = setTimeout(() => ro?.disconnect(), 1100);
-    staying.set(box, () => {
+    const cancel = () => {
       stop();
       ro?.disconnect();
       clearTimeout(timer);
       box.removeEventListener('touchstart', stop);
       box.removeEventListener('wheel', stop);
-    });
+      stays.delete(cancel);
+    };
+    staying.set(box, cancel);
+    stays.add(cancel);
     requestAnimationFrame(() => requestAnimationFrame(end));
   }
   S.stayAtEnd = stayAtEnd;
+  S.endStays = () => [...stays].forEach((f) => f());
   function begin(anchor) {
     if (!anchor.moment) {
       const moment = S.momentFor?.(anchor); // the moment as the pin goes down, not as it is sent
