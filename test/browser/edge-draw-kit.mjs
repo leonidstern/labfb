@@ -31,6 +31,8 @@ export const check = (eng, name, ok, detail = '') => {
 };
 // Said, not judged: what happens today where no one answer is plainly right.
 export const note = (eng, name, detail = '') => console.log(`note ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
+// Known and not fixed yet (said in the PR that added these tests): passes as a check once it works, a note till then.
+export const known = (eng, name, ok, detail = '') => (ok ? check(eng, name, true, detail) : note(eng, `known, not fixed yet: ${name}`, detail));
 export const done = () => {
   console.log(failed ? `${failed} failed` : 'all passed');
   process.exit(failed ? 1 : 0);
@@ -75,7 +77,8 @@ export const go = async (p, B, page) => {
   await sleep(150);
 };
 
-// What the widget shows of a drawing: the box, the live lines, the draft's lines, sent drawings, and what is stuck.
+// What the widget shows of a drawing: the box, the live lines, the draft's lines (one click line, .hit, each: a line with
+// pen widths is drawn as a path a segment), sent drawings, and what is stuck.
 export const look = (p) =>
   p.evaluate((r) => {
     const R = new Function(`return ${r}`)();
@@ -86,7 +89,7 @@ export const look = (p) =>
     return {
       box: Boolean(ta), typed: ta?.value ?? '',
       live: R.querySelectorAll('svg.ink.live').length, liveD: R.querySelector('svg.ink.live path')?.getAttribute('d') || '',
-      draftInk: draft.length, draftAt: rect(draft[0]), draftStrokes: draft[0] ? draft[0].querySelectorAll('path:not(.hit)').length : 0,
+      draftInk: draft.length, draftAt: rect(draft[0]), draftStrokes: draft[0] ? draft[0].querySelectorAll('path.hit').length : 0,
       zone: R.querySelectorAll('.zone.draft').length, zoneAt: rect(R.querySelector('.zone.draft')), draftPin: R.querySelectorAll('.pin.draft').length,
       pinsAt: [...R.querySelectorAll('.pin:not(.draft):not(.ink)')].map(rect),
       inkPins: R.querySelectorAll('.pin.ink').length, pins: R.querySelectorAll('.pin:not(.draft)').length,

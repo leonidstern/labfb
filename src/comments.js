@@ -2096,7 +2096,19 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       }
       if (!S.drag.active) return;
       e.preventDefault();
-      if (S.drag.ink) return void (S.inking.strokes.at(-1).push({ x: e.clientX + scrollX, y: e.clientY + scrollY }), S.inking.paint());
+      if (S.drag.ink) {
+        const st = S.inking.strokes.at(-1);
+        const q = st.at(-1);
+        const now = e.timeStamp;
+        const x = e.clientX + scrollX;
+        const y = e.clientY + scrollY;
+        const speed = q ? Math.hypot(x - q.x, y - q.y) / Math.max(1, now - (S.inkT || now - 16)) : 0; // px a ms
+        S.inkT = now;
+        // A pen's pressure sets the width; a mouse or finger draws thinner the faster it moves (Leo's pick 4, 20 Nov).
+        const want = e.pointerType === 'pen' && e.pressure > 0 ? 1.5 + e.pressure * 4 : Math.max(1.6, Math.min(5, 5 - speed * 1.8));
+        st.push({ x, y, w: q?.w ? (q.w + want) / 2 : want });
+        return void S.inking.paint();
+      }
       S.zoneFrame ||= requestAnimationFrame(paintZone);
     },
     true,
@@ -2160,7 +2172,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     S.openId = null;
     // An arrow's ends are named with the card or section they are in: "Shared availability" is in two plans (sims, 20 Nov).
     const block = (e) => e.parentElement?.closest('article, section, li, tr, figure, [id]');
-    const here = ink.strokes.map((q) => q.map((p) => ({ x: p.x - scrollX, y: p.y - scrollY }))); // page → window, as the reader looks
+    const here = ink.strokes.map((q) => q.map((p) => ({ ...p, x: p.x - scrollX, y: p.y - scrollY }))); // page → window, as the reader looks
     const read = readInk(here, (e) => e && short(`${openingTag(e)} "${short(e.textContent, 40)}"${block(e) ? ` in ${openingTag(block(e))} "${short(block(e).textContent, 30)}"` : ''}`, 200));
     // The box opens with the lines: Enter sends the drawing as it is (its first line is what it reads as), or type a
     // few words first. Sims, 20 Nov: a drawing with 2-3 words was right most often; arrows and X need none.

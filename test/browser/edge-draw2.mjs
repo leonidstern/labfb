@@ -178,7 +178,7 @@ try {
     await send(p);
     const tenA = (await inks('ten'))[0]?.anchor;
     const tenText = await L.agent('ten');
-    const shown = await p.evaluate((r) => new Function(`return ${r}`)().querySelectorAll('.pin.ink path:not(.hit)').length, root);
+    const shown = await p.evaluate((r) => new Function(`return ${r}`)().querySelectorAll('.pin.ink path.hit').length, root);
     check(eng, 'ten strokes in one drawing: all ten are kept and drawn on the sent pin, as the agent is told ("10 strokes")', /drawn: 10 strokes/.test(tenText) && tenA?.ink.pts.length === 10 && shown === 10, `agent: "${mark(tenText)}"; lines in the draft ${t1.draftStrokes}, in the store ${tenA?.ink.pts.length}, on the sent pin ${shown}`);
 
     // 11. Two drawings one right after the other, the second while the first's undo card is still up.

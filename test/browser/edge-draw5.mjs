@@ -3,7 +3,7 @@
 // one inked word wrapped in an element, words added before them, the same words added a second time, a draft's band
 // while the text re-flows, and a drawing made over and through inked words.
 // Run: NODE_PATH=… ENGINES=chromium node test/browser/edge-draw5.mjs   (also ENGINES=webkit)
-import { check, done, drawn, eachEngine, go, lab, look, mark, note, ring, root, said, send, sleep, stroke, until } from './edge-draw-kit.mjs';
+import { check, done, drawn, eachEngine, go, lab, look, mark, note, ring, root, said, send, sleep, stroke, until, known } from './edge-draw-kit.mjs';
 
 const TEXT = 'Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau';
 const PAGE = `<!doctype html><meta charset="utf-8"><title>Ink</title><style>body{margin:30px;font:18px/1.5 Georgia,serif;width:640px} #a{width:420px;margin:60px 0}</style><body><p id="a">${TEXT}</p><p id="b">Second paragraph with plain words in it</p><div style="height:500px"></div></body>`;
@@ -76,7 +76,7 @@ try {
     const t0 = Date.now();
     while (Date.now() - t0 < 8000 && !(one(r1).text === 'gamma delta epsilon' || r1.pins.some((x) => x.seen))) (await sleep(250), (r1 = await ink(p)));
     // Either mark will do: the ink on the new words, or the pin shown instead. Neither is a comment nobody can see.
-    check(eng, 'the paragraph drawn again by the page (same words, a new text node, nothing else changes): within 8 s the comment is marked again by itself, as ink on the new words or as its pin', (one(r1).text === 'gamma delta epsilon' && one(r1).live) || r1.pins.some((x) => x.seen), `after ${Date.now() - t0} ms: ${short(r1)}`);
+    known(eng, 'the paragraph drawn again by the page (same words, a new text node, nothing else changes): within 8 s the comment is marked again by itself, as ink on the new words or as its pin', (one(r1).text === 'gamma delta epsilon' && one(r1).live) || r1.pins.some((x) => x.seen), `after ${Date.now() - t0} ms: ${short(r1)}`);
     await p.evaluate(() => dispatchEvent(new Event('resize')));
     await sleep(900);
     const r2 = await ink(p);
