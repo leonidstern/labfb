@@ -122,14 +122,14 @@ try {
       await p.mouse.move(word.right - 1, word.top + word.height / 2, { steps: 6 });
       await p.mouse.up();
       await p.keyboard.up('Shift');
-      await untilRoot(p, (r) => Boolean(r.querySelector('.fd .p-bar.on')) && r.querySelector('.fd').getAnimations().length === 0, 700);
+      await untilRoot(p, (r) => r.activeElement?.localName === 'textarea' && Boolean(r.querySelector('.float')), 700);
       await p.keyboard.press('h');
-      await untilRoot(p, (r) => r.querySelector('.fd textarea')?.value === 'h', 900);
+      await untilRoot(p, (r) => r.querySelector('.float textarea')?.value === 'h', 900);
       const typed = await p.evaluate(() => {
         const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot;
-        return r?.querySelector('.fd textarea')?.value;
+        return r?.querySelector('.float textarea')?.value;
       });
-      check(eng, 'with the bar showing, the changed toggle key (h) is a letter, not a shortcut', typed === 'h' && (await look(p)).on === onBefore, `${typed}`);
+      check(eng, 'with the comment card open on words, the changed toggle key (h) is a letter, not a shortcut', typed === 'h' && (await look(p)).on === onBefore, `${typed}`);
       // A question's rows (src/widget/thread.ts, V1 plain list): J K and the arrows move nothing; on a computer 1 to 6 pick
       // that choice (A is 1) like a tap, with its 5 s of undo, unless a text box has the focus; a tap on a row does the same.
       const key = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;

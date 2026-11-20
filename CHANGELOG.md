@@ -22,6 +22,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - **A tapped action closes at once** (go, fix, remove…): no undo card to close by hand on a phone. Command-Z still takes it back on a computer.
 - **Drawing edge cases fixed:** loops that stop short or run past their start, wavy and slightly crooked lines, a palm on the glass, a scroll mid-stroke, a stroke into a frame or off the window, D typed into the box, a cancelled stroke, a loop ending on its own start, long scribbles and ten-stroke drawings kept whole, drawing over links, buttons and earlier lines.
 - One board. `/_lab/board/<name>` is now the same board view a page's board link opens, over an empty page: a bar with the board's name, and "‹ back" when the address names its page (`?of=`). ⇧B, Esc on an empty board and the browser's back go there as before, and the camera stays in the address. The package ships one board file (`boardview.js`), not two.
+- Fluid goes. Shift-selecting words on a computer opens the ordinary comment card on them (pinned at the words, with your actions row), not the dialog that followed the words; on a phone, selecting words no longer brings up the comment · rewrite · cut bar (hold to comment as before). `fluid.ts`, its styles, `test/browser/fluid.mjs` and the `fluid` CI job go.
 
 ## 0.7.0 · 2026-11-19
 
