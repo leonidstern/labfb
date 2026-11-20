@@ -2122,14 +2122,17 @@ const boardApi = async (req, res, url) => {
   const name = url.searchParams.get('name') || (page && B.nameOf(page));
   if (req.method === 'GET' && !name) return json(200, { boards: (boardList ??= B.names(ROOT).flatMap((n) => boardGet(n) || [])).map(({ name, of, frames }) => ({ name, of, frames: frames.length })) });
   if (!name || !B.NAME.test(name) || (page && !B.labPath(page))) return json(400, { error: 'name a board (?name=) or a page (?page=/x)' });
-  const was = boardGet(name);
   if (req.method === 'GET') {
+    const was = boardGet(name);
     if (was) return json(200, { ...B.place(was), exists: true });
     if (!page) return json(404, { error: `no board ${name}` });
     return json(200, { ...B.place({ v: 1, name, rev: 0, of: page, frames: [{ id: 'a', src: page, w: 1440, h: 900, state: 'live' }] }), exists: false });
   }
   if (req.method !== 'PUT' || !isLoopback(req)) return plain(res, 405, 'GET, PUT (this computer) or POST');
+  // The body first, then read, check and write with nothing awaited between: two saves made from the same rev whose
+  // requests were both open before either body came (two tabs, a slow link) were both taken, the second over the first.
   const body = await sent(req);
+  const was = boardGet(name);
   if (was && body.rev !== was.rev) return json(409, { error: 'the board changed since you read it', board: B.place(was) });
   const next = B.check({ ...(page && !body.of ? { of: page } : {}), ...body }, name, was);
   if (typeof next === 'string') return json(422, { error: next });
