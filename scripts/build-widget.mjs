@@ -1,5 +1,5 @@
 // Builds the page script: src/comments.js and its modules, bundled and minified into public/_lab/comments.js (and the
-// parts it loads later, below). The
+// parts it loads later, below, and lab.css). The
 // stylesheet (src/widget/styles.css) goes in as text, minified too: esbuild's command line can't minify CSS it loads
 // as text, so this runs esbuild's API instead.
 //
@@ -18,13 +18,16 @@ import { tool } from './npx-tools.mjs';
 const esbuild = tool('esbuild');
 const terser = tool('terser');
 
+// esbuild leaves the spaces inside what it can't read: a custom property's value (`--_ease: var(--lab-ease, cubic-bezier(.2, .8, .2, 1))`)
+// and a var() fallback. They only separate; taking them out (outside strings) leaves every value the same.
+const tighten = (css) => css.split(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/).map((part, i) => (i % 2 ? part : part.replace(/(--[\w-]+):\s+/g, '$1:').replace(/,\s+/g, ','))).join('');
 // The stylesheet as text, minified (comments and spaces out). Everything else as the plain command line did it.
 const minifiedCss = {
   name: 'minified-css-text',
   setup(build) {
     build.onLoad({ filter: /\.css$/ }, async (a) => {
       const { code } = await esbuild.transform(await fs.promises.readFile(a.path, 'utf8'), { loader: 'css', minify: true });
-      return { contents: code.trim(), loader: 'text' };
+      return { contents: tighten(code.trim()), loader: 'text' };
     });
   },
 };
@@ -67,5 +70,15 @@ const builds = [
   options,
   ...Object.entries(PARTS).map(([name, entry]) => ({ ...options, entryPoints: [entry], format: 'esm', outfile: path.join(path.dirname(outfile), `${name}.js`) })),
 ];
-if (watch) for (const o of builds) await (await esbuild.context(o)).watch();
-else await Promise.all(builds.map((o) => esbuild.build(o)));
+// The lab's design system for pages (src/lab.css) is served as /_lab/lab.css, minified the same way: the commented source
+// stays here, the package carries the small one (the comments were 40% of the file).
+const labCss = async () => {
+  const { code } = await esbuild.transform(await fs.promises.readFile('src/lab.css', 'utf8'), { loader: 'css', minify: true });
+  await fs.promises.mkdir(path.dirname(outfile), { recursive: true });
+  await fs.promises.writeFile(path.join(path.dirname(outfile), 'lab.css'), tighten(code.trim()) + '\n');
+};
+await labCss();
+if (watch) {
+  for (const o of builds) await (await esbuild.context(o)).watch();
+  fs.watch('src/lab.css', () => void labCss());
+} else await Promise.all(builds.map((o) => esbuild.build(o)));
