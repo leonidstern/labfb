@@ -27,6 +27,7 @@
     "typecheck": "node ci/metrics.mjs types",
     "deadcode": "npx --yes knip@5.66.0 --include files,exports,types --no-progress",
     "reuse": "node ci/reuse.mjs",
+    "classes": "node ci/classes.mjs",
     "pretest": "node -e \"import('./lib/build.ts').then((m) => process.exit(m.ensureBuilt('.') ? 0 : 1))\"",
     "test": "node --import ./test/setup.mjs --test test/*.test.mjs"
   },

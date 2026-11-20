@@ -28,6 +28,7 @@ jobs:
   #   pinned, so labit keeps zero dependencies; knip.json lists the entry points.
   # - Reuse: one drawer, one dimmed page, shared gestures, keyboard fit, animations and styles (ci/reuse.mjs).
   #   Something new is listed in ci/parts.json on purpose, in the same pull request.
+  # - Classes: a class the script names has a CSS rule, and a styled class is named by the script (ci/classes.mjs).
   checks:
     runs-on: ubuntu-latest
     steps:
@@ -36,6 +37,7 @@ jobs:
         with:
           node-version: 22
       - run: npm run reuse
+      - run: npm run classes
       - run: npm run deadcode
 
   # Which browser tests this PR needs (ci/affected.mjs): from the files it changes, docs and CI-only PRs run none, a
