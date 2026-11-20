@@ -1978,7 +1978,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // The keys (Leo, 2026-11-15/16), marked in the bar's words: cha(t) (C was chat until 19 Nov; Leo: C is comment), ne(w) (Shift-W: the one before), 1 comment / pointer,
     // P pause, M hide, D show/hide done. With a thread open: R reply, E resolve.
     // Shift is only for next (Shift-W: the one before); ⇧D, ⇧B and the rest belong to the board.
-    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || !e.shiftKey)) {
+    if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || act === 'done' || !e.shiftKey)) { // ⇧D draws too: Shift straightens (below)
       const k = act;
       e.preventDefault();
       if (k === 'pause') return setPause(!S.paused);
@@ -2060,7 +2060,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const draftHasText = () => Boolean(S.draft) && [.../** @type {NodeListOf<HTMLTextAreaElement>} */ (root.querySelectorAll('.float textarea'))].some((t) => t.value.trim());
   function startDrag(e) {
     // An open card doesn't block a new area: it closes once the area is drawn (a plain click still just closes it).
-    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp)) return;
+    if ((!S.on && !e.altKey) || (S.cursorMode && !e.altKey) || draftHasText() || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || (e.shiftKey && !S.shiftUp && !S.dKey)) return;
     // Holding D, a press on an earlier drawing's line draws a new one instead of opening it.
     if (e.composedPath().includes(host) && !(S.dKey && e.composedPath().some((n) => n instanceof Element && n.matches('.ink .hit')))) return;
     // Holding D, a press on a link or a button draws too: circling a broken button is the point (sims, 20 Nov).
@@ -2142,6 +2142,20 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // A stroke of a drawing: more may follow while D is held. It is done when D is let go, or a second after the last.
     if (d.ink) {
       S.drew = true;
+      // Shift held as the pen lifts: a stroke that runs about straight becomes a straight line, flat, upright or at 45°
+      // (Leo's pick S1, 20 Nov). A curl or a loop stays as drawn.
+      const st = S.inking?.strokes.at(-1);
+      if (e.shiftKey && st?.length > 1) {
+        const [a, b] = [st[0], st.at(-1)];
+        const chord = Math.hypot(b.x - a.x, b.y - a.y);
+        const run = st.reduce((n, p, i) => (i ? n + Math.hypot(p.x - st[i - 1].x, p.y - st[i - 1].y) : 0), 0);
+        if (chord > 12 && run < chord * 1.35) {
+          const ang = Math.round(Math.atan2(b.y - a.y, b.x - a.x) / (Math.PI / 4)) * (Math.PI / 4);
+          const w = st.reduce((n, p) => n + (p.w || 3), 0) / st.length;
+          st.splice(0, st.length, { x: a.x, y: a.y, w }, { x: a.x + chord * Math.cos(ang), y: a.y + chord * Math.sin(ang), w });
+          S.inking.paint();
+        }
+      }
       clearTimeout(S.inkTimer);
       S.inkTimer = setTimeout(endInk, 1000);
       return;
