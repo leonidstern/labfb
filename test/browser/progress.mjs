@@ -122,6 +122,30 @@ for (const [n, eng] of engines().entries()) {
     check(eng, "hovering an open pin: its card's top stays within 0.1 px, in and out", held.length > 20 && off <= 0.1, `${held.length} frames, moved ${off.toFixed(2)} px`);
     await p.keyboard.press('Escape');
     await until(() => shadow(() => { return !r.querySelector('.card'); }));
+    // Opening, closing and reopening a thread by its pin: the card is never see-through (opacity 1, an opaque ground) and there
+    // is never more than one (an old one fading out beside the new one let the page show through).
+    {
+      const look = () => shadow(() => { return [...r.querySelectorAll('.card')].map((c) => { const s = getComputedStyle(c); return `${s.opacity} ${s.backgroundColor}`; }); });
+      const seenCards = [];
+      const watch = async (ms) => { for (const end = Date.now() + ms; Date.now() < end; await sleep(20)) seenCards.push(await look()); };
+      await p.mouse.move(5, 5);
+      const pinAt = await spot(1);
+      await p.mouse.move(pinAt.x, pinAt.y, { steps: 2 });
+      await sleep(200);
+      await p.mouse.down(); await p.mouse.up(); // open
+      await watch(400);
+      await p.mouse.down(); await p.mouse.up(); // close
+      await sleep(30);
+      await p.mouse.down(); await p.mouse.up(); // reopen at once
+      await watch(500);
+      await p.mouse.down(); await p.mouse.up(); // close again
+      await watch(100);
+      const many = seenCards.filter((c) => c.length > 1).length;
+      const thin = seenCards.flat().filter((c) => !/^1 rgb\((\d+), (\d+), (\d+)\)$/.test(c)).length;
+      check(eng, 'opening, closing and reopening a thread: one card at most, never see-through', seenCards.some((c) => c.length === 1) && many === 0 && thin === 0, `${seenCards.length} looks, ${many} with two cards, ${thin} see-through`);
+      await p.keyboard.press('Escape');
+      await until(() => shadow(() => { return !r.querySelector('.card'); }));
+    }
     // Placing a pin: the new comment's box and its pin keep their place from the first frame (the box was placed a line short
     // and grew, and followed the pin's pop-in: near the screen's end it jumped, and WebKit snapped it at the end). Layout
     // numbers, so the box's own fade-in (a transform) is not counted; recorded in the page on each resize too (a frame is short).
