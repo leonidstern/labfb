@@ -222,7 +222,7 @@ test('variants behind a dev server (or of a page that is no .html file) are the 
   assert.match((await inPx('list', 'live')).out, /\nc {2}\/pricing\?lab-variant=c {2}1280×800 {2}picked\n/);
   // The pick comes back to the agent as a pin on the board, saying which branch won.
   const t = await (await fetch(`http://localhost:${PPX}/_lab/agent/_board/live`)).text();
-  assert.match(t, /^picked: a, b archived\. Keep the c branch \(\?lab-variant=c\) in \/pricing's source and remove the lab-variant branching, then reply --done\.$/m);
+  assert.match(t, /^picked: a, b archived\. Keep the c branch \(\?lab-variant=c\) in \/pricing's source and remove the lab-variant branching, then resolve it with no words \(resolve <id>\)\.$/m);
 });
 
 test('picking frame a, the page as it is now, keeps the page and says what to clean up; "files kept" only where there are files', async () => {
@@ -230,7 +230,7 @@ test('picking frame a, the page as it is now, keeps the page and says what to cl
   const name = /# Board (\S+)/.exec(made.out)[1];
   assert.match((await cli(DIR, 'pick', name, 'a')).out, /Picked a\. Archived b, c \(files kept\)\./);
   const t = await (await fetch(`${B}/_lab/agent/_board/${name}`)).text();
-  assert.match(t, /^picked: b, c archived, files kept\. Keep pricing\.html as it is: change nothing in it\. Delete the variant files \(\.lab\/boards\/[^/]+\/b\.html, c\.html\)\. Then reply --done\.$/m);
+  assert.match(t, /^picked: b, c archived, files kept\. Keep pricing\.html as it is: change nothing in it\. Delete the variant files \(\.lab\/boards\/[^/]+\/b\.html, c\.html\)\. Then resolve it with no words \(resolve <id>\)\.$/m);
   assert.doesNotMatch(t, /Put a's change/);
   // Live variants: no files to keep; the page's own branching is what goes.
   await up(PPX);
@@ -238,7 +238,7 @@ test('picking frame a, the page as it is now, keeps the page and says what to cl
   const n2 = /# Board (\S+)/.exec(live.out)[1];
   assert.match((await cli(PX, 'pick', n2, 'a')).out, /^Picked a\. Archived b, c\.$/m);
   const t2 = await (await fetch(`http://localhost:${PPX}/_lab/agent/_board/${n2}`)).text();
-  assert.match(t2, /^picked: b, c archived\. Keep \/pricing as it is: change nothing in it\. Remove any lab-variant branching you added to its source\. Then reply --done\.$/m);
+  assert.match(t2, /^picked: b, c archived\. Keep \/pricing as it is: change nothing in it\. Remove any lab-variant branching you added to its source\. Then resolve it with no words \(resolve <id>\)\.$/m);
 });
 
 test('widths copy no file and run narrow to wide; flow keeps its order; add puts a step after another', async () => {
