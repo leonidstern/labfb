@@ -22,14 +22,68 @@ export function startLive() {
   if (W.script?.dataset.live) {
     // sessionStorage is shared by every frame of a tab: a board's frames of one page each keep their own (the board names them).
     const key = 'lab-scroll:' + (window.name.startsWith('lab:') ? window.name + ':' : '') + location.pathname;
+    // The page's own state that a reload would lose, each with its element (by id, or its place among its kind): a
+    // scrolled box, an opened <details>, words typed in a field, a tick, a choice, the field with the cursor.
+    const ofKind = (t: string) => [...document.getElementsByTagName(t)].filter((n) => n !== W.host);
+    const pageState = () => {
+      const out: any[] = [];
+      for (const n of document.querySelectorAll('*') as NodeListOf<any>) {
+        if (n === W.host || n === document.documentElement || n === document.body) continue;
+        const add = (kind: string, v: any) => out.length < 200 && out.push([n.id ? '#' + n.id : n.localName + ':' + ofKind(n.localName).indexOf(n), kind, v]);
+        if (n.scrollTop || n.scrollLeft) add('s', [n.scrollTop, n.scrollLeft]);
+        if (n.localName === 'details' && n.open) add('o', 1);
+        if (!/^(input|textarea|select)$/.test(n.localName) || /^(password|file|hidden)$/.test(n.type)) continue;
+        // Only what you changed: a field as its file has it follows the file after the reload.
+        if (n.localName === 'select') {
+          if ([...n.options].some((o) => o.selected !== o.defaultSelected)) add('m', [...n.options].flatMap((o, i) => (o.selected ? [i] : [])));
+        } else if (/^(checkbox|radio)$/.test(n.type)) {
+          if (n.checked !== n.defaultChecked) add('c', n.checked);
+        } else if (n.value !== n.defaultValue && n.value.length < 5000) add('v', n.value);
+        if (n === document.activeElement) add('f', [n.selectionStart, n.selectionEnd]);
+      }
+      return out;
+    };
+    // Each is put back and says whether it's done: a box (or the page) that isn't long enough yet is not.
+    const putBack = ([k, kind, v]: [string, string, any]) => () => {
+      const n: any = k[0] === '#' ? document.getElementById(k.slice(1)) : ofKind(k.split(':')[0])[+k.split(':')[1]];
+      if (!n) return false;
+      if (kind === 's') {
+        n.scrollTop = v[0];
+        n.scrollLeft = v[1];
+        return Math.abs(n.scrollTop - v[0]) < 2 && Math.abs(n.scrollLeft - v[1]) < 2;
+      }
+      if (kind === 'o') n.open = true;
+      else if (kind === 'c') n.checked = v;
+      else if (kind === 'm') [...(n.options || [])].forEach((o, i) => (o.selected = v.includes(i)));
+      else if (kind === 'v') n.value = v;
+      else {
+        n.focus({ preventScroll: true });
+        try {
+          n.setSelectionRange(v[0], v[1]);
+        } catch {} // a field without a text cursor (a number, a date)
+      }
+      return true;
+    };
+    let touchedAt = 0;
     try {
-      // The scroll position and the open thread come back after a reload, so an answer shows where you left it.
+      // The scroll position and the open thread come back after a reload, so an answer shows where you left it. So does
+      // what you did to the page itself (pageState). A page that builds itself after it loads is still short then, and
+      // its fields aren't there yet: what can't be put back is tried again for 3 s, until you touch the page.
       const kept = JSON.parse(sessionStorage.getItem(key) || 'null');
       if (kept !== null) {
         sessionStorage.removeItem(key);
         if (kept.open) W.S.openId = kept.open;
         if (kept.chat) W.S.chatOpen = true;
-        addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
+        const y = +(kept.y ?? kept);
+        const x = +kept.x || 0;
+        let todo = [...(kept.page || []).map(putBack), () => (scrollTo(x, y), Math.abs(scrollY - y) < 2 && Math.abs(scrollX - x) < 2)];
+        let tries = 0;
+        const go = () => {
+          todo = todo.filter((job) => !job());
+          if (todo.length && tries++ < 30 && !touchedAt) setTimeout(go, 100);
+        };
+        if (document.readyState === 'complete') go();
+        else addEventListener('load', go);
       }
     } catch {}
     // Hold a reload while anything is open (a thread, a new comment) or a box has focus or text: the page
@@ -37,7 +91,6 @@ export function startLive() {
     // A newer version reloads the page when it's safe: not while you read a thread or the chat (it waits
     // until they're closed, so nothing moves under you), type, have words in a box, place a new comment, have a phone's
     // keyboard up or have just touched the page.
-    let touchedAt = 0;
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => (touchedAt = performance.now()), { capture: true, passive: true });
     const frame = Boolean(W.S.frame); // a board's frame (frame.ts): the board holds the stream and says when it is busy
     // A board page (its key is /_board/<name>) holds its frames, which name the files it "uses": a save of a page, a .json
@@ -102,7 +155,7 @@ export function startLive() {
     };
     const now = () => {
       try {
-        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: W.S.openId, chat: W.S.chatOpen }));
+        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, x: scrollX, open: W.S.openId, chat: W.S.chatOpen, page: pageState() }));
       } catch {}
       location.reload();
     };
