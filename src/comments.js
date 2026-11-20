@@ -419,9 +419,10 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       }
     }
   };
+  // Not while a choice is tried in the page (its words are swapped in): once it is put back.
   const relook = () => {
     looked.clear();
-    setTimeout(found, 500);
+    setTimeout(() => (isTrying() ? relook() : found()), 500);
   };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
   // Anything odd (a gap, an error, an old lab) falls back to the whole list.
