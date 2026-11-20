@@ -459,6 +459,12 @@ const writeAtomic = (file, text, mode) => {
 // one is put aside (never read again or written over) and the lab starts without it. Before 19 Nov each part was a
 // file of its own (name, reads.json, opened.json, archived.json, handed.json, claims.json, seen): read once into this
 // one, then removed.
+// A file that can't be read is put aside (never loaded again, never overwritten) and the rest goes on without it.
+const putAside = (file, what) => {
+  const aside = `${file}.broken-${Date.now()}`;
+  fs.renameSync(file, aside);
+  console.log(`[lab] ${what} was damaged; moved it to ${path.relative(LAB, aside)}`);
+};
 const STATE_FILE = path.join(LAB, 'state.json');
 const OLD_STATE = { name: 'name', reads: 'reads.json', opened: 'opened.json', archived: 'archived.json', handed: 'handed.json', claims: 'claims.json', seen: 'seen' };
 const isObj = (o) => Boolean(o) && typeof o === 'object' && !Array.isArray(o);
@@ -484,9 +490,7 @@ const labState = (() => {
     const s = JSON.parse(text);
     if (isObj(s)) return s;
   } catch {}
-  const aside = `${STATE_FILE}.broken-${Date.now()}`;
-  fs.renameSync(STATE_FILE, aside);
-  console.log(`[lab] state.json was damaged; moved it to ${path.basename(aside)}`);
+  putAside(STATE_FILE, 'state.json');
   return {};
 })();
 const stateParts = {};
@@ -532,12 +536,6 @@ const savePage = (page, dir = STORE) => {
   const home = homes.get(page);
   if (h?.size) writeAtomic(file, `{"v":${SCHEMA},"page":${JSON.stringify(page)},${home ? `"file":${JSON.stringify(home[0])},"fid":"${home[1]}",` : ''}"comments":{${[...h].map(([id, v]) => `${JSON.stringify(id)}:${v}`).join(',')}}}`);
   else fs.rmSync(file, { force: true });
-};
-// A file that can't be read is put aside (never loaded again, never overwritten) and the rest goes on without it.
-const putAside = (file, what) => {
-  const aside = `${file}.broken-${Date.now()}`;
-  fs.renameSync(file, aside);
-  console.log(`[lab] ${what} was damaged; moved it to ${path.relative(LAB, aside)}`);
 };
 let saved = {};
 // What each wait was handed, kept beside the comments (.lab/state.json, handed) and not in them: { comment id: [the stamp it
@@ -1122,10 +1120,11 @@ const guestOk = (req) => {
 };
 // Loopback is this computer: the browser here never needs a link. Without --wifi nobody else gets this far anyway.
 const mayIn = (req) => isLoopback(req) || !WIFI || !!guestOk(req);
-// The labit mark (the cut for small sizes), drawn in the text colour: on the lab's own screens. The widget has the
-// same shapes split into parts (src/widget/live.ts); the tab icon is public/_lab/favicon.svg.
+// The labit mark (the cut for small sizes), drawn in the text colour: on the lab's own screens. Its shape is the tab icon's
+// (public/_lab/favicon.svg), read from there; the widget has the same shapes split into parts (src/widget/live.ts).
+const MARK = /\bd="([^"]+)"/.exec(fs.readFileSync(path.join(REPO, 'public/_lab/favicon.svg'), 'utf8'))?.[1];
 const markSvg = (size, style = '') =>
-  `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true"${style ? ` style="${style}"` : ''}><path transform="translate(-1 -.5)" fill="currentColor" fill-rule="evenodd" d="M18.9 24.67L24.4 3h11.5L31.28 21.2A22.8 22.8 0 0 0 18.9 24.67ZM37.07 22.02L41.9 3h11.5L47.1 27.85A22.8 22.8 0 0 0 37.07 22.02ZM31 26a18 18 0 0 1 18 18 18 18 0 0 1-18 18H15.57a2.57 2.57 0 0 1-2.57-2.57V44A18 18 0 0 1 31 26ZM24.8 45a6.2 6.2 0 1 0 12.4 0a6.2 6.2 0 1 0-12.4 0Z"/></svg>`;
+  `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true"${style ? ` style="${style}"` : ''}><path transform="translate(-1 -.5)" fill="currentColor" fill-rule="evenodd" d="${MARK}"/></svg>`;
 // Someone at this screen isn't let in yet, so nothing of the lab loads for them: the tab icon rides in the page.
 const GATE_ICON = `data:image/svg+xml,${encodeURIComponent(markSvg(64).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('currentColor', '#141414'))}`;
 const gate = (res, why = 'This lab opens with a one-time link.') =>
@@ -2129,7 +2128,7 @@ const sentWithin = async (req, max) => {
   }
   return n > max ? null : Buffer.concat(parts).toString();
 };
-const answer = (res, data) => res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+const answer = (res, data, code = 200) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
 // When this lab was made: its .lab folder's birth (the first run in this folder). Linux may not keep births: then its
 // oldest comment, else nothing.
 // Names once each, whatever their case ("Leo" and "leo" are one person).
@@ -2183,7 +2182,7 @@ const labInfo = () => {
 // made from (409 when the file moved on) and may not drop a frame. POST {action, …} is the agent's (labit board …): new,
 // add, move, pick, list; the answer is {text, board} (what the command prints), or 422 {error, text}.
 const boardApi = async (req, res, url) => {
-  const json = (code, data) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
+  const json = (code, data) => answer(res, data, code);
   if (req.method === 'POST') {
     if (!isAgent(req) && !(isLoopback(req) && keyOk(req))) return plain(res, 403, 'forbidden');
     const b = await sent(req);
