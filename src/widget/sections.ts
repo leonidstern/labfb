@@ -245,7 +245,7 @@ export function startSections() {
   const chip = (s: Sec) => {
     const b = el('button', { class: 'sb-chip', type: 'button' });
     b.dataset.s = s.key;
-    b.append(el('i', { class: 'sb-dot' }), el('span', { class: 'sb-t' }, s.label), el('span', { class: 'sb-w' }));
+    b.append(el('span', { class: 'sb-t' }, s.label), el('span', { class: 'sb-w' }));
     b.onclick = () => {
       read(s);
       // An unread pin in it: that pin opens (and the page goes to it, in this section), as "new" in the bottom bar does.

@@ -1,7 +1,7 @@
 # Motion
 
 Everything in the widget that moves uses one set of durations and curves: tokens, next to the colour tokens in the
-`:host` block of `src/widget/styles.css`. The same names, as `--lab-*`, are in `public/_lab/lab.css` for lab pages, and
+`:host` block of `src/widget/styles.css`. The same names, as `--lab-*`, are in `src/lab.css` (served minified as `/_lab/lab.css`) for lab pages, and
 a page that sets a `--lab-*` one changes the widget's, as it does for the colours.
 
 Code that needs a number (a timer, a Web Animation, which can't read a `var()`) reads the same tokens:
