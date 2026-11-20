@@ -166,30 +166,37 @@ export function startLive() {
     // them what the state means (.d). The words stay in the pill's label for screen readers. From the lab's state (mode, agent)
     // and the agent's work on this page (list.ts pillLine).
     let pill = null;
-    let detail = ''; // what the state means, and the session's name: the second line of the box
     const SIGNS = { '!': 'M6 3.25v3.25M6 8.75h.01', '…': 'M3.4 6h.01M6 6h.01M8.6 6h.01', '-': 'M3.75 6h4.5', '~': 'M8.6 6.6A2.6 2.6 0 1 1 6.3 4M5.1 2.8l1.3 1.2-1.3 1.2' };
     const TONE = { '!': 'amber', '…': 'amber', '-': 'grey', '~': 'grey' };
-    const show = (parts: (string | Node)[], n = '') => {
-      const sig = [...parts.map((x) => (typeof x === 'string' ? x : x.textContent)), n, detail].join('|');
+    // The box: line 1 (.t), what else is worth knowing (.d, muted), and a command to copy (.c).
+    const show = (head: string, n = '', more: string[] = [], cmd = '') => {
+      const sig = [head, n, ...more, cmd].join('|');
       if (lbl.dataset.sig === sig) return;
       lbl.dataset.sig = sig;
-      const w = span('', 'w');
-      w.append(span('', 't'), ...(detail ? [span(detail, 'd')] : []));
-      w.firstElementChild.append(...parts);
-      lbl.replaceChildren(w);
+      lbl.replaceChildren(span('', 'w'));
+      lbl.firstElementChild.append(span(head, 't'), ...(more.length ? [span(more.join('\n'), 'd')] : []), ...(cmd ? [span(cmd, 'c')] : []));
       cb.className = `cb ${TONE[n] || ''}`;
       cb.innerHTML = SIGNS[n] ? `<svg viewBox="0 0 12 12" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="${SIGNS[n]}" stroke="var(--_bg)" stroke-width="${n === '…' ? 2 : 1.5}"/></svg>` : n ? `<span>${n}</span>` : '';
       if (n) who.dataset.n = n;
       else delete who.dataset.n;
     };
-    // What a screen reader and the tooltip get: the words, and the count the badge shows.
+    // What a screen reader gets: the first line, and the count the badge shows.
     const said = () => (lbl.querySelector('.t')?.textContent || '') + (/^\d+$/.test(who.dataset.n || '') ? ` · ${who.dataset.n} waiting` : '');
     const paintWho = () => {
       if (!pill) return;
-      const { mode, agent, away } = pill;
-      const { text, stale, waiting } = mode === 'working' ? pillLine() : { text: '', stale: false, waiting: 0 };
+      const { mode, agent, away, name, resume } = pill;
+      const { text, last, stale, waiting } = mode === 'working' ? pillLine() : { text: '', last: '', stale: false, waiting: 0 };
       const n = mode === 'working' ? (stale ? '!' : waiting ? String(Math.min(waiting, 99)) : '') : mode === 'quiet' ? '…' : mode === 'away' ? '-' : '';
-      show(mode === 'listening' ? [span('talking to'), ` ${agent}`] : mode === 'quiet' ? [agent, span(" isn't answering")] : mode === 'working' ? (text ? [span(text + (stale && waiting ? ` · ${waiting} waiting` : ''))] : [agent, span(' is working')]) : [span(away)], n);
+      const [who2, model] = agent.split(' · ');
+      const lines = [];
+      const how = `labit wait --page ${W.S.page}`;
+      let head = '';
+      if (mode === 'listening') (head = `${who2} is listening`), model && lines.push(model);
+      else if (mode === 'quiet') (head = `${who2} isn't answering`), lines.push('Pins go to the next agent that listens.');
+      else if (mode === 'working') (head = text || `${who2} is working`), last && lines.push(last), waiting && lines.push(`${waiting} waiting`);
+      else (head = away[0].toUpperCase() + away.slice(1)), lines.push(`Tell an agent: listen for pins on ${location.origin}${W.S.page}`);
+      if (name) lines.push(`Session ${name}`);
+      show(head, n, lines, mode === 'away' ? how : resume || '');
       whoLabel(said());
     };
     W.paintWho = paintWho;
@@ -198,9 +205,8 @@ export function startLive() {
     // (Leo, 18 Nov: the black rabbit came and went at random, from these).
     const showAway = (word) => {
       pill = null; // the pill's own words are not painted over it until the next state
-      detail = '';
       lbl.dataset.sig = '';
-      show([span(word)], '~');
+      show(word, '~');
       whoLabel(word);
       who.classList.add('stale');
       W.chatBtn.classList.add('stale');
@@ -446,7 +452,7 @@ export function startLive() {
         if (stream) return; // a tab with its own stream listens to that
         if (d.t === 'state') got(d.v);
         if (d.t === 'beat') beat = Date.now();
-        if (d.t === 'down') showAway('reconnecting');
+        if (d.t === 'down') showAway('Reconnecting');
       };
     const connect = () => {
       if (stream) return;
@@ -457,7 +463,7 @@ export function startLive() {
         if (leading) bc?.postMessage({ t: 'beat' });
       });
       stream.onerror = () => {
-        showAway('reconnecting');
+        showAway('Reconnecting');
         if (leading) bc?.postMessage({ t: 'down' });
       };
       stream.onmessage = (e) => {
@@ -533,18 +539,12 @@ export function startLive() {
         const quiet = (v.silent || []).find((q) => !q.pages || q.pages.includes(W.S.page));
         const mode = s && here ? (quiet ? 'quiet' : v.mode || 'listening') : 'away';
         W.S.unheard = mode === 'away';
-        // "talking to Claude · Sonnet 5.5": the agent, and the model the session said it runs on. The session's name
-        // isn't in the words (owner, 18 Nov); it is in the pill's tooltip.
+        // "Claude · Sonnet 5.5": the agent, and the model the session said it runs on (the box says "Claude is listening", then the
+        // model). The session's name is its own line there.
         const agent = quiet && mode === 'quiet' ? quiet.label : s?.model ? `${s.agent || 'Claude'} · ${s.model}` : s?.agent || 'Claude';
         const name = s && s.name !== (s.agent || 'Claude') ? s.name : '';
         W.S.agent = s ? agent : '';
-        pill = { mode, agent, away: s && !here ? 'no agent on this page' : 'no agent listening' };
-
-        // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
-        // How to get one listening again: what to say to the agent, for this page.
-        // The mark's colour says the state; the tooltip names it (Leo, 18 Nov).
-        const state = mode === 'away' ? 'Away: no agent is listening (grey).' : mode === 'quiet' ? 'Not answering: pins handed to it got no reply in 2 minutes; they go to the next wait (grey).' : mode === 'working' ? 'Working on a pin (green, ears twitching).' : 'Listening: waiting for your pins (green). Amber: reconnecting to the lab. Grey: away.';
-        detail = mode === 'away' ? `${state} To get an agent listening, tell it: listen for pins on ${location.origin}${W.S.page} (labit wait --page ${W.S.page})` : [state, name && `session: ${name}`, s?.resume].filter(Boolean).join('\n');
+        pill = { mode, agent, name, resume: s?.resume || '', away: s && !here ? 'no agent on this page' : 'no agent listening' };
         paintWho();
         who.classList.remove('stale');
         W.chatBtn.classList.remove('stale');
@@ -557,6 +557,7 @@ export function startLive() {
         whoLabel(said()); // the words stay for screen readers when only the light shows
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
+        // A tap doesn't copy the resume command any more (Leo, 16 Nov: it made no sense): the pill only says who listens.
         who.hidden = false;
       }
     }
@@ -582,7 +583,7 @@ export function startLive() {
     const freshStream = () => {
       stream?.close();
       stream = null;
-      showAway('reconnecting');
+      showAway('Reconnecting');
       connect();
     };
     const check = (slept = false) => {

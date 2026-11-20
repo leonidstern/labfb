@@ -63,10 +63,10 @@ for (const [n, eng] of engines().entries()) {
     await until(async () => (await pins()).length === 3);
     check(eng, 'sent pins wear no ring', (await pins()).every(([ring]) => ring === ''), JSON.stringify(await pins()));
     // The listening mark: grey when no agent listens (not black), and its tooltip names the state.
-    const mark = () => shadow(() => { const w = r.querySelector('.listener'); return { title: w?.querySelector('.d')?.textContent || '', fill: w?.querySelector('.mark') ? getComputedStyle(w.querySelector('.mark')).fill : '' }; });
-    await until(async () => /^Away/.test((await mark()).title));
+    const mark = () => shadow(() => { const w = r.querySelector('.listener'); return { title: ['.t', '.d', '.c'].map((k) => w?.querySelector(k)?.textContent || '').filter(Boolean).join('\n'), fill: w?.querySelector('.mark') ? getComputedStyle(w.querySelector('.mark')).fill : '' }; });
+    await until(async () => /^No agent listening/.test((await mark()).title));
     const away = await mark();
-    check(eng, 'away: a grey mark and the tooltip says Away', /^Away/.test(away.title) && /rgba\(/.test(away.fill), JSON.stringify(away));
+    check(eng, 'away: a grey mark and the box says no agent listens, and how to get one', /^No agent listening\nTell an agent: listen for pins on .*\nlabit wait --page \/index$/.test(away.title) && /rgba\(/.test(away.fill), JSON.stringify(away));
 
     // The agent takes all three: the oldest is picked up (pale green, still), the others wait in line (muted, still).
     const heard = await L.cli('wait', '--timeout', '5');
@@ -74,7 +74,7 @@ for (const [n, eng] of engines().entries()) {
     await ringsAre(['ring got', 'ring wait', 'ring wait']);
     check(eng, 'picked up: a still pale green ring; the rest wait with a still muted ring', (await ringOf(0)) === 'ring got' && (await ringOf(1)) === 'ring wait' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
     check(eng, 'the pill counts those waiting', await pillIs(/is working \[2\]/), await pill());
-    check(eng, 'working: a green mark and the tooltip says Working', /^Working/.test((await mark()).title) && (await mark()).fill === 'rgb(36, 160, 70)', JSON.stringify(await mark()));
+    check(eng, 'working: a green mark and the box says Claude is working', /^Claude is working\n2 waiting\nSession /.test((await mark()).title) && (await mark()).fill === 'rgb(36, 160, 70)', JSON.stringify(await mark()));
     await shadow(() => { [...r.querySelectorAll('button.pin')][1].click(); });
     await until(() => shadow(() => { return !!r.querySelector('.card .stamp'); }));
     const stamp = () => shadow(() => { return r.querySelector('.card .msg.mine .stamp .state')?.textContent || ''; });
@@ -231,11 +231,11 @@ for (const [n, eng] of engines().entries()) {
     await ringsAre(['', 'ring', 'ring wait']);
     await p.clock.runFor(60 * 1000);
     await ringsAre(['', 'ring stale', 'ring wait']);
-    check(eng, 'a status line not renewed for 3 min lapses: the grey ring, and the pill says no update for 3 min', await pillIs(/no update for 3 min · last: drawing W1–W6 · 3 of 4/), await pill());
+    check(eng, 'a status line not renewed for 3 min lapses: the grey ring, and the pill says no update for 3 min', await pillIs(/^No update for 3 min \[!\]$/) && /\nLast: drawing W1–W6 · 3 of 4\n/.test((await mark()).title), await pill() + ' | ' + (await mark()).title);
     await p.clock.runFor(3 * 60 * 1000);
     await ringsAre(['', 'ring stale', 'ring wait']);
     check(eng, 'no sign for 5+ min: a grey still ring (the one waiting behind it is not grey)', (await ringOf(1)) === 'ring stale' && (await ringOf(2)) === 'ring wait', JSON.stringify(await pins()));
-    check(eng, 'the pill says how long and what came last', await pillIs(/no update for 6 min · last: drawing W1–W6 · 3 of 4 · 1 waiting \[!\]/), await pill());
+    check(eng, 'the pill says how long and what came last', await pillIs(/^No update for 6 min \[!\]$/) && /\nLast: drawing W1–W6 · 3 of 4\n1 waiting/.test((await mark()).title), await pill() + ' | ' + (await mark()).title);
     check(eng, 'the tooltip says it too', /^no update for 6 min · last: drawing W1–W6 · 3 of 4$/.test(await tipOf(1)), await tipOf(1));
     // The next line replaces the old one on the thread (the page's own clock is moved ahead here, the lab's is not, so
     // it would still read as old: the stored line is what's checked).
@@ -245,9 +245,9 @@ for (const [n, eng] of engines().entries()) {
     for (const id of ids) await L.cli('reply', id, 'Done', '--done');
     const named = L.cli('wait', '--name', 'ooze', '--timeout', '4');
     const pillTip = () => shadow(() => { const w = r.querySelector('.listener'); return { words: w?.querySelector('.lbl .t')?.textContent || '', title: w?.querySelector('.d')?.textContent || '' }; });
-    await until(async () => /session: ooze/.test((await pillTip()).title), 3000);
+    await until(async () => /Session ooze/.test((await pillTip()).title), 3000);
     const nm = await pillTip();
-    check(eng, 'a named session: the pill has no name in its words, the tooltip has it', /session: ooze/.test(nm.title) && !/ooze/.test(nm.words), JSON.stringify(nm));
+    check(eng, 'a named session: the pill has no name in its words, the tooltip has it', /Session ooze/.test(nm.title) && !/ooze/.test(nm.words), JSON.stringify(nm));
     await named;
     await p.close();
   } finally {

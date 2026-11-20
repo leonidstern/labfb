@@ -403,7 +403,8 @@ button.btn.undo { color: var(--_fg); }
         pointer-events: none; opacity: 0; translate: 0 2px; transition: opacity var(--_fade), translate var(--_fade); }
 .listener .t { display: flex; flex-wrap: wrap; column-gap: 4px; color: var(--_fg); }
 .listener .t span { color: inherit; }
-.listener .d { display: block; margin-top: 4px; color: var(--_muted); white-space: pre-line; overflow-wrap: anywhere; }
+.listener .d { display: block; margin-top: 2px; color: var(--_muted); white-space: pre-line; overflow-wrap: anywhere; }
+.listener .c { display: block; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--_muted); overflow-wrap: anywhere; user-select: all; }
 .listener:is(:hover, :focus-visible) .w { opacity: 1; translate: none; }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
 .agentline { font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 0 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
