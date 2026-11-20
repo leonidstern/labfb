@@ -188,12 +188,10 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .card.margin { width: 280px; }
 /* Tied to its pin (thread.ts tieToPin): the browser keeps it there. Where the script puts it, from the pin's
    corner (--lab-cx / --lab-cy; a box's other place --lab-ux / --lab-uy); above (its bottom at --lab-ay), or in from the
-   screen's right edge, when there is no room. A new comment's box near the right edge goes to its pin's left, or under
-   / above it held in from the right edge (12 px), so it is never cut off. */
+   screen's right edge, when there is no room. A new comment's box near the right edge goes to its pin's left, or above it
+   held in from the right edge (12 px), so it is never cut off. */
 @position-try --lab-left { left: auto; right: calc(anchor(left) + 8px); }
-@position-try --lab-under-edge { left: auto; right: 12px; top: max(8px, calc(anchor(top) + var(--lab-uy))); }
 @position-try --lab-under-edge-above { left: auto; right: 12px; top: auto; bottom: var(--lab-up); }
-@position-try --lab-fit-edge { left: auto; right: 12px; top: 8px; bottom: 8px; height: fit-content; margin-block: auto; }
 @position-try --lab-above { top: auto; bottom: var(--lab-up); }
 @position-try --lab-edge { left: auto; right: 12px; }
 @position-try --lab-edge-above { left: auto; right: 12px; top: auto; bottom: var(--lab-up); }
@@ -203,7 +201,7 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .tied-card, .tied-beside { position: fixed !important; top: max(var(--lab-min, 0px), calc(anchor(top) + var(--lab-cy))); /* never above the screen's top */ /* the shared places, written once: */
   --lab-up: calc(anchor(top) - var(--lab-ay)); --lab-uleft: max(12px, calc(anchor(left) + var(--lab-ux))); }
 .tied-card { left: max(12px, calc(anchor(left) + var(--lab-cx))); position-try-fallbacks: --lab-above, --lab-edge, --lab-edge-above; }
-.tied-beside { --lab-min: 8px; margin-block: 0 8px; /* the 8 px under it counts in the browser's check, so it keeps off the bottom edge */ left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-left, --lab-under, --lab-under-above, --lab-under-edge, --lab-under-edge-above, --lab-fit, --lab-fit-edge; }
+.tied-beside { --lab-min: 8px; margin-block: 0 8px; /* the 8 px under it counts in the browser's check, so it keeps off the bottom edge */ left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above, --lab-fit, --lab-left, --lab-under-edge-above; /* Chrome tries 5 at most */ }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in { animation: lab-in var(--_t-base) var(--_ease); }
 .card.out, .float.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
