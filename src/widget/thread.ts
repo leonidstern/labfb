@@ -540,7 +540,7 @@ export function choicesEl(c, ask, host, chat = false) {
   const nowIs = inPlace ? ask.choices.findIndex((t) => same(t, exact)) : -1;
   const rows: { n: number; el: HTMLButtonElement }[] = [];
   const row = (n: number, text: string, hint = '') => {
-    const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement;
+    const b = W.el('button', { class: 'choice', type: 'button', 'data-n': String(n), ...(n >= 0 ? { 'data-l': `${String.fromCharCode(97 + n)})` } : {}), ...(live ? {} : { disabled: '' }) }) as HTMLButtonElement; // a) b) c), as the agent lists them
     const now = inPlace && (n === -1 || n === nowIs);
     const words = W.el('span', { class: 'tx', dir: 'auto' }, text);
     const nw = now ? W.el('span', { class: 'nw' }, ' · now') : null;
