@@ -202,7 +202,7 @@ for (const eng of ['webkit', 'chromium']) {
       const a = rs[0], z = rs[rs.length - 1];
       return { x1: a.left + 1, y: a.top + a.height / 2, x2: z.right - 1 };
     }, [id, from, to]);
-    // A Shift-press on main stretches whatever selection is left from before (fixed with the fluid dialog): start clean.
+    // A Shift-press on main stretches whatever selection is left from before: start clean.
     await p.evaluate(() => getSelection().removeAllRanges());
     await p.keyboard.down('Shift');
     await p.mouse.move(at.x1, at.y);
