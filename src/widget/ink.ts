@@ -58,7 +58,6 @@ function head(pts: number[], w: number, h: number) {
   const leg = (k: number) => [Math.round(((tip.x - 12 * Math.cos(a + k)) / w) * 1000), Math.round(((tip.y - 12 * Math.sin(a + k)) / h) * 1000)];
   const t = [Math.round((tip.x / w) * 1000), Math.round((tip.y / h) * 1000)];
   const p = path(line([...leg(0.5), ...t, ...leg(-0.5)]));
-  p.setAttribute('class', 'head');
   return [p];
 }
 // A line as one path, or, with widths, a path a segment so each can be as wide as the pen was there.

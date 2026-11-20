@@ -680,7 +680,7 @@ import { bindActions } from './widget/actions.ts';
   // ones (show done, copy link, hide) sit in the ⋯ menu. Comments hidden: the bar is just "comments". Phones keep theirs.
   // A word with its key marked inside it, as in menus: (c)hat, ne(w).
   const keyWord = (before, key, after) => {
-    const w = el('span', { class: 'kw' });
+    const w = el('span');
     w.append(before, el('span', { class: 'mn', 'aria-hidden': 'true' }, `(${key})`), after);
     return w;
   };
@@ -729,7 +729,7 @@ import { bindActions } from './widget/actions.ts';
     return (labs = m);
   }).catch(() => (S.switcher = null))); // couldn't load: nothing opens, and the next ask tries again
   const labHead = LABS ? el('div', { class: 'lab-head' }, `${script?.dataset.labName || 'lab'} · ${location.port || '80'}`) : null;
-  const labsBtn = LABS ? el('button', { type: 'button', class: 'labs-btn' }) : null;
+  const labsBtn = LABS ? el('button', { type: 'button' }) : null;
   if (labsBtn) {
     labsBtn.append('labs & pages', el('kbd', { 'aria-hidden': 'true' }, navigator.platform.startsWith('Mac') ? '⌘K' : 'ctrl K'));
     // The menu closes without taking the focus back to ⋯ (its own click handler would, after the box opened, and on a
@@ -2570,7 +2570,7 @@ import { bindActions } from './widget/actions.ts';
       function fill() {
         editing?.close();
         menu.replaceChildren();
-        const list = el('div', { class: 'act-list' });
+        const list = el('div');
         for (const i of LIST.keys()) {
           const a = LIST[i];
           const line = el('div', { class: 'act' });
