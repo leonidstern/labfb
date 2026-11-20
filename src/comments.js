@@ -134,7 +134,6 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     get root() { return root; },
     get scrim() { return scrim; },
     get script() { return script; },
-    get say() { return say; },
     get send() { return send; },
     get sheetMode() { return sheetMode; },
     get stampOf() { return stampOf; },
