@@ -720,6 +720,25 @@ const sourceFor = (page) => {
 };
 
 let origin = '';
+// Files a page asked for that this lab did not have (a picture on a wrong path is the usual cause), the last 10, each with
+// the page that asked: "the picture is missing" reaches the agent with the file's name, not for it to hunt for.
+const missed = new Map(); // page + path -> { page, path }
+const noteMissing = (req, what) => {
+  try {
+    const from = new URL(String(req.headers.referer));
+    if (from.host !== req.headers.host || what.startsWith('/_lab/')) return;
+    const at = decodeURIComponent(from.pathname);
+    const page = keyFor(at.slice(1) + (at.endsWith('/') ? 'index' : ''));
+    missed.delete(`${page} ${what}`);
+    missed.set(`${page} ${what}`, { page, path: what });
+    if (missed.size > 10) missed.delete(missed.keys().next().value);
+  } catch {} // no referrer, or one that is not an address
+};
+// Said in the page's text; one that has appeared since (the file was added, or the link fixed) is not.
+const missingFor = (page) => {
+  const list = [...missed.values()].filter((m) => m.page === page && !fs.existsSync(path.join(ROOT, m.path)));
+  return list.length ? `Missing files: ${list.map((m) => `${m.path} (on ${m.page})`).join(', ')}` : '';
+};
 const agentText = async (page) => {
   // Asked with the lab's own address, so the links the text gives are right as written. (It used to be asked as
   // http://localhost and every such string replaced afterwards, a comment's own "http://localhost:3000" included.)
@@ -728,7 +747,7 @@ const agentText = async (page) => {
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`).replace(/^settle: pin /gm, `settle: ${CMD} pin `);
   const file = fileFor(page);
-  const lines = [file && `file: ${file}`].filter(Boolean);
+  const lines = [file && `file: ${file}`, missingFor(page)].filter(Boolean);
   const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
   return boardText(page, file ? lineHints(out, file) : out);
 };
@@ -1503,7 +1522,7 @@ const boardTold = new Map(); // session + board -> the frames text it was given 
 async function threadsText(page, threads, who = '') {
   const text = await agentText(page);
   const [frames, rest] = text.startsWith('# Board') ? text.split(/\n(?=# Comments)/) : ['', text];
-  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked):/.test(l)).join('\n');
+  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked|Missing files):/.test(l)).join('\n');
   if (frames && boardTold.get(`${who}\n${page}`) !== frames) {
     boardTold.set(`${who}\n${page}`, frames);
     head = `${frames.trim()}\n${head}`;
@@ -1952,6 +1971,7 @@ const labPage = (title, body) =>
   `<body class=lab><main><a class="lab-brand" href="/">${markSvg(20)}labit</a>${body}</main></body>`;
 const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const notFound = (req, res, what) => {
+  noteMissing(req, what);
   if (!/text\/html/.test(req.headers.accept || '')) return plain(res, 404, 'not found');
   res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
   return res.end(labPage('labit · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));

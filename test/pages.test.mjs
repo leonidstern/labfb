@@ -1,10 +1,12 @@
 // A page file in the folder as the lab sends it on: read in the charset it names and sent as UTF-8, and the lab's own
-// additions (its icon, its script) put in the page's head, not in some other tag whose name starts the same.
+// additions (its icon, its script) put in the page's head, not in some other tag whose name starts the same. Files a page
+// asked for and the lab did not have are told to the agent, in that page's text.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { seed } from '../lib/boardact.ts';
+import http from 'node:http';
 import { site, rm, spawnLab, stop, up } from './harness.mjs';
 
 const { DIR, PORT, B } = site('pages', 10920, 20);
@@ -38,4 +40,29 @@ test('a board variant of such a page gets its <base> before the <header> too', (
   const out = seed('<!doctype html><body><header class="x">H</header></body>', 'a/p.html');
   assert.ok(out.indexOf('<base') < out.indexOf('<header'));
   assert.ok(seed('<html><head lang=en><title>t</title></head>', 'p.html').startsWith('<html><head lang=en><base'), 'a real <head> with attributes still is one');
+});
+
+// A GET with a Referer (fetch does not let a script choose it).
+const from = (p, referer) =>
+  new Promise((done, fail) => http.get({ host: '127.0.0.1', port: PORT, path: p, headers: { host: `localhost:${PORT}`, accept: 'text/html', ...(referer && { referer }) } }, (res) => (res.resume(), res.on('end', () => done(res.statusCode)))).on('error', fail));
+const agent = async (page) => (await fetch(`${B}/_lab/agent${page}`)).text();
+
+test('a file a page asked for and the lab does not have is told to the agent, on that page', async () => {
+  assert.equal(await from('/img/x.png', `${B}/`), 404);
+  assert.equal(await from('/img/x.png', `${B}/`), 404, 'asked twice, said once');
+  assert.equal(await from('/img/y.png', 'http://example.com/index.html'), 404, 'a page of another site is none of this lab\'s');
+  assert.equal(await from('/img/z.png'), 404, 'nor is a request from nowhere');
+  assert.equal(await from('/_lab/nothing.js', `${B}/`), 404);
+  const text = await agent('/index');
+  assert.equal(text.match(/^Missing files: .*$/m)?.[0], 'Missing files: /img/x.png (on /index)');
+  assert.ok(!/Missing files/.test(await agent('/utf8')), 'not on another page');
+});
+
+test('the lab keeps the last ten, and a file that has appeared is not said', async () => {
+  for (let i = 0; i < 12; i++) await from(`/m${i}.png`, `${B}/utf8.html`);
+  const said = (await agent('/utf8')).match(/^Missing files: (.*)$/m)[1].split(', ');
+  assert.equal(said.length, 10);
+  assert.ok(said[0].startsWith('/m2.png') && said[9].startsWith('/m11.png'), said.join());
+  fs.writeFileSync(path.join(DIR, 'm11.png'), 'x');
+  assert.ok(!(await agent('/utf8')).includes('/m11.png'));
 });
