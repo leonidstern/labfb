@@ -481,17 +481,29 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   // A thread or the chat opened at its newest message stays there while its words settle (a phone's sheet grows into
   // place and long messages lay out after the first frame): Leo, 20 Nov, the last message was half hidden. It lets go at
   // the first touch or wheel, or after a second.
-  function stayAtEnd(box) {
+  // `at` says where it stays: the end, or (a computer's thread with new messages) the first new one, found again as the
+  // words settle (it opened at 734 px of a box that grew 500 px a frame later, and neither the new message nor the last
+  // one was in view).
+  const staying = new WeakMap(); // a box's running stay, so a newer one replaces it
+  function stayAtEnd(box, at = () => box.scrollHeight) {
+    staying.get(box)?.();
     let until = performance.now() + 1000;
     const stop = () => (until = 0);
     box.addEventListener('touchstart', stop, { once: true, passive: true });
     box.addEventListener('wheel', stop, { once: true, passive: true });
-    const end = () => (performance.now() < until ? (box.scrollTop = box.scrollHeight) : ro?.disconnect());
+    const end = () => (performance.now() < until ? (box.scrollTop = at()) : ro?.disconnect());
     const ro = 'ResizeObserver' in window ? new ResizeObserver(end) : null;
     ro?.observe(box);
     for (const k of box.children) ro?.observe(k);
+    const timer = setTimeout(() => ro?.disconnect(), 1100);
+    staying.set(box, () => {
+      stop();
+      ro?.disconnect();
+      clearTimeout(timer);
+      box.removeEventListener('touchstart', stop);
+      box.removeEventListener('wheel', stop);
+    });
     requestAnimationFrame(() => requestAnimationFrame(end));
-    setTimeout(() => ro?.disconnect(), 1100);
   }
   S.stayAtEnd = stayAtEnd;
   function begin(anchor) {
@@ -1190,6 +1202,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         if (!appear && prevScroll != null) {
           const body = card.querySelector('.body');
           body.scrollTop = prevAtEnd ? body.scrollHeight : prevScroll;
+          if (prevAtEnd) stayAtEnd(body); // a new message at the end stays in view while its words settle
         }
         else if (appear) {
           // Computers: at the first new message when there is one. Phones: already at the end when it shows, the last
@@ -1199,8 +1212,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           // An open question: at the question and its rows, not below them (thread.ts).
           const asks = openAsk(c) ? [...body.querySelectorAll('.msg.asks')].pop() : null;
           const first = asks || (coarse ? null : body.querySelector('.fresh, .newline'));
-          body.scrollTop = first ? first.offsetTop - body.offsetTop - 8 : body.scrollHeight;
-          if (!first) stayAtEnd(body);
+          const at = first ? () => !first.isConnected ? body.scrollTop : first.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 8 : undefined;
+          body.scrollTop = at ? at() : body.scrollHeight;
+          stayAtEnd(body, at); // the end or the first new message, kept while it settles
         }
         if (coarse && S.cardFull) card.classList.add('full'); // stays pulled up while you step from comment to comment
         swipeDown(card, () => ((S.openId = null), (S.cardFull = false), render()), true);
