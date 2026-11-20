@@ -2,45 +2,31 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { LAB, claimPort, tmp, rm, spawnLab, sleep, up as answers } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const mk = (flags) => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labit-board-')));
+  const dir = fs.realpathSync(tmp('board'));
   fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify({ flags }));
   return dir;
 };
 const DIR = mk({});
 const PX = mk({});
-const base = 9600 + Math.floor(Math.random() * 100);
-const [PORT, PPX, UP] = [base, base + 200, base + 300];
+const [PORT, PPX, UP] = [claimPort(9600, 100), claimPort(9800, 100), claimPort(9900, 100)];
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'pricing.html'), '<!doctype html><html><head><title>Pricing</title><link rel="stylesheet" href="s.css"></head><body><h1>Pricing</h1></body></html>');
 fs.mkdirSync(path.join(DIR, 'sub'));
 fs.writeFileSync(path.join(DIR, 'sub', 'deep.html'), '<!doctype html><html><head><title>Deep</title></head><body><h1>Deep</h1></body></html>');
 fs.writeFileSync(path.join(DIR, 'cart.html'), '<!doctype html><title>Cart</title><h1>Cart</h1>');
 const upstream = http.createServer((q, r) => r.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><html><body><h1>dev</h1></body></html>')).listen(UP);
-const spawnLab = (dir, port, extra = []) => spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(port), ...extra], { cwd: dir, env: process.env });
-const procs = [spawnLab(DIR, PORT), spawnLab(PX, PPX, ['--proxy', String(UP)])];
+const procs = [spawnLab(DIR, PORT), spawnLab(PX, PPX, { args: ['--proxy', String(UP)] })];
 after(() => {
   procs.forEach((p) => p.kill());
   upstream.close();
-  for (const d of [DIR, PX]) fs.rmSync(d, { recursive: true, force: true });
+  rm([DIR, PX]);
 });
-const up = async (port) => {
-  for (let i = 0; i < 80; i++) {
-    try {
-      return await fetch(`http://localhost:${port}/_lab/state`);
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  throw new Error('lab did not start');
-};
+const up = (port) => answers(`http://localhost:${port}/_lab/state`);
 const put = (base, q, body, headers = {}) => fetch(`${base}/_lab/api/board?${q}`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: base, ...headers }, body: JSON.stringify(body) });
 const get = (base, q) => fetch(`${base}/_lab/api/board?${q}`).then(async (r) => ({ status: r.status, body: await r.json() }));
 const live = (base) =>
@@ -55,7 +41,7 @@ const live = (base) =>
       resolve({ seen, close: () => req.destroy() });
     });
   });
-const settle = (ms = 400) => new Promise((r) => setTimeout(r, ms));
+const settle = (ms = 400) => sleep(ms);
 
 test('PUT then GET round-trips; the file is .lab/boards/<name>.json with v 1', async () => {
   await up(PORT);

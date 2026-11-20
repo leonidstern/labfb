@@ -3,14 +3,12 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { LAB, claimPort, tmp, rm, spawnLab, sleep, up, serverJson } from './harness.mjs';
 import { releaseNotes } from '../lib/update.ts';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-update-'));
+const TMP = tmp('update');
 const DIR = path.join(TMP, 'site');
 const HOME = path.join(TMP, 'home');
 fs.mkdirSync(DIR);
@@ -22,11 +20,10 @@ fs.writeFileSync(path.join(HOME, 'latest.json'), JSON.stringify({ version: '9.9.
 const NPX = path.join(TMP, 'npx');
 const HANG = path.join(TMP, 'hang');
 fs.writeFileSync(NPX, `#!/bin/sh\nif [ -f "${HANG}" ]; then echo "$2" > "${path.join(TMP, 'asked-hang')}"; exit 0; fi\necho "$2" > "${path.join(TMP, 'asked')}"\nshift 2\nexec "${process.execPath}" "${LAB}" "$@"\n`, { mode: 0o755 });
-const PORT = String(8500 + Math.floor(Math.random() * 90));
+const PORT = String(claimPort(8500, 90));
 const B = `http://localhost:${PORT}`;
 const env = { ...process.env, LABIT_HOME: HOME, LABIT_NO_UPDATE_CHECK: '', LABIT_OFFER_UPDATE: '1', LABIT_NPX: NPX, LABIT_IDLE_MS: '0', LABIT_FOLLOW_WAIT_MS: '5000', LABIT_FOLLOW_MS: '300', LABIT_EXIT_WITH_PARENT: '' };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const server = () => JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+const server = () => serverJson(DIR);
 const page = async () => {
   for (let i = 0; i < 100; i++) {
     try {
@@ -37,7 +34,7 @@ const page = async () => {
   }
   assert.fail('the lab is not answering');
 };
-spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env, detached: true, stdio: 'ignore' }).unref();
+spawnLab(DIR, PORT, { env, detached: true, stdio: 'ignore' }).unref();
 // A second lab, already on npm's newest (0.0.1 is older than any labit): it has nothing to offer.
 const DIR2 = path.join(TMP, 'site2');
 const HOME2 = path.join(TMP, 'home2');
@@ -45,10 +42,10 @@ fs.mkdirSync(DIR2);
 fs.mkdirSync(HOME2);
 fs.writeFileSync(path.join(DIR2, 'index.html'), '<!doctype html><title>two</title><h1>two</h1>');
 fs.writeFileSync(path.join(HOME2, 'latest.json'), JSON.stringify({ version: '0.0.1', at: Date.now() }));
-const PORT2 = String(Number(PORT) + 100);
+const PORT2 = String(claimPort(8600, 90));
 const env2 = { ...env, LABIT_HOME: HOME2 };
-spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT2], { cwd: DIR2, env: env2, detached: true, stdio: 'ignore' }).unref();
-const server2 = () => JSON.parse(fs.readFileSync(path.join(DIR2, '.lab/server.json'), 'utf8'));
+spawnLab(DIR2, PORT2, { env: env2, detached: true, stdio: 'ignore' }).unref();
+const server2 = () => serverJson(DIR2);
 const alive = (pid) => {
   try {
     process.kill(pid, 0);
@@ -63,7 +60,7 @@ after(() => {
     try {
       process.kill(s().pid);
     } catch {}
-  setTimeout(() => fs.rmSync(TMP, { recursive: true, force: true, maxRetries: 5 }), 500);
+  setTimeout(() => rm([TMP], { maxRetries: 5 }), 500);
 });
 
 test("what changed: each bullet's first sentence, only releases after yours", () => {
@@ -98,14 +95,7 @@ test("a page without the lab's key can't update it", async () => {
 });
 
 test('labit update on a lab with nothing newer says so and fails', async () => {
-  for (let i = 0; i < 100; i++) {
-    try {
-      await fetch(`http://localhost:${PORT2}/`);
-      break;
-    } catch {
-      await sleep(100);
-    }
-  }
+  await up(`http://localhost:${PORT2}/`, { tries: 100, fail: false });
   const { pid } = server2();
   const out = await update(DIR2, env2);
   assert.equal(out.code, 1, out.text);

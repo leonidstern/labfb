@@ -5,16 +5,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { tmp, rm, sleep } from './harness.mjs';
 import { watchTree } from '../lib/watch.ts';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const roots = [];
 const mk = () => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-watch-'));
+  const d = tmp('watch');
   roots.push(d);
   return d;
 };
-after(() => roots.forEach((d) => fs.rmSync(d, { recursive: true, force: true })));
+after(() => rm(roots));
 const atomic = (file, text) => {
   fs.writeFileSync(`${file}.tmp`, text);
   fs.renameSync(`${file}.tmp`, file);

@@ -2,22 +2,18 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn, execFile } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { LAB, site, rm, spawnLab, sleep } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-close-'));
-const PORT = String(5300 + Math.floor(Math.random() * 90)); // clear of 5060 and 5061, which fetch refuses ("bad port")
+const { DIR, PORT } = site('close', 5300, 90); // clear of 5060 and 5061, which fetch refuses ("bad port")
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><h1>Hi</h1>');
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env: { ...process.env, LAB_CLOSE_GRACE: '1' } });
+const server = spawnLab(DIR, PORT, { env: { ...process.env, LAB_CLOSE_GRACE: '1' } });
 after(() => {
   server.kill();
-  fs.rmSync(DIR, { recursive: true, force: true });
+  rm([DIR]);
 });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const wait = () =>
   new Promise((resolve) => {
     const t0 = Date.now();

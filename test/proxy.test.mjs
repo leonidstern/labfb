@@ -2,17 +2,10 @@
 // a person who leaves (a closed tab, a cancelled event stream) ends the dev server's side of the request too.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { site, tmp, rm, spawnLab, sleep } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-proxy-'));
-const PORT = 6400 + Math.floor(Math.random() * 90);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const { DIR, PORT } = site('proxy', 6400, 90);
 
 let closed = 0; // event streams the dev server saw end
 const dev = http.createServer((req, res) => {
@@ -28,15 +21,12 @@ const dev = http.createServer((req, res) => {
   res.end('ok');
 });
 await new Promise((r) => dev.listen(0, '127.0.0.1', r));
-const lab = spawn(process.execPath, [LAB, '.', '--no-open', '--port', String(PORT), '--proxy', String(dev.address().port)], {
-  cwd: DIR,
-  env: { ...process.env, LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' },
-});
+const lab = spawnLab(DIR, PORT, { args: ['--proxy', String(dev.address().port)], env: { ...process.env, LABIT_HOME: tmp('home'), LABIT_NO_UPDATE_CHECK: '1' } });
 after(() => {
   lab.kill();
   dev.closeAllConnections();
   dev.close();
-  fs.rmSync(DIR, { recursive: true, force: true });
+  rm([DIR]);
 });
 const ask = (p) =>
   new Promise((done, fail) => {
