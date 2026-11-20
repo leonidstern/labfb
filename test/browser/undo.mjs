@@ -1,6 +1,7 @@
-// Undo after sending (Leo, 19 Nov): for 3 s a new pin's card shows "undo" in the resolve key's place, at resolve's
-// width; a tap deletes the pin and closes the card, with no words left anywhere. Left alone, the card closes and the
-// key is resolve again. Its own lab on a free port, its own LABIT_HOME (never the owner's lab or settings).
+// Undo after sending (Leo, 19 Nov, 20 Nov): the first comment of a new pin closes its card at once; for 3 s "sent · undo"
+// stands above the bar, and a tap deletes the pin, with no words left anywhere. Left alone, it goes and the pin stays.
+// Opening the sent pin meanwhile shows undo in its card, in the resolve key's place, at resolve's width. A reply in an
+// existing thread keeps its card open. Its own lab on a free port, its own LABIT_HOME (never the owner's lab or settings).
 // Not part of `npm test`. Run: node test/browser/undo.mjs (needs playwright; NODE_PATH can point at a node_modules that
 // has it; ENGINES=webkit,chromium for both). One line per check; exits 1 if any fails.
 import fs from 'node:fs';
@@ -52,43 +53,43 @@ for (const [n, eng] of engines('chromium').entries()) {
 
     // Sent, then taken back within the 3 s.
     await write('fix this typo');
-    const offered = await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
-    const widths = await shadow(() => {
+    const offered = await until(() => shadow(() => { return Boolean(r.querySelector('.sent:not([hidden]) button')); }), 2000);
+    const closed = await shadow(() => { return { box: Boolean(r.querySelector('.float textarea')), card: Boolean(r.querySelector('.card:not(.out)')), draft: r.querySelectorAll('.pin.draft').length }; });
+    check(eng, 'after the first comment is sent the card is closed at once, and "sent · undo" is offered', offered && !closed.box && !closed.card && closed.draft === 0 && (await L.comments()).length === 1 && /^sent/.test(await shadow(() => { return r.querySelector('.sent').textContent; })), JSON.stringify(closed));
+    // Opening the sent pin within the 3 s: undo is in its card, at resolve's width.
+    await shadow(() => { r.querySelector('.pin:not(.draft)').click(); });
+    const inCard = await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 1500);
+    const widths = inCard ? await shadow(() => {
       const u = r.querySelector('.card .btn.undo');
       return [u?.getBoundingClientRect().width, (() => { const t = document.createElement('button'); t.className = 'btn'; t.textContent = 'resolve'; u.parentNode.append(t); const w = t.getBoundingClientRect().width; t.remove(); return w; })()];
-    });
-    check(eng, 'after sending, the card shows undo in the resolve key\'s place', offered && (await L.comments()).length === 1);
-    check(eng, 'undo keeps resolve\'s width', Math.abs(widths[0] - widths[1]) < 0.5, widths.join(' vs '));
-    await shadow(() => { r.querySelector('.card .btn.undo').click(); });
+    }) : [0, 1];
+    check(eng, 'opening the sent pin shows undo in the resolve key\'s place, at resolve\'s width', inCard && Math.abs(widths[0] - widths[1]) < 0.5, widths.join(' vs '));
+    await p.keyboard.press('Escape');
+    await sleep(300);
+    await shadow(() => { r.querySelector('.sent button').click(); });
     const gone = await until(async () => (await L.comments()).length === 0, 2000);
     const shut = await until(() => shadow(() => { return !r.querySelector('.float textarea') && !r.querySelector('.card:not(.out)') && !r.querySelector('.pin.draft'); }), 2000);
     const pins = await shadow(() => { return r.querySelectorAll('.pin:not(.draft)').length; });
     const kept = await p.evaluate(() => Object.keys(localStorage).filter((k) => /^lab-(typing|spot):/.test(k) && localStorage.getItem(k)).join(','));
     check(eng, 'undo deletes the pin (no comment left on the lab)', gone);
-    check(eng, 'the card closes with no comment box and no pin', shut && pins === 0, `pins ${pins}`);
+    check(eng, 'no comment box and no pin is left', shut && pins === 0, `pins ${pins}`);
     check(eng, 'no draft kept in localStorage', kept === '', kept);
     await p.reload();
     await until(() => p.evaluate(() => [...document.querySelectorAll('*')].some((x) => x.shadowRoot?.querySelector('.scrim'))));
     await sleep(400);
     check(eng, 'after a reload no comment box comes back', await shadow(() => { return !r.querySelector('.float textarea'); }));
 
-    // While undo shows, a click outside only closes the card (Leo, 19 Nov): the pin stays sent, no new comment box; the
-    // next click there pins as usual.
+    // While "sent · undo" shows, there is no card to let go: a click elsewhere pins as usual and the sent pin stays.
     await write('stays sent');
-    await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
+    await until(() => shadow(() => { return Boolean(r.querySelector('.sent:not([hidden]) button')); }), 2000);
     const a = await p.locator('#a').boundingBox();
     await p.mouse.click(a.x + 20, a.y + a.height / 2);
-    await sleep(500);
-    const first = await shadow(() => { return { box: Boolean(r.querySelector('.float textarea')), card: Boolean(r.querySelector('.card:not(.out)')), draft: r.querySelectorAll('.pin.draft').length }; });
-    const kept1 = (await L.comments()).map((c) => c.text);
-    check(eng, 'while undo shows, a click outside only closes the card: no new box, the pin stays sent', !first.box && !first.card && first.draft === 0 && kept1.includes('stays sent'), JSON.stringify([first, kept1]));
-    await p.mouse.click(a.x + 20, a.y + a.height / 2);
-    check(eng, '…and the next click pins as usual', await until(() => shadow(() => { return Boolean(r.querySelector('.float textarea')); }), 1500));
+    check(eng, 'a click elsewhere while undo is offered starts the next comment, the sent pin stays', await until(() => shadow(() => { return Boolean(r.querySelector('.float textarea')); }), 1500) && (await L.comments()).map((c) => c.text).includes('stays sent'));
     await p.keyboard.press('Escape');
     await sleep(300);
     // A link clicked while undo shows still acts (only a new pin is held back).
     await write('before link');
-    await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
+    await until(() => shadow(() => { return Boolean(r.querySelector('.sent:not([hidden]) button')); }), 2000);
     await p.evaluate(() => { const l = document.createElement('a'); l.id = 'lk'; l.href = '#went'; l.textContent = 'a link'; document.body.prepend(l); });
     await p.click('#lk');
     await sleep(300);
@@ -99,12 +100,33 @@ for (const [n, eng] of engines('chromium').entries()) {
     await until(() => p.evaluate(() => [...document.querySelectorAll('*')].some((x) => x.shadowRoot?.querySelector('.scrim'))));
     await sleep(400);
 
-    // Sent again, then left alone: after 3 s the card closes and the pin stays.
+    // Sent again, then left alone: after 3 s the undo goes and the pin stays.
     await write('fix this typo');
-    await until(() => shadow(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
-    await sleep(3600);
-    const after = await shadow(() => { return { card: Boolean(r.querySelector('.card:not(.out)')), undo: Boolean(r.querySelector('.btn.undo')) }; });
-    check(eng, 'left alone, after 3 s the card has closed and the pin is kept', !after.card && !after.undo && (await L.comments()).length === had + 1, JSON.stringify(after));
+    await until(() => shadow(() => { return Boolean(r.querySelector('.sent:not([hidden]) button')); }), 2000);
+    await sleep(3900);
+    const after = await shadow(() => { return { card: Boolean(r.querySelector('.card:not(.out)')), undo: Boolean(r.querySelector('.sent:not([hidden]) button')) }; });
+    check(eng, 'left alone, after 3 s the undo has gone and the pin is kept', !after.card && !after.undo && (await L.comments()).length === had + 1, JSON.stringify(after));
+
+    // A reply in an existing thread keeps its card open (only the first comment of a new pin closes it).
+    await shadow(() => { r.querySelector('.pin:not(.draft)').click(); });
+    await until(() => shadow(() => { return Boolean(r.querySelector('.card textarea')); }), 1500);
+    await shadow(() => { r.querySelector('.card textarea').focus(); });
+    await p.keyboard.type('and a reply');
+    await p.keyboard.press('Enter');
+    await until(async () => (await L.comments()).some((c) => c.text === 'and a reply'), 3000);
+    await sleep(500);
+    check(eng, 'a reply in an open thread keeps the card open', await shadow(() => { return Boolean(r.querySelector('.card:not(.out)')); }));
+    await p.keyboard.press('Escape');
+    await sleep(300);
+    // Narrow (phone-width) page: the strip sits inside the view, clear of the bar.
+    await p.setViewportSize({ width: 390, height: 800 });
+    await sleep(300);
+    await write('narrow one');
+    await until(() => shadow(() => { return Boolean(r.querySelector('.sent:not([hidden]) button')); }), 2000);
+    const fit = await shadow(() => { const n = r.querySelector('.sent').getBoundingClientRect(), bar = r.querySelector('.bar').getBoundingClientRect(); return [n.left >= 0 && n.right <= innerWidth, n.bottom <= bar.top + 1]; });
+    check(eng, 'on a narrow page "sent · undo" is inside the view and above the bar', fit[0] && fit[1], JSON.stringify(fit));
+    await p.setViewportSize({ width: 1000, height: 700 });
+    await sleep(300);
 
     // A guest (not this computer: the page carries no admin key, so the lab takes them for anyone) holds the new pin's
     // own key (lab-edit), and undo sends it: the lab lets the starter take a fresh pin back with it.
@@ -141,10 +163,10 @@ for (const [n, eng] of engines('chromium').entries()) {
     };
     {
       const { g, q, gs, admin } = await guest(false);
-      const offered = await until(() => gs(() => { return Boolean(r.querySelector('.card .btn.undo')); }), 2000);
+      const offered = await until(() => gs(() => { return Boolean(r.querySelector('.sent:not([hidden]) button')); }), 2000);
       const held = await q.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith('lab-edit:') && localStorage.getItem(k)));
       check(eng, 'a guest holding the pin\'s key is offered undo', !admin && held && offered, JSON.stringify({ admin, held, offered }));
-      await gs(() => { r.querySelector('.card .btn.undo')?.click(); });
+      await gs(() => { r.querySelector('.sent button')?.click(); });
       const gone = await until(async () => (await L.comments('/guest')).length === 0, 2000);
       check(eng, '…and a guest\'s undo deletes the pin (with its key)', gone, JSON.stringify((await L.comments('/guest')).map((c) => c.text)));
       await g.close();
@@ -152,10 +174,10 @@ for (const [n, eng] of engines('chromium').entries()) {
     {
       const { g, gs, admin } = await guest(true);
       await sleep(800);
-      const seen = await gs(() => { return { undo: Boolean(r.querySelector('.btn.undo')), card: Boolean(r.querySelector('.card:not(.out)')) }; });
+      const seen = await gs(() => { return { undo: Boolean(r.querySelector('.sent:not([hidden]) button')), card: Boolean(r.querySelector('.card:not(.out)')) }; });
       const kept = (await L.comments('/guest')).map((c) => c.text);
-      // No undo to offer: the card closes as a sent card always did (not held open for 3 s with nothing in it).
-      check(eng, 'a guest without the pin\'s key gets no undo: the card closes, the pin stays', !admin && !seen.undo && !seen.card && kept.includes('no key'), JSON.stringify([seen, kept]));
+      // No undo to offer: nothing is shown, the pin stays.
+      check(eng, 'a guest without the pin\'s key gets no undo: nothing offered, the pin stays', !admin && !seen.undo && !seen.card && kept.includes('no key'), JSON.stringify([seen, kept]));
       await g.close();
     }
   } finally {

@@ -198,7 +198,7 @@ button.choice.picked::before { content: '✓'; color: var(--_green-fg); }
 .tied-beside { --lab-min: 8px; margin-block: 0 8px; /* the 8 px under it counts in the browser's check, so it keeps off the bottom edge */ left: calc(anchor(left) + var(--lab-cx)); position-try-fallbacks: --lab-under, --lab-under-above, --lab-fit; }
 .tie { position: absolute; height: 1px; background: var(--_fg); opacity: .3; pointer-events: none; }
 .card.in, .float.in { animation: lab-in var(--_t-base) var(--_ease); }
-.card.out, .float.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
+.card.out, .float.out, .more-menu.out, .sw-box.out, .hint.out, .sent.out { animation: lab-out var(--_t-quick) var(--_ease-in) forwards; pointer-events: none; } /* one exit (comments.js leave) */
 .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
 /* A thread's reopen / resolve / delete: small, on the right, out of the reading flow. */
 .card .row:not(.nav) { justify-content: flex-end; gap: 10px; }
@@ -465,6 +465,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
         box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
         letter-spacing: -.006em; animation: lab-fade var(--_fade-base); }
+/* "sent · undo": for the 3 s a new pin can be taken back, once its card has closed (comments.js offerUndo) */
+.sent { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
+        box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; white-space: nowrap;
+        letter-spacing: -.006em; animation: lab-fade var(--_fade-base); z-index: 1; }
+.sent button { all: unset; font: inherit; letter-spacing: inherit; color: var(--_fg); text-decoration: underline; cursor: pointer; border-radius: 3px; }
+.sent button:focus-visible { outline: 2px solid var(--_fg); outline-offset: 2px; }
+@media (pointer: coarse) { .sent button { padding: 10px 8px; margin: -10px -8px; } }
 /* 16px fields keep iOS from zooming the page when one is focused. */
 @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.019em; } kbd { display: none; }
   .box textarea { line-height: 22px; padding: 7px 0; } /* phones: 22 + 7 + 7 = 36, the send button's size */
@@ -629,7 +636,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .listener { display: none !important; }
   .left { bottom: 72px; } /* only the copy-link pill is left here on a phone: it sits above the bar */
   .bar { bottom: 16px !important; }
-  .hint { bottom: 64px !important; }
+  .hint, .sent { bottom: 64px !important; }
   /* Sized and set to the word: its ink about 1.3× the text's height, its foot on the baseline, 6 px from "chat" like the count. */
   .chat-btn .mark { align-self: center; width: 13px; height: 13px; margin: 0 -2.5px 0 -2px; translate: 0 -1.5px; }
   .chat-btn[data-agent=listening] .mark { fill: var(--_green-fg); }
@@ -641,7 +648,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .send .arr { width: 17px; height: 15px; margin: auto; }
 }
 /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
-@media (max-width: 560px) { .bar { bottom: 64px; } .hint { bottom: 112px; } .list { bottom: 114px; } }
+@media (max-width: 560px) { .bar { bottom: 64px; } .hint, .sent { bottom: 112px; } .list { bottom: 114px; } }
 [hidden] { display: none !important; }
 /* Phones: sheets float as cards, as iOS 27's do (Leo, 16 Nov): 8 px in from the screen's sides and bottom (from the
    keyboard's top when it's up), round at every corner, a soft shadow, and the page behind not dimmed (a tap there still
