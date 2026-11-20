@@ -122,6 +122,9 @@ try {
       await a.keyboard.press('r'); // R goes to the reply box
       await sleep(200);
       check(eng, 'R puts the cursor in the reply box', await sh('return r.activeElement?.localName === "textarea"'));
+      await a.keyboard.press('Enter'); // the reply box has the focus: Enter is not the card's pick
+      await sleep(300);
+      check(eng, 'Enter in the reply box picks nothing', (await note()) === '' && (await picks()).length === 0);
       // In the reply box they type as usual and move nothing: no digit picks while a text box has the focus.
       await a.keyboard.type('jk26');
       await sleep(200);
@@ -144,6 +147,13 @@ try {
       await sh('r.querySelector(".choices .note .btn.undo").click()');
       await sleep(300);
       check(eng, 'undo puts the rows back; nothing sent', (await note()) === '' && (await row()) === 1 && (await picks()).length === 0);
+      await sh('r.activeElement?.blur?.()');
+      await a.keyboard.press('Enter'); // no text box, no button: Enter takes the agent's ticked row (B), as a tap
+      await sleep(400);
+      check(eng, 'Enter picks the ticked row (the agent\'s pick): "Picked B · undo", nothing sent yet', (await note()) === 'Picked B · undo' && (await picks()).length === 0, await note());
+      await sh('r.querySelector(".choices .note .btn.undo").click()');
+      await sleep(300);
+      check(eng, 'undo after Enter puts the rows back', (await note()) === '' && (await row()) === 1 && (await picks()).length === 0);
       await a.keyboard.press('1');
       await sleep(5700);
       const got = await picks();

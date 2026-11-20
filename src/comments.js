@@ -38,7 +38,7 @@ import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/m
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, paintLines, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
-import { bindThread, flushPick, grab, openAsk, pickByKey, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
+import { bindThread, flushPick, grab, openAsk, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
@@ -268,7 +268,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     <div class="scrim"></div>
     <div class="layer"></div>
     <div class="motions"></div>
-    <div class="ui"><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · hold ${/Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt'} to pin on anything · ${KEYS.toggle} hide</div>
+    <div class="ui"><div class="sent" role="status" hidden></div><div class="hint" role="status" hidden>click to comment · drag to mark an area · shift-drag to quote words · ${KEYS.chat} chat · ${KEYS.next} new · hold ${/Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌥' : 'alt'} to pin on anything · ${KEYS.toggle} hide</div>
     <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
@@ -285,6 +285,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
   const $ = (sel, box = root) => /** @type {HTMLElement} */ (box.querySelector(sel));
   const layer = $('.layer');
   const hint = $('.hint');
+  const sentNote = $('.sent');
   // Leaving: the card's exit (lab-out: fades and sinks 2 px, quick, in curve) for a card closing at once, the ⋯ menu,
   // ⌘K and the hint, as they all come in with lab-in / lab-fade; then `hide`. With reduced motion quick is 0 ms.
   const goOut = (/** @type {HTMLElement | null} */ node, /** @type {() => void} */ hide) => {
@@ -567,6 +568,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     const ownKey = store.get(`lab-edit:${c.id}`);
     await send({ action: 'delete', id: c.id, ...(ownKey && !S.isAdmin ? { edit: ownKey } : {}) });
     S.undo = null;
+    hideSent();
     S.comments = S.comments.filter((x) => x.id !== c.id && x.parent !== c.id);
     if (ownKey) store.set(`lab-edit:${c.id}`, '');
     const at = placed.indexOf(c.id);
@@ -577,6 +579,23 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     store.set(`lab-typing:${S.page}:new`, '');
     keepSpot(null);
     render();
+  }
+  // "sent · undo" above the bar for the 3 s a new pin can be taken back (the card has closed): a tap is takeBack.
+  let sentT;
+  function offerUndo(c) {
+    const undo = el('button', { type: 'button', 'aria-label': 'undo: take this pin back' }, 'undo');
+    undo.addEventListener('click', () => {
+      takeBack(c).then(() => say('took the pin back'), () => say("couldn't take it back"));
+    });
+    sentNote.replaceChildren(el('span', {}, 'sent · '), undo);
+    sentNote.classList.remove('out');
+    sentNote.hidden = false;
+    clearTimeout(sentT);
+    sentT = setTimeout(hideSent, UNDO_MS);
+  }
+  function hideSent() {
+    clearTimeout(sentT);
+    if (!sentNote.hidden) goOut(sentNote, () => (sentNote.hidden = true));
   }
   // Command-Z (Control-Z elsewhere), not in a text box: the last pin or go placed from this tab goes away. This
   // computer deletes it; a guest, who can't delete, resolves it (it steps aside).
@@ -597,6 +616,10 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       return void placed.push(id); // not taken back: it stays next in line
     }
     if (S.openId === id) S.openId = null;
+    if (S.undo?.id === id) {
+      S.undo = null;
+      hideSent();
+    }
     render();
     say(`took back a pin · ${placed.length ? 'again for the one before' : 'nothing more to take back'}`);
   }
@@ -1280,16 +1303,14 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           S.draft = null;
           keepSpot(null);
           S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
-          // Undo for 3 s (takeBack): its card opens quietly (no reply cursor) with undo in the resolve key's place, and
-          // closes when they are up, unless it was touched meanwhile.
-          // A tapped action (go, fix, remove…) closes at once, no undo card (Leo, 20 Nov: "if action close it right away";
-          // on a phone the card stayed up once touched and had to be closed by hand to get to the next pin). Command-Z
-          // still takes it back on a computer.
+          // Undo for 3 s (takeBack): the card is closed at once (Leo, 20 Nov: "autoclose modal if its first comment"), and
+          // "sent · undo" stands in the strip above the bar until the 3 s are up; opening the pin meanwhile puts undo in its
+          // card too (thread.ts). Command-Z takes it back too, on a computer.
+          // A tapped action (go, fix, remove…) closes at once with no undo (Leo, 20 Nov: "if action close it right away").
           if ((S.isAdmin || edit) && !anchor.act) {
             const u = { id: comment.id, until: Date.now() + UNDO_MS, text: said, anchor, touched: false };
             S.undo = u;
-            S.openId = comment.id;
-            S.quietOpen = true;
+            offerUndo(comment);
             setTimeout(() => {
               if (S.undo !== u) return;
               S.undo = null;
@@ -1917,6 +1938,13 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     // 1 to 6 answer an open question with that choice (thread.ts): before 1 is comment / pointer, which it keeps when no
     // question is open. Not while a text box has the focus.
     if (S.on && !coarse && /^Digit[1-6]$/.test(e.code) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && !typing(e) && !inOtherWidget && pickByKey(Number(e.code.slice(5)))) {
+      e.preventDefault();
+      return;
+    }
+    // Enter takes the agent's pick of an open question (the ticked row), the same path as a tap. Not in a text box, nor
+    // on a button or link (Enter presses that), and only when a row is ticked.
+    if (S.on && !coarse && e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && !typing(e) && !inOtherWidget
+      && !e.composedPath().some((n) => n instanceof HTMLElement && /^(BUTTON|A)$/.test(n.tagName)) && pickTicked()) {
       e.preventDefault();
       return;
     }

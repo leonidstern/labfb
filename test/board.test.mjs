@@ -356,7 +356,7 @@ test('pick: one frame is picked and the rest archived, files kept; the pick come
   const got = await wait(DIR, '--pages', `/_board/${name}`);
   assert.match(got, /Picked b/);
   assert.match(got, /near: frame b \(b\.html at 1280×800\)/);
-  assert.match(got, /picked: a, c, d archived, files kept\. Put b's change into pricing\.html, then reply --done\./);
+  assert.match(got, /picked: a, c, d archived, files kept\. Put b's change into pricing\.html, then resolve it with no words \(resolve <id>\)\./);
   assert.match((await cli(DIR, 'pick', name, 'b')).out, /already picked/);
   assert.equal((await (await fetch(`${B}/_lab/api/comments?page=/_board/${name}`)).json()).comments.length, 1, 'a second pick posts nothing');
   const two = await cli(DIR, 'new', 'Pick two', '--of', '/pricing', '--variants', '3');
