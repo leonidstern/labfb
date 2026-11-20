@@ -658,24 +658,38 @@ export function fillAt(anchor) {
   return out;
 }
 
-// The heading text of the section an element sits in: the last heading before it (or around it).
-function sectionIn(n, headings = [...document.querySelectorAll('h1, h2, h3')]) {
-  let heading = null;
-  for (const h of headings) if (h.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(n)) heading = h;
-  return heading ? short(heading.textContent, 100) : '';
+// The heading of the section an element sits in: the nearest heading before it or before a box around it (a heading
+// rules the blocks that follow it in its parent, not whatever comes after it in the page).
+const lead = (e: Element | null): string => {
+  const m = read().lead;
+  if (e && !m.has(e)) m.set(e, e.matches('h1, h2, h3, h4, h5, h6') ? short(e.textContent, 100) : lead(e.previousElementSibling));
+  return (e && m.get(e)) || '';
+};
+function sectionIn(n: Element) {
+  for (let e: Element | null = n; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+    const s = lead(e.previousElementSibling);
+    if (s) return s;
+  }
+  return '';
 }
+// Is the element in the section a pin saved? Pins made before sections were read by scope saved the last h1–h3 before it.
+const inSection = (n: Element, section: string) => {
+  let last = '';
+  for (const h of (read().heads ||= [...document.querySelectorAll('h1, h2, h3')])) if (h.compareDocumentPosition(n) & 4) last = short(h.textContent, 100); else break;
+  return sectionIn(n) === section || last === section;
+};
 
 // What proves an element is the one a pin was put on. Saved with the pin: a hash of its words (h) and their first 80
 // letters (t), how many elements of its tag said exactly the same (u) and which of them it was (k), and its company: what
 // the box around it says besides it, as a hash (x) read l boxes up, and which it was among the look-alikes in that
-// company (o: its place and their number). Identical twins also keep what stands beside them (b), when that tells them apart;
-// s: how many other elements of its tag say nearly the same (words a little changed can't tell it from those).
-type Fp = { h: string; t: string; u: number; k: number; x: string; l: number; o: [number, number]; b?: string; s?: number };
+// company (o: its place and their number). What stands beside it (b: the first words of the element before and after it),
+// and whether that tells identical twins apart (a); r: what the look-alikes around it say, s: how many say nearly the same.
+type Fp = { h: string; t: string; u: number; k: number; x: string; l: number; o: [number, number]; b?: string; a?: 1; r?: string[]; s?: number };
 /** What was found for a pin: the element (null: lost), whether it is proven (sure), or a guess of look-alikes (alike). */
 type Proof = { node: Element | null; sure?: boolean; alike?: boolean };
 // One read of the page, shared by every pin until the page changes (a MutationObserver says so; takeRecords makes it
 // true at once too, in the same task): each element's words, the elements by tag and by words, and each pin's proof.
-type Read = { words: Map<Element, string>; tags: Map<string, Element[]>; said: Map<string, Map<string, Element[]>>; got: WeakMap<object, Proof> };
+type Read = { words: Map<Element, string>; tags: Map<string, Element[]>; said: Map<string, Map<string, Element[]>>; got: WeakMap<object, Proof>; lead: Map<Element, string>; heads?: Element[] };
 let seen: Read | null = null;
 let watch: MutationObserver | null = null;
 // What names an element that has no words (a field, an icon button, a picture: with its file's name).
@@ -684,7 +698,7 @@ const read = (): Read => {
   watch ||= new MutationObserver(() => (seen = null));
   if (!seen) watch.observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: NAMING });
   else if (watch.takeRecords().length) seen = null;
-  return (seen ||= { words: new Map(), tags: new Map(), said: new Map(), got: new WeakMap() });
+  return (seen ||= { words: new Map(), tags: new Map(), said: new Map(), got: new WeakMap(), lead: new Map() });
 };
 const words = (n: Element): string => {
   const w = read().words;
@@ -740,45 +754,132 @@ function fingerprint(n: Element): Fp {
     const c = company(n, i), e = same.filter((m) => company(m, i) === c);
     if (c && e.length < eq.length) [l, x, eq] = [i, c, e];
   }
-  const b = eq.length > 1 ? beside(n) : '';
-  const near = kin(n.localName).slice(0, 400).filter((m) => m !== n && hash(words(m)) !== hash(t) && alike(t.slice(0, 80), words(m).slice(0, 80)) >= 0.8).length;
-  return { h: hash(t), t: t.slice(0, 80), u: same.length, k: same.indexOf(n), x, l, o: [eq.indexOf(n), eq.length], ...(b && eq.filter((m) => beside(m) === b).length === 1 ? { b } : {}), ...(near ? { s: near } : {}) };
+  const b = beside(n), near = kin(n.localName), i = near.indexOf(n);
+  // r: what the look-alikes around it say (the few before and after it in the page): they are not it.
+  const r = [...new Set(near.slice(Math.max(0, i - 4), i + 5).filter((m) => m !== n && words(m) !== t && words(m)).map((m) => hash(words(m)).slice(0, 4)))];
+  const s = near.slice(0, 400).filter((m) => m !== n && words(m) !== t && alike(t.slice(0, 80), words(m).slice(0, 80)) >= 0.8).length; // others that say nearly the same: edited words can't be told from those
+  return { h: hash(t), t: t.slice(0, 80), u: same.length, k: same.indexOf(n), x, l, o: [eq.indexOf(n), eq.length], ...(b ? { b } : {}), ...(eq.length > 1 && eq.filter((m) => beside(m) === b).length === 1 ? { a: 1 } : {}), ...(r.length ? { r } : {}), ...(s ? { s } : {}) };
 }
-// How alike two short texts are, 0 to 1: the share of their letter triples they have in common.
+// How alike two texts are, 0 to 1: the same; one starts with the other; the old words inside the new; else the share of
+// their letter pairs they have in common (a typo costs little).
 const alike = (a: string, b: string) => {
-  const t = (s: string) => new Set(Array.from({ length: Math.max(s.length - 2, 0) }, (_, i) => s.slice(i, i + 3)));
-  const [x, y] = [t(a), t(b)];
-  return x.size + y.size ? (2 * [...x].filter((g) => y.has(g)).length) / (x.size + y.size) : 0;
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  let k = 0, e = 0, hit = 0;
+  while (k < a.length && a[k] === b[k]) k++;
+  while (e < Math.min(a.length, b.length) - k && a[a.length - 1 - e] === b[b.length - 1 - e]) e++; // one edit in between: a typo, a swapped word
+  const m = new Map<string, number>();
+  for (let i = 1; i < a.length; i++) m.set(a.slice(i - 1, i + 1), (m.get(a.slice(i - 1, i + 1)) || 0) + 1);
+  for (let i = 1; i < b.length; i++) {
+    const g = b.slice(i - 1, i + 1), c = m.get(g);
+    if (c) {
+      m.set(g, c - 1);
+      hit++;
+    }
+  }
+  return Math.max((1.8 * hit) / (a.length + b.length - 2), k >= Math.min(a.length, 40) ? 0.85 : (0.9 * (k + e)) / Math.max(a.length, b.length), a.length > 3 && b.includes(a) ? 0.8 : 0);
 };
-const byFile = (a) => a.file && /^(image|video)$/.test(a.kind);
-// Its words start here (a quote from a selection can run on into the next items); spaces don't count. A short quote
-// ("lab", "above") is found anywhere, so the words around it must be there too, or it's another element.
-const quoteFits = (anchor, n) => {
-  if (!anchor.quote?.exact) return true;
-  const t = (n.textContent || '').replace(/\s+/g, '');
-  const q = anchor.quote.exact.replace(/\s+/g, '').slice(0, 24);
-  const before = (anchor.quote.prefix || '').replace(/\s+/g, '').slice(-10);
-  const after = (anchor.quote.suffix || '').replace(/\s+/g, '').slice(0, 10);
-  return t.includes(q) && (q.length >= 16 || (!before && !after) || t.includes(before + q) || t.includes(q + after));
+// A pin from before fingerprints stands in with what it saved: its words (all of them when short), its tag and path.
+const standIn = (a): Fp => {
+  const t = a.text || (a.file ? [a.alt, a.file].filter(Boolean).join('|') : '');
+  return { h: t && t.length < 80 ? hash(t) : '', t, u: 1, k: 0, x: '', l: 1, o: [0, 1] };
 };
+// The elements a pin might be on, scored by what they say, who stands beside them, the box around them, their kind, their
+// path and their section. Sure only when the best is clearly ahead and says what it said (in its company, when others
+// said it too); a guess (told to the agent) when it stands in its old place with other words; else lost.
+const SURE = 0.78, LOW = 0.5, GAP = 0.06;
+type Scored = { c: Element; s: number; T: number | null; X: number | null; N: number | null; Q: number; veto: boolean };
+function search(a, fp: Fp, at: Element | null, tag: string, co: (n: Element) => boolean): Proof {
+  const u = fp.u || 1;
+  const sq = (s: string) => s.replace(/\s+/g, '');
+  const want = (/ class="([^"]*)"/.exec(a.element || '')?.[1] || '').split(/\s+/).filter(Boolean);
+  const wantId = / id="([^"]*)"/.exec(a.element || '')?.[1] || '';
+  const steps = String(a.selector || '').split(' > ').filter((s) => s !== 'body').reverse();
+  const [was0, was1] = (fp.b || '').split('\u0001');
+  const side = (was: string, now: string) => (was ? alike(was, now) : Number(!now));
+  const nth = (e: Element) => [...(e.parentElement?.children || [])].filter((x) => x.localName === e.localName).indexOf(e) + 1;
+  const score = (c: Element): Scored => {
+    let sum = 0, tot = 0;
+    const add = (w: number, v: number) => ((sum += w * v), (tot += w), v);
+    const t = words(c);
+    const T = fp.t ? add(4 / u, fp.h === hash(t) ? 1 : Math.min(0.97, alike(fp.t, t.slice(0, Math.max(80, fp.t.length))))) : null;
+    const q = a.quote?.exact && sq(a.quote.exact).slice(0, 24);
+    let Q = 0;
+    if (q) {
+      const all = sq(c.textContent || ''), pr = sq(a.quote.prefix || '').slice(-12), su = sq(a.quote.suffix || '').slice(0, 12);
+      Q = add(8 / u, all.includes(pr + q + su) ? 1 : (all.includes(pr + q) || all.includes(q + su)) && (pr || su) ? 0.75 : pr.length > 5 && su.length > 5 && all.includes(pr) && all.indexOf(su, all.indexOf(pr)) > 0 ? 0.6 : all.includes(q) ? (q.length > 15 ? 0.7 : 0.35) : 0);
+    }
+    const [now0, now1] = beside(c).split('\u0001');
+    const N = fp.b ? add(2.5, (side(was0, now0 || '') + side(was1 ?? '', now1 || '')) / 2) : null;
+    const X = fp.x ? add(1.5 + 4 * (1 - 1 / u), Number(co(c))) : null;
+    const cl = [...c.classList].filter((x) => !generated(x)), both = want.filter((x) => cl.includes(x)).length;
+    add(1.5, (c.localName === tag ? 0.5 : 0) + 0.3 * (want.length + cl.length - both ? both / (want.length + cl.length - both) : 1) + 0.2 * Number((c.id || '') === wantId));
+    let hit = 0, n = 0;
+    for (let e: Element | null = c; n < steps.length && n < 6; e = e?.parentElement ?? null, n++) {
+      const m = /^([\w-]+):nth-of-type\((\d+)\)/.exec(steps[n]);
+      hit += !e ? 0 : m ? (e.localName === m[1] ? (nth(e) === +m[2] ? 1 : 0.6) : 0) : Number(e.matches(steps[n]));
+    }
+    add(1.5, c === at ? 1 : n ? (0.9 * hit) / n : 0);
+    if (a.section) add(0.5, Number(inSection(c, a.section)));
+    // It says what an element beside the pin said: it is that one.
+    const veto = T !== 1 && Boolean(t) && (Boolean(fp.r?.includes(hash(t).slice(0, 4))) || (was0 !== was1 && (t.slice(0, 40) === was0 || t.slice(0, 40) === was1)));
+    return { c, s: (tot ? sum / tot : 0) * (veto ? 0.5 : 1), T, X, N, Q, veto };
+  };
+  const rank = (l: Iterable<Element>) => [...l].filter((c) => !host.contains(c) && c !== document.body).map(score).sort((x, y) => y.s - x.s);
+  // No words to go by (a long element's pin from before fingerprints) and the page named it (its path is just its id): it.
+  if (!fp.t && at && !a.selector.includes(' ')) return { node: at, sure: true };
+  let list = kin(tag);
+  if (list.length > 400) {
+    const i = at ? list.indexOf(at) : Math.round((a.docY / Math.max(1, document.documentElement.scrollHeight)) * list.length);
+    list = list.slice(Math.max(0, i - 200), i + 200);
+  }
+  let ranked = rank(new Set(at ? [...list, at] : list));
+  // Nothing of its kind says its words (its tag was changed, or it was wrapped): any element that does, the innermost.
+  if (fp.t.length > 3 && !ranked.some((r) => (r.T ?? 0) >= 0.9 && !r.veto && (u < 2 || r.X === 1))) {
+    const bound = fp.t.length < 80 ? 2 * fp.t.length + 24 : Infinity;
+    let more = [...document.body.querySelectorAll('*')].filter((c) => c.localName !== tag && !host.contains(c) && words(c).length < bound && alike(fp.t, words(c).slice(0, Math.max(80, fp.t.length))) >= 0.8);
+    more = more.filter((c) => !more.some((d) => d !== c && c.contains(d)));
+    if (more.length && more.length < 40) ranked = [...ranked, ...rank(more)].sort((x, y) => y.s - x.s);
+  }
+  const cls = (c: Element) => want.filter((x) => c.classList.contains(x)).length;
+  const secOk = (r: Scored) => !a.section || inSection(r.c, a.section);
+  const ok = ranked.filter((r) => !r.veto && (fp.t || secOk(r)) && !ranked.some((d) => d !== r && !d.veto && d.T === r.T && words(d.c) === words(r.c) && (r.c.contains(d.c) ? cls(d.c) >= cls(r.c) : d.c.contains(r.c) && cls(d.c) > cls(r.c))));
+  const top = ok[0];
+  if (!top) return { node: null };
+  const isAt = (r: Scored) => r.c === at;
+  // Its company: the box around it says what it said, or it stands at its path between the same neighbours.
+  const mine = (r: Scored) => (r.X ?? 0) >= 0.9 || (isAt(r) && (r.N ?? 0) >= 0.9) || (r.X === null && r.N === null && isAt(r));
+  const clear = top.s - (ok[1]?.s ?? 0) >= GAP;
+  const near = (r: Scored) => (r.T ?? 0) >= 0.9 || (fp.t.length > 3 && words(r.c).includes(fp.t));
+  if (top.s >= SURE && clear && !(u > 1 && top.T === 1 && top.c.localName === tag) && (top.c.localName === tag || mine(top) || fp.t.length >= 20) && (fp.t ? (near(top) && (u < 2 || mine(top))) || ((top.T ?? 0) >= 0.5 && isAt(top) && mine(top)) : mine(top))) return { node: top.c, sure: true };
+  // The same place with other words (rewritten where it stood): the element at its path in its company, or the only one between its two neighbours.
+  const old = fp.t.match(/\w{3,}/g) || [];
+  const kept = (r: Scored) => (r.T ?? 0) >= 0.5 || !old.length || old.filter((w) => words(r.c).includes(w)).length * 3 >= old.length || r.Q >= 0.35 || (!a.fp && !a.file && secOk(r)); // a third of its old words (a new element in its place says none)
+  const inPlace = ok.filter((r) => kept(r) && ((isAt(r) && (mine(r) || (r.T ?? 0) >= 0.6)) || ((r.N ?? 0) >= 1 && was0 && was1) || (u > 1 && (r.X ?? 0) >= 0.9 && r.c.localName === tag)));
+  if (inPlace.length && (inPlace.length === 1 || isAt(inPlace[0])) && inPlace[0].s >= LOW) return { node: (inPlace.find(isAt) || inPlace[0]).c };
+  // Its own words (nobody else's), partly, somewhere else in its section.
+  return top.s >= LOW && (top.T ?? 0) >= 0.75 && u < 2 && !fp.s && clear && kept(top) && (!a.section || inSection(top.c, a.section)) ? { node: top.c } : { node: null };
+}
 
 // The element a pin is on, but only when its fingerprint proves it: sure (the same words, the same company, as many
 // look-alikes as before: wherever it went), or shown where its words or its place say it is and told to the agent (a
 // guess). Never an element only because it came to sit at the old path.
 function prove(a): Proof {
-  const fp: Fp = a.fp;
   let at: Element | null = null;
   try {
     at = document.querySelector(a.selector);
   } catch {}
   const tag = /^<([\w-]+)/.exec(a.element || '')?.[1] || at?.localName || '';
   if (at && (at === document.body || at.localName !== tag || host.contains(at))) at = null;
+  const fp: Fp = a.fp || standIn(a);
   const co = (n: Element) => Boolean(fp.x) && company(n, fp.l) === fp.x;
   const sure = (node: Element | null): Proof => ({ node, sure: true });
   const guess = (node: Element | null | undefined, alike = false): Proof => ({ node: node || null, alike });
   // Of a few look-alikes, the one nearest to where the pin was (told as unsure: nothing else tells them apart).
   const near = (l: Element[]) => (l.length < 9 ? l.map((n) => [Math.abs(n.getBoundingClientRect().top + scrollY - (a.docY || 0)), n] as const).sort((x, y) => x[0] - y[0])[0]?.[1] : null);
-  const ex = saying(tag, fp.h);
+  // A pin from before fingerprints, its element at its path still says its words: as before (it gets a fingerprint then).
+  if (!a.fp && at && fp.t && words(at).startsWith(fp.t.slice(0, 40))) return sure(at);
+  const ex = fp.h ? saying(tag, fp.h) : [];
   const set = fp.x ? ex.filter(co) : ex;
   const apart = set.filter((n) => beside(n) === fp.b);
   // Its exact words. Only it said them, and one element says them now: that one, wherever it went. Several say them (it
@@ -787,143 +888,20 @@ function prove(a): Proof {
   const byWords: Proof | false =
     fp.u < 2 && ex.length < 2 ? sure(ex[0])
     : fp.o[1] < 2 && set.length === 1 ? { node: set[0], sure: fp.u > 1, alike: fp.u < 2 }
-    : fp.o[1] > 1 && apart.length === 1 ? sure(apart[0])
-    : set.length === fp.o[1] && fp.o[1] > 1 ? { node: set[fp.o[0]], sure: !fp.b || set[fp.o[0]] === at, alike: Boolean(fp.b) && set[fp.o[0]] !== at }
+    : fp.a && fp.o[1] > 1 && apart.length === 1 ? sure(apart[0])
+    : set.length === fp.o[1] && fp.o[1] > 1 ? { node: set[fp.o[0]], sure: !fp.a || set[fp.o[0]] === at, alike: Boolean(fp.a) && set[fp.o[0]] !== at }
     : set.length ? guess(set.find((n) => n === at), true)
     : guess(ex.length === fp.u ? ex[fp.k] : ex.find((n) => n === at), true);
   if (byWords && byWords.node) return byWords;
-  // Its words changed where it stood: the element at its path, if what is around it is as it was (a guess, told). Its
-  // old words still in the new ones (added at either end), or an area's words, prove it.
-  if (at) {
-    const like = quoteFits(a, at) && (a.zoneText ? words(at).replace(/\s/g, '').includes(a.zoneText.replace(/\s/g, '').slice(0, 30)) : fp.t.length > 3 && words(at).includes(fp.t));
-    if (like && (co(at) || (fp.u < 2 && fp.t.length > 19))) return sure(at);
-    // Its words a little changed (80 % alike by their letter triples) where it stood, in its company (or unique, with none): changed.
-    const same = alike(fp.t, words(at).slice(0, 80));
-    if (!fp.s && same >= 0.9 && co(at) && quoteFits(a, at)) return sure(at); // a typo, in its own company
-    if (!fp.s && same >= 0.8 && (co(at) || (fp.u < 2 && !fp.x))) return guess(at);
-    // Some of its old words still there (a new element in its place says none of them).
-    const old = fp.t.match(/\w{3,}/g) || [];
-    if ((co(at) || kin(tag).length === 1) && (!old.length || old.filter((w) => words(at).includes(w)).length / old.length > 0.3)) return guess(at);
-  }
-  // Its words a little changed and it moved: the only element of its kind that says them 80 % alike (in its company, among look-alikes).
-  const close = fp.s ? [] : kin(tag).slice(0, 400).filter((n) => (fp.u < 2 || co(n)) && alike(fp.t, words(n).slice(0, 80)) >= 0.8);
-  if (close.length === 1) return guess(close[0]);
-  return fp.u < 2 ? guess(near(set.length ? set : ex), true) : { node: null };
+  const found = tag && tag !== 'body' && tag !== 'html' ? search(a, fp, at, tag, co) : { node: at };
+  // Nothing else, and its words came to stand on several elements (a copy): the one nearest to where it was, told as unsure.
+  return found.node || fp.u > 1 ? found : guess(near(set.length ? set : ex), true);
 }
 const proof = (a): Proof => {
   const got = read().got;
-  if (!got.has(a)) got.set(a, a.fp ? prove(a) : { node: legacy(a) });
+  if (!got.has(a)) got.set(a, prove(a));
   return got.get(a)!;
 };
-
-// Pins made before fingerprints (no fp): the stored selector can point at a different element after a redeploy; check it
-// against the file / text, look for the right one, and otherwise fall back to the page position.
-function legacy(anchor) {
-  let node = null;
-  try {
-    node = anchor.selector ? document.querySelector(anchor.selector) : null;
-  } catch {}
-  const matches = (n) => {
-    if (!n) return false;
-    if (byFile(anchor)) {
-      const m = n.closest?.('img, video') || n;
-      return fileHint(mediaSrc(m)) === anchor.file;
-    }
-    return (!anchor.element || sameKind(n, anchor.element)) && quoteFits(anchor, n);
-  };
-  const said = short(anchor.text, 400);
-  const headings = [...document.querySelectorAll('h1, h2, h3')];
-  const sectionOf = (n) => sectionIn(n, headings);
-  // Its section still exists on the page: then the pin stays in it. Only when the heading is gone altogether (renamed,
-  // removed) may the pin be found in another section.
-  const kept = Boolean(anchor.section) && headings.some((h) => short(h.textContent, 100) === anchor.section);
-  const here = (n) => !kept || sectionOf(n) === anchor.section;
-  const squash = (t) => String(t || '').replace(/\s+/g, '');
-  const areaWords = squash(anchor.zoneText).slice(0, 30);
-  // The element at the old path is only the same one if it still says the same: its words, an area's words, or at
-  // least the same section (a box with no words of its own, like a grid, otherwise matched its twin in the next section).
-  const saysSame = (n) =>
-    anchor.quote?.exact ? true
-    : said ? short(n.textContent, 400).startsWith(said.slice(0, 40))
-    : areaWords ? squash(n.textContent).includes(areaWords)
-    : anchor.section ? sectionOf(n) === anchor.section
-    : true;
-  const atPath = node && node !== document.body && matches(node) ? node : null;
-  if (atPath && saysSame(atPath)) return atPath;
-  if (byFile(anchor)) {
-    return [...document.querySelectorAll('img, video')].find((m) => fileHint(mediaSrc(m)) === anchor.file) || null;
-  }
-  // The page changed above it (a section added, a list reordered) and the path no longer leads there: look for the
-  // same element by what it is and what it says. Among elements with the same tag and classes, the best one has the
-  // same words (or the quote), sits under the same heading, and is nearest to where the pin was; a lone exact twin
-  // counts too. So the pin lands back on its element, at the same spot inside it, instead of where the page was.
-  const tag = /^<([\w-]+)/.exec(anchor.element || '')?.[1];
-  if (!tag || tag === 'body' || tag === 'html') return atPath;
-  const flat = (t) => short(t, 400);
-  const twin = (n) => !host.contains(n) && sameKind(n, anchor.element);
-  // At most 400 are read, and on a long page those are the ones nearest to where the pin was, not the first 400 on
-  // the page: a pin on the 500th row was never looked for.
-  const some = (all) => {
-    const kin = all.filter(twin);
-    if (kin.length <= 400) return kin;
-    const far = (n) => Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
-    return kin.slice(0, 4000).map((n) => [far(n), n]).sort((a, b) => a[0] - b[0]).slice(0, 400).map((x) => x[1]);
-  };
-  const pick = (twins) => {
-    let found = null;
-    let best = -1;
-    let near = Infinity;
-    for (const n of twins) {
-      const t = flat(n.textContent);
-      let score = 0;
-      if (anchor.quote?.exact && matches(n)) score += 4;
-      if (said && t === said) score += 4;
-      if (areaWords && squash(n.textContent).includes(areaWords)) score += 4;
-      else if (said && t.startsWith(said.slice(0, 40))) score += 2;
-      // The same section only breaks a tie between elements that say the right thing; on its own it would pick a
-      // neighbour (an option removed from a list put its pins on the next one).
-      if (!score && twins.length > 1) continue;
-      if (score && anchor.section && sectionOf(n) === anchor.section) score += 2;
-      const d = Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
-      if (score > best || (score === best && d < near)) [found, best, near] = [n, score, d];
-    }
-    return { found, best };
-  };
-  // First inside the box it was in (the nearest element with an id or data-lab around it), so a card's twin in
-  // another section doesn't win; the whole page only when nothing in there says the right thing.
-  const scopes = [];
-  for (const s of [anchor.inside, anchor.block && `#${anchor.block}`]) {
-    const at = !s ? null : s.startsWith('#') ? document.getElementById(s.slice(1)) : (() => {
-      try {
-        return document.querySelector(s);
-      } catch {
-        return null;
-      }
-    })();
-    if (at && at !== document.body && !host.contains(at) && !scopes.includes(at)) scopes.push(at);
-  }
-  scopes.sort((a, b) => (a.contains(b) ? 1 : b.contains(a) ? -1 : 0)); // the smaller box first
-  for (const scope of scopes) {
-    const { found, best } = pick(some([scope, ...scope.querySelectorAll(tag)].filter((n) => n.localName === tag && here(n))));
-    if (best > 0) return found;
-  }
-  const all = some([...document.querySelectorAll(tag)]);
-  const twins = all.filter(here);
-  const { found, best } = pick(twins);
-  if (best > 0) return found;
-  // Its words are on the page in another section only (the twin of an edited word): that one is not it. The element at
-  // its old path, if still in its section, or else the nearest of its kind there, is; never the twin in the other section.
-  if (kept && pick(all).best > 0) {
-    if (atPath && here(atPath)) return atPath;
-    const away = (n) => Math.abs(n.getBoundingClientRect().top + scrollY - (anchor.docY || 0));
-    return twins.reduce((a, n) => (!a || away(n) < away(a) ? n : a), null);
-  }
-  if (!atPath) return found;
-  // Nothing says the same. A lone element of its kind is still it (the words were edited, say). Among several
-  // (cards reordered, one removed) the one at the old path is just whichever came to sit there: the pin shows as
-  // moved instead of landing on the wrong card.
-  return twins.length > 1 ? null : atPath;
-}
 
 export const findTarget = (anchor) => proof(anchor).node;
 
@@ -1108,8 +1086,8 @@ export function foundAt(anchor) {
   try {
     at = document.querySelector(anchor.selector);
   } catch {}
-  if (!node || (anchor.section && !sure && sectionIn(node) !== anchor.section)) return null;
-  const now: Partial<Anchor> = sure || (!anchor.fp && node === at && !spotChanged(anchor)) ? { ...around(node), element: openingTag(node), fp: fingerprint(node), ...(node.textContent!.length < 400 && !anchor.quote ? { text: short(node.textContent, 80) } : {}) } : {};
+  if (!node || (anchor.section && !sure && !inSection(node, anchor.section))) return null;
+  const now: Partial<Anchor> = sure || (!anchor.fp && node === at && words(node).startsWith(short(anchor.text, 40))) ? { ...around(node), element: openingTag(node), fp: fingerprint(node), ...(node.textContent!.length < 400 && !anchor.quote ? { text: short(node.textContent, 80) } : {}) } : {};
   return node === at && !Object.entries(now).some(([k, v]) => JSON.stringify(v) !== JSON.stringify(anchor[k])) ? null : { ...placeOf(node, anchor), ...now };
 }
 // Where a pin sits on its element, as the lab keeps it: the element's path, its place on the page, its height.
@@ -1126,11 +1104,9 @@ export function spotChanged(anchor) {
   const was = short(anchor.quote?.exact || anchor.text || anchor.zoneText || anchor.fp?.t || '', 80);
   const { node, sure, alike } = proof(anchor);
   if (!node) return position(anchor).moved && was ? { was, gone: true } : null;
-  const said = short(anchor.text, 400);
-  const same = anchor.fp ? sure : anchor.quote?.exact ? Boolean(quoteRange(anchor, node)) : !said || short(node.textContent, 400).startsWith(said.slice(0, 40));
-  if (same) return null;
+  if (sure) return null;
   const now = sectionIn(node);
-  return { was, now: short(node.textContent, 80), element: openingTag(node), ...(alike ? { alike: true } : {}), ...(anchor.section && now !== anchor.section ? { away: true, in: now } : {}) };
+  return { was, now: short(node.textContent, 80), element: openingTag(node), ...(alike ? { alike: true } : {}), ...(anchor.section && !inSection(node, anchor.section) ? { away: true, in: now } : {}) };
 }
 
 // An element's letters without spaces, each with its text piece and place in it; read once per moment and shared by
@@ -1377,7 +1353,11 @@ export function zoneAnchor({ x0, y0, x1, y1 }) {
     pinX: x1 >= x0 ? 1 : 0, // the drag ended on the right / at the bottom: the pin goes there
     pinY: y1 >= y0 ? 1 : 0,
   });
-  Object.assign(anchor, schemeAt(box));
+  Object.assign(anchor, schemeAt(box), { eh: Math.round(r.height) });
+  // The area is on the box: its heading, the box it sits in, its component are the box's, not those of the element under the middle.
+  for (const k of ['inside', 'section', 'block', 'component', 'source', 'usedAt', 'chosen', 'cssText', 'shadow']) delete (anchor as Record<string, unknown>)[k];
+  Object.assign(anchor, box === document.body ? {} : around(box));
+  if (box !== document.body) for (const [k, v] of Object.entries(componentAt(box))) if (v) anchor[k] = short(v, 200);
   anchor.fp = box === document.body ? undefined : fingerprint(box); // the box's, not the element under the middle
   // The middle of an area often lands on one word (a caption under a picture): that word is not what the area is
   // on, so no quote (it lit up green as if it alone was picked); the area's words are in zoneText below.
