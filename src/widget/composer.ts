@@ -73,8 +73,10 @@ const tidy = (v: string) =>
 // empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a "go" comment from someone with no name
 // yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
 // opened: the box is open from the start (selected words' dialog and sheet: "comment preopened", Leo 18 Nov).
-export function composer({ placeholder, onSubmit, autofocus = false, opened = false, draftKey = '' }: {
+export function composer({ placeholder, onSubmit, autofocus = false, opened = false, draftKey = '', empty = '' }: {
   placeholder: string;
+  // Sent when nothing is typed (a drawing: what it reads as). Without it, an empty box doesn't send.
+  empty?: string;
   onSubmit: (name: string, text: string) => Promise<unknown>;
   autofocus?: boolean;
   opened?: boolean;
@@ -151,7 +153,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     box.classList.toggle('one', one);
     box.classList.toggle('open', open);
     as.hidden = !name.value.trim();
-    sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
+    sendBtn.classList.toggle('ready', Boolean((text.value.trim() || empty) && name.value.trim()));
     saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
     // The box grows with its words by itself (field-sizing, styles.css).
     // Once the words scroll, the box goes to the wide layout (name and arrow on a row of their own) so the scrollbar sits at
@@ -170,7 +172,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
   let busy = false;
   const go = async () => {
     if (busy) return;
-    const said = tidy(text.value);
+    const said = tidy(text.value) || empty;
     if (!said) return text.focus();
     if (!name.value.trim()) {
       box.classList.add('open');

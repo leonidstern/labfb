@@ -753,7 +753,38 @@ const agentText = async (page) => {
   const file = fileFor(page);
   const lines = [file && `file: ${file}`, ...lookLines(page, file)].filter(Boolean);
   const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
-  return boardText(page, out);
+  return boardText(page, file ? lineHints(out, file) : out);
+};
+// A plain HTML page: each comment's element is found in the file by its words, and its line said next to it
+// (`in file: pricing.html:30`), so an agent opens the file there instead of searching (sims, 20 Nov: a drawing's
+// action took 4-5 tool calls, most of them looking for the spot).
+const lineHints = (text, file) => {
+  if (!/\.html?$/i.test(file)) return text;
+  let src;
+  try {
+    src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  } catch {
+    return text;
+  }
+  const flat = (t) => t.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  const rows = src.split('\n').map(flat);
+  const lineOf = (words) => {
+    const w = words.replace(/\s+/g, ' ').trim().slice(0, 40).trim();
+    if (w.length < 4) return 0;
+    const hits = rows.flatMap((r, i) => (r.includes(w) ? [i + 1] : []));
+    if (hits.length === 1) return hits[0];
+    // Words that run over several lines: the first line holding their first few words.
+    const head = w.split(' ').slice(0, 4).join(' ');
+    const more = rows.flatMap((r, i) => (head.length >= 8 && r.includes(head) ? [i + 1] : []));
+    return more.length === 1 ? more[0] : 0;
+  };
+  return text.replace(/^(element text|text in area): "([^"\n]*)"$/gm, (all, k, words) => {
+    const n = lineOf(words);
+    return n ? `${all}\nin file: ${file}:${n}` : all;
+  }).replace(/^(arrow from|arrow to|at): (<[^>\n]+> )"([^"\n]*)"(?= in <|$)/gm, (all, k, tag, words) => {
+    const n = lineOf(words);
+    return n ? `${all} (${file}:${n})` : all;
+  }).replace(/(in file: [^\n]+)\n((?:[^\n]*\n){0,12}?)in file: [^\n]+\n/g, '$1\n$2');
 };
 // On a board: a board's text is its frames then its pins; a scratch frame's has one line saying which frame
 // of which board it is; a pin made on a board says which frame it is near or was made on, with that frame's label and size.
