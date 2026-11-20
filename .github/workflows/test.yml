@@ -90,7 +90,7 @@ jobs:
         # Groups of about the same length on the Mac (2 to 3 min each; the old "rest" took 9).
         group:
           # behaviours; the live connection; flags; pins finding their spot again; a phone pinch-zoomed in (zoom).
-          - { name: a, files: behaviours connection anchoring flags moved zoom shiftkeys frame framescroll boardclose }
+          - { name: a, files: behaviours connection anchoring anchoring-proof flags moved zoom shiftkeys frame framescroll boardclose }
           # What a drag does (words, an area, a point, fields and links); the section bar; boards; how often a pin
           # finds its spot again after one change to the page (anchoring-torture: ~1 min an engine, its failing cells
           # listed in the file as known).
