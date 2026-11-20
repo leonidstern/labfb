@@ -71,6 +71,7 @@ A board shows pages side by side as frames. Use one when the person asks for opt
 - Widths: `--widths 390,820,1280`. A flow: `--flow /a,/b,/c`. These show the real pages; nothing is copied.
 - The lab places frames. Give an order (`--after`), never positions.
 - A pin on a frame names its frame and file: change that frame only.
+- A board made `--of` a page opens over that page, and its pins are that page's (the `url:` it prints). A board with no page has its own address and pins.
 - "Picked b" comes as a pin: put b's change into the real page, then `LAB resolve <id>` with no words (words only if something isn't obvious or you couldn't do it). The lab archives the others. Never delete variant files.
 
 In Codex's sandbox, `wait` and `reply` may be blocked from reaching the lab: run Codex with `-c sandbox_workspace_write.network_access=true`.

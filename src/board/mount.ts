@@ -19,6 +19,7 @@ type MountOpts = {
   back?: () => void; // ⇧B and Esc on an empty board: back to the page (the board page) or closing the view (a page's)
   hash?: boolean; // the camera is kept in the address's #x,y,z (the board page; a page's view keeps #board=<name>)
   clip?: boolean; // a pin whose spot is outside the box hides (the box is less than the window)
+  home?: (key: string, of: string) => void; // told once which page this board lives on (its pins are that page's) and its address
 };
 
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -264,6 +265,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (signal.aborted) return;
     board = b;
     of = of || (b.of || '').split('#')[0];
+    if (typeof b.home === 'string' && b.of) opts.home?.(b.home, b.of);
     const shown = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
     // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
     // page). Only how it's drawn here: what is saved is the board as read (save sends board.frames).

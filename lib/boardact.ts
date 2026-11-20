@@ -27,9 +27,11 @@ export const seed = (html: string, rel: string) => {
 };
 
 // ---------- what an agent reads ----------
+/** Where a board is opened: over its page when it is about one this lab has (one set of pins, the page's), else at its own address. */
+export const where = (origin: string, b: Board, home?: boolean) => (home && b.of ? `${origin}${b.of.split('#')[0]}#board=${b.name}` : `${origin}/_lab/board/${b.name}`);
 /** The board as plain text: one line per frame, in order. `pins(frame)` is its open pins. */
-export function text(b: Board, o: { origin: string; file?: string | null; json?: boolean; pins?: (f: Frame) => number }): string {
-  const lines = [`# Board ${b.name}${b.title ? ` · ${b.title}` : ''}`, `url: ${o.origin}/_lab/board/${b.name}`];
+export function text(b: Board, o: { origin: string; file?: string | null; json?: boolean; home?: boolean; pins?: (f: Frame) => number }): string {
+  const lines = [`# Board ${b.name}${b.title ? ` · ${b.title}` : ''}`, `url: ${where(o.origin, b, o.home)}${o.home ? ' (the board opens over its page: its pins are that page\'s)' : ''}`];
   if (b.of) lines.push(`of: ${b.of.replace('#', ' #')}${o.file ? ` (file ${o.file})` : ''}`);
   if (o.json) lines.push(`file: .lab/boards/${b.name}.json`);
   if (b.frames.some((f) => f.src.startsWith('/_lab/'))) lines.push(`folder: .lab/boards/${b.name}/ (edit a frame's file; it reloads)`);
@@ -78,9 +80,9 @@ const copyIn = (e: Env, name: string, id: string, html: string) => writeAtomic(f
 
 /** One command's work (new, add, move, pick) on the stored board; the answer is what the agent reads. */
 export function act(action: string, a: Ask, e: Env): Done {
-  const view = (b: Board, file: string | null) => text(b, { origin: e.origin, file, json: true, pins: (f) => (f.src.startsWith('/_lab/') ? e.open(`/_board/${b.name}/${f.id}`) : 0) });
+  const view = (b: Board, file: string | null) => text(b, { origin: e.origin, file, json: true, home: Boolean(b.of && (file || e.proxied)), pins: (f) => (f.src.startsWith('/_lab/') ? e.open(`/_board/${b.name}/${f.id}`) : 0) });
   if (action === 'list') {
-    if (!a.name) return { text: names(e.root).map((n) => { const b = read(e.root, n); return b ? `${n}  ${b.frames.filter((f) => f.state !== 'archived').length} frames${b.of ? `  of ${b.of}` : ''}  ${e.origin}/_lab/board/${n}` : ''; }).filter(Boolean).join('\n') || 'No boards yet. Make one: labit board new "<topic>" --of /page --variants 3' };
+    if (!a.name) return { text: names(e.root).map((n) => { const b = read(e.root, n); return b ? `${n}  ${b.frames.filter((f) => f.state !== 'archived').length} frames${b.of ? `  of ${b.of}` : ''}  ${where(e.origin, b, Boolean(b.of && (e.proxied || e.fileOf(b.of.split('#')[0]))))}` : ''; }).filter(Boolean).join('\n') || 'No boards yet. Make one: labit board new "<topic>" --of /page --variants 3' };
     const b = read(e.root, a.name);
     return b ? { text: view(b, b.of ? e.fileOf(b.of.split('#')[0]) : null), board: b } : no(`No board ${a.name}. See: labit board list`);
   }
