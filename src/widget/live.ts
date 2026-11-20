@@ -191,10 +191,20 @@ export function startLive() {
       const lines = [];
       const how = `labit wait --page ${W.S.page}`;
       let head = '';
-      if (mode === 'listening') (head = `${who2} is listening`), model && lines.push(model);
-      else if (mode === 'quiet') (head = `${who2} isn't answering`), lines.push('Pins go to the next agent that listens.');
-      else if (mode === 'working') (head = text || `${who2} is working`), last && lines.push(last), waiting && lines.push(`${waiting} waiting`);
-      else (head = away[0].toUpperCase() + away.slice(1)), lines.push(`Tell an agent: listen for pins on ${location.origin}${W.S.page}`);
+      if (mode === 'listening') {
+        head = `${who2} is listening`;
+        if (model) lines.push(model);
+      } else if (mode === 'quiet') {
+        head = `${who2} isn't answering`;
+        lines.push('Pins go to the next agent that listens.');
+      } else if (mode === 'working') {
+        head = text || `${who2} is working`;
+        if (last) lines.push(last);
+        if (waiting) lines.push(`${waiting} waiting`);
+      } else {
+        head = away[0].toUpperCase() + away.slice(1);
+        lines.push(`Tell an agent: listen for pins on ${location.origin}${W.S.page}`);
+      }
       if (name) lines.push(`Session ${name}`);
       show(head, n, lines, mode === 'away' ? how : resume || '');
       whoLabel(said());
