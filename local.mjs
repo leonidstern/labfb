@@ -1840,7 +1840,7 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
-// Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box and of select mode. Names
+// Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box. Names
 // and prompts are yours, so the attribute is escaped as the flags' is.
 // Read per page: the "…" menu can change the list while the lab runs (PUT /_lab/api/actions).
 const actionsAttr = () => ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;

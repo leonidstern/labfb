@@ -4,6 +4,8 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- Select mode is gone (it was the flag `select`, **V**, and select in the ⋯ menu): the code, its styles and its key with it. The quick actions on pins, words and areas stay. An old `select` under `flags` in `labit.json` or your settings is now said at start as "not something being tried now" and otherwise ignored, and a `select` under `shortcuts` as "not an action".
+
 ## 0.7.0 · 2026-11-19
 
 The first release under a new license, and a big one: boards, select mode, drawn pins, one list of actions, undo, and labs that wake your agent and follow their install. MCP and cloud labs are parked. The full list of changes as they landed is at the end.
