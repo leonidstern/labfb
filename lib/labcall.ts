@@ -7,7 +7,8 @@ import path from 'node:path';
 type Server = { port: number; token: string; agent?: string; pid?: number };
 type Session = Record<string, unknown>;
 
-const alive = (pid: number): boolean => {
+/** Whether a process with this pid is running (ours or not). */
+export const alive = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
     return true;

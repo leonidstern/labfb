@@ -15,6 +15,7 @@ import { AGENTS, agentKind } from './lib/agents.ts';
 import { pageIds } from './lib/ids.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
+import { alive } from './lib/labcall.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
@@ -359,14 +360,6 @@ const readLock = () => {
     return JSON.parse(fs.readFileSync(LOCK, 'utf8'));
   } catch {
     return null;
-  }
-};
-const alive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return /** @type {NodeJS.ErrnoException} */ (e).code === 'EPERM'; // someone else's process, alive
   }
 };
 for (let tries = 0; !takeLock(); tries++) {
