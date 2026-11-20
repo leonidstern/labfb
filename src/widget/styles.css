@@ -393,13 +393,13 @@ button.btn.undo { color: var(--_fg); }
 /* Icon only (Leo, 20 Nov): the pill is the mark, with its status as a badge on the mark's corner, ringed like the update "!" (.upd):
    the number of pins waiting, or a sign: ! the agent went quiet, … it isn't answering, − nobody listens, ↻ reconnecting. The words
    show in a box above the pill the moment the pointer is on it (like a pin's tip), so the pill never grows. */
-.listener .mark { position: relative; z-index: 2; transform: translate(-3px, 3px); } /* low and left, so the badge sits over its corner and not its ears */
-.listener .cb { position: absolute; right: 2px; top: 2px; z-index: 3; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; corner-shape: round; /* a circle, not a squircle */
-        background: currentColor; color: var(--_green-fg); box-shadow: 0 0 0 1.5px var(--_bg); }
+.listener .mark { position: relative; z-index: 2; transform: translate(-5px, 3px); } /* low and left, so the badge sits over its corner and not its ears */
+.listener .cb { position: absolute; right: 5px; top: 5px; z-index: 3; width: 9px; height: 9px; display: grid; place-items: center; border-radius: 50%; corner-shape: round; /* a circle, not a squircle */
+        background: currentColor; color: var(--_green-fg); box-shadow: 0 0 0 1px var(--_bg); }
 .listener .cb:empty { display: none; }
 .listener .cb.amber { color: var(--_amber); } .listener .cb.grey { color: color-mix(in srgb, var(--_fg) 50%, var(--_bg)); } /* --_muted is see-through: the disc would show twice */
-.listener .cb span { color: var(--_bg); font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: 0; }
-.listener .cb svg { width: 13px; height: 13px; display: block; }
+.listener .cb span { color: var(--_bg); font: 700 7px/1 system-ui, sans-serif; letter-spacing: 0; }
+.listener .cb svg { width: 9px; height: 9px; display: block; }
 .listener .cb :is(svg, svg *) { color: inherit; } /* the sheet's * sets a colour on every element, the disc included */
 .listener.has-upd .cb { visibility: hidden; } /* the update's "!" takes the corner */
 .listener .w { position: absolute; left: -4px; bottom: calc(100% + 10px); z-index: 6; width: max-content; max-width: 280px; padding: 6px 9px; border-radius: var(--_r-s);

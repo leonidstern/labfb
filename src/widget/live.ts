@@ -176,7 +176,7 @@ export function startLive() {
       lbl.replaceChildren(span('', 'w'));
       lbl.firstElementChild.append(span(head, 't'), ...(more.length ? [span(more.join('\n'), 'd')] : []), ...(cmd ? [span(cmd, 'c')] : []));
       cb.className = `cb ${TONE[n] || ''}`;
-      cb.innerHTML = SIGNS[n] ? `<svg viewBox="0 0 12 12" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="${SIGNS[n]}" stroke="var(--_bg)" stroke-width="${n === '…' ? 2 : 1.5}"/></svg>` : n ? `<span>${n}</span>` : '';
+      cb.innerHTML = SIGNS[n] ? `<svg viewBox="0 0 12 12" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="${SIGNS[n]}" stroke="var(--_bg)" stroke-width="${n === '…' ? 2.4 : 1.8}"/></svg>` : n ? `<span>${n}</span>` : '';
       if (n) who.dataset.n = n;
       else delete who.dataset.n;
     };
