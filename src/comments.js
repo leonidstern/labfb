@@ -1697,25 +1697,40 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       }
       direct = best?.t;
     }
-    if (direct && hot?.isConnected && direct !== hot) {
+    let next = direct;
+    if (!next && inWas) next = hot;
+    // A gap between things while one has its control: that control stays, then fades (300 ms), and the box around them
+    // doesn't take over (its control sits at that box's far corner: Leo, 19 Nov, "option and move cursor makes controls
+    // run away"). Without a control showing, the box offers its own.
+    if (!next && !hot?.isConnected) {
+      // Or it holds moving things (the demo box around a pressed button and its toast):
+      // its control, for all that moves inside; not the page's whole body or a box as big as half the screen.
+      // A box with one moving thing in it (a track and its loop) is that thing.
+      const r = page?.getBoundingClientRect();
+      const inside = r && r.width * r.height <= (innerWidth * innerHeight) / 2 ? outer.filter((t) => page.contains(t)) : [];
+      // Not from the gap between two of them (one on each side of the pointer): that box's control sits at its far
+      // corner, away from the pointer (Leo, 19 Nov: "option and move cursor makes controls run away").
+      const between = inside.length > 1 && (() => {
+        const bs = inside.map(restBox);
+        const { x, y } = pointerAt;
+        // Beside them on their row (or column) only: the box's own edge above or beside them all still offers its control.
+        const row = bs.filter((b) => b.top <= y && b.bottom >= y), col = bs.filter((b) => b.left <= x && b.right >= x);
+        return (row.some((b) => b.right < x) && row.some((b) => b.left > x)) || (col.some((b) => b.bottom < y) && col.some((b) => b.top > y));
+      })();
+      next = inside.length === 1 ? inside[0] : inside.length && !between ? page : null;
+    }
+    if (next && hot?.isConnected && next !== hot) {
       // One control at a time: on its way to it the pointer crosses a neighbour (its control can lie over one), or a
       // thing inside the box that has it; another thing takes over only once the pointer rests on it (250 ms).
       const now = performance.now();
-      if (cand !== direct) {
-        cand = direct;
+      if (cand !== next) {
+        cand = next;
         candSince = now;
       }
-      return now - candSince >= 250 ? direct : hot;
+      return now - candSince >= 250 ? next : hot;
     }
     cand = null;
-    if (direct) return direct;
-    if (inWas) return hot;
-    // Or it holds moving things (the demo box around a pressed button and its toast):
-    // its control, for all that moves inside; not the page's whole body or a box as big as half the screen.
-    // A box with one moving thing in it (a track and its loop) is that thing.
-    const r = page?.getBoundingClientRect();
-    const inside = r && r.width * r.height <= (innerWidth * innerHeight) / 2 ? outer.filter((t) => page.contains(t)) : [];
-    return inside.length === 1 ? inside[0] : inside.length ? page : null;
+    return next;
   };
   let motionLoop = 0;
   const drawMotion = () => {
