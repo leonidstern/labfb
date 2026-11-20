@@ -58,7 +58,7 @@ export const frameLine = (b: Board, f: Frame, file?: string | null) => {
     : copy(f)
       ? `Put ${f.id}'s change into ${page}, then resolve it with no words (resolve <id>).`
       : others.some((g) => copy(g) || live(g))
-        ? `Keep ${page} as it is: change nothing in it.${gonecopies.length ? ` Delete the variant files (.lab/boards/${b.name}/${gonecopies.map((i) => `${i}.html`).join(', ')}).` : ''}${gonelive ? ` Remove any ${VARIANT} branching you added to its source.` : ''} Then reply --done.`
+        ? `Keep ${page} as it is: change nothing in it.${gonecopies.length ? ` Delete the variant files (.lab/boards/${b.name}/${gonecopies.map((i) => `${i}.html`).join(', ')}).` : ''}${gonelive ? ` Remove any ${VARIANT} branching you added to its source.` : ''} Then resolve it with no words (resolve <id>).`
         : `Put ${f.id}'s change into ${page}, then resolve it with no words (resolve <id>).`;
   const kept = gonecopies.length ? ', files kept' : '';
   return f.state === 'picked' ? `${line}\npicked: ${gone.length ? `${gone.join(', ')} archived${kept}. ` : ''}${b.of ? put : ''}`.trimEnd() : line;
