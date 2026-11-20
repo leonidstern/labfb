@@ -3,16 +3,12 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { LAB, H1, site, tmp, rm, spawnLab, sleep, up, serverJson } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cp-'));
-const PORT = String(9500 + Math.floor(Math.random() * 300));
-const B = `http://localhost:${PORT}`;
+const { DIR, PORT, B } = site('cp', 9500, 300);
 const html = (t) => `<!doctype html><title>${t}</title><h1>${t}</h1>`;
 fs.writeFileSync(path.join(DIR, 'index.html'), html('i'));
 fs.writeFileSync(path.join(DIR, 'other.html'), html('o'));
@@ -20,10 +16,9 @@ fs.mkdirSync(path.join(DIR, 'sub'));
 fs.writeFileSync(path.join(DIR, 'sub/index.html'), html('s'));
 fs.writeFileSync(path.join(DIR, 'Ünï code.html'), html('u'));
 fs.writeFileSync(path.join(DIR, 'mover.html'), html('m'));
-const env = { ...process.env, LAB_CLOSE_GRACE: '30', LAB_SETTLE_MS: '100', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
-let server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
-after(() => { server.kill(); fs.rmSync(DIR, { recursive: true, force: true }); });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const env = { ...process.env, LAB_CLOSE_GRACE: '30', LAB_SETTLE_MS: '100', LABIT_HOME: tmp('home'), LABIT_NO_UPDATE_CHECK: '1' };
+let server = spawnLab(DIR, PORT, { env });
+after(() => { server.kill(); rm([DIR]); });
 const live = () => new Promise((resolve) => {
   const msgs = [];
   const req = http.get({ host: '127.0.0.1', port: PORT, path: '/_lab/live?tab=cp', headers: { host: `localhost:${PORT}` } }, (res) => {
@@ -41,14 +36,13 @@ const live = () => new Promise((resolve) => {
     resolve({ msgs, close: () => req.destroy() });
   });
 });
-const keys = () => JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+const keys = () => serverJson(DIR);
 const api = (body, agent) => fetch(B + '/_lab/api/comments', {
   method: 'POST',
   headers: { 'content-type': 'application/json', origin: B, ...(agent ? { 'x-lab-agent': '1', 'x-lab-admin': keys().agent } : { 'x-lab-admin': keys().token }) },
   body: JSON.stringify(body),
 }).then(async (r) => ({ status: r.status, ...(await r.json().catch(() => ({}))) }));
-const anchor = { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1>' };
-const post = (page, text) => api({ page, name: 'Leo', text, anchor }).then((r) => r.comment);
+const post = (page, text) => api({ page, name: 'Leo', text, anchor: H1 }).then((r) => r.comment);
 const PAGES = ['/index', '/other', '/sub/index', '/_c3_bcn_c3_af_5fcode', '/mover'];
 let problems = [];
 // What the widget does with the stream, for page P: returns true when it skips.
@@ -78,8 +72,7 @@ async function step(s, label, fn) {
   return { prevRev, last: s.msgs[s.msgs.length - 1] };
 }
 test('start', async () => {
-  for (let i = 0; i < 80; i++) { try { await fetch(B + '/'); return; } catch { await sleep(100); } }
-  assert.fail('no start');
+  await up(B + '/', { fail: () => assert.fail('no start') });
 });
 test('skips only when nothing is new for that page', async () => {
   const s = await live();

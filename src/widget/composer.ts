@@ -13,8 +13,6 @@ type Deps = {
   rememberMe: (name: string) => void;
   /** Called as boxes fill and empty, so the page's own pointer can come back while you write. */
   whileWriting?: () => void;
-  /** The flag native: the box grows with its words by itself (field-sizing). */
-  native?: () => boolean;
 };
 
 // Set once by the widget at startup (bindComposer), so importing this module touches nothing.
@@ -75,8 +73,10 @@ const tidy = (v: string) =>
 // empty: what an empty box sends; nameFirst: the cursor goes to the name. Both for a "go" comment from someone with no name
 // yet: the "go" is implied, only the name is missing (guests, Leo 16 Nov: go opened the full comment box).
 // opened: the box is open from the start (selected words' dialog and sheet: "comment preopened", Leo 18 Nov).
-export function composer({ placeholder, onSubmit, autofocus = false, opened = false, draftKey = '' }: {
+export function composer({ placeholder, onSubmit, autofocus = false, opened = false, draftKey = '', empty = '' }: {
   placeholder: string;
+  // Sent when nothing is typed (a drawing: what it reads as). Without it, an empty box doesn't send.
+  empty?: string;
   onSubmit: (name: string, text: string) => Promise<unknown>;
   autofocus?: boolean;
   opened?: boolean;
@@ -153,26 +153,13 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     box.classList.toggle('one', one);
     box.classList.toggle('open', open);
     as.hidden = !name.value.trim();
-    if (one && !CSS.supports?.('field-sizing', 'content')) name.style.width = `${Math.max(2, name.value.length + 1)}ch`;
-    sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
+    sendBtn.classList.toggle('ready', Boolean((text.value.trim() || empty) && name.value.trim()));
     saysWriting(text); // a box built with words already in it (a kept draft, a redraw) counts too
-    // With the flag native the box grows with its words by itself (field-sizing, styles.css .grow); else it is measured.
-    const grows = d.native?.() && CSS.supports?.('field-sizing', 'content');
-    text.classList.toggle('grow', Boolean(grows));
-    if (!grows) {
-      text.style.height = 'auto';
-      text.style.height = `${text.scrollHeight}px`;
-    }
+    // The box grows with its words by itself (field-sizing, styles.css).
     // Once the words scroll, the box goes to the wide layout (name and arrow on a row of their own) so the scrollbar sits at
     // the box's right edge, not left of the name; it stays wide until the words are clearly shorter (no flapping at the edge).
     const tall = one && (text.scrollHeight > 200 || (box.classList.contains('tall') && text.scrollHeight > 160));
-    if (tall !== box.classList.contains('tall')) {
-      box.classList.toggle('tall', tall);
-      if (!grows) {
-        text.style.height = 'auto';
-        text.style.height = `${text.scrollHeight}px`;
-      }
-    }
+    if (tall !== box.classList.contains('tall')) box.classList.toggle('tall', tall);
     text.style.overflowY = text.scrollHeight > 200 ? 'auto' : 'hidden'; // a scrollbar only once the box is at its tallest (max-height 200)
     if (glide) {
       const to = sendBtn.getBoundingClientRect();
@@ -185,7 +172,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
   let busy = false;
   const go = async () => {
     if (busy) return;
-    const said = tidy(text.value);
+    const said = tidy(text.value) || empty;
     if (!said) return text.focus();
     if (!name.value.trim()) {
       box.classList.add('open');

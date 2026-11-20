@@ -22,10 +22,14 @@ export function findLab(from: string): { dir: string; server: Server } | null {
   for (let dir = path.resolve(from); ; dir = path.dirname(dir)) {
     const file = path.join(dir, '.lab/server.json');
     if (fs.existsSync(file)) {
-      const server = JSON.parse(fs.readFileSync(file, 'utf8'));
+      // A file cut short (a full disk, a crash while it was written) or holding null names no lab: it was a stack trace.
+      let server: Server | null = null;
+      try {
+        server = JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch {}
       // A lab that crashed (or a reboot) leaves its file behind, and its port may be another folder's lab by now:
       // a wait there is refused and a pin lands on the wrong lab. A file whose process is gone is not a lab.
-      if (!Number.isInteger(server.pid) || alive(server.pid)) return { dir, server };
+      if (server && typeof server === 'object' && (!Number.isInteger(server.pid) || alive(server.pid!))) return { dir, server };
     }
     if (path.dirname(dir) === dir) return null;
   }

@@ -1,16 +1,15 @@
 // Part of the comment widget (src/comments.js bundles it).
 //
-// Pins the browser holds (flag native): a pin on an element of the page is tied to that element with CSS anchor
-// positioning, so the browser keeps it on its spot through scrolling the page, on a sticky header, and on a parent that
-// moves. No script runs for that. The script still
+// Pins the browser holds: a pin on an element that moves on its own (sticky, fixed, transformed or animated, see moves)
+// is tied to that element with CSS anchor positioning, so the browser keeps it on its spot: on a sticky header, on a
+// parent that slides, on a board's frame under its camera. No script runs for that. The script still
 // finds the spot (anchoring.ts, position) when the pins are drawn or the page changes size, and writes it here as an
 // offset from the element's corner: on words, in a gap between two blocks, on an area or a share of the element alike.
 //
 // Two things make it reach the page:
 // - the pin is fixed: an absolute pin's containing block is the widget's own host, which no element of the page is in;
 // - its rule is in the page's style sheet, by ::part: anchor names given in the page are not seen from the shadow root.
-// A browser without anchor positioning keeps the pins the script places, as before.
-// So does a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
+// A pin on still content is placed in the page by the script, as is a pin on an element the page anchors to itself (its anchor-name would win over ours) or one inside an open
 // dialog, popover or full screen (the top layer is laid out after the pin, so it can't be its anchor). An element whose
 // anchor attribute a live patch took away parks its pins off screen (anchor()'s fallback) until they are placed again.
 // A pin inside a box that cuts off what overflows it (a box that scrolls, a carousel) is placed by the script too: the
@@ -30,12 +29,10 @@ const TRIES =
   '@position-try --lab-c-edge-above{left:auto;right:12px;top:auto;bottom:calc(anchor(top) - var(--lab-ay))}';
 let count = 0;
 let dirty = false;
-let able: boolean | null = null;
-const can = () => (able ??= typeof CSS !== 'undefined' && CSS.supports('anchor-name: --a'));
 // What an element is, read once per placing of the pins (newPass): whether a box cuts it off, it sits in the top layer,
 // or the page gives it an anchor name of its own. Read before any pin is written, so placing many pins lays out once.
 let pass = 0;
-const seen = new WeakMap<Element, { pass: number; no: boolean }>();
+const seen = new WeakMap<Element, { pass: number; no: boolean; moves: boolean }>();
 /** A new placing of the pins: what was read about their elements is read again. */
 export const newPass = () => void pass++;
 const cutOff = (node: Element) => {
@@ -43,6 +40,19 @@ const cutOff = (node: Element) => {
     if (getComputedStyle(el).overflow === 'visible') continue;
     const r = el.getBoundingClientRect();
     if (r.left > 0.5 || r.top > 0.5 || r.right < innerWidth - 0.5 || r.bottom < innerHeight - 0.5) return true;
+  }
+  return false;
+};
+// The element moves on its own while the page scrolls or stands still: it, or a box around it, is sticky or fixed, or
+// transformed or animated (a board's frames under its camera, a carousel, a header that slides). Only such a pin is
+// held: a pin on still content is placed in the page by the script and scrolls with it for free, where a held one is
+// laid out again at every scroll step (Leo, 20 Nov, measured: 0 vs 320 ms of layout for 40 pins over one scroll).
+const moves = (node: Element) => {
+  for (let el: Element | null = node; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    const s = getComputedStyle(el);
+    if (s.position === 'sticky' || s.position === 'fixed') return true;
+    if (s.transform !== 'none' || s.translate !== 'none' || s.scale !== 'none' || s.rotate !== 'none') return true;
+    if (s.animationName !== 'none' && el.getAnimations().length) return true;
   }
   return false;
 };
@@ -55,33 +65,51 @@ const inTopLayer = (node: Element) => {
   }
 };
 
+const nameOf = (node: Element) => {
+  let name = names.get(node);
+  if (!name) names.set(node, (name = `lab${(++count).toString(36)}`));
+  return name;
+};
+// What holdPin needs to know about an element, read once a pass. Reading a style after the pins were written lays the
+// page out again, so readPins reads them all first, before any pin is written.
+const readNode = (node: Element) => {
+  let read = seen.get(node);
+  if (read?.pass !== pass) {
+    const name = nameOf(node);
+    const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
+    seen.set(node, (read = { pass, no: Boolean(own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || cutOff(node), moves: moves(node) }));
+  }
+  return read;
+};
+/** Reads what holdPin needs about these elements, all at once: called before the pins are written (comments.js). */
+export const readPins = (nodes: (Element | null | undefined)[]) => {
+  for (const n of nodes) if (n && !/^(html|body|main)$/.test(n.localName)) readNode(n);
+};
+
 /** Ties a pin to node, its spot at (left, top) in page coordinates. False, and the pin let go, when the script places it.
  *  share: the spot as a share of node's box instead (a board's frame, which the board's camera scales: anchor() reads the
  *  box as the camera shows it, so a share stays on the same point of the frame through any pan and zoom). */
 export function holdPin(pin: HTMLElement, on: boolean, node: Element | null, left: number, top: number, share?: { x: number; y: number }): boolean {
   // The page itself, or a big container placed by a share of its size, keeps the script's place (anchoring.ts, spotOf).
-  if (!on || !node || !can() || /^(html|body|main)$/.test(node.localName) || pin.classList.contains('dragging')) {
+  if (!on || !node || /^(html|body|main)$/.test(node.localName) || pin.classList.contains('dragging')) {
     letPin(pin);
     return false;
   }
-  let name = names.get(node);
-  if (!name) names.set(node, (name = `lab${(++count).toString(36)}`));
-  let read = seen.get(node);
-  if (read?.pass !== pass) {
-    const own = (getComputedStyle(node) as CSSStyleDeclaration & { anchorName?: string }).anchorName;
-    seen.set(node, (read = { pass, no: Boolean(own && own !== 'none' && own !== `--${name}`) || inTopLayer(node) || cutOff(node) }));
-  }
-  if (read.no) {
+  const name = nameOf(node);
+  const read = readNode(node);
+  if (read.no || (!share && !read.moves)) {
     letPin(pin);
     return false;
   }
   if (node.getAttribute('data-lab-anchor') !== name) node.setAttribute('data-lab-anchor', name); // put back after a live patch
   const part = pin.getAttribute('part') || `lp${(++count).toString(36)}`;
   pin.setAttribute('part', part);
-  const r = node.getBoundingClientRect();
   const pct = (n: number) => `${Math.round(n * 10000) / 100}%`;
-  const at = share
-    ? `left:anchor(${pct(share.x)}, -10000px)!important;top:anchor(${pct(share.y)}, -10000px)!important`
+  // Only an offset needs the element's box: a share doesn't, and reading a box after the last pin was written lays the
+  // page out again, once per pin (600 pins on a board: 17 s in Chrome).
+  const r = share ? null : node.getBoundingClientRect();
+  const at = !r
+    ? `left:anchor(${pct(share!.x)}, -10000px)!important;top:anchor(${pct(share!.y)}, -10000px)!important`
     : `left:calc(anchor(left, -10000px) + ${px(left - scrollX - r.left)})!important;top:calc(anchor(top, -10000px) + ${px(top - scrollY - r.top)})!important`;
   const rule =
     `[data-lab-anchor="${name}"]{anchor-name:--${name}}` +

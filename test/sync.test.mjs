@@ -4,29 +4,24 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { LAB, site, tmp, rm, spawnLab, sleep, up, serverJson, pinPost } from './harness.mjs';
 
-const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-sync-'));
-const PORT = String(8600 + Math.floor(Math.random() * 200)); // clear of the other test files' ranges (they run at the same time)
-const B = `http://localhost:${PORT}`;
+const { DIR, PORT, B } = site('sync', 8600, 200); // clear of the other test files' ranges (they run at the same time)
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><h1 id="t">Hello</h1>');
 fs.writeFileSync(path.join(DIR, 'other.html'), '<!doctype html><title>o</title><h1 id="o">Other</h1>');
 fs.writeFileSync(path.join(DIR, 'third.html'), '<!doctype html><title>3</title><h1 id="h">Third</h1>'); // its own session's page: a claim on it leaves the others alone
 // A 1 s grace once every page is closed, and pins 300 ms apart go over together. A tab with neither a stream nor a check-in is gone after 3 s here (90 s in a real lab).
-const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LAB_TAB_TTL: '3', LAB_BETWEEN_MS: '800', LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env });
+const env = { ...process.env, LAB_CLOSE_GRACE: '1', LAB_SETTLE_MS: '300', LAB_TAB_TTL: '3', LAB_BETWEEN_MS: '800', LABIT_HOME: tmp('home'), LABIT_NO_UPDATE_CHECK: '1' };
+const server = spawnLab(DIR, PORT, { env });
 const procs = new Set();
 after(() => {
   for (const p of procs) p.kill();
   server.kill();
-  fs.rmSync(DIR, { recursive: true, force: true });
+  rm([DIR]);
 });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (ok, ms = 4000, what = 'condition') => {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -81,27 +76,14 @@ const wait = (args = [], timeout = 20) => {
   done.then(() => (over = true));
   return { done, over: () => over, kill: () => p.kill() };
 };
-const post = (text, page = '/index') =>
-  fetch(B + '/_lab/api/comments', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: B },
-    body: JSON.stringify({ page, name: 'Leo', text, anchor: { selector: 'h1', x: 0.1, y: 0.5, docX: 0.1, docY: 20, width: 1000, element: '<h1>' } }),
-  }).then((r) => r.json());
+const post = pinPost(B);
 // Hands over whatever earlier tests left unanswered, so the next wait starts with nothing waiting for it.
 const drain = () => wait([], 1).done;
 // The mode pages are told: listening, working or away.
 const modeOf = (s) => (s.last()?.session ? s.last().mode : 'away');
 
 test('the lab starts', async () => {
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(B + '/');
-      return;
-    } catch {
-      await sleep(100);
-    }
-  }
-  assert.fail('lab did not start');
+  await up(B + '/', { fail: () => assert.fail('lab did not start') });
 });
 
 test('a live stream starts with the lab\'s state; a new comment reaches every open page; the delta has it', async () => {
@@ -335,7 +317,7 @@ test('labs & pages: this lab and its pages; stop listening needs the key and end
   await until(() => modeOf(p) === 'listening', 4000, 'listening');
   const no = await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'stop', port: Number(PORT) }) });
   assert.equal(no.status, 403, 'no key, no stop');
-  const { token } = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+  const { token } = serverJson(DIR);
   const ok = await fetch(B + '/_lab/labs', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': token }, body: JSON.stringify({ action: 'stop', port: Number(PORT) }) });
   assert.equal(ok.status, 200);
   const { out } = await w.done;

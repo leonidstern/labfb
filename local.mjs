@@ -98,9 +98,10 @@ For the agent, from the project (any folder under it):
       thread closes), --on-it that you're working on it, --question that you need the person; --resolve closes the thread; --wait listens again right after.
   labit reply <id> --progress "what you're on now"
       During long work: one short line the page shows next to your name (and on the pin), replaced by the next one. Not a message, not an answer; an answer clears it.
-  labit reply <id> "question" --choice "A words" --choice "B words" [--choice …] [--recommend B]
+  labit reply <id> "question" --choice "A words" [--hint "short why"] --choice "B words" [--choice …] [--recommend B]
       Ask with 2 to 6 choices: the person picks one on the page (on quoted words they can try each one in the sentence
-      first) and the pick comes back in your next wait as "Picked B: …". --recommend marks your own pick.
+      first) and the pick comes back in your next wait as "Picked B: …". --hint (up to 120 characters, right after the
+      --choice it describes) shows as a small second line. --recommend marks your own pick.
   labit resolve <id> [--page /path]
   labit pin <selector> "text" [--page /path] [--at x,y]
       Leave your own pin on a spot: for suggestions and questions about the page, one pin per point, numbered, instead
@@ -218,6 +219,13 @@ if (['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resolve', 'pin', '
 
 // ---------- the server ----------
 if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in your project, or name a folder (see --help)`);
+// A folder that is a file, a port that is none (abc, 70000, 1.5) and a dev server address that is none, from a flag,
+// PORT or labit.json: each is said in a line. They were Node's own errors, with a stack trace.
+if (pos[0] && !fs.statSync(pos[0]).isDirectory()) die(`${pos[0]} is a file, not a folder. Run ${CMD} in your project, or name a folder (see --help)`);
+const askedPort = Number(opts.port || process.env.PORT || 4400);
+if (!Number.isInteger(askedPort) || askedPort < 0 || askedPort > 65535) die(`[lab] ${opts.port || process.env.PORT} is not a port: give a number from 1 to 65535 (--port, PORT, or "port" in labit.json)`);
+const proxyUrl = (p) => (/^\d+$/.test(p) ? `http://localhost:${p}` : p);
+if (typeof opts.proxy === 'string' && opts.proxy && !URL.canParse(proxyUrl(opts.proxy))) die(`[lab] ${opts.proxy} is not a dev server's address: give its port (--proxy 3000) or its URL (--proxy http://localhost:3000)`);
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
 
 // ---------- finding the dev server ----------
@@ -327,9 +335,12 @@ const SERVER = path.join(LAB, 'server.json');
 const B = await import('./lib/board.ts');
 fs.mkdirSync(LAB, { recursive: true });
 // Git skips the folder by itself: .lab/.gitignore holds `*`, so nobody has to add .lab to the project's .gitignore.
-try {
-  fs.writeFileSync(path.join(LAB, '.gitignore'), '*\n', { flag: 'wx' });
-} catch {}
+const ignoreLab = () => {
+  try {
+    fs.writeFileSync(path.join(LAB, '.gitignore'), '*\n', { flag: 'wx' });
+  } catch {}
+};
+ignoreLab();
 
 // One server per folder: two would overwrite each other's comments.
 const alreadyHere = (running) => {
@@ -411,9 +422,23 @@ const AGENT_KEY = randomBytes(16).toString('hex');
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
 const writeAtomic = (file, text, mode) => {
-  try {
+  const write = () => {
     fs.writeFileSync(file + '.tmp', text, mode ? { mode } : undefined);
     fs.renameSync(file + '.tmp', file);
+  };
+  try {
+    try {
+      write();
+    } catch (e) {
+      // Its folder is gone: a build that starts from an empty folder took .lab with everything else. Made again while
+      // the served folder is there (one deleted for good is not brought back). A running lab's .lab also gets back
+      // its .gitignore and the file the commands find the lab by.
+      if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'ENOENT' || !fs.existsSync(ROOT)) throw e;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      write();
+      ignoreLab();
+      if (origin && file !== SERVER && !fs.existsSync(SERVER)) saveServer();
+    }
   } catch (e) {
     fs.rmSync(file + '.tmp', { force: true }); // a half-written copy would hold on to the space a full disk needs back
     throw e;
@@ -524,7 +549,17 @@ if (fs.existsSync(STORE)) {
     try {
       const { v, page, comments, file: rel, fid } = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (typeof page !== 'string' || !page.startsWith('/') || !comments || typeof comments !== 'object') throw new Error('not a page');
-      saved[page] = comments;
+      // What is no comment in a file that otherwise reads (null, a word, a record with no date, text or name: a file
+      // written by hand or by something else) is left out and the page's other comments load: one such entry kept
+      // the lab from starting. The file as it was is kept beside it, and the page is written again without them.
+      const real = Object.entries(comments).filter(([, c]) => c && ['id', 'name', 'text', 'createdAt'].every((k) => typeof c[k] === 'string'));
+      if (real.length < Object.keys(comments).length) {
+        const aside = `${file}.broken-${Date.now()}`;
+        fs.copyFileSync(file, aside);
+        console.log(`[lab] comments/${name} held ${Object.keys(comments).length - real.length} that are no comments; left out (the file as it was: ${path.relative(LAB, aside)})`);
+        outdated.push(page);
+      }
+      saved[page] = Object.fromEntries(real);
       if (typeof rel === 'string' && /^[\d.]+$/.test(fid)) homes.set(page, [rel, fid]);
       if (v !== SCHEMA) outdated.push(page);
     } catch {
@@ -713,7 +748,38 @@ const agentText = async (page) => {
   const file = fileFor(page);
   const lines = [file && `file: ${file}`, ...lookLines(page, file)].filter(Boolean);
   const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
-  return boardText(page, out);
+  return boardText(page, file ? lineHints(out, file) : out);
+};
+// A plain HTML page: each comment's element is found in the file by its words, and its line said next to it
+// (`in file: pricing.html:30`), so an agent opens the file there instead of searching (sims, 20 Nov: a drawing's
+// action took 4-5 tool calls, most of them looking for the spot).
+const lineHints = (text, file) => {
+  if (!/\.html?$/i.test(file)) return text;
+  let src;
+  try {
+    src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  } catch {
+    return text;
+  }
+  const flat = (t) => t.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  const rows = src.split('\n').map(flat);
+  const lineOf = (words) => {
+    const w = words.replace(/\s+/g, ' ').trim().slice(0, 40).trim();
+    if (w.length < 4) return 0;
+    const hits = rows.flatMap((r, i) => (r.includes(w) ? [i + 1] : []));
+    if (hits.length === 1) return hits[0];
+    // Words that run over several lines: the first line holding their first few words.
+    const head = w.split(' ').slice(0, 4).join(' ');
+    const more = rows.flatMap((r, i) => (head.length >= 8 && r.includes(head) ? [i + 1] : []));
+    return more.length === 1 ? more[0] : 0;
+  };
+  return text.replace(/^(element text|text in area): "([^"\n]*)"$/gm, (all, k, words) => {
+    const n = lineOf(words);
+    return n ? `${all}\nin file: ${file}:${n}` : all;
+  }).replace(/^(arrow from|arrow to|at): (<[^>\n]+> )"([^"\n]*)"(?= in <|$)/gm, (all, k, tag, words) => {
+    const n = lineOf(words);
+    return n ? `${all} (${file}:${n})` : all;
+  }).replace(/(in file: [^\n]+)\n((?:[^\n]*\n){0,12}?)in file: [^\n]+\n/g, '$1\n$2');
 };
 // On a board: a board's text is its frames then its pins; a scratch frame's has one line saying which frame
 // of which board it is; a pin made on a board says which frame it is near or was made on, with that frame's label and size.
@@ -939,7 +1005,7 @@ setInterval(() => {
 // Only names that point at this computer (no DNS rebinding), only pages served from here may post (no cross-site
 // comments), only this computer gets the admin key. Wifi guests can read the folder's pages and comment.
 const WIFI = Boolean(opts.wifi);
-const PROXY = opts.proxy ? new URL(/^\d+$/.test(opts.proxy) ? `http://localhost:${opts.proxy}` : opts.proxy) : null;
+const PROXY = opts.proxy ? new URL(proxyUrl(opts.proxy)) : null;
 const wifiAddrs = () => Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => a.address);
 const hostName = os.hostname().replace(/\.local$/, '').toLowerCase();
 const allowedHost = (h = '') => {
@@ -1116,7 +1182,7 @@ const setMode = (m) => {
   saveServer();
   broadcast();
 };
-let PORT = Number(opts.port || process.env.PORT || 4400);
+let PORT = askedPort;
 const STARTED = new Date().toISOString(); // the switcher shows how long a lab has run
 // Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
 const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
@@ -1795,7 +1861,7 @@ function announce(page, c) {
 // ---------- pages ----------
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
-// Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box and of select mode. Names
+// Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box. Names
 // and prompts are yours, so the attribute is escaped as the flags' is.
 // Read per page: the "…" menu can change the list while the lab runs (PUT /_lab/api/actions).
 const actionsAttr = () => ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
@@ -1884,7 +1950,13 @@ const holdFirst = (html) => {
 const pagesUnder = (top) => {
   const out = [];
   const walk = (dir, depth) => {
-    for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+    let list;
+    try {
+      list = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // gone while the lab looked (a build clearing its output, the served folder deleted): no pages there
+    }
+    for (const d of list) {
       if (d.name.startsWith('.') || d.name === 'node_modules') continue;
       const full = path.join(dir, d.name);
       if (d.isDirectory() && depth < 6) walk(full, depth + 1);
@@ -1988,11 +2060,15 @@ const refuse = (status, why) => Object.assign(new Error(why), { status });
 const sent = async (req) => {
   const body = await sentWithin(req, BODY_MAX);
   if (body === null) throw refuse(413, 'too big');
+  let data;
   try {
-    return JSON.parse(body || '{}');
+    data = JSON.parse(body || '{}');
   } catch {
     throw refuse(400, 'not JSON');
   }
+  // null has no fields to read: every caller tripped on it (a 500 with a TypeError's text, 20 Nov).
+  if (data === null) throw refuse(400, 'not a JSON object');
+  return data;
 };
 // The body of a request, or null when it is longer than `max` bytes (the rest is read and dropped, so the sender gets its answer).
 const sentWithin = async (req, max) => {
@@ -2074,14 +2150,17 @@ const boardApi = async (req, res, url) => {
   const name = url.searchParams.get('name') || (page && B.nameOf(page));
   if (req.method === 'GET' && !name) return json(200, { boards: (boardList ??= B.names(ROOT).flatMap((n) => boardGet(n) || [])).map(({ name, of, frames }) => ({ name, of, frames: frames.length })) });
   if (!name || !B.NAME.test(name) || (page && !B.labPath(page))) return json(400, { error: 'name a board (?name=) or a page (?page=/x)' });
-  const was = boardGet(name);
   if (req.method === 'GET') {
+    const was = boardGet(name);
     if (was) return json(200, { ...B.place(was), exists: true });
     if (!page) return json(404, { error: `no board ${name}` });
     return json(200, { ...B.place({ v: 1, name, rev: 0, of: page, frames: [{ id: 'a', src: page, w: 1440, h: 900, state: 'live' }] }), exists: false });
   }
   if (req.method !== 'PUT' || !isLoopback(req)) return plain(res, 405, 'GET, PUT (this computer) or POST');
+  // The body first, then read, check and write with nothing awaited between: two saves made from the same rev whose
+  // requests were both open before either body came (two tabs, a slow link) were both taken, the second over the first.
   const body = await sent(req);
+  const was = boardGet(name);
   if (was && body.rev !== was.rev) return json(409, { error: 'the board changed since you read it', board: B.place(was) });
   const next = B.check({ ...(page && !body.of ? { of: page } : {}), ...body }, name, was);
   if (typeof next === 'string') return json(422, { error: next });
@@ -2133,7 +2212,14 @@ const handler = async (req, res) => {
     const own = !PROXY || url.pathname.startsWith('/_lab/');
     if (req.method !== 'GET' && req.method !== 'HEAD' && (!sameOrigin(req) || (own && !(req.headers['content-type'] || '').startsWith('application/json'))))
       return plain(res, 403, 'forbidden');
-    const pathname = decodeURIComponent(url.pathname);
+    // A path that can't be decoded (/%, /%zz) is the sender's mistake, not a 500 with the error's text. Behind --proxy
+    // the app's own paths go on to the dev server as they came.
+    let pathname = url.pathname;
+    try {
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      if (own) return plain(res, 400, 'bad path');
+    }
     // A one-time link makes this browser a known guest; without one a guest sees the gate and nothing else.
     if (pathname.startsWith('/_lab/j/')) return redeem(req, res, pathname.slice(8), url.searchParams.get('me') || '', url.searchParams.get('to') || '');
     if (!mayIn(req)) return gate(res);
@@ -2518,19 +2604,21 @@ const handler = async (req, res) => {
     // ---------- boards: a variant's page, and the board's data (lib/board.ts) ----------
     // /_lab/board/<name> is the board page, /_lab/board/<name>/<frame> a variant's own page.
     if (pathname.startsWith('/_lab/board/') || pathname === '/_lab/api/board') {
-      const m = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]*)\/([a-z][a-z0-9]*)$/.exec(pathname);
+      const m = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})\/([a-z][a-z0-9]*)$/.exec(pathname);
       if (m && (req.method === 'GET' || req.method === 'HEAD')) {
         const file = B.frameFile(ROOT, m[1], m[2]);
         if (!fs.existsSync(file)) return notFound(req, res, pathname);
         return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
           inject(withIcon(fs.readFileSync(file, 'utf8')), widget(`/_board/${m[1]}/${m[2]}`, isLoopback(req), nameFor(req), inFrame(req))));
       }
-      if (pathname === '/_lab/api/board') return boardApi(req, res, url);
-      // The board page itself: a shell that board.js (public/_lab/board.js) fills from /_lab/api/board. The widget rides on it
+      // Awaited: what it throws (a body that is not JSON, or too long) is answered below. Not awaited, it ended the lab.
+      if (pathname === '/_lab/api/board') return await boardApi(req, res, url);
+      // The board page itself: an empty page with the board's view over all of it, the same one a page that links a board
+      // shows (public/_lab/boardview.js, own() in src/board/overlay.ts), filled from /_lab/api/board. The widget rides on it
       // under the board's key, like any page; it is a page of its own, never one of the lab's pages.
       const bp = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})$/.exec(pathname);
       if (bp && (req.method === 'GET' || req.method === 'HEAD')) {
-        const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>board ${bp[1]}</title></head><body><script src="/_lab/board.js" data-name="${bp[1]}"></script></body></html>`;
+        const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>board ${bp[1]}</title><style>html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#f7f7f7}@media (prefers-color-scheme:dark){html,body{background:#1b1b1a}}</style></head><body><script type="module">import{own}from"/_lab/boardview.js";own("${bp[1]}")</script></body></html>`;
         return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, inject(withIcon(html), widget(`/_board/${bp[1]}`, isLoopback(req), nameFor(req), true)));
       }
     }

@@ -4,9 +4,12 @@
 // drawn in it by mount.ts. No second widget: the page's own one stays on top and its pins on the board's frames are the
 // page's comments (anchor kind board, with the board's name). The address gets #board=<name>, so back closes it and a
 // reload opens it again; closing leaves the page where it was scrolled. The view's height is kept per page.
+//
+// The board's own address (/_lab/board/<name>, a direct link) is this same view, by itself: the lab serves a page with
+// nothing else on it, and own() below puts the view over all of it (no half, nothing is under it).
 import { mountBoard } from './mount.ts';
 
-type Opts = { page: string; of?: string; push?: boolean; onClose?: () => void };
+type Opts = { page: string; of?: string; push?: boolean; onClose?: () => void; own?: boolean }; // own: the board's own address (own() below)
 type Open = { name: string; view: HTMLElement; destroy: () => void; onClose?: () => void; restoration: ScrollRestoration; pushed: boolean };
 let cur: Open | null = null;
 let lastOpts: Opts | null = null; // a forward to #board=<name> opens it as the last one was
@@ -76,16 +79,18 @@ export function show(name: string, o: Opts) {
   grip.className = 'bv-grip';
   grip.setAttribute('aria-hidden', 'true');
   const title = Object.assign(document.createElement('span'), { className: 'bv-name', textContent: `board ${name}` });
-  let size = readSize(o.page);
+  let size = o.own ? 1 : readSize(o.page);
   const toggle = btn('', 'full or half', () => {
     size = size >= 1 ? 0.5 : 1;
     saveSize(o.page, size);
     paintSize();
   });
   toggle.className = 'bv-size';
-  const closeBtn = btn('‹ close', 'close the board', () => close());
+  const closeBtn = o.own ? btn('‹ back', 'back to the page', () => backTo(o.of || '')) : btn('‹ close', 'close the board', () => close());
   closeBtn.className = 'bv-close';
-  bar.append(grip, closeBtn, title, toggle);
+  // The board's own address: no half (nothing is under it), and the way back only when it says which page it is about.
+  if (o.own) bar.append(...(o.of ? [closeBtn] : []), title);
+  else bar.append(grip, closeBtn, title, toggle);
   const box = document.createElement('div');
   box.className = 'bv-box';
   const root = document.createElement('div');
@@ -127,7 +132,7 @@ export function show(name: string, o: Opts) {
   let at = view.getBoundingClientRect();
   const ro = new ResizeObserver(() => (at = view.getBoundingClientRect()));
   ro.observe(view);
-  const board = mountBoard(root, name, { of: o.of, back: () => close(), clip: true });
+  const board = mountBoard(root, name, o.own ? { of: o.of, back: o.of ? () => backTo(o.of || '') : undefined, hash: true, clip: true } : { of: o.of, back: () => close(), clip: true });
   const covers = (x: number, y: number) => x >= at.left && x <= at.right && y >= at.top && y <= at.bottom;
   Object.assign(window, { __labBoard: { ...board.api, covers } });
   // The page scrolls under a half view: its pins and the board's are drawn again.
@@ -161,7 +166,28 @@ function close() {
 
 // Back and forward: the view follows the address's #board=<name>.
 addEventListener('popstate', () => {
+  if (lastOpts?.own) return; // the board's own address keeps the camera there instead
   const want = nameInHash();
   if (cur && want !== cur.name) teardown();
   if (want && !cur && lastOpts) show(want, { ...lastOpts, push: false });
 });
+
+// Back to the page this board is about, from the board's own address. Opened from that page in this tab: the browser's
+// own back, which gives the page back where it was (bfcache / scroll restoration; Leo, 19 Nov: "closing board should
+// back me from where i opened"). Otherwise a plain visit, and the page puts its scroll back from the key it left on its
+// way here (the one a reload uses).
+function backTo(of: string) {
+  let came = false;
+  try {
+    const r = document.referrer && new URL(document.referrer);
+    came = !!r && r.origin === location.origin && r.pathname === new URL(of, location.href).pathname && history.length > 1;
+  } catch {}
+  if (came) history.back();
+  else location.href = of;
+}
+
+/** The board called name at its own address (/_lab/board/<name>[?of=/page]): the view over the whole of an empty page.
+ * ⇧B, Esc on an empty board, "‹ back" and the browser's own back go to the page it is about, when the address names one. */
+export function own(name: string) {
+  show(name, { page: '', of: new URLSearchParams(location.search).get('of') || '', push: false, own: true });
+}

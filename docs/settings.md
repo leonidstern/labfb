@@ -77,7 +77,7 @@ Your `~/.config/labit/settings.json`:
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
 | `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
-| `actions` | yours, seeded once | | Your one list of actions: the chips of the comment box and of select mode, in order. See **Actions** below. | yours |
+| `actions` | yours, seeded once | | Your one list of actions: the chips of the comment box, in order. See **Actions** below. | yours |
 | `flags` | everything off | the ⋯ menu's **experiments** | What this lab is trying: `{ "<flag>": true }`. See **Experiments** below. | both |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
@@ -101,15 +101,13 @@ to tap. Only the computer running the lab can switch them: a guest on your wifi 
 Or write it in a file: the project's `labit.json` for everyone on the project, or your own settings file. A file you
 edit by hand is read when the lab starts. A flag the project's `labit.json` sets wins over yours, on or off: the menu
 shows that switch greyed, with "set by the project's labit.json" under it. `labit settings` lists which are on and
-whose each is: `flags  select (yours)`.
+whose each is: `flags  inkOnText (yours)`.
 
 | Flag | What it is |
 | --- | --- |
-| `select` | select mode: `V` (or select in the ⋯ menu) makes a click pick the block under it instead of pinning; a bar asks the agent to remove it, make it like another, move it, show its states or make variants, or pins it. Tab and Shift+Tab step, Esc lets go, then leaves. Off by default |
 | `inkOnText` | a comment on selected words shows no pin: the words carry its state as ink under them. Turn it on in `labit.json`: `{ "flags": { "inkOnText": true } }` |
-| `native` | let the browser do it (Chromium, Safari 26; the old way elsewhere and wherever a part is missing). Pins on an element are tied to it with CSS anchor positioning: on their spot through any scrolling, a sticky header included, with no script, hidden while a box that scrolls cuts their spot off (where the browser really hides them; Safari doesn't, so there a pin in such a box stays the script's). A pin's card and a new comment's box are tied to their pin, and open above it or in from the screen's edge when there is no room. The comment box grows with its words by itself (field-sizing). The ⋯ menu is a popover: the browser closes it on a press elsewhere or Esc, and it comes and goes by CSS. A long chat lays out only the messages near the screen. Labs & pages (⌘K) is a popover on a computer. On a board, a pin on a frame is tied to the frame by its share of it, so the board's pan and zoom carry it with no redraw. The widget learns of a page's navigation from the Navigation API instead of patching the page's own history, and of a scroll's end from `scrollend` instead of a timer; labs & pages leaves with the card's exit when the browser closes it. Each falls back to the old way where the browser lacks it. Off by default |
 
-`sectionBar` was kept, so the section bar has no switch: it shows by itself on a lab page with three or more sections, and `<meta name="lab-sections" content="on|off">` (or `data-lab-sections` on `<html>` or `<body>`) says so for one page; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
+`select` (select mode, `V`) was dropped (20 Nov): an old `select` in a `flags` setting gets the "not something being tried now" warning, and a `select` shortcut the "not an action" one. `native` was kept (20 Nov), so the browser always does it: pins on an element are tied to it with CSS anchor positioning, cards and the comment box are tied to their pin, the ⋯ menu and labs & pages are popovers on a computer, the comment box grows by itself, and navigation comes from the Navigation API. `sectionBar` was kept, so the section bar has no switch: it shows by itself on a lab page with three or more sections, and `<meta name="lab-sections" content="on|off">` (or `data-lab-sections` on `<html>` or `<body>`) says so for one page; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
 
 A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
 otherwise ignored, so an old file never stops a lab from running.
@@ -134,8 +132,7 @@ characters at most) and a `prompt` (the full text your agent gets):
 ```
 
 - **Where:** the comment box on a spot or an area shows as many as fit on one line as chips, in order, then **…**,
-  which opens a small menu: the rest (tap one to use it), then the ones on the line. Select mode (`V`, flag `select`) opens
-  the same box on the picked block, with **done** (leave select) on the line; no pin shows on the page while it is open, and what you send is a pin on the block.
+  which opens a small menu: the rest (tap one to use it), then the ones on the line.
 - **What is sent:** a chip sends at once, as `<name>: <what you typed>` (just the name with nothing typed); your agent
   reads the full prompt for that name as `action: …`.
 - **Yours:** the list is written into your settings.json the first time a lab starts without one (from labit's own,
@@ -161,14 +158,13 @@ win over yours, key by key.
 | `toggle` | `m` | Show or hide comments |
 | `comment` | `1` | Switches between comment (a click places one) and pointer (a click is just a click): once for the pointer, again for the comment. The old `pointer` key (3) is gone; one left in a file is ignored. |
 | `chat` | `t` | Open the chat |
-| `pin` | `c` | Comment mode: a click places a comment. Leaves select mode or the pointer |
+| `pin` | `c` | Comment mode: a click places a comment. Leaves the pointer |
 | `next` | `w` | The next new comment (with Shift: the one before) |
 | `pause` | `p` | Pause the page's videos and animations, or play what was paused (each one also has its own control: hold ⌥ over it on a computer, in its corner on a phone) |
 | `slow` | `s` | Play the page's videos and animations at ¼ speed, or back at full speed (the ¼ in a thing's own control slows only it); a pin made while paused carries the moment in ms |
 | `done` | `d` | Tapped: hide or show done threads (shown, faded, at first). Held while you drag: draw a comment (a circle, an arrow, an underline…); the agent is told what it reads as |
 | `reply` | `r` | With a thread open: type a reply |
 | `resolve` | `e` | With a thread open: resolve or reopen it |
-| `select` | `v` | With the `select` flag on: select mode on or off |
 
 Letters follow the key's place on non-Latin layouts (the T key is T in Russian too), and digits work with Shift or
 on AZERTY. The page shows your keys: the chat button reads "chat (x)" when `chat` is `x`.
