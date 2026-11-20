@@ -77,6 +77,20 @@ jobs:
       - if: matrix.engine == 'chromium' && matrix.group.name == 'a'
         run: node bench/run.mjs
 
+  # Native features (ci/native.mjs): what Safari's engine and Chrome's can do that labit could use, as a table in the
+  # job's summary. Fails only when a feature labit uses goes missing from one of them. On the Mac, beside the browser jobs.
+  native:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, labit-mac]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save --no-audit --no-fund playwright@1.65.1
+      - run: node ci/native.mjs
+
   # One required check name for branch protection, green only when every browser job is.
   browser-all:
     if: always()
