@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
@@ -14,8 +14,10 @@ import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
 import { pageIds } from './lib/ids.ts';
 import { watchTree } from './lib/watch.ts';
-import { PARKED, REGISTRY, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
+import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
+import { alive } from './lib/labcall.ts';
 import { slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
+import { sameKey } from './lib/comments-api.mjs';
 
 // The package's folder: this file's, or its parent when this is the built copy in dist/ (what npm ships).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -370,14 +372,6 @@ const readLock = () => {
     return JSON.parse(fs.readFileSync(LOCK, 'utf8'));
   } catch {
     return null;
-  }
-};
-const alive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return /** @type {NodeJS.ErrnoException} */ (e).code === 'EPERM'; // someone else's process, alive
   }
 };
 for (let tries = 0; !takeLock(); tries++) {
@@ -1112,8 +1106,7 @@ const guestOk = (req) => {
   for (const n of [`lab_guest_${PORT}`, 'lab_guest']) {
     const raw = new RegExp(`(?:^|;\\s*)${n}=([0-9a-f]{16})\\.([0-9a-f]{32})(?:\\s*;|$)`).exec(all);
     if (!raw) continue;
-    const want = Buffer.from(sign(raw[1])), got = Buffer.from(raw[2]);
-    if (want.length === got.length && timingSafeEqual(want, got)) return raw[1];
+    if (sameKey(sign(raw[1]), raw[2])) return raw[1];
   }
   return false;
 };
@@ -1147,11 +1140,7 @@ const redeem = (req, res, code, me = '', to = '') => {
   if (NAME_OK(me)) cookies.push(`lab_me_${PORT}=${encodeURIComponent(me.trim())}; Path=/; Max-Age=2592000; SameSite=Lax`);
   return res.writeHead(302, { location: landing(to), 'set-cookie': cookies }).end();
 };
-const isAgent = (req) => {
-  const sent = Buffer.from(String(req.headers['x-lab-admin'] || ''));
-  const key = Buffer.from(AGENT_KEY);
-  return req.headers['x-lab-agent'] === '1' && sent.length === key.length && timingSafeEqual(sent, key);
-};
+const isAgent = (req) => req.headers['x-lab-agent'] === '1' && sameKey(String(req.headers['x-lab-admin'] || ''), AGENT_KEY);
 const sessionFrom = (req) => {
   try {
     const s = JSON.parse(decodeURIComponent(req.headers['x-lab-session'] || ''));
@@ -1604,7 +1593,9 @@ async function threadsText(page, threads, who = '') {
   const RARE = /^(looks|colours|viewport|selector \(at comment time\)):/;
   const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`))).map((b) => b.split('\n').filter((l) => !RARE.test(l)).join('\n'));
   const ids = threads.filter((id) => parts.some((b) => b.split('\n')[0].endsWith(`· id ${id}`)));
-  return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids } : null;
+  // Each pin's number (as the page's cards count them) and the file it points at, for the hand-off's "Same file:" line.
+  const pins = parts.map((b) => ({ id: b.split('\n')[0].split('· id ').pop().trim(), n: Number(/^(\d+)\./.exec(b)?.[1]) || 0 }));
+  return parts.length ? { text: `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`, ids, pins, file: /^file: (.+)$/m.exec(head)?.[1] || '' } : null;
 }
 // One thread for a reply: the opening comment with its spot, then its messages in order (name · time · state · id: text),
 // the new ones marked. A long thread keeps the opening comment and its last messages (at least THREAD_TAIL, and every
@@ -1678,13 +1669,20 @@ async function unseen(scope = pages(), who = '') {
   };
   const replies = fresh.filter(known);
   const whole = fresh.filter((f) => !known(f));
+  const sameFile = new Map(); // file -> [{ page, n }]: the pins of this hand-off that point at it
   for (const page of new Set(whole.map((f) => f.page))) {
     const block = await threadsText(page, [...new Set(whole.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))], who);
     if (block) {
       blocks.push(block.text);
       block.ids.forEach((id) => sent.add(`${page}\n${id}`));
+      if (block.file) sameFile.set(block.file, [...(sameFile.get(block.file) || []), ...block.pins.filter((p) => p.n).map((p) => ({ page, n: p.n }))]);
     }
   }
+  // Pins on the same file are one job for one writer: say so once ("Same file: options.html: 2, 5, 7"), only for 2 or more.
+  const groups = [...sameFile].filter(([, pins]) => pins.length > 1).map(([file, pins]) => {
+    const pages = new Set(pins.map((p) => p.page));
+    return `Same file: ${file}: ${pins.map((p) => (pages.size > 1 ? `${p.n} on ${p.page}` : p.n)).join(', ')}`;
+  });
   const when = (c) => `${new Date(c.createdAt).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
   // A reply in a thread this session has: the thread again, short (its spot, every message in order, the new ones
   // marked), so the agent answers what the thread last asked. One line with the thread's first words, before, and an
@@ -1715,7 +1713,7 @@ async function unseen(scope = pages(), who = '') {
   const count = [given.filter((f) => !f.c.parent || !known(f)).length && `${given.filter((f) => !f.c.parent || !known(f)).length} new`, replies.length && `${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`, missed.length && `${missed.length} still waiting`].filter(Boolean).join(', ');
   const full = !(now - toldAt.get(who) < 1800000);
   const rules = rulesOnce();
-  const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${blocks.join('\n\n')}` +
+  const text = `In this message: ${count}. Read all of it; each one is marked handed to you.\n\n${whole.length ? '# New comments\n\n' : ''}${groups.length ? `${groups.join('\n')}\n\n` : ''}${blocks.join('\n\n')}` +
     `\n\nRead each thread whole (every message and reply, not only the newest) before answering; the page, URL or #section is where a pin sits, not what it asks.` +
     `\n\nAnswer each: ${CMD} reply <id> "what you did" [--done | --on-it | --question]${full ? ` [--resolve] (run in ${ROOT}); add --wait to the last one to listen again in the same command.` : ' [--wait]'}` +
     // The person sees nothing between "picked up" and the answer: a batch an agent worked through for 13 minutes looked
@@ -2201,11 +2199,7 @@ const pickedPin = async (board, frame) => {
 // A page as a board's page key spells it: /pricing.html is /pricing, / is /index.
 const boardPage = (p) => (p === '/' ? '/index' : p.replace(/\.html?$/i, '').replace(/\/$/, ''));
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
-const keyOk = (req) => {
-  const got = Buffer.from(String(req.headers['x-lab-admin'] || ''));
-  const key = Buffer.from(TOKEN);
-  return got.length === key.length && timingSafeEqual(got, key);
-};
+const keyOk = (req) => sameKey(String(req.headers['x-lab-admin'] || ''), TOKEN);
 // Archiving a lab from the switcher (and the API's "stop"): every open wait ends with 423, which tells the agent the person stopped it (it
 // shouldn't wait again until asked). Pins stay where they are.
 const stopListening = () => {
@@ -2496,8 +2490,7 @@ const handler = async (req, res) => {
           .filter((l) => l.port !== PORT)
           .map(async (l) => {
             try {
-              const r = await fetch(`http://localhost:${l.port}/_lab/pages`, { signal: AbortSignal.timeout(1500) });
-              return { ...(await r.json()), port: l.port, here: false };
+              return { ...(await (await askPages(l.port, 1500)).json()), port: l.port, here: false };
             } catch {
               return { name: l.name, root: l.root, port: l.port, here: false, pages: [], mode: 'away', unreachable: true };
             }
@@ -2898,10 +2891,7 @@ async function newerVersion() {
       return null;
     }
   }
-  const parts = (v) => String(v).split('-')[0].split('.').map(Number);
-  const [a, b] = [parts(latest), parts(VERSION)];
-  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i] ? latest : null;
-  return null;
+  return (await import('./lib/update.ts')).newer(latest, VERSION) ? latest : null;
 }
 server.on('listening', async () => {
   newerVersion().then(async (v) => {

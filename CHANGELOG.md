@@ -4,6 +4,10 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 
 ## Unreleased
 
+- **Pins on the same file are named together.** When a wait hands over several pins, a line above them says which share a file (`Same file: options.html: 2, 5, 7`), only for groups of two or more, so one helper can take the group.
+- **Helpers, in the skill.** One listener answers every pin itself and hands only long, independent jobs (builds, research) to helpers: one helper per group of pins on the same file, one writer per file, a `--progress` line on each pin a helper works on, and the main agent sends every reply.
+- **A progress line is a sign of work, always.** The plugin's hook now renews a helper's line once a minute while the session waits on it, so a long build inside a helper no longer ends in "Still waiting for your answer … no sign for 3 min" while it runs. The hand-off's reminder and the 2-minute "not answered" check both count a line from the agent or the hook (tests added).
+- The ¼ speed key can be moved like the others: `slow` in `shortcuts` (`labit.json` or your settings) was refused as "not an action" and S stayed. Another action put on S is now said when the lab starts, as for any key used twice.
 - Select mode is gone (it was the flag `select`, **V**, and select in the ⋯ menu): the code, its styles and its key with it. The quick actions on pins, words and areas stay. An old `select` under `flags` in `labit.json` or your settings is now said at start as "not something being tried now" and otherwise ignored, and a `select` under `shortcuts` as "not an action".
 - **Undo a tap on a question.** A tap shows "Picked B · undo" for 5 s; the pick goes after that, or at once when the card closes. Undo puts the rows back.
 - **Questions in the chat.** The agent's question with choices shows its rows in the page chat too, and picks work the same.
