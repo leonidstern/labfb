@@ -278,7 +278,6 @@ button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; colo
 .pin.draft.on-ink { visibility: hidden; }
 .chatwin .tabs b { display: none; } /* no "chat" title: the window speaks for itself */
 .chatwin .chat { flex: none; background: var(--_bg); padding: 6px 6px 8px; }
-.chatwin .replying { flex: none; }
 .msgs { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 8px; overflow-x: hidden; }
 .msgs > :first-child { margin-top: auto; } /* a short conversation sits by the box, like a chat */
 /* A long chat lays out only the messages near the screen; each keeps its last height while away. */
@@ -321,8 +320,6 @@ button.pin.on-ink:not(:focus-visible) { background: none; box-shadow: none; colo
 .msg :is(.stamp, .stamp-room) .tick { display: inline-block; width: 12px; height: 10px; line-height: 10px; text-align: center; margin-left: 4px; vertical-align: top; }
 .msg :is(.stamp, .stamp-room) .ring { margin: .5px 1.5px 0 5.5px; vertical-align: top; } /* the same 10 px tall as a ✓, so the bubble keeps its height */
 .msg .stamp { height: 10px; }
-.replying { display: flex; gap: 6px; align-items: center; font-size: 12px; letter-spacing: 0; color: var(--_muted); padding: 2px 6px; }
-.replying button { border: 0; background: none; color: inherit; cursor: pointer; margin-left: auto; font: inherit; }
 .bar button * { color: inherit; font-weight: inherit; }
 .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
 .bar button.secondary { color: var(--_muted); } /* words stay grey; the count says what is new */
