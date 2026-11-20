@@ -470,7 +470,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       for (const r of ready) {
         const res = await call('/_lab/api/comments', {
           page: r.page, name, text: r.text, anchor: r.anchor, nonce: nonceOf(r.page, r.selector, r.text, JSON.stringify(r.anchor), JSON.stringify([r.asked, r.question])),
-          ...(r.question ? { intent: 'question' } : {}), ...(r.asked || {}),
+          ...(r.question ? { intent: 'question' } : {}), ...r.asked,
         });
         if (res.status >= 300) die(`Could not pin${ready.length > 1 ? ` ${out.length + 1}` : ''}: ${res.text}`);
         const { comment } = JSON.parse(res.text);

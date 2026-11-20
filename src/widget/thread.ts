@@ -360,7 +360,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
         failed(doIt);
       }
     });
-    actions.append(...[...(doIt ? [doIt] : []), first, ...(W.S.isAdmin ? [del] : [])]);
+    actions.append(...(doIt ? [doIt] : []), first, ...(W.S.isAdmin ? [del] : []));
     body.append(actions);
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).

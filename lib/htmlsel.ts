@@ -39,7 +39,7 @@ const decode = (s: string) =>
     }
   });
 /** A name this does not know is still in the text as &name;: what the browser shows there is not known, so the text is not trusted. */
-export const rawEntity = (t: string) => /&[a-z][a-z0-9]*;/i.test(t);
+const rawEntity = (t: string) => /&[a-z][a-z0-9]*;/i.test(t);
 /** Pages above this are not read: the check says so and the pin is saved as given. */
 export const MAX_HTML = 2e6;
 
@@ -233,7 +233,7 @@ function compound(src: string): Part | null {
     const m = re.exec(rest);
     if (!m) return null;
     rest = rest.slice(m[0].length);
-    if (m[1]) m[1] !== '*' && (part.tag = m[1].toLowerCase());
+    if (m[1] && m[1] !== '*') part.tag = m[1].toLowerCase();
     else if (m[2]) part.test.push((e) => e.attrs.id === m[2]);
     else if (m[3]) part.test.push((e) => (e.attrs.class || '').split(/\s+/).includes(m[3]));
     else if (m[4]) {
@@ -276,12 +276,20 @@ function split(selector: string): { op: string; src: string }[][] | null {
     if (quote) {
       cur += ch;
       if (ch === quote) quote = '';
-    } else if (ch === '"' || ch === "'") (quote = ch), (cur += ch);
-    else if (ch === '[' || ch === '(') (depth++, (cur += ch));
-    else if (ch === ']' || ch === ')') (depth--, (cur += ch));
-    else if (depth === 0 && /\s/.test(ch)) flush();
-    else if (depth === 0 && /[>+~]/.test(ch)) (flush(), (op = ch));
-    else if (depth === 0 && ch === ',') {
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      cur += ch;
+    } else if (ch === '[' || ch === '(') {
+      depth++;
+      cur += ch;
+    } else if (ch === ']' || ch === ')') {
+      depth--;
+      cur += ch;
+    } else if (depth === 0 && /\s/.test(ch)) flush();
+    else if (depth === 0 && /[>+~]/.test(ch)) {
+      flush();
+      op = ch;
+    } else if (depth === 0 && ch === ',') {
       flush();
       if (!out.at(-1)!.length) return null;
       out.push([]);
@@ -337,7 +345,7 @@ export function select(root: El, selector: string): El[] | null {
 // ---------- what the widget would say about an element (anchorAt, openingTag) ----------
 const generated = (v: string) => GENERATED.test(v || '');
 /** The element's opening tag as the widget writes it: id, class, alt, role, aria-label, href and data-*, made-up ids and classes left out. */
-export function openingTag(e: El): string {
+function openingTag(e: El): string {
   const attrs = Object.entries(e.attrs)
     .filter(([n]) => /^(id|class|alt|role|aria-label|href|data-[\w-]+)$/.test(n))
     .map(([n, v]) => [n, n === 'class' ? v.split(/\s+/).filter((c) => c && !generated(c)).join(' ') : n === 'id' && generated(v) ? '' : v])
