@@ -1753,7 +1753,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
         if (got.rules) rulesSent.delete(who); // the rules went with it, so they go again
         for (const [page, id, was] of handedBefore) if (!theirs.has(id)) setComment(page, id, { handedAt: was });
         for (const [page, id, k] of got.told) setComment(page, id, { [k]: undefined }); // not seen: said again
-        saveHanded();
+        writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
         for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
         if (got.full) toldAt.delete(who);
         if (got.suggest) suggestTold.delete(who);
@@ -1772,7 +1772,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
     setComment(page, id, { handedAt: at });
   }
   for (const id of ids) wrote[id] = handoff[id] ? [...handoff[id]] : undefined;
-  saveHanded();
+  writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
   for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
   setMode(waiters.length ? 'listening' : 'working'); // another session still waits: the lab is still listening
   if (got.handed.length) setTimeout(() => notAnswered(), ANSWER_MS).unref();
@@ -1799,7 +1799,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
     }
     const now = new Date().toISOString();
     for (const [page, id, was] of handedBefore) if (threads.has(id)) setComment(page, id, { handedAt: was, unanswered: now });
-    saveHanded();
+    writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
     for (const page of new Set(quiet.map(([page]) => page))) persist(page).catch(() => {});
     silent.set(who, { label, pages: key && key !== '*' ? key.split(',') : null, at: Date.now() });
     console.log(`[lab] ${label} did not answer ${quiet.length} pin${quiet.length === 1 ? '' : 's'} in ${Math.round(ANSWER_MS / 1000)} s: they go to the next wait`);
@@ -2871,6 +2871,7 @@ if (IDLE_MS > 0)
     }
   }, Math.min(60000, Math.max(1000, IDLE_MS / 4))).unref();
 const bye = () => {
+  if (stateTimer) writeState(); // what the 300 ms timer still holds
   try {
     if (JSON.parse(fs.readFileSync(SERVER, 'utf8')).pid === process.pid) fs.rmSync(SERVER);
   } catch {}
