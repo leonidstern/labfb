@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { choiceSpills, FOREGROUND_CAP, letter, listenPages, replyChoices, replyIntent, waitSeconds, type Opts } from './args.ts';
 import { mySession } from './agents.ts';
-import { keyFor, runningLabs, type Lab } from './labs.ts';
+import { askPages, keyFor, runningLabs, type Lab } from './labs.ts';
 import { findLab, labAck, labCall, WAIT_SAID } from './labcall.ts';
 import { read as readBoard } from './board.ts';
 import { describe, MAX_HTML, parseHtml, quoteIn, select, type El } from './htmlsel.ts';
@@ -48,6 +48,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     process.exit(0);
   }
 
+  // This folder's lab (or --dir's), for the commands that talk to one.
+  const myLab = () => findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
   const forHere = (lab: Lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
   // `labit publish <page.html | folder>`: like publishing an Artifact (Leo 18 Nov: "process is similar to artifacts, can
   // you do it like this"). The page goes into the one pages lab (pagesFolder), named for its topic; that lab starts if
@@ -96,7 +98,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     for (const lab of labs) {
       let pages = '';
       try {
-        const info = await (await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) })).json();
+        const info = await (await askPages(lab.port, 2000)).json();
         const waiting = info.pages.reduce((n, p) => n + (p.waiting ?? p.open), 0);
         pages = ` · ${info.pages.length} page${info.pages.length === 1 ? '' : 's'}${waiting ? `, ${waiting} waiting` : ''}${info.listening ? ` · ${info.listening} listening` : ''}`;
       } catch {}
@@ -126,7 +128,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const near = here.filter((l) => l.root === HERE || l.root.startsWith(HERE + path.sep));
     for (const lab of opts.all || !near.length ? here : near) {
       try {
-        const res = await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) });
+        const res = await askPages(lab.port, 2000);
         if (res.ok) labs.push(await res.json());
       } catch {}
     }
@@ -153,7 +155,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   // ---------- boards: the lab places the frames and copies the pages; the agent says what and in what order ----------
   if (pos[0] === 'board') {
     const [, action, first, ...rest] = pos;
-    const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
+    const lab = myLab();
     const arg = action === 'new' ? { topic: [first, ...rest].filter(Boolean).join(' ') } : action === 'list' ? { name: first } : action === 'pick' ? { name: first, frames: rest } : action === 'move' ? { name: first, frame: rest[0] } : { name: first, target: rest[0] };
     if (!['new', 'add', 'move', 'pick', 'list'].includes(action)) die(`Usage: ${CMD} board new "<topic>" [--of /page] [--variants 3 | --widths 390,820,1280 | --flow /a,/b] | add <board> <frame|/page|file.html> [--label "…"] [--width N] [--after <frame>] | move <board> <frame> --after <frame> (or --first) | pick <board> <frame>… | list [<board>]`);
     const out = await labCall(lab.server, '/_lab/api/board', { action, ...arg, of: opts.of, variants: opts.variants, widths: opts.widths, flow: opts.flow, label: opts.label, width: opts.width, after: opts.after, first: opts.first }, mySession(opts.name, opts.model)).catch(() => null);
@@ -170,7 +172,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   // The person pressed update (an "action: update labit to X" pin): this prints what changed, for the agent to say in
   // its reply, and the lab hands over to npx at that version on the same folder and port.
   if (pos[0] === 'update') {
-    const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
+    const lab = myLab();
     const res = await fetch(`http://localhost:${lab.server.port}/_lab/labs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-lab-admin': lab.server.token },
@@ -188,7 +190,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
   // ---------- Claude's side: wait, reply, resolve, pin ----------
   if (['wait', 'reply', 'resolve', 'pin', 'invite'].includes(pos[0])) {
     const [cmd, ref, ...words] = pos;
-    const lab = findLab(opts.dir || '.') || die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
+    const lab = myLab();
     const { dir } = lab;
     let { server } = lab;
     const session = mySession(opts.name, opts.model);
@@ -225,6 +227,16 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // as it does for the browser's retries (kept 15 minutes). The browser's nonce is random; the agent's command is a
     // new process each time, so its nonce comes from what it sends and what it answers: a reply names the thread's
     // latest message from a person, so "Done." after the person wrote again is a new answer, not a retry.
+    // The name on the agent's own pins and replies: the agent, and its session's name when that is another.
+    const signed = () => `${process.env.LAB_AGENT_NAME || session.agent}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
+    // One wait: the lab's answer is said, and confirmed as shown.
+    const listen = async () => {
+      const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
+      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true }, 20);
+      console.log(WAIT_SAID[out.status] ?? out.text);
+      await labAck(server, out.delivery, session);
+      return { status: out.status, capped };
+    };
     const nonceOf = (...parts: unknown[]) =>
       createHash('sha256').update(JSON.stringify([session.id || session.name, ...parts])).digest('hex').slice(0, 32);
 
@@ -244,17 +256,14 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     if (cmd === 'wait') {
       // A wait sits open for as long as it is allowed to; in an agent's foreground that is the person's whole turn,
       // so without --bg it is held to a minute. See waitSeconds in args.ts for why it can't just be detected.
-      const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
-      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true }, 20);
-      console.log(WAIT_SAID[out.status] ?? out.text);
-      await labAck(server, out.delivery, session);
-      if (capped && out.status === 204)
+      const { status, capped } = await listen();
+      if (capped && status === 204)
         console.log(
           `\nThat wait was held to ${FOREGROUND_CAP} seconds. Run it in the background (your app's own way of doing that) and ` +
             'add --bg for the full wait: in the foreground this command holds your turn open, and the person cannot ' +
             'say anything to you until it ends.',
         );
-      process.exit(out.status < 300 || out.status === 409 || out.status === 410 || out.status === 423 ? 0 : 1);
+      process.exit(status < 300 || status === 409 || status === 410 || status === 423 ? 0 : 1);
     }
 
     // The agent's own pin on a spot: a suggestion or a question about the page, where a person would have pinned it.
@@ -520,19 +529,17 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
       if (asked && intent && intent !== 'question') die(`A reply with --choice is a question; leave out --${intent === 'working' ? 'on-it' : intent}.`);
       if (asked && opts.resolve) die('A reply with --choice waits for the person to pick; leave out --resolve.');
       if (asked) intent = 'question';
-      const who = process.env.LAB_AGENT_NAME || session.agent;
-      const name = `${who}${session.name !== session.agent ? ` · ${session.name}` : ''}`;
       const said = Object.values(((data as Record<string, object>)[hit.page] || {}) as Record<string, { id: string; parent?: string; session?: unknown; createdAt: string }>)
         .filter((c) => (c.id === hit.id || c.parent === hit.id) && !c.session)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .pop()?.id;
-      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, said, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name, text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}), ...asked });
+      const out = await call('/_lab/api/comments', { page: hit.page, parent: hit.id, nonce: nonceOf(hit.page, hit.id, hit.to, said, words.join(' ')), ...(hit.to ? { to: hit.to } : {}), name: signed(), text: words.join(' '), ...(typeof opts['suggest-rule'] === 'string' ? { suggest: opts['suggest-rule'] } : {}), ...(intent ? { intent } : {}), ...asked });
       if (out.status >= 300) die(`Could not reply: ${out.text}`);
       // The page tries each choice in place of the quoted words: a choice that reaches past them is said here.
       if (asked) for (const note of choiceSpills(data[hit.page]?.[hit.id]?.anchor?.quote, asked.choices)) console.log(`Note: ${note}`);
       // A note on no words (a spot or an element) has nothing to put them in: the choices show as rows, nothing is tried.
       if (asked && !data[hit.page]?.[hit.id]?.anchor?.quote?.exact) console.log('Note: this note has no quoted words, so the choices show as rows and nothing is tried in the page.');
-      if (asked) console.log(`Asked with ${asked.choices.map((c, i) => `${letter(i)}) ${c}`).join('  ')}${asked.recommend !== undefined ? `  (your pick: ${letter(asked.recommend)})` : ''}. The pick comes back in your next wait.`);
+      if (asked) console.log(`Asked with ${asked.choices.map((c, i) => `${letter(i)}) ${c}${asked.hints?.[i] ? ` (${asked.hints[i]})` : ''}`).join('  ')}${asked.recommend !== undefined ? `  (your pick: ${letter(asked.recommend)})` : ''}. The pick comes back in your next wait.`);
     }
     if (cmd === 'resolve' || opts.resolve) {
       const out = await call('/_lab/api/comments', { page: hit.page, action: 'resolve', id: hit.id });
@@ -543,11 +550,8 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     // --pages says, as wait does: `reply <id> --wait --page /x` used to listen on every page but /x's claim, so a
     // session listening on one page stopped hearing it after its first answer (Leo, 18 Nov).
     if (opts.wait) {
-      const { seconds, capped } = waitSeconds(opts, process.stdout.isTTY === true);
-      const out = await call('/_lab/wait', { timeout: seconds, pages: listenPages(opts, true), ack: true }, 20);
-      console.log(WAIT_SAID[out.status] ?? out.text);
-      await labAck(server, out.delivery, session);
-      if (capped && out.status === 204)
+      const { status, capped } = await listen();
+      if (capped && status === 204)
         console.log(`\nThat wait was held to ${FOREGROUND_CAP} seconds: run the command in the background and add --bg for the full wait.`);
     }
     process.exit(0);

@@ -5,7 +5,6 @@
     "chat.ts": "the chat sheet",
     "components.ts": "which component drew an element (React, Vue, Svelte), for a pin; its own file (public/_lab/components.js), loaded only on a page a framework drew",
     "composer.ts": "the text box for a comment or a reply, and its send button",
-    "fluid.ts": "selected words: the actions bar and the comment dialog that grows out of it and lands on the words (the dialog is the thread card's box; on phones the bottom sheet)",
     "frame.ts": "a page inside a board's frame: draws nothing, binds nothing; keeps live updates and passes keys to the board",
     "hold.ts": "a dev server's reload waits while a sheet is open",
     "pinhold.ts": "pins the browser holds on their element with CSS anchor positioning (flag native): no script on scroll",
@@ -16,7 +15,6 @@
     "live.ts": "the live stream: listening badge, mode, who is heard",
     "messages.ts": "one message in a thread or the chat",
     "actions.ts": "action buttons: a data-lab-action element on the page opens a comment with its words, the agent acts on it",
-    "select.ts": "select mode (flag select): V picks the block under a click, and its bar sends the agent what to do with it",
     "sections.ts": "the section bar: each section with a heading, current one filled, new and updated marked, read kept per person in the lab",
     "sheets.ts": "THE drawer: every sheet on a phone (handle, swipe down, dimmed page, keyboard fit, back closes). Any new panel on a phone uses it.",
     "stick.ts": "a message list that stays at its newest while it shrinks (keyboard up) until you scroll back; used by the chat and a thread",
@@ -71,9 +69,7 @@
     },
     "code": {
       "anchoring.ts: rgb(1, 2, 3)": "a sentinel colour to tell whether the page set one, never drawn",
-      "select.ts: rgba(52, 199, 89, .18)": "the picked block highlight, drawn in the page document where the widget tokens are not",
       "comments.js: rgba(52, 199, 89, .3)": "the selection highlight, drawn in the page document where the widget tokens are not",
-      "select.ts: rgb(52, 199, 89)": "the picked block's outline, drawn in the page document where the widget tokens are not",
       "wordink.ts: #24a046": "ink on words: the pins' green (selecting, draft, sent, done), a highlight in the page document where the widget tokens are not",
       "wordink.ts: #34c759": "ink on words: working's green, a highlight in the page document where the widget tokens are not",
       "wordink.ts: #e08a1a": "ink on words: asks' amber, a highlight in the page document where the widget tokens are not"

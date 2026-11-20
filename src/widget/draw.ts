@@ -7,7 +7,7 @@
 // Strokes drawn while D is held make one drawing; one that starts where the last ended joins it into one line.
 // The drawing is the pin: no marker, its line is what you click (comments.js).
 
-type P = { x: number; y: number };
+type P = { x: number; y: number; w?: number };
 
 const dist = (a: P, b: P) => Math.hypot(a.x - b.x, a.y - b.y);
 const length = (s: P[]) => s.reduce((n, p, i) => (i ? n + dist(p, s[i - 1]) : 0), 0);
@@ -91,6 +91,24 @@ const backs = (c: P[]) => {
   }
   return n;
 };
+
+// Shift held as the pen lifts (Leo's pick S2, 20 Nov): a rough box becomes a clean rectangle and a loop a clean ellipse,
+// at the size drawn, read the same way as below. Anything else: null, the stroke stays as drawn.
+export function neaten(s: P[]): P[] | null {
+  if (s.length < 3) return null;
+  const b = boxOf(s);
+  const diag = Math.hypot(b.r - b.l, b.b - b.t) || 1;
+  const run = length(s);
+  const closed = dist(s[0], s[s.length - 1]) < diag * 0.3 && run > diag * 1.8;
+  const loops = winding(cut(s, Math.max(2, diag * 0.03))) > Math.PI * 1.25 && run > diag * 1.3 && !(turns(cut(s, 6), 1) >= 4);
+  if (!closed && !loops) return null;
+  const w = s.reduce((n, p) => n + (p.w || 3), 0) / s.length;
+  const c = cut(s, Math.max(3, diag * 0.06));
+  if (c.length >= 4 && c.length <= 8 && turns(c, 1.1) >= 3)
+    return [[b.l, b.t], [b.r, b.t], [b.r, b.b], [b.l, b.b], [b.l, b.t]].map(([x, y]) => ({ x, y, w }));
+  const [cx, cy, rx, ry] = [(b.l + b.r) / 2, (b.t + b.b) / 2, (b.r - b.l) / 2, (b.b - b.t) / 2];
+  return Array.from({ length: 49 }, (_, i) => ({ x: cx + rx * Math.cos((i / 48) * 2 * Math.PI), y: cy + ry * Math.sin((i / 48) * 2 * Math.PI), w }));
+}
 
 // What the strokes read as, and the box the comment is on (the box around them, or what an underline or side line is about).
 export function readInk(strokes: P[][], say: (e: Element | null) => string | undefined) {
@@ -187,6 +205,27 @@ export function readInk(strokes: P[][], say: (e: Element | null) => string | und
   // An arrow keeps its shaft only, up to the tip: the page draws it a clean head (Leo's pick H, 20 Nov), whatever the
   // hand did at the end.
   const kept = out.mark === 'arrow' && shaft.length > 1 ? [shaft] : strokes.slice(0, 16);
-  return { mark: out.mark, from: at(out.from), to: at(out.to), box, lines: kept.map(thin) };
+  // Several marks in one drawing (circle this, arrow that there, cross out those): each is read on its own and said
+  // with what it is on, in the order drawn, so the words can refer to them ("move this one first, rename that"). An
+  // arrowhead drawn as its own short stroke stays with its arrow. Sims, 20 Nov: with only "3 strokes, unclear" the
+  // agent moved the wrong card.
+  let marks: string[] | undefined;
+  if (lines.length > 1 && /unclear/.test(out.mark)) {
+    const groups: P[][][] = [];
+    for (const l of lines) {
+      const prev = groups.at(-1)?.at(-1);
+      if (prev && length(l) < length(prev) * 0.5 && dist(l[0], prev[prev.length - 1]) < Math.max(30, length(l))) groups.at(-1)!.push(l);
+      else groups.push([l]);
+    }
+    if (groups.length > 1)
+      marks = groups.slice(0, 12).map((g) => {
+        const r = readInk(g, say);
+        const mid = boxOf(g.flat());
+        const on = at({ x: (mid.l + mid.r) / 2, y: (mid.t + mid.b) / 2 });
+        const what = r.mark.replace(/\s*\(likely:.*\)$/, '').replace(/ \(go by the comment's words\)$/, '');
+        return r.from || r.to ? `${what} from ${r.from || '?'} to ${r.to || '?'}` : `${what}${on ? ` on ${on}` : ''}`;
+      });
+  }
+  return { mark: out.mark, from: at(out.from), to: at(out.to), box, lines: kept.map(thin), ...(marks ? { marks } : {}) };
 }
 
