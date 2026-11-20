@@ -77,6 +77,9 @@ export function tieToPin(node: HTMLElement, pin: HTMLElement | null | undefined,
     letBox(node);
     return node.style.removeProperty('position-anchor');
   }
+  // A thread open at the first draw (after a reload, or with a reply half written): its pin is new and not in the
+  // layer yet, so it has no place to measure. It goes in now; the layer's redraw keeps it where it belongs.
+  if (!pin.isConnected) W.layer.append(pin);
   let to: Element | null = kind === 'card' ? holdBox(node, pin) : null;
   if (to) node.style.removeProperty('position-anchor'); // tied by the page's rule now: an inline one would win
   if (!to) {
