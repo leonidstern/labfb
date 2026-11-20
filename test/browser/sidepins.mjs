@@ -13,7 +13,7 @@ const DIR = tmp('labit-sidepins-');
 const PORT = claimPort(10500, 30);
 const B = `http://localhost:${PORT}`;
 const paras = (n) => Array.from({ length: n }, (_, i) => `<p id="p${i}">Paragraph ${i}: words of the line a pin in the margin is level with.</p>`).join('');
-const page = (n) => `<!doctype html><meta charset="utf-8"><title>sides</title><style>body{margin:0;font:16px/1.5 sans-serif}main{max-width:600px;margin:0 auto;padding:20px 16px 400px}p{margin:0 0 60px}</style><main>${paras(n)}</main>`;
+const page = (n) => `<!doctype html><meta charset="utf-8"><title>sides</title><style>body{margin:0;font:16px/1.5 sans-serif}main{max-width:600px;margin:0 auto;padding:20px 16px 400px}pre{font:13px/1.6 monospace;padding:8px}p{margin:0 0 60px}</style><main>${paras(n)}<pre id="code">const a = 1;\nconst b = 2;\nreturn a + b;</pre></main>`;
 for (const eng of engines('webkit,chromium')) {
   fs.writeFileSync(path.join(DIR, `${eng}.html`), page(8));
   fs.writeFileSync(path.join(DIR, `${eng}-short.html`), '<!doctype html><meta charset="utf-8"><title>s</title><style>body{margin:0}main{max-width:300px;margin:0 auto}</style><main><p id="only">Short.</p></main>');
@@ -83,6 +83,25 @@ try {
         const t = await tips();
         check(eng, `at ${w} px wide they keep their distance from the column`, Math.abs(d[0] - before[0]) <= 2 && Math.abs(d[1] - before[1]) <= 2 && Math.abs(t[0].tip - y) <= 3, JSON.stringify({ before, d, t }));
       }
+
+      // A pin put on a line of code sits where it was put (it used to move to the letters' own box, a few px up or down).
+      await p.evaluate(() => document.querySelector('#code').scrollIntoView({ block: 'center' }));
+      await sleep(400);
+      const code = await line('code');
+      const spots = [8, 26, 30].map((d) => [Math.round(code.x + 40), Math.round(code.y + d)]);
+      for (const [i, [x, cy]] of spots.entries()) await say(x, cy, `code ${i}`);
+      // Each spot has a pin whose tip is on it (±1 px).
+      const tipsOn = async (at) => { const all = await pins(); return at.every(([x, y]) => all.some((q) => Math.abs(q.left - x) <= 1 && Math.abs(q.bottom - y) <= 1)); };
+      check(eng, 'a pin on a line of code is where it was put', await tipsOn(spots), JSON.stringify([spots, (await pins()).map((q) => [Math.round(q.left), Math.round(q.bottom)])]));
+      await p.reload();
+      await sleep(1800);
+      await p.evaluate(() => document.querySelector('#code').scrollIntoView({ block: 'center' }));
+      await sleep(500);
+      const code2 = await line('code');
+      const shift = Math.round(code2.y - code.y);
+      check(eng, 'and after a reload', await tipsOn(spots.map(([x, y]) => [x, y + shift])), JSON.stringify([shift, (await pins()).map((q) => [Math.round(q.left), Math.round(q.bottom)])]));
+      await p.evaluate(() => scrollTo(0, 0));
+      await sleep(400);
 
       // The page grows above them (the agent adds a block): they go down with their line.
       await p.setViewportSize({ width: 1400, height: 800 });

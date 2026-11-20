@@ -1034,6 +1034,9 @@ function onWords(range, anchor, rect) {
   const far = (r) => Math.hypot(gx - pull(gx, r.left, r.right), gy - pull(gy, r.top, r.bottom));
   let at = rects[rects.length - 1]; // the last piece (where a selection ended) wins a tie
   for (const r of rects) if (far(r) < far(at)) at = r;
+  // Put in the leading of a line (the space the line-height leaves above and below the letters): there it stays, as
+  // clicked; the nearest point of the words moved it up or down by a few px.
+  if (far(at) <= 6) return { left: gx + scrollX, top: gy + scrollY };
   return { left: pull(gx, at.left, at.right) + scrollX, top: pull(gy, at.top, at.bottom) + scrollY };
 }
 // Pin point (the zone's top-left corner for area comments) and, for areas, the zone box, in page coordinates.
