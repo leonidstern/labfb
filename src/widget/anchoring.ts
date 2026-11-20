@@ -534,13 +534,7 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
   };
   const own = short(target.textContent, 200);
   if (own && target !== document.body && (target.textContent || '').length < 400) anchor.text = short(own, 80);
-  const inside = target.parentElement?.closest<HTMLElement>('[id], [data-lab]');
-  if (inside) anchor.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
-  let heading = null;
-  for (const h of document.querySelectorAll('h1, h2, h3')) {
-    if (h.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(target)) heading = h;
-  }
-  if (heading) anchor.section = short(heading.textContent, 100);
+  Object.assign(anchor, around(target));
   if (shadowHost) anchor.shadow = openingTag(shadowHost);
   for (const [k, v] of Object.entries(componentAt(target))) if (v) anchor[k] = short(v, 200);
   if (target !== document.body) anchor.looks = looksOf(target);
@@ -634,14 +628,39 @@ export function anchorAt(clientX, clientY, words = false, onto = null) {
     }
   }
   Object.assign(anchor, schemeAt(target));
-  // The nearest element with an id around the spot: the block the pin is on.
+  return anchor;
+}
+
+// What a pin keeps of the page around its element: the box with an id or data-lab it sits in, the heading above it, and
+// the nearest element with an id (its block).
+function around(target: Element): Pick<Anchor, 'inside' | 'section' | 'block'> {
+  const out: Pick<Anchor, 'inside' | 'section' | 'block'> = {};
+  const inside = target.parentElement?.closest<HTMLElement>('[id], [data-lab]');
+  if (inside) out.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
+  let heading = null;
+  for (const h of document.querySelectorAll('h1, h2, h3')) {
+    if (h.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING || h.contains(target)) heading = h;
+  }
+  if (heading) out.section = short(heading.textContent, 100);
   for (let b: Element | null = target; b && b !== document.body && b !== document.documentElement; b = b.parentElement) {
     if (b.id) {
-      anchor.block = b.id;
+      out.block = b.id;
       break;
     }
   }
-  return anchor;
+  return out;
+}
+
+// An agent's pin (labit pin) is made from a selector alone. Drawn in a browser and found, it learns what a person's pin
+// carries (the element's tag, its words, its heading and box), so it is found again after the agent edits the page.
+// Null when it already has them, or its element is not found.
+export function fillAt(anchor) {
+  const node = anchor.element ? null : findTarget(anchor);
+  if (!node || node === document.body) return null;
+  const rect = node.getBoundingClientRect();
+  const out: Partial<Anchor> = { selector: selectorFor(node), docX: clamp01((rect.left + scrollX + anchor.x * rect.width) / docWidth()), docY: Math.round(rect.top + scrollY + anchor.y * rect.height), eh: Math.round(rect.height), element: openingTag(node), ...around(node) };
+  if ((node.textContent || '').length < 400 && !anchor.quote) out.text = short(node.textContent, 80);
+  return out;
 }
 
 // The stored selector can point at a different element after a redeploy; check it against the

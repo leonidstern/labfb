@@ -338,7 +338,23 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       setTimeout(() => undo.isConnected && undo.replaceWith(resolve), left);
       first = undo;
     }
-    actions.append(...(W.S.isAdmin ? [first, del] : [first]));
+    // "Do it" on a pin the agent left itself (labit pin): hands it back to the agent's next wait as "<name> said: do it".
+    const doIt = c.session && !c.resolved ? W.el('button', { class: 'btn', type: 'button', title: 'Tell the agent to go ahead with this' }, 'Do it') : null;
+    doIt?.addEventListener('click', async () => {
+      const name = String(W.store.get('lab-name') || '').trim();
+      if (!name) return void ((doIt.textContent = 'your name first'), W.S.openCard?.querySelector('textarea')?.focus({ preventScroll: true }));
+      doIt.disabled = true;
+      try {
+        const { comment } = await W.send({ name, text: 'Do it', parent: c.id, doit: true });
+        W.S.comments.push(comment);
+        W.markSeen([comment]);
+        W.render();
+      } catch {
+        doIt.disabled = false;
+        failed(doIt);
+      }
+    });
+    actions.append(...[...(doIt ? [doIt] : []), first, ...(W.S.isAdmin ? [del] : [])]);
     body.append(actions);
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).
@@ -403,7 +419,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
 // The open question in a thread: the agent's last message with choices that nobody has picked on yet.
 const pickOf = (c, ask) => W.repliesOf(c.id).filter((r) => r.picked?.of === ask.id).pop();
 export function openAsk(c) {
-  const asks = W.repliesOf(c.id).filter((r) => r.session && Array.isArray(r.choices) && r.choices.length);
+  const asks = [c, ...W.repliesOf(c.id)].filter((r) => r.session && Array.isArray(r.choices) && r.choices.length); // the pin itself asks when the agent pinned it with --choice
   const ask = asks[asks.length - 1];
   return ask && !pickOf(c, ask) && !c.resolved ? ask : null;
 }

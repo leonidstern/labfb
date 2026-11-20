@@ -11,6 +11,7 @@ import {
   anchorAt,
   drawZone,
   foundAt,
+  fillAt,
   goToBlock,
   inPage,
   ease,
@@ -424,6 +425,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       looked.add(c.id);
       const anchor = foundAt(c.anchor);
       if (anchor) send({ action: 'move', id: c.id, found: true, anchor, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
+      // An agent's pin made from a selector (labit pin): it learns what a person's pin carries, once, so it survives edits.
+      const fill = c.session && !anchor ? fillAt(c.anchor) : null;
+      if (fill) send({ action: 'move', id: c.id, fill: true, anchor: fill, edit }).then(({ comment }) => Object.assign(c, comment), () => {});
     }
   };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
