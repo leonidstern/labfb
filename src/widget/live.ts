@@ -293,10 +293,11 @@ export function startLive() {
         next.href = url.href;
         next.dataset.labSwap = '';
         const path = url.pathname;
-        next.addEventListener('load', () => {
+        // The old one goes a frame after the new one has loaded, not in the same task: livereload-js waits a few ms there in WebKit.
+        next.addEventListener('load', () => requestAnimationFrame(() => {
           for (const l of (document.querySelectorAll('link[rel~="stylesheet"][href]') as NodeListOf<HTMLLinkElement>)) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
           delete next.dataset.labSwap;
-        }, { once: true });
+        }), { once: true });
         next.addEventListener('error', () => next.remove(), { once: true });
         link.after(next);
       }
@@ -413,6 +414,7 @@ export function startLive() {
         return o;
       }
       if (o.nodeType !== 1) return o;
+      if (o.isEqualNode(n)) return o; // the same inside and out: nothing to walk (Eleventy's dev server does this)
       // An opened <details> or <dialog> stays open (you opened it; the file doesn't say so).
       for (const { name } of Array.from(o.attributes as NamedNodeMap)) if (!n.hasAttribute(name) && !(name === 'open' && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
       for (const { name, value } of Array.from(n.attributes as NamedNodeMap)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
