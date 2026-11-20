@@ -62,7 +62,6 @@ export function drawList() {
   if (!W.tabTitle.base || !document.title.startsWith('(')) W.tabTitle.base = document.title.replace(/^\(\d+\) /, '');
   const want = tabNew ? `(${tabNew}) ${W.tabTitle.base}` : W.tabTitle.base;
   if (document.title !== want) document.title = want;
-  W.listBtn.classList.toggle('has-new', freshAll > 0);
 }
 
 // A thread's state for the agent: ['now' | 'got' | 'missed' | 'asks' | 'next' | 'done' | null, since when]. now: it said it is on it
