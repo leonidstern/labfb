@@ -1713,7 +1713,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       const between = inside.length > 1 && (() => {
         const bs = inside.map(restBox);
         const { x, y } = pointerAt;
-        return (bs.some((b) => b.right < x) && bs.some((b) => b.left > x)) || (bs.some((b) => b.bottom < y) && bs.some((b) => b.top > y));
+        // Beside them on their row (or column) only: the box's own edge above or beside them all still offers its control.
+        const row = bs.filter((b) => b.top <= y && b.bottom >= y), col = bs.filter((b) => b.left <= x && b.right >= x);
+        return (row.some((b) => b.right < x) && row.some((b) => b.left > x)) || (col.some((b) => b.bottom < y) && col.some((b) => b.top > y));
       })();
       next = inside.length === 1 ? inside[0] : inside.length && !between ? page : null;
     }
