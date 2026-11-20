@@ -2163,7 +2163,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
           const ink = S.inking;
           part('draw').then(({ neaten }) => {
             const neat = neaten?.(st);
-            if (neat && ink.strokes.includes(st)) (st.splice(0, st.length, ...neat), ink.paint());
+            if (!neat || !ink.strokes.includes(st)) return;
+            st.splice(0, st.length, ...neat);
+            ink.paint();
           }).catch(() => {});
         }
       }
