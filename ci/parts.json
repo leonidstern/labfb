@@ -31,6 +31,7 @@
     "types.d.ts": "types shared by the modules"
   },
   "classes": {
+    "copy-all": "the copy-link button: a row of the ⋯ menu (its rules), or hidden in the corner when comments are off; comments.js looks it up",
     "motions": "the box a motion control sits in; comments.js looks it up and the tests find controls in it",
     "moved-btn": "the 'moved' button in the bar; comments.js looks it up and the browser tests click it",
     "motion-play": "a motion control's play button; the browser tests click it",

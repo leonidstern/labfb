@@ -104,13 +104,13 @@ try {
       await waitFor(async () => (await badge(p))?.shown, 4000);
       let b = await badge(p);
       check(eng, 'a held reload shows the badge on the pill, where the agent mark shows', b.shown && b.host === 'pill' && b.hasUpd && b.others === 1, JSON.stringify(b));
-      check(eng, "the pill's label says an update waits, its own words kept aside", b.label === UPD_LABEL && b.kept === away && /no agent/.test(away), `${JSON.stringify(b)} away ${away}`);
+      check(eng, "the pill's label says an update waits, its own words kept aside", b.label === UPD_LABEL && b.kept === away && /no agent/i.test(away), `${JSON.stringify(b)} away ${away}`);
       check(eng, 'held: the page has not reloaded', loads === 1, `loads ${loads}`);
       // A status update while it waits: the label still says "update waiting", the new words are kept for after.
       agentListens();
-      await waitFor(async () => /talking to/.test((await badge(p))?.kept || ''), 4000);
+      await waitFor(async () => /Claude is listening/.test((await badge(p))?.kept || ''), 4000);
       b = await badge(p);
-      check(eng, "a new status while held is kept aside, the label still says an update waits", b.label === UPD_LABEL && /talking to/.test(b.kept || ''), JSON.stringify(b));
+      check(eng, "a new status while held is kept aside, the label still says an update waits", b.label === UPD_LABEL && /Claude is listening/.test(b.kept || ''), JSON.stringify(b));
       // Closing the chat lets the reload through: the badge goes and the pill's latest words come back.
       await snapOnUnload(p);
       await p.keyboard.press('Escape');
@@ -119,7 +119,7 @@ try {
       const gone = await snap(p);
       check(eng, 'closed, the held reload goes through', loads === 2, `loads ${loads}`);
       check(eng, 'as it goes the badge is hidden and no host is marked', gone?.updHidden === true && gone?.hasUpd === 0, JSON.stringify(gone));
-      check(eng, "the pill's own label is back, with the status that came while held", /talking to/.test(gone?.whoLabel || '') && gone?.whoLabel !== UPD_LABEL && gone?.whoKept === null, JSON.stringify(gone));
+      check(eng, "the pill's own label is back, with the status that came while held", /Claude is listening/.test(gone?.whoLabel || '') && gone?.whoLabel !== UPD_LABEL && gone?.whoKept === null, JSON.stringify(gone));
 
       // A tap on the badge's host takes the update at once, without following the pill's link.
       await waitFor(() => inRoot(p, (r, url) => r.querySelector('a.listener').getAttribute('href') === url, SESSION_URL), 4000);

@@ -381,7 +381,7 @@ button.btn.undo { color: var(--_fg); }
        background: var(--_green-fg); color: var(--_bg); box-shadow: 0 0 0 1.5px var(--_bg); font: 700 9.5px/1 system-ui, sans-serif;
        letter-spacing: 0; pointer-events: none; animation: lab-arrive var(--_t-quick) var(--_ease-out); }
 /* one floating pill (lab.css .lab-button is the same) */
-.listener { border: 0; border-radius: var(--_radius); padding: 9px 14px; background: var(--_bg); box-shadow: var(--_shadow);
+.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 0; width: 37px; height: 37px; justify-content: center; /* the bar's height, so the two line up */ background: var(--_bg); box-shadow: var(--_shadow);
         font: inherit; font-size: 13px; letter-spacing: -.006em; white-space: nowrap;
         display: inline-flex; gap: 6px; align-items: center; color: var(--_fg); text-decoration: none; cursor: default; }
 .listener span { color: var(--_muted); }
@@ -390,13 +390,31 @@ button.btn.undo { color: var(--_fg); }
    listens. A dropped connection keeps the last state, faded, instead of looking like nobody. Only transforms move, on three small shapes, so nothing else
    on the layer is redrawn (the old dot's ping was kept to transform and opacity for the same reason). */
 .listener .lbl { display: contents; }
-/* While the agent works on a pin the pill carries its line, in a box of one width whatever it says, so nothing beside it moves. */
-.listener .prog { display: inline-block; width: min(380px, 40vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity var(--_fade-base); }
-.listener .prog.out { opacity: 0; }
+/* Icon only (Leo, 20 Nov): the pill is the mark, with its status as a badge on the mark's corner, ringed like the update "!" (.upd):
+   the number of pins waiting, or a sign: ! the agent went quiet, … it isn't answering, − nobody listens, ↻ reconnecting. The words
+   show in a box above the pill the moment the pointer is on it (like a pin's tip), so the pill never grows. */
+.listener .mark { position: relative; z-index: 2; transform: translate(-3px, 3px); } /* low and left, so the badge sits over its corner and not its ears */
+.listener .cb { position: absolute; right: 2px; top: 2px; z-index: 3; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; corner-shape: round; /* a circle, not a squircle */
+        background: currentColor; color: var(--_green-fg); box-shadow: 0 0 0 1.5px var(--_bg); }
+.listener .cb:empty { display: none; }
+.listener .cb.amber { color: var(--_amber); } .listener .cb.grey { color: color-mix(in srgb, var(--_fg) 50%, var(--_bg)); } /* --_muted is see-through: the disc would show twice */
+.listener .cb span { color: var(--_bg); font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: 0; }
+.listener .cb svg { width: 13px; height: 13px; display: block; }
+.listener .cb :is(svg, svg *) { color: inherit; } /* the sheet's * sets a colour on every element, the disc included */
+.listener.has-upd .cb { visibility: hidden; } /* the update's "!" takes the corner */
+.listener .w { position: absolute; left: -4px; bottom: calc(100% + 10px); z-index: 6; width: max-content; max-width: 280px; padding: 6px 9px; border-radius: var(--_r-s);
+        background: var(--_bg); box-shadow: var(--_shadow); color: var(--_fg); font-size: 12px; letter-spacing: 0; line-height: 1.35; text-align: left; white-space: normal;
+        pointer-events: none; opacity: 0; translate: 0 2px; transition: opacity var(--_fade), translate var(--_fade); }
+.listener .t { display: flex; flex-wrap: wrap; column-gap: 4px; color: var(--_fg); }
+.listener .t span { color: inherit; }
+.listener .d { display: block; margin-top: 2px; color: var(--_muted); white-space: pre-line; overflow-wrap: anywhere; }
+.listener .c { display: block; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--_muted); overflow-wrap: anywhere; user-select: all; }
+.listener:is(:hover, :focus-visible) .w { opacity: 1; translate: none; }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
 .mark .eye, .agentmark .eye { fill: var(--_bg); }
-.listener .mark { margin: -2px 0 -1px -3px; fill: var(--_green-fg); }
+.listener .mark { fill: var(--_green-fg); }
+.listener .mark > g { fill: inherit; } /* the mark's own paths said currentColor, so its state colours never showed */
 .listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
 .listener.stale .mark { fill: var(--_amber); } /* reconnecting: amber */
 .listener.stale.idle .mark { fill: var(--_muted); }
