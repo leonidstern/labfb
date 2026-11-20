@@ -8,27 +8,13 @@
 // Not part of `npm test`; CI runs it in the `browser` job.
 // Run: node test/browser/native.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check as report, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  // On CI a missing browser is a failure: a skip there would pass with nothing run.
-  console.log(`playwright is not installed: ${process.env.CI ? 'failed (CI)' : 'skipped'}`);
-  process.exit(process.env.CI ? 1 : 0);
-})();
+const pw = playwright({ ciFails: true });
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-native-'));
+const DIR = tmp('labit-native-');
 const PORT = claimPort(8390, 40);
 const B = `http://localhost:${PORT}`;
 fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="utf-8"><title>native</title>
@@ -39,22 +25,10 @@ ${'<p>Words to fill the page so that it scrolls.</p>'.repeat(16)}
 <p id="mid">A paragraph in the middle of the page.</p>
 ${'<p>More words to fill the page.</p>'.repeat(30)}`);
 fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '--new', '--no-open'], { cwd: DIR, env, stdio: 'ignore' });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(16)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+const server = startLab(DIR, labEnv(), { stdio: 'ignore' });
+await labUp(B);
+// The engine's column is 16 wide here.
+const check = (eng, name, ok, detail = '') => report(eng.padEnd(16), name, ok, detail);
 const settle = (p) => p.evaluate(() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 60)))));
 const inRoot = (p, fn, arg) => p.evaluate(([src, a]) => new Function('r', 'a', `return (${src})(r, a)`)(document.querySelector('[data-lab-comments]').shadowRoot, a), [fn.toString(), arg]);
 const untilRoot = (p, fn, arg, ms = 4000) =>
@@ -67,7 +41,7 @@ for (let i = 1; i <= 80; i++)
   await fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-admin': admin, 'x-lab-agent': '1' }, body: JSON.stringify({ page, name: 'agent', text: `message ${i} of the long chat`, anchor: { kind: 'page' } }) });
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       for (const phone of [null, eng === 'webkit' ? 'iPhone 13' : 'Pixel 7']) {
@@ -269,5 +243,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

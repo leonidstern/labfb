@@ -5,32 +5,12 @@
 // Not part of `npm test`; CI runs it in the `browser` job. Run: node test/browser/ink.mjs   (needs playwright;
 // NODE_PATH can point at a node_modules that has it; ENGINES=webkit,chromium picks the engines).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
-})();
-
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+const pw = playwright();
 
 // A page made to be inked: words in a plain paragraph, with a link, in table cells, in two paragraphs, in a box that
 // scrolls, in sticky content, right to left, and sixty short paragraphs for the busy case.
@@ -68,22 +48,14 @@ const words = (el, text, extra = {}) => {
 
 // One lab on its own folder and port, with the labit.json it is given.
 async function lab(settings) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-ink-'));
+  const dir = tmp('labit-ink-');
   fs.writeFileSync(path.join(dir, 'index.html'), PAGE);
   fs.writeFileSync(path.join(dir, 'dark.html'), PAGE.replace('body{margin:30px;', 'body{background:#111;color:#eee;margin:30px;'));
   if (settings) fs.writeFileSync(path.join(dir, 'labit.json'), JSON.stringify(settings));
   const port = String(claimPort(5500, 400));
-  const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1' };
-  const server = spawn(process.execPath, [LAB, '.', '--new', '--no-open', '--port', port], { cwd: dir, env });
+  const server = startLab(dir, labEnv({ LABIT_EXIT_WITH_PARENT: undefined }), { root: '.', port });
   const base = `http://localhost:${port}`;
-  for (let i = 0; i < 80; i++) {
-    try {
-      await fetch(base + '/');
-      break;
-    } catch {
-      await sleep(100);
-    }
-  }
+  await labUp(base);
   const admin = () => JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8')).agent;
   const call = (body, agent) =>
     fetch(`${base}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base, ...(agent ? { 'x-lab-admin': admin(), 'x-lab-agent': '1' } : { 'x-lab-admin': admin() }) }, body: JSON.stringify(body) }).then((r) => r.json());
@@ -197,7 +169,6 @@ const amber = (b) => b.rgb[0] > b.rgb[1] + 8 && b.rgb[1] > b.rgb[2] + 8;
 const say = (b) => `from ${b.from.toFixed(2)}, ${b.rows} rows (${b.share.toFixed(2)}), rgb ${b.rgb} on ${b.bg}`;
 
 const rect = (p, sel) => p.$eval(sel, (e) => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height, r: b.right, b: b.bottom }; });
-const engines = (process.env.ENGINES || 'webkit,chromium').split(',');
 const L = await lab({ flags: { inkOnText: true } });
 const OFF = await lab();
 // "color(srgb 0.14 0.63 0.27 / 0.3)" or "rgba(36, 160, 70, 0.3)" → the alpha.
@@ -232,7 +203,7 @@ const shadow = (p, fn, arg) => p.evaluate(([f, a]) => new Function('r', 'a', f)(
 const word = async (p, id, text) => { const g = await gap(p, id, text, 1); return [g.x, g.t + g.h / 2]; };
 
 try {
-  for (const eng of engines) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     await L.clear();
 
@@ -731,7 +702,7 @@ try {
   }
 
   // ---- With the flag on, a browser without the CSS Custom Highlight API can't ink: selected words keep their pin
-  for (const eng of engines) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     await L.clear();
     await L.say(words('a', 'gamma delta epsilon'), 'pin please');
@@ -749,7 +720,7 @@ try {
   }
 
   // ---- With the flag off, selected words get a pin, as before
-  for (const eng of engines) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     await OFF.clear();
     await OFF.say(words('a', 'gamma delta epsilon'), 'pin please');
@@ -764,5 +735,4 @@ try {
   L.stop();
   OFF.stop();
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();

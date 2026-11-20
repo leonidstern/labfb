@@ -32,6 +32,7 @@ let heard = ''; // port:key seen unheard while busy, on the look before
 let timer: { cancel: () => void } | null = null;
 const PROGRESS_MS = 60000; // a pin's progress line is renewed once a minute at most
 const WORKING_MS = 15000; // how long the list of pins being worked on is kept before it is asked for again
+let helperLine = ''; // "helper: …" of the last helper this turn started, renewed while the turn runs
 let working: { lab: Lab; page: string; id: string }[] = [];
 let workingAt = -Infinity;
 const noted = new Map<string, number>(); // lab port + pin id -> when its line was last written
@@ -84,20 +85,13 @@ async function labsFor($: any, me: string): Promise<Lab[]> {
   return labs.slice(0, MAX_LABS);
 }
 
-// What a tool call says it is doing, as a short line: "editing comments.js", "running npm test", "reading list.ts".
-const base = (p: unknown) => String(p || '').split('/').pop() || '';
-const lineFor = (e: any): string => {
-  const tool = String(e.tool || '');
-  if (/^(Edit|Write|NotebookEdit)$/.test(tool)) return `editing ${base(e.file_path || e.notebook_path)}`.trim();
-  if (tool === 'Bash') return `running ${String(e.command || '').replace(/\s+/g, ' ').slice(0, 60)}`.trim();
-  if (/^(Read|Grep|Glob)$/.test(tool)) return tool === 'Read' ? `reading ${base(e.file_path)}`.trim() : `searching ${String(e.pattern || '').slice(0, 40)}`.trim();
-  if (tool === 'Agent') return `helper: ${String(e.description || 'working').slice(0, 60)}`;
-  return '';
-};
+// The status line a tool call puts on a pin: just "working" (the pin shows "working · 1 min ago"). Leo, 20 Nov: the raw
+// command ("running timeout 175 sh -c …") read as noise; option 2, plain "working", picked.
+const lineFor = (e: any): string => (e && e.tool ? 'working' : '');
 
-async function progress($: any, e: any): Promise<void> {
-  const line = lineFor(e);
-  if (!line) return;
+// Put a progress line on the pins being worked on (at most one per pin a minute). The lab counts a line as a sign of
+// work: it restarts the "no sign" clock of the reminders, and a pin with a fresh line is not handed again.
+async function note($: any, line: string): Promise<void> {
   const now = await $.clock.now();
   if (now - workingAt > WORKING_MS) {
     workingAt = now;
@@ -124,6 +118,21 @@ async function progress($: any, e: any): Promise<void> {
       })
       .catch(() => {});
   }
+}
+
+async function progress($: any, e: any): Promise<void> {
+  const line = lineFor(e);
+  if (!line) return;
+  // The session's own tool call: a helper it waited on is done (or it works on its own again); a new helper sets it again.
+  if (e.agentId === undefined) helperLine = String(e.tool || '') === 'Agent' ? line : '';
+  await note($, line);
+}
+
+// While a helper this session started runs, the session itself is idle (waiting for it) and a long job of the helper's
+// (a build, a test run) makes no tool call for minutes: the helper's line is renewed once a minute, so the pins it works
+// on don't count as unattended. Ends with the session's next tool call of its own, or the turn.
+async function keepAlive($: any): Promise<void> {
+  if (helperLine && busy) await note($, helperLine);
 }
 
 async function look($: any): Promise<void> {
@@ -180,6 +189,7 @@ export const register: Register = (on) => {
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) {
       busy = true;
+      helperLine = '';
       submittedAt = 0;
       queued = false;
     }
@@ -188,6 +198,7 @@ export const register: Register = (on) => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) {
       busy = false;
+      helperLine = '';
       if (queued) {
         queued = false;
         submittedAt = await $.clock.now(); // the queued wake's turn should start now; if it doesn't, it counts as lost
@@ -198,7 +209,10 @@ export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     const out = await next(e);
     timer?.cancel();
-    timer = $.clock.every(EVERY_MS, () => void look($).catch(() => {}));
+    timer = $.clock.every(EVERY_MS, () => {
+      void keepAlive($).catch(() => {});
+      void look($).catch(() => {});
+    });
     return out;
   });
 };

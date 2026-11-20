@@ -3,26 +3,14 @@
 // gap to it. A moving track, a pulsing dot, a video and a GIF box, one at the right edge, one at the bottom, in WebKit
 // and Chrome's engine. Not part of `npm test`. Run: node test/browser/motionreach.mjs (NODE_PATH to a playwright).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-const pw = (() => {
-  for (const paths of [undefined, (process.env.NODE_PATH || '').split(path.delimiter)]) {
-    try {
-      return require(require.resolve('playwright', paths && { paths }));
-    } catch {}
-  }
-  console.log('playwright is not installed: skipped');
-  process.exit(0);
-})();
+const pw = playwright();
 
-const LAB = fileURLToPath(new URL('../../local.mjs', import.meta.url));
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labit-reach-'));
+const DIR = tmp('labit-reach-');
 const PORT = claimPort(7990, 30);
 const B = `http://localhost:${PORT}`;
 fs.copyFileSync(fileURLToPath(new URL('../../bench/site/media/countdown.webm', import.meta.url)), path.join(DIR, 'v.webm'));
@@ -35,29 +23,15 @@ video { width: 200px } #edge { position: absolute; right: 0; top: 200px; width: 
 #low { position: fixed; left: 300px; bottom: 0; width: 40px; height: 16px; background: #555; animation: pulse 1s infinite }</style>
 <div class="row"><div id="track"><div id="loop"></div></div><div id="dot"></div><video id="vid" src="v.webm" muted loop autoplay playsinline></video></div>
 <div id="edge"></div><div id="low"></div>`);
-const env = { ...process.env, PORT: '', XDG_CONFIG_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-cfg-')), LABIT_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'labit-home-')), LABIT_NO_UPDATE_CHECK: '1', LABIT_EXIT_WITH_PARENT: '1' };
-const server = spawn(process.execPath, [LAB, '--new', '--no-open', '--port', String(PORT)], { cwd: DIR, env });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 80; i++) {
-  try {
-    await fetch(B + '/');
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
-let failed = 0;
-const check = (eng, name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${eng.padEnd(8)} ${name}${detail ? ` (${detail})` : ''}`);
-};
+const server = startLab(DIR, labEnv(), { port: PORT });
+await labUp(B);
 const ROOT = "[...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot";
 const inRoot = (p, js) => p.evaluate(`(() => { const r = ${ROOT}; return ${js}; })()`);
 const ctl = (p) => inRoot(p, "(() => { const c = r?.querySelector('.motion-ctl.on:not(.mini)'); const b = c?.querySelector('.motion-play')?.getBoundingClientRect(); return b && { x: b.left + b.width / 2, y: b.top + b.height / 2, l: b.left, t: b.top, r: b.right, btm: b.bottom }; })()");
 const still = (p, id) => p.evaluate((i) => { const e = document.getElementById(i); return e instanceof HTMLVideoElement ? e.paused : e.getAnimations()[0]?.playState === 'paused'; }, id);
 
 try {
-  for (const eng of (process.env.ENGINES || 'webkit,chromium').split(',')) {
+  for (const eng of engines()) {
     const browser = await pw[eng].launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
@@ -160,5 +134,4 @@ try {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} failed` : 'all passed');
-process.exit(failed ? 1 : 0);
+finish();
