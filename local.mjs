@@ -2597,11 +2597,12 @@ const handler = async (req, res) => {
       }
       // Awaited: what it throws (a body that is not JSON, or too long) is answered below. Not awaited, it ended the lab.
       if (pathname === '/_lab/api/board') return await boardApi(req, res, url);
-      // The board page itself: a shell that board.js (public/_lab/board.js) fills from /_lab/api/board. The widget rides on it
+      // The board page itself: an empty page with the board's view over all of it, the same one a page that links a board
+      // shows (public/_lab/boardview.js, own() in src/board/overlay.ts), filled from /_lab/api/board. The widget rides on it
       // under the board's key, like any page; it is a page of its own, never one of the lab's pages.
       const bp = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})$/.exec(pathname);
       if (bp && (req.method === 'GET' || req.method === 'HEAD')) {
-        const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>board ${bp[1]}</title></head><body><script src="/_lab/board.js" data-name="${bp[1]}"></script></body></html>`;
+        const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>board ${bp[1]}</title><style>html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#f7f7f7}@media (prefers-color-scheme:dark){html,body{background:#1b1b1a}}</style></head><body><script type="module">import{own}from"/_lab/boardview.js";own("${bp[1]}")</script></body></html>`;
         return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, inject(withIcon(html), widget(`/_board/${bp[1]}`, isLoopback(req), nameFor(req), true)));
       }
     }
