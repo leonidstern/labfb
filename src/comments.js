@@ -38,7 +38,7 @@ import { inFrame, startFrame } from './widget/frame.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { inkSvg } from './widget/ink.ts';
-import { NAME_MAX, SEED } from '../lib/actions.ts';
+import { NAME_MAX } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } from './widget/drag.ts';
 import { bindBoardCam, showBoard } from './widget/boardcam.ts';
@@ -178,7 +178,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // Your one list of actions (settings.json `actions`, passed as data-actions; lib/actions.ts, docs/settings.md): as many
   // chips as fit, the rest behind "…".
   const actButton = (name) => el('button', { type: 'button', 'data-k': name }, name);
-  let LIST = SEED;
+  let LIST = [];
   try {
     const l = JSON.parse(script?.dataset.actions || 'null');
     if (Array.isArray(l)) LIST = l;
