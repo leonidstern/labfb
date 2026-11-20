@@ -1064,7 +1064,7 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
       if (isPage(c)) return; // in the chat, not on the page
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
-      const { left, top, moved, zone, clipped } = places.get(c.id) || position(c.anchor || {});
+      const { left, top, moved, zone, clipped, covered } = places.get(c.id) || position(c.anchor || {});
       // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
       // new spot (drag) or close. The agent finishing one closes it.
       if (moved) {
@@ -1157,7 +1157,8 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
         pin.append(inkSvg(ink, { left: 0, top: 0, width: zone.width, height: zone.height }));
       }
       const held = placePin(pin, c, ink && zone, left, top, moved);
-      pin.style.visibility = clipped && !held && S.openId !== c.id ? 'hidden' : ''; // cut off by a box it's inside (see position; a held pin: the browser)
+      // Cut off by a box it's inside (see position; a held pin: the browser), or under a board's view over the page.
+      pin.style.visibility = ((clipped && !held) || covered) && S.openId !== c.id ? 'hidden' : '';
       if (born) {
         // Bound once; they read what the pin shows now (pinData), not what it showed when it was made.
         grab(pin, () => pinData.get(pin).c);
@@ -2795,9 +2796,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     if (places.length + all.filter(skip).length !== pinsById.size || places.some(([pin]) => !pin)) return render(); // one lost or found its spot
     // A pin whose words show again (back after an edit) turns into ink again.
     if (places.some(([pin, { zone }, c]) => !zone && !pin.classList.contains('on-ink') && inkRange(c.anchor))) return render();
-    for (const [pin, { left, top, clipped, zone }, c] of places) {
+    for (const [pin, { left, top, clipped, covered, zone }, c] of places) {
       const held = placePin(pin, c, pin.classList.contains('ink') && zone, left, top, false);
-      pin.style.visibility = clipped && !held ? 'hidden' : '';
+      pin.style.visibility = (clipped && !held) || covered ? 'hidden' : '';
     }
     flushPins();
   };
@@ -3110,7 +3111,9 @@ import { bindInk, drawInks, inkCss, inkGone, inkRange, startInk } from './widget
     for (const [id, pin] of pinsById) {
       const info = pinData.get(pin);
       if (!info || info.c.anchor?.kind === 'board') continue;
-      const covered = coveredAt(parseFloat(pin.style.left) - scrollX, parseFloat(pin.style.top) - scrollY);
+      // A pin the browser holds has no place in its style: its spot is read (only in a half view, as it scrolls).
+      const at = heldPin(pin) ? position(info.c.anchor || {}) : { left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+      const covered = coveredAt(at.left - scrollX, at.top - scrollY);
       if (covered === Boolean(info.covered)) continue;
       info.covered = covered;
       pin.style.visibility = (covered || position(info.c.anchor || {}).clipped) && S.openId !== id ? 'hidden' : '';
