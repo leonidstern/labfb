@@ -104,6 +104,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   };
   measure();
   let moved = false; // the person moved the camera: a resize no longer fits everything again
+  let sizedFrom = { w: 0, h: 0 }; // the box's size when its resize began
   let held = false; // a resize that isn't the person's (a phone's keyboard growing a half view): the board stays where it is on the screen
   let selected = '';
   let entered = '';
@@ -178,7 +179,10 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (left > 1) return void (still = setTimeout(rest, left));
     if (sizing) {
       sizing = false;
-      return go(moved || held ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
+      // Only the height, and by no more than a phone's toolbar does as the page scrolls (40 px on iOS 27): the board stays
+      // where it is on the screen. Fitted again, it went through three places and ended 15 px off (21 Nov simulator).
+      const bar = view.w === sizedFrom.w && Math.abs(view.h - sizedFrom.h) <= 100;
+      return go(moved || held || bar ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
     }
     layered = false;
     world.style.willChange = '';
@@ -801,6 +805,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (!sized || !cards.length) return void ((sized = true), go(moved || held ? cam : fitAll(boxes(), view), false));
     if (px === ox && py === oy && pv.w === view.w && pv.h === view.h) return; // already drawn at this size (resized(), below)
     cam = { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
+    if (!sizing) sizedFrom = { w: pv.w, h: pv.h };
     sizing = boxed = true;
     cancelAnimationFrame(drawFrame);
     paintCam(); // now, before this frame is drawn (a frame later the frames would trail the edge by one step of the drag)
