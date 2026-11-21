@@ -5,6 +5,10 @@ lab, a folder and a port of its own, does a random sequence of steps, lets thing
 observer holds with the case's own model of what should be there. The headline is how often labit goes wrong **without
 saying so**.
 
+A fourth area, **dev-servers**, puts the lab in front of real frameworks' dev servers (Vite, React, Vue, Astro,
+webpack-dev-server, Next.js, a static server). It needs the frameworks installed (once, outside this checkout), so it
+runs only when asked for: see "The fourth area" below.
+
 Not part of `npm test` (that runs `test/*.test.mjs`). It only observes: it never changes `lib/`, `src/`, `public/` or
 `local.mjs`.
 
@@ -16,12 +20,21 @@ node test/torture/run.mjs --cases 3000 --area all --seed 1 --concurrency 12 --js
 node test/torture/run.mjs --replay hotswap:3539705355 --no-browser          # one case again, every step printed
 node test/torture/run.mjs --replay hotswap:3539705355:1,7,8 --no-browser    # only steps 1, 7 and 8 of it
 node test/torture/run.mjs --replay agent-sync:865886972 --no-browser --times 30   # 30 runs; the first that fails is printed
+node test/torture/run.mjs --smoke --area dev-servers                    # ~20 cases on real dev servers, under 4 minutes
+node test/torture/run.mjs --area dev-servers --cases 120 --concurrency 5 --json out.json
+node test/torture/run.mjs --area all --with-dev-servers                 # the three areas as always, and 120 dev-servers cases beside them
+node test/torture/run.mjs --replay dev-servers:2388338421 --browser-share 1   # one dev-servers case again, in real browsers
 ```
 
 | flag (or environment) | default | |
 | --- | --- | --- |
 | `--cases N` (`TORTURE_CASES`) | 3000 | how many cases; `--area all` shares them 35% dev-sync, 30% hotswap, 35% agent-sync |
-| `--area X` (`TORTURE_AREA`) | all | `dev-sync`, `hotswap`, `agent-sync`, several with commas, or `all` |
+| `--area X` (`TORTURE_AREA`) | all | `dev-sync`, `hotswap`, `agent-sync`, `dev-servers`, several with commas, or `all` (the first three) |
+| `--with-dev-servers` | | with `--area all`: the dev-servers area too, with its own count (the other areas' counts stay as they are) |
+| `--dev-server-cases N` | 120 | how many dev-servers cases beside other areas (smoke: 20). Named alone (`--area dev-servers`), `--cases` is its count |
+| `--dev-concurrency N` | 5 | dev-servers cases at once, whatever `--concurrency` says (smoke: 4): dev servers are heavy |
+| `--dev-browser-share F` | 0.4 | the share of dev-servers cases in real browsers (a laptop, a phone, and a control tab straight on the dev server) |
+| `--frameworks a,b` | all | dev-servers: only these (`vite`, `react`, `astro`, `webpack`, `next`, `vue`, `static`). A replay needs the same flag |
 | `--seed N` (`TORTURE_SEED`) | 1 | the run's seed: the same seed makes the same cases |
 | `--concurrency N` (`TORTURE_CONCURRENCY`) | 12 | cases at once |
 | `--json file` (`TORTURE_JSON`) | none | everything the report says, and every failing case with its steps |
@@ -115,6 +128,121 @@ what the lab tells that device now, in the same order, nothing twice; `.lab` equ
 every open thread and message; everything a person wrote in an open thread reached some wait, nothing unknown did, and
 the counts the hand-offs state add up to each message once; a pin marked "the agent has it" was handed to a wait that
 confirmed it; the "waiting" count the page list shows is the number of threads whose last word is a person's.
+
+## The fourth area: dev-servers
+
+`dev-servers.mjs` (the plan, the steps, the checks) and `dev-servers-templates.mjs` (the projects and their installs).
+The lab is started in front of a real dev server (`labit . --proxy <port>`; in a tenth of the cases with no flag, so
+the lab has to find the dev server itself), on a small project written by hand for each framework. Not in `--area all`
+unless `--with-dev-servers` is given: it installs packages from npm the first time.
+
+| framework | project | exact versions | share of the cases |
+| --- | --- | --- | --- |
+| `vite` | two HTML pages, a module that draws, a module it imports, a stylesheet (no framework) | vite 8.3.8 | 20% |
+| `react` | Vite + React 18 with fast refresh, a router of its own (pushState), a component per route | vite 8.3.8, @vitejs/plugin-react 6.3.0, react 18.3.1, react-dom 18.3.1 | 22% |
+| `astro` | `.astro` pages in a layout with the client router, a component, a stylesheet, a client script | astro 7.4.13 | 18% |
+| `webpack` | webpack 5 with webpack-dev-server and HMR, one page from an HTML template | webpack 5.113.0, webpack-cli 7.3.1, webpack-dev-server 6.1.0, html-webpack-plugin 5.6.8, style-loader 4.0.0, css-loader 7.1.5 | 14% |
+| `next` | Next.js app router (Turbopack): a layout with `next/link`, a page per route, a server and a client component | next 16.4.6, react 19.3.1, react-dom 19.3.1 | 12% |
+| `vue` | Vite + Vue 3 single-file components, the same shape as the React project | vite 8.3.8, @vitejs/plugin-vue 6.0.11, vue 3.5.46 | 8% |
+| `static` | plain pages behind `python3 -m http.server` (no build, no live reload of its own) | none (python3) | 6% |
+
+Svelte and `npx serve` / `http-server` are not covered (the static server stands for servers without live reload).
+Astro's "island" here is the page's own client script, bundled by Astro, with no UI framework in it.
+
+**Installs.** Each framework's packages are installed once, with `npm install` and exact versions, into
+`<os tmpdir>/labit-torture-devservers/<framework>/` (on this Mac `/private/var/folders/…/T/labit-torture-devservers`;
+`TORTURE_DEVSERVERS_CACHE` moves it), with a `.stamp` file that names the versions, the Node major and the platform.
+A later run finds the stamp and installs nothing; a changed version in `dev-servers-templates.mjs` installs again.
+A case's project is only its source files, in `<cache>/<framework>/cases/<id>/`, removed when the case ends; it finds
+`node_modules` one folder up, as a package in a monorepo does, so a case starts in the time its dev server takes
+(Vite ~0.3 s, Astro ~1.5 s, webpack ~0.5 s, Next ~2 s). Nothing is installed into this checkout. To clear the cache:
+`rm -rf "$(node -p 'require("os").tmpdir()')/labit-torture-devservers"` (719 MB: next 337, astro 188, webpack 80,
+vue 48, react 35, vite 30; the installs took 10 s here with a warm npm cache, expect a minute or two without).
+
+**Runtime** (this Mac, 18 cores): `--smoke --area dev-servers` 20 cases in 2 min 12 s; 120 cases at 5 at once in
+15 min 17 s with the default two confirming reruns and at most 6 shrinking runs per new signature. One case: half
+within 10 s, the slowest 73 s (a case may take 240 s; an error left showing costs 4 s each time). Dev servers are
+started in a process group of their own and ended with it; a ctrl-c leaves no dev server, lab or case folder behind.
+Astro 7 would put its dev server in the background by itself when it sees an agent's shell; cases start it with
+`--ignore-lock` and a clean environment, so it stays in the foreground and ends with the case.
+
+**What a case is.** One dev server, one lab in front of it, a laptop and a phone on its pages, one agent session. In
+40% of the cases both devices are real browsers (Chromium or WebKit; the phone with a phone's viewport, let in over
+the wifi address with a one-time link), and a third tab, the **control**, holds the same page straight on the dev
+server with no lab: it gets the same clicks and reloads and says what the framework does by itself. In the other cases
+the devices are the raw clients of `lib.mjs`. Every case has a burst of saves, a dev-server restart under the lab, a
+lab restart over the dev server, and an agent that is handed a pin and answers; the other steps are drawn: a source
+file saved (in place or through a temp file), a file saved with a syntax error and fixed later, a route's file made,
+renamed, deleted and made again, pins and replies through the widget (click, type, Enter) and the API, resolve and
+reopen, reload, a click on the page's own link (a client-side navigation in React, Vue, Astro and Next), back, a draft
+left open while files are saved, clicks on a counter the page keeps in memory, the same request asked of the dev
+server directly and through the lab (as a page load, as a script's fetch, with `Accept-Encoding`, `Range`,
+`If-None-Match`, `If-Modified-Since`, HEAD, POST, a path that is not there), and the dev server's own live-reload
+websocket opened directly and through the lab around a save. Some cases have a `Content-Security-Policy` header
+(vite, webpack) or no favicon.
+
+**The oracle.** Every file a step saves holds one version token; each page shows the tokens of the files its route
+uses (`#tok-page`, `#tok-comp`, `#tok-mod`, `--v` on `:root`), so what a page must show is read from the disk. What a
+browser shows wrong through the lab is only counted against the lab when the control shows it right (a framework that
+is stale by itself is an "unclear" note). A request through the lab must be the dev server's answer byte for byte; a
+page is the dev server's bytes plus the lab's reload holder and one widget tag. Comments are the ones said yes to,
+each on the page whose address the device showed.
+
+| check | class | what it means |
+| --- | --- | --- |
+| `widget-missing`, `widget-mounted-twice` | silent | a page the framework serves has no widget, or more than one: after a load, a save, a fixed error, a client-side navigation, a restart; also counted in the HTML as served |
+| `stale-through-proxy`, `page-blank-or-error-through-proxy` | silent | after the bound (10 s, Next 15 s) the page through the lab does not show the disk, and the control does |
+| `reload-loop` | silent | the page through the lab loads again with nothing saved (3 s, quiet), or loads at least twice more than the control while an error shows |
+| `state-lost-through-proxy` | silent | the page's counter is gone through the lab and still there on the control (not after a lab restart: unclear) |
+| `draft-lost` | silent | words typed into a new comment are gone after saves |
+| `page-click-swallowed` | silent | a click on the page's own link or button did nothing through the lab and worked on the control |
+| `comment-on-wrong-page`, `browser-pins-differ` | silent | a pin sent from the widget was saved on another page than the address shown; the pins drawn are not the open threads of the address shown (`reached=client-side`: after a navigation with no page load) |
+| `pin-lost-anchor` | silent | a pin on the heading no step changes is off its element (`jumped`), or off the page (`detached`) |
+| `acknowledged-comment-missing`, `comment-moved-to-another-page`, `files-differ-from-the-lab`, `thread-state-wrong` | silent | what was said yes to is not what the lab and `.lab` hold at the end (after both restarts) |
+| `route-comments-did-not-follow-the-file` | silent | a route's file was renamed and its comments stayed on the old address |
+| `comment-missing-on-device`, `agent-reply-missing-on-device`, `message-never-reached-a-wait` | silent | a device or the agent's wait does not hold what the lab holds |
+| `proxy-mangled-response` | silent | a request answered differently through the lab than directly (`field=`: status, body, a header, content-length; `what=`: which kind of request) |
+| `hmr-message-lost-through-proxy`, `hmr-socket-closed-through-proxy` | silent | the dev server's socket says less through the lab |
+| `dev-server-not-found`, `wrong-dev-server-found` | silent | started with no `--proxy`, the lab serves the folder as plain pages, or goes in front of another server |
+| `hmr-socket-refused`, `request-dropped-by-the-lab`, `page-left-on-the-labs-502`, `console-error-only-through-proxy`, `write-refused`, `agent-command-failed` | loud | the lab or the browser says so |
+| `page-reloaded-by-a-lab-restart`, `page-state-lost-over-a-lab-restart`, `pin-shown-as-moved-after-its-words-changed`, `page-fetched-by-a-script-gets-the-widget`, `framework-stale-without-the-lab`, `framework-reloads-when-quiet`, `widget-script-tag-twice`, `static-server-not-put-in-front` | unclear | the contract does not say |
+
+Signatures of this area carry no framework: the report prints `seen with: react 3, astro 2` under each, and a table
+"dev-servers by framework" (pass, loud, silent, flaky per framework; `byKind` in the JSON).
+
+**What the model knows (so these are not reported).**
+
+- Next's HMR socket speaks to each page on its own: only "something arrives after a save, as directly" is judged
+  there. Vite and webpack-dev-server say the same to every page: there the kinds of message must be the same.
+- A restarted lab's pages reload (the dev server's client lost its socket through the lab; the widget catches up by a
+  reload): noted as unclear, and neither page state nor the quiet window is judged until seconds after one.
+- A page that loaded while a file held a syntax error and did not recover after the fix, when the control did not
+  load in that time: unclear. Vite keeps an error (or a full reload) for the next page only when no page is connected
+  (`vite/dist/node/chunks/node.js`: `!wss.clients.size`), so with a second tab open such a page gets no overlay.
+- webpack-dev-server loses a reload for its HTML template while a page loads; the webpack project's page version is
+  a hot module for that reason. Astro's error page reloads itself several times a second while an error shows, with
+  and without the lab.
+- A pin on a mark whose words hold the version is "moved" for the widget once a save changes them: unclear. Pins on
+  `#anchor-a`, which no step changes, are the ones judged.
+- A page that reloaded while the dev server was away shows the lab's "no answer from the dev server" page: loud (the
+  lab says so), and the test reloads it as a person would.
+- Console errors while a file is broken or a server is down are the framework's own on each page at its own moment.
+
+**Signatures seen so far** (none has a number in `known-bugs.mjs` yet; all are reported as NEW):
+
+| signature | what it is |
+| --- | --- |
+| `browser-pins-differ` with `reached=client-side`, `comment-on-wrong-page` | after a client-side navigation the widget still holds the first page: it draws that page's pins and saves new ones there (`src/comments.js` `pageNow` reads the script tag's `data-page`, which the lab sets once per page load) |
+| `proxy-mangled-response` with `what=html-piece-fetched-by-a-script` | HTML a script fetches (not a page load) comes back with the reload holder and the widget tag in it (`lib/proxy.ts`: what gets the widget is decided by the answer's content type alone) |
+| `dev-server-not-found` | started with no `--proxy` in a project that holds an `.html` file (every Vite project's `index.html`, webpack's template), the lab serves the folder as plain pages (`local.mjs`: `pkg?.scripts?.dev && !hasPage(ROOT)`) |
+| `route-comments-did-not-follow-the-file` | in front of a dev server a renamed route file's comments stay on the old address (`local.mjs` `rehome()` leaves a proxied lab alone); the skill's rule ("comments follow the file") names no exception |
+| `console-error-only-through-proxy` with `kind=favicon-asked-for-by-the-widget` | the widget asks for `/favicon.ico` (`src/widget/live.ts`); a project without one gets a 404 line in the console on every page load |
+| `console-error-only-through-proxy` with `kind=hydration-mismatch` | Next: the widget's `lab-pinning` class on `<html>` (`src/comments.js` `setPinning`) lands before React hydrates, and React reports a hydration mismatch |
+| `page-left-on-the-labs-502` | a page that reloads while the dev server restarts gets the lab's plain-text 502 and stays there (`lib/proxy.ts`) |
+
+**Limits.** HMR is checked over websockets (all these frameworks use one); no framework here uses server-sent events
+for it. A phone has no control tab: its console errors are judged by the laptop's. After a lab restart the pages
+reload by design of the frameworks' clients and the widget, so page state and "no reload" are not judged across one.
 
 ## Devices
 
