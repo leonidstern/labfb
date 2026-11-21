@@ -16,6 +16,7 @@ Code that needs a number (a timer, a Web Animation, which can't read a `var()`) 
 | `--_t-slow` (`--lab-t-slow`) | 300 ms | the biggest movements: a sheet, a pin changing face |
 | `--_t-loop` (`--lab-t-loop`) | 1200 ms | one turn of something that goes on: the agent's ring |
 | `--_t-hold` (`--lab-t-hold`) | 1000 ms | how long a highlight stays. A wait, not a movement: kept with reduced motion |
+| `--_t-calm` (`--lab-t-calm`) | 120 ms | reduced motion only: the crossfade that stands in for a slide, a zoom or a rise (not zeroed) |
 | `--_ease` (`--lab-ease`) | cubic-bezier(.2, .8, .2, 1) | standard: quick start, soft landing (it was already there) |
 | `--_ease-out` (`--lab-ease-out`) | cubic-bezier(0, 0, .58, 1) | a fade or colour coming in (CSS `ease-out`) |
 | `--_ease-in` (`--lab-ease-in`) | cubic-bezier(.4, 0, 1, 1) | something leaving: it speeds up as it goes |
@@ -24,7 +25,7 @@ Code that needs a number (a timer, a Web Animation, which can't read a `var()`) 
 
 Two pairs and one composite, only so the same long declaration is not copied (`ci/reuse.mjs`):
 `--_fade` (quick + out), `--_fade-base` (base + out), `--_twitch` (2 × loop, ease-in-out, infinite).
-`linear` stays a keyword: the ring's turn, and a sheet carried away by a swipe (steady, by design).
+`linear` stays a keyword: the ring's turn. A sheet let go is the one place a curve is worked out in code (`glide`, `carry` in `sheets.ts`): a cubic-bezier whose first slope is the speed it had at release, so it continues at the finger's speed.
 
 ## Reduced motion
 
@@ -32,6 +33,14 @@ One rule (after the keyframes in `styles.css`; `lab.css` has the same for its na
 `prefers-reduced-motion: reduce`, `--_t-quick`, `-base`, `-slow` and `-loop` are 0 ms, and animations run once with no
 delay. CSS and code both read the tokens, so nothing else is switched off one by one. What moves ends where it would
 have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight that stays visible still stays.
+
+Apple's guidance is to replace movement with a crossfade, not to snap it: so a second block at the end of `styles.css`
+(after every rule it overrides) gives what appears or goes a fade of `--_t-calm` (`lab-fade` in, `lab-gone` out) and no
+translate or scale: cards, sheets, the new-comment box, a message arriving, the ⋯ menu (a popover on a computer fades in by
+transition and out by the `.out` class), and the bar, the pill and the section line, which fade where they are as a sheet
+opens instead of sliding under the screen. A card or sheet that closes fades out (`goOut` in `comments.js`, `slideAway`
+in `sheets.ts` on a phone); code reads it as `ms('calm')`. The board view fades in (`overlay.ts`; its opacity is `!important`
+in `:host`, so `--bv-o` is stepped per frame). The half / full toggle is one step. `test/browser/motionreduce.mjs` samples it frame by frame.
 
 ## Special cases (a token times a number)
 
@@ -79,9 +88,9 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | `[data-sheet] .bar` | transform; opacity | base; base (delay quick / 3) | in; out | the bar stepping down |
 | `.chatwin, .card` | height | slow | settle | a comment pulling up to full height |
 | `lab-card-in` | transform, opacity | slow | standard | phones: a sheet grows out of what was tapped |
-| `leave()` (sheets.ts) | transform, opacity | base (tap, send) / by speed (swipe) | in / linear | the sheet leaving: shrinks into its pin after a tap, slides down whole after a send |
-| `slideAway()` (sheets.ts) | the bar | as `leave` | standard; out | the bar coming up as the sheet goes |
-| drag release (sheets.ts) | transform, height; scrim opacity | slow | settle; out | a sheet springing back |
+| `leave()` (sheets.ts) | transform, opacity | base (tap, send) / by speed (swipe) | in / starts at the release speed (`carry`) | the sheet leaving: shrinks into its pin after a tap, slides down whole after a send |
+| `slideAway()` (sheets.ts) | the bar | as `leave` | the sheet's pace after a swipe, settle's shape from rest after a tap (`glide`); out | the bar coming up as the sheet goes |
+| drag release (sheets.ts) | transform, height; scrim opacity | slow at most, shorter for a quick throw | settle's shape, built to start at the release speed (`glide`); out | a sheet springing back or to its other height |
 | keyboard fit (sheets.ts) | transform | slow | settle | the sheet moving over the keyboard |
 | composer glide (`composer.ts`) | height; the arrow's transform | base | standard | the box growing, the arrow sliding |
 | `.pane` (the dialog's insides) | opacity | quick out; base in after base | out | one pane fading for the other |

@@ -60,12 +60,14 @@ try {
           c = await ctl(p);
         }
         const onScreen = Boolean(c && c.l >= 0 && c.t >= 0 && c.r <= 1000 && c.btm <= 700);
+        // Next to the pointer (Leo, 21 Nov), not at the thing's far corner; on screen even at the edge.
+        const close = Boolean(first && Math.abs(first.x - (sx + 1)) < 120 && Math.abs(first.y - sy) < 60);
         const stayed = Boolean(c && first && Math.abs(c.x - first.x) < 2 && Math.abs(c.y - first.y) < 2);
         if (c) await p.mouse.click(c.x, c.y, { modifiers: ['Alt'] });
         await p.keyboard.up('Alt');
         await sleep(300);
         const stopped = await still(p, target);
-        check(eng, `${id}: the control stays put, on screen, and its pause stops it`, Boolean(c) && onScreen && stayed && stopped, JSON.stringify({ first, c, stopped }));
+        check(eng, `${id}: the control opens next to the pointer, stays put, on screen, and its pause stops it`, Boolean(c) && close && onScreen && stayed && stopped, JSON.stringify({ first, c, stopped, at: [sx + 1, sy] }));
         // Play it again for the next one.
         await p.keyboard.press('p');
         await sleep(150);

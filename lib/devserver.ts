@@ -1,5 +1,5 @@
 // Finding the project's dev server, for a lab that goes in front of it. Loaded by local.mjs only when it has to look:
-// a bare --proxy, or a project with a dev script and no pages of its own. A folder of pages never reads it.
+// a bare --proxy, or a project whose package.json has a dev script or a framework. A folder of pages never reads it.
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -46,12 +46,13 @@ function devServers(): DevServer[] | null {
   return [...ports].flatMap(([p, list]) => list.map((port) => ({ port, dir: cwds.get(p) || '' })));
 }
 // This project's server: one running in `root` or a folder inside it (a monorepo's app), never the lab's own port.
+// Other labs' ports (labPorts) are never it: a lab started in a folder inside this one is not its dev server.
 // The others are named in the message when none is found, so a server started in the wrong folder is easy to spot.
-export function findDevServer(root: string, labPort: number): { port: number | null; others: DevServer[] } {
+export function findDevServer(root: string, labPort: number, labPorts: number[] = []): { port: number | null; others: DevServer[] } {
   const inRoot = (dir: string) => dir === root || dir.startsWith(root + path.sep);
   const all = devServers();
   if (!all) return { port: null, others: [] };
-  const mine = all.filter((s) => inRoot(s.dir) && s.port !== labPort).sort((a, b) => a.port - b.port);
+  const mine = all.filter((s) => inRoot(s.dir) && s.port !== labPort && !labPorts.includes(s.port)).sort((a, b) => a.port - b.port);
   const others = all
     .filter((s) => !inRoot(s.dir) && s.port >= 1024 && s.port < 10000 && s.dir.startsWith(os.homedir() + path.sep))
     .sort((a, b) => a.port - b.port);

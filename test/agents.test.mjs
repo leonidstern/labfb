@@ -82,6 +82,22 @@ test('replies are signed by the agent that runs reply', async () => {
   }
 });
 
+test("the pages' waiting count reads who wrote last from the reply's session, not from a name", async () => {
+  const dir = site('waiting');
+  const { B } = await lab(dir);
+  const waiting = async () => (await (await fetch(B + '/_lab/pages')).json()).pages.find((p) => p.path === '/index')?.waiting;
+  const id = await pin(B, 'hello');
+  assert.equal(await waiting(), 1);
+  await cli(dir, ['reply', id, 'Looking at it', '--on-it'], { LAB_AGENT: 'aider' }); // an agent labit does not list
+  assert.equal(await waiting(), 0, 'the agent answered last');
+  await fetch(B + '/_lab/api/comments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: B },
+    body: JSON.stringify({ page: '/index', parent: id, name: 'Campbell', text: 'and the footer?' }), // a person, with an agent-like name
+  });
+  assert.equal(await waiting(), 1, 'a person named Campbell wrote last');
+});
+
 test('a listening Codex session is shown by name, with its resume command', async () => {
   const dir = site('listen');
   await lab(dir);

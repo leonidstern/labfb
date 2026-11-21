@@ -29,13 +29,12 @@ import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, lineOf, lineUp, ord, stepMoved, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, revealOpen, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
 import { bindLive, startLive, MARK_PATHS } from './widget/live.ts';
 import { inFrame, startFrame } from './widget/frame.ts';
-import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { inkSvg } from './widget/ink.ts';
 import { bindActions } from './widget/actions.ts';
@@ -43,7 +42,6 @@ import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } f
 import { bindBoardCam, showBoard } from './widget/boardcam.ts';
 import { bindFramework, overFramework, scanForFramework } from './widget/framework.ts';
 import { bindKeys } from './widget/keys.ts';
-import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, slowEls } from './widget/motion.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
@@ -83,6 +81,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get agentOf() { return agentOf; },
     get anchorAt() { return anchorAt; },
     get begin() { return begin; },
+    get addComment() { return addComment; },
     get bar() { return bar; },
     get chatBtn() { return chatBtn; },
     get chatEl() { return chatEl; },
@@ -153,7 +152,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get vv() { return vv; },
   };
   bindLive(W);
-  bindSections(W);
   bindList(W);
   bindChat(W);
   bindThread(W);
@@ -316,7 +314,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       if (!node.classList.contains('out')) return; // shown again meanwhile
       node.classList.remove('out');
       hide();
-    }, ms('quick'));
+    }, still.matches ? ms('calm') : ms('quick')); // reduced motion: a short fade (styles.css, lab-calm-out)
   };
   const toggleBtn = $('.toggle');
   const bar = /** @type {HTMLElement} */ (root.querySelector('.bar'));
@@ -391,6 +389,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       S.comments = data.comments || [];
+      S.rev = res.headers.has('x-lab-rev') ? Number(res.headers.get('x-lab-rev')) : null; // the lab's comments version this list is as of
       S.isAdmin = Boolean(data.admin);
       // A thread you were part-way through writing in opens again: the page may have reloaded under you
       // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.
@@ -527,7 +526,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   S.endStays = () => [...stays].forEach((f) => f());
   function begin(anchor) {
     if (!anchor.moment) {
-      const moment = S.momentFor?.(anchor); // the moment as the pin goes down, not as it is sent
+      const moment = mo?.momentFor(anchor); // the moment as the pin goes down, not as it is sent
       if (moment) anchor = { ...anchor, moment };
     }
     S.draft = { anchor };
@@ -542,10 +541,10 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     // A new comment or reply carries a nonce, so a retry after a lost answer can't save it twice.
     // Paused when written: the agent is told, with the moment (a loop's pass and second, a video's time, lib/moment.mjs).
     // The page stays paused after (Leo, 19 Nov: "dont need to play again"): pause, pin, pin again, play when you like.
-    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: msOf(pausedEl(payload.anchor)) } };
-    const moment = payload.anchor && !payload.action && !payload.anchor.moment ? momentFor(payload.anchor) : undefined;
+    if (S.paused && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, paused: true, atMs: mo.msOf(mo.pausedEl(payload.anchor)) } };
+    const moment = payload.anchor && !payload.action && !payload.anchor.moment ? mo?.momentFor(payload.anchor) : undefined;
     if (moment) payload = { ...payload, anchor: { ...payload.anchor, moment } };
-    if ((S.slow || slowEls.size > 0) && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
+    if ((S.slow || mo?.slowEls.size) && payload.anchor && !payload.action) payload = { ...payload, anchor: { ...payload.anchor, slow: true } }; // at ¼ speed
     if (!payload.action && !payload.nonce) payload = { ...payload, nonce: Math.random().toString(36).slice(2) + Date.now().toString(36) };
     for (let tries = 0; !res; tries++) {
       try {
@@ -697,7 +696,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     const act = `update labit to ${update.version}`;
     try {
       const { comment } = await send({ name: store.get('lab-name') || '', text: act, anchor: { kind: 'page', width: innerWidth, height: innerHeight, act } });
-      S.comments.push(comment);
+      addComment(comment);
       S.chatOpen = true;
       render();
     } catch {}
@@ -771,6 +770,11 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     const memo = passNow().unread;
     if (!memo.has(c.id)) memo.set(c.id, [c, ...repliesOf(c.id)].filter(isNew));
     return /** @type {any[]} */ (memo.get(c.id));
+  };
+  // A comment this page just sent, added unless it is there already: the live stream and /changes may have brought it
+  // before the POST's answer (or a retry of the POST answers with the same comment again).
+  const addComment = (comment) => {
+    if (!S.comments.some((c) => c.id === comment.id)) S.comments.push(comment);
   };
   const markSeen = (items) => {
     const fresh = items.filter((item) => !S.seen.has(item.id)).map((item) => item.id);
@@ -878,6 +882,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   };
   let viewW = 0; // the screen's width without its scrollbar (flipAt)
   function render() {
+    if (!moAsked && (S.draft?.anchor?.moment || S.comments.some((/** @type {any} */ x) => x.anchor?.moment))) void loadMotion().then(() => render()); // a moment's chip is the motion file's
     newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
     viewW = document.documentElement.clientWidth; // read once a pass, before any pin is written (flipAt)
     if (win.__labDebug) unseen = new Map();
@@ -918,7 +923,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     const done = () => {
       patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       flushPins(); // the rules of the pins the browser holds, now they are on the page (pinhold.ts)
-      if (S.closeFast && !now && prev) {
+      if ((S.closeFast || (still.matches && S.shown)) && !now && prev) { // reduced motion: a card or sheet fades out (a computer's went at once), no slide
         S.closeFast = false;
         prev.inert = true;
         layer.append(prev);
@@ -1123,6 +1128,9 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
         const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
         S.openCard = card;
         if (appear && !S.stepping) card.classList.add('in');
+        // Reduced motion: the page's scroll to the pin is instant, so the card is drawn again within its fade: it keeps the fade (a fresh node has no class).
+        if (appear) S.inAt = performance.now();
+        else if (still.matches && performance.now() - S.inAt < 200) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_thread-max))`;
         S.stepping = S.keepKeys = false;
         next.push(card);
@@ -1191,7 +1199,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
-          S.comments.push(comment);
+          addComment(comment);
           markSeen([comment]);
           S.draft = null;
           keepSpot(null);
@@ -1219,7 +1227,8 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       });
       float.append(el('div', { class: 'handle' }));
       // Paused: the moment this pin will carry, so you know it is kept (Leo, 19 Nov: "some info in pin where it was").
-      if (anchor.moment) float.append(S.momentChip(anchor.moment));
+      const chip = anchor.moment && S.momentChip?.(anchor.moment); // only a paused video has one (Leo, 21 Nov)
+      if (chip) float.append(chip);
       const row = quickRow(draft, box);
       if (row?.children.length) float.append(row);
       float.append(box);
@@ -1247,24 +1256,28 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     if (!S.on) ptr.classList.remove('show'); // comments hidden: the system pointer is back at once
     else recheck();
     store.set('lab-on', S.on ? '1' : '0');
-    S.checkSections?.(); // hidden comments: no section bar
+    S.checkSections?.(); // hidden comments: no section bar (the file loads if there is one to show)
     S.draft = S.on ? keptDraft() : null; // hidden, a new comment lets go of the screen; its words wait, and come back when comments do
     S.openId = null;
     render();
-    drawMotion(); // the pause / play beside each moving thing goes and comes with the comments
+    mo?.drawMotion(); // the pause / play beside each moving thing goes and comes with the comments
   };
   toggleBtn.addEventListener('click', () => setOn(!S.on));
   // The ⋯ menu is a disclosure: the button says whether it's open; opening puts focus on its first item, and Escape
   // or a pick gives focus back to the button.
   // On a computer the menu is a popover the ⋯ button opens: the browser closes it on a press elsewhere or Esc, gives
   // focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
-  const popMenu = !coarse; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
+  const popMenu = !coarse && CSS.supports('overlay', 'auto'); // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer); Safari has no `overlay`, so a popover would close in one frame: it stays in the bar too, and fades (goOut)
   if (popMenu) {
     moreMenu.popover = 'auto';
     /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
     moreMenu.addEventListener('beforetoggle', (e) => {
       const open = /** @type {ToggleEvent} */ (e).newState === 'open';
-      moreMenu.hidden = !open;
+      if (open || !still.matches) moreMenu.hidden = !open;
+      else { // reduced motion: it fades out where it is (display and hidden would end that at once)
+        moreMenu.classList.add('out');
+        setTimeout(() => (moreMenu.classList.remove('out'), moreMenu.matches(':popover-open') || (moreMenu.hidden = true)), ms('calm'));
+      }
       moreBtn.setAttribute('aria-expanded', String(open)); // the browser doesn't write it for its invoker
       if (open) {
         moreMenu.classList.remove('out');
@@ -1302,7 +1315,25 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       e.stopPropagation();
     }
   }, true);
-  bindMotion(W);
+  // Motion (src/widget/motion.ts: pause and ¼ speed, the controls beside what moves, a pin's moment) is its own file, loaded
+  // once something on the page moves (a video, an animation: looked for a second after the page starts, when one
+  // starts, and on a phone each second), when ⌥ is held, P or S is pressed, or a comment has a moment; mo: the module, once it is.
+  /** @type {any} */
+  let mo = null;
+  /** @type {Promise<any> | null} */
+  let moAsked = null;
+  const loadMotion = () => (moAsked ??= part('motion').then((m) => (m.bindMotion(W), (mo = m))).catch(() => (moAsked = null)));
+  const lookForMotion = () => {
+    if (!moAsked && (document.querySelector('video') || document.getAnimations().some((a) => !root.contains(/** @type {any} */ (a.effect)?.target)))) void loadMotion();
+  };
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Alt' && !coarse && !mo) void loadMotion().then((m) => m?.altMotionSet(!e.metaKey && !e.ctrlKey && !e.shiftKey)); // its own keys come once it is there: this press is its first
+  }, true);
+  for (const type of ['animationstart', 'play']) addEventListener(type, lookForMotion, true);
+  setTimeout(lookForMotion, 1000);
+  if (coarse) {
+    const phone = setInterval(() => (moAsked ? clearInterval(phone) : document.hidden || lookForMotion()), 1000);
+  }
   doneBtn.addEventListener('click', toggleDone);
   movedBtn.addEventListener('click', () => (setMenu(false), stepMoved()));
   // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
@@ -1411,8 +1442,8 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     if (S.on && !typing(e) && !inOtherWidget && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && ['pause', 'slow', 'chat', 'next', 'done', 'reply', 'resolve'].includes(act) && (act === 'next' || act === 'done' || !e.shiftKey)) { // ⇧D draws too: Shift straightens (below)
       const k = act;
       e.preventDefault();
-      if (k === 'pause') return setPause(!S.paused);
-      if (k === 'slow') return setSlow(!S.slow);
+      if (k === 'pause') return void loadMotion().then((m) => m?.setPause(!S.paused));
+      if (k === 'slow') return void loadMotion().then((m) => m?.setSlow(!S.slow));
       if (k === 'chat') return chatBtn.click();
       if (k === 'next') return stepNew(e.shiftKey ? -1 : 1);
       if (k === 'done') return void ((S.dKey = true), (S.dShift = e.shiftKey), (S.drew = false), part('draw')); // on release (below): held, D draws (draw.ts); ⇧D tapped alone stays the board's
@@ -1796,6 +1827,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     });
   };
   addEventListener('resize', reflow);
+  addEventListener('resize', () => requestAnimationFrame(() => requestAnimationFrame(revealOpen))); // a turned phone: the open thread's pin stays in sight, above its sheet
   // A question's card in the margin (thread.ts) that no longer fits a narrower window goes back where cards go.
   addEventListener('resize', () => {
     const card = layer.querySelector('.card.margin');
@@ -1935,6 +1967,25 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
   pageStyle.textContent += `@media (pointer: coarse) { html.lab-pinning.lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
 
+  // The section bar (src/widget/sections.ts) is its own file, loaded when the page may show one: the lab kept its room
+  // (the file clears that again), or a lab page (or one that says so) has 3 or more headings. Asked again when a route
+  // or a reload changes the page, a read comes from another device, comments come back, or headings are drawn late;
+  // those call these until the file is there and takes its own place.
+  /** @type {Promise<void> | null} */
+  let sectionsAsked = null;
+  const maybeSections = () => {
+    if (sectionsAsked || !document.body) return;
+    if (document.querySelector('style[data-lab="section-bar"]') || (document.querySelector('meta[name="lab-sections"], [data-lab-sections], link[href*="/_lab/lab."]') && document.querySelectorAll('h1, h2, h3').length > 2)) {
+      sectionsAsked = part('sections').then((m) => (m.bindSections(W), m.startSections())).catch(() => (sectionsAsked = null));
+    }
+  };
+  S.checkSections = S.syncSections = S.routed = maybeSections;
+  /** @param {any} n */
+  const heady = (n) => n?.nodeType === 1 && (n.matches('h1, h2, h3') || n.querySelector('h1, h2, h3'));
+  new MutationObserver((list, o) => {
+    if (sectionsAsked) return o.disconnect();
+    if (list.some((/** @type {{ target: any, addedNodes: NodeList }} */ m) => heady((m.target.nodeType === 3 ? m.target.parentElement : m.target)?.closest('h1, h2, h3')) || [...m.addedNodes].some(heady))) maybeSections();
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
   const start = () => {
     document.head.append(pageStyle, pinCursorStyle);
     refreshPinCursor();
@@ -1946,7 +1997,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     pageStyle.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
-    startSections(); // the section bar: what is new or updated on the page since you read it
+    maybeSections(); // the section bar: what is new or updated on the page since you read it
     scanForFramework();
     if (!S.components) {
       addEventListener('load', scanForFramework, { once: true });

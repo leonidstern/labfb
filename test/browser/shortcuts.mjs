@@ -209,7 +209,7 @@ try {
       // With the pointer switched on by 1 (comment / pointer) when no question is open: 1 still toggles it.
       await a.close();
       for (const c of (await (await fetch(`${B}/_lab/api/comments?page=/ask`)).json()).comments.filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: '/ask', action: 'delete', id: c.id }) });
-      // Pause: no ⋯ menu row; holding ⌥ over a moving thing shows its control (pause · ¼ · ms) in its top right corner,
+      // Pause: no ⋯ menu row; holding ⌥ over a moving thing opens its control (pause · ¼ · ms) next to the pointer,
       // which stops only that one and never pins; let go and a paused one keeps a ▶. P stops them all, a comment written
       // while paused tells the agent so (anchor.paused, atMs); P again plays. S slows all to ¼.
       await p.goto(B + '/anim');
@@ -243,7 +243,7 @@ try {
         const s = document.getElementById('s').getBoundingClientRect();
         const at = c?.getBoundingClientRect();
         return { shown: on.length, mini: on.filter((n) => n.classList.contains('mini')).length, row: Boolean(r?.querySelector('.motion-row')), words: c?.querySelector('.motion-play')?.getAttribute('aria-label'), ms: c?.querySelector('.motion-ms')?.textContent,
-          corner: Boolean(at && Math.abs(at.right - Math.max(s.left + s.width / 2 + 20 - 4, at.width + 4)) < 3 && Math.abs(at.top - (s.top + s.height / 2 - 20 + 4)) < 3),
+          near: Boolean(at && Math.abs(at.left - (s.left + s.width / 2 + 1 + 12)) < 3 && Math.abs(at.top - (s.top + s.height / 2 + 10 + 14)) < 3), // just below and right of the pointer (Leo, 21 Nov)
           anim: document.getElementById('s').getAnimations()[0]?.playState, other: document.getElementById('t').getAnimations()[0]?.playState };
       });
       const first = await pause();
@@ -254,7 +254,7 @@ try {
       await p.mouse.move(sr.left + sr.width / 2 + 1, sr.top + sr.height / 2 + 10);
       await untilRoot(p, (r) => r.querySelectorAll('.motion-ctl.on').length === 1, 1500);
       const alt = await pause();
-      check(eng, '⌥ over a moving thing shows its control in its top right corner', alt.shown === 1 && alt.corner && alt.words === 'pause this animation (P: all)' && /^\d+ ms$/.test(alt.ms), JSON.stringify(alt));
+      check(eng, '⌥ over a moving thing opens its control next to the pointer', alt.shown === 1 && alt.near && alt.words === 'pause this animation (P: all)' && /^\d+ ms$/.test(alt.ms), JSON.stringify(alt));
       const pb = await p.evaluate(`${shadow}.querySelector('.motion-ctl.on .motion-play').getBoundingClientRect().toJSON()`);
       await p.mouse.click(pb.left + pb.width / 2, pb.top + pb.height / 2, { modifiers: ['Alt'] });
       await until(p, () => document.getElementById('s').getAnimations()[0]?.playState === 'paused', null, 600);

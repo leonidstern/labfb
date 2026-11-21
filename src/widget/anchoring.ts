@@ -42,6 +42,8 @@ type Anchor = {
   component?: string;
   source?: string;
   looks?: string;
+  rules?: string;
+  box?: string;
   chosen?: string;
   cssText?: string;
   quote?: Quote;
@@ -96,7 +98,7 @@ export function bindAnchoring(deps: Deps) {
 
 // A motion token (--_t-quick, -base, -slow, -loop, -hold, styles.css) in milliseconds, times `times`: for a timer or a
 // Web Animation, which can't read a var(). It is 0 under reduced motion, as the CSS durations are (hold excepted).
-export function ms(token: 'quick' | 'base' | 'slow' | 'loop' | 'hold', times = 1): number {
+export function ms(token: 'quick' | 'base' | 'slow' | 'loop' | 'hold' | 'calm', times = 1): number {
   const v = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(getComputedStyle(host).getPropertyValue(`--_t-${token}`));
   return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) * times : 0;
 }
@@ -234,6 +236,41 @@ function looksOf(el) {
   if (!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor)) out.push(`fill ${say(cs.backgroundColor)}`);
   out.push(`text ${say(cs.color)} ${cs.fontSize}/${cs.fontWeight}`);
   if (parseFloat(cs.borderTopLeftRadius)) out.push(`radius ${cs.borderTopLeftRadius}`);
+  return short(out.join(', '), 200);
+}
+
+// The style rules that reach the element (the last few, so the ones that win), each with the file and the media query
+// it sits under: "bigger on phones" then goes to the right @media, not just the right class.
+function rulesOf(el) {
+  const out: string[] = [];
+  const walk = (rules, file, media) => {
+    for (const r of rules) {
+      try {
+        if (r.selectorText !== undefined) {
+          if (!/lab-|data-lab/.test(r.selectorText) && el.matches(r.selectorText)) out.push(`${short(r.selectorText, 60)}${media} (${file})`);
+        } else if (r.cssRules && !(r.media && !matchMedia(r.media.mediaText).matches)) walk(r.cssRules, file, r.media ? `${media} @media ${short(r.media.mediaText, 60)}` : media);
+      } catch {}
+    }
+  };
+  for (const sheet of document.styleSheets) {
+    try {
+      const own = sheet.ownerNode as Element | null;
+      const file = sheet.href ? sheet.href.replace(/[?#].*$/, '').replace(/^.*\//, '') : own?.getAttribute?.('data-vite-dev-id')?.replace(/^.*\//, '') || 'inline style';
+      walk(sheet.cssRules, file, '');
+    } catch {} // a stylesheet from another origin can't be read
+  }
+  return short(out.slice(-4).join('; '), 400);
+}
+
+// How big the element is and what is around it, in the words a fix is written in.
+function boxOf(el) {
+  const cs = getComputedStyle(el);
+  const out = [`${Math.round(el.offsetWidth)}×${Math.round(el.offsetHeight)}`];
+  const sides = (p) => [0, 1, 2, 3].map((i) => parseFloat(cs[`${p}${['Top', 'Right', 'Bottom', 'Left'][i]}`]) || 0);
+  for (const p of ['padding', 'margin']) if (sides(p).some(Boolean)) out.push(`${p} ${sides(p).join(' ')}`);
+  out.push(cs.display + (/flex|grid/.test(cs.display) && cs.gap !== 'normal' ? ` gap ${cs.gap}` : ''));
+  if (cs.position !== 'static') out.push(cs.position);
+  if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth) out.push(`content wider than it (${el.scrollWidth}px)`);
   return short(out.join(', '), 200);
 }
 
@@ -545,7 +582,13 @@ export function anchorAt(clickX, clickY, words = false, onto = null) {
   Object.assign(anchor, around(target));
   if (shadowHost) anchor.shadow = openingTag(shadowHost);
   for (const [k, v] of Object.entries(componentAt(target))) if (v) anchor[k] = short(v, 200);
-  if (target !== document.body) anchor.looks = looksOf(target);
+  if (target !== document.body) {
+    anchor.looks = looksOf(target);
+    anchor.rules = rulesOf(target);
+    anchor.box = boxOf(target);
+    const astro = target.closest?.('[data-astro-source-file]');
+    if (astro && !anchor.source) anchor.source = short(`${astro.getAttribute('data-astro-source-file').replace(/^.*\/src\//, 'src/')}:${astro.getAttribute('data-astro-source-loc') || ''}`, 200);
+  }
   // A <select>: which option is chosen (its text is every option in a row).
   const select = target.closest?.('select');
   if (select && select.selectedIndex >= 0) {
@@ -1424,7 +1467,11 @@ export function zoneAnchor({ x0, y0, x1, y1 }) {
   const boxText = box === document.body ? '' : short(box.textContent, 200);
   if (boxText && (box.textContent || '').length < 400) anchor.text = short(boxText, 80);
   else delete anchor.text;
-  if (box !== document.body) anchor.looks = looksOf(box);
+  if (box !== document.body) {
+    anchor.looks = looksOf(box);
+    anchor.rules = rulesOf(box);
+    anchor.box = boxOf(box);
+  }
   // Text inside the zone: the words whose middle falls inside it, in reading order. (Reading it like a selection
   // between the zone's corners took the whole paragraph whenever a corner sat above or below a line of text.)
   const words = [];

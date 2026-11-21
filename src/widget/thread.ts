@@ -229,8 +229,9 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const body = W.el('div', { class: 'body' });
   const foot = W.el('div', { class: 'foot' });
   card.append(W.el('div', { class: 'handle' }), body, foot);
-  // Written while the page was paused: the moment, as a chip; clicked, the page pauses there again (comments.js).
-  if (c.anchor?.moment && W.S.momentChip) card.insertBefore(W.S.momentChip(c.anchor.moment, true), body);
+  // Written on a paused video: the moment, as a chip; clicked, the page pauses there again (comments.js).
+  const chip = c.anchor?.moment && W.S.momentChip?.(c.anchor.moment, true);
+  if (chip) card.insertBefore(chip, body);
   // Why its pin is not plainly on its spot, in one line.
   const why = { lost: 'its spot is gone', hidden: 'hidden right now: its spot is not shown', unsure: 'unsure: it may not be the spot it was made on', changed: 'its words changed: check it still fits' }[W.position(c.anchor || {}).why as string];
   if (why && !c.resolved) card.insertBefore(W.el('div', { class: 'spotnote' }, why), body);
@@ -442,7 +443,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       doIt.disabled = true;
       try {
         const { comment } = await W.send({ name, text: 'Do it', parent: c.id, doit: true });
-        W.S.comments.push(comment);
+        W.addComment(comment);
         W.markSeen([comment]);
         W.render();
       } catch {
@@ -480,7 +481,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       draftKey: `lab-typing:${W.S.page}:${c.id}`,
       onSubmit: async (name, text) => {
         const { comment } = await W.send({ name, text, parent: c.id });
-        W.S.comments.push(comment);
+        W.addComment(comment);
         W.markSeen([comment]);
         // Writing in a done thread reopens it (the lab does the same): it shows as open at once, pin and buttons.
         if (c.resolved) {
@@ -494,11 +495,14 @@ export function threadCard(c, fresh = new Set(), focus = false) {
         }
         // Add the reply where it belongs instead of redrawing the card, so nothing on screen blinks
         // and the reply box keeps its focus for the next one.
-        shown.add(comment.id);
-        const items = card.querySelectorAll('.item');
-        const added = itemEl(comment);
-        added.classList.add('fresh');
-        items[items.length - 1].after(added);
+        // (Unless the stream's copy of it was added already: sync, above, shows each reply once.)
+        if (!shown.has(comment.id)) {
+          shown.add(comment.id);
+          const items = card.querySelectorAll('.item');
+          const added = itemEl(comment);
+          added.classList.add('fresh');
+          items[items.length - 1].after(added);
+        }
         body.scrollTop = body.scrollHeight; // the reply just sent is in view above the box
         W.S.stayAtEnd?.(body);
         return { keep: true };
@@ -547,7 +551,7 @@ function commitPick(p: Pending) {
       if (pending === p) pending = null;
       failedPick.delete(p.ask);
       untry(); // the agent writes the pick into the file; the page shows its own words till then
-      W.S.comments.push(comment);
+      W.addComment(comment);
       W.markSeen([comment]);
       W.render();
     } catch (err) {

@@ -1,4 +1,6 @@
-// Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+// Part of the comment widget, built as its own file (public/_lab/sections.js, scripts/build-widget.mjs) that src/comments.js
+// loads when the page may show the bar (a lab page with 3 or more headings, or one that says so). Its styles come with it.
+// Uses the widget's own parts through W, set once at startup.
 //
 // The section bar: a bar at the top of the page that lists each section (a heading, h1 to h3; a lone h1 is the page's
 // title, not a section) with the current one filled, and what you have not read marked:
@@ -29,6 +31,7 @@
 //      route keeping its own marks (behind a proxy, by its real path);
 //   6. no bar and no inset in print; the inset comes with scroll-padding-top, so #links land below the bar.
 import { noisy } from '../../lib/ids.ts';
+import css from './sections.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -102,6 +105,7 @@ function collect(): Sec[] {
 
 export function startSections() {
   const el = W.el as (tag: string, attrs?: Record<string, string>, text?: string) => HTMLElement;
+  W.root.append(el('style', {}, css)); // its styles come with it, after the widget's own
   const nav = el('nav', { class: 'sb-nav', 'aria-label': 'sections' });
   const bar = el('div', { class: 'sbar' });
   // The line scrolls: its edges fade where there is more, and a dot sits at an edge when something new or updated
