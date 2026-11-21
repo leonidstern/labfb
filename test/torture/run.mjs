@@ -2,9 +2,13 @@
 // The torture test's entry: makes N seeded cases in three areas (dev-sync, hotswap, agent-sync), runs each against a lab
 // of its own, and says per area and overall how many passed, failed loudly, failed silently, or were flaky, with every
 // failure grouped by signature and one small replayable case per signature. See README.md beside this file.
+// A fourth area, dev-servers (the lab in front of real frameworks' dev servers), runs when it is named
+// (--area dev-servers) or asked for beside the others (--area all --with-dev-servers): it installs frameworks once.
 //
 //   node test/torture/run.mjs --cases 3000 --area all --seed 1 --concurrency 12 --json out.json
 //   node test/torture/run.mjs --smoke
+//   node test/torture/run.mjs --smoke --area dev-servers                 (~20 cases on real dev servers)
+//   node test/torture/run.mjs --area dev-servers --cases 120 --concurrency 5 --json out.json
 //   node test/torture/run.mjs --replay hotswap:2884193731            (one case again, every step printed)
 //   node test/torture/run.mjs --replay hotswap:2884193731:0,3,4      (only these steps of it)
 import fs from 'node:fs';
@@ -15,11 +19,14 @@ import { Ctx, hashSeed, makeRng, signatureOf, sleep, spread, LAN } from './lib.m
 import * as devSync from './dev-sync.mjs';
 import * as hotswap from './hotswap.mjs';
 import * as agentSync from './agent-sync.mjs';
+import * as devServers from './dev-servers.mjs';
 import { KNOWN_BUGS, knownBugOf, bugTag } from './known-bugs.mjs';
 
-const AREAS = { 'dev-sync': devSync, hotswap, 'agent-sync': agentSync };
-// How `--area all` shares its cases out.
+const AREAS = { 'dev-sync': devSync, hotswap, 'agent-sync': agentSync, 'dev-servers': devServers };
+// How `--area all` shares its cases out. (dev-servers is not in the share: it has a count of its own, --dev-server-cases,
+// so the other areas' counts are the same with and without it.)
 const SHARE = { 'dev-sync': 0.35, hotswap: 0.3, 'agent-sync': 0.35 };
+const HEAVY = 'dev-servers';
 const REPO = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 
 // ---------- arguments (a flag, or the same name in the environment: --cases / TORTURE_CASES) ----------
@@ -34,6 +41,7 @@ if (flag('help', false)) {
   process.exit(0);
 }
 const smoke = Boolean(flag('smoke', false));
+const casesGiven = flag('cases', null) !== null;
 const opts = {
   seed: Number(flag('seed', 1)),
   cases: Number(flag('cases', smoke ? 60 : 3000)),
@@ -51,9 +59,18 @@ const opts = {
   verbose: Boolean(flag('verbose', false)),
   replay: flag('replay', ''),
   lan: LAN,
+  // The dev-servers area: its own number of cases, its own share of real browsers (the widget on a real framework's
+  // page is the point), its own limit of cases at once (dev servers are heavy), and the frameworks it draws from.
+  devCases: Number(flag('dev-server-cases', smoke ? 20 : 120)),
+  devBrowserShare: Number(flag('dev-browser-share', 0.4)),
+  devConcurrency: Number(flag('dev-concurrency', smoke ? 4 : 5)),
+  frameworks: flag('frameworks', '') ? String(flag('frameworks', '')).split(',') : [],
 };
-const areaNames = opts.area === 'all' ? Object.keys(AREAS) : opts.area.split(',');
+for (const f of opts.frameworks) if (!devServers.FRAMEWORK_NAMES.includes(f)) throw new Error(`--frameworks: some of ${devServers.FRAMEWORK_NAMES.join(', ')}`);
+const areaNames = opts.area === 'all' ? [...Object.keys(SHARE), ...(flag('with-dev-servers', false) ? [HEAVY] : [])] : opts.area.split(',');
 for (const a of areaNames) if (!AREAS[a]) throw new Error(`--area: one of ${Object.keys(AREAS).join(', ')}, all`);
+// Named alone, --cases is its count; beside other areas they share --cases and it has --dev-server-cases.
+if (areaNames.length === 1 && areaNames[0] === HEAVY && casesGiven) opts.devCases = opts.cases;
 
 // ---------- real browsers, for the cases that ask for one ----------
 const require = createRequire(import.meta.url);
@@ -93,12 +110,14 @@ const closeBrowsers = async () => {
 };
 
 // ---------- one case ----------
-const CASE_MS = 90000 * opts.slow;
 /** Runs one case: its plan from its seed alone, a world of its own, its findings. `keep`: only these steps of the plan. */
 async function runOnce(area, seed, keep = null) {
   const plan = area.plan(makeRng(seed), opts);
   const all = plan.ops.length;
   if (keep) plan.ops = plan.ops.map((op, i) => (keep.includes(i) ? op : null));
+  // An area that is heavy lets only so many of its cases run at once (its turn is waited for before the clock starts).
+  const release = area.gate ? await area.gate(opts) : null;
+  const CASE_MS = (area.caseMs || 90000) * opts.slow;
   const ctx = new Ctx(area.name, seed);
   const t0 = Date.now();
   let timer;
@@ -112,6 +131,7 @@ async function runOnce(area, seed, keep = null) {
   } finally {
     clearTimeout(timer);
     await ctx.dispose();
+    release?.();
   }
   return { plan, all, findings: ctx.findings, trace: ctx.trace, ms: Date.now() - t0, timings: ctx.timings || {} };
 }
@@ -123,6 +143,8 @@ if (opts.replay) {
   const [name, seed, keep] = String(opts.replay).split(':');
   const area = AREAS[name];
   if (!area || !/^\d+$/.test(seed || '')) throw new Error('--replay <area>:<case seed>[:<steps to keep, e.g. 0,3,4>]');
+  await (await import(pathToFileURL(path.join(REPO, 'lib/build.ts')).href)).ensureBuilt(REPO);
+  await area.prepare?.(opts);
   const times = Number(flag('times', 1));
   let bad = 0;
   for (let n = 0; n < times; n++) {
@@ -150,31 +172,40 @@ if (opts.replay) {
 // ---------- the run ----------
 // The page script is built once, before any lab starts (each lab would build it itself, all at once).
 await (await import(pathToFileURL(path.join(REPO, 'lib/build.ts')).href)).ensureBuilt(REPO);
+// What an area needs once before its cases (dev-servers: the frameworks' installs, into a cache outside this checkout).
+for (const a of areaNames) await AREAS[a].prepare?.(opts);
 
-const counts = {}; // area -> { total, pass, loud, silent, flaky, unclear, harness }
+const counts = {};
+const byKind = {}; // area -> kind -> the same counts (dev-servers: per framework) // area -> { total, pass, loud, silent, flaky, unclear, harness }
 const signatures = new Map(); // signature -> { area, cls, check, tags, cases, confirmed, flaky, example, repro }
 const failures = []; // every failing case, one line each
 const timings = {}; // name -> [ms], the settle times the areas measured
 const caseMs = {};
-const shares = areaNames.map((a) => SHARE[a] ?? 1);
+const shared = areaNames.filter((a) => a !== HEAVY); // these share --cases; dev-servers has its own count
+const shares = shared.map((a) => SHARE[a] ?? 1);
 const queue = [];
-areaNames.forEach((a, k) => {
-  const n = k === areaNames.length - 1 ? opts.cases - queue.length : Math.round((opts.cases * shares[k]) / shares.reduce((x, y) => x + y, 0));
-  counts[a] = { total: 0, pass: 0, loud: 0, silent: 0, flaky: 0, unclear: 0, harness: 0 };
+const zero = () => ({ total: 0, pass: 0, loud: 0, silent: 0, flaky: 0, unclear: 0, harness: 0 });
+shared.forEach((a, k) => {
+  const n = k === shared.length - 1 ? opts.cases - queue.length : Math.round((opts.cases * shares[k]) / shares.reduce((x, y) => x + y, 0));
+  counts[a] = zero();
   for (let i = 0; i < n; i++) queue.push({ area: AREAS[a], index: i, seed: hashSeed(opts.seed, a, i) });
 });
+if (areaNames.includes(HEAVY)) {
+  counts[HEAVY] = zero();
+  for (let i = 0; i < opts.devCases; i++) queue.push({ area: AREAS[HEAVY], index: i, seed: hashSeed(opts.seed, HEAVY, i) });
+}
 // Mixed, so the three areas load the machine together from start to end (the order still depends on the seed alone).
 const order = makeRng(hashSeed(opts.seed, 'order')).shuffle(queue);
 const sig = (key, area, f) => {
-  if (!signatures.has(key)) signatures.set(key, { signature: key, area: area.name, cls: f.cls, check: f.check, tags: f.tags, cases: 0, confirmed: 0, flaky: 0, example: f.detail, repro: null });
+  if (!signatures.has(key)) signatures.set(key, { signature: key, area: area.name, cls: f.cls, check: f.check, tags: f.tags, cases: 0, confirmed: 0, flaky: 0, kinds: {}, example: f.detail, repro: null });
   return signatures.get(key);
 };
 
 async function shrink(area, seed, key, all) {
   let keep = Array.from({ length: all }, (_, i) => i);
-  let budget = opts.shrink;
-  // A smoke run stops making cases smaller a minute in: it has to end within two.
-  const late = () => smoke && Date.now() - t0 > 60000;
+  let budget = Math.min(opts.shrink, area.shrinkBudget ?? Infinity); // (a heavy area caps it: its cases take long)
+  // A smoke run stops making cases smaller a minute in: it has to end within two (with dev servers: two minutes in, within four).
+  const late = () => smoke && Date.now() - t0 > (areaNames.includes(HEAVY) ? 120000 : 60000);
   for (let chunk = Math.ceil(keep.length / 2); chunk >= 1 && budget > 0 && !late(); ) {
     let smaller = false;
     for (let at = 0; at < keep.length && budget > 0 && !late(); ) {
@@ -199,7 +230,12 @@ async function runCase(job) {
   for (const [k, list] of Object.entries(first.timings)) (timings[k] ||= []).push(...list);
   const bad = failing(first.findings);
   const keys = sigsOf(area, bad);
-  for (const f of first.findings.filter((x) => x.cls === 'unclear' || x.cls === 'harness')) sig(signatureOf(area.name, f), area, f).cases++;
+  const kind = first.plan.kind;
+  for (const f of first.findings.filter((x) => x.cls === 'unclear' || x.cls === 'harness')) {
+    const s = sig(signatureOf(area.name, f), area, f);
+    s.cases++;
+    s.kinds[kind] = (s.kinds[kind] || 0) + 1;
+  }
   let cls;
   const confirmedKeys = [];
   if (!keys.length) cls = first.findings.some((f) => f.cls === 'harness') ? 'harness' : first.findings.some((f) => f.cls === 'unclear') ? 'unclear' : 'pass';
@@ -215,34 +251,38 @@ async function runCase(job) {
       const f = bad.find((x) => signatureOf(area.name, x) === k);
       const s = sig(k, area, f);
       s.cases++;
+      s.kinds[kind] = (s.kinds[kind] || 0) + 1;
       if (again.has(k)) {
         s.confirmed++;
         confirmedKeys.push(k);
         if (!s.repro) {
           s.repro = { seed, keep: null, ops: first.plan.ops.map((op) => area.describe(op)), kind: first.plan.kind, browser: first.plan.browser || null };
           const keep = opts.shrink > 0 && first.all > 1 ? await shrink(area, seed, k, first.all) : null;
+          s.repro.flags = area.replayFlags?.(opts) || '';
           if (keep && keep.length < first.all) Object.assign(s.repro, { keep, ops: keep.map((i) => `${i}: ${area.describe(first.plan.ops[i])}`) });
         }
       } else {
         s.flaky++;
-        s.flakySeed ??= seed;
+        if (s.flakySeed === undefined) Object.assign(s, { flakySeed: seed, flakyBrowser: first.plan.browser || null });
       }
     }
     const confirmed = bad.filter((f) => confirmedKeys.includes(signatureOf(area.name, f)));
     cls = confirmed.some((f) => f.cls === 'silent') ? 'silent' : confirmed.length ? 'loud' : 'flaky';
-    failures.push({ area: area.name, seed, kind: first.plan.kind, browser: first.plan.browser || null, class: cls, signatures: keys, confirmed: confirmedKeys, line: `${bad[0].check}: ${bad[0].detail.split('\n')[0].slice(0, 200)}`, ops: first.plan.ops.map((op) => area.describe(op)), replay: `node test/torture/run.mjs --replay ${area.name}:${seed}${first.plan.browser ? ' --browser-share 1' : ' --no-browser'}` });
+    failures.push({ area: area.name, seed, kind: first.plan.kind, browser: first.plan.browser || null, class: cls, signatures: keys, confirmed: confirmedKeys, line: `${bad[0].check}: ${bad[0].detail.split('\n')[0].slice(0, 200)}`, ops: first.plan.ops.map((op) => area.describe(op)), replay: `node test/torture/run.mjs --replay ${area.name}:${seed}${first.plan.browser ? ' --browser-share 1' : ' --no-browser'}${area.replayFlags?.(opts) || ''}` });
   }
   // A case whose only notes are "unclear" passed: the note is counted beside it, not instead of it.
-  c.total++;
-  if (cls === 'unclear') (c.pass++, c.unclear++);
-  else c[cls]++;
+  for (const x of [c, ((byKind[area.name] ||= {})[kind] ||= zero())]) {
+    x.total++;
+    if (cls === 'unclear') (x.pass++, x.unclear++);
+    else x[cls]++;
+  }
   if (opts.verbose && cls !== 'pass') console.error(`${cls.padEnd(7)} ${area.name}:${seed} ${keys.join(' ; ') || first.findings.map((f) => f.check).join(',')}`);
 }
 
 const t0 = Date.now();
 let done = 0;
 const total = order.length;
-console.error(`torture: ${total} cases (${areaNames.map((a) => `${a} ${order.filter((j) => j.area.name === a).length}`).join(', ')}), seed ${opts.seed}, ${opts.concurrency} at once${opts.browser ? `, browsers in ~${Math.round(opts.browserShare * 100)}% of hotswap and agent-sync` : ', no browsers'}${opts.lan ? '' : ', no wifi address (phones come in as this computer)'}`);
+console.error(`torture: ${total} cases (${areaNames.map((a) => `${a} ${order.filter((j) => j.area.name === a).length}`).join(', ')}), seed ${opts.seed}, ${opts.concurrency} at once${areaNames.includes(HEAVY) ? ` (dev-servers ${opts.devConcurrency} at once)` : ''}${opts.browser ? `, browsers in ${shared.length ? `~${Math.round(opts.browserShare * 100)}% of hotswap and agent-sync` : ''}${shared.length && areaNames.includes(HEAVY) ? ' and ' : ''}${areaNames.includes(HEAVY) ? `~${Math.round(opts.devBrowserShare * 100)}% of dev-servers` : ''}` : ', no browsers'}${opts.lan ? '' : ', no wifi address (phones come in as this computer)'}`);
 const tick = setInterval(() => {
   const sum = (k) => Object.values(counts).reduce((n, c) => n + c[k], 0);
   console.error(`  ${done}/${total} · pass ${sum('pass')} loud ${sum('loud')} silent ${sum('silent')} flaky ${sum('flaky')} harness ${sum('harness')} · ${Math.round((Date.now() - t0) / 1000)} s`);
@@ -270,7 +310,12 @@ const pct = (n, of) => (of ? `${((100 * n) / of).toFixed(1)}%` : '-');
 const rows = [...Object.entries(counts), ['overall', Object.fromEntries(['total', 'pass', 'loud', 'silent', 'flaky', 'unclear', 'harness'].map((k) => [k, Object.values(counts).reduce((n, c) => n + c[k], 0)]))]];
 console.log(`\ntorture: seed ${opts.seed}, ${total} cases, ${seconds} s at ${opts.concurrency} at once`);
 console.log(`${'area'.padEnd(11)} ${'cases'.padStart(6)} ${'pass'.padStart(6)} ${'loud'.padStart(6)} ${'silent'.padStart(6)} ${'flaky'.padStart(6)} ${'harness'.padStart(7)}   pass%  loud%  silent%  flaky%   (passes with an "unclear" note)`);
-for (const [name, c] of rows) console.log(`${name.padEnd(11)} ${String(c.total).padStart(6)} ${String(c.pass).padStart(6)} ${String(c.loud).padStart(6)} ${String(c.silent).padStart(6)} ${String(c.flaky).padStart(6)} ${String(c.harness).padStart(7)}   ${pct(c.pass, c.total).padStart(5)}  ${pct(c.loud, c.total).padStart(5)}  ${pct(c.silent, c.total).padStart(6)}  ${pct(c.flaky, c.total).padStart(5)}   ${c.unclear}`);
+const row = (name, c) => console.log(`${name.padEnd(11)} ${String(c.total).padStart(6)} ${String(c.pass).padStart(6)} ${String(c.loud).padStart(6)} ${String(c.silent).padStart(6)} ${String(c.flaky).padStart(6)} ${String(c.harness).padStart(7)}   ${pct(c.pass, c.total).padStart(5)}  ${pct(c.loud, c.total).padStart(5)}  ${pct(c.silent, c.total).padStart(6)}  ${pct(c.flaky, c.total).padStart(5)}   ${c.unclear}`);
+for (const [name, c] of rows) row(name, c);
+if (byKind[HEAVY]) {
+  console.log(`\ndev-servers by framework:`);
+  for (const f of devServers.FRAMEWORK_NAMES) if (byKind[HEAVY][f]) row(f, byKind[HEAVY][f]);
+}
 const sigList = [...signatures.values()].sort((a, b) => b.cases - a.cases);
 const say = (title, list, each) => {
   if (!list.length) return;
@@ -279,14 +324,16 @@ const say = (title, list, each) => {
 };
 // A case with a real browser is replayed with one (--browser-share 1); the others without (--no-browser).
 const withBrowser = (b) => (b ? ' --browser-share 1' : ' --no-browser');
-const replayOf = (s) => `node test/torture/run.mjs --replay ${s.area}:${s.repro.seed}${s.repro.keep ? `:${s.repro.keep.join(',')}` : ''}${withBrowser(s.repro.browser)}`;
+const replayOf = (s) => `node test/torture/run.mjs --replay ${s.area}:${s.repro.seed}${s.repro.keep?.length ? `:${s.repro.keep.join(',')}` : ''}${withBrowser(s.repro.browser)}${s.repro.flags || ''}`;
+// Which kinds of case a signature was seen in (dev-servers: which frameworks), when the area has more than one.
+const kindsOf = (s) => (s.area === HEAVY && Object.keys(s.kinds).length ? `\n    seen with: ${Object.entries(s.kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}` : '');
 say('Failure signatures (came back on a second run of the same case):', sigList.filter((s) => s.confirmed), (s) => {
-  console.log(`- [${s.cls}] ${s.signature}\n    ${bugTag(s.signature)}\n    ${s.cases} case${s.cases === 1 ? '' : 's'} (${s.confirmed} came back, ${s.flaky} did not)\n    e.g. ${s.example.split('\n')[0].slice(0, 300)}\n    replay: ${replayOf(s)}\n    steps: ${s.repro.ops.join(' → ').slice(0, 900)}`);
+  console.log(`- [${s.cls}] ${s.signature}\n    ${bugTag(s.signature)}\n    ${s.cases} case${s.cases === 1 ? '' : 's'} (${s.confirmed} came back, ${s.flaky} did not)${kindsOf(s)}\n    e.g. ${s.example.split('\n')[0].slice(0, 300)}\n    replay: ${replayOf(s)}\n    steps: ${s.repro.ops.join(' → ').slice(0, 900) || '(none needed: it shows before the first step)'}`);
 });
 say('Flaky signatures (failed once, passed when the case was run again; a race shows here, many cases is a sign of one):', sigList.filter((s) => !s.confirmed && s.flaky), (s) => {
-  console.log(`- [${s.cls}] ${s.signature}\n    ${bugTag(s.signature)}\n    ${s.cases} case${s.cases === 1 ? '' : 's'}, e.g. ${s.example.split('\n')[0].slice(0, 300)}\n    one of them: node test/torture/run.mjs --replay ${s.area}:${s.flakySeed} --times 20${/browser=/.test(s.signature) ? ' --browser-share 1' : ' --no-browser'}`);
+  console.log(`- [${s.cls}] ${s.signature}\n    ${bugTag(s.signature)}\n    ${s.cases} case${s.cases === 1 ? '' : 's'}${kindsOf(s)}, e.g. ${s.example.split('\n')[0].slice(0, 300)}\n    one of them: node test/torture/run.mjs --replay ${s.area}:${s.flakySeed} --times ${s.area === HEAVY ? 5 : 20}${withBrowser(s.flakyBrowser)}${AREAS[s.area].replayFlags?.(opts) || ''}`);
 });
-say('Unclear (the contract does not say; noted, the case still passes):', sigList.filter((s) => s.cls === 'unclear'), (s) => console.log(`- ${s.signature}: ${s.cases} cases, e.g. ${s.example.split('\n')[0].slice(0, 240)}`));
+say('Unclear (the contract does not say; noted, the case still passes):', sigList.filter((s) => s.cls === 'unclear'), (s) => console.log(`- ${s.signature}: ${s.cases} cases${kindsOf(s).replace(/\n\s+/, ' (').replace(/$/, kindsOf(s) ? ')' : '')}, e.g. ${s.example.split('\n')[0].slice(0, 240)}`));
 say("Harness trouble (this test's own; not counted against labit):", sigList.filter((s) => s.cls === 'harness'), (s) => console.log(`- ${s.signature}: ${s.cases} cases, e.g. ${s.example.split('\n')[0].slice(0, 300)}`));
 // Which known bugs showed in this run, and which signatures are new (a re-run after fixes: a bug that shows "not seen"
 // is gone, a NEW signature is something nobody listed).
@@ -306,7 +353,7 @@ console.log('\nHow long things took (ms: half of them within, 99% within, slowes
 for (const [k, list] of Object.entries(caseMs)) console.log(`- one ${k} case: ${spread(list).join(', ')}`);
 for (const [k, list] of Object.entries(timings).sort()) console.log(`- ${k}: ${spread(list).join(', ')} (${list.length} measured)`);
 if (opts.json) {
-  fs.writeFileSync(String(opts.json), JSON.stringify({ seed: opts.seed, cases: total, seconds, concurrency: opts.concurrency, options: { confirm: opts.confirm, shrink: opts.shrink, browserShare: opts.browserShare, slow: opts.slow, lan: Boolean(opts.lan), browsers: Boolean(opts.browser) }, counts: Object.fromEntries(rows), signatures: sigList.map((x) => ({ ...x, knownBug: knownBugOf(x.signature)?.n ?? null })), failures, timings: Object.fromEntries(Object.entries(timings).map(([k, v]) => [k, spread(v)])) }, null, 2));
+  fs.writeFileSync(String(opts.json), JSON.stringify({ seed: opts.seed, cases: total, seconds, concurrency: opts.concurrency, options: { confirm: opts.confirm, shrink: opts.shrink, browserShare: opts.browserShare, slow: opts.slow, lan: Boolean(opts.lan), browsers: Boolean(opts.browser) }, counts: Object.fromEntries(rows), byKind, signatures: sigList.map((x) => ({ ...x, knownBug: knownBugOf(x.signature)?.n ?? null })), failures, timings: Object.fromEntries(Object.entries(timings).map(([k, v]) => [k, spread(v)])) }, null, 2));
   console.log(`\nwrote ${opts.json}`);
 }
 // Exit 0 when the run itself worked: what it found is in the report (a caller reads the counts, not the exit code).
