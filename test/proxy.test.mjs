@@ -1,5 +1,6 @@
 // The lab in front of a dev server (--proxy): a page in another charset, a redirect to the dev server's own address comes back as the lab's, and
-// a person who leaves (a closed tab, a cancelled event stream) ends the dev server's side of the request too.
+// a person who leaves (a closed tab, a cancelled event stream) ends the dev server's side of the request too; no icon at
+// /favicon.ico (a 404, or the app's page for any path) is labit's mark, never a 404 in the console (torture bug 20).
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -7,6 +8,7 @@ import { site, tmp, rm, spawnLab, sleep } from './harness.mjs';
 
 const { DIR, PORT } = site('proxy', 6400, 90);
 
+let icon = false; // whether the dev server has a favicon.ico
 let closed = 0; // event streams the dev server saw end
 const dev = http.createServer((req, res) => {
   const here = `http://localhost:${dev.address().port}`;
@@ -19,6 +21,7 @@ const dev = http.createServer((req, res) => {
   if (req.url === '/nohead') return void res.writeHead(200, { 'content-type': 'text/html' }).end('\n<!-- c -->\n<!DOCTYPE html>\n<html><body><p>no head</p></body></html>');
   if (req.url === '/frag') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end('<ul><li>one</li><li>two</li></ul><p>hi</p>');
   if (req.url === '/whole') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end('<!doctype html><html><head><title>w</title></head><body><p>whole</p></body></html>');
+  if (req.url === '/favicon.ico') return void (icon ? res.writeHead(200, { 'content-type': 'image/x-icon' }).end('ico') : res.writeHead(404).end('no'));
   if (req.url === '/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     res.write('data: 1\n\n');
@@ -140,6 +143,17 @@ test('a page load gets the widget, with or without Sec-Fetch headers, in a frame
       assert.match(text, /__lab=\{writing/);
     }
   }
+});
+
+test('no favicon.ico at the dev server: labit\'s mark, not a 404; the app\'s own icon passes through', async () => {
+  await up();
+  const get = async (method) => {
+    const r = await fetch(`http://localhost:${PORT}/favicon.ico`, { method, redirect: 'manual' });
+    return [r.status, r.headers.get('location') || r.headers.get('content-type')];
+  };
+  for (const method of ['HEAD', 'GET']) assert.deepEqual(await get(method), [302, '/_lab/favicon.svg'], `${method}: a 404 is redirected`);
+  icon = true;
+  for (const method of ['HEAD', 'GET']) assert.deepEqual(await get(method), [200, 'image/x-icon'], `${method}: the app's icon is served`);
 });
 
 // Last: it stops the dev server for good.

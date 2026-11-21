@@ -196,7 +196,14 @@ import { bindKeys } from './widget/keys.ts';
   /** @type {any} */ (window).__labComments = true;
 
   const API = '/_lab/api/comments';
-  const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
+  // Behind a dev server the page is the live address (named as the lab names pages, lib/labs.ts keyFor): an app that
+  // navigates on its own keeps no first page's marks. A page the lab serves keeps the name it was served under.
+  const enc = new TextEncoder();
+  const pageNow = () =>
+    script?.dataset.proxied === '1'
+      ? '/' + (location.pathname.replace(/^\/+|\/+$/g, '').replace(/\.html?$/i, '') || 'index').split('/').map((seg) =>
+          [...enc.encode(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join('')).join('/')
+      : script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
   S.page = pageNow();
   // One pass (a drawing, a handler) asks the same things many times: who replied to a pin, what is unread, what
   // localStorage holds. Each is worked out once and kept until the pass ends (the next microtask) or what it comes from
@@ -488,7 +495,7 @@ import { bindKeys } from './widget/keys.ts';
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
   const setPinning = () => {
     const placing = S.on && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
-    document.documentElement.classList.toggle('lab-pinning', placing);
+    host.toggleAttribute('data-lab-pinning', placing); // not a class on <html>: a framework that hydrates the page (Next) reports it
     recheck();
   };
   // A thread or the chat opened at its newest message stays there while its words settle (a phone's sheet grows into
@@ -1844,9 +1851,10 @@ import { bindKeys } from './widget/keys.ts';
     }
     if (!pageStyle.isConnected) document.head.append(pageStyle);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
-    S.routed?.(); // the section bar (sections.ts)
-    if (pageNow() === S.page) return;
+    const was = S.page;
     S.page = pageNow();
+    S.routed?.(); // the section bar (sections.ts)
+    if (S.page === was) return;
     S.seen = readSeen();
     pass = null;
     syncReads();
@@ -1923,21 +1931,21 @@ import { bindKeys } from './widget/keys.ts';
     const plain = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
     const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
     pinCursorStyle.textContent =
-      `@layer lab-pointer { html.lab-pinning:not(.lab-shift-cur, .lab-ctl) body, html.lab-pinning:not(.lab-shift-cur, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
+      `@layer lab-pointer { html:has([data-lab-pinning]):not(.lab-shift-cur, .lab-ctl) body, html:has([data-lab-pinning]):not(.lab-shift-cur, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
       // With the drawn pointer the system one hides over plain parts of the page (not in the top layer, which is above it).
-      `html.lab-drawn.lab-pinning:not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
+      `html.lab-drawn:has([data-lab-pinning]):not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body, html.lab-drawn:has([data-lab-pinning]):not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
       // Holding Shift (drag to quote words): the drawn I-beam with a low ink band at its foot (C3, Leo 18 Nov; text where a cursor image isn't drawn) over the page's content, back to the pin when it's let go.
-      `html.lab-pinning.lab-shift-cur:not(.lab-dragging) body *${plain}:not(img, svg, video, canvas) { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect x='5' y='15.5' width='14' height='5' rx='1.5' fill='%23f0b70a' fill-opacity='.6'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='white' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='%23141414' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") 12 12, text; } ` +
+      `html:has([data-lab-pinning]).lab-shift-cur:not(.lab-dragging) body *${plain}:not(img, svg, video, canvas) { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect x='5' y='15.5' width='14' height='5' rx='1.5' fill='%23f0b70a' fill-opacity='.6'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='white' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='%23141414' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") 12 12, text; } ` +
       // The pointer is inherited, so places that aren't commented on name theirs: editable text a text cursor, a part
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
-      `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
+      `html:has([data-lab-pinning]) body :is([contenteditable], [contenteditable] *) { cursor: text; } html:has([data-lab-pinning]) body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
       // Holding Option (Alt) pins links and controls too: the drawn pin shows over them (the system pointer hides).
       `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
       `html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.
-  pageStyle.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  pageStyle.textContent += `@media (pointer: fine) { html:has([data-lab-pinning]):not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html:has([data-lab-pinning]):not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   bindKeys(W);
   pageStyle.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
@@ -1959,13 +1967,13 @@ import { bindKeys } from './widget/keys.ts';
   // Phones: and the page behind stays put, even when the part of the sheet you drag on has nothing to scroll.
   pageStyle.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
-  pageStyle.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
+  pageStyle.textContent += `html:has([data-lab-pinning]) body, html:has([data-lab-pinning]) body * { -webkit-touch-callout: none; }`;
   // Phones: with comments on, a hold is labit's (a pin), not the start of a text selection: iOS would cancel the touch
   // for its selection, and the lift that lets the box open the keyboard would never come. Only while a finger is down
   // (lab-press): Safari paints the quoted words' green (::highlight) over whole blocks of text that can't be selected,
   // so with the page unselectable all the time an open comment tinted half the page (iOS 27 simulator, 17 Nov).
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
-  pageStyle.textContent += `@media (pointer: coarse) { html.lab-pinning.lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
+  pageStyle.textContent += `@media (pointer: coarse) { html:has([data-lab-pinning]).lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html:has([data-lab-pinning]) body > :not([data-lab-comments]), html:has([data-lab-pinning]) body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
 
   // The section bar (src/widget/sections.ts) is its own file, loaded when the page may show one: the lab kept its room
   // (the file clears that again), or a lab page (or one that says so) has 3 or more headings. Asked again when a route
@@ -1994,7 +2002,7 @@ import { bindKeys } from './widget/keys.ts';
     // The page's own selection while commenting, and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
-    pageStyle.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    pageStyle.textContent += `html:has([data-lab-pinning]) ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
     maybeSections(); // the section bar: what is new or updated on the page since you read it

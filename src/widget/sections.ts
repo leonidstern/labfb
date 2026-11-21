@@ -149,14 +149,8 @@ export function startSections() {
   W.root.querySelector('.ui').append(bar);
   bar.addEventListener('click', (e) => e.stopPropagation()); // not a click on the page: no comment starts, nothing closes
 
-  // The page: the lab's own name for it, or behind a proxy the route's real path (the widget's page stays the first
-  // route's, so every route of an app shared one set of marks), named as the lab names pages (lib/labs.ts keyFor).
   const proxied = W.script?.dataset.proxied === '1';
-  const enc = new TextEncoder();
-  const pathKey = (p: string) =>
-    '/' + (p.replace(/^\/+|\/+$/g, '').replace(/\.html?$/i, '') || 'index').split('/').map((seg) =>
-      [...enc.encode(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join('')).join('/');
-  const pg = (): string => (proxied ? pathKey(location.pathname) : W.S.page);
+  const pg = (): string => W.S.page;
   const key = () => `lab-sections:${pg()}`;
   const api = () => W.script.dataset.live?.replace(/live$/, 'api/sections') || '';
   const who = () => W.store.get('lab-name').trim();

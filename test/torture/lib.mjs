@@ -635,7 +635,25 @@ export class Device {
     if (this.opening) return; // one navigation, however many times it is asked for
     this.reloads++;
     this.note('reload', why);
-    this.go(() => this.open());
+    this.go(async () => {
+      if (widgetFixed()) {
+        // fixed (live.ts now): the page is asked for first. With its dev server down the lab answers a plain 502 with no widget:
+        // the page stays where it is and asks again in 2 s, instead of reloading onto that.
+        this.opening = true;
+        const r = await this.ask({ path: this.url, headers: { accept: 'text/html' }, page: true }).catch(() => null);
+        if (!r || r.status >= 400) {
+          this.opening = false;
+          this.waiting = true;
+          const gen = this.gen;
+          this.reloadTimer ||= setTimeout(() => {
+            this.reloadTimer = null;
+            if (gen === this.gen && this.waiting && !this.closed) this.reload(why);
+          }, 2000);
+          return;
+        }
+      }
+      await this.open();
+    });
   }
   /** A draft is opened (true), or sent or closed (false): a reload that waited happens once the page is left alone. */
   hold(on) {
