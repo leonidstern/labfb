@@ -147,7 +147,7 @@ const COMMANDS = ['publish', 'preview', 'list', 'pages', 'wait', 'reply', 'resol
 // Your list of actions is written into your settings once, when a lab starts (or `labit settings` shows it) with none there yet.
 if (!pos[0] || !COMMANDS.includes(pos[0]) || pos[0] === 'settings') {
   try {
-    if (seedActions()) console.error('[labit] your actions (go, fix, remove…) are now in your settings.json: edit them there');
+    if (seedActions()) console.error('[labit] your actions (go, more, no) are now in your settings.json: edit them there');
   } catch {}
 }
 const SETTINGS = loadSettings(HERE, {

@@ -187,7 +187,7 @@ test('a lab started with a labit.json: its port, its shortcuts on the page, its 
 test('actions: one list of yours, in order; names of 7 characters at most; bad ones said and left out', () => {
   assert.equal(NAME_MAX, 7);
   assert.ok(SEED.every((a) => a.name.length <= NAME_MAX && a.prompt), 'the seed fits');
-  assert.deepEqual(SEED.map((a) => a.name), ['go', 'fix', 'remove', 'like', 'move', 'states', 'variant']);
+  assert.deepEqual(SEED.map((a) => a.name), ['go', 'more', 'no']);
   const mine = [{ name: 'variant', prompt: 'Three variants.' }, { name: 'go', prompt: 'Go.' }];
   let s = setup(null, { actions: [...mine, { name: 'too long', prompt: 'x' }, { name: 'Go', prompt: 'again' }, { name: 'x' }, 'fix'] }).load();
   assert.deepEqual(s.values.actions, mine, 'the order given; the rest left out');
