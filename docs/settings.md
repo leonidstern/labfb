@@ -77,42 +77,16 @@ Your `~/.config/labit/settings.json`:
 | `model` | none | `--model`, `LAB_MODEL` | The model your agent runs on, shown on the page: "talking to Claude · Sonnet 5.5". | yours |
 | `pagesFolder` | `~/lab-pages` | | The one lab for pages that belong to no project (tries, demos, options). Agents add a page there, in a folder named for its topic, instead of starting a new lab. | yours |
 | `shortcuts` | below | | Keys for the page. | both |
-| `actions` | yours, seeded once | | Your one list of actions: the chips of the comment box, in order. See **Actions** below. | yours |
-| `flags` | everything off | the ⋯ menu's **experiments** | What this lab is trying: `{ "<flag>": true }`. See **Experiments** below. | both |
+| `actions` | seeded once | | The one list of actions: the chips of the comment box, in order. See **Actions** below. | both |
 
 "Project" settings belong to a project, so they're only read from `labit.json`; "yours" only from your own file (a
 project you clone can't rename you or open your lab to the network); "both" from either, the project's first.
 
-## Experiments
-
-A new instrument arrives as a flag: off unless you turn it on, tried in a real lab, then kept — the flag goes away and
-it is simply labit — or dropped, and the code goes with it. Nothing is in labit because it was built.
-
-```json
-{ "flags": { "<flag>": true } }
-```
-
-The easy way is the page: open the ⋯ menu and pick **experiments** (the number beside it is how many are on). The
-menu turns into the list, one switch a flag with its one line; **‹ experiments** at its head goes back. A switch
-applies at once, with no restart: every open page of the lab starts what came on, and reloads for what went off. It is
-saved in your own `~/.config/labit/settings.json`, so it holds in every lab you run. Phones get the same list, bigger
-to tap. Only the computer running the lab can switch them: a guest on your wifi sees the switches greyed out.
-
-Or write it in a file: the project's `labit.json` for everyone on the project, or your own settings file. A file you
-edit by hand is read when the lab starts. A flag the project's `labit.json` sets wins over yours, on or off: the menu
-shows that switch greyed, with "set by the project's labit.json" under it. `labit settings` lists which are on and
-whose each is: `flags  <name> (yours)`.
-
-Nothing is being tried at the moment: no flag exists, and the ⋯ menu has no **experiments** row until one does.
-
-`inkOnText` (a comment on selected words as ink under them, not a pin) was dropped (20 Nov): selecting words for a comment gives a pin on them, as it always did, and an old `inkOnText` in a `flags` setting gets the "not something being tried now" warning. `select` (select mode, `V`) was dropped (20 Nov): an old `select` in a `flags` setting gets the "not something being tried now" warning, and a `select` shortcut the "not an action" one. `native` was kept (20 Nov), so the browser always does it: pins on an element are tied to it with CSS anchor positioning, cards and the comment box are tied to their pin, the ⋯ menu and labs & pages are popovers on a computer, the comment box grows by itself, and navigation comes from the Navigation API. `sectionBar` was kept, so the section bar has no switch: it shows by itself on a lab page with three or more sections, and `<meta name="lab-sections" content="on|off">` (or `data-lab-sections` on `<html>` or `<body>`) says so for one page; `board` was kept, so every lab has boards; `agentPins` was kept, so a pin the agent left always wears labit's mark; `liveUrl` was dropped for now.
-
-A flag whose name nobody is trying any more (it was kept, or dropped) is said out loud when labit starts and
-otherwise ignored, so an old file never stops a lab from running.
-
 ## Actions
 
-Your actions are one ordered list in your own `~/.config/labit/settings.json`. Each has a `name` (the chip, 7
+The actions are one ordered list, `actions`, in the project's `labit.json` (for everyone on the project; wins) or in
+your own `~/.config/labit/settings.json`. The page has no editor for it: edit the file, then restart the lab (a lab reads
+settings when it starts). Each action has a `name` (the chip, 7
 characters at most) and a `prompt` (the full text your agent gets):
 
 ```json
@@ -133,17 +107,11 @@ characters at most) and a `prompt` (the full text your agent gets):
   which opens a small menu: the rest (tap one to use it), then the ones on the line.
 - **What is sent:** a chip sends at once, as `<name>: <what you typed>` (just the name with nothing typed); your agent
   reads the full prompt for that name as `action: …`.
-- **Yours:** the list is written into your settings.json the first time a lab starts without one (from labit's own,
-  above, plus any `{ "label", "send" }` buttons you had), and from then on it is yours: there is no default to reset
-  to. Edit them in the **…** list (hold a row for 450 ms, or right-click it: its name and prompt turn editable where
-  they are; Enter in the name goes to the prompt, Enter there saves, Shift+Enter is a new line, Esc or a tap elsewhere
-  cancels; **delete** keeps "deleted · undo" for 4 s; **+ add** puts a new one at the end), saved here at once, or in the
-  file (a lab reads it when it starts). The list edits only on your own computer, never a wifi guest's. A save the lab
-  refuses (a name over 7 characters or used twice, a prompt over 300) keeps the row open and says why; nothing is
-  saved. `labit settings` lists them.
+- **Seeded:** with no list in either file, the first lab you start writes labit's own (above, plus any
+  `{ "label", "send" }` buttons you had) into your settings.json, so there is a list to edit; from then on it is
+  yours. A list in the project's `labit.json` wins over it. `labit settings` lists the actions in force.
 - **Checked:** a name over 7 characters, a repeat or an item without a name and a prompt (300 characters at most) is
-  said when labit starts and left out; the rest still counts. Only your own file holds the list: a project's
-  `labit.json` can't set it.
+  said when labit starts and left out; the rest still counts.
 - On selected words the row stays **rewrite · cut · go**. ⌥ + 1 to 4 run the chips in the order they show.
 
 ## Shortcuts

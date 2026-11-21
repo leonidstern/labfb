@@ -2,14 +2,16 @@
 // Node's own version follows each file, so a file replaced by a rename (how the lab writes a board, and how many editors
 // and tools save) is seen once and never again: the second save of a page, or of a board, is silent. There each folder gets
 // its own plain watcher, which sees every rename, and one is added as a folder appears (and let go as it goes). Folders
-// that skip() names are not watched at all (a project's node_modules would be thousands).
+// that skip() names are not watched at all (a project's node_modules would be thousands). A computer out of watchers
+// (Linux allows 8192 per user by default, and an editor or a dev server may hold them all) lets the first folders
+// through and refuses the rest, which used to be silent: lost(n) is told once, after the first sweep, how many.
 import fs from 'node:fs';
 import path from 'node:path';
 
 type Handler = (event: string, file: string) => void;
 
 /** onEvent(event, file): file is relative to root, as fs.watch's recursive watcher reports it. */
-export function watchTree(root: string, onEvent: Handler, skip: (rel: string) => boolean = () => false): { close: () => void } {
+export function watchTree(root: string, onEvent: Handler, skip: (rel: string) => boolean = () => false, lost: (n: number) => void = () => {}): { close: () => void } {
   const skipped = (rel: string) => rel.split(path.sep).some((_, i, parts) => skip(parts.slice(0, i + 1).join(path.sep)));
   if (process.platform !== 'linux') {
     // The native watcher sees everything under root: what skip() names is dropped here, as on Linux it is never watched.
@@ -17,6 +19,7 @@ export function watchTree(root: string, onEvent: Handler, skip: (rel: string) =>
     return { close: () => w.close() };
   }
   const watchers = new Map<string, fs.FSWatcher>();
+  let refused = 0;
   const drop = (dir: string) => {
     watchers.get(dir)?.close();
     watchers.delete(dir);
@@ -39,6 +42,7 @@ export function watchTree(root: string, onEvent: Handler, skip: (rel: string) =>
       });
     } catch (e) {
       if (!rel) throw e; // the folder itself can't be watched (it isn't there): the caller says so, as fs.watch does
+      if (/^(ENOSPC|EMFILE|ENFILE)$/.test((e as NodeJS.ErrnoException).code || '')) refused++;
       return;
     }
     w.on('error', () => drop(dir));
@@ -52,5 +56,6 @@ export function watchTree(root: string, onEvent: Handler, skip: (rel: string) =>
     } catch {}
   };
   add(root);
+  if (refused) lost(refused);
   return { close: () => [...watchers.keys()].forEach(drop) };
 }
