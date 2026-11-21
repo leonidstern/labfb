@@ -842,19 +842,28 @@ export async function run(plan, ctx, opts) {
       if (!a.open) return void note(`   the dev server did not open the socket directly (${a.status}): not judged`);
       if (!b.open) return loud('hmr-socket-refused', `${fw}'s live-reload socket ${p.split('?')[0]} opens directly (101) and not through the lab (${b.status || 'the connection ended'})`, tags);
       await sleep(500);
+      const saveAt = Date.now();
       write(F.comp.file, F.comp.text(op.tok));
       broken.delete('comp');
       // Until the dev server has said something about the save to the direct socket, then a moment for the other.
       const n0 = a.messages.length;
       await until(() => a.messages.length > n0, 5000 * slow, 50);
       await sleep(800);
-      const kinds = (w) => [...new Set(w.messages.map((m) => kindOfMessage(m.text)).filter((k) => k !== 'ping' && k !== 'pong'))].sort();
-      const [ka, kb] = [kinds(a), kinds(b)];
-      note(`   directly: ${ka.join(' ') || 'nothing'}; through the lab: ${kb.join(' ') || 'nothing'}`);
+      // The two sockets open a few milliseconds apart, and a dev server broadcasts what an earlier save (a rebuild, a restart, a
+      // watcher that fires late) is still producing to whoever is connected at that moment: a Vite full-reload or a webpack
+      // invalid/built right after the upgrade reached one socket and not the other, in either order of opening (checked by
+      // opening them the other way round: the lab's socket got it and the direct one did not). So only what the save of this
+      // step caused is compared (messages from the save on); before it, each socket's first message, the greeting of the connection.
+      const after = (w) => w.messages.filter((m) => m.at >= saveAt);
+      const kinds = (w, list) => [...new Set(list.map((m) => kindOfMessage(m.text)).filter((k) => k !== 'ping' && k !== 'pong'))].sort();
+      const [ka, kb] = [kinds(a, after(a)), kinds(b, after(b))];
+      const greeting = [a, b].map((w) => (w.messages[0] ? kindOfMessage(w.messages[0].text) : ''));
+      note(`   after the save, directly: ${ka.join(' ') || 'nothing'}; through the lab: ${kb.join(' ') || 'nothing'}`);
       // Vite and webpack-dev-server say the same to every page. Next speaks to each page on its own (what it says
       // depends on what that page has asked for), so there only "something after the save, as directly" is judged.
       const lost = F.hmr === 'next' ? (a.messages.length > n0 && b.messages.every((m) => m.at < a.messages[n0].at - 1500) ? ['anything after the save'] : !b.messages.length && a.messages.length ? ['anything'] : []) : ka.filter((k) => !kb.includes(k));
       if (b.closed && !a.closed) silent('hmr-socket-closed-through-proxy', `${fw}'s socket through the lab closed after ${b.messages.length} messages; the direct one is open`, tags);
+      else if (F.hmr !== 'next' && greeting[0] && greeting[0] !== greeting[1]) silent('hmr-message-lost-through-proxy', `${fw}: the dev server greeted the direct socket with ${greeting[0]}, the one through the lab with ${greeting[1] || 'nothing'}`, tags);
       else if (lost.length) silent('hmr-message-lost-through-proxy', `${fw}: the dev server said ${ka.join(', ')} directly; through the lab only ${kb.join(', ') || 'nothing'} arrived`, tags);
     } finally {
       a.close();
