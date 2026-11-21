@@ -1,7 +1,7 @@
 // Your actions (Leo, 19 Nov: "one action list for pin and select", select since removed): one ordered list, each a short
 // name (the chip) and the prompt the agent gets, set in labit.json (the project's, wins) or your settings.json
 // (`actions`, docs/settings.md); the page has no editor (Leo, 20 Nov: "it can be in settings json"). The comment box
-// shows as many as fit and "…" for the rest. With no list anywhere, your settings.json is seeded once from SEED
+// shows as many as fit on one line; the rest are not shown. With no list anywhere, your settings.json is seeded once from SEED
 // (lib/settings.ts), so it is there to edit. The lab always hands the widget the list (data-actions), so the widget
 // carries no copy.
 type Action = { name: string; prompt: string };
@@ -9,12 +9,8 @@ export const NAME_MAX = 7;
 const PROMPT_MAX = 300;
 export const SEED: Action[] = [
   { name: 'go', prompt: 'Go ahead: do what is proposed here.' },
-  { name: 'fix', prompt: 'Fix this: it is broken or wrong.' },
-  { name: 'remove', prompt: 'Remove this.' },
-  { name: 'like', prompt: 'Make this look like the one I name: same size, spacing, colour and type.' },
-  { name: 'move', prompt: 'Move this to where I say.' },
-  { name: 'states', prompt: 'Show this in its states (hover, loading, empty, error) so I can review each one.' },
-  { name: 'variant', prompt: 'Make 3 variants of this, shown in place as a / b / c tabs on it, so I can pick one.' },
+  { name: 'more', prompt: 'Go further: show more options on this.' },
+  { name: 'no', prompt: 'No: do not do this; leave it as it was.' },
 ];
 
 /** The list, checked, in the order given: a name of NAME_MAX characters at most and a prompt; a bad or repeated one is

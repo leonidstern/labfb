@@ -93,18 +93,14 @@ characters at most) and a `prompt` (the full text your agent gets):
 {
   "actions": [
     { "name": "go", "prompt": "Go ahead: do what is proposed here." },
-    { "name": "fix", "prompt": "Fix this: it is broken or wrong." },
-    { "name": "remove", "prompt": "Remove this." },
-    { "name": "like", "prompt": "Make this look like the one I name: same size, spacing, colour and type." },
-    { "name": "move", "prompt": "Move this to where I say." },
-    { "name": "states", "prompt": "Show this in its states (hover, loading, empty, error) so I can review each one." },
-    { "name": "variant", "prompt": "Make 3 variants of this, shown in place as a / b / c tabs on it, so I can pick one." }
+    { "name": "more", "prompt": "Go further: show more options on this." },
+    { "name": "no", "prompt": "No: do not do this; leave it as it was." }
   ]
 }
 ```
 
-- **Where:** the comment box on a spot or an area shows as many as fit on one line as chips, in order, then **…**,
-  which opens a small menu: the rest (tap one to use it), then the ones on the line.
+- **Where:** the comment box on a spot or an area shows as many as fit on one line as chips, in order. The
+  ones that don't fit are not shown (there is no overflow menu), so put the ones you use most first.
 - **What is sent:** a chip sends at once, as `<name>: <what you typed>` (just the name with nothing typed); your agent
   reads the full prompt for that name as `action: …`.
 - **Seeded:** with no list in either file, the first lab you start writes labit's own (above, plus any

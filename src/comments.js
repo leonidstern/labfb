@@ -1617,69 +1617,15 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       b.addEventListener('click', () => go(field.value.trim() ? `${a.name}: ${field.value.trim()}` : a.name, a.prompt));
       return b;
     };
-    // Your list, in its order: as many chips as fit on one line (measured), then "…" when some don't. "…" grows the line
-    // into the whole list (tap = use it, "done" or "…" again folds it back). The list itself is set in labit.json or your
-    // settings.json (`actions`, docs/settings.md): nothing on the page edits it.
-    const menu = el('div', { class: 'acts', hidden: '' });
-    const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
+    // Your list, in its order, as many chips as fit on one line (measured); the ones that don't fit are not shown. The
+    // list itself is set in labit.json or your settings.json (`actions`, docs/settings.md): nothing on the page edits it.
     const chips = LIST.map(chip);
-    let shown = LIST.length;
-    const quiet = (b) => (b.addEventListener('mousedown', (e) => e.preventDefault()), b);
-    const btn = (text, attrs = {}) => el('button', { type: 'button', ...attrs }, text);
-    // Each row is the action's name over its prompt on one muted line.
-    function drawMenu() {
-      menu.replaceChildren();
-      const list = el('div');
-      for (const i of LIST.keys()) {
-        const a = LIST[i];
-        const line = el('div', { class: 'act' });
-        const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
-        use.append(el('b', {}, a.name), el('span', {}, a.prompt));
-        use.addEventListener('click', () => (openMenu(false, true), chips[i].click()));
-        line.append(use);
-        list.append(line);
-      }
-      const foot = el('div', { class: 'act-foot' });
-      const fold = quiet(btn('done', { class: 'fold' }));
-      fold.addEventListener('click', () => openMenu(false));
-      foot.append(fold);
-      list.append(foot);
-      menu.append(list);
-    }
-    // The height eases from the line's to the list's (and back) over --_t-base, none with reduced motion; the sheet sits on
-    // the bottom on a phone, so it grows upward, and the page under it never moves.
-    let anim = null;
-    const fit = (from, to, then) => {
-      anim?.cancel();
-      anim = null;
-      if (still.matches || !from || !to || from === to) return void then?.();
-      anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ms('base'), easing: ease('out') });
-      anim.onfinish = () => ((anim = null), then?.());
-    };
-    let lineH = 0; // the line's height when it grew, to fold back to
-    const openMenu = (open, now = false) => {
-      if (open === !menu.hidden) return;
-      dots.setAttribute('aria-expanded', String(open));
-      if (!open) {
-        const shut = () => ((menu.hidden = true), (row.hidden = false));
-        return now ? shut() : fit(menu.offsetHeight, lineH, shut);
-      }
-      lineH = row.offsetHeight;
-      drawMenu();
-      row.hidden = true;
-      menu.hidden = false;
-      if (!now) fit(lineH, menu.offsetHeight);
-    };
-    quiet(dots).addEventListener('click', () => openMenu(menu.hidden));
-    menu.addEventListener('keydown', (e) => e.key === 'Escape' && (e.stopPropagation(), openMenu(false)));
-    row.append(...chips, dots);
+    row.append(...chips);
     let tries = 0;
     const measure = () => {
       if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
-      row.after(menu);
       const over = () => row.scrollWidth > row.clientWidth + 1;
-      while (over() && shown) chips[--shown].remove();
-      dots.hidden = shown === LIST.length;
+      for (let shown = chips.length; over() && shown; ) chips[--shown].remove();
       [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
     };
     queueMicrotask(measure);
