@@ -1,6 +1,7 @@
 // Shared by local.mjs and bench/serve.mjs: the comments API on an in-memory store, and plain file serving.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import zlib from 'node:zlib';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 
@@ -35,17 +36,48 @@ export async function callApi(fn: Handler, req: IncomingMessage, url: string, ex
   return fn(new Request(url, { method: req.method, headers, body: /GET|HEAD/.test(req.method || '') ? undefined : Buffer.concat(chunks) }));
 }
 
+// Whether an IPv4 address is a device on the same network as this computer: the same subnet as one of its own
+// interfaces (a hotspot or an office may hand out addresses that are not the private ranges), or in 100.64.0.0/10
+// (Tailscale, carrier NAT). A subnet wider than a /16 does not count, so a computer with a public address on a big
+// network does not let the neighbourhood in.
+const num = (ip: string) => ip.split('.').reduce((n, x) => n * 256 + Number(x), 0);
+export function onLan(addr: string, nets: ReturnType<typeof os.networkInterfaces> = os.networkInterfaces()): boolean {
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(addr)) return false;
+  if ((num(addr) >>> 22) === num('100.64.0.0') >>> 22) return true;
+  return Object.values(nets).flat().some((n) => {
+    if (!n || n.family !== 'IPv4' || n.internal) return false;
+    const mask = num(n.netmask);
+    return mask >= num('255.255.0.0') && (num(addr) & mask) === (num(n.address) & mask);
+  });
+}
+
+// A page's text is read in the charset it says it has (the Content-Type's, else its own <meta>): a page saved as
+// iso-8859-1 and read as UTF-8 showed every é as a replacement mark. What the lab sends on is always UTF-8, with a header
+// that says so (a header outranks the page's <meta>). `head` is the start of the bytes; a name nobody knows reads as UTF-8.
+export function decoderFor(head: Uint8Array, type = ''): TextDecoder {
+  const meta = /<meta[^>]*charset=["']?([\w-]+)/i.exec(Buffer.from(head.subarray(0, 1024)).toString('latin1'))?.[1];
+  try {
+    // A <meta> that says utf-16 is read as utf-8 by browsers too (the bytes it sits in are ASCII-like).
+    return new TextDecoder(/charset=["']?([\w-]+)/i.exec(type)?.[1] || (/^utf-?16/i.test(meta || '') ? '' : meta) || 'utf-8');
+  } catch {
+    return new TextDecoder();
+  }
+}
+
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif',
   '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
+  '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.wasm': 'application/wasm', '.pdf': 'application/pdf',
+  '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.ico': 'image/x-icon',
+  '.xml': 'application/xml', '.webmanifest': 'application/manifest+json',
   '.ts': 'text/plain; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
 };
 
 // Text goes compressed when the browser takes it (brotli, else gzip), and every file carries an ETag: the browser
 // keeps a copy but asks each time ("no-cache"), so a reload gets a 304 "not changed" in place of the file, and a file
 // that changed is always sent fresh. (15 Nov: a page view on this lab was ~460 kB plus every picture again.)
-const SQUEEZE = /^(text\/|application\/(json|javascript)|image\/svg)/;
+const SQUEEZE = /^(text\/|application\/(json|javascript|xml|manifest\+json)|image\/svg)/;
 export const encodingFor = (req: IncomingMessage): '' | 'br' | 'gzip' => {
   const a = String(req.headers['accept-encoding'] || '');
   return /\bbr\b/.test(a) ? 'br' : /\bgzip\b/.test(a) ? 'gzip' : '';

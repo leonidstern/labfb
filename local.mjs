@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
+import { apiOn, BODY_MAX, callApi, decoderFor, encodingFor, onLan, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
@@ -717,6 +717,25 @@ const sourceFor = (page) => {
 };
 
 let origin = '';
+// Files a page asked for that this lab did not have (a picture on a wrong path is the usual cause), the last 10, each with
+// the page that asked: "the picture is missing" reaches the agent with the file's name, not for it to hunt for.
+const missed = new Map(); // page + path -> { page, path }
+const noteMissing = (req, what) => {
+  try {
+    const from = new URL(String(req.headers.referer));
+    if (from.host !== req.headers.host || what.startsWith('/_lab/')) return;
+    const at = decodeURIComponent(from.pathname);
+    const page = keyFor(at.slice(1) + (at.endsWith('/') ? 'index' : ''));
+    missed.delete(`${page} ${what}`);
+    missed.set(`${page} ${what}`, { page, path: what });
+    if (missed.size > 10) missed.delete(missed.keys().next().value);
+  } catch {} // no referrer, or one that is not an address
+};
+// Said in the page's text; one that has appeared since (the file was added, or the link fixed) is not.
+const missingFor = (page) => {
+  const list = [...missed.values()].filter((m) => m.page === page && !fs.existsSync(path.join(ROOT, m.path)));
+  return list.length ? `Missing files: ${list.map((m) => `${m.path} (on ${m.page})`).join(', ')}` : '';
+};
 const agentText = async (page) => {
   // Asked with the lab's own address, so the links the text gives are right as written. (It used to be asked as
   // http://localhost and every such string replaced afterwards, a comment's own "http://localhost:3000" included.)
@@ -725,7 +744,7 @@ const agentText = async (page) => {
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`).replace(/^settle: pin /gm, `settle: ${CMD} pin `);
   const file = fileFor(page);
-  const lines = [file && `file: ${file}`].filter(Boolean);
+  const lines = [file && `file: ${file}`, missingFor(page)].filter(Boolean);
   const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
   return boardText(page, file ? lineHints(out, file) : out);
 };
@@ -851,6 +870,15 @@ const pageChanged = (p) => {
   pageRev.set(p, (pageRev.get(p) || 0) + 1);
   dropList(p);
   unsaved.add(p);
+  noteHome(p);
+};
+// A page's file is noted when it first has comments, not only when the file list is built: a page commented later
+// is followed by its comments file (file and fid, written with it) when the file is renamed, running or stopped.
+const noteHome = (p) => {
+  if (PROXY || homes.has(p) || p.startsWith('/_board/') || !db.get(`lab:comments:${p}`)?.size) return;
+  const rel = fileFor(p);
+  const fid = rel && fidOf(rel);
+  if (fid) homes.set(p, [rel, fid]);
 };
 let writing = null;
 let again = false;
@@ -986,12 +1014,13 @@ const sameOrigin = (req) => {
 };
 const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 // --wifi listens on every address, and a Mac on IPv6 has public ones (the Host check is easy to fake, so it isn't a lock):
-// only this computer and devices on the local network get in, whatever the router's firewall lets through.
+// only this computer and devices on the local network get in, whatever the router's firewall lets through. (The local
+// network is the private ranges, and what this computer's own interfaces are on: `labit invite` prints those addresses.)
 const nearby = (req) => {
   const a = String(req.socket.remoteAddress || '').toLowerCase().replace(/^::ffff:/, '');
   if (a === '::1' || a.startsWith('127.')) return true;
   if (!WIFI) return false;
-  return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a));
+  return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a)) || onLan(a);
 };
 // A phone on the same wifi may come from its public IPv6 address: it shares this Mac's /64 network prefix.
 const prefix64 = (a) => {
@@ -1258,7 +1287,10 @@ const hotSaved = new Map(); // served path -> kind
 // Files that can't be swapped in place. They're sent with the update, and each page reloads only if it uses one of
 // them: a README, another page's script or the project's server code leaves your page where it is.
 const otherSaved = new Set(); // served paths
-const hidden = (file) => file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules');
+// Folders the watcher leaves alone (never the server: a file in one is served as any other): dot folders and the ones
+// tools fill with thousands of files nobody edits by hand, which would use up the computer's file watchers.
+const UNWATCHED = new Set(['node_modules', 'venv', '__pycache__', 'bower_components']);
+const hidden = (file) => file.split(path.sep).some((s) => s.startsWith('.') || UNWATCHED.has(s));
 if (!PROXY) watchTree(ROOT, (event, file) => {
   if (!file || hidden(file)) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
@@ -1289,7 +1321,7 @@ if (!PROXY) watchTree(ROOT, (event, file) => {
     // While the agent works it often saves several files for one fix: wait for 400 ms of quiet so the page updates
     // once. A person saving by hand gets it after 80 ms.
   }, mode === 'working' ? 400 : 80);
-}, hidden);
+}, hidden, (n) => console.log(`[lab] ${n} folder${n === 1 ? '' : 's'} could not be watched (the computer is out of file watchers), so saves there will not reload pages. On Linux, raise fs.inotify.max_user_watches.`));
 
 // The widget's own files: a changed script reloads open pages (they need the new one); lab.css is swapped in place.
 let widgetTimer;
@@ -1496,7 +1528,7 @@ const boardTold = new Map(); // session + board -> the frames text it was given 
 async function threadsText(page, threads, who = '') {
   const text = await agentText(page);
   const [frames, rest] = text.startsWith('# Board') ? text.split(/\n(?=# Comments)/) : ['', text];
-  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked):/.test(l)).join('\n');
+  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked|Missing files):/.test(l)).join('\n');
   if (frames && boardTold.get(`${who}\n${page}`) !== frames) {
     boardTold.set(`${who}\n${page}`, frames);
     head = `${frames.trim()}\n${head}`;
@@ -1848,7 +1880,7 @@ const inject = (html, tag) => {
 const LAB_ICON = '<link rel="icon" href="/_lab/favicon.svg">';
 const withIcon = (html) => {
   if (/<link\b[^>]*\brel=["']?(?:[^"'>]*\s)?icon[\s"'>/]/i.test(html) || fs.existsSync(path.join(ROOT, 'favicon.ico'))) return html;
-  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  const at = /<head(\s[^>]*)?>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
 };
 // The section bar keeps its own room at the top of the page, so it never covers the page's first lines.
@@ -1866,7 +1898,7 @@ const withRoom = (html) => {
   if (said === 'off' || !/<link\b[^>]*\bhref=["']?\/_lab\/lab\.css\b/i.test(html)) return html;
   const n = (t) => (body.replace(/<(nav|aside|dialog|footer)\b[\s\S]*?<\/\1>/gi, '').match(new RegExp(`<${t}[\\s>]`, 'gi')) || []).length;
   if (n('h2') < 3 && n('h3') < 3 && n('h1') < 3) return html;
-  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  const at = /<head(\s[^>]*)?>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + ROOM + html.slice(at.index + at[0].length) : ROOM + html;
 };
 // A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
@@ -1885,10 +1917,10 @@ return ws;}});})()</script>`;
 // Right after <head> (or at the top): it has to run before the dev server's own client script.
 const holdFirst = (html) => {
   if (!PROXY || /__lab=\{writing/.test(html)) return html; // only a dev server reloads pages; never twice
-  const head = /<head[^>]*>/i.exec(html);
+  const head = /<head(\s[^>]*)?>/i.exec(html);
   if (head) return html.slice(0, head.index + head[0].length) + HOLD + html.slice(head.index + head[0].length);
   const doc = /<!doctype[^>]*>/i.exec(html);
-  return doc ? html.slice(0, doc[0].length) + HOLD + html.slice(doc[0].length) : HOLD + html;
+  return doc ? html.slice(0, doc.index + doc[0].length) + HOLD + html.slice(doc.index + doc[0].length) : HOLD + html;
 };
 // Every page under a folder, as paths relative to it: the shallowest index pages first, then by path.
 const pagesUnder = (top) => {
@@ -1915,9 +1947,14 @@ const pagesUnder = (top) => {
   });
 };
 const urlOf = (rel) => '/' + rel.split(path.sep).map(encodeURIComponent).join('/').replace(/(^|\/)index\.html?$/i, '$1');
+// A page file as text, in the charset it names (see decoderFor).
+const htmlOf = (file) => {
+  const bytes = fs.readFileSync(file);
+  return decoderFor(bytes).decode(bytes);
+};
 const titleOf = (file) => {
   try {
-    const head = fs.readFileSync(file, 'utf8').slice(0, 4000);
+    const head = htmlOf(file).slice(0, 4000);
     return head.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1].trim() || '';
   } catch {
     return '';
@@ -1931,6 +1968,7 @@ const labPage = (title, body) =>
   `<body class=lab><main><a class="lab-brand" href="/">${markSvg(20)}labit</a>${body}</main></body>`;
 const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const notFound = (req, res, what) => {
+  noteMissing(req, what);
   if (!/text\/html/.test(req.headers.accept || '')) return plain(res, 404, 'not found');
   res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
   return res.end(labPage('labit · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));
@@ -2708,7 +2746,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject((inFrame(req) ? withIcon : (h) => withRoom(withIcon(h)))(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
+        inject((inFrame(req) ? withIcon : (h) => withRoom(withIcon(h)))(htmlOf(file)), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
     }
     sendFile(req, res, file);
   } catch (e) {
