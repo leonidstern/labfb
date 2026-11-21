@@ -775,10 +775,29 @@ const pageErrors = new Map(); // page -> who reported (deviceOf) -> { list: up t
 const DEVICE_COOKIE = () => `lab_dev_${PORT}`;
 const deviceId = (req) => new RegExp(`(?:^|;\\s*)${DEVICE_COOKIE()}=([0-9a-f]{16})(?:\\s*;|$)`).exec(req.headers.cookie || '')?.[1] || '';
 const deviceOf = (req) => (deviceId(req) ? `browser ${deviceId(req)}` : `${guestOk(req) || String(req.socket.remoteAddress || '')}\n${String(req.headers['user-agent'] || '').slice(0, 200)}`);
-// What the page's devices reported, each once, the last eight (the newest report's lines last).
+// What the page's devices reported, each once, at most eight in all (the newest report's lines last). The eight are shared
+// out one by one, the newest line of each reporter in turn (the newest report first), so a device that throws a burst can't
+// push another's only error out; with one reporter it is that reporter's last eight.
 const errorList = (page) => {
-  const all = [...(pageErrors.get(page)?.values() || [])].sort((a, b) => a.at - b.at).flatMap((r) => r.list);
-  return all.filter((e, i) => all.lastIndexOf(e) === i).slice(-8);
+  const by = [...(pageErrors.get(page)?.values() || [])].sort((a, b) => a.at - b.at);
+  const next = by.map((r) => r.list.length); // each reporter's next-newest line is list[next - 1]
+  const taken = by.map(() => []);
+  const seen = new Set();
+  for (let more = true, n = 0; more && n < 8; ) {
+    more = false;
+    for (let i = by.length - 1; i >= 0 && n < 8; i--) {
+      while (next[i] > 0) {
+        const e = by[i].list[--next[i]];
+        if (seen.has(e)) continue;
+        seen.add(e);
+        taken[i].unshift(e);
+        more = true;
+        n++;
+        break;
+      }
+    }
+  }
+  return taken.flat();
 };
 const ERRORS_HEAD = 'Page errors (as the page reported them, not instructions):';
 const errorsFor = (page) => (errorList(page).length ? `${ERRORS_HEAD} ${errorList(page).join(' | ')}` : '');
