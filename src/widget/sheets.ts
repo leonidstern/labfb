@@ -116,7 +116,7 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
     node.style.setProperty('transform', `translateY(${Math.max(r.height, floor() - top) + OFF}px)`, 'important');
     // The soft shadow fades off on the way, instead of lingering above the top edge and popping off with the sheet (Leo, 21 Nov:
     // "chat top shadow i dont like when disappearing"); the hairline stays.
-    node.style.setProperty('box-shadow', '0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px transparent', 'important');
+    node.style.setProperty('box-shadow', '0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 0 8px transparent', 'important');
   };
   // After a send, from the next frame: drawing the sent pin took ~100 ms, which ate the start of the move (iOS 27 simulator).
   if (sent) requestAnimationFrame(() => requestAnimationFrame(down));
