@@ -9,7 +9,7 @@
 import { clamp, fitAll, fitFrame, panBy, zoomAt } from './camera.ts';
 import type { Cam, Box } from './camera.ts';
 
-type Frame = { id: string; src: string; kind?: string; file?: string; iw?: number; ih?: number; guest?: boolean; w: number; h: number; x: number; y: number; label?: string; state?: string; variantOf?: string };
+type Frame = { id: string; src: string; ow?: number; oh?: number; kind?: string; file?: string; iw?: number; ih?: number; guest?: boolean; w: number; h: number; x: number; y: number; label?: string; state?: string; variantOf?: string };
 type Board = { rev: number; frames: Frame[]; of?: string } & Record<string, unknown>;
 type Card = { f: Frame; box: HTMLElement; inner: HTMLElement; frame?: HTMLIFrameElement; seen: number };
 type Spot = { left: number; top: number; zone: null; clipped?: boolean };
@@ -275,7 +275,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     const shown = b.frames.filter((f) => f.state !== 'archived' && Number.isFinite(f.x));
     // A phone shows each frame at a phone's width, side by side in board order (Leo, 19 Nov: like the sketch on the
     // page). Only how it's drawn here.
-    const next = coarse ? [...shown].sort((p, q) => p.y - q.y || p.x - q.x).map((f, i) => ({ ...f, x: i * (390 + 80), y: 0, w: 390, h: 844 })) : shown;
+    const next = coarse ? [...shown].sort((p, q) => p.y - q.y || p.x - q.x).map((f, i) => ({ ...f, x: i * (390 + 80), y: 0, w: 390, h: 844, ow: f.w, oh: f.h })) : shown;
     const old = new Map(cards.map((c) => [c.f.id, c]));
     cards = next.map((f) => {
       const was = old.get(f.id);
@@ -715,6 +715,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
 
   // Where a point of a picture's frame is on the picture itself: shares of the file's width and height (the picture sits in its
   // frame whole, centred, so a frame of another shape has bars the point may be on: held to the edge), and the file's name and size.
+  const kx = (f: Frame) => (f.ow ? f.ow / f.w : 1); // stored px per drawn px (a phone draws every frame 390 wide)
+  const ky = (f: Frame) => (f.oh ? f.oh / f.h : 1);
   const onPicture = (f: Frame, x: number, y: number) => {
     const k = Math.min(f.w / f.iw!, f.h / f.ih!);
     const [dw, dh] = [f.iw! * k, f.ih! * k];
@@ -730,7 +732,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     pressed: () => void boardWidget()?.dismiss?.(),
     frame: (id: string) => find(id)?.frame,
     box: (id: string) => find(id)?.box || null, // a frame's box in the world: what the widget ties a board pin to
-    size: (id: string) => { const c = find(id); return c ? { w: c.f.w, h: c.f.h } : null; }, // its size in world px, read without laying the page out
+    size: (id: string) => { const c = find(id); return c ? { w: c.f.ow || c.f.w, h: c.f.oh || c.f.h } : null; }, // its size in world px, read without laying the page out
     /** A screen point is on this board (a page's view is less than the window). */
     contains: inBox,
     // Where a point on the screen is on the board: the frame under it (else the nearest), by px from its top left, and the point.
@@ -739,12 +741,14 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       const [wx, wy] = [Math.round((sx - ox) / cam.z - cam.x), Math.round((sy - oy) / cam.z - cam.y)];
       const gap = (c: Card) => Math.hypot(Math.max(c.f.x - wx, 0, wx - c.f.x - c.f.w), Math.max(c.f.y - wy, 0, wy - c.f.y - c.f.h));
       const f = [...cards].reverse().sort((a, b) => gap(a) - gap(b))[0]?.f; // (a picture over other frames is on top: the newer one wins a tie)
-      return { kind: 'board', board: name, ...(f && { frame: f.id, fx: wx - f.x, fy: wy - f.y }), ...(f?.kind === 'image' && onPicture(f, wx - f.x, wy - f.y)), bx: wx, by: wy, selector: '', x: 0, y: 0, docX: 0, docY: 0, width: view.w, height: view.h };
+      // A point on a frame is its px of the frame as stored (the same on every device); a phone draws it at 390 wide, so it is scaled up
+      // from there, and says it was laid out so (lay).
+      return { kind: 'board', board: name, ...(f && { frame: f.id, fx: Math.round((wx - f.x) * kx(f)), fy: Math.round((wy - f.y) * ky(f)), ...(f.ow && { lay: f.w }) }), ...(f?.kind === 'image' && onPicture(f, wx - f.x, wy - f.y)), bx: wx, by: wy, selector: '', x: 0, y: 0, docX: 0, docY: 0, width: view.w, height: view.h };
     },
     // Where a board pin is, in page px (the pins' layer is the page's): with its frame, else at the point it was put.
     spot: (a: { frame?: string; fx?: number; fy?: number; bx?: number; by?: number }): Spot => {
       const f = cards.find((c) => c.f.id === a.frame)?.f;
-      const [wx, wy] = f && a.fx !== undefined ? [f.x + a.fx, f.y + (a.fy || 0)] : [a.bx || 0, a.by || 0];
+      const [wx, wy] = f && a.fx !== undefined ? [f.x + a.fx / kx(f), f.y + (a.fy || 0) / ky(f)] : [a.bx || 0, a.by || 0];
       const [sx, sy] = [ox + (wx + cam.x) * cam.z, oy + (wy + cam.y) * cam.z];
       return { left: sx + scrollX, top: sy + scrollY, zone: null, ...(opts.clip && !inBox(sx, sy) && { clipped: true }) };
     },
