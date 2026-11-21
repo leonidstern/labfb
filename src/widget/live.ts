@@ -367,40 +367,48 @@ export function startLive() {
     // again, so that one reloads the page (`restyled`).
     let restyled = false;
     const restyle = (paths) => {
-      let hit = 0;
+      const urls = new Map(); // old address -> new address
       const fix = (text, base) =>
         text.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (m, _q, u) => {
           try {
             const abs = new URL(u, base).href;
-            return samePath(abs.split('#')[0], paths) ? (hit++, `url("${fresh(abs)}")`) : m;
+            if (!samePath(abs.split('#')[0], paths)) return m;
+            if (!urls.has(abs)) urls.set(abs, fresh(abs));
+            return `url("${urls.get(abs)}")`;
           } catch {
             return m;
           }
         });
-      const walk = (rules, base) => {
-        for (const r of rules || []) {
+      // One pass finds them (and changes nothing), the new pictures load, then a second pass puts the new addresses in: no blank between.
+      const pass = (apply) => {
+        const walk = (rules, base) => {
+          for (const r of rules || []) {
+            try {
+              const css = r.style?.cssText;
+              if (css && css.includes('url(')) {
+                const t = fix(css, base);
+                if (apply && t !== css) r.style.cssText = t;
+              }
+              if (r.styleSheet) walk(r.styleSheet.cssRules, r.styleSheet.href || base);
+              else walk(r.cssRules, base);
+            } catch {} // another site's sheet, or a rule that can't be read
+          }
+        };
+        for (const sheet of document.styleSheets) {
           try {
-            const css = r.style?.cssText;
-            if (css && css.includes('url(')) {
-              const t = fix(css, base);
-              if (t !== css) r.style.cssText = t;
-            }
-            if (r.styleSheet) walk(r.styleSheet.cssRules, r.styleSheet.href || base);
-            else walk(r.cssRules, base);
-          } catch {} // another site's sheet, or a rule that can't be read
+            if (!W.host.contains(sheet.ownerNode as Node)) walk(sheet.cssRules, sheet.href || location.href);
+          } catch {} // another site's sheet
+        }
+        for (const n of document.querySelectorAll('[style*="url("]')) {
+          const t = W.host.contains(n) ? '' : fix(n.getAttribute('style'), location.href);
+          if (apply && t && t !== n.getAttribute('style')) n.setAttribute('style', t);
         }
       };
-      for (const sheet of document.styleSheets) {
-        try {
-          if (!W.host.contains(sheet.ownerNode as Node)) walk(sheet.cssRules, sheet.href || location.href);
-        } catch {} // another site's sheet
-      }
-      for (const n of document.querySelectorAll('[style*="url("]')) {
-        const t = W.host.contains(n) ? '' : fix(n.getAttribute('style'), location.href);
-        if (t && t !== n.getAttribute('style')) n.setAttribute('style', t);
-      }
-      if (hit) restyled = true;
-      return hit;
+      pass(false);
+      if (!urls.size) return 0;
+      restyled = true;
+      void Promise.all([...urls.values()].map((u) => new Promise((done) => Object.assign(new Image(), { onload: done, onerror: done, src: u })))).then(() => pass(true));
+      return urls.size;
     };
     // A font: each @font-face that uses it is loaded again as a new face, which takes over from the old one.
     const reloadFonts = (paths) => {
