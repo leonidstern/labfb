@@ -329,8 +329,11 @@ export function startSections() {
     }
     let at: { e: Element; y: number } | undefined;
     if (scrollY > 0) {
-      const e = document.elementsFromPoint(innerWidth / 2, innerHeight / 2).find((n) => n !== W.host && n !== document.documentElement && n !== document.body);
-      if (e) at = { e, y: e.getBoundingClientRect().top };
+      // An element in view to hold still. Nothing can be hit while a save is cross-fading in (live.ts, where a new
+      // third heading brings the bar), nor in the gap between two paragraphs: then the page itself is measured, or it
+      // would drop by the bar's height.
+      const e = document.elementsFromPoint(innerWidth / 2, innerHeight / 2).find((n) => n !== W.host && n !== document.documentElement && n !== document.body) || document.body;
+      at = { e, y: e.getBoundingClientRect().top };
     }
     inset = px;
     room.textContent = css;
@@ -338,6 +341,7 @@ export function startSections() {
       const d = at.e.getBoundingClientRect().top - at.y; // what the browser's own scroll anchoring has not already made up
       if (Math.abs(d) >= 1) scrollBy({ top: d, behavior: 'instant' });
     }
+    W.reflow?.(); // the page moved under the pins the script places: they go with it now, not at the next redraw
   };
   // The bar's height before it shows (44 on a phone, 38 on a computer), to keep its room from the start: no jump when it comes.
   const height = () => {
