@@ -23,6 +23,7 @@ import { loadSettings, changedShortcuts, seedActions, savePersonal } from './lib
 import { runCommand } from './lib/commands.ts';
 import { findDevServer as find, tilde, othersNote } from './lib/devserver.ts';
 import * as B from './lib/board.ts';
+import { withBoard } from './lib/htmlspot.ts';
 import * as act from './lib/boardact.ts';
 import { imageInfo, MAX_IMAGE } from './lib/images.mjs';
 import { IMAGE_TYPES, IMAGES_SAID, imageLine, imageName, imagesOf, MAX_IMAGES, wordsOf } from './lib/schema.mjs';
@@ -55,61 +56,25 @@ const newerBuild = () => {
     return false;
   }
 };
-const HELP = `labit ${VERSION}: comment on local pages; your agent (Claude, Codex, Cursor…) answers on the pins.
-Run as npx @leonidstern/labit …, or node local.mjs … from a clone. Agents: labit skill prints how to work with it.
+const HELP = `labit ${VERSION}: comment on local pages; your agent answers on the pins (labit skill: how).
 
-  labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi | --no-wifi] [--no-open] [--new] [folder]
-      Run it in your project. With a dev server (Astro, Next, Vite…) running there, comments go on top of it
-      (--proxy <port> picks one), whatever HTML files the project has. A folder of HTML files with no dev server is served as it is.
-      --wifi: phones and laptops on the same wifi comment as guests, each with a one-time link (labit invite);
-      pages travel in the clear. On a running lab it restarts in place; --no-wifi turns it off.
-      A folder a lab already serves opens in that lab; --new starts a separate one.
-      --name: the lab's topic, shown in ⌘K instead of the folder.
-  labit publish <page.html | folder> [--name "topic"]
-      Show a page like an Artifact: it goes into your one pages lab (pagesFolder, ~/lab-pages); publish again
-      to update, same link. --dev: for working on labit itself (restarts when local.mjs or lib/ change).
-  labit list
-      Every lab on this computer: address, folder, pages, open comments. Check it before starting one.
-  labit pages [--all]
-      Write .lab/lab-pages.md: this folder's labs (--all: every lab) as links.
-  labit settings
-      Each setting, its value and source. See docs/settings.md.
-  labit skill
-      How an agent works with labit, printed: for an agent without the plugin.
-  labit preview [folder]
-      Add "lab" to .claude/launch.json, so the Claude desktop app opens the pages in its preview pane.
+  labit [folder] [--name topic] [--proxy [port]] [--port 4400] [--wifi|--no-wifi] [--no-open] [--new]
+  labit publish <page.html|folder> [--name topic] [--dev]
   labit invite [name] [--page /path]
-      A one-time link for a phone on the same wifi (one use, ten minutes); turns the wifi on first if needed.
+  labit list | pages [--all] | settings | skill | update | preview [folder]
 
-For the agent, from the project:
-  labit wait [--bg] [--timeout 1500] [--pages /a,/b] [--name <project>] [--model <your model>]
-      Ends with the next comment, printed in full. Run it in the background with --bg: without it a wait ends
-      after a minute, so the person's turn is never held open. Never wrap it in a shell loop: that keeps
-      listening after the session is gone. --pages: only these pages' pins. A pin with no reply for 2 minutes
-      goes to the next wait.
-  labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
-      Answer on the pin by the id wait printed. --done closes it; --on-it: working; --question: you need the
-      person; --wait listens again right after.
-  labit reply <id> --progress "what you're on now"
-      One short status line for long work; an answer clears it.
-  labit reply <id> "question" --choice "A words" [--hint "why"] --choice "B words" [--recommend B]
-      2 to 6 choices; the pick comes back in your next wait as "Picked B: …". Make that change, then resolve.
+For the agent:
+  labit wait [--bg] [--timeout 1500] [--pages /a,/b] [--name project] [--model model]
+  labit reply <id> "text" [--done|--on-it|--question] [--resolve] [--wait] [--page /path]
+  labit reply <id> --progress "status" | "question" --choice A [--hint why] --choice B [--recommend B]
   labit resolve <id> [--page /path]
-  labit pin <selector> "text" [--page /path] [--at x,y] [--quote "words"] [--question | --choice "A" --choice "B" [--recommend B]] [--no-check]
-      Your own pin, one per point. --at: shares of the element (default 0.5,0.5). --quote: pin those words.
-  labit pin --file points.json [--page /path]
-      A list of { "selector", "text", "quote"?, "at"?, "page"?, "choices"?, "recommend"?, "question"? }.
-  labit pin --board <name> [--frame <id>] <selector|-> "text" [--at x,y]
-      On a board: a frame's element, a frame (-), or the board; --at in pixels.
-  labit update
-      Move this folder's lab onto the newer release its ⋯ menu offers.
-  labit board new|add|move|pick|list ...
-      Options, widths and flows as frames: new "<topic>" --of /page --variants 3 (edit the copies in
-      .lab/boards/<board>/) | --widths 390,820,1280 | --flow /a,/b,/c. add <board> <frame|/page|file.html|image>
-      [--label] [--width] [--after]; move <board> <frame> --after <frame>; pick <board> <frame>; list [<board>].
+  labit pin <selector> "text" [--page /path] [--at x,y] [--quote words] [--question|--choice …] [--no-check]
+  labit pin --file points.json | --board <name> [--frame <id>] <selector|-> "text"
+  labit board new topic --of /page [--variants 3|--widths 390,820|--flow /a,/b] | list [board]
+  labit board add <board> <frame|/page|file|image> [--label] [--width] [--after]
+  labit board move <board> <frame> --after <frame> | pick <board> <frame>
 
-.lab/ in the folder holds the comments (comments.md, comments/), archive/, state.json, server.json
-and key (owner-only). Delete it to start over.`;
+.lab/ holds the comments and state; delete it to start over.`;
 
 // ---------- arguments ----------
 const { opts, pos, unknownFlags } = parseArgs(process.argv.slice(2));
@@ -821,9 +786,20 @@ const agentText = async (page) => {
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`).replace(/^settle: pin /gm, `settle: ${CMD} pin `);
   const file = fileFor(page);
   const lines = [file && `file: ${file}`, missingFor(page), errorsFor(page)].filter(Boolean);
-  const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
+  const out = pinBoards(page, lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local);
   return boardText(page, file ? lineHints(out, file) : out);
 };
+// A pin's own board (made from its card, src/widget/thread.ts): board pin-<id>, about its page at #pin-<id>. What is on
+// it is said under the pin's words, so the agent gets the person's references with the pin, not only with a pin on a
+// frame. The page itself (its first frame) and archived frames are left out; a board with nothing else says nothing.
+const pinBoards = (page, text) => text.replace(/^## \d+\. [^\n]* · id ([0-9a-f]{12})\ncomment: [^\n]*(?:\n {2}\|[^\n]*)*$/gm, (all, id) => {
+  const b = boardGet(`pin-${id}`);
+  if (!b || boardHome(b) !== page || b.of.split('#')[1] !== `pin-${id}`) return all;
+  const shown = b.frames.filter((f) => f.state !== 'archived' && f.src.split(/[?#]/)[0] !== page);
+  if (!shown.length) return all;
+  const what = (f) => (f.file ? `picture .lab/boards/${b.name}/${f.file}` : f.src.startsWith('/_lab/') ? `.lab/boards/${b.name}/${f.id}.html` : `page ${f.src}`);
+  return `${all}\nboard for this pin: ${origin}${page}#board=${b.name} (the person's references for this pin; open the files)\n${shown.map((f) => `  frame ${f.id}: ${what(f)}${f.label ? ` "${f.label}"` : ''}`).join('\n')}`;
+});
 // A plain HTML page: each comment's element is found in the file by its words, and its line said next to it
 // (`in file: pricing.html:30`), so an agent opens the file there instead of searching (sims, 20 Nov: a drawing's
 // action took 4-5 tool calls, most of them looking for the spot).
@@ -1517,6 +1493,23 @@ try {
 // .lab/boards is watched by the lab itself: the project watcher skips dot folders and is off behind a dev server. A saved
 // variant is a hot update of that frame's own page alone; a changed board file is a new `boards` count (with which),
 // and neither touches `files`, so no page reloads for them.
+// A deleted pin takes its own board with it (pin-<id>, made with +board): the board and its pictures in .lab/boards/,
+// and the <lab-board> section the lab wrote into the page's file, so no board is left on a page with no pin for it
+// (Leo, 21 Nov: "no stray board").
+const dropBoard = (page, id) => {
+  const name = `pin-${id}`;
+  if (boardGet(name)?.of !== `${page}#${name}`) return; // a board name is checked as it is read (B.read): no path in it
+  for (const f of [`${name}.json`, name]) fs.rmSync(path.join(B.dirOf(ROOT), f), { recursive: true, force: true });
+  boardCache.clear();
+  boardList = null;
+  // Only the line the lab wrote (place, below) is taken out: under --proxy or in a file it never wrote, there is none.
+  try {
+    const full = path.join(ROOT, fileFor(page));
+    const src = fs.readFileSync(full, 'utf8');
+    const out = src.replace(new RegExp(`\\n[ \\t]*<lab-board name="${name}"></lab-board>`), '');
+    if (out !== src) fs.writeFileSync(full, out);
+  } catch {} // no file for the page, or it can't be written: the section stays, and shows nothing without its board
+};
 let boardList = null; // every stored board, kept like the cache below
 const boardCache = new Map(); // name -> the stored board and when it was written (cleared when its file changes)
 const boardGet = (name) => {
@@ -1810,7 +1803,11 @@ const rulesOnce = () => {
 // (handoff[id][1]), so a reply goes in the short thread form only to the session that already has its thread.
 const whoOf = (s) => s?.id || s?.name || '';
 // What people wrote that no wait has been handed yet.
-const freshIn = (scope) => scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
+// A pin sent with +board (its board opens as it goes, src/comments.js) waits until the person closes that board (or 20
+// minutes), so the agent gets it with what was put on it, not before.
+const filled = new Set(); // ids of +board pins whose board was closed
+const filling = (c) => !c.parent && /^\+board\b/.test(c.anchor?.act || '') && !filled.has(c.id) && Date.now() - Date.parse(c.createdAt) < 1200000;
+const freshIn = (scope) => scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && !filling(c) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
 async function unseen(scope = pages(), who = '') {
   const fresh = freshIn(scope);
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
@@ -2332,7 +2329,8 @@ const labInfo = () => {
   return {
     name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, browser: openTabs() > 0, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
-    boards: B.names(ROOT).flatMap((name) => { const b = boardGet(name); return b ? [{ name, url: `${origin}/_lab/board/${name}`, frames: b.frames.filter((f) => f.state !== 'archived').length, of: b.of || null, at: b.at }] : []; }),
+    // A pin's own board (pin-<id>) is opened from its pin, not listed with the lab's boards.
+    boards: B.names(ROOT).flatMap((name) => { const b = boardGet(name); return b && !(name.startsWith('pin-') && b.of?.includes('#pin-')) ? [{ name, url: `${origin}/_lab/board/${name}`, frames: b.frames.filter((f) => f.state !== 'archived').length, of: b.of || null, at: b.at }] : []; }),
     created: created(),
     pages: list.map(({ key, ...p }) => {
       const at = lastAt(key, p.file ? path.join(ROOT, p.file) : '');
@@ -2351,6 +2349,28 @@ const boardApi = async (req, res, url) => {
   if (req.method === 'POST') {
     if (!isAgent(req) && !isOwner(req)) return plain(res, 403, 'forbidden');
     const b = await sent(req);
+    const pinOf = /^pin-([0-9a-f]{12})$/.exec(String(b.name))?.[1];
+    const page = typeof b.of === 'string' ? b.of.split('#')[0] : '';
+    // The pin's board as a section of the page, after the element pinned: <lab-board name> written into the page's own
+    // file, which the widget fills with the board (Leo, 21 Nov: "add board section into page", "its html like artifact why
+    // it would be deployed"). The one write the lab makes outside .lab/, and only of a page's .html file served as it is.
+    if (b.action === 'place') {
+      const file = !PROXY && pinOf && b.of === `${page}#pin-${pinOf}` && fileFor(page);
+      const at = Array.isArray(b.path) && b.path.length <= 40 && b.path.every((s) => Array.isArray(s) && typeof s[0] === 'string' && /^[a-z][a-z0-9-]*$/.test(s[0]) && Number.isInteger(s[1]) && s[1] > 0) ? b.path : null;
+      if (!file || !/\.html?$/i.test(file) || file.startsWith('.lab/') || !at) return json(422, { error: 'only a page served from its own .html file takes a board section' });
+      const full = path.join(ROOT, file);
+      const src = fs.readFileSync(full, 'utf8');
+      const out = withBoard(src, String(b.name), at, typeof b.words === 'string' ? b.words.slice(0, 200) : '');
+      if (out === null) return json(422, { error: `the pinned element isn't in ${file} as the page has it` });
+      if (out !== src) fs.writeFileSync(full, out);
+      return json(200, { ok: true, file });
+    }
+    // A pin's board closed (its +board pin goes to the agent now, with what is on it).
+    if (b.action === 'ready') {
+      if (pinOf) filled.add(pinOf);
+      wake();
+      return json(200, { ok: true });
+    }
     const env = { root: ROOT, origin, proxied: Boolean(PROXY), open: (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length, titleOf: (p) => { const f = fileFor(boardPage(p)); return f ? titleOf(path.join(ROOT, f)) : ''; }, fileOf: (p) => fileFor(boardPage(p)) };
     const out = act.act(String(b.action), b, env);
     boardCache.clear();
@@ -3014,6 +3034,7 @@ const handler = async (req, res) => {
       let raw;
       let staged = [];
       let doomed = [];
+      let dropped = null; // a deleted pin: [its page, its id]
       if (req.method === 'POST') {
         raw = await sentWithin(req, BODY_MAX);
         if (raw === null) return plain(res, 413, 'too big');
@@ -3033,7 +3054,10 @@ const handler = async (req, res) => {
               stamp.images = staged.map((f) => ({ ...f, file: undefined }));
             }
           }
-          if (b?.action === 'delete' && typeof b.id === 'string') doomed = commentsOf(b.page).filter((c) => c.id === b.id || c.parent === b.id).flatMap((c) => imagesOf(c).map((i) => imageName(c, i)));
+          if (b?.action === 'delete' && typeof b.id === 'string') {
+            dropped = [b.page, b.id];
+            doomed = commentsOf(b.page).filter((c) => c.id === b.id || c.parent === b.id).flatMap((c) => imagesOf(c).map((i) => imageName(c, i)));
+          }
         }
       }
       const out = await callApi(fn, req, `http://localhost/api${url.search}`, {
@@ -3050,6 +3074,7 @@ const handler = async (req, res) => {
         // that is not there yet; a delete takes its pictures away (an archived comment's stay where they are).
         if (out.status === 201 && staged.length) staged.forEach((f, i) => { try { fs.renameSync(f.file, path.join(ATTACH, `${comment.id}-${i + 1}.${f.type}`)); } catch (e) { console.error('[lab] could not keep a picture:', e.message); } });
         for (const name of doomed) fs.rmSync(path.join(ATTACH, name), { force: true });
+        if (dropped) dropBoard(...dropped);
         // Who wrote it, its intent and an agent's done closing the thread are saved by the API, in its own write.
         if (out.status === 201 && !agent) {
           const [key] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));

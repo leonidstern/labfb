@@ -386,11 +386,13 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     // Asked in the card itself, not the browser's dialog: the row swaps to the question, same height, nothing moves.
     const yes = W.el('button', { class: 'btn danger', type: 'button' }, 'delete');
     const no = W.el('button', { class: 'btn', type: 'button' }, 'cancel');
+    let was = [resolve, del]; // the row as it was before the question (Do it, board and undo too)
     const back = () => {
-      actions.replaceChildren(resolve, del);
+      actions.replaceChildren(...was);
       del.focus();
     };
     del.addEventListener('click', () => {
+      was = [...actions.children];
       actions.replaceChildren(W.el('span', { class: 'ask' }, W.repliesOf(c.id).length ? 'delete thread?' : 'delete comment?'), yes, no);
       no.focus();
     });

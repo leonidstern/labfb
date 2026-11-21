@@ -595,6 +595,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
                              opacity: var(--lab-p, 0); pointer-events: none;
                              transition: transform var(--_t-base) var(--_ease-in), opacity calc(var(--_t-quick) / 2) var(--_ease-out); /* gone within a few frames of the sheet rising: it showed under the sheet's edge while it slid down (Leo, 21 Nov) */ }
   :host([data-sheet]) .bar button { pointer-events: none; }
+  /* A board open over the page is a sheet too: the bar and the pill step down under it (Leo, 21 Nov: the pill covered the
+     board's corner). Its own sheets (a pin's card on the board) bring them back as they close, as on a page. */
+  :host([data-board]:not([data-sheet])) :is(.bar, .listener, .left) { transform: translateY(calc(100% + 16px + env(safe-area-inset-bottom, 0px))); opacity: 0; pointer-events: none; }
   /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
      sheet never scrolls the page. */
   :host([data-sheet]) .scrim { display: block; animation: lab-fade var(--_fade-base); }
@@ -651,6 +654,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 .quick button { border: 0; border-radius: var(--_r-s); padding: 5px 8px; background: var(--_soft); font-size: 12px; letter-spacing: 0; cursor: pointer; }
 .quick button:hover { background: var(--_hover); }
 .quick button.on { background: var(--_fg); color: var(--_bg); font-weight: 600; }
+.quick button.own { margin-left: auto; background: color-mix(in srgb, var(--_green) 14%, transparent); color: var(--_green-fg); } /* +board: labit's own action, not one of your list */
+.quick button.own:hover { background: color-mix(in srgb, var(--_green) 24%, transparent); }
 .quick.alt button::after { content: attr(data-n); margin-left: 6px; opacity: .55; font-variant-numeric: tabular-nums; } /* ⌥ held: the key for each */
 .float .quick button, .float .box { border-radius: max(0px, calc(var(--_radius) - 8px)); }
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
