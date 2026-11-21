@@ -74,6 +74,7 @@ A board shows pages side by side as frames. Use one when the person asks for opt
 
 - Options: `LAB board new "<topic>" --of /page --variants 3`. Frame `a` is the real page as it is now: never edit it for a variant. The lab copies the page into `.lab/boards/<board>/b.html`, `c.html`… and prints the link. Edit those files; never write the page out again. Three unless asked (six at most), each different in one way: name it with `LAB board add <board> b --label "<what differs>"`. Save b first, so the person sees it while you make c.
 - Behind a dev server (or a page that is no plain HTML file) a variant is the live page with `?lab-variant=<frame>`: branch on `new URLSearchParams(location.search).get('lab-variant')` in its source; a pick: keep its branch, remove the branching.
+- A pin made on a narrow window (the pin's viewport line under 600 px) is about the phone layout: change the matching `@media` rule, not the base one, and show it with `--widths <that width>,1280`.
 - Widths: `--widths 390,820,1280`. A flow: `--flow /a,/b,/c`. These show the real pages; nothing is copied.
 - The lab places frames. Give an order (`--after`), never positions.
 - A pin on a frame names its frame and file: change that frame only.
