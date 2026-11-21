@@ -10,6 +10,7 @@ import { createHmac } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { claimPort, tmp, rm, spawnLab, sleep, serverJson } from './harness.mjs';
 import { apiOn } from '../lib/dev.ts';
+import { png } from './pictures.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const OWNER = 'owner-secret-0123456789abcdef';
@@ -402,6 +403,49 @@ test("a guest's copy of the agent's text has no path of this computer and no fil
     assert.equal(r.text.includes(WDIR), false, `${p} names the folder`);
   }
   assert.equal((await as('/_lab/agent/index')).status, 403, 'and without a pass, the gate');
+});
+
+test('a guest with a pass may put a picture on a stored board (marked as theirs); no pass, no stored board, or the owner-only moves are refused', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const own = `http://localhost:${WPORT}`;
+  const seed = await wraw('/_lab/api/board?name=guests', { method: 'PUT', headers: { origin: own, 'content-type': 'application/json' }, body: JSON.stringify({ frames: [{ id: 'a', src: '/index', w: 1440, h: 900 }] }) });
+  assert.equal(seed.status, 200, seed.text);
+  const dir = path.join(WDIR, '.lab/boards/guests');
+  const send = (q, body, headers = {}) => wraw(`/_lab/api/image?${q}`, { host: lan, method: 'POST', body, headers: { origin: `http://${lan}:${WPORT}`, 'content-type': 'image/png', ...headers } });
+  assert.equal((await send('board=guests', png())).status, 403, 'no pass: the gate');
+  assert.equal(fs.existsSync(dir), false, 'and nothing is written');
+  assert.equal((await send('board=guests', png(), { cookie, origin: 'https://evil.example' })).status, 403, "the pass doesn't open it to other sites");
+  assert.equal((await send('board=nowhere', png(), { cookie })).status, 403, 'a board that is not stored yet is the owner’s to make');
+  const first = await send('board=guests&x=5&y=5', png(40, 30), { cookie });
+  assert.equal(first.status, 200, first.text);
+  const frame = JSON.parse(first.text).frame;
+  assert.deepEqual([frame.kind, frame.guest, frame.file], ['image', true, 'b.png']);
+  assert.match((await wraw('/_lab/agent/_board/guests')).text, /pasted image \.lab\/boards\/guests\/b\.png from a wifi guest/, 'the agent is told who it came from');
+  assert.equal((await send('board=guests', Buffer.concat([png(), Buffer.alloc(4 * 1024 * 1024)]), { cookie })).status, 200, 'a guest may put 4 MB, as the owner may');
+  assert.equal((await send('board=guests', undefined, { cookie, 'content-length': String(25 * 1024 * 1024 + 1) })).status, 413, 'and both are held to 25 MB (by its length, before a byte is read)');
+  assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith('.png')).length, 2);
+  // adding or archiving a frame, and replacing the board, stay the owner's
+  const mine = { cookie, origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json' };
+  assert.equal((await wraw('/_lab/api/board', { host: lan, method: 'POST', body: JSON.stringify({ action: 'pick', name: 'guests', frames: ['a'] }), headers: mine })).status, 403);
+  assert.equal((await wraw('/_lab/api/board?name=guests', { host: lan, method: 'PUT', body: '{"rev":1,"frames":[]}', headers: mine })).status, 405);
+});
+
+test('a guest adds pictures like the owner: more than 20, until the board is at its 60, and an archived picture frees a place', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const own = `http://localhost:${WPORT}`;
+  const put = (body) => wraw('/_lab/api/board?name=cap', { method: 'PUT', headers: { origin: own, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal((await put({ frames: [{ id: 'a', src: '/index', w: 1440, h: 900 }] })).status, 200);
+  const send = () => wraw('/_lab/api/image?board=cap', { host: lan, method: 'POST', body: png(), headers: { origin: `http://${lan}:${WPORT}`, 'content-type': 'image/png', cookie } });
+  for (let i = 0; i < 59; i++) assert.equal((await send()).status, 200, `picture ${i + 1}`);
+  const full = await send();
+  assert.equal(full.status, 422, 'the 61st frame');
+  assert.match(JSON.parse(full.text).error, /at most 60 frames/);
+  const board = JSON.parse((await wraw('/_lab/api/board?name=cap')).text);
+  assert.equal(board.frames.length, 60);
+  assert.ok(board.frames.slice(1).every((f) => f.guest === true), "each is marked as a guest's");
+  assert.equal((await put({ rev: board.rev, frames: board.frames.map((f) => (f.id === 'b' ? { ...f, state: 'archived' } : f)) })).status, 200, 'the owner archives one');
+  assert.equal((await send()).status, 200, 'its place is free');
+  assert.equal((await send()).status, 422, 'and the board is full again');
 });
 
 test('a one-time link works once, and an unknown one never', async () => {

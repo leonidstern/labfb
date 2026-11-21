@@ -57,6 +57,10 @@ type Anchor = {
   nh?: number;
   imgX?: number;
   imgY?: number;
+  imgX2?: number;
+  imgY2?: number;
+  /** On a board: the frame a pin is on, in px from its top left. */
+  frame?: string;
   time?: number;
   /** The page's videos and animations were paused when this was written. */
   paused?: boolean;
@@ -1465,6 +1469,10 @@ export function zoneAnchor({ x0, y0, x1, y1 }) {
   const right = Math.max(x0, x1);
   const bottom = Math.max(y0, y1);
   const anchor = anchorAt((left + right) / 2, (top + bottom) / 2);
+  // An area on a picture of a board: its two corners on the picture itself (the board knows the picture's file and size).
+  const corner = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor } }).__labBoard?.anchor;
+  const [p, q] = anchor.kind === 'board' && anchor.nw && corner ? [corner(left, top), corner(right, bottom)] : [];
+  if (p && q && p.frame === anchor.frame && q.frame === anchor.frame) Object.assign(anchor, { imgX: p.imgX, imgY: p.imgY, imgX2: q.imgX, imgY2: q.imgY });
   delete anchor.sx; // an area is stored on its box, as shares of it
   let box = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2).find((n) => n !== host && !host.contains(n));
   // The area is on the smallest element that holds most of it (80%): a narrow strip drawn a little past a picture's

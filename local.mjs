@@ -24,6 +24,7 @@ import { runCommand } from './lib/commands.ts';
 import { findDevServer as find, tilde, othersNote } from './lib/devserver.ts';
 import * as B from './lib/board.ts';
 import * as act from './lib/boardact.ts';
+import { imageInfo, MAX_IMAGE } from './lib/images.mjs';
 import { proxy as makeProxy } from './lib/proxy.ts';
 import { newer, fetchNotes } from './lib/update.ts';
 
@@ -103,7 +104,7 @@ For the agent, from the project:
       Move this folder's lab onto the newer release its ⋯ menu offers.
   labit board new|add|move|pick|list ...
       Options, widths and flows as frames: new "<topic>" --of /page --variants 3 (edit the copies in
-      .lab/boards/<board>/) | --widths 390,820,1280 | --flow /a,/b,/c. add <board> <frame|/page|file.html>
+      .lab/boards/<board>/) | --widths 390,820,1280 | --flow /a,/b,/c. add <board> <frame|/page|file.html|image>
       [--label] [--width] [--after]; move <board> <frame> --after <frame>; pick <board> <frame>; list [<board>].
 
 .lab/ in the folder holds the comments (comments.md, comments/), archive/, state.json, server.json
@@ -847,7 +848,7 @@ const boardText = async (page, text) => {
     const g = bd?.frames.find((x) => x.id === id);
     if (!g) return all;
     const more = lead === 'near: frame ' && g.state === 'picked' ? `\n${act.frameLine(bd, g, of(bd)).split('\n')[1]}` : '';
-    return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${g.src.startsWith('/_lab/') ? `${id}.html` : g.src} at ${g.w}×${g.h})${tail}${more}`;
+    return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${act.shown(bd, g)} at ${g.kind === 'image' ? `${g.iw}×${g.ih} px shown at ` : ''}${g.w}×${g.h})${tail}${more}`;
   })).join('\n');
 };
 
@@ -2186,7 +2187,7 @@ const sent = async (req) => {
   if (body === null) throw refuse(413, 'too big');
   let data;
   try {
-    data = JSON.parse(body || '{}');
+    data = JSON.parse(body.toString() || '{}');
   } catch {
     throw refuse(400, 'not JSON');
   }
@@ -2202,7 +2203,7 @@ const sentWithin = async (req, max) => {
     n += chunk.length;
     if (n <= max) parts.push(chunk);
   }
-  return n > max ? null : Buffer.concat(parts).toString();
+  return n > max ? null : Buffer.concat(parts);
 };
 const answer = (res, data, code = 200) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(data));
 // When this lab was made: its .lab folder's birth (the first run in this folder). Linux may not keep births: then its
@@ -2295,6 +2296,43 @@ const boardApi = async (req, res, url) => {
   watchBoards();
   return json(200, { ...B.place(boardGet(name)), exists: true });
 };
+// POST /_lab/api/image?board=<board>[&page=/x][&x=<wx>&y=<wy>][&label=…]: the body is a picture's bytes (a pasted or dropped
+// image), put on the board as a frame of its own: the board's browser key (or the agent's) writes, a --wifi guest never does.
+// Auth, then the query, then the length, then the body: a refused sender's bytes are never read.
+const boardImage = async (req, res, url) => {
+  const json = (code, data) => answer(res, data, code);
+  if (req.method !== 'POST') return plain(res, 405, 'POST');
+  // The owner (this computer's browser with its key, or the agent) puts a picture up to 8 MB; so does a wifi guest with a pass
+  // (their frame is marked as theirs), on a board that is already stored. Anyone else is refused before a byte is read.
+  const owner = isAgent(req) || (isLoopback(req) && keyOk(req));
+  const guest = !owner && WIFI && !isLoopback(req) && Boolean(guestOk(req));
+  if (!owner && !guest) return plain(res, 403, 'forbidden');
+  const name = url.searchParams.get('board') || '';
+  const page = url.searchParams.get('page');
+  const at = ['x', 'y'].map((k) => url.searchParams.get(k));
+  if (!B.NAME.test(name) || (page && !B.labPath(page)) || (at.some((v) => v !== null) && at.some((v) => v === null || !Number.isFinite(+v)))) return json(400, { error: 'name a board (?board=), a page like /x and a point (?x=&y=)' });
+  const type = req.headers['content-type'];
+  if (guest && !boardGet(name)) return json(403, { error: "A board that isn't stored yet is the owner's to make." });
+  const max = MAX_IMAGE;
+  const tooBig = { error: `A picture is at most ${max / 1048576} MB.` };
+  if (+(req.headers['content-length'] || 0) > max) return res.writeHead(413, { connection: 'close', 'content-type': 'application/json' }).end(JSON.stringify(tooBig));
+  const bytes = await sentWithin(req, max);
+  if (bytes === null) return json(413, tooBig);
+  const info = imageInfo(bytes);
+  if (!info || info.type !== type) return json(415, { error: "That isn't a png, jpeg, webp or gif picture." });
+  let b = boardGet(name);
+  if (!b) {
+    if (!page) return json(404, { error: `no board ${name}` });
+    b = { v: 1, name, rev: 0, of: page, frames: [{ id: 'a', src: page, w: 1440, h: 900, state: 'live' }] };
+  }
+  const board = { ...b, frames: b.frames.map((f) => ({ ...f })) };
+  const out = B.addImage(ROOT, board, bytes, info, at[0] === null ? undefined : { x: +at[0], y: +at[1] }, { label: url.searchParams.get('label') || '', guest });
+  if ('error' in out) return json(422, { error: out.error, text: out.error });
+  boardCache.delete(name);
+  boardList = null;
+  watchBoards();
+  return json(200, { board: B.place(boardGet(name)), frame: out.frame, text: `Added ${out.frame.id} (${act.shown(board, out.frame)})` });
+};
 // A pick reaches the agent as a pin from the person on the board, once (a pick that changes nothing posts nothing).
 const pickedPin = async (board, frame) => {
   const res = await api.POST(new Request('http://localhost/api', {
@@ -2333,7 +2371,10 @@ const handler = async (req, res) => {
     // through, forms included, but another site's do not: the lab hands them on under the dev server's own Origin, so
     // the dev server could not tell them from its own.
     const own = !PROXY || url.pathname.startsWith('/_lab/');
-    if (req.method !== 'GET' && req.method !== 'HEAD' && (!sameOrigin(req) || (own && !(req.headers['content-type'] || '').startsWith('application/json'))))
+    // The one write that isn't JSON is a picture put on a board: its type (not a form's, so another site can't send it
+    // without a preflight, which the lab never answers) and the same Origin rule.
+    const picture = url.pathname === '/_lab/api/image' && /^image\/(png|jpeg|webp|gif)$/.test(req.headers['content-type'] || '');
+    if (req.method !== 'GET' && req.method !== 'HEAD' && (!sameOrigin(req) || (own && !picture && !(req.headers['content-type'] || '').startsWith('application/json'))))
       return plain(res, 403, 'forbidden');
     // A path that can't be decoded (/%, /%zz) is the sender's mistake, not a 500 with the error's text. Behind --proxy
     // the app's own paths go on to the dev server as they came.
@@ -2715,8 +2756,14 @@ const handler = async (req, res) => {
     }
     // ---------- boards: a variant's page, and the board's data (lib/board.ts) ----------
     // /_lab/board/<name> is the board page, /_lab/board/<name>/<frame> a variant's own page.
-    if (pathname.startsWith('/_lab/board/') || pathname === '/_lab/api/board') {
+    if (pathname.startsWith('/_lab/board/') || pathname === '/_lab/api/board' || pathname === '/_lab/api/image') {
       const m = /^\/_lab\/board\/([a-z0-9][a-z0-9_-]{0,79})\/([a-z][a-z0-9]*)$/.exec(pathname);
+      const pic = m && boardGet(m[1])?.frames.find((f) => f.id === m[2] && f.kind === 'image');
+      if (pic && (req.method === 'GET' || req.method === 'HEAD')) {
+        const file = B.imageFile(ROOT, m[1], pic.file);
+        if (!fs.existsSync(file)) return notFound(req, res, pathname);
+        return sendFile(req, res, file, { 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox", 'content-disposition': 'inline' });
+      }
       if (m && (req.method === 'GET' || req.method === 'HEAD')) {
         const file = B.frameFile(ROOT, m[1], m[2]);
         if (!fs.existsSync(file)) return notFound(req, res, pathname);
@@ -2725,6 +2772,7 @@ const handler = async (req, res) => {
       }
       // Awaited: what it throws (a body that is not JSON, or too long) is answered below. Not awaited, it ended the lab.
       if (pathname === '/_lab/api/board') return await boardApi(req, res, url);
+      if (pathname === '/_lab/api/image') return await boardImage(req, res, url);
       // The board page itself: an empty page with the board's view over all of it, the same one a page that links a board
       // shows (public/_lab/boardview.js, own() in src/board/overlay.ts), filled from /_lab/api/board. The widget rides on it
       // under the board's key, like any page; it is a page of its own, never one of the lab's pages.
