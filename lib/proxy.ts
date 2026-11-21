@@ -7,6 +7,7 @@ import net from 'node:net';
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { decoderFor } from './dev.ts';
+import { isPageLoad } from './pageload.ts';
 
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/;
 
@@ -33,13 +34,14 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
   function proxyTo(req: IncomingMessage, res: ServerResponse, url: URL): void {
     const origin = originNow();
     // Only a page load is asked for uncompressed HTML (the widget goes into it); scripts and styles stay compressed.
-    const page = req.method === 'GET' && (req.headers['sec-fetch-dest'] === 'document' || /text\/html/.test(req.headers.accept || ''));
+    // HTML a script fetches (a fragment, or a whole page for a client router to swap in) is the app's data: left as it is.
+    const page = req.method === 'GET' && isPageLoad(req.headers);
     const headers: OutgoingHttpHeaders = { ...req.headers, host: PROXY.host, ...(page ? { 'accept-encoding': 'identity' } : {}) };
     if (headers.origin) headers.origin = PROXY.origin;
     if (headers.referer) headers.referer = PROXY.origin + new URL(String(headers.referer), origin).pathname;
     const up = http.request({ hostname: PROXY.hostname, port: PROXY.port || 80, path: url.pathname + url.search, method: req.method, headers }, (r) => {
       const encoded = r.headers['content-encoding'] && r.headers['content-encoding'] !== 'identity';
-      const html = /text\/html/i.test(r.headers['content-type'] || '') && req.method === 'GET' && !encoded;
+      const html = page && /text\/html/i.test(r.headers['content-type'] || '') && !encoded;
       // A redirect to the dev server's own address would take the person off the lab (no widget, no comments).
       // localhost, 127.0.0.1 and [::1] on its port are all it: a server asked for as localhost often redirects to 127.0.0.1.
       const to = r.headers.location && URL.canParse(r.headers.location) ? new URL(r.headers.location) : null;
