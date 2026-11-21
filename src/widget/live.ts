@@ -196,7 +196,7 @@ export function startLive() {
     // Files a save can mean for this page: the page itself, anything it loads, and data it may fetch as it runs.
     // Everything else -- a README, another page's script, the project's own server code -- leaves it alone.
     const FETCHED = /\.(json|wasm|csv|tsv|xml|txt|map|woff2?)$/i;
-    const tidy = (u) => decodeURIComponent(u).replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '');
+    const tidy = (u) => decodeURIComponent(u).replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '').toLowerCase();
     const usedHere = (p) => {
       if (tidy(location.pathname) === tidy(p) || FETCHED.test(p)) return true;
       for (const n of document.querySelectorAll('script[src], link[href], iframe[src], object[data], embed[src]')) {
@@ -204,7 +204,8 @@ export function startLive() {
         const v = n.getAttribute('src') || n.getAttribute('href') || n.getAttribute('data');
         if (v && samePath(v.split('#')[0], [p])) return true;
       }
-      return false;
+      // Anything else the page fetched while it ran: an ES module's imports, a worker, a script a script added.
+      return performance.getEntriesByType('resource').some((e) => samePath(e.name, [p]));
     };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
@@ -286,14 +287,16 @@ export function startLive() {
     let commentsRev = null; // the lab's comments version this page has (not the read marks, `seen`)
     let readsAt = null;
     let sectionsAt = null;
-    let hotAt = null;
+    let hotAt = W.script.dataset.hot ? +W.script.dataset.hot : null; // the lab's hot count when this page was served: a save since then is still caught up
     // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
     const swapCss = (files) => {
       // A clone still loading from an earlier save is skipped (its original is swapped instead) and dropped once a newer one is in.
       const links = [...(document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])') as NodeListOf<HTMLLinkElement>)].filter((l) => new URL(l.href, location.href).origin === location.origin);
-      const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
-      for (const link of named.length ? named : links) {
+      const own = (l: HTMLLinkElement) => decodeURIComponent(new URL(l.href, location.href).pathname);
+      const named = links.filter((l) => files.includes(own(l)));
+      // A saved file no link names is pulled in by @import: every sheet is swapped then, not only the ones named.
+      for (const link of named.length && files.every((f) => named.some((l) => own(l) === f)) ? named : links) {
         const url = new URL(link.href, location.href);
         url.searchParams.set('lab-v', Date.now().toString(36));
         const next = (link.cloneNode() as HTMLLinkElement);
@@ -317,13 +320,13 @@ export function startLive() {
     const samePath = (u, paths) => {
       try {
         const url = new URL(u, location.href);
-        return url.origin === location.origin && paths.includes(decodeURIComponent(url.pathname));
+        return url.origin === location.origin && (!paths || paths.includes(decodeURIComponent(url.pathname)));
       } catch {
         return false;
       }
     };
     // A picture or SVG: every element that shows it gets the new file (img, srcset, poster, SVG image/use, the tab
-    // icon). Nothing shows it directly: it's a CSS background, so the stylesheets are swapped.
+    // icon). With no paths: every picture. Returns how many it swapped (none: it's a CSS background, so the stylesheets are).
     const swapImages = (paths) => {
       let hit = 0;
       for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
@@ -347,7 +350,7 @@ export function startLive() {
           hit++;
         }
       }
-      if (!hit) swapCss([]);
+      return hit;
     };
     // A font: each @font-face that uses it is loaded again as a new face, which takes over from the old one.
     const reloadFonts = (paths) => {
@@ -376,7 +379,7 @@ export function startLive() {
     // changed script or stylesheet list can't be patched safely: then it's a normal reload.
     const ownStyles = () => new Set([W.pageStyle, W.pinCursorStyle]);
     const scriptsOf = (doc) => [...doc.querySelectorAll('script:not([data-lab])')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
-    const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
+    const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]:not([data-lab-swap])')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
     const keepOut = (n) => n === W.host || (n.nodeType === 1 && n.localName === 'script');
     // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
     // everything after it (an open <details> further down stays the same element, and stays open).
@@ -441,15 +444,16 @@ export function startLive() {
     let morphRun = 0;
     const morphPage = async () => {
       if (board) return;
-      if (ownScripts()) return reload();
       const run = ++morphRun;
       try {
         const res = await fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html' } });
-        if (!res.ok) return reload();
         const html = await res.text();
         if (run !== morphRun) return; // a newer save is already being fetched: only the latest is applied
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        if (scriptsOf(doc).join('\n') !== scriptsOf(document).join('\n') || sheetsOf(doc).join('\n') !== sheetsOf(document).join('\n')) return reload();
+        // The file is gone for now (a build that clears its folder): the lab answers with its own screen, which has no
+        // widget and nobody to hear the file come back. This page stays and follows the file when it is saved again.
+        if (!res.ok || !doc.querySelector('script[data-live]')) return;
+        if (ownScripts() || scriptsOf(doc).join('\n') !== scriptsOf(document).join('\n') || sheetsOf(doc).join('\n') !== sheetsOf(document).join('\n')) return reload();
         // What you're looking at stays put: an element a third down the window keeps its place on screen. Found before
         // the change (during a cross-fade the page can't be hit-tested).
         let mark = null;
@@ -502,13 +506,19 @@ export function startLive() {
         reload();
       }
     };
+    // Away for a while (a lab that restarted, saves missed): the page, every stylesheet and every picture again.
+    const catchUp = () => {
+      morphPage();
+      swapCss([]);
+      swapImages(null);
+    };
     const hotUpdate = (files) => {
       const of = (kind) => files.filter((f) => f.kind === kind).map((f) => f.path);
       // Only a save of this page's own file patches it (another page saved in the lab changes nothing here).
-      const here = decodeURIComponent(location.pathname).replace(/\/$/, '/index').replace(/\.html?$/i, '');
-      if (of('html').some((p) => !p || p.replace(/\.html?$/i, '') === here)) morphPage();
+      const here = decodeURIComponent(location.pathname).replace(/\/$/, '/index').replace(/\.html?$/i, '').toLowerCase();
+      if (of('html').some((p) => !p || p.replace(/\.html?$/i, '').toLowerCase() === here)) morphPage();
       if (of('css').length) swapCss(of('css'));
-      if (of('img').length) swapImages(of('img'));
+      if (of('img').length && !swapImages(of('img'))) swapCss([]);
       if (of('font').length) reloadFonts(of('font'));
     };
     // One live stream per browser for this lab, shared by its tabs: the tab holding the lock "labit-live" (locks and
@@ -574,9 +584,9 @@ export function startLive() {
         if (v.lab && W.script.dataset.lab && v.lab !== W.script.dataset.lab) {
           W.script.dataset.lab = v.lab;
           W.script.dataset.version = String(v.files);
-          hotAt = v.hot;
+          hotAt = v.hot || 0;
           commentsRev = v.comments;
-          morphPage();
+          catchUp(); // files saved while it was down are not in any list
           W.load();
         }
         if (String(v.files) !== W.script.dataset.version) {
@@ -586,11 +596,12 @@ export function startLive() {
         }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
-        if (!board && hotAt !== null && v.hot !== hotAt) {
-          if (v.hot - hotAt > 1) hotUpdate([{ kind: 'html' }, { kind: 'css', path: '' }]);
+        const hot = v.hot || 0;
+        if (!board && hotAt !== null && hot !== hotAt) {
+          if (hot - hotAt > 1) catchUp();
           else hotUpdate(v.hotFiles || []);
         }
-        hotAt = v.hot;
+        hotAt = hot;
         // One version on and it names the pages it changed, none of them this one: nothing to fetch. (An older lab sends
         // no commentPages; more than one version on, the pages in between aren't known.)
         const elsewhere = v.comments === commentsRev + 1 && Array.isArray(v.commentPages) && !v.commentPages.includes(W.S.page);
