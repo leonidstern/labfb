@@ -726,7 +726,7 @@ const agentText = async (page) => {
   const res = await api.GET(new Request(`${origin || 'http://localhost'}/api?format=text&page=${encodeURIComponent(page)}`, { headers: { host: 'localhost' } }));
   const text = await res.text();
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
-  const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`);
+  const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`).replace(/^settle: pin /gm, `settle: ${CMD} pin `);
   const file = fileFor(page);
   const lines = [file && `file: ${file}`].filter(Boolean);
   const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;

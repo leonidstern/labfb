@@ -405,7 +405,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     for (const c of document.readyState === 'complete' ? threads() : []) {
       if (quick === true && !(c.session && !c.anchor?.element)) continue;
       const edit = store.get(`lab-edit:${c.id}`) || undefined;
-      if (c.resolved || looked.has(c.id) || !(S.isAdmin || edit) || !c.anchor?.selector) continue;
+      if (c.resolved || looked.has(c.id) || !(S.isAdmin || edit) || !c.anchor?.selector || c.anchor.gone) continue;
       looked.add(c.id);
       const anchor = foundAt(c.anchor);
       // Its words or element were changed or taken away (the agent's edit): the lab says so on the pin's next wait.
@@ -969,7 +969,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       if (isPage(c)) return; // in the chat, not on the page
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
-      const { left, top, moved, zone, clipped, covered } = places.get(c.id) || position(c.anchor || {});
+      const { left, top, moved, zone, clipped, covered, from, why } = places.get(c.id) || position(c.anchor || {});
       // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
       // new spot (drag) or close. The agent finishing one closes it.
       if (moved) {
@@ -977,6 +977,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
           autoShut.add(c.id);
           send({ action: 'resolve', id: c.id, edit: store.get(`lab-edit:${c.id}`) || undefined }).then(({ comment }) => (Object.assign(c, comment), render()), () => {});
         }
+        if (!c.resolved) add(el('i', { class: 'lostmark', 'aria-hidden': 'true', style: `left:${from}px;top:${top}px` })); // where it stood: faint, no target
         if (S.openId !== c.id) return;
       }
       const ink = zone && c.anchor.ink; // a drawing is its own pin: its lines, no marker (draw.ts)
@@ -995,7 +996,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       // Its state as classes and words (the ring, the tick and the new dot are only seen). Set one by one: the
       // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
       for (const [cls, on] of Object.entries({
-        resolved: c.resolved, done: state === 'done', new: news.length, moved,
+        resolved: c.resolved, done: state === 'done', new: news.length, moved, unsure: why === 'unsure' || why === 'changed',
         grab: movable, open: S.openId === c.id, dragging: false,
       })) pin.classList.toggle(cls, Boolean(on));
       pin.classList.add('pin');
