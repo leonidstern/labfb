@@ -108,7 +108,22 @@ type Deps = {
 let host: Deps['host'], layer: Deps['layer'], el: Deps['el'];
 export function bindAnchoring(deps: Deps) {
   ({ host, layer, el } = deps);
+  // Astro's dev toolbar takes data-astro-source-file and -loc off every element once the page is up: what they said is kept
+  // here, from each removal as it happens (the old value comes with it). Until then (or with the toolbar off) they are read live.
+  new MutationObserver((list) => {
+    for (const m of list) if (m.oldValue !== null) astro.set(m.target, { ...astro.get(m.target), [m.attributeName]: m.oldValue });
+  }).observe(document.documentElement, { attributes: true, subtree: true, attributeOldValue: true, attributeFilter: ASTRO });
 }
+const ASTRO = ['data-astro-source-file', 'data-astro-source-loc'];
+const astro = new WeakMap<Node, Record<string, string | null>>();
+// The nearest element up from `n` that Astro wrote its file and line on: "src/pages/index.astro:12:5".
+const astroSource = (n: Element | null) => {
+  for (; n; n = n.parentElement) {
+    const [file, loc] = ASTRO.map((a) => n.getAttribute(a) ?? astro.get(n)?.[a]);
+    if (file) return `${file.replace(/^.*\/src\//, 'src/')}:${loc || ''}`;
+  }
+  return '';
+};
 
 // A motion token (--_t-quick, -base, -slow, -loop, -hold, styles.css) in milliseconds, times `times`: for a timer or a
 // Web Animation, which can't read a var(). It is 0 under reduced motion, as the CSS durations are (hold excepted).
@@ -616,8 +631,7 @@ export function anchorAt(clickX, clickY, words = false, onto = null) {
     anchor.looks = looksOf(target);
     anchor.rules = rulesOf(target);
     anchor.box = boxOf(target);
-    const astro = target.closest?.('[data-astro-source-file]');
-    if (astro && !anchor.source) anchor.source = short(`${astro.getAttribute('data-astro-source-file').replace(/^.*\/src\//, 'src/')}:${astro.getAttribute('data-astro-source-loc') || ''}`, 200);
+    if (!anchor.source && astroSource(target)) anchor.source = short(astroSource(target), 200);
   }
   // A <select>: which option is chosen (its text is every option in a row).
   const select = target.closest?.('select');
