@@ -27,6 +27,9 @@ type ProxyOptions = {
 // is checked in local.mjs before either is called.
 export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, nameFor, dress }: ProxyOptions) {
   const pageKey = (pathname: string) => keyFor(pathname.replace(/^\/+|\/+$/g, '').replace(/\.html?$/i, '') || 'index');
+  // When a page load was first asked for: a dev server that is restarting (a rebuild, a crash and a start) answers a moment
+  // later, so a refused page load is asked again for a few seconds before the person is told it is down. Only a GET: it has no body to send twice.
+  const tried = new WeakMap<IncomingMessage, number>();
   function proxyTo(req: IncomingMessage, res: ServerResponse, url: URL): void {
     const origin = originNow();
     // Only a page load is asked for uncompressed HTML (the widget goes into it); scripts and styles stay compressed.
@@ -88,6 +91,9 @@ export function proxy({ PROXY, origin: originNow, widget, keyFor, isLoopback, na
     });
     up.on('error', (e: NodeJS.ErrnoException) => {
       if (res.headersSent) return void res.destroy();
+      const since = tried.get(req) ?? Date.now();
+      tried.set(req, since);
+      if (page && e.code === 'ECONNREFUSED' && Date.now() - since < 5000 && !res.destroyed) return void setTimeout(() => proxyTo(req, res, url), 100);
       res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' }).end(`[lab] no answer from the dev server at ${PROXY.origin} (${e.code}). Start it, then reload.`);
     });
     // The person left (a closed tab, a cancelled event stream): the dev server's side ends too, not held open for good.
