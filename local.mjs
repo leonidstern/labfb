@@ -545,6 +545,9 @@ const handoff = Object.create(null);
 const outdated = []; // pages whose file is in an older shape: written again in today's once the lab is up
 // Each page's own file, and what the disk knows that file by (see rehome): kept in its comments file as file and fid.
 const homes = new Map();
+// Pages whose file was renamed, to be moved (flushMoves, below, once the lab's state is read: the first look at the files may come before).
+const moves = [];
+let movesReady = false;
 // A lab last run before 16 Nov kept every page in one comments.json; labit 0.6 moves it into comments/. This one
 // doesn't read it: it says how to move it and stops, so those comments are never left behind unnoticed.
 if (!fs.existsSync(STORE) && fs.existsSync(path.join(LAB, 'comments.json')))
@@ -692,7 +695,7 @@ function rehome() {
     }
     homes.delete(page);
     homes.set(to, [fileIndex.get(to), fid]);
-    for (const mine of Object.values(reads)) if (mine[page]) mine[to] = [...(mine[to] || []), ...mine[page]];
+    moves.push([page, to]);
     for (const mine of Object.values(sections)) {
       if (!mine[page]) continue;
       mine[to] ||= mine[page];
@@ -703,6 +706,7 @@ function rehome() {
     for (const p of [page, to]) persist(p).catch((e) => console.error('[lab] could not save comments:', e.message));
     broadcast();
   }
+  if (movesReady) flushMoves();
 }
 // A path as the disk spells it (src/pages/Orders.jsx), though a case-insensitive disk also found "orders.jsx".
 const realCase = (rel) => {
@@ -1519,6 +1523,7 @@ function gather(b) {
   let num = Math.max(0, ...commentsOf(to).filter((c) => !c.parent).map((c) => c.num || 0));
   for (const c of commentsOf(own)) if (!into.has(c.id)) into.set(c.id, JSON.stringify(c.parent || !c.num ? c : { ...c, num: ++num }));
   db.delete(`lab:comments:${own}`);
+  moveState(own, to); // what the board's own page had read, opened or been claimed for goes with its pins
   for (const p of [own, to]) persist(p).catch((e) => console.error('[lab] could not save comments:', e.message));
   return true;
 }
@@ -1578,6 +1583,52 @@ const claim = (pages, who = '') => {
 };
 stateParts.claims = () => Object.fromEntries([...claims].filter(([, at]) => Date.now() - at < CLAIM_MS));
 stateParts.claimOwners = () => Object.fromEntries([...claimOwner].filter(([p, who]) => who && Date.now() - (claims.get(p) || 0) < CLAIM_MS));
+// A page's own state follows its pins to another key (a renamed file; a board's pins adopted by the page it is over): when it was
+// opened, archived, claimed by a wait, and each person's read marks (merged, the old key dropped, saved), so what was read stays read.
+function moveState(from, to) {
+  const at = opened.get(from);
+  if (at) {
+    if (!(opened.get(to) > at)) opened.set(to, at);
+    opened.delete(from);
+  }
+  if (archivedPages.has(from)) {
+    if (!archivedPages.has(to)) archivedPages.set(to, archivedPages.get(from));
+    archivedPages.delete(from);
+  }
+  if (claims.has(from)) {
+    claims.set(to, Math.max(claims.get(from), claims.get(to) || 0));
+    claims.delete(from);
+    if (claimOwner.has(from)) claimOwner.set(to, claimOwner.get(from));
+    claimOwner.delete(from);
+  }
+  for (const mine of Object.values(reads)) {
+    if (!mine[from]) continue;
+    mine[to] = [...new Set([...(mine[to] || []), ...mine[from]])];
+    delete mine[from];
+  }
+  saveReads();
+}
+// Renamed pages: their state moves, and the boards about them follow (a board's `of` and the frames that are the page), so the board
+// still opens over its page with its pins, not pinless on a page that is gone.
+function flushMoves() {
+  for (const [from, to] of moves.splice(0)) {
+    moveState(from, to);
+    const rest = (p) => (/[?#]/.exec(p) ? p.slice(/[?#]/.exec(p).index) : '');
+    const is = (p) => typeof p === 'string' && boardPage(p.split(/[?#]/)[0]) === from;
+    for (const n of B.names(ROOT)) {
+      const b = boardGet(n);
+      if (!b || !(is(b.of) || b.frames.some((f) => is(f.src)))) continue;
+      B.save(ROOT, { ...b, rev: b.rev + 1, ...(is(b.of) ? { of: to + rest(b.of) } : {}), frames: b.frames.map((f) => (is(f.src) ? { ...f, src: to + rest(f.src) } : f)) });
+      boardCache.delete(n);
+      boardList = null;
+      console.log(`[lab] board ${n} follows ${from} to ${to}`);
+    }
+  }
+  watchBoards();
+  broadcast();
+}
+movesReady = true;
+flushMoves();
 // A name just given, or the files of before 19 Nov still there: written now, not at the first change.
 if (oldStateFiles.length || givenName !== (labState.name || '')) writeState();
 // The last wait on each set of pages (its key), to tell a second session on the same pages that it isn't alone.

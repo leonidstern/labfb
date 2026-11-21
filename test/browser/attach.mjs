@@ -130,6 +130,23 @@ try {
       await reply.press('Enter');
       await sleep(6000);
       check(eng, 'a send that fails keeps the words and the picture in the box', (await reply.inputValue()) === 'will not go' && (await p.locator('.atts .p img').count()) === 1);
+      await ctx.unroute('**/_lab/api/comments');
+      // the chat takes pictures too
+      await p.keyboard.press('Escape');
+      await p.evaluate(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.chat-btn')).shadowRoot.querySelector('.chat-btn').click());
+      const chatBox = p.locator('.chat textarea').first();
+      check(eng, 'the chat opens with its box', await until(async () => (await chatBox.count()) > 0));
+      await chatBox.focus();
+      await paste();
+      check(eng, 'a picture pasted in the chat box is a thumbnail there', await until(async () => (await p.locator('.chat .atts .p img').count()) === 1));
+      await chatBox.fill('this is the whole page');
+      await chatBox.press('Enter');
+      let said;
+      for (let i = 0; i < 40 && !said; i++) { await sleep(150); said = (await list()).find((c) => c.text === 'this is the whole page'); }
+      check(eng, 'the chat message is saved with the picture', said?.images?.length === 1 && said.anchor?.kind === 'page', JSON.stringify(said?.images));
+      check(eng, 'and the chat shows it, loaded', await until(async () => p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.chatwin .att img'))?.shadowRoot; const i = r?.querySelector('.chatwin .att img'); return Boolean(i && i.naturalWidth > 0); })));
+      check(eng, 'the agent reads it as an image: line under the message', Boolean(said) && (await (await fetch(`${B}/_lab/agent/index`)).text()).includes(`image: .lab/attachments/${said.id}-1.`));
+      await p.keyboard.press('Escape');
     } finally {
       await browser.close();
     }
