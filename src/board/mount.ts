@@ -42,6 +42,7 @@ const css = `
 #lab-board iframe,#lab-board img{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
+#lab-board.waking .c{visibility:hidden}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
 #lab-board .none{position:absolute;inset:0;display:grid;place-items:center;opacity:.7}
@@ -75,6 +76,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const signal = ac.signal;
   const on = <K extends string>(type: K, fn: (e: never) => void, o: AddEventListenerOptions | boolean = {}) => addEventListener(type, fn as EventListener, { ...(typeof o === 'boolean' ? { capture: o } : o), signal });
   root.id = 'lab-board';
+  root.classList.add('waking');
   // Not shown until the board has been read and fitted (or has failed to be): before, a reload drew the empty board at 100 %,
   // its dots and "100%" label at full size, and a moment later fitted it to 40 % with the frames in (Leo, 21 Nov: "when
   // reloading page its blinking like zoomed and elements appears weird").
@@ -266,13 +268,18 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     fr.title = c.f.label || c.f.src;
     fr.addEventListener('load', () => {
       fr.dataset.ready = '1';
+      fr.style.visibility = '';
+      for (const n of Array.from(c.inner.children)) if (n !== fr) n.remove(); // the card it covered (taken out after, not before: an iframe moved in the page loads again)
       if (entered === c.f.id) focusIn(c);
       wake(); // the next one may load now
     }, { once: true });
     fr.src = c.f.src;
     c.frame = fr;
     c.seen = performance.now();
-    c.inner.replaceChildren(fr);
+    // Shown once it has loaded, over its card until then: a reload showed the card, then a blank white frame, then the page
+    // (Leo, 21 Nov: "inside canvas after reload one thing not flicker second thing there flickering").
+    fr.style.visibility = 'hidden';
+    c.inner.append(fr);
   }
   function sleep(c: Card) {
     c.frame?.remove();
@@ -348,6 +355,9 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     }
     show(await res.json());
     reveal();
+    // The cards of frames that load at once stay unseen for a moment (no card, then the page): a card shows only for a frame
+    // that takes longer, or is too small to load.
+    setTimeout(() => root.classList.remove('waking'), 600);
   };
   // When each page was saved, for "edited 5m ago" (a variant's file has no such time here: the card says none).
   fetch('/_lab/pages').then((r) => r.json()).then((d) => {
