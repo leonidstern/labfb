@@ -21,6 +21,7 @@ import { loadSettings, changedShortcuts, seedActions, savePersonal } from './lib
 import { runCommand } from './lib/commands.ts';
 import { findDevServer as find, tilde, othersNote } from './lib/devserver.ts';
 import * as B from './lib/board.ts';
+import { withBoard } from './lib/htmlspot.ts';
 import * as act from './lib/boardact.ts';
 import { proxy as makeProxy } from './lib/proxy.ts';
 import { newer, fetchNotes } from './lib/update.ts';
@@ -775,7 +776,7 @@ const pinBoards = (page, text) => text.replace(/^## \d+\. [^\n]* · id ([0-9a-f]
   const shown = b.frames.filter((f) => f.state !== 'archived' && f.src.split(/[?#]/)[0] !== page);
   if (!shown.length) return all;
   const what = (f) => (f.file ? `picture .lab/boards/${b.name}/${f.file}` : f.src.startsWith('/_lab/') ? `.lab/boards/${b.name}/${f.id}.html` : `page ${f.src}`);
-  return `${all}\nboard for this pin: ${origin}${page}#board=${b.name} (what the person put there for this pin; open the files)\n${shown.map((f) => `  frame ${f.id}: ${what(f)}${f.label ? ` "${f.label}"` : ''}`).join('\n')}`;
+  return `${all}\nboard for this pin: ${origin}${page}#board=${b.name} (what the person put there for this pin, shown in the page where <lab-board name="${b.name}"> is; open the files)\n${shown.map((f) => `  frame ${f.id}: ${what(f)}${f.label ? ` "${f.label}"` : ''}`).join('\n')}`;
 });
 // A plain HTML page: each comment's element is found in the file by its words, and its line said next to it
 // (`in file: pricing.html:30`), so an agent opens the file there instead of searching (sims, 20 Nov: a drawing's
@@ -2228,8 +2229,22 @@ const boardApi = async (req, res, url) => {
     const b = await sent(req);
     const pinOf = /^pin-([0-9a-f]{12})$/.exec(String(b.name))?.[1];
     const page = typeof b.of === 'string' ? b.of.split('#')[0] : '';
-    if (!owner && !(pinOf && (b.action === 'ready' || (b.action === 'new' && b.of === `${page}#pin-${pinOf}` && commentsOf(page).some((c) => c.id === pinOf && !c.parent)))))
+    if (!owner && !(pinOf && (b.action === 'ready' || (/^(new|place)$/.test(b.action) && b.of === `${page}#pin-${pinOf}` && commentsOf(page).some((c) => c.id === pinOf && !c.parent)))))
       return plain(res, 403, 'forbidden');
+    // The pin's board as a section of the page, after the element pinned: <lab-board name> written into the page's own
+    // file, which the widget fills with the board (Leo, 21 Nov: "add board section into page", "its html like artifact why
+    // it would be deployed"). The one write the lab makes outside .lab/, and only of a page's .html file served as it is.
+    if (b.action === 'place') {
+      const file = !PROXY && pinOf && b.of === `${page}#pin-${pinOf}` && fileFor(page);
+      const at = Array.isArray(b.path) && b.path.length <= 40 && b.path.every((s) => Array.isArray(s) && typeof s[0] === 'string' && /^[a-z][a-z0-9-]*$/.test(s[0]) && Number.isInteger(s[1]) && s[1] > 0) ? b.path : null;
+      if (!file || !/\.html?$/i.test(file) || file.startsWith('.lab/') || !at) return json(422, { error: 'only a page served from its own .html file takes a board section' });
+      const full = path.join(ROOT, file);
+      const src = fs.readFileSync(full, 'utf8');
+      const out = withBoard(src, String(b.name), at, typeof b.words === 'string' ? b.words.slice(0, 200) : '');
+      if (out === null) return json(422, { error: `the pinned element isn't in ${file} as the page has it` });
+      if (out !== src) fs.writeFileSync(full, out);
+      return json(200, { ok: true, file });
+    }
     // A pin's board closed (its +board pin goes to the agent now, with what is on it).
     if (b.action === 'ready') {
       if (pinOf) filled.add(pinOf);

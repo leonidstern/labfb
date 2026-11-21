@@ -81,3 +81,24 @@ test('a pin sent with +board waits for its board to close before the agent gets 
   assert.equal((await post({ action: 'ready', name: `pin-${comment.id}` }, { 'x-lab-admin': keys().token })).status, 200);
   assert.equal(await pending(), before + 1, 'the agent gets it once the board is closed');
 });
+
+// The pin's board as a section of the page (+board): <lab-board name> written into the page's file after the element.
+test('the board goes into the page\'s file after the pinned element, once', async () => {
+  const place = (body) => post({ action: 'place', name, of: `/pricing#${name}`, ...body }, { 'x-lab-admin': keys().token });
+  const r = await place({ path: [['h1', 1]], words: 'Pricing' });
+  assert.equal(r.status, 200);
+  const file = () => fs.readFileSync(path.join(DIR, 'pricing.html'), 'utf8');
+  assert.equal(file(), `<!doctype html><title>Pricing</title><h1>Pricing</h1>\n<lab-board name="${name}"></lab-board>`);
+  assert.equal((await place({ path: [['h1', 1]], words: 'Pricing' })).status, 200);
+  assert.equal(file().split('<lab-board').length, 2, 'not twice');
+});
+
+test('a spot the file doesn\'t have, or a page without the key, writes nothing', async () => {
+  const before = fs.readFileSync(path.join(DIR, 'cart.html'), 'utf8');
+  write('.lab/comments/cart.json', { page: '/cart', comments: { ['0000000000aa']: { id: '0000000000aa', name: 'Leo', text: '+board', createdAt: '2026-11-21T09:00:00.000Z', num: 1, anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5 } } } });
+  const of = '/cart#pin-0000000000aa';
+  assert.equal((await post({ action: 'place', name: 'pin-0000000000aa', of, path: [['h1', 1]], words: 'Checkout' }, { 'x-lab-admin': keys().token })).status, 422);
+  assert.equal((await post({ action: 'place', name: 'pin-0000000000aa', of, path: [['h2', 1]] }, { 'x-lab-admin': keys().token })).status, 422);
+  assert.equal((await post({ action: 'place', name: 'pin-0000000000aa', of, path: [['h1', 1]] }, {})).status, 403);
+  assert.equal(fs.readFileSync(path.join(DIR, 'cart.html'), 'utf8'), before);
+});

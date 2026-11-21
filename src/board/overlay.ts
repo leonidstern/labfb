@@ -227,3 +227,39 @@ function backTo(of: string) {
 export function own(name: string) {
   show(name, { page: '', of: new URLSearchParams(location.search).get('of') || '', push: false, own: true });
 }
+
+// A board as a section of the page (<lab-board name>, put there by +board, src/widget/boardcam.ts): a strip of what is on it, the page itself
+// left out. A tap opens the board over the page. Outside the lab the tag is an empty element, and shows nothing.
+const STRIP = `:host{display:block!important;margin:16px 0!important;font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1d1d1f;cursor:pointer}
+.box{border:1px solid rgba(0,0,0,.1);border-radius:12px;padding:10px;background:rgba(52,199,89,.05)}
+.top{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
+.top b{font-weight:600}.top span{opacity:.6;flex:1}
+.top button{font:inherit;border:0;border-radius:999px;padding:4px 11px;cursor:pointer;background:rgba(52,199,89,.16);color:rgb(36,160,70)}
+.row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin}
+.row>*{flex:none;height:120px;border-radius:8px;background:rgba(0,0,0,.04)}
+img{display:block;max-width:240px;object-fit:cover}
+.page{width:160px;padding:10px;box-sizing:border-box;overflow:hidden;opacity:.8}
+.none{opacity:.6;padding:4px 2px}
+@media (prefers-color-scheme:dark){:host{color:#e9e8e4}.box{border-color:rgba(255,255,255,.12)}.row>*{background:rgba(255,255,255,.06)}.top button{color:rgb(52,199,89)}}`;
+const el = (tag: string, props: object = {}, ...kids: (Node | string)[]) => {
+  const n = Object.assign(document.createElement(tag), props);
+  n.append(...kids);
+  return n;
+};
+/** A board as a section of the page: <lab-board name> (src/widget/boardcam.ts), filled with a strip of what is on the board. */
+export const section = async (host: HTMLElement, o: { page: string; about: (name: string) => string }) => {
+  const name = host.getAttribute('name') || '';
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(name)) return;
+  const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
+  const b = await fetch(`/_lab/api/board?name=${name}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null), () => null);
+  const frames = (b?.frames || []).filter((f: { state?: string; src: string }) => f.state !== 'archived' && f.src.split(/[?#]/)[0] !== o.page);
+  const thumb = (f: { kind?: string; src: string; label?: string; id: string }) => (f.kind === 'image' ? el('img', { src: f.src, alt: f.label || '', loading: 'lazy' }) : el('div', { className: 'page' }, f.label || (f.src.startsWith('/_lab/board/') ? `variant ${f.id}` : f.src)));
+  const said = o.about(name);
+  root.replaceChildren(
+    el('style', {}, STRIP),
+    el('div', { className: 'box' },
+      el('div', { className: 'top' }, el('b', {}, 'Board'), el('span', {}, b ? `${frames.length || 'nothing'} on it${said && said !== '+board' ? ` · ${said.slice(0, 60)}` : ''}` : 'not found'), el('button', {}, 'Open')),
+      frames.length ? el('div', { className: 'row' }, ...frames.map(thumb)) : el('div', { className: 'none' }, 'Open it to add pictures and pages for the agent.'),
+    ),
+  );
+};

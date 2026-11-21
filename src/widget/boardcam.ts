@@ -3,7 +3,7 @@
 // A board in the page, and the widget's part in it: showing a board, a tap on it that closes a comment, the board's camera
 // moving the pins with it, and the page's pins hiding under a board's view.
 import { heldPin } from './pinhold.ts';
-import { anchorAt, coveredAt, position } from './anchoring.ts';
+import { anchorAt, coveredAt, findTarget, position } from './anchoring.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -14,16 +14,71 @@ export const showBoard = (name: string, of = '', push = true) =>
   W.part('boardview').then((m) => m.show(name, { page: S.page, of, push, onClose: () => {
     // A pin's board closed: its +board pin goes to the agent now (the lab held it, local.mjs filling).
     if (/^pin-/.test(name)) fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'ready', name }) }).catch(() => {});
+    sections(name);
     const open = S.comments.find((c) => c.id === S.openId);
     if (open?.anchor?.kind === 'board') S.openId = null;
     if (S.draft?.anchor?.kind === 'board') S.draft = null;
     W.render();
   } }), () => W.say("the board couldn't load"));
-/** A pin's own board, pin-<id>, about the page at #pin-<id>: made first when asked (+board), then opened. */
-export const pinBoard = async (id: string, make = false) => {
+/** A pin's own board, pin-<id>, about the page at #pin-<id>: made first when asked (+board), then opened. Made, it is
+ * also put in the page as a section after the element pinned (place, local.mjs): the lab writes <lab-board name> into the
+ * page's file, and the board shows there, below, to come back to. */
+export const pinBoard = async (id: string, make = false, anchor?: { kind?: string } | null) => {
   const name = `pin-${id}`;
-  if (make && !(await fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'new', name, of: `${S.page}#${name}` }) }).catch(() => null))?.ok) return W.say("the board couldn't be made");
+  const post = (b: object) => fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ name, of: `${S.page}#${name}`, ...b }) }).catch(() => null);
+  if (make && !(await post({ action: 'new' }))?.ok) return W.say("the board couldn't be made");
+  if (make && !document.querySelector(`lab-board[name="${name}"]`)) {
+    const at = blockOf(anchor && anchor.kind !== 'page' ? (findTarget(anchor) as Element | null) : null);
+    void post({ action: 'place', path: at ? pathOf(at) : [], words: at?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 40) || '' }).then((r) => r && !r.ok && W.say("the board is on the pin: this page's file couldn't take it as a section"));
+  }
   return showBoard(name);
+};
+// The element a section goes after: the pinned one, or the first of its own that stands in the page as a block (not a
+// word in a line, an item of a list, a cell, or a box in a row of them).
+const blockOf = (n: Element | null) => {
+  for (; n && n.parentElement && n !== document.body && n.parentElement !== document.body; n = n.parentElement) {
+    const d = getComputedStyle(n).display;
+    const p = getComputedStyle(n.parentElement);
+    const row = /grid/.test(p.display) || (/flex/.test(p.display) && !p.flexDirection.startsWith('column'));
+    if (!/^inline|contents/.test(d) && !row && !/^(li|dt|dd|td|th|tr|thead|tbody|tfoot|caption|summary|legend|option|figcaption)$/.test(n.localName)) return n;
+  }
+  return n === document.body ? null : n;
+};
+// Where it is in the page as the file has it (lib/htmlspot.ts): its tag and place among its kind, from <body> down;
+// the widget's own box is not the page's.
+const pathOf = (n: Element) => {
+  const path: [string, number][] = [];
+  for (; n && n !== document.body && n.parentElement; n = n.parentElement) {
+    let i = 1;
+    for (let sib = n.previousElementSibling; sib; sib = sib.previousElementSibling) if (sib.localName === n.localName && sib !== W.host) i++;
+    path.unshift([n.localName, i]);
+  }
+  return path;
+};
+// A board as a section of the page (<lab-board name>, put there by +board), drawn by the board's part (src/board/overlay.ts).
+const fillSection = (host: HTMLElement) =>
+  W.part('boardview').then((m) => m.section(host, { page: S.page, about: (name: string) => S.comments.find((c) => `pin-${c.id}` === name)?.text || '' }), () => {});
+// Drawn again after the board changed (it closed here, or the lab says it changed).
+const sections = (name?: string) => document.querySelectorAll<HTMLElement>(name ? `lab-board[name="${name}"]` : 'lab-board').forEach((n) => void fillSection(n));
+const defineSection = () => {
+  if (customElements.get('lab-board')) return;
+  customElements.define('lab-board', class extends HTMLElement {
+    connectedCallback() {
+      if (!this.shadowRoot) {
+        // The click is the board's, never a pin on the page (onPageClick in comments.js listens on the document).
+        this.addEventListener('click', (e) => (e.stopPropagation(), void showBoard(this.getAttribute('name') || '')));
+        void fillSection(this);
+      }
+    }
+  });
+  let rev = -1;
+  addEventListener('lab-state', (e) => {
+    const d = (e as CustomEvent).detail;
+    if (typeof d?.boards !== 'number' || d.boards === rev) return;
+    const first = rev < 0;
+    rev = d.boards;
+    if (!first) for (const n of d.boardNames || [null]) sections(n || undefined);
+  });
 };
 // A tap on the board outside an open comment or the chat closes it, as a click outside one does on a page (onPageClick,
 // and the chat's own press above); the board's surface eats its presses, so it asks here (Leo, 19 Nov). True when
@@ -96,6 +151,7 @@ export function bindBoardCam(w: unknown) {
   // A board page (src/board/): a tap in comment mode puts a pin on the board (anchoring.ts asks the board where a point is
   // and where a pin sits), and the pins move with the camera.
   if (!S.board && self === top) {
+    defineSection();
     Object.assign(window, { __labBoardView: { show: showBoard } });
     const bn = /^#board=([a-z0-9][a-z0-9_-]*)/i.exec(location.hash)?.[1];
     if (bn) showBoard(bn, '', false);

@@ -1207,7 +1207,7 @@ import { bindKeys } from './widget/keys.ts';
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
-          if (anchor.act === BOARD_ACT) void pinBoard(comment.id, true);
+          if (anchor.act === BOARD_ACT) void pinBoard(comment.id, true, anchor);
           addComment(comment);
           markSeen([comment]);
           S.draft = null;
