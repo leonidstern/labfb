@@ -2270,7 +2270,7 @@ const boardFor = (name, page) => ({ v: 1, name, rev: 0, of: page, frames: [{ id:
 const boardApi = async (req, res, url) => {
   const json = (code, data) => answer(res, data, code);
   if (req.method === 'POST') {
-    if (!isAgent(req) && !(isLoopback(req) && keyOk(req))) return plain(res, 403, 'forbidden');
+    if (!isAgent(req) && !isOwner(req)) return plain(res, 403, 'forbidden');
     const b = await sent(req);
     const env = { root: ROOT, origin, proxied: Boolean(PROXY), open: (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length, titleOf: (p) => { const f = fileFor(boardPage(p)); return f ? titleOf(path.join(ROOT, f)) : ''; }, fileOf: (p) => fileFor(boardPage(p)) };
     const out = act.act(String(b.action), b, env);
@@ -2291,7 +2291,7 @@ const boardApi = async (req, res, url) => {
     if (!page) return json(404, { error: `no board ${name}` });
     return json(200, { ...B.place(boardFor(name, page)), exists: false });
   }
-  if (req.method !== 'PUT' || !isLoopback(req)) return plain(res, 405, 'GET, PUT (this computer) or POST');
+  if (req.method !== 'PUT' || !(isLoopback(req) || isDevice(req))) return plain(res, 405, 'GET, PUT (an owner\'s device) or POST');
   // The body first, then read, check and write with nothing awaited between: two saves made from the same rev whose
   // requests were both open before either body came (two tabs, a slow link) were both taken, the second over the first.
   const body = await sent(req);
@@ -2335,14 +2335,13 @@ const imageApi = async (req, res, url) => {
   const json = (code, data) => answer(res, data, code);
   if (req.method !== 'POST') return plain(res, 405, 'POST');
   const agent = isAgent(req);
-  const owner = agent || (isLoopback(req) && keyOk(req));
-  const guest = !owner && WIFI && !isLoopback(req) && Boolean(guestOk(req));
+  const owner = agent || isOwner(req);
+  const guest = isDevice(req); // its frames say so (from a wifi guest), as its comments do
   const name = url.searchParams.get('board');
   if ((!owner && !guest) || (agent && name === null)) return plain(res, 403, 'forbidden');
   const page = url.searchParams.get('page');
   const at = ['x', 'y'].map((k) => url.searchParams.get(k));
   if (name !== null && (!B.NAME.test(name) || (page && !B.labPath(page)) || (at.some((v) => v !== null) && at.some((v) => v === null || !Number.isFinite(+v))))) return json(400, { error: 'name a board (?board=), a page like /x and a point (?x=&y=)' });
-  if (guest && name && !boardGet(name)) return json(403, { error: "A board that isn't stored yet is the owner's to make." });
   const tooBig = { error: `A picture is at most ${MAX_IMAGE / 1048576} MB.` };
   if (+req.headers['content-length'] > MAX_IMAGE) return res.writeHead(413, { connection: 'close', 'content-type': 'application/json' }).end(JSON.stringify(tooBig));
   const bytes = await sentWithin(req, MAX_IMAGE);
@@ -2384,6 +2383,13 @@ const pickedPin = async (board, frame) => {
 };
 // The browser's key on this computer (data-admin), sent back as x-lab-admin.
 const keyOk = (req) => sameKey(String(req.headers['x-lab-admin'] || ''), TOKEN);
+// Who is the owner. A device that holds a pass (a one-time link opened there: its cookie) is the owner's own, as this
+// computer's browser is: it may do what that may, except what changes this machine or its settings (stopping or archiving a
+// lab, updating labit, keeping a rule, renaming, the agent's key and the admin key), which stay with this computer (isMac:
+// loopback with the key). Comments, their authors and pictures still say where they came from ("wifi guest").
+const isMac = (req) => isLoopback(req) && keyOk(req);
+const isDevice = (req) => WIFI && !isLoopback(req) && Boolean(guestOk(req));
+const isOwner = (req) => isMac(req) || isDevice(req);
 // Archiving a lab from the switcher (and the API's "stop"): every open wait ends with 423, which tells the agent the person stopped it (it
 // shouldn't wait again until asked). Pins stay where they are.
 const stopListening = () => {
@@ -2913,7 +2919,7 @@ const handler = async (req, res) => {
       const listPage = req.method === 'GET' && [...url.searchParams.keys()].join() === 'page' ? url.searchParams.get('page') : '';
       const listing = listPage.length > 1 && !listPage.endsWith('/'); // as the store spells the page (/a, not /a/)
       const listRev = pageRev.get(listPage) || 0;
-      const kind = `${isLoopback(req) ? 'here' : 'guest'} ${encodingFor(req)} ${req.headers['x-lab-admin'] || ''}`;
+      const kind = `${isLoopback(req) ? 'here' : 'device'} ${encodingFor(req)} ${req.headers['x-lab-admin'] || ''}`;
       const kept = listing && cachedList(listPage, kind);
       // The list says which comments version it is as of (x-lab-rev), so a page that opened it can ask what came after
       // (/changes) when the live stream's first message says the lab is further on. A kept list is as of now: its page hasn't changed.
@@ -2952,7 +2958,7 @@ const handler = async (req, res) => {
         }
       }
       const out = await callApi(fn, req, `http://localhost/api${url.search}`, {
-        host: 'localhost', 'x-lab-agent': agent ? '1' : '0', ...(agent ? { 'x-lab-admin': TOKEN } : {}),
+        host: 'localhost', 'x-lab-agent': agent ? '1' : '0', ...(agent || isDevice(req) ? { 'x-lab-admin': TOKEN } : {}), // an owner's device resolves, reopens, moves and deletes as this computer does (the key itself never reaches its page)
         'x-lab-stamp-key': process.env.LAB_STAMP_KEY, 'x-lab-stamp': encodeURIComponent(JSON.stringify(stamp)),
       }, raw);
       const text = await out.text();
