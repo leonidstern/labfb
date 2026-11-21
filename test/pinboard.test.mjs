@@ -102,3 +102,13 @@ test('a spot the file doesn\'t have, or a page without the key, writes nothing',
   assert.equal((await post({ action: 'place', name: 'pin-0000000000aa', of, path: [['h1', 1]] }, {})).status, 403);
   assert.equal(fs.readFileSync(path.join(DIR, 'cart.html'), 'utf8'), before);
 });
+
+test('a deleted pin takes its board and its section in the page\'s file with it', async () => {
+  const file = () => fs.readFileSync(path.join(DIR, 'pricing.html'), 'utf8');
+  assert.match(file(), /<lab-board name="pin-a1b2c3d4e5f6">/);
+  const del = await fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': keys().token }, body: JSON.stringify({ page: '/pricing', action: 'delete', id: ID }) });
+  assert.equal(del.status, 200);
+  assert.equal(file(), '<!doctype html><title>Pricing</title><h1>Pricing</h1>');
+  assert.equal(fs.existsSync(path.join(DIR, `.lab/boards/${name}.json`)), false);
+  assert.equal((await fetch(`${B}/_lab/api/board?name=${name}`)).status, 404);
+});

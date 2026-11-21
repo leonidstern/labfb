@@ -798,7 +798,7 @@ const pinBoards = (page, text) => text.replace(/^## \d+\. [^\n]* · id ([0-9a-f]
   const shown = b.frames.filter((f) => f.state !== 'archived' && f.src.split(/[?#]/)[0] !== page);
   if (!shown.length) return all;
   const what = (f) => (f.file ? `picture .lab/boards/${b.name}/${f.file}` : f.src.startsWith('/_lab/') ? `.lab/boards/${b.name}/${f.id}.html` : `page ${f.src}`);
-  return `${all}\nboard for this pin: ${origin}${page}#board=${b.name} (what the person put there for this pin, shown in the page where <lab-board name="${b.name}"> is; open the files)\n${shown.map((f) => `  frame ${f.id}: ${what(f)}${f.label ? ` "${f.label}"` : ''}`).join('\n')}`;
+  return `${all}\nboard for this pin: ${origin}${page}#board=${b.name} (the person's references for this pin; open the files)\n${shown.map((f) => `  frame ${f.id}: ${what(f)}${f.label ? ` "${f.label}"` : ''}`).join('\n')}`;
 });
 // A plain HTML page: each comment's element is found in the file by its words, and its line said next to it
 // (`in file: pricing.html:30`), so an agent opens the file there instead of searching (sims, 20 Nov: a drawing's
@@ -1493,6 +1493,23 @@ try {
 // .lab/boards is watched by the lab itself: the project watcher skips dot folders and is off behind a dev server. A saved
 // variant is a hot update of that frame's own page alone; a changed board file is a new `boards` count (with which),
 // and neither touches `files`, so no page reloads for them.
+// A deleted pin takes its own board with it (pin-<id>, made with +board): the board and its pictures in .lab/boards/,
+// and the <lab-board> section the lab wrote into the page's file, so no board is left on a page with no pin for it
+// (Leo, 21 Nov: "no stray board").
+const dropBoard = (page, id) => {
+  const name = `pin-${id}`;
+  if (boardGet(name)?.of !== `${page}#${name}`) return; // a board name is checked as it is read (B.read): no path in it
+  for (const f of [`${name}.json`, name]) fs.rmSync(path.join(B.dirOf(ROOT), f), { recursive: true, force: true });
+  boardCache.clear();
+  boardList = null;
+  // Only the line the lab wrote (place, below) is taken out: under --proxy or in a file it never wrote, there is none.
+  try {
+    const full = path.join(ROOT, fileFor(page));
+    const src = fs.readFileSync(full, 'utf8');
+    const out = src.replace(new RegExp(`\\n[ \\t]*<lab-board name="${name}"></lab-board>`), '');
+    if (out !== src) fs.writeFileSync(full, out);
+  } catch {} // no file for the page, or it can't be written: the section stays, and shows nothing without its board
+};
 let boardList = null; // every stored board, kept like the cache below
 const boardCache = new Map(); // name -> the stored board and when it was written (cleared when its file changes)
 const boardGet = (name) => {
@@ -3017,6 +3034,7 @@ const handler = async (req, res) => {
       let raw;
       let staged = [];
       let doomed = [];
+      let dropped = null; // a deleted pin: [its page, its id]
       if (req.method === 'POST') {
         raw = await sentWithin(req, BODY_MAX);
         if (raw === null) return plain(res, 413, 'too big');
@@ -3036,7 +3054,10 @@ const handler = async (req, res) => {
               stamp.images = staged.map((f) => ({ ...f, file: undefined }));
             }
           }
-          if (b?.action === 'delete' && typeof b.id === 'string') doomed = commentsOf(b.page).filter((c) => c.id === b.id || c.parent === b.id).flatMap((c) => imagesOf(c).map((i) => imageName(c, i)));
+          if (b?.action === 'delete' && typeof b.id === 'string') {
+            dropped = [b.page, b.id];
+            doomed = commentsOf(b.page).filter((c) => c.id === b.id || c.parent === b.id).flatMap((c) => imagesOf(c).map((i) => imageName(c, i)));
+          }
         }
       }
       const out = await callApi(fn, req, `http://localhost/api${url.search}`, {
@@ -3053,6 +3074,7 @@ const handler = async (req, res) => {
         // that is not there yet; a delete takes its pictures away (an archived comment's stay where they are).
         if (out.status === 201 && staged.length) staged.forEach((f, i) => { try { fs.renameSync(f.file, path.join(ATTACH, `${comment.id}-${i + 1}.${f.type}`)); } catch (e) { console.error('[lab] could not keep a picture:', e.message); } });
         for (const name of doomed) fs.rmSync(path.join(ATTACH, name), { force: true });
+        if (dropped) dropBoard(...dropped);
         // Who wrote it, its intent and an agent's done closing the thread are saved by the API, in its own write.
         if (out.status === 201 && !agent) {
           const [key] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));

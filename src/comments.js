@@ -173,7 +173,7 @@ import { bindKeys } from './widget/keys.ts';
   } catch {}
   // Your one list of actions (settings.json `actions`, passed as data-actions; lib/actions.ts, docs/settings.md): as many
   // chips as fit, the rest behind "…".
-  const BOARD_ACT = '+board: the person put references for this pin on its board (listed under the pin as "board for this pin"): use them';
+  const BOARD_ACT = '+board: use the references on this pin\'s board ("board for this pin" under it)';
   const actButton = (name) => el('button', { type: 'button', 'data-k': name }, name);
   let LIST = [];
   try {

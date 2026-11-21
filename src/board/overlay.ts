@@ -487,13 +487,16 @@ export const section = async (host: HTMLElement, o: { page: string; about: (name
   if (!/^[a-z0-9][a-z0-9_-]*$/.test(name)) return;
   const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
   const b = await fetch(`/_lab/api/board?name=${name}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null), () => null);
+  // No board to show here (it is gone, can't be read, or is about another page: a copied file): nothing, never an empty
+  // box (Leo, 21 Nov: "no stray board on pages without access to them").
+  if (!b || String(b.of || '').split('#')[0] !== o.page) return void root.replaceChildren(); // an empty shadow: nothing shows
   const frames = (b?.frames || []).filter((f: { state?: string; src: string }) => f.state !== 'archived' && f.src.split(/[?#]/)[0] !== o.page);
   const thumb = (f: { kind?: string; src: string; label?: string; id: string }) => (f.kind === 'image' ? el('img', { src: f.src, alt: f.label || '', loading: 'lazy' }) : el('div', { className: 'page' }, f.label || (f.src.startsWith('/_lab/board/') ? `variant ${f.id}` : f.src)));
   const said = o.about(name);
   root.replaceChildren(
     el('style', {}, STRIP),
     el('div', { className: host.parentElement === document.body ? 'box edge' : 'box' },
-      el('div', { className: 'top' }, el('b', {}, 'Board'), el('span', {}, b ? `${frames.length || 'nothing'} on it${said && said !== '+board' ? ` · ${said.slice(0, 60)}` : ''}` : 'not found'), el('button', {}, 'Open')),
+      el('div', { className: 'top' }, el('b', {}, 'Board'), el('span', {}, `${frames.length || 'nothing'} on it${said && said !== '+board' ? ` · ${said.slice(0, 60)}` : ''}`), el('button', {}, 'Open')),
       frames.length ? el('div', { className: 'row' }, ...frames.map(thumb)) : el('div', { className: 'none' }, 'Open it to add pictures and pages for the agent.'),
     ),
   );
