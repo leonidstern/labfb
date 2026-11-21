@@ -18,7 +18,7 @@ type Open = { tag: string; at: number; kinds: Map<string, number>; on: number };
 /** The end of the element at `path` ([tag, place among its kind from 1] from <body> down) in a page's file, and where its
  * line starts (for the indent). An empty path is the end of <body>. Null when the file has no such element, or its words
  * aren't `words` (the browser's first few, so the file is the page that was pinned). */
-export function spotIn(src: string, path: [string, number][], words = ''): { end: number; line: number } | null {
+function spotIn(src: string, path: [string, number][], words = ''): { end: number; line: number } | null {
   const root: Open = { tag: '', at: 0, kinds: new Map(), on: 0 };
   const stack: Open[] = [root];
   const tok = /<!--[\s\S]*?-->|<![^>]*>|<\/([a-zA-Z][\w-]*)\s*>|<([a-zA-Z][\w-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*?(\/?)>/g;

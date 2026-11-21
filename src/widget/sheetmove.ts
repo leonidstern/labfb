@@ -6,7 +6,7 @@
 // continues at the finger's velocity, and nothing starts steeply for no reason). A cubic-bezier's first slope is its
 // starting speed in whole distances per duration, so each curve below is built from the release speed and the way left.
 const bez = (...n: number[]) => `cubic-bezier(${n.map((x) => +x.toFixed(3))})`;
-export const SETTLE = 'cubic-bezier(.32, .72, 0, 1)'; // iOS's settle (styles.css --_ease-settle)
+const SETTLE = 'cubic-bezier(.32, .72, 0, 1)'; // iOS's settle (styles.css --_ease-settle)
 // To a stop `dist` px away, going `speed` px/ms toward it now (0 when it is going away, or still): [ms, curve]. Ends like
 // iOS's settle (.32, .72, 0, 1), starts at the speed; a quick throw shortens it (never past slow). At rest it starts softly.
 // The curve speeds up a little in its first frame (its start is convex), so it starts 1.2 times slower than asked for.
