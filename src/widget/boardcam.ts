@@ -13,13 +13,13 @@ let S: any; // the widget's state (W.S), read once at startup
 export const showBoard = (name: string, of = '', push = true) =>
   W.part('boardview').then((m) => m.show(name, { page: S.page, of, push, onClose: () => {
     // A pin's board closed: its +board pin goes to the agent now (the lab held it, local.mjs filling).
-    if (/^pin-/.test(name) && W.adminToken) fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'ready', name }) }).catch(() => {});
+    if (/^pin-/.test(name)) fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'ready', name }) }).catch(() => {});
     const open = S.comments.find((c) => c.id === S.openId);
     if (open?.anchor?.kind === 'board') S.openId = null;
     if (S.draft?.anchor?.kind === 'board') S.draft = null;
     W.render();
   } }), () => W.say("the board couldn't load"));
-/** A pin's own board, pin-<id>, about the page at #pin-<id>: made first when asked (+board, this computer), then opened. */
+/** A pin's own board, pin-<id>, about the page at #pin-<id>: made first when asked (+board), then opened. */
 export const pinBoard = async (id: string, make = false) => {
   const name = `pin-${id}`;
   if (make && !(await fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'new', name, of: `${S.page}#${name}` }) }).catch(() => null))?.ok) return W.say("the board couldn't be made");

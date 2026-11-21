@@ -2221,11 +2221,18 @@ const labInfo = () => {
 const boardApi = async (req, res, url) => {
   const json = (code, data) => answer(res, data, code);
   if (req.method === 'POST') {
-    if (!isAgent(req) && !(isLoopback(req) && keyOk(req))) return plain(res, 403, 'forbidden');
+    const owner = isAgent(req) || (isLoopback(req) && keyOk(req));
+    // A guest on the wifi is the person on another device (Leo, 21 Nov: "guest is always me"): they may make a pin's own
+    // board (+board) for a pin that is there, and close it. Nothing else here.
+    if (!owner && !(WIFI && !isLoopback(req) && guestOk(req))) return plain(res, 403, 'forbidden');
     const b = await sent(req);
+    const pinOf = /^pin-([0-9a-f]{12})$/.exec(String(b.name))?.[1];
+    const page = typeof b.of === 'string' ? b.of.split('#')[0] : '';
+    if (!owner && !(pinOf && (b.action === 'ready' || (b.action === 'new' && b.of === `${page}#pin-${pinOf}` && commentsOf(page).some((c) => c.id === pinOf && !c.parent)))))
+      return plain(res, 403, 'forbidden');
     // A pin's board closed (its +board pin goes to the agent now, with what is on it).
     if (b.action === 'ready') {
-      if (/^pin-[0-9a-f]{12}$/.test(String(b.name))) filled.add(String(b.name).slice(4));
+      if (pinOf) filled.add(pinOf);
       wake();
       return json(200, { ok: true });
     }

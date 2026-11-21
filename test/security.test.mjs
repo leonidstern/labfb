@@ -399,6 +399,23 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
 });
 
+test('a guest makes a pin\'s own board (+board) for a pin that is there, and does nothing else on the board API', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
+  const cookie = String(r.cookie).split(';')[0];
+  const headers = { cookie, origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json' };
+  const as = (body) => wraw('/_lab/api/board', { host: lan, method: 'POST', body: JSON.stringify(body), headers });
+  const pin = await wraw('/_lab/api/comments', { host: lan, method: 'POST', headers, body: JSON.stringify({ page: '/index', name: 'Mira', text: 'like these', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5 } }) });
+  assert.equal(pin.status, 201, pin.text);
+  const id = JSON.parse(pin.text).comment.id;
+  const none = 'a'.repeat(12);
+  assert.equal((await as({ action: 'new', name: `pin-${none}`, of: `/index#pin-${none}` })).status, 403, 'no such pin');
+  assert.equal((await as({ action: 'new', name: `pin-${id}`, of: '/index' })).status, 403, 'not about that pin');
+  assert.equal((await as({ action: 'new', name: 'mine', of: '/index' })).status, 403, 'any other board');
+  assert.equal((await as({ action: 'list' })).status, 403);
+  assert.equal((await as({ action: 'new', name: `pin-${id}`, of: `/index#pin-${id}` })).status, 200);
+  assert.equal((await as({ action: 'ready', name: `pin-${id}` })).status, 200);
+});
+
 test('a guest who keeps using the lab stays in: a pin or a mark renews the pass, not only a page load', { skip: !lan && 'no local network address to come in on' }, async () => {
   const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
   const cookie = r.cookie.split(';')[0];
