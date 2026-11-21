@@ -183,6 +183,7 @@ export function show(name: string, o: Opts) {
       view.style.setProperty('--bv-h', '100%');
     } else if (!typing && grown && !sheet && !vv.offsetTop) {
       grown = false;
+      nudged = 0; // the camera goes back whole, to where it was before the grow (api.hold)
       paintSize();
       board.api.hold(false);
     }
@@ -203,7 +204,7 @@ export function show(name: string, o: Opts) {
       const over = pin.bottom + 16 - sheet.top;
       const dy = over > 0 ? -over - 24 : pin.top < 56 ? 56 - pin.top : 0;
       if (dy) nudged = board.api.nudge(dy);
-    } else if (!typing && nudged) {
+    } else if (!typing && nudged && !grown) {
       board.api.nudge(-nudged);
       nudged = 0;
     }
@@ -225,6 +226,7 @@ export function show(name: string, o: Opts) {
   };
   const watch = () => {
     quiet = 0;
+    follow(); // now too, not only next frame: a frame late the view showed 323 px low for three frames as the keyboard went
     loop ||= requestAnimationFrame(tick);
   };
   vv?.addEventListener('resize', watch);

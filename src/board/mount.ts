@@ -105,6 +105,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   measure();
   let moved = false; // the person moved the camera: a resize no longer fits everything again
   let sizedFrom = { w: 0, h: 0 }; // the box's size when its resize began
+  let heldCam: Cam | null = null; // the camera when the hold began
+  let camBack: Cam | null = null; // where the next resize puts it (the hold let go)
   let held = false; // a resize that isn't the person's (a phone's keyboard growing a half view): the board stays where it is on the screen
   let selected = '';
   let entered = '';
@@ -770,8 +772,17 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     /** While on, the view's resizes keep the board where it is on the screen instead of fitting it again (a phone's keyboard). */
     hold: (on: boolean) => {
       clearTimeout(holdOff);
-      if (on) held = true;
-      else holdOff = setTimeout(() => (held = false), REST * 3); // after the last resize has rested
+      if (on) {
+        if (!held) heldCam = { ...cam };
+        held = true;
+        return;
+      }
+      // Let go: the next resize puts the camera back where it was before the hold, as it was (kept on the screen through a
+      // grow and a shrink it came back 110 px low, the board's edges holding it: 21 Nov simulator).
+      cancelAnimationFrame(nudging);
+      camBack = heldCam;
+      heldCam = null;
+      holdOff = setTimeout(() => ((held = false), (camBack = null)), REST * 3); // after the last resize has rested
     },
     nudge: (dy: number) => {
       const from = cam.y;
@@ -804,7 +815,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     measure();
     if (!sized || !cards.length) return void ((sized = true), go(moved || held ? cam : fitAll(boxes(), view), false));
     if (px === ox && py === oy && pv.w === view.w && pv.h === view.h) return; // already drawn at this size (resized(), below)
-    cam = { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
+    cam = camBack || { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
+    camBack = null;
     if (!sizing) sizedFrom = { w: pv.w, h: pv.h };
     sizing = boxed = true;
     cancelAnimationFrame(drawFrame);
