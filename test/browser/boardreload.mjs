@@ -36,6 +36,7 @@ try {
       const pp = await ctx.newPage();
       await pp.goto(B + '/plain');
       await mark(pp);
+      await pp.evaluate(() => fetch('/data.json').then((r) => r.text())); // the page uses the data file: a save of it reloads the page
       await sleep(500);
       const save = (f, text) => fs.writeFileSync(path.join(DIR, f), text);
       save('pricing.html', '<!doctype html><meta charset="utf-8"><title>p</title><h1>Pricing two</h1>');
