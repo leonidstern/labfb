@@ -365,6 +365,10 @@ anchor through the API.
   or the step is skipped with a note.
 - A pin made at once after a save (a third of the pins that follow one) is made before anything else is read; the
   others wait until the patch's cross-fade is over.
+- A click made inside the cross-fade is made on a point the browser hits as `<html>`; the widget waits for the
+  transition (#393), so what it pins is the element under that point once the fade is over. The test reads that
+  moment (`settle`, started before the click) and judges the element, its words, its box and the place on it
+  against it, not against the transient `<html>` hit.
 - Next draws the test's elements on the server: no `written at` is fine there; one that names a file must name the
   route's.
 - Vue writes markup with nothing bound in it as one piece of HTML: two of the four targets of a Vue route have a
