@@ -665,7 +665,8 @@ export class Device {
   swapCss(files) {
     const links = this.uses().filter((u) => u.kind === 'css');
     const named = links.filter((l) => files.includes(l.path));
-    for (const l of named.length ? named : links) this.go(() => this.fetchRes(l.path, true));
+    // a saved file no link names is pulled in by @import: every sheet is swapped then (src/widget/live.ts swapCss)
+    for (const l of named.length && (!widgetFixed() || files.every((f) => named.some((n) => n.path === f))) ? named : links) this.go(() => this.fetchRes(l.path, true));
   }
   async morphPage() {
     const ownScripts = () => this.uses().some((u) => u.kind === 'js') || /<script\b(?![^>]*\/_lab\/)(?![^>]*data-lab)[^>]*>/i.test(this.html);

@@ -442,7 +442,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       doIt.disabled = true;
       try {
         const { comment } = await W.send({ name, text: 'Do it', parent: c.id, doit: true });
-        W.S.comments.push(comment);
+        W.addComment(comment);
         W.markSeen([comment]);
         W.render();
       } catch {
@@ -480,7 +480,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       draftKey: `lab-typing:${W.S.page}:${c.id}`,
       onSubmit: async (name, text) => {
         const { comment } = await W.send({ name, text, parent: c.id });
-        W.S.comments.push(comment);
+        W.addComment(comment);
         W.markSeen([comment]);
         // Writing in a done thread reopens it (the lab does the same): it shows as open at once, pin and buttons.
         if (c.resolved) {
@@ -494,11 +494,14 @@ export function threadCard(c, fresh = new Set(), focus = false) {
         }
         // Add the reply where it belongs instead of redrawing the card, so nothing on screen blinks
         // and the reply box keeps its focus for the next one.
-        shown.add(comment.id);
-        const items = card.querySelectorAll('.item');
-        const added = itemEl(comment);
-        added.classList.add('fresh');
-        items[items.length - 1].after(added);
+        // (Unless the stream's copy of it was added already: sync, above, shows each reply once.)
+        if (!shown.has(comment.id)) {
+          shown.add(comment.id);
+          const items = card.querySelectorAll('.item');
+          const added = itemEl(comment);
+          added.classList.add('fresh');
+          items[items.length - 1].after(added);
+        }
         body.scrollTop = body.scrollHeight; // the reply just sent is in view above the box
         W.S.stayAtEnd?.(body);
         return { keep: true };
@@ -547,7 +550,7 @@ function commitPick(p: Pending) {
       if (pending === p) pending = null;
       failedPick.delete(p.ask);
       untry(); // the agent writes the pick into the file; the page shows its own words till then
-      W.S.comments.push(comment);
+      W.addComment(comment);
       W.markSeen([comment]);
       W.render();
     } catch (err) {

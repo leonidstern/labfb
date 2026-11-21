@@ -64,8 +64,8 @@ try {
         const at = (sel, fx, fy) => p.evaluate(([sel, fx, fy]) => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.left + fx * r.width, y: r.top + fy * r.height }; }, [sel, fx, fy]);
 
         // The ⋯ menu on a computer: a popover the browser opens and closes. (A phone keeps it in the bar: a pinch zoom
-        // scales the bar, not the top layer.)
-        if (can.popover && !phone) {
+        // scales the bar, not the top layer; nor does Safari, which has no `overlay`: a popover would close in one frame.)
+        if (can.popover && can.overlay && !phone) {
           await inRoot(p, (r) => r.querySelector('.more').click());
           await settle(p);
           const open = await inRoot(p, (r) => { const m = r.querySelector('.more-menu'); return { pop: m.matches(':popover-open'), hidden: m.hidden, expanded: r.querySelector('.more').getAttribute('aria-expanded'), focus: r.activeElement?.closest('.more-menu') === m }; });
@@ -246,7 +246,18 @@ try {
         // The browser says when the page navigated, and when a scroll ended: what the widget listens to follows what there is.
         const heard = await p.evaluate(() => [...window.__listened]);
         check(tag, 'the widget listens to the Navigation API, and leaves the page\'s history alone', heard.includes('currententrychange') && !heard.includes('popstate') && (await p.evaluate(() => /native code/.test(history.pushState.toString()))), JSON.stringify({ listened: heard.filter((t) => /currententrychange|popstate|scrollend/.test(t)) }));
-        check(tag, 'the widget listens for scrollend', heard.includes('scrollend') || !phone);
+        // scrollend is the motion controls' (a phone's end a scroll's quiet wait): their file loads with the first thing that moves.
+        if (phone) {
+          await p.evaluate(() => {
+            const d = document.body.appendChild(document.createElement('div'));
+            d.id = 'lab-test-loop';
+            d.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 800, iterations: Infinity });
+          });
+          await sleep(1600);
+        }
+        const heardAfter = phone ? await p.evaluate(() => [...window.__listened]) : heard;
+        if (phone) await p.evaluate(() => document.getElementById('lab-test-loop')?.remove());
+        check(tag, 'the widget listens for scrollend', heardAfter.includes('scrollend') || !phone);
         // A navigation inside the page: the comments of the new page are asked for, and of the old one after Back.
         const asked = [];
         p.on('request', (r) => { const m = /\/_lab\/api\/comments\?page=([^&]*)/.exec(r.url()); if (m) asked.push(decodeURIComponent(m[1])); });
