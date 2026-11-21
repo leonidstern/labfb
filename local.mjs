@@ -1291,16 +1291,39 @@ const otherSaved = new Set(); // served paths
 // tools fill with thousands of files nobody edits by hand, which would use up the computer's file watchers.
 const UNWATCHED = new Set(['node_modules', 'venv', '__pycache__', 'bower_components']);
 const hidden = (file) => file.split(path.sep).some((s) => s.startsWith('.') || UNWATCHED.has(s));
+// What editors leave beside a save: a backup (~, .bck, .tmp, .swp), Vim's probe file 4913, #autosave#, JetBrains' ___jb_x___.
+const EDITOR_TEMP = /(~|\.(tmp|bck|swp|swx))$|^(4913|#.*#)$|___jb_\w+___$/;
+const saw = new Map(); // served path -> hash of what it held at the last save: a save that changes nothing sends nothing
+const unchanged = (file) => {
+  let h = null;
+  try {
+    const abs = path.join(ROOT, file);
+    if (fs.statSync(abs).size <= 2e6) h = createHash('sha1').update(fs.readFileSync(abs)).digest('hex');
+  } catch {} // gone, or a folder: it goes on as a change
+  if (!h) {
+    saw.delete(file);
+    return false;
+  }
+  const was = saw.get(file);
+  saw.delete(file);
+  saw.set(file, h); // newest last, so the oldest go first when it is full
+  if (saw.size > 2000) saw.delete(saw.keys().next().value);
+  return was === h;
+};
+let burstAt = 0; // when the burst now waiting began: writes that never pause (a log, a database) are sent after 1 s anyway
 if (!PROXY) watchTree(ROOT, (event, file) => {
-  if (!file || hidden(file)) return;
+  if (!file || hidden(file) || EDITOR_TEMP.test(path.basename(file)) || unchanged(file)) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
   // event's name can't tell; a CSS or JS save leaves the index alone.)
   if (/\.html?$/i.test(file) || !path.extname(file)) indexStale = true;
   const kind = Object.keys(HOT).find((k) => HOT[k].test(file));
   if (kind) hotSaved.set('/' + file.split(path.sep).join('/'), kind);
   else otherSaved.add('/' + file.split(path.sep).join('/'));
+  burstAt ||= Date.now();
+  if (Date.now() - burstAt > 1000) return; // the timer an earlier write set stands
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
+    burstAt = 0;
     if (indexStale) {
       fileIndex = null;
       fileMemo.clear();
@@ -2226,7 +2249,7 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/live') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       const client = { res, local: isLoopback(req) };
-      res.write(`data: ${state(client.local)}\n\n`);
+      res.write(`retry: 500\n\ndata: ${state(client.local)}\n\n`); // a restarted lab is found again in half a second, not the browser's 3
       clients.add(client);
       const id = String(url.searchParams.get('tab') || '').slice(0, 40) || randomBytes(8).toString('hex');
       const tab = tabs.get(id) || { streams: 0, seen: 0, anonymous: !url.searchParams.get('tab') };

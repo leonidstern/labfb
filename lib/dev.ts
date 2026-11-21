@@ -131,7 +131,7 @@ export function sendFile(req: IncomingMessage, res: ServerResponse, file: string
   const stat = fs.statSync(file);
   const size = stat.size;
   const etag = `W/"${size.toString(36)}-${Math.round(stat.mtimeMs).toString(36)}"`;
-  const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-cache', etag };
+  const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': /\.(css|m?js)$/i.test(file) ? 'no-store' : 'no-cache', etag }; // no-store: Back shows what is on disk, not a script from the cache
   if (req.headers['if-none-match'] === etag) return void res.writeHead(304, { 'cache-control': 'no-cache', etag }).end();
   const enc = !req.headers.range && size > 1024 && size < 8e6 && SQUEEZE.test(type) ? encodingFor(req) : '';
   if (enc) {

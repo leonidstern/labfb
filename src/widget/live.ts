@@ -289,6 +289,7 @@ export function startLive() {
     let hotAt = null;
     // A CSS save: load the new stylesheet next to the old one and drop the old one once it's in, so nothing flashes,
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
+    let swapN = 0;
     const swapCss = (files) => {
       // A clone still loading from an earlier save is skipped (its original is swapped instead) and dropped once a newer one is in.
       const links = [...(document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])') as NodeListOf<HTMLLinkElement>)].filter((l) => new URL(l.href, location.href).origin === location.origin);
@@ -298,11 +299,13 @@ export function startLive() {
         url.searchParams.set('lab-v', Date.now().toString(36));
         const next = (link.cloneNode() as HTMLLinkElement);
         next.href = url.href;
-        next.dataset.labSwap = '';
+        const n = ++swapN;
+        next.dataset.labSwap = '' + n; // newer saves have higher numbers: a clone never removes one newer than itself
         const path = url.pathname;
         // The old one goes a frame after the new one has loaded, not in the same task: livereload-js waits a few ms there in WebKit.
         next.addEventListener('load', () => requestAnimationFrame(() => {
-          for (const l of (document.querySelectorAll('link[rel~="stylesheet"][href]') as NodeListOf<HTMLLinkElement>)) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
+          if (!next.isConnected) return; // another clone of the same file took it out first
+          for (const l of (document.querySelectorAll('link[rel~="stylesheet"][href]') as NodeListOf<HTMLLinkElement>)) if (l !== next && !(+l.dataset.labSwap! > n) && new URL(l.href, location.href).pathname === path) l.remove();
           delete next.dataset.labSwap;
         }), { once: true });
         next.addEventListener('error', () => next.remove(), { once: true });
@@ -333,9 +336,10 @@ export function startLive() {
           if (!v || !samePath(v.split('#')[0], paths)) continue;
           // The new file is loaded and decoded first, then shown: the picture never blinks empty.
           const next = fresh(v.split('#')[0]);
+          (n as any)['lab' + attr] = next;
           const im = new Image();
           im.src = next;
-          (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).finally(() => n.setAttribute(attr, next + (v.includes('#') ? v.slice(v.indexOf('#')) : '')));
+          (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).finally(() => (n as any)['lab' + attr] === next && n.setAttribute(attr, next + (v.includes('#') ? v.slice(v.indexOf('#')) : '')));
           hit++;
         }
         const set = n.getAttribute('srcset');
@@ -376,7 +380,7 @@ export function startLive() {
     // changed script or stylesheet list can't be patched safely: then it's a normal reload.
     const ownStyles = () => new Set([W.pageStyle, W.pinCursorStyle]);
     const scriptsOf = (doc) => [...doc.querySelectorAll('script:not([data-lab])')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
-    const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
+    const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]:not([data-lab-swap])')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
     const keepOut = (n) => n === W.host || (n.nodeType === 1 && n.localName === 'script');
     // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
     // everything after it (an open <details> further down stays the same element, and stays open).
@@ -531,7 +535,7 @@ export function startLive() {
     };
     if (bc)
       bc.onmessage = ({ data: d }) => {
-        if (d.t === 'hello' && stream && last) bc.postMessage({ t: 'state', v: last }); // a tab joined: it gets the state now
+        if (d.t === 'hello' && stream?.readyState === 1 && last) bc.postMessage({ t: 'state', v: last }); // a tab joined: it gets the state now
         if (stream) return; // a tab with its own stream listens to that
         if (d.t === 'state') got(d.v);
         if (d.t === 'beat') beat = Date.now();
@@ -581,13 +585,13 @@ export function startLive() {
         }
         if (String(v.files) !== W.script.dataset.version) {
           // The lab says which files changed (no list: a burst too big to judge, so reload as before).
-          if (board || (Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere))) W.script.dataset.version = String(v.files);
+          if (board || (v.files - +W.script.dataset.version === 1 && Array.isArray(v.changed) && v.changed.length && !v.changed.some(usedHere))) W.script.dataset.version = String(v.files);
           else reload(); // held while something is open: the comments below still come in (the agent's answer, read marks)
         }
         // Missed more than one hot update while away (asleep, offline): patch the page and refresh every stylesheet
         // and picture, instead of only the last batch of files.
         if (!board && hotAt !== null && v.hot !== hotAt) {
-          if (v.hot - hotAt > 1) hotUpdate([{ kind: 'html' }, { kind: 'css', path: '' }]);
+          if (v.hot - hotAt > 1) reload();
           else hotUpdate(v.hotFiles || []);
         }
         hotAt = v.hot;

@@ -84,3 +84,29 @@ test('a person who leaves an event stream ends it at the dev server too', async 
   for (let i = 0; i < 40 && !closed; i++) await sleep(50);
   assert.equal(closed, 1, 'the dev server saw its stream close');
 });
+
+test('a page asked for while the dev server restarts waits for it instead of failing', async () => {
+  await up();
+  const port = dev.address().port;
+  dev.closeAllConnections();
+  await new Promise((r) => dev.close(r));
+  const got = new Promise((done, fail) => {
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/back', headers: { host: `localhost:${PORT}`, accept: 'text/html' } }, (res) => {
+      let t = '';
+      res.on('data', (c) => (t += c));
+      res.on('end', () => done({ status: res.statusCode, t }));
+    });
+    req.on('error', fail);
+  });
+  await sleep(800);
+  await new Promise((r) => dev.listen(port, '127.0.0.1', r));
+  const { status } = await got;
+  assert.equal(status, 200, 'the page came once the server was back');
+  // Not forever: a server that stays down answers 502 after about 5 s.
+  dev.closeAllConnections();
+  await new Promise((r) => dev.close(r));
+  const t0 = Date.now();
+  const status2 = await new Promise((done, fail) => http.get({ host: '127.0.0.1', port: PORT, path: '/gone', headers: { host: `localhost:${PORT}`, accept: 'text/html' } }, (res) => (res.resume(), done(res.statusCode))).on('error', fail));
+  assert.equal(status2, 502);
+  assert.ok(Date.now() - t0 > 4000 && Date.now() - t0 < 8000, `${Date.now() - t0} ms`);
+});
