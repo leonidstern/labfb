@@ -451,6 +451,8 @@ there (anything about the page's own elements), and the raw devices' rules are c
 
 In a quarter of the agent-sync cases the phone is "held": each answer and live message reaches it up to 15, 40 or
 80 ms late, each by its own amount, as on a slow wifi. Failures that need that carry `held=answers-held`.
+A device asks `/_lab/api/changes` one at a time, in the order asked, as the widget does; `TORTURE_SERIAL_CHANGES=0` makes it
+ask them all at once and apply each answer as it arrives (the widget's old way), to see what asking in order fixes.
 
 ## Known bugs and their signatures
 

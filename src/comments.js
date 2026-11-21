@@ -444,11 +444,15 @@ import { bindKeys } from './widget/keys.ts';
   };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
   // Anything odd (a gap, an error, an old lab) falls back to the whole list.
-  async function loadChanges(since) {
+  // One at a time, in the order asked: two answers on the way (wifi) may arrive the other way round, and the older would
+  // then overwrite what the newer one brought (a pin resolved, then reopened, shown resolved; a deleted pin back).
+  let changesChain = Promise.resolve();
+  const loadChanges = (since) => (changesChain = changesChain.then(() => changesSince(since)));
+  async function changesSince(since) {
     try {
       const url = new URL('/_lab/api/changes', new URL(API, location.href));
       url.search = String(new URLSearchParams({ page: S.page, since: String(since) }));
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) }); // a hung ask must not hold the ones behind it
       const data = res.ok ? await res.json() : { full: true };
       if (data.full || !S.loaded) return load();
       const gone = new Set(data.del);
