@@ -41,6 +41,7 @@ function carry(dist: number, speed: number, cap: number): [number, string] {
   const m = Math.min(2, (speed * ms) / dist);
   return [ms, bez(1 / 3, m / 3, 2 / 3, (m + 1) / 3)];
 }
+let leaveBar = ''; // how the bar rises as the last leave() goes (slideAway)
 
 const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin'];
 
@@ -86,6 +87,11 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
   const top = r.top - moved;
   const way = Math.max(r.height, innerHeight - top) + 8 - moved; // to under the screen's bottom
   if (ms) [dur, ease] = carry(way, speed, ms);
+  // The bar comes up with the sheet: after a swipe at the same pace (the sheet's way left and its speed, in whole ways
+  // and ways per ms, are the bar's too), settling where the sheet is gone; after a tap softly, from rest. The standard
+  // curve was steep at the start (half the bar's way in the first frame).
+  const [bms, bease] = glide(ms ? way : 1, ms ? speed : 0, dur);
+  leaveBar = `${bms}ms ${bease}`;
   const fade = getComputedStyle(W.scrim).opacity;
   for (const [k, v] of [['top', `${top}px`], ['bottom', 'auto'], ['height', `${r.height}px`], ['max-height', 'none'], ['animation', 'none'],
     ['transition', 'none'], ['transform', `translateY(${moved}px)`], ['pointer-events', 'none']]) node.style.setProperty(k, v, 'important');
@@ -128,7 +134,7 @@ export function letGo(node: HTMLElement) {
 export function slideAway(node, close, ms = 0, speed = 0) {
   if (!W.coarse || !node || W.still.matches) return close();
   const dur = leave(node, ms, false, speed);
-  W.bar.style.transition = `transform ${dur}ms var(--_ease), opacity ${dur}ms var(--_ease-out)`;
+  W.bar.style.transition = `transform ${leaveBar}, opacity ${dur}ms var(--_ease-out)`;
   W.host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
   setTimeout(() => {
     close();
