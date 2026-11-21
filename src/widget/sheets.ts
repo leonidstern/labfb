@@ -189,13 +189,13 @@ const shifted = (px: number, ms: number) => {
   de.style.setProperty('--lab-shift-t', `${ms}ms`);
   de.style.setProperty('--lab-shift-e', getComputedStyle(W.host).getPropertyValue('--_ease-settle').trim() || 'ease');
   de.style.setProperty('--lab-shift', `${px}px`);
-  de.classList.add('lab-shift');
+  de.classList.add('lab-moved'); // (not lab-shift: that is the Shift key's)
   W.host.setAttribute('data-shift', '');
 };
 const unshifted = () => {
   const de = document.documentElement;
   gen++;
-  de.classList.remove('lab-shift');
+  de.classList.remove('lab-moved');
   for (const k of ['--lab-shift', '--lab-shift-t', '--lab-shift-e']) de.style.removeProperty(k);
   W.host.removeAttribute('data-shift');
   for (const n of document.querySelectorAll('[data-lab-still]')) n.removeAttribute('data-lab-still');

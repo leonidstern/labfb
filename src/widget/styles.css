@@ -51,8 +51,9 @@ button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
 .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
 /* Phones: the page shifted under a new comment (sheets.ts revealDraft): what stands on the page goes with it (pins, areas,
    drawings), not a sheet or what is held to the screen. */
-.layer > :not(.card, .float, [style*="fixed"]) { translate: 0 var(--lab-shift, 0px); }
-:host([data-shift]) .layer > :not(.card, .float, [style*="fixed"]) { transition: translate var(--lab-shift-t, 0s) var(--lab-shift-e, ease), opacity var(--_t-quick) var(--_ease-out); }
+/* Only while it is shifted: a translate left on a pin all the time, even of 0, put the card the browser ties to it 259 px
+   off on a computer (native check, 21 Nov). */
+:host([data-shift]) .layer > :not(.card, .float, [style*="fixed"]) { translate: 0 var(--lab-shift, 0px); transition: translate var(--lab-shift-t, 0s) var(--lab-shift-e, ease), opacity var(--_t-quick) var(--_ease-out); }
 .fit { position: absolute; left: 0; top: 0; width: 100px; height: 0; visibility: hidden; pointer-events: none; } /* measures what a page's zoom or transform makes of 100 px (comments.js fit) */
 .ui { display: contents; }
 /* Pinch-zoomed (sheets.ts zoomFit): the bar, chat and list are laid out on the unzoomed screen as always, then drawn
@@ -495,7 +496,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
         box-shadow: var(--_shadow); padding: 8px 14px; border-radius: var(--_radius); font-size: 13px; pointer-events: none; white-space: nowrap;
         letter-spacing: -.006em; animation: lab-fade var(--_fade-base); }
 /* 16px fields keep iOS from zooming the page when one is focused. */
-@media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.019em; } kbd { display: none; }
+/* Touch: nothing of the widget is selected but what is typed in its fields (a new comment's sheet comes up under a finger
+   that is still holding, and iOS's own long press selected its words: blue handles and a loupe over "go fix remove";
+   Leo, 21 Nov: "text selection only with shift"), and two quick taps on it are two taps, not Safari's zoom (Leo, 21 Nov:
+   "clicking on menu two times zooming page"). A part that says how it is touched itself (a handle, the tabs) keeps that. */
+@media (pointer: coarse) { * { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  :is(textarea, input) { -webkit-user-select: text; user-select: text; }
+  .box textarea, .who input { font-size: 16px; letter-spacing: -.019em; } kbd { display: none; }
   .box textarea { line-height: 22px; padding: 7px 0; } /* phones: 22 + 7 + 7 = 36, the send button's size */
   .box.one .who { line-height: 22px; padding-bottom: 7px; } }
 @keyframes lab-fade { from { opacity: 0; } }
@@ -691,11 +698,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
     translate: var(--lab-zx) var(--lab-zb); scale: var(--lab-zk); }
   .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px - var(--_gap) + var(--_kb)); }
   .scrim { background: transparent; }
-  /* A new comment's sheet comes up under a finger that is still holding (the hold that made the pin): iOS's own long press
-     then selected the sheet's words, blue handles and a loupe over "go fix remove" (iOS 27 simulator, 21 Nov; the page
-     itself can't be selected while a finger is down). Only its fields can be. */
-  .float, .float * { -webkit-user-select: none; user-select: none; }
-  .float :is(textarea, input) { -webkit-user-select: text; user-select: text; }
   .card.in, .float.in, .list:not([hidden]), .sw-box { animation: lab-card-in var(--_t-slow) var(--_ease); }
   /* Safari paints the strip under its see-through bar in the colour of whatever fixed thing comes within a few px of the
      screen's bottom: a sheet rising in, sliding away or pulled down by a finger turned it the sheet's white, a square band

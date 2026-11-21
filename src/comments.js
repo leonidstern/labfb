@@ -298,7 +298,7 @@ import { bindKeys } from './widget/keys.ts';
     <div class="ui"><div class="hint" role="status" hidden></div>
     <div class="list chatwin" hidden><div class="tabs"></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
-    <div class="bar">
+    <div class="bar" hidden>
       <button class="secondary chat-btn" type="button" hidden>chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
@@ -904,6 +904,10 @@ import { bindKeys } from './widget/keys.ts';
   };
   let viewW = 0; // the screen's width without its scrollbar (flipAt)
   function render() {
+    // The bar shows from its first drawing on: as it comes in the page's source it holds one empty button with a dot, and that
+    // dot stood where the menu comes for as long as the comments took to arrive (Leo, 21 Nov, on his phone over wifi:
+    // "some dot blinking on page reload on menu place").
+    bar.hidden = false;
     if (!moAsked && (S.draft?.anchor?.moment || S.comments.some((/** @type {any} */ x) => x.anchor?.moment))) void loadMotion().then(() => render()); // a moment's chip is the motion file's
     newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
     viewW = document.documentElement.clientWidth; // read once a pass, before any pin is written (flipAt)
@@ -1648,9 +1652,16 @@ import { bindKeys } from './widget/keys.ts';
     // The cursor goes in here, in the lift itself: a real iPhone opens its keyboard only for a focus made in the touch (one
     // made a moment later, from a timer, opened it in the simulator and not on Leo's phone: "its not in focus now", 21 Nov).
     S.pinnedByHold = false;
+    getSelection?.()?.removeAllRanges();
     box?.focus({ preventScroll: true });
     liftedDraft(); // (the page was put where the pin shows above the sheet as the pin appeared: sheets.ts revealDraft)
   }, { capture: true, passive: false });
+  // Phones: nothing but the widget's own fields starts a selection (no Shift there to ask for one), and a hold's lift
+  // clears one that iOS began anyway.
+  if (coarse) document.addEventListener('selectstart', (e) => {
+    const t = e.composedPath()[0];
+    if (!(t instanceof Node) || !(t instanceof Element ? t : t.parentElement)?.closest?.('textarea, input, [contenteditable]')) e.preventDefault();
+  }, true);
   // iOS took the touch (its own long press): no lift comes, and a tap in the box opens the keyboard. The next touch's
   // lift isn't this hold's.
   document.addEventListener('touchcancel', () => (S.pinnedByHold = false), true);
@@ -1982,7 +1993,7 @@ import { bindKeys } from './widget/keys.ts';
   pageStyle.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
   // Phones: the page is scrolled in one step for a new comment's pin and drawn where it was, then let go as the keyboard
   // comes (sheets.ts revealDraft): its own blocks, not what it holds to the screen itself, nor the widget or a board's view.
-  pageStyle.textContent += 'html.lab-shift body > :not([data-lab-comments], [data-lab-board-view], [data-lab-still]) { translate: 0 var(--lab-shift, 0px) !important; transition: translate var(--lab-shift-t, 0s) var(--lab-shift-e, ease) !important; }';
+  pageStyle.textContent += 'html.lab-moved body > :not([data-lab-comments], [data-lab-board-view], [data-lab-still]) { translate: 0 var(--lab-shift, 0px) !important; transition: translate var(--lab-shift-t, 0s) var(--lab-shift-e, ease) !important; }';
   addEventListener('scroll', () => {
     if (!document.documentElement.classList.contains('lab-room') || host.hasAttribute('data-sheet')) return;
     roomFor(scrollY, true);
@@ -2000,7 +2011,10 @@ import { bindKeys } from './widget/keys.ts';
   // (lab-press): Safari paints the quoted words' green (::highlight) over whole blocks of text that can't be selected,
   // so with the page unselectable all the time an open comment tinted half the page (iOS 27 simulator, 17 Nov).
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
-  pageStyle.textContent += `@media (pointer: coarse) { html:has([data-lab-pinning]).lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html:has([data-lab-pinning]) body > :not([data-lab-comments]), html:has([data-lab-pinning]) body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
+  // On a phone there is no Shift, so its text is never selected (Leo, 21 Nov: "text selection only with shift remember";
+  // a hold with a sheet open, or on the dimmed page, still selected it): all the time, but for the frames a quote is lit
+  // in (lab-lit, as on a computer) and never while a finger is down.
+  pageStyle.textContent += `@media (pointer: coarse) { html:has([data-lab-pinning]):not(.lab-lit) body > :not([data-lab-comments]), html:has([data-lab-pinning]).lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html:has([data-lab-pinning]) body > :not([data-lab-comments]), html:has([data-lab-pinning]) body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
 
   // The section bar (src/widget/sections.ts) is its own file, loaded when the page may show one: the lab kept its room
   // (the file clears that again), or a lab page (or one that says so) has 3 or more headings. Asked again when a route
