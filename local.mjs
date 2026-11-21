@@ -56,7 +56,7 @@ Run as npx @leonidstern/labit …, or node local.mjs … from a clone. Agents: l
 
   labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi | --no-wifi] [--no-open] [--new] [folder]
       Run it in your project. With a dev server (Astro, Next, Vite…) running there, comments go on top of it
-      (--proxy <port> picks one). A folder of HTML files is served as it is and reloads on change.
+      (--proxy <port> picks one), whatever HTML files the project has. A folder of HTML files with no dev server is served as it is.
       --wifi: phones and laptops on the same wifi comment as guests, each with a one-time link (labit invite);
       pages travel in the clear. On a running lab it restarts in place; --no-wifi turns it off.
       A folder a lab already serves opens in that lab; --new starts a separate one.
@@ -274,19 +274,24 @@ if (opts.dev && !process.env.LAB_DEV) {
 }
 
 // Which port is this project's dev server: lib/devserver.ts asks lsof, loaded only when there's a server to find
-// (a bare --proxy, or a project with a dev script and no pages), so starting on a folder of pages skips it.
+// (a bare --proxy, or a project whose package.json has a dev script or a framework), so a folder of pages skips it.
 const findDevServer = async () => {
-  return { ...find(ROOT, Number(opts.port) || 4400), tilde, othersNote };
+  return { ...find(ROOT, Number(opts.port) || 4400, runningLabs().map((l) => l.port)), tilde, othersNote };
 };
 
 if (/** @type {unknown} */ (opts.proxy) === true && !alreadyRunning) {
   const { port, others, tilde, othersNote } = await findDevServer();
   if (!port) die(`[lab] no dev server running in ${tilde(ROOT)}. Start it (npm run dev), or give its port: ${CMD} --proxy <port>${othersNote(others)}`);
-  console.log(`[lab] dev server for this project on :${port}`);
+  console.log(`[lab] fronting your dev server on :${port}`);
   opts.proxy = String(port);
 }
 
-// A project with a dev server is not a folder of pages: serving it would list node_modules and src.
+// What in package.json's dependencies makes a project one with a dev server (besides a dev script).
+const DEV_SERVERS = /^(vite|@vitejs\/.+|webpack-dev-server|next|astro|nuxt|@sveltejs\/kit|react-scripts|parcel|@remix-run\/dev|@angular\/cli|gatsby|@docusaurus\/core|@11ty\/eleventy|vitepress|vuepress|@rsbuild\/core|@rspack\/dev-server|snowpack|wmr|@web\/dev-server)$/;
+// A project with a dev server is not a folder of pages: serving it would list node_modules and src, or its index.html
+// without the framework (every Vite project has one, webpack has its template). It is a dev-server project when
+// package.json has a dev script or names a framework's dev server; one that is running is gone in front of, pages or no pages.
+// A project with pages, a dev server that isn't running and a lab started without it is served as pages, and says so.
 if (!opts.proxy && !alreadyRunning) {
   const hasPage = (dir, depth = 0) =>
     fs.readdirSync(dir, { withFileTypes: true }).some((d) => {
@@ -297,16 +302,24 @@ if (!opts.proxy && !alreadyRunning) {
   try {
     pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   } catch {}
-  if (pkg?.scripts?.dev && !hasPage(ROOT)) {
+  const framework = Object.keys({ ...pkg?.dependencies, ...pkg?.devDependencies }).find((d) => DEV_SERVERS.test(d));
+  if (pkg?.scripts?.dev || framework) {
+    const pages = hasPage(ROOT);
     const { port, others, tilde, othersNote } = await findDevServer();
-    if (!port)
+    if (port) {
+      console.log(`[lab] fronting your dev server on :${port}${pages ? ' (the project has HTML files too; the framework builds its own pages, so they are not served as they are)' : ''}`);
+      opts.proxy = String(port);
+    } else if (!pages && pkg.scripts?.dev)
       die(
         `[lab] ${tilde(ROOT)} is a project with a dev server, and it isn't running.\n` +
           `Start it (npm run dev), then run this again. Or serve built pages:  ${CMD} dist` +
           othersNote(others),
       );
-    console.log(`[lab] dev server for this project on :${port}`);
-    opts.proxy = String(port);
+    else if (pages)
+      console.log(
+        `[lab] ${tilde(ROOT)} has ${pkg.scripts?.dev ? 'a dev script' : `${framework}`} but no dev server is running here: serving its HTML files as they are, without the framework. ` +
+          `Start it (npm run dev) and run this again to put comments on the real app.${othersNote(others)}`,
+      );
   }
 }
 

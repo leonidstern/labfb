@@ -66,7 +66,7 @@ test('listing page', async () => {
 
 test('dev-server proxy', async () => {
   await up(`http://localhost:${proxied}`);
-  const t = tagOf(await (await fetch(`http://localhost:${proxied}/`)).text());
+  const t = tagOf(await (await fetch(`http://localhost:${proxied}/`, { headers: { accept: 'text/html' } })).text());
   assert.equal(t.length, 1);
   assert.match(t[0], new RegExp(`data-schema="${VERSION}"`));
 });

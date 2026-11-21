@@ -450,7 +450,7 @@ export function startLive() {
       if (board) return;
       const run = ++morphRun;
       try {
-        const res = await fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html' } });
+        const res = await fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html', 'x-lab': '1' } });
         const html = await res.text();
         if (run !== morphRun) return; // a newer save is already being fetched: only the latest is applied
         const doc = new DOMParser().parseFromString(html, 'text/html');
