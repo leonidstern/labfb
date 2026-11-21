@@ -129,7 +129,11 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
   sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
   sendBtn.innerHTML = ARROW;
   const error = el('div', { class: 'error' });
-  box.append(text, el('div', { class: 'line' }), who, sendBtn);
+  // "+" (a picture) sits beside the send arrow, in the same cell: the box is no taller for it.
+  const clip = attach ? el('button', { class: 'clip', type: 'button', 'aria-label': 'add a picture', title: 'add a picture' }, '+') : null;
+  const tail = clip ? el('div', { class: 'act' }) : sendBtn;
+  if (clip) tail.append(clip, sendBtn);
+  box.append(text, el('div', { class: 'line' }), who, tail);
   wrap.append(box, error);
   // The box is taller than its one line of text: a tap anywhere on it (not the name or send) puts the cursor in, at the end.
   box.addEventListener('click', (e) => {
@@ -250,11 +254,11 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     }
   };
   if (attach) {
-    // "+ picture": a phone has no paste or drop. The file input is made here, not in the part: Safari opens the picker only
+    // "+": a phone has no paste or drop. The file input is made here, not in the part: Safari opens the picker only
     // from the tap itself.
     const file = el('input', { type: 'file', accept: 'image/*', multiple: '', hidden: '' }) as HTMLInputElement;
-    const clip = el('button', { class: 'attbtn', type: 'button' }, '+ picture');
-    clip.addEventListener('click', () => file.click());
+    clip!.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box
+    clip!.addEventListener('click', () => file.click());
     // A pasted, dropped or picked picture: kept for the comment, by the attach part (its words, if the clipboard had any, go
     // in at the cursor). A paste or a drop brings only its images; what the picker gave goes as it is (the part says if it can't show it).
     const pic = (e: ClipboardEvent & DragEvent) => {
@@ -267,7 +271,7 @@ export function composer({ placeholder, onSubmit, autofocus = false, opened = fa
     };
     wrap.addEventListener('paste', pic as EventListener); // the name field too
     for (const t of ['dragover', 'drop', 'change']) wrap.addEventListener(t, pic as EventListener); // anywhere on the card of the box, the strip too; change: the picker's
-    wrap.append(clip, file);
+    wrap.append(file);
     if (pics.length) void d.part('attach').then((m) => m.restore(wrap, pics)); // kept pictures: put back as this box shows
   }
   text.addEventListener('input', sync);
