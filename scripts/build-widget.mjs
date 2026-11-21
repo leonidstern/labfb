@@ -32,17 +32,18 @@ const minifiedCss = {
     });
   },
 };
-// Each built file has its local names given again by terser, and nothing else (no rewriting of the code, the same
-// escapes for letters outside ASCII, the licence comment kept). esbuild numbers a nested function's names after its
-// parents', so deep code gets two-letter names; terser gives each function the shortest names it does not itself
-// use, the same few letters over and over, which gzip packs about 4% smaller (the page script: 3 KB).
+// Each built file has its local names given again by terser (the same escapes for letters outside ASCII, the licence
+// comment kept). esbuild numbers a nested function's names after its parents', so deep code gets two-letter names;
+// terser gives each function the shortest names it does not itself use, the same few letters over and over, which gzip
+// packs about 4% smaller (the page script: 3 KB). terser's compress folds what esbuild leaves, in two passes (21 Nov:
+// a quarter KB of the package; three passes come out larger).
 const shortNames = {
   name: 'short-names',
   setup(build) {
     const { format } = build.initialOptions;
     build.onEnd(async (result) => {
       for (const file of result.outputFiles || []) {
-        const { code } = await terser.minify(file.text, { compress: false, mangle: true, module: format === 'esm', format: { comments: /^!/, ascii_only: true } });
+        const { code } = await terser.minify(file.text, { compress: { passes: 2 }, mangle: true, module: format === 'esm', format: { comments: /^!/, ascii_only: true } });
         await fs.promises.mkdir(path.dirname(file.path), { recursive: true });
         await fs.promises.writeFile(file.path, code + '\n');
       }

@@ -355,8 +355,7 @@ export function show(name: string, o: Opts) {
   // Where it is (at) and its pins are read again once it rests: a move is no resize, so the watch below misses it.
   if (!o.own && !matchMedia('(prefers-reduced-motion: reduce)').matches) setTimeout(() => cur?.view === view && ((at = view.getBoundingClientRect()), board.resized(), rested()), slide(view, true) + 20);
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const v = /^\s*([\d.]+)(m?s)\s*$/.exec(getComputedStyle(document.documentElement).getPropertyValue('--lab-t-calm')); // lab.css is served minified: .12s
-    const d = v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) : 120;
+    const d = token('calm');
     let t0 = 0;
     const fade = (now: number) => {
       const k = Math.min(1, ((t0 ||= now) === now ? 0 : now - t0) / d);
@@ -408,10 +407,11 @@ function slide(view: HTMLElement, into: boolean, speed = 0) {
   if (into) setTimeout(() => ['--bv-t', '--bv-y', '--bv-e'].forEach((k) => view.style.removeProperty(k)), ms);
   return ms;
 }
-// A motion token of lab.css (--lab-t-quick, -base, -slow) in ms, as the comment widget has them.
+// A motion token of lab.css (--lab-t-quick, -base, -slow, -calm) in ms, as the comment widget has them (lab.css is served
+// minified: .12s).
 const token = (k: string) => {
   const v = /^\s*([\d.]+)(m?s)\s*$/.exec(getComputedStyle(document.documentElement).getPropertyValue(`--lab-t-${k}`));
-  return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) : ({ quick: 120, base: 200, slow: 300 } as Record<string, number>)[k];
+  return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) : ({ quick: 120, base: 200, slow: 300 } as Record<string, number>)[k] || 120;
 };
 let closing = false;
 /** Close the view: it slides down, then back, when it was opened here (the entry it added goes), else the address loses
