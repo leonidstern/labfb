@@ -597,9 +597,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
      through it, blurred. Only the box's own strip overlaps; the new / resolve / delete row stays on the sheet. */
   .chatwin .msgs { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
   .card > .body { margin-bottom: calc(-56px - var(--_pb)); padding-bottom: calc(64px + var(--_pb)); }
-  /* …and fade out behind the box (iOS's scroll edge): from 4 px above its top to 12% at its bottom (Leo, 15 Nov:
-     "behind input bottom", "a bit more", "less, it's just black", then "more, darker there"). */
-  .chatwin .msgs, .card > .body { mask-image: linear-gradient(#000 calc(100% - 60px - var(--_pb)), rgba(0,0,0,.12) calc(100% - var(--_pb))); }
+  /* No fade where the messages meet the box: they run on, blurred, under its glass (Leo, 21 Nov: "its fading down there i hate it"; the 15 Nov fade is gone). */
   .chatwin .chat, .card > .foot { position: relative; z-index: 1; background: none; }
   :host { --_box-bg: color-mix(in srgb, var(--_bg) 72%, transparent);
           --_box-edge: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 16%, transparent), 0 4px 18px rgba(0, 0, 0, .08); }
