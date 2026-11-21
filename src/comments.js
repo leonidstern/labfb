@@ -1196,7 +1196,7 @@ import { bindKeys } from './widget/keys.ts';
       }
       const float = el('div', { class: `float${anim}` });
       const box = composer({
-        placeholder: anchor.ink ? `${inkSaid(anchor.ink.mark)} · Enter sends, or add words` : S.unheard ? (sheetMode.matches ? 'comment · no agent yet' : 'add a comment · no agent listening yet') : 'add a comment', // S.unheard: local labs, set from the lab's state; a phone's box shares its line with "as <name>" and the arrow, and the long words wrapped and were cut (Leo, 21 Nov)
+        placeholder: anchor.ink ? `${inkSaid(anchor.ink.mark)} · Enter sends, or add words` : S.unheard ? 'comment · no agent yet' : 'add a comment', // S.unheard: local labs, set from the lab's state; short, so on a phone it fits beside "as <name>" and the arrow (the long words wrapped and were cut), and the same wording on a computer (Leo, 21 Nov)
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
         // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
         // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
