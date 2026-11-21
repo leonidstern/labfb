@@ -90,6 +90,9 @@ export function act(action: string, a: Ask, e: Env): Done {
     const topic = one(a.topic, 80);
     const name = a.name || (a.of && !topic ? nameOf(a.of.split('#')[0]) : slug(topic));
     if (!NAME.test(name)) return no('Give the board a topic: labit board new "Pricing hero" --of /pricing --variants 3');
+    // A board asked for by its name (a pin's own, made from its card) that is already there is that board, never a new one over it.
+    const had = a.name ? read(e.root, a.name) : null;
+    if (had) return { text: view(had, had.of ? e.fileOf(had.of.split('#')[0]) : null), board: had };
     let into = name;
     for (let n = 2; read(e.root, into) && !a.name; n++) into = `${name}-${n}`;
     const of = a.of ? one(a.of, 200) : '';

@@ -2,6 +2,7 @@
 import { bindTrial, keptRow, onReshow, triesInPlace, tryRow, untry } from './trial.ts';
 import { stickToEnd } from './stick.ts';
 import { heldPin, holdBox, letBox } from './pinhold.ts';
+import { showBoard } from './boardcam.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -451,7 +452,22 @@ export function threadCard(c, fresh = new Set(), focus = false) {
         failed(doIt);
       }
     });
-    actions.append(...(doIt ? [doIt] : []), first, ...(W.S.isAdmin ? [del] : []));
+    // The pin's own board (this computer only, Leo 21 Nov: "add board for agent with pictures and stuff"): made by the lab
+    // the first time, opened over the page after; what is put on it reaches the agent with this pin (pinBoards, local.mjs).
+    const own = W.adminToken && !W.S.board && c.anchor?.kind !== 'board' ? W.el('button', { class: 'btn', type: 'button' }, 'board') : null;
+    own?.addEventListener('click', async () => {
+      const name = `pin-${c.id}`;
+      try {
+        const r = await fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'new', name, of: `${W.S.page}#${name}` }) });
+        if (!r.ok) throw new Error(String(r.status));
+        W.S.openId = null;
+        W.render();
+        void showBoard(name);
+      } catch {
+        failed(own);
+      }
+    });
+    actions.append(...(doIt ? [doIt] : []), first, ...(own ? [own] : []), ...(W.S.isAdmin ? [del] : []));
     body.append(actions);
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).

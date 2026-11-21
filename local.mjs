@@ -763,9 +763,20 @@ const agentText = async (page) => {
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`).replace(/^settle: pin /gm, `settle: ${CMD} pin `);
   const file = fileFor(page);
   const lines = [file && `file: ${file}`, missingFor(page), errorsFor(page)].filter(Boolean);
-  const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
+  const out = pinBoards(page, lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local);
   return boardText(page, file ? lineHints(out, file) : out);
 };
+// A pin's own board (made from its card, src/widget/thread.ts): board pin-<id>, about its page at #pin-<id>. What is on
+// it is said under the pin's words, so the agent gets the person's references with the pin, not only with a pin on a
+// frame. The page itself (its first frame) and archived frames are left out; a board with nothing else says nothing.
+const pinBoards = (page, text) => text.replace(/^## \d+\. [^\n]* · id ([0-9a-f]{12})\ncomment: [^\n]*(?:\n {2}\|[^\n]*)*$/gm, (all, id) => {
+  const b = boardGet(`pin-${id}`);
+  if (!b || boardHome(b) !== page || b.of.split('#')[1] !== `pin-${id}`) return all;
+  const shown = b.frames.filter((f) => f.state !== 'archived' && f.src.split(/[?#]/)[0] !== page);
+  if (!shown.length) return all;
+  const what = (f) => (f.file ? `picture .lab/boards/${b.name}/${f.file}` : f.src.startsWith('/_lab/') ? `.lab/boards/${b.name}/${f.id}.html` : `page ${f.src}`);
+  return `${all}\nboard for this pin: ${origin}${page}#board=${b.name} (what the person put there for this pin; open the files)\n${shown.map((f) => `  frame ${f.id}: ${what(f)}${f.label ? ` "${f.label}"` : ''}`).join('\n')}`;
+});
 // A plain HTML page: each comment's element is found in the file by its words, and its line said next to it
 // (`in file: pricing.html:30`), so an agent opens the file there instead of searching (sims, 20 Nov: a drawing's
 // action took 4-5 tool calls, most of them looking for the spot).
@@ -2190,7 +2201,8 @@ const labInfo = () => {
   return {
     name: LAB_NAME, root: ROOT, port: PORT, wifi: WIFI, proxy: PROXY?.origin || null, browser: openTabs() > 0, mode: session ? mode : 'away', listening: session?.name || null, heard: heard(),
     started: STARTED,
-    boards: B.names(ROOT).flatMap((name) => { const b = boardGet(name); return b ? [{ name, url: `${origin}/_lab/board/${name}`, frames: b.frames.filter((f) => f.state !== 'archived').length, of: b.of || null, at: b.at }] : []; }),
+    // A pin's own board (pin-<id>) is opened from its pin, not listed with the lab's boards.
+    boards: B.names(ROOT).flatMap((name) => { const b = boardGet(name); return b && !(name.startsWith('pin-') && b.of?.includes('#pin-')) ? [{ name, url: `${origin}/_lab/board/${name}`, frames: b.frames.filter((f) => f.state !== 'archived').length, of: b.of || null, at: b.at }] : []; }),
     created: created(),
     pages: list.map(({ key, ...p }) => {
       const at = lastAt(key, p.file ? path.join(ROOT, p.file) : '');

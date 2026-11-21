@@ -1,0 +1,71 @@
+// A pin's own board (the "board" key on its card): made once by the lab as board pin-<id> about the page at #pin-<id>,
+// never made again over itself, kept out of the lab's list of boards, and what is put on it said under the pin in the
+// agent's text.
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { claimPort, tmp, rm, spawnLab, stop, up as answers } from './harness.mjs';
+
+const DIR = fs.realpathSync(tmp('pinboard'));
+const PORT = claimPort(9800, 100);
+const B = `http://localhost:${PORT}`;
+const write = (rel, body) => {
+  fs.mkdirSync(path.dirname(path.join(DIR, rel)), { recursive: true });
+  fs.writeFileSync(path.join(DIR, rel), typeof body === 'string' ? body : JSON.stringify(body));
+};
+const ID = 'a1b2c3d4e5f6';
+write('pricing.html', '<!doctype html><title>Pricing</title><h1>Pricing</h1>');
+write('cart.html', '<!doctype html><title>Cart</title><h1>Cart</h1>');
+write('labit.json', { flags: {} });
+write('.lab/comments/pricing.json', { page: '/pricing', comments: { [ID]: { id: ID, name: 'Leo', text: 'make the hero like these', createdAt: '2026-11-21T09:00:00.000Z', num: 1, anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5 } } } });
+const lab = spawnLab(DIR, PORT);
+after(async () => {
+  await stop(lab);
+  rm([DIR], { maxRetries: 5 });
+});
+const keys = () => JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8'));
+const post = (body, headers) => fetch(`${B}/_lab/api/board`, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json', origin: B, ...headers } });
+const agentText = async () => (await fetch(`${B}/_lab/agent/pricing`)).text();
+const name = `pin-${ID}`;
+
+test('the card makes the pin its board: about the page at the pin, opened over the page', async () => {
+  await answers(`${B}/_lab/state`);
+  const r = await post({ action: 'new', name, of: `/pricing#${name}` }, { 'x-lab-admin': keys().token });
+  assert.equal(r.status, 200);
+  const out = await r.json();
+  assert.equal(out.board.name, name);
+  assert.equal(out.board.of, `/pricing#${name}`);
+  assert.equal(out.home, '/pricing');
+  assert.deepEqual(out.board.frames.map((f) => f.src), ['/pricing']);
+});
+
+test('with only the page on it, the pin says nothing of a board', async () => {
+  assert.doesNotMatch(await agentText(), /board for this pin/);
+});
+
+test('what is put on it is said under the pin, the page itself left out', async () => {
+  const add = await post({ action: 'add', name, target: '/cart', label: 'like this' }, { 'x-lab-admin': keys().agent, 'x-lab-agent': '1' });
+  assert.equal(add.status, 200);
+  const t = await agentText();
+  const pin = t.split('\n## ').find((b) => b.split('\n')[0].endsWith(`· id ${ID}`));
+  assert.match(pin, new RegExp(`^comment: make the hero like these\\nboard for this pin: ${B}/pricing#board=${name} `, 'm'));
+  assert.match(pin, /^ {2}frame b: page \/cart "like this"$/m);
+  assert.doesNotMatch(pin, /frame a:/);
+});
+
+test('asked again, it is the same board, not a new one over it', async () => {
+  const r = await post({ action: 'new', name, of: `/pricing#${name}` }, { 'x-lab-admin': keys().token });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await r.json()).board.frames.map((f) => f.id), ['a', 'b']);
+});
+
+test('a guest or a page without the key cannot make one', async () => {
+  assert.equal((await post({ action: 'new', name: 'pin-0000000000ff', of: '/pricing#pin-0000000000ff' }, {})).status, 403);
+  assert.equal(fs.existsSync(path.join(DIR, '.lab/boards/pin-0000000000ff.json')), false);
+});
+
+test('the lab\'s list of boards leaves the pin\'s own out', async () => {
+  const pages = await (await fetch(`${B}/_lab/pages`)).json();
+  assert.deepEqual(pages.boards, []);
+});
