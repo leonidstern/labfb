@@ -106,7 +106,8 @@ try {
         const c10 = await count();
         const b = await bar();
         check(eng, 'counts read 9 then 10', c9 === '9' && c10 === '10', `${c9} ${c10}`);
-        check(eng, 'the bar does not move or widen when a count gains a digit', Math.abs(a[0] - b[0]) < 0.05 && Math.abs(a[1] - b[1]) < 0.05, `${a.map((x) => x.toFixed(1))} -> ${b.map((x) => x.toFixed(1))}`);
+        // Under a pixel: fonts differ between a Mac and Linux by a fraction of one; the growth this guards against was 7.6 px.
+        check(eng, 'the bar does not move or widen when a count gains a digit', Math.abs(a[0] - b[0]) < 1 && Math.abs(a[1] - b[1]) < 1, `${a.map((x) => x.toFixed(1))} -> ${b.map((x) => x.toFixed(1))}`);
       });
     } finally {
       await browser.close();
