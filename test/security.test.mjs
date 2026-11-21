@@ -379,6 +379,31 @@ test('sections: a guest needs a pass, and with one reads and writes like anybody
   assert.equal((await asGuest({ cookie, origin: 'https://evil.example' }, look)).status, 403, "and the pass doesn't open it to other sites");
 });
 
+test("a guest's copy of the agent's text has no path of this computer and no file names of the project", { skip: !lan && 'no local network address to come in on' }, async () => {
+  const own = `http://localhost:${WPORT}`;
+  await wifiToken(); // the lab is up
+  const pin = await wraw('/_lab/api/comments', { method: 'POST', headers: { origin: own, 'content-type': 'application/json' }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'bigger', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5, docX: 0.1, docY: 1, width: 1000, element: '<h1>', text: 'wifi page', source: 'src/Hero.jsx:12', usedAt: 'src/App.jsx:3' } }) });
+  assert.equal(pin.status, 201, pin.text);
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const as = (p, headers = {}) => wraw(p, { host: lan, headers: { origin: `http://${lan}:${WPORT}`, ...headers } });
+  const secret = /Hero\.jsx|App\.jsx|index\.html|file:|run in/;
+  // the owner's own text has them
+  const mine = (await wraw('/_lab/agent/index')).text;
+  assert.match(mine, /^file: index\.html$/m);
+  assert.match(mine, /in file: index\.html:/);
+  assert.match(mine, /run in /);
+  assert.match((await wraw('/_lab/api/comments?page=/index&format=text')).text, /written at: src\/Hero\.jsx:12/);
+  // a guest's does not: the words, the page and the spot stay
+  for (const p of ['/_lab/agent/index', '/_lab/api/comments?page=/index&format=text']) {
+    const r = await as(p, { cookie });
+    assert.equal(r.status, 200, p);
+    assert.match(r.text, /comment: bigger/, p);
+    assert.doesNotMatch(r.text, secret, p);
+    assert.equal(r.text.includes(WDIR), false, `${p} names the folder`);
+  }
+  assert.equal((await as('/_lab/agent/index')).status, 403, 'and without a pass, the gate');
+});
+
 test('a one-time link works once, and an unknown one never', async () => {
   const path_ = new URL((await invite())[0]).pathname;
   const first = await wraw(path_);
