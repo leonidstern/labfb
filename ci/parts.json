@@ -87,6 +87,7 @@
     },
     "code": {
       "anchoring.ts: rgb(1, 2, 3)": "a sentinel colour to tell whether the page set one, never drawn",
+      "sheets.ts: cubic-bezier(": "a sheet let go carries on at the speed it had: the curve is worked out from that speed and the way left (docs/motion.md), so no token can hold it",
       "comments.js: rgba(52, 199, 89, .3)": "the selection highlight, drawn in the page document where the widget tokens are not"
     }
   }

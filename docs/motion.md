@@ -25,7 +25,7 @@ Code that needs a number (a timer, a Web Animation, which can't read a `var()`) 
 
 Two pairs and one composite, only so the same long declaration is not copied (`ci/reuse.mjs`):
 `--_fade` (quick + out), `--_fade-base` (base + out), `--_twitch` (2 × loop, ease-in-out, infinite).
-`linear` stays a keyword: the ring's turn, and a sheet carried away by a swipe (steady, by design).
+`linear` stays a keyword: the ring's turn. A sheet let go is the one place a curve is worked out in code (`glide`, `carry` in `sheets.ts`): a cubic-bezier whose first slope is the speed it had at release, so it continues at the finger's speed.
 
 ## Reduced motion
 
@@ -80,9 +80,9 @@ have ended; a loop is one still frame. `--_t-hold` is not zeroed: a highlight th
 | `[data-sheet] .bar` | transform; opacity | base; base (delay quick / 3) | in; out | the bar stepping down |
 | `.chatwin, .card` | height | slow | settle | a comment pulling up to full height |
 | `lab-card-in` | transform, opacity | slow | standard | phones: a sheet grows out of what was tapped |
-| `leave()` (sheets.ts) | transform, opacity | base (tap, send) / by speed (swipe) | in / linear | the sheet leaving: shrinks into its pin after a tap, slides down whole after a send |
-| `slideAway()` (sheets.ts) | the bar | as `leave` | standard; out | the bar coming up as the sheet goes |
-| drag release (sheets.ts) | transform, height; scrim opacity | slow | settle; out | a sheet springing back |
+| `leave()` (sheets.ts) | transform, opacity | base (tap, send) / by speed (swipe) | in / starts at the release speed (`carry`) | the sheet leaving: shrinks into its pin after a tap, slides down whole after a send |
+| `slideAway()` (sheets.ts) | the bar | as `leave` | the sheet's pace after a swipe, settle's shape from rest after a tap (`glide`); out | the bar coming up as the sheet goes |
+| drag release (sheets.ts) | transform, height; scrim opacity | slow at most, shorter for a quick throw | settle's shape, built to start at the release speed (`glide`); out | a sheet springing back or to its other height |
 | keyboard fit (sheets.ts) | transform | slow | settle | the sheet moving over the keyboard |
 | composer glide (`composer.ts`) | height; the arrow's transform | base | standard | the box growing, the arrow sliding |
 | `.pane` (the dialog's insides) | opacity | quick out; base in after base | out | one pane fading for the other |
