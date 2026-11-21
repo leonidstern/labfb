@@ -84,3 +84,45 @@ test('a save in venv, __pycache__ or bower_components is not announced, and the 
   fs.writeFileSync(path.join(DIR, 'app.js'), '1');
   assert.ok((await above('files', was.files)) > was.files, 'a save beside them is announced');
 });
+
+test('a save that changes nothing, and what editors leave beside a save, are not announced', async () => {
+  await ready;
+  const file = path.join(DIR, 'same.css');
+  fs.writeFileSync(file, 'a{color:red}');
+  await sleep(400);
+  let was = { ...state };
+  fs.writeFileSync(file, 'a{color:red}'); // saved again, the same bytes
+  await sleep(500);
+  assert.deepEqual(state, was, 'the lab said nothing');
+  for (const f of ['same.css~', '4913', '#same.css#', 'same.css.swp', 'same.css.tmp', 'a.___jb_old___']) fs.writeFileSync(path.join(DIR, f), 'x');
+  await sleep(500);
+  assert.deepEqual(state, was, 'nothing for an editor\'s leftovers');
+  was = { ...state };
+  fs.writeFileSync(file, 'a{color:blue}');
+  assert.ok((await above('hot', was.hot)) > was.hot, 'a real change is announced');
+});
+
+test('writes that never pause are still announced, within about a second', async () => {
+  await ready;
+  const was = state.files;
+  const file = path.join(DIR, 'busy.log');
+  const t0 = Date.now();
+  let i = 0;
+  const timer = setInterval(() => fs.writeFileSync(file, `line ${i++}`), 40);
+  try {
+    assert.ok((await above('files', was)) > was, 'announced while the writes go on');
+    assert.ok(Date.now() - t0 < 2500, `after ${Date.now() - t0} ms`);
+  } finally {
+    clearInterval(timer);
+  }
+});
+
+test('the event stream asks to be reopened in half a second, and a script is not cached', async () => {
+  await ready;
+  const res = await fetch(B + '/_lab/live', { signal: AbortSignal.timeout(2000) }).catch(() => null);
+  const first = res ? new TextDecoder().decode((await res.body.getReader().read()).value) : '';
+  assert.match(first, /^retry: 500\n/);
+  fs.writeFileSync(path.join(DIR, 'app.js'), '2');
+  assert.equal((await fetch(`${B}/app.js`)).headers.get('cache-control'), 'no-store');
+  assert.equal((await fetch(`${B}/pricing`)).headers.get('cache-control'), 'no-store');
+});

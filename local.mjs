@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { apiOn, BODY_MAX, callApi, decoderFor, encodingFor, onLan, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
-import { AGENTS, agentKind } from './lib/agents.ts';
+import { AGENTS } from './lib/agents.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive, setWifi } from './lib/labcall.ts';
@@ -1296,16 +1296,39 @@ const otherSaved = new Set(); // served paths
 // tools fill with thousands of files nobody edits by hand, which would use up the computer's file watchers.
 const UNWATCHED = new Set(['node_modules', 'venv', '__pycache__', 'bower_components']);
 const hidden = (file) => file.split(path.sep).some((s) => s.startsWith('.') || UNWATCHED.has(s));
+// What editors leave beside a save: a backup (~, .bck, .tmp, .swp), Vim's probe file 4913, #autosave#, JetBrains' ___jb_x___.
+const EDITOR_TEMP = /(~|\.(tmp|bck|swp|swx))$|^(4913|#.*#)$|___jb_\w+___$/;
+const saw = new Map(); // served path -> hash of what it held at the last save: a save that changes nothing sends nothing
+const unchanged = (file) => {
+  let h = null;
+  try {
+    const abs = path.join(ROOT, file);
+    if (fs.statSync(abs).size <= 2e6) h = createHash('sha1').update(fs.readFileSync(abs)).digest('hex');
+  } catch {} // gone, or a folder: it goes on as a change
+  if (!h) {
+    saw.delete(file);
+    return false;
+  }
+  const was = saw.get(file);
+  saw.delete(file);
+  saw.set(file, h); // newest last, so the oldest go first when it is full
+  if (saw.size > 2000) saw.delete(saw.keys().next().value);
+  return was === h;
+};
+let burstAt = 0; // when the burst now waiting began: writes that never pause (a log, a database) are sent after 1 s anyway
 if (!PROXY) watchTree(ROOT, (event, file) => {
-  if (!file || hidden(file)) return;
+  if (!file || hidden(file) || EDITOR_TEMP.test(path.basename(file)) || unchanged(file)) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
   // event's name can't tell; a CSS or JS save leaves the index alone.)
   if (/\.html?$/i.test(file) || !path.extname(file)) indexStale = true;
   const kind = Object.keys(HOT).find((k) => HOT[k].test(file));
   if (kind) hotSaved.set('/' + file.split(path.sep).join('/'), kind);
   else otherSaved.add('/' + file.split(path.sep).join('/'));
+  burstAt ||= Date.now();
+  if (Date.now() - burstAt > 1000) return; // the timer an earlier write set stands
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
+    burstAt = 0;
     if (indexStale) {
       fileIndex = null;
       fileMemo.clear();
@@ -1480,7 +1503,8 @@ const remember = (w) => {
 // Who hears this page right now: a wait that named it, else one that named none. Null means a comment here waits
 // until someone listens -- worth saying out loud on a page that has something waiting.
 const listenerOf = (key) => (waiters.find((w) => w.pages && covers(w.pages, key)) || waiters.find((w) => !w.pages))?.label || null;
-// Threads still waiting on someone: nobody answered, or the newest word in them is a person's. An answered thread
+// Threads still waiting on someone: nobody answered, or the newest word in them is a person's (the agent's carry a
+// session, set by the lab alone: a name says nothing, "Campbell" has Campbell in it and "aider" is no listed agent). An answered thread
 // left unresolved is bookkeeping, not work; counting those made a day-old page read as a backlog of 52 when one
 // comment was waiting, and nothing that cries wolf like that gets read twice.
 const waitingOn = (key) => {
@@ -1490,7 +1514,7 @@ const waitingOn = (key) => {
   return all.filter((c) => {
     if (c.parent || c.resolved) return false;
     const reps = replies.get(c.id) || [];
-    return !reps.length || !agentKind(reps[reps.length - 1].name);
+    return !reps.length || !reps[reps.length - 1].session;
   }).length;
 };
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
@@ -1757,7 +1781,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
         if (got.rules) rulesSent.delete(who); // the rules went with it, so they go again
         for (const [page, id, was] of handedBefore) if (!theirs.has(id)) setComment(page, id, { handedAt: was });
         for (const [page, id, k] of got.told) setComment(page, id, { [k]: undefined }); // not seen: said again
-        saveHanded();
+        writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
         for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
         if (got.full) toldAt.delete(who);
         if (got.suggest) suggestTold.delete(who);
@@ -1776,7 +1800,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
     setComment(page, id, { handedAt: at });
   }
   for (const id of ids) wrote[id] = handoff[id] ? [...handoff[id]] : undefined;
-  saveHanded();
+  writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
   for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
   setMode(waiters.length ? 'listening' : 'working'); // another session still waits: the lab is still listening
   if (got.handed.length) setTimeout(() => notAnswered(), ANSWER_MS).unref();
@@ -1803,7 +1827,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
     }
     const now = new Date().toISOString();
     for (const [page, id, was] of handedBefore) if (threads.has(id)) setComment(page, id, { handedAt: was, unanswered: now });
-    saveHanded();
+    writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
     for (const page of new Set(quiet.map(([page]) => page))) persist(page).catch(() => {});
     silent.set(who, { label, pages: key && key !== '*' ? key.split(',') : null, at: Date.now() });
     console.log(`[lab] ${label} did not answer ${quiet.length} pin${quiet.length === 1 ? '' : 's'} in ${Math.round(ANSWER_MS / 1000)} s: they go to the next wait`);
@@ -2233,7 +2257,7 @@ const handler = async (req, res) => {
     if (pathname === '/_lab/live') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       const client = { res, local: isLoopback(req) };
-      res.write(`data: ${state(client.local)}\n\n`);
+      res.write(`retry: 500\n\ndata: ${state(client.local)}\n\n`); // a restarted lab is found again in half a second, not the browser's 3
       clients.add(client);
       const id = String(url.searchParams.get('tab') || '').slice(0, 40) || randomBytes(8).toString('hex');
       const tab = tabs.get(id) || { streams: 0, seen: 0, anonymous: !url.searchParams.get('tab') };
@@ -2690,7 +2714,10 @@ const handler = async (req, res) => {
       const listRev = pageRev.get(listPage) || 0;
       const kind = `${isLoopback(req) ? 'here' : 'guest'} ${encodingFor(req)} ${req.headers['x-lab-admin'] || ''}`;
       const kept = listing && cachedList(listPage, kind);
-      if (kept) return res.writeHead(kept.status, kept.headers).end(kept.out);
+      // The list says which comments version it is as of (x-lab-rev), so a page that opened it can ask what came after
+      // (/changes) when the live stream's first message says the lab is further on. A kept list is as of now: its page hasn't changed.
+      if (kept) return res.writeHead(kept.status, { ...kept.headers, 'x-lab-rev': String(version.comments) }).end(kept.out);
+      const listAt = String(version.comments); // before the list is read: a change made while it is built is replayed, not missed
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
       // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does), and the
       // API hears from the lab alone who speaks, the agent or a person: a page can't say it is the agent.
@@ -2722,7 +2749,7 @@ const handler = async (req, res) => {
         broadcast();
         wake();
       }
-      const head = { 'content-type': out.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' };
+      const head = { 'content-type': out.headers.get('content-type') || 'application/json', 'cache-control': 'no-store', ...(listing ? { 'x-lab-rev': listAt } : {}) };
       let body = text;
       // Another device sees comments without the agent's session details.
       if (req.method === 'GET' && out.ok && !isLoopback(req) && /json/.test(out.headers.get('content-type') || '')) {
@@ -2883,6 +2910,7 @@ if (IDLE_MS > 0)
     }
   }, Math.min(60000, Math.max(1000, IDLE_MS / 4))).unref();
 const bye = () => {
+  if (stateTimer) writeState(); // what the 300 ms timer still holds
   try {
     if (JSON.parse(fs.readFileSync(SERVER, 'utf8')).pid === process.pid) fs.rmSync(SERVER);
   } catch {}

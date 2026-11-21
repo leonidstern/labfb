@@ -12,6 +12,8 @@
     "public/_lab/components.js.br",
     "public/_lab/switcher.js.br",
     "public/_lab/draw.js.br",
+    "public/_lab/sections.js.br",
+    "public/_lab/motion.js.br",
     "public/_lab/boardview.js.br",
     "public/_lab/lab.css",
     "public/_lab/favicon.svg",

@@ -15,9 +15,14 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** A throwaway folder, /tmp/labit-<name>-XXXXXX. */
 export const tmp = (name) => fs.mkdtempSync(path.join(os.tmpdir(), `labit-${name}-`));
-/** Folders removed for good; `more` is for fs.rmSync (maxRetries where the lab may still be writing). */
+/** Folders removed for good. A killed lab can still be writing into .lab for a moment (ENOTEMPTY), so it retries,
+    and a temp folder that still won't go never fails the test: the OS clears /tmp. */
 export const rm = (dirs, more = {}) => {
-  for (const d of dirs) fs.rmSync(d, { recursive: true, force: true, ...more });
+  for (const d of dirs) {
+    try {
+      fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100, ...more });
+    } catch {}
+  }
 };
 
 /** One lab's folder, its port (a number, from [base, base + span)) and its address. */
