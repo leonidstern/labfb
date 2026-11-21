@@ -25,7 +25,11 @@ const start = async () => {
 };
 const stop = () => new Promise((done) => (server.once('exit', done), server.kill()));
 const until = async (ok, ms = 7000) => {
-  for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) if (await ok()) return true;
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) {
+    try {
+      if (await ok()) return true;
+    } catch {} // a read while the page navigates throws: look again
+  }
   return false;
 };
 const text = (p) => p.evaluate(() => document.getElementById('m')?.textContent ?? null);
@@ -79,6 +83,19 @@ try {
         check(eng, `a page whose file is gone for ${gap} ms shows the file when it is back`, await until(async () => (await text(p)) === `back${gap}`), String(await text(p)));
         await p.close();
       }
+
+      // The index page is gone for 3 s and a script it loads is saved meanwhile: the page reloads for that, and the lab answers
+      // "/" with its page list (200, no widget). The open page stays on its own copy and shows the file when it is back.
+      p = await open('/');
+      const index = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+      fs.rmSync(path.join(DIR, 'index.html'));
+      await sleep(300);
+      save('dep.js', 'document.documentElement.dataset.dep="v3";');
+      await sleep(3000);
+      check(eng, 'an index page that is gone while its script is saved keeps its widget', await p.evaluate(() => Boolean(document.querySelector('script[data-live]'))));
+      save('index.html', index.replace('hello', 'idx-back'));
+      check(eng, 'and shows the index page when it is back', await until(async () => (await text(p)) === 'idx-back'), String(await text(p)));
+      await p.close();
 
       // A stylesheet saved before the page's first live message.
       p = await browser.newPage();

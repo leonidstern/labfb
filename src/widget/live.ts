@@ -160,11 +160,12 @@ export function startLive() {
       reloadTimer = 0;
       now();
     };
-    // The page is asked for first: with its dev server down the lab answers a plain 502 with no widget, and a reload
-    // would leave the tab there for good. This page stays, and asks again in a moment.
+    // The page is asked for first: with its dev server down the lab answers a plain 502, and with its file gone its page
+    // list or "not found" (200 for a folder): none of them has a widget, and a reload would leave the tab there for good.
+    // This page stays, and asks again in a moment.
     const now = () =>
-      fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html' } })
-        .then((r) => r.ok, () => false)
+      fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html', 'x-lab': '1' } })
+        .then((r) => r.ok && r.text().then((t) => t.includes('data-live')), () => false)
         .then((up) => {
           if (!up) return void (reloadTimer ||= setTimeout(() => ((reloadTimer = 0), reload()), 2000));
           try {
