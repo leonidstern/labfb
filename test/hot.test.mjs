@@ -159,6 +159,54 @@ test('a delta from too long ago, or from the future, asks for the whole list', a
   assert.equal(far.full, true);
 });
 
+// A page is served with the hot count of that moment (data-hot), so a save between its load and its first live message
+// is caught up instead of being the page's baseline.
+test('a page is served with the lab\'s hot count', async () => {
+  const live = await listen();
+  const first = await live.next(() => true);
+  const html = await (await up()).text();
+  live.stop();
+  assert.equal(html.match(/data-hot="(\d+)"/)?.[1], String(first.hot || 0));
+  save('s.css', 'h1{color:green}');
+  const after = await (async () => {
+    for (let i = 0; i < 60; i++) {
+      const tag = (await (await up()).text()).match(/data-hot="(\d+)"/)?.[1];
+      if (tag !== String(first.hot || 0)) return tag;
+      await sleep(50);
+    }
+  })();
+  assert.equal(after, String((first.hot || 0) + 1), 'a save counts');
+});
+
+// A new folder in the burst is itself a "changed" entry the page would find unused: with the hot list cut, nothing may
+// tell a page it can stay.
+test('a burst of more than 50 hot files and a new folder reloads every page', async () => {
+  const live = await listen();
+  const first = await live.next(() => true);
+  fs.mkdirSync(path.join(DIR, 'bulk'), { recursive: true });
+  for (let i = 0; i < 52; i++) save(`bulk/f${i}.css`, `/* ${i} */`);
+  save('index.html', '<!doctype html><title>t</title><link rel="stylesheet" href="s.css"><h1 id="t">Burst</h1>');
+  const said = await live.next((s) => s.files > first.files);
+  live.stop();
+  assert.ok(said, 'files version went up');
+  assert.equal(said.changed, null, 'no list: the page reloads');
+});
+
+// The browser keeps a file by its ETag: one that stays the same when the bytes change shows the old bytes after a reload.
+test('a file saved with the same size and mtime gets a new ETag, and an unchanged one keeps it', async () => {
+  const f = path.join(DIR, 'same.js');
+  fs.writeFileSync(f, 'var v="AAAA";');
+  const st = fs.statSync(f);
+  const a = await fetch(B + '/same.js');
+  const tag = a.headers.get('etag');
+  assert.equal((await fetch(B + '/same.js', { headers: { 'if-none-match': tag } })).status, 304, 'unchanged: kept');
+  fs.writeFileSync(f, 'var v="BBBB";');
+  fs.utimesSync(f, st.atime, st.mtime);
+  const b = await fetch(B + '/same.js', { headers: { 'if-none-match': tag } });
+  assert.equal(b.status, 200);
+  assert.equal(await b.text(), 'var v="BBBB";');
+});
+
 test('a restart is a new lab id (pages catch up in place), the widget revision stays', async () => {
   const before = (await (await fetch(B + '/')).text()).match(/data-lab="([^"]+)" data-widget="([^"]+)"/);
   server.kill();
