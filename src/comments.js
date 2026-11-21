@@ -39,7 +39,7 @@ import { holdWhileOpen } from './widget/hold.ts';
 import { inkSvg } from './widget/ink.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } from './widget/drag.ts';
-import { bindBoardCam, pinBoard, showBoard } from './widget/boardcam.ts';
+import { addBoard, bindBoardCam, showBoard } from './widget/boardcam.ts';
 import { bindFramework, overFramework, scanForFramework } from './widget/framework.ts';
 import { bindKeys } from './widget/keys.ts';
 
@@ -173,7 +173,6 @@ import { bindKeys } from './widget/keys.ts';
   } catch {}
   // Your one list of actions (settings.json `actions`, passed as data-actions; lib/actions.ts, docs/settings.md): as many
   // chips as fit, the rest behind "…".
-  const BOARD_ACT = '+board: use the references on this pin\'s board ("board for this pin" under it)';
   const actButton = (name) => el('button', { type: 'button', 'data-k': name }, name);
   let LIST = [];
   try {
@@ -1229,7 +1228,6 @@ import { bindKeys } from './widget/keys.ts';
         onSubmit: async (name, said, att) => {
           const { comment, edit } = await send({ name, text: said, anchor, ...att });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
-          if (anchor.act === BOARD_ACT) void pinBoard(comment.id, true, anchor);
           addComment(comment);
           markSeen([comment]);
           S.draft = null;
@@ -1693,10 +1691,22 @@ import { bindKeys } from './widget/keys.ts';
     // list itself is set in labit.json or your settings.json (`actions`, docs/settings.md): nothing on the page edits it.
     const chips = LIST.map(chip);
     row.append(...chips);
-    // +board (on a page; a guest too, who is the person on another device): the pin goes with its own board, which opens
-    // for pictures and pages; the lab gives the pin to the agent when that board is closed (Leo, 21 Nov: "+board?"). It is
-    // labit's own, not one of your list, so it looks different and sits at the right end, never dropped for room.
-    if (!S.board && draft.anchor.kind !== 'board') row.append(Object.assign(chip({ name: '+board', prompt: BOARD_ACT }), { className: 'own' }));
+    // +board (on a page; a guest too, who is the person on another device): a board for pictures and pages goes into the
+    // page as a section at this spot, and opens; no pin is left (Leo, 21 Nov: "only board sections is enough"). The words
+    // typed are its title. It is labit's own, not one of your list, so it looks different and sits at the right end.
+    if (!S.board && draft.anchor.kind !== 'board') {
+      const own = Object.assign(actButton('+board'), { className: 'own', title: 'a board of pictures and pages, as a section of the page here' });
+      own.addEventListener('mousedown', (e) => e.preventDefault());
+      own.addEventListener('click', () => {
+        const title = field.value.trim();
+        fill('');
+        S.draft = null;
+        keepSpot(null);
+        render();
+        void addBoard(draft.anchor, title);
+      });
+      row.append(own);
+    }
     let tries = 0;
     const measure = () => {
       if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
