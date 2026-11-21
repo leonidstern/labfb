@@ -1660,10 +1660,11 @@ import { bindKeys } from './widget/keys.ts';
     // Your list, in its order, as many chips as fit on one line (measured); the ones that don't fit are not shown. The
     // list itself is set in labit.json or your settings.json (`actions`, docs/settings.md): nothing on the page edits it.
     const chips = LIST.map(chip);
-    // +board (on a page; a guest too, who is the person on another device): the pin goes with its own board, which opens
-    // for pictures and pages; the lab gives the pin to the agent when that board is closed (Leo, 21 Nov: "+board?").
-    if (!S.board && draft.anchor.kind !== 'board') row.append(chip({ name: '+board', prompt: BOARD_ACT }));
     row.append(...chips);
+    // +board (on a page; a guest too, who is the person on another device): the pin goes with its own board, which opens
+    // for pictures and pages; the lab gives the pin to the agent when that board is closed (Leo, 21 Nov: "+board?"). It is
+    // labit's own, not one of your list, so it looks different and sits at the right end, never dropped for room.
+    if (!S.board && draft.anchor.kind !== 'board') row.append(Object.assign(chip({ name: '+board', prompt: BOARD_ACT }), { className: 'own' }));
     let tries = 0;
     const measure = () => {
       if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
