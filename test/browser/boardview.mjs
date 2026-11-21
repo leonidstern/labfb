@@ -59,10 +59,16 @@ try {
       // resize: half, kept for this page across a reload
       await p.keyboard.press('Escape'); // the draft (if any) goes first
       await sleep(200);
+      const viewH = () => p.evaluate(() => document.querySelector('[data-lab-board-view]').getBoundingClientRect().height);
+      const h0 = await viewH();
+      check(eng, 'a board opens at half the window (Leo, 21 Nov: "open boards half not full by default")', Math.abs(h0 - 400) < 4, String(h0));
       await p.click('[data-lab-board-view] .bv-size');
       await sleep(400);
-      const h1 = await p.evaluate(() => document.querySelector('[data-lab-board-view]').getBoundingClientRect().height);
-      check(eng, 'full / half makes the view half the window', Math.abs(h1 - 400) < 4, String(h1));
+      const hFull = await viewH();
+      await p.click('[data-lab-board-view] .bv-size');
+      await sleep(400);
+      const h1 = await viewH();
+      check(eng, 'full / half makes the view the whole window, then half of it', Math.abs(hFull - 800) < 4 && Math.abs(h1 - 400) < 4, String([hFull, h1]));
       // the grip on its edge: dragged up to 70%
       const g = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('.bv-grip').getBoundingClientRect(); return { x: r.x + r.width / 3, y: r.y + r.height / 2 }; });
       await p.mouse.move(g.x, g.y);

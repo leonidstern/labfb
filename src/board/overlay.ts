@@ -27,12 +27,13 @@ const CSS = `
 .bv-bar button{font:400 14px/1.4 var(--lab-font,system-ui,-apple-system,sans-serif);letter-spacing:-.011em;color:inherit;background:transparent;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;transition:background-color var(--lab-t-quick,120ms) var(--lab-ease-out,cubic-bezier(0,0,.58,1))}
 .bv-bar button:hover{background:var(--lab-hover,rgba(0,0,0,.10))}
 .bv-bar button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
-.bv-name{flex:1;text-align:center;font:400 14px/1.4 var(--lab-font,system-ui,-apple-system,sans-serif);letter-spacing:-.011em;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:normal}
+.bv-name{position:absolute;left:50%;translate:-50% 0;max-width:calc(100% - 220px);pointer-events:none;text-align:center;font:400 14px/1.4 var(--lab-font,system-ui,-apple-system,sans-serif);letter-spacing:-.011em;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:normal}
 .bv-grip{position:absolute;left:0;right:0;top:-5px;height:10px;cursor:ns-resize;touch-action:none;z-index:1}
 .bv-grip::after{content:"";position:absolute;left:50%;top:7px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:currentColor;opacity:.25}
-:host(.full) .bv-grip{top:env(safe-area-inset-top,0px)}
-:host(.full) .bv-grip::after{top:3px}
-@media (pointer:fine){.bv-bar{cursor:ns-resize}.bv-grip{top:-10px;height:20px}.bv-grip::after{top:12px}:host(.full) .bv-grip::after{top:8px}}
+/* The same spot half and full (it moved 4 px as the view went full: Leo, 21 Nov), under a phone's notch when full. */
+:host(.full) .bv-grip{top:calc(env(safe-area-inset-top,0px) - 5px)}
+.bv-size{margin-left:auto}
+@media (pointer:fine){.bv-bar{cursor:ns-resize}.bv-grip{top:-10px;height:20px}.bv-grip::after{top:12px}:host(.full) .bv-grip{top:calc(env(safe-area-inset-top,0px) - 10px)}}
 .bv-box{position:relative;flex:1;min-height:0}
 .bv-box #lab-board{position:absolute}
 @media (pointer:coarse){.bv-bar{z-index:1}.bv-bar button{position:relative;z-index:2;min-width:44px}.bv-bar button::before{content:"";position:absolute;left:0;right:0;top:-9px;bottom:-12px}}
@@ -96,6 +97,7 @@ export function show(name: string, o: Opts) {
   const toggle = btn('', 'full or half', () => {
     size = size >= 1 ? HALF : 1;
     saveSize(o.page, size);
+    board.keep(); // its zoom stays
     paintSize();
     // One step, so fitted in this same frame: where the view is is read now (it is asked for by the board's pins), and the
     // board fits to the new size before anything is drawn (not 200 ms on, once the box rests, as a dragged edge does).
@@ -128,6 +130,7 @@ export function show(name: string, o: Opts) {
   // pointer drag go now and then (the first drag after opening did nothing, iOS 27 simulator, 21 Nov). A mouse or a pen
   // by its pointer events.
   const pulling = (y0: number, t0: number) => {
+    board.keep(); // its zoom stays as the edge moves
     let frame = 0;
     let below = 0; // px pulled past the least height
     const moves = [{ t: t0, y: y0 }];
@@ -404,6 +407,11 @@ function teardown() {
   c.destroy();
   c.view.remove();
   delete (window as unknown as { __labBoard?: unknown }).__labBoard;
+  const y = keepY;
+  keepY = null;
+  const hold = () => y !== null && Math.abs(scrollY - y) > 1 && scrollTo({ top: y, behavior: 'instant' as ScrollBehavior });
+  hold();
+  requestAnimationFrame(() => (hold(), requestAnimationFrame(hold)));
   setTimeout(() => (history.scrollRestoration = c.restoration), 0);
   c.onClose?.();
   moved();
@@ -425,7 +433,10 @@ function slide(view: HTMLElement, into: boolean, speed = 0) {
     void view.offsetHeight;
   }
   const way = into ? now : h + 8 - now;
-  const [ms, curve] = into ? move.glide(way, speed, slow, quick) : speed > 0 ? move.carry(way, speed, slow, quick) : [base, 'cubic-bezier(.4, 0, 1, 1)'];
+  // Opened by a tap (from below the screen, at rest) or closed by one: the chat sheet's own motion, its curve and length
+  // (Leo, 21 Nov: "do same easing for open close as we do for chat for board drawer"): in over --lab-t-slow on --lab-ease,
+  // out over --lab-t-base on --lab-ease-in. Let go by a finger, it keeps the finger's speed (sheetmove.ts).
+  const [ms, curve] = into ? (off || speed ? move.glide(way, speed, slow, quick) : [slow, ease('ease', 'cubic-bezier(.2, .8, .2, 1)')]) : speed > 0 ? move.carry(way, speed, slow, quick) : [base, ease('ease-in', 'cubic-bezier(.4, 0, 1, 1)')];
   view.style.setProperty('--bv-e', curve);
   view.style.setProperty('--bv-t', `${ms}ms`);
   view.style.setProperty('--bv-y', `${into ? 0 : h + 8}px`);
@@ -438,6 +449,8 @@ const token = (k: string) => {
   const v = /^\s*([\d.]+)(m?s)\s*$/.exec(getComputedStyle(document.documentElement).getPropertyValue(`--lab-t-${k}`));
   return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) : ({ quick: 120, base: 200, slow: 300 } as Record<string, number>)[k] || 120;
 };
+// A curve of lab.css (--lab-ease, --lab-ease-in), as the comment widget has them.
+const ease = (k: string, or: string) => getComputedStyle(document.documentElement).getPropertyValue(`--lab-${k}`).trim() || or;
 let closing = false;
 /** Close the view: it slides down, then back, when it was opened here (the entry it added goes), else the address loses
  * its #board. The browser's own back takes it down at once (its own gesture is the motion). */
@@ -449,8 +462,12 @@ function close(speed = 0) {
   }
   now();
 }
+// Closing leaves the page where it is now, wherever it was scrolled to under the view: never back at the board's section
+// (Leo, 21 Nov: "closing board by clicking on canvas after scrolled a bit should not return to board section").
+let keepY: number | null = null;
 function now() {
   if (!cur) return;
+  keepY = scrollY;
   if (cur.pushed && nameInHash() === cur.name) return history.back(); // popstate (below) takes it down
   try {
     history.replaceState(history.state, '', `${location.pathname}${location.search}`);

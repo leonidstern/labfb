@@ -39,6 +39,7 @@ const css = `
 #lab-board .f{position:absolute;outline:calc(1px*var(--iz,1)) solid rgba(0,0,0,.08)}
 #lab-board .b{position:absolute;inset:0;background:#fff;contain:layout paint}
 #lab-board .f.off{content-visibility:hidden}
+@media (hover:hover){#lab-board:not(.alt,.grab) .f:hover{outline:calc(1px*var(--iz)) solid #1f7a4d}} /* what a click picks (Leo, 21 Nov: "cursor should have selection") */
 #lab-board .f.sel,#lab-board .f.pick{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
 #lab-board iframe,#lab-board img{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
@@ -124,6 +125,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   let checked = { x: 1e9, y: 1e9, z: 0 }; // the camera at the last wake/cull check
   let still: ReturnType<typeof setTimeout> | undefined;
   let movedAt = -1e9; // when the camera last moved
+  let kept = false; // the person sized the view (overlay.ts keep()): its zoom stays from then on
   let layered = false; // the world is its own layer (the camera is moving)
   let paintedZ = 0; // the zoom the labels were last sized for
 
@@ -192,9 +194,9 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       sizing = false;
       // Held (a phone's keyboard): it stays as it is, where the hold or its glide put it. Fitted or held to its edges again
       // here, mid-glide, it jumped 68 px and the widget drew everything again (21 Nov simulator).
-      // Never fitted again: what is on the board keeps its zoom when the view is resized (Leo, 21 Nov: "do not zoom images on
-      // board on resize board").
-      if (!held) return go(cam, false); // (which rests again, and lets the layer go then)
+      // Once the person has sized the view (its edge, half or full) the board is never fitted again: it keeps its zoom (Leo,
+      // 21 Nov: "do not zoom images on board on resize board"). Till then a new size fits it, as the view settles.
+      if (!held) return go(moved || kept ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
     }
     layered = false;
     world.style.willChange = '';
@@ -931,17 +933,17 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     for (const c of cards) c.frame?.remove();
     root.replaceChildren();
   };
-  // The box was set to a new size in one step (a view's half and full): drawn now at the same zoom, in the frame that has
+  // The box was set to a new size in one step (a view's half and full): drawn now (at the same zoom once kept, below), in the frame that has
   // the new size, not once the box has rested (the board is in its old place and size for 200 ms, then jumps to its fit).
   const resized = () => {
     const [px, py] = [ox, oy];
     measure();
     if (!cards.length) return;
-    cam = { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z }; // the same zoom, the board where it was on the screen
+    cam = moved || kept ? { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z } : fitAll(boxes(), view); // the same zoom, the board where it was on the screen
     go(cam, false);
     [whole, boxed] = [false, true]; // told as the box changing with the camera, as a dragged edge is (the page's pins under it hide or show)
     cancelAnimationFrame(drawFrame);
     paintCam();
   };
-  return { api: boardApi, destroy, measure: () => (measure(), go(cam, false)), resized };
+  return { api: boardApi, destroy, measure: () => (measure(), go(cam, false)), resized, keep: () => void (kept = true) };
 }

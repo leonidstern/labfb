@@ -1951,7 +1951,14 @@ import { bindKeys } from './widget/keys.ts';
     ptr.classList.toggle('show', show);
     ptr.style.transform = `translate(${x - 1}px, ${y - 27}px)`;
   };
-  const recheck = () => S.mouse && requestAnimationFrame(() => S.mouse && place(S.mouse.x, S.mouse.y, document.elementFromPoint(S.mouse.x, S.mouse.y)));
+  // The element under a still mouse, into open shadow roots (a board's view): its host alone inherits the page's hidden
+  // pointer, and the drawn pin showed over a board for a moment after a picture was deleted (Leo, 21 Nov).
+  const under = (x, y) => {
+    let t = document.elementFromPoint(x, y);
+    for (let n; t?.shadowRoot && t !== host && (n = t.shadowRoot.elementFromPoint(x, y)) && n !== t;) t = n;
+    return t;
+  };
+  const recheck = () => S.mouse && requestAnimationFrame(() => S.mouse && place(S.mouse.x, S.mouse.y, under(S.mouse.x, S.mouse.y)));
   addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
     ptr.classList.remove('still');

@@ -276,7 +276,7 @@ button.btn.undo { color: var(--_fg); }
 .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
 /* One line of text is exactly as tall as the send button (20 + 2 + 2 = 24), so the text and the button share one middle. */
 .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
-                min-height: 0; max-height: min(200px, max(80px, 30vh)); overflow-y: auto; outline: none; display: block; field-sizing: content; } /* it grows with its words, no script */
+                min-height: 0; max-height: min(200px, max(80px, 30vh)); overflow-x: hidden; overflow-y: auto; outline: none; display: block; field-sizing: content; } /* it grows with its words, no script */
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
 .box textarea::placeholder { white-space: nowrap; text-overflow: ellipsis; } /* one line, cut with … on a box too narrow: a wrapped second line was half hidden */
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
@@ -399,7 +399,7 @@ button.btn.undo { color: var(--_fg); }
        background: var(--_green-fg); color: var(--_bg); box-shadow: 0 0 0 1.5px var(--_bg); font: 700 9.5px/1 system-ui, sans-serif;
        letter-spacing: 0; pointer-events: none; animation: lab-arrive var(--_t-quick) var(--_ease-out); }
 /* one floating pill (lab.css .lab-button is the same) */
-.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 0; width: var(--_pill-h); height: var(--_pill-h); justify-content: center; /* the bar's height, so the two line up */ background: var(--_bg); box-shadow: var(--_shadow);
+.listener { position: relative; border: 0; border-radius: var(--_radius); padding: 0; width: var(--_pill-h); height: var(--_pill-h); justify-content: center; /* the bar's height, so the two line up */ background: none; /* no tile: the mark alone, its shadow keeping it off the page (Leo, 21 Nov: "can it be without maybe just shadow") */
         font: inherit; font-size: 13px; letter-spacing: -.006em; white-space: nowrap;
         display: inline-flex; gap: 6px; align-items: center; color: var(--_fg); text-decoration: none; cursor: default; }
 .listener span { color: var(--_muted); }
@@ -431,7 +431,7 @@ button.btn.undo { color: var(--_fg); }
 /* Phones: the same words head a sheet (the open thread's, the list's). */
 .mark { width: 16px; height: 16px; flex: none; overflow: visible; fill: var(--_accent); }
 .mark .eye, .agentmark .eye { fill: var(--_bg); }
-.listener .mark { fill: var(--_green-fg); }
+.listener .mark { fill: var(--_green-fg); filter: drop-shadow(0 0 .5px color-mix(in srgb, var(--_bg) 80%, transparent)) drop-shadow(0 1px 3px rgba(0,0,0,.28)); }
 .listener .mark > g { fill: inherit; } /* the mark's own paths said currentColor, so its state colours never showed */
 .listener.idle .mark { fill: var(--_muted); } /* away: grey, not black (Leo, 18 Nov) */
 .listener.stale .mark { fill: var(--_amber); } /* reconnecting: amber */
