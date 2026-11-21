@@ -50,7 +50,7 @@ const css = `
 #lab-hand{position:fixed;z-index:2147483647;cursor:grab;touch-action:none}
 #lab-hand.grabbing{cursor:grabbing}
 #lab-board .zm{position:absolute;right:max(10px,env(safe-area-inset-right));top:10px;z-index:5;display:flex;flex-direction:row-reverse;align-items:center;gap:2px;font:500 12px/1 system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums;color:inherit}
-#lab-board .zm button{font:inherit;color:inherit;background:none;border:0;border-radius:999px;padding:6px 8px;cursor:pointer;opacity:.55}
+#lab-board .zm button{font:inherit;color:inherit;background:none;border:0;border-radius:var(--_radius,12px);padding:6px 8px;cursor:pointer;opacity:.55}
 #lab-board .zm button:hover,#lab-board .zm.open button{opacity:1;background:rgba(0,0,0,.06)}
 #lab-board .zm .zi{white-space:nowrap}
 #lab-board .zm .zo{min-width:3.2em;text-align:right}
@@ -59,7 +59,7 @@ const css = `
 #lab-board img{object-fit:contain}
 #lab-board.drop{outline:2px solid #1f7a4d;outline-offset:-2px}
 #lab-board .ghost{position:absolute;width:200px;height:120px;margin:-60px 0 0 -100px;display:grid;place-items:center;border:calc(1px*var(--iz,1)) dashed currentColor;background:rgba(127,127,127,.12);font-size:calc(14px*var(--iz,1));opacity:.8;pointer-events:none}
-#lab-board .note{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;max-width:calc(100% - 32px);padding:8px 12px;border-radius:8px;background:#1d1d1b;color:#fff;pointer-events:none}
+#lab-board .note{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;max-width:calc(100% - 32px);padding:8px 12px;border-radius:var(--_r-s,6px);background:#1d1d1b;color:#fff;pointer-events:none}
 #lab-board .done{position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
 `;
 
