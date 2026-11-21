@@ -43,7 +43,7 @@ function carry(dist: number, speed: number, cap: number): [number, string] {
 }
 let leaveBar = ''; // how the bar rises as the last leave() goes (slideAway)
 
-const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin'];
+const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin', 'box-shadow'];
 
 // Where the last touch went down: the sheet it opens grows out of there, as iOS 27's do from the button you tapped.
 let tap = { x: 0, y: 0, at: -1e9 };
@@ -108,8 +108,11 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
   if (p) fromTap(node, { x: p.left + p.width / 2, y: p.top + p.height / 2 });
   void node.offsetHeight;
   const down = () => {
-    node.style.setProperty('transition', `transform ${dur}ms ${ease}`, 'important');
+    node.style.setProperty('transition', `transform ${dur}ms ${ease}, box-shadow ${W.ms('quick')}ms var(--_ease-out)`, 'important');
     node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, 'important');
+    // The soft shadow fades off on the way, instead of lingering above the top edge and popping off with the sheet (Leo, 21 Nov:
+    // "chat top shadow i dont like when disappearing"); the hairline stays.
+    node.style.setProperty('box-shadow', '0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px transparent', 'important');
   };
   // After a send, from the next frame: drawing the sent pin took ~100 ms, which ate the start of the move (iOS 27 simulator).
   if (sent) requestAnimationFrame(() => requestAnimationFrame(down));
