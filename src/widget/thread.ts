@@ -229,8 +229,9 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const body = W.el('div', { class: 'body' });
   const foot = W.el('div', { class: 'foot' });
   card.append(W.el('div', { class: 'handle' }), body, foot);
-  // Written while the page was paused: the moment, as a chip; clicked, the page pauses there again (comments.js).
-  if (c.anchor?.moment && W.S.momentChip) card.insertBefore(W.S.momentChip(c.anchor.moment, true), body);
+  // Written on a paused video: the moment, as a chip; clicked, the page pauses there again (comments.js).
+  const chip = c.anchor?.moment && W.S.momentChip?.(c.anchor.moment, true);
+  if (chip) card.insertBefore(chip, body);
   // Why its pin is not plainly on its spot, in one line.
   const why = { lost: 'its spot is gone', hidden: 'hidden right now: its spot is not shown', unsure: 'unsure: it may not be the spot it was made on', changed: 'its words changed: check it still fits' }[W.position(c.anchor || {}).why as string];
   if (why && !c.resolved) card.insertBefore(W.el('div', { class: 'spotnote' }, why), body);

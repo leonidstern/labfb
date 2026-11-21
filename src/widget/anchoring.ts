@@ -98,7 +98,7 @@ export function bindAnchoring(deps: Deps) {
 
 // A motion token (--_t-quick, -base, -slow, -loop, -hold, styles.css) in milliseconds, times `times`: for a timer or a
 // Web Animation, which can't read a var(). It is 0 under reduced motion, as the CSS durations are (hold excepted).
-export function ms(token: 'quick' | 'base' | 'slow' | 'loop' | 'hold', times = 1): number {
+export function ms(token: 'quick' | 'base' | 'slow' | 'loop' | 'hold' | 'calm', times = 1): number {
   const v = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(getComputedStyle(host).getPropertyValue(`--_t-${token}`));
   return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) * times : 0;
 }
@@ -1399,7 +1399,7 @@ export const markQuote = (anchor) => {
   if (!canMark) return;
   const range = anchor && quoteRange(anchor);
   if (!range) return CSS.highlights.delete('lab-quote');
-  // WebKit paints no highlight set while the text can't be selected (comments on, Shift up: lab-pinning in
+  // WebKit paints no highlight set while the text can't be selected (comments on, Shift up: data-lab-pinning in
   // comments.js), and keeps one set while it can: the page's text is selectable for the frame the words are lit in.
   document.documentElement.classList.add('lab-lit');
   CSS.highlights.set('lab-quote', new Highlight(range));

@@ -57,7 +57,13 @@
 .sb-w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
   .sbar { height: 44px; padding: 0 8px; width: auto; max-width: none; margin-inline: 0; border-radius: 0; box-shadow: 0 .5px 0 var(--_line); }
-  .sb-chip { padding: 9px 12px; }
+  .sb-chip { padding: 9px 12px; min-height: 44px; } /* the bar is 44 tall: the whole of it is the chip */
   /* A sheet that fills the screen (keyboard up) leaves the bar clear. */
   :host([data-sbar][data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--lab-sbb, 0px)) !important; height: calc(var(--lab-vh, 100dvh) - var(--lab-sbb, 0px)) !important; }
+}
+/* Reduced motion (styles.css, part two): the section line stays where it is and fades as a sheet opens or the page scrolls. After the rules above, so it wins. */
+@media (prefers-reduced-motion: reduce) {
+  :host([data-sheet]) .sbar { transform: none; transition: opacity var(--_t-calm) var(--_ease-out); }
+  .sbar { transition: opacity var(--_t-calm) var(--_ease-out); }
+  .sbar[data-away] { transform: none; }
 }

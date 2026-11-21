@@ -19,6 +19,30 @@ const scrollerIn = (e, node) =>
 // How long a sheet's transition takes to be over, with a frame or two of slack, before its inline style is cleared.
 const settled = () => W.ms('slow') + W.ms('quick') / 3;
 
+// A sheet let go carries on at the speed it had (Apple's "Designing Fluid Interfaces": a thing you drag and let go
+// continues at the finger's velocity, and nothing starts steeply for no reason). A cubic-bezier's first slope is its
+// starting speed in whole distances per duration, so each curve below is built from the release speed and the way left.
+const bez = (...n: number[]) => `cubic-bezier(${n.map((x) => +x.toFixed(3))})`;
+// To a stop `dist` px away, going `speed` px/ms toward it now (0 when it is going away, or still): [ms, curve]. Ends like
+// iOS's settle (.32, .72, 0, 1), starts at the speed; a quick throw shortens it (never past slow). At rest it starts softly.
+// The curve speeds up a little in its first frame (its start is convex), so it starts 1.2 times slower than asked for.
+function glide(dist: number, speed: number, cap = 1e9): [number, string] {
+  let ms = Math.min(cap, W.ms('slow'));
+  if (!ms || dist < 1) return [ms, 'var(--_ease-settle)'];
+  if ((speed * ms) / dist > 2.7) ms = Math.max(W.ms('quick'), (2.7 * dist) / speed); // settle's own first slope is 2.25 (2.7 / 1.2)
+  const m = (speed * ms) / dist / 1.2; // the first slope, in whole distances per duration
+  const y = Math.min(1, 0.32 * m);
+  return [ms, bez(m ? y / m : 0.32, y, 0, 1)];
+}
+// Off the screen `dist` px away, going `speed` px/ms toward it now: [ms, curve]. Keeps that speed (a steady pace, or
+// speeding up from it, as a sheet falls) and does not stop at the end; at most `cap` ms.
+function carry(dist: number, speed: number, cap: number): [number, string] {
+  const ms = Math.min(cap, Math.max(W.ms('quick'), speed > 0 ? dist / speed : cap));
+  const m = Math.min(2, (speed * ms) / dist);
+  return [ms, bez(1 / 3, m / 3, 2 / 3, (m + 1) / 3)];
+}
+let leaveBar = ''; // how the bar rises as the last leave() goes (slideAway)
+
 const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin'];
 
 // Where the last touch went down: the sheet it opens grows out of there, as iOS 27's do from the button you tapped.
@@ -53,13 +77,21 @@ export function holdKeyboard() {
 // ring as it goes (.pin.arrive). Lab option 5, Leo 17 Nov; before that it flew into the pin, shrinking to its size, and
 // the squeezed card read badly.
 // Returns how long it takes; let go of it with letGo().
-export function leave(node: HTMLElement, ms = 0, sent = false) {
-  const dur = ms || W.ms('base');
-  const ease = ms ? 'linear' : 'var(--_ease-in)';
+// After a swipe (ms: the longest it may take) it goes on at `speed` px/ms, the finger's (see carry).
+export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
+  let dur = ms || W.ms('base');
+  let ease = 'var(--_ease-in)';
   let moved = 0; // a finger may have it part way down already
   try { moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0; } catch {}
   const r = node.getBoundingClientRect();
   const top = r.top - moved;
+  const way = Math.max(r.height, innerHeight - top) + 8 - moved; // to under the screen's bottom
+  if (ms) [dur, ease] = carry(way, speed, ms);
+  // The bar comes up with the sheet: after a swipe at the same pace (the sheet's way left and its speed, in whole ways
+  // and ways per ms, are the bar's too), settling where the sheet is gone; after a tap softly, from rest. The standard
+  // curve was steep at the start (half the bar's way in the first frame).
+  const [bms, bease] = glide(ms ? way : 1, ms ? speed : 0, dur);
+  leaveBar = `${bms}ms ${bease}`;
   const fade = getComputedStyle(W.scrim).opacity;
   for (const [k, v] of [['top', `${top}px`], ['bottom', 'auto'], ['height', `${r.height}px`], ['max-height', 'none'], ['animation', 'none'],
     ['transition', 'none'], ['transform', `translateY(${moved}px)`], ['pointer-events', 'none']]) node.style.setProperty(k, v, 'important');
@@ -77,7 +109,7 @@ export function leave(node: HTMLElement, ms = 0, sent = false) {
   if (p) fromTap(node, { x: p.left + p.width / 2, y: p.top + p.height / 2 });
   void node.offsetHeight;
   const down = () => {
-    node.style.setProperty('transition', `transform ${dur}ms var(--_ease-in)`, 'important');
+    node.style.setProperty('transition', `transform ${dur}ms ${ease}`, 'important');
     node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + 8}px)`, 'important');
   };
   // After a send, from the next frame: drawing the sent pin took ~100 ms, which ate the start of the move (iOS 27 simulator).
@@ -99,10 +131,17 @@ export function letGo(node: HTMLElement) {
 }
 
 // Phones: a sheet slides down and away (see leave), then it closes.
-export function slideAway(node, close, ms = 0) {
-  if (!W.coarse || !node || W.still.matches) return close();
-  const dur = leave(node, ms);
-  W.bar.style.transition = `transform ${dur}ms var(--_ease), opacity ${dur}ms var(--_ease-out)`;
+export function slideAway(node, close, ms = 0, speed = 0) {
+  if (!W.coarse || !node) return close();
+  if (W.still.matches) { // reduced motion: no slide, the sheet fades out (styles.css, --_t-calm)
+    const d = W.ms('calm');
+    node.style.setProperty('transition', `opacity ${d}ms var(--_ease-in)`, 'important');
+    node.style.setProperty('opacity', '0', 'important');
+    node.style.setProperty('pointer-events', 'none', 'important');
+    return void setTimeout(() => (close(), HELD.forEach((k) => node.style.removeProperty(k))), d);
+  }
+  const dur = leave(node, ms, false, speed);
+  W.bar.style.transition = `transform ${leaveBar}, opacity ${dur}ms var(--_ease-out)`;
   W.host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
   setTimeout(() => {
     close();
@@ -215,7 +254,7 @@ export function swipeDown(node, close, grows = false) {
   let x0 = 0;
   let y0 = 0;
   let dy = 0;
-  let v = 0; // px/ms, from the last moves
+  let samples = []; // where the finger and the sheet were on the last moves: { t, y, d }
   let last = null;
   let mode = null; // 'drag' the sheet, 'hold' (sideways on a part that doesn't scroll), 'off' (the browser's)
   let box = null; // the scrolling part the touch began in
@@ -225,7 +264,8 @@ export function swipeDown(node, close, grows = false) {
     const t = e.touches[0];
     x0 = t.clientX;
     y0 = t.clientY;
-    dy = v = raw = 0;
+    dy = raw = 0;
+    samples = [{ t: e.timeStamp, y: y0, d: 0 }];
     last = { y: y0, at: e.timeStamp };
     box = fromScrim ? null : scrollerIn(e, node);
     mode = e.touches.length > 1 || box?.localName === 'textarea' ? 'off' : null;
@@ -247,7 +287,7 @@ export function swipeDown(node, close, grows = false) {
     if (mode === 'off' && box && box.localName !== 'textarea' && e.touches.length === 1 && e.cancelable && box.scrollTop <= 0 && t.clientY > last.y + 1) {
       mode = 'drag';
       y0 = t.clientY;
-      v = 0;
+      samples = [{ t: e.timeStamp, y: y0, d: 0 }];
       last = { y: t.clientY, at: e.timeStamp };
     }
     if (mode === 'off') return void (keep(e, t), (last = { y: t.clientY, at: e.timeStamp }));
@@ -274,7 +314,8 @@ export function swipeDown(node, close, grows = false) {
     // so it follows the finger, more and more slowly (it barely moved before: 100 px of pull gave 20 px, now ~50).
     const size = node.offsetHeight || 400;
     dy = raw >= 0 ? raw : -(1 - 1 / ((-raw * 0.55) / size + 1)) * size;
-    if (e.timeStamp > last.at) v = 0.8 * ((t.clientY - last.y) / (e.timeStamp - last.at)) + 0.2 * v;
+    samples.push({ t: e.timeStamp, y: t.clientY, d: dy });
+    while (samples.length > 2 && e.timeStamp - samples[0].t > 200) samples.shift();
     last = { y: t.clientY, at: e.timeStamp };
     node.style.transition = W.scrim.style.transition = 'none';
     node.style.transform = `translateY(${dy}px)`;
@@ -293,30 +334,46 @@ export function swipeDown(node, close, grows = false) {
     if (was === 'drag') W.S.sheetDraggedAt = performance.now();
     if (was !== 'drag') return;
     releasedAt = performance.now();
-    if (e.timeStamp - last.at > 80) v = 0; // held still before letting go
+    // How fast the finger (v) and the sheet (vs, which a rubber band slows) were going over the last ~100 ms, px/ms, + down;
+    // 0 if it held still before letting go.
+    const lastMove = samples[samples.length - 1];
+    const from = samples.find((q) => lastMove.t - q.t <= 100);
+    const span = lastMove.t - from.t;
+    const quick = e.timeStamp - lastMove.t > 80 || span < 8 ? 0 : 1;
+    const v = quick * ((lastMove.y - from.y) / (span || 1));
+    const vs = quick * ((lastMove.d - from.d) / (span || 1));
     const h = node.offsetHeight || innerHeight;
-    const settle = () => {
-      node.style.transition = 'transform var(--_t-slow) var(--_ease-settle), height var(--_t-slow) var(--_ease-settle)';
-      W.scrim.style.transition = 'opacity var(--_t-slow) var(--_ease-out)';
+    // Springs to where it sits, or (full: the sheet's other height, played the same way) to the other one, starting at the
+    // speed its top had toward it (`toward`, px/ms).
+    const settle = (full?: boolean, toward = 0) => {
+      let way = Math.abs(dy);
+      if (full !== undefined) { // how far its top has to go: the change measured with nothing animating, then undone
+        const top = node.getBoundingClientRect().top;
+        node.style.transition = 'none';
+        node.classList.toggle('full', full);
+        way = Math.abs(node.getBoundingClientRect().top - dy - top);
+        node.classList.toggle('full', !full);
+        void node.offsetHeight;
+      }
+      const [ms, curve] = glide(way, Math.max(0, toward));
+      node.style.transition = `transform ${ms}ms ${curve}, height ${ms}ms ${curve}`;
+      if (full !== undefined) node.classList.toggle('full', full);
+      W.scrim.style.transition = `opacity ${ms}ms var(--_ease-out)`;
       node.style.transform = W.scrim.style.opacity = '';
       W.bar.style.transition = '';
       W.host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
       setTimeout(() => (node.style.transition = W.scrim.style.transition = ''), settled());
     };
-    if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.add('full'), node.classList.contains('card') && (W.S.cardFull = true), settle();
-    if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.remove('full'), node.classList.contains('card') && (W.S.cardFull = false), settle();
+    if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.contains('card') && (W.S.cardFull = true), settle(true, -vs);
+    if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.contains('card') && (W.S.cardFull = false), settle(false, vs);
     // Where the sheet would come to rest if let go now, as iOS judges a throw (Apple's "Designing Fluid Interfaces":
     // the distance plus the speed carried on at the normal deceleration, 0.998 a millisecond, so v × 499): past half
     // its height it goes. A short quick flick closes; a slow long drag closes past halfway; a move back up never does.
     const rest = dy + Math.max(0, v) * 499;
-    // Off the screen's bottom at the finger's speed (it leaves at a steady pace, see leave).
-    if (v > -0.1 && rest > h / 2) return slideAway(node, close, Math.min(W.ms('slow'), Math.max(W.ms('quick'), (innerHeight - node.getBoundingClientRect().top) / Math.max(v, 1.2))));
-    node.style.transition = 'transform var(--_t-slow) var(--_ease-settle)';
-    W.scrim.style.transition = 'opacity var(--_t-slow) var(--_ease-out)';
-    node.style.transform = W.scrim.style.opacity = '';
-    W.bar.style.transition = '';
-    W.host.style.removeProperty('--lab-p'); // springing back: the bar goes back down with it
-    setTimeout(() => (node.style.transition = W.scrim.style.transition = ''), settled());
+    // Off the screen's bottom at the sheet's own speed, in 300 ms at most (see leave); else back to where it sits (a
+    // rubber band's stretch goes back the other way).
+    if (v > -0.1 && rest > h / 2) return slideAway(node, close, W.ms('slow'), Math.max(0, vs));
+    settle(undefined, dy > 0 ? -vs : vs);
   };
   node.addEventListener('touchend', end);
   node.addEventListener('touchcancel', end);

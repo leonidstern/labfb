@@ -1,5 +1,6 @@
 // The lab in front of a dev server (--proxy): a page in another charset, a redirect to the dev server's own address comes back as the lab's, and
-// a person who leaves (a closed tab, a cancelled event stream) ends the dev server's side of the request too.
+// a person who leaves (a closed tab, a cancelled event stream) ends the dev server's side of the request too; no icon at
+// /favicon.ico (a 404, or the app's page for any path) is labit's mark, never a 404 in the console (torture bug 20).
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -7,6 +8,7 @@ import { site, tmp, rm, spawnLab, sleep } from './harness.mjs';
 
 const { DIR, PORT } = site('proxy', 6400, 90);
 
+let icon = false; // whether the dev server has a favicon.ico
 let closed = 0; // event streams the dev server saw end
 const dev = http.createServer((req, res) => {
   const here = `http://localhost:${dev.address().port}`;
@@ -17,6 +19,9 @@ const dev = http.createServer((req, res) => {
   if (req.url === '/near') return void res.writeHead(302, { location: here + '0/x' }).end(); // another port, not this server
   if (req.url === '/latin') return void res.writeHead(200, { 'content-type': 'text/html; charset=iso-8859-1' }).end(Buffer.from('<!doctype html><html><head><title>t</title></head><body>caf\xe9</body></html>', 'latin1'));
   if (req.url === '/nohead') return void res.writeHead(200, { 'content-type': 'text/html' }).end('\n<!-- c -->\n<!DOCTYPE html>\n<html><body><p>no head</p></body></html>');
+  if (req.url === '/frag') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end('<ul><li>one</li><li>two</li></ul><p>hi</p>');
+  if (req.url === '/whole') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end('<!doctype html><html><head><title>w</title></head><body><p>whole</p></body></html>');
+  if (req.url === '/favicon.ico') return void (icon ? res.writeHead(200, { 'content-type': 'image/x-icon' }).end('ico') : res.writeHead(404).end('no'));
   if (req.url === '/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     res.write('data: 1\n\n');
@@ -85,6 +90,73 @@ test('a person who leaves an event stream ends it at the dev server too', async 
   assert.equal(closed, 1, 'the dev server saw its stream close');
 });
 
+// What a page load looks like to the lab, and what a script's fetch looks like: only the first gets the widget (its tag
+// carries the admin key; an HTML fragment an app fetches is its data).
+const getAs = (p, headers) =>
+  new Promise((done, fail) => {
+    http.get({ host: '127.0.0.1', port: PORT, path: p, headers: { host: `localhost:${PORT}`, ...headers } }, (res) => {
+      const parts = [];
+      res.on('data', (c) => parts.push(c));
+      res.on('end', () => done({ res, text: Buffer.concat(parts).toString('utf8') }));
+    }).on('error', fail);
+  });
+const FRAG = '<ul><li>one</li><li>two</li></ul><p>hi</p>';
+const hasWidget = (t) => /\/_lab\/comments\.js/.test(t) || /__lab=\{writing/.test(t);
+
+test('HTML a script fetches is left as it is: no widget, no reload holder, no admin key', async () => {
+  await up();
+  const sent = [
+    { 'sec-fetch-dest': 'empty', 'sec-fetch-mode': 'same-origin', accept: '*/*' }, // fetch() and XHR
+    { 'sec-fetch-dest': 'empty', 'sec-fetch-mode': 'cors', accept: 'text/html, application/xhtml+xml' }, // a router asking for HTML (Turbo, htmx)
+    { 'sec-fetch-dest': 'empty', accept: 'text/html' },
+    { accept: 'text/html', 'x-requested-with': 'XMLHttpRequest' }, // a browser with no Sec-Fetch-*
+    { accept: 'application/json, */*' },
+    {},
+  ];
+  for (const h of sent) {
+    const { text } = await getAs('/frag', h);
+    assert.equal(text, FRAG, `the fragment as the dev server sent it for ${JSON.stringify(h)}`);
+    assert.ok(!/data-admin/.test(text), 'no admin key in the app\'s data');
+  }
+  // The widget's own fetch of the page (live update) marks itself with X-Lab: it gets the page as the lab sends it.
+  const own = await getAs('/frag', { 'sec-fetch-dest': 'empty', 'sec-fetch-mode': 'same-origin', accept: 'text/html', 'x-lab': '1' });
+  assert.equal((own.text.match(/<script src="\/_lab\/comments\.js"/g) || []).length, 1, 'the widget\'s own fetch gets the widget tag');
+  // A whole page fetched by a client router (Astro's) gets no second widget either: the one on the page stays.
+  const whole = await getAs('/whole', { 'sec-fetch-dest': 'empty', 'sec-fetch-mode': 'cors', accept: '*/*' });
+  assert.ok(!hasWidget(whole.text), 'a whole page fetched by a script is the dev server\'s bytes');
+  assert.match(whole.text, /^<!doctype html>/);
+});
+
+test('a page load gets the widget, with or without Sec-Fetch headers, in a frame too', async () => {
+  await up();
+  const loads = [
+    { 'sec-fetch-dest': 'document', 'sec-fetch-mode': 'navigate', 'sec-fetch-site': 'none', accept: 'text/html,application/xhtml+xml,*/*;q=0.8' },
+    { 'sec-fetch-dest': 'document', accept: '*/*' },
+    { 'sec-fetch-dest': 'iframe', 'sec-fetch-mode': 'navigate', accept: 'text/html' },
+    { 'sec-purpose': 'prefetch', 'sec-fetch-dest': 'empty', accept: 'text/html' }, // a prefetch is what the next page load shows
+    { accept: 'text/html' }, // curl -H, an old browser, a test
+  ];
+  for (const path of ['/whole', '/frag']) {
+    for (const h of loads) {
+      const { text } = await getAs(path, h);
+      assert.equal((text.match(/<script src="\/_lab\/comments\.js"/g) || []).length, 1, `${path} for ${JSON.stringify(h)} holds one widget tag`);
+      assert.match(text, /__lab=\{writing/);
+    }
+  }
+});
+
+test('no favicon.ico at the dev server: labit\'s mark, not a 404; the app\'s own icon passes through', async () => {
+  await up();
+  const get = async (method) => {
+    const r = await fetch(`http://localhost:${PORT}/favicon.ico`, { method, redirect: 'manual' });
+    return [r.status, r.headers.get('location') || r.headers.get('content-type')];
+  };
+  for (const method of ['HEAD', 'GET']) assert.deepEqual(await get(method), [302, '/_lab/favicon.svg'], `${method}: a 404 is redirected`);
+  icon = true;
+  for (const method of ['HEAD', 'GET']) assert.deepEqual(await get(method), [200, 'image/x-icon'], `${method}: the app's icon is served`);
+});
+
+// Last: it stops the dev server for good.
 test('a page asked for while the dev server restarts waits for it instead of failing', async () => {
   await up();
   const port = dev.address().port;

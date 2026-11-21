@@ -1,5 +1,5 @@
-/* Motion (motion.ts; the edge and the fade are in styles.css, with the pin's): pause / play · ¼ · the moment in ms, in the moving thing's top right corner, over the page
-   (nothing moves). Computers: while ⌥ is held over it; a paused one keeps only its ▶. Phones: quiet, while in view. */
+/* Motion (motion.ts; the edge and the fade are in styles.css, with the pin's): pause / play · ¼ · the moment in ms, over the page (nothing moves).
+   Computers: next to the pointer while ⌥ is held over a moving thing; a paused one keeps only its ▶ at its corner. Phones: its corner, quiet, while in view. */
 .motion-ctl { position: absolute; transform: translateX(-100%); display: flex; align-items: center; gap: 1px; padding: 2px;
   background: var(--_bg); color: var(--_fg); border-radius: var(--_r-s);
   opacity: 0; pointer-events: none; z-index: 5; }

@@ -132,7 +132,10 @@ const seekMoment = (m) => {
 };
 // The moment, in a small chip: a label in the box being written, a button on a sent pin (back to that moment).
 const PAUSED = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg>';
+// Only a paused video gets the chip in the comment window (Leo, 21 Nov): a loop, an animation, a GIF or a video that
+// was playing is not named there. The agent still gets the moment (comments-api.mjs).
 const momentChip = (m, seek = false) => {
+  if (m.kind !== 'video' || m.playing) return null;
   const chip = W.el(seek && m.kind !== 'gif' ? 'button' : 'div', { class: 'moment' });
   chip.innerHTML = m.kind === 'gif' || m.playing ? '' : PAUSED; // ⏸ only for a moment that was paused
   chip.append(W.el('span', {}, momentText(m)));
@@ -388,8 +391,13 @@ const drawMotionNow = () => {
     // A computer's full control stays where it first showed while the pointer is on it (a moving thing would carry it
     // away from the pointer), in page coordinates; always on screen.
     const keep = !W.coarse && kind === 'full' && c.spot?.t === t ? c.spot : null;
-    const x = keep ? keep.x - scrollX : small ? b.right + 4 + c.box.offsetWidth : b.right - 4;
-    const y = keep ? keep.y - scrollY : small ? b.top - 4 : b.top + 4;
+    // Computers, ⌥ held (Leo, 21 Nov: "maybe 2 would work"): it opens just below and right of the pointer, so it is
+    // always in reach and never far across a big thing; above the pointer when there is no room below. Phones, and a
+    // paused thing's ▶, stay at the thing's corner.
+    const near = !keep && !W.coarse && kind === 'full' && pointerAt;
+    const w = c.box.offsetWidth, h = c.box.offsetHeight;
+    const x = keep ? keep.x - scrollX : near ? pointerAt.x + 12 + w : small ? b.right + 4 + w : b.right - 4;
+    const y = keep ? keep.y - scrollY : near ? (pointerAt.y + 14 + h + 4 > vh ? pointerAt.y - 14 - h : pointerAt.y + 14) : small ? b.top - 4 : b.top + 4;
     const left = Math.min(Math.max(x, c.box.offsetWidth + 4), vw - 4); // a thing at the screen's edge keeps its control on screen
     const top = Math.min(Math.max(y, 4), vh - c.box.offsetHeight - 4);
     c.spot = kind === 'full' ? { t, x: (keep ? keep.x - scrollX : x) + scrollX, y: (keep ? keep.y - scrollY : y) + scrollY } : null;

@@ -149,15 +149,15 @@ for (const eng of ['webkit', 'chromium']) {
   // Text selection
   const lede = await p.locator('#p5').boundingBox();
   // Comment mode is back first: while a comment box is open (or still going out) comment mode is off and the page's own
-  // pointer shows, so a drag then selects text on purpose. CI showed it: text "a" selected with lab-pinning off, 2 s
+  // pointer shows, so a drag then selects text on purpose. CI showed it: text "a" selected with data-lab-pinning off, 2 s
   // after Escape, in Linux WebKit. Escape until the page is back in comment mode, and say so if it never is.
-  for (let i = 0; i < 4 && !(await p.evaluate(() => document.documentElement.classList.contains('lab-pinning'))); i++) {
+  for (let i = 0; i < 4 && !(await p.evaluate(() => Boolean(document.querySelector('[data-lab-pinning]')))); i++) {
     await p.keyboard.press('Escape');
-    await until(p, () => document.documentElement.classList.contains('lab-pinning'), null, 600);
+    await until(p, () => Boolean(document.querySelector('[data-lab-pinning]')), null, 600);
   }
-  check(eng, 'comment mode is back before the selection check', await p.evaluate(() => document.documentElement.classList.contains('lab-pinning')), JSON.stringify(await p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot; return { html: [...document.documentElement.classList].join(' '), go: r?.querySelector('.go-btn')?.className, boxes: [...(r?.querySelectorAll('.float, .card') || [])].map((n) => n.className), text: [...(r?.querySelectorAll('textarea') || [])].map((t) => t.value), on: localStorage.getItem('lab-on') }; })));
+  check(eng, 'comment mode is back before the selection check', await p.evaluate(() => Boolean(document.querySelector('[data-lab-pinning]'))), JSON.stringify(await p.evaluate(() => { const r = [...document.querySelectorAll('*')].find((n) => n.shadowRoot)?.shadowRoot; return { html: [...document.documentElement.classList].join(' '), go: r?.querySelector('.go-btn')?.className, boxes: [...(r?.querySelectorAll('.float, .card') || [])].map((n) => n.className), text: [...(r?.querySelectorAll('textarea') || [])].map((t) => t.value), on: localStorage.getItem('lab-on') }; })));
   // What the press saw, so a failure says why (Linux WebKit only, now and then).
-  await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { const c = document.documentElement.classList; const us = (n) => getComputedStyle(n).webkitUserSelect + '/' + getComputedStyle(n).userSelect; window.__press ??= { shift: e.shiftKey, labShift: c.contains('lab-shift'), pinning: c.contains('lab-pinning'), lit: c.contains('lab-lit'), us: us(document.getElementById('p5')) }; }, { capture: true, once: true }); window.__ss = []; addEventListener('selectstart', (e) => window.__ss.push(e.defaultPrevented ? 'blocked' : 'allowed'), true); });
+  await p.evaluate(() => { window.__press = null; addEventListener('pointerdown', (e) => { const c = document.documentElement.classList; const us = (n) => getComputedStyle(n).webkitUserSelect + '/' + getComputedStyle(n).userSelect; window.__press ??= { shift: e.shiftKey, labShift: c.contains('lab-shift'), pinning: Boolean(document.querySelector('[data-lab-pinning]')), lit: c.contains('lab-lit'), us: us(document.getElementById('p5')) }; }, { capture: true, once: true }); window.__ss = []; addEventListener('selectstart', (e) => window.__ss.push(e.defaultPrevented ? 'blocked' : 'allowed'), true); });
   await p.keyboard.down('Shift');
   await p.keyboard.up('Shift');
   await p.mouse.move(lede.x + 10, lede.y + 8);

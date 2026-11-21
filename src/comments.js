@@ -29,7 +29,7 @@ import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, lineOf, lineUp, ord, stepMoved, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, revealOpen, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
@@ -196,7 +196,14 @@ import { bindKeys } from './widget/keys.ts';
   /** @type {any} */ (window).__labComments = true;
 
   const API = '/_lab/api/comments';
-  const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
+  // Behind a dev server the page is the live address (named as the lab names pages, lib/labs.ts keyFor): an app that
+  // navigates on its own keeps no first page's marks. A page the lab serves keeps the name it was served under.
+  const enc = new TextEncoder();
+  const pageNow = () =>
+    script?.dataset.proxied === '1'
+      ? '/' + (location.pathname.replace(/^\/+|\/+$/g, '').replace(/\.html?$/i, '') || 'index').split('/').map((seg) =>
+          [...enc.encode(seg.toLowerCase())].map((b, i) => (/[a-z0-9]/.test(String.fromCharCode(b)) || (b === 45 && i) ? String.fromCharCode(b) : `_${b.toString(16)}`)).join('')).join('/')
+      : script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
   S.page = pageNow();
   // One pass (a drawing, a handler) asks the same things many times: who replied to a pin, what is unread, what
   // localStorage holds. Each is worked out once and kept until the pass ends (the next microtask) or what it comes from
@@ -314,7 +321,7 @@ import { bindKeys } from './widget/keys.ts';
       if (!node.classList.contains('out')) return; // shown again meanwhile
       node.classList.remove('out');
       hide();
-    }, ms('quick'));
+    }, still.matches ? ms('calm') : ms('quick')); // reduced motion: a short fade (styles.css, lab-calm-out)
   };
   const toggleBtn = $('.toggle');
   const bar = /** @type {HTMLElement} */ (root.querySelector('.bar'));
@@ -488,7 +495,7 @@ import { bindKeys } from './widget/keys.ts';
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
   const setPinning = () => {
     const placing = S.on && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
-    document.documentElement.classList.toggle('lab-pinning', placing);
+    host.toggleAttribute('data-lab-pinning', placing); // not a class on <html>: a framework that hydrates the page (Next) reports it
     recheck();
   };
   // A thread or the chat opened at its newest message stays there while its words settle (a phone's sheet grows into
@@ -923,7 +930,7 @@ import { bindKeys } from './widget/keys.ts';
     const done = () => {
       patchKids(layer, next); // pins still in place stay; the new ones go in, the gone ones come out
       flushPins(); // the rules of the pins the browser holds, now they are on the page (pinhold.ts)
-      if (S.closeFast && !now && prev) {
+      if ((S.closeFast || (still.matches && S.shown)) && !now && prev) { // reduced motion: a card or sheet fades out (a computer's went at once), no slide
         S.closeFast = false;
         prev.inert = true;
         layer.append(prev);
@@ -1128,6 +1135,9 @@ import { bindKeys } from './widget/keys.ts';
         const card = threadCard(c, new Set(news.map((x) => x.id)), appear && (coarse ? S.keepKeys : !S.stepping || S.keepKeys));
         S.openCard = card;
         if (appear && !S.stepping) card.classList.add('in');
+        // Reduced motion: the page's scroll to the pin is instant, so the card is drawn again within its fade: it keeps the fade (a fresh node has no class).
+        if (appear) S.inAt = performance.now();
+        else if (still.matches && performance.now() - S.inAt < 200) card.classList.add('in');
         if (prevHeight) card.style.minHeight = `min(${prevHeight}px, var(--_thread-max))`;
         S.stepping = S.keepKeys = false;
         next.push(card);
@@ -1224,7 +1234,8 @@ import { bindKeys } from './widget/keys.ts';
       });
       float.append(el('div', { class: 'handle' }));
       // Paused: the moment this pin will carry, so you know it is kept (Leo, 19 Nov: "some info in pin where it was").
-      if (anchor.moment && S.momentChip) float.append(S.momentChip(anchor.moment));
+      const chip = anchor.moment && S.momentChip?.(anchor.moment); // only a paused video has one (Leo, 21 Nov)
+      if (chip) float.append(chip);
       const row = quickRow(draft, box);
       if (row?.children.length) float.append(row);
       float.append(box);
@@ -1263,13 +1274,17 @@ import { bindKeys } from './widget/keys.ts';
   // or a pick gives focus back to the button.
   // On a computer the menu is a popover the ⋯ button opens: the browser closes it on a press elsewhere or Esc, gives
   // focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
-  const popMenu = !coarse; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
+  const popMenu = !coarse && CSS.supports('overlay', 'auto'); // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer); Safari has no `overlay`, so a popover would close in one frame: it stays in the bar too, and fades (goOut)
   if (popMenu) {
     moreMenu.popover = 'auto';
     /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
     moreMenu.addEventListener('beforetoggle', (e) => {
       const open = /** @type {ToggleEvent} */ (e).newState === 'open';
-      moreMenu.hidden = !open;
+      if (open || !still.matches) moreMenu.hidden = !open;
+      else { // reduced motion: it fades out where it is (display and hidden would end that at once)
+        moreMenu.classList.add('out');
+        setTimeout(() => (moreMenu.classList.remove('out'), moreMenu.matches(':popover-open') || (moreMenu.hidden = true)), ms('calm'));
+      }
       moreBtn.setAttribute('aria-expanded', String(open)); // the browser doesn't write it for its invoker
       if (open) {
         moreMenu.classList.remove('out');
@@ -1640,69 +1655,15 @@ import { bindKeys } from './widget/keys.ts';
       b.addEventListener('click', () => go(field.value.trim() ? `${a.name}: ${field.value.trim()}` : a.name, a.prompt));
       return b;
     };
-    // Your list, in its order: as many chips as fit on one line (measured), then "…" when some don't. "…" grows the line
-    // into the whole list (tap = use it, "done" or "…" again folds it back). The list itself is set in labit.json or your
-    // settings.json (`actions`, docs/settings.md): nothing on the page edits it.
-    const menu = el('div', { class: 'acts', hidden: '' });
-    const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
+    // Your list, in its order, as many chips as fit on one line (measured); the ones that don't fit are not shown. The
+    // list itself is set in labit.json or your settings.json (`actions`, docs/settings.md): nothing on the page edits it.
     const chips = LIST.map(chip);
-    let shown = LIST.length;
-    const quiet = (b) => (b.addEventListener('mousedown', (e) => e.preventDefault()), b);
-    const btn = (text, attrs = {}) => el('button', { type: 'button', ...attrs }, text);
-    // Each row is the action's name over its prompt on one muted line.
-    function drawMenu() {
-      menu.replaceChildren();
-      const list = el('div');
-      for (const i of LIST.keys()) {
-        const a = LIST[i];
-        const line = el('div', { class: 'act' });
-        const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
-        use.append(el('b', {}, a.name), el('span', {}, a.prompt));
-        use.addEventListener('click', () => (openMenu(false, true), chips[i].click()));
-        line.append(use);
-        list.append(line);
-      }
-      const foot = el('div', { class: 'act-foot' });
-      const fold = quiet(btn('done', { class: 'fold' }));
-      fold.addEventListener('click', () => openMenu(false));
-      foot.append(fold);
-      list.append(foot);
-      menu.append(list);
-    }
-    // The height eases from the line's to the list's (and back) over --_t-base, none with reduced motion; the sheet sits on
-    // the bottom on a phone, so it grows upward, and the page under it never moves.
-    let anim = null;
-    const fit = (from, to, then) => {
-      anim?.cancel();
-      anim = null;
-      if (still.matches || !from || !to || from === to) return void then?.();
-      anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ms('base'), easing: ease('out') });
-      anim.onfinish = () => ((anim = null), then?.());
-    };
-    let lineH = 0; // the line's height when it grew, to fold back to
-    const openMenu = (open, now = false) => {
-      if (open === !menu.hidden) return;
-      dots.setAttribute('aria-expanded', String(open));
-      if (!open) {
-        const shut = () => ((menu.hidden = true), (row.hidden = false));
-        return now ? shut() : fit(menu.offsetHeight, lineH, shut);
-      }
-      lineH = row.offsetHeight;
-      drawMenu();
-      row.hidden = true;
-      menu.hidden = false;
-      if (!now) fit(lineH, menu.offsetHeight);
-    };
-    quiet(dots).addEventListener('click', () => openMenu(menu.hidden));
-    menu.addEventListener('keydown', (e) => e.key === 'Escape' && (e.stopPropagation(), openMenu(false)));
-    row.append(...chips, dots);
+    row.append(...chips);
     let tries = 0;
     const measure = () => {
       if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
-      row.after(menu);
       const over = () => row.scrollWidth > row.clientWidth + 1;
-      while (over() && shown) chips[--shown].remove();
-      dots.hidden = shown === LIST.length;
+      for (let shown = chips.length; over() && shown; ) chips[--shown].remove();
       [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
     };
     queueMicrotask(measure);
@@ -1873,6 +1834,7 @@ import { bindKeys } from './widget/keys.ts';
     });
   };
   addEventListener('resize', reflow);
+  addEventListener('resize', () => requestAnimationFrame(() => requestAnimationFrame(revealOpen))); // a turned phone: the open thread's pin stays in sight, above its sheet
   // A question's card in the margin (thread.ts) that no longer fits a narrower window goes back where cards go.
   addEventListener('resize', () => {
     const card = layer.querySelector('.card.margin');
@@ -1889,9 +1851,10 @@ import { bindKeys } from './widget/keys.ts';
     }
     if (!pageStyle.isConnected) document.head.append(pageStyle);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
-    S.routed?.(); // the section bar (sections.ts)
-    if (pageNow() === S.page) return;
+    const was = S.page;
     S.page = pageNow();
+    S.routed?.(); // the section bar (sections.ts)
+    if (S.page === was) return;
     S.seen = readSeen();
     pass = null;
     syncReads();
@@ -1968,21 +1931,21 @@ import { bindKeys } from './widget/keys.ts';
     const plain = `:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [contenteditable], [contenteditable] *, ${OFF}, ${OFF} *, [data-lab-comments])`;
     const top = `dialog, dialog *, [popover], [popover] *, :fullscreen, :fullscreen *`;
     pinCursorStyle.textContent =
-      `@layer lab-pointer { html.lab-pinning:not(.lab-shift-cur, .lab-ctl) body, html.lab-pinning:not(.lab-shift-cur, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
+      `@layer lab-pointer { html:has([data-lab-pinning]):not(.lab-shift-cur, .lab-ctl) body, html:has([data-lab-pinning]):not(.lab-shift-cur, .lab-ctl) body *${plain} { cursor: crosshair; } ` +
       // With the drawn pointer the system one hides over plain parts of the page (not in the top layer, which is above it).
-      `html.lab-drawn.lab-pinning:not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body, html.lab-drawn.lab-pinning:not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
+      `html.lab-drawn:has([data-lab-pinning]):not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body, html.lab-drawn:has([data-lab-pinning]):not(.lab-shift-cur, .lab-ctl):not(.lab-dragging) body *${plain}:not(${top}) { cursor: none; } ` +
       // Holding Shift (drag to quote words): the drawn I-beam with a low ink band at its foot (C3, Leo 18 Nov; text where a cursor image isn't drawn) over the page's content, back to the pin when it's let go.
-      `html.lab-pinning.lab-shift-cur:not(.lab-dragging) body *${plain}:not(img, svg, video, canvas) { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect x='5' y='15.5' width='14' height='5' rx='1.5' fill='%23f0b70a' fill-opacity='.6'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='white' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='%23141414' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") 12 12, text; } ` +
+      `html:has([data-lab-pinning]).lab-shift-cur:not(.lab-dragging) body *${plain}:not(img, svg, video, canvas) { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect x='5' y='15.5' width='14' height='5' rx='1.5' fill='%23f0b70a' fill-opacity='.6'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='white' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3Cpath d='M9 4h6M12 4v16M9 20h6' stroke='%23141414' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") 12 12, text; } ` +
       // The pointer is inherited, so places that aren't commented on name theirs: editable text a text cursor, a part
       // marked data-uncommentable the plain arrow (a pin pointer there would promise a comment that won't come).
-      `html.lab-pinning body :is([contenteditable], [contenteditable] *) { cursor: text; } html.lab-pinning body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
+      `html:has([data-lab-pinning]) body :is([contenteditable], [contenteditable] *) { cursor: text; } html:has([data-lab-pinning]) body :is(${OFF}, ${OFF} *) { cursor: auto; } }` +
       // Holding Option (Alt) pins links and controls too: the drawn pin shows over them (the system pointer hides).
       `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: crosshair !important; }` +
       `html.lab-drawn.lab-alt body, html.lab-drawn.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *, ${top}) { cursor: none !important; }`;
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.
-  pageStyle.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  pageStyle.textContent += `@media (pointer: fine) { html:has([data-lab-pinning]):not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html:has([data-lab-pinning]):not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   bindKeys(W);
   pageStyle.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
@@ -2004,13 +1967,13 @@ import { bindKeys } from './widget/keys.ts';
   // Phones: and the page behind stays put, even when the part of the sheet you drag on has nothing to scroll.
   pageStyle.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
-  pageStyle.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
+  pageStyle.textContent += `html:has([data-lab-pinning]) body, html:has([data-lab-pinning]) body * { -webkit-touch-callout: none; }`;
   // Phones: with comments on, a hold is labit's (a pin), not the start of a text selection: iOS would cancel the touch
   // for its selection, and the lift that lets the box open the keyboard would never come. Only while a finger is down
   // (lab-press): Safari paints the quoted words' green (::highlight) over whole blocks of text that can't be selected,
   // so with the page unselectable all the time an open comment tinted half the page (iOS 27 simulator, 17 Nov).
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
-  pageStyle.textContent += `@media (pointer: coarse) { html.lab-pinning.lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
+  pageStyle.textContent += `@media (pointer: coarse) { html:has([data-lab-pinning]).lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html:has([data-lab-pinning]) body > :not([data-lab-comments]), html:has([data-lab-pinning]) body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
 
   // The section bar (src/widget/sections.ts) is its own file, loaded when the page may show one: the lab kept its room
   // (the file clears that again), or a lab page (or one that says so) has 3 or more headings. Asked again when a route
@@ -2039,7 +2002,7 @@ import { bindKeys } from './widget/keys.ts';
     // The page's own selection while commenting, and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
-    pageStyle.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    pageStyle.textContent += `html:has([data-lab-pinning]) ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
     maybeSections(); // the section bar: what is new or updated on the page since you read it

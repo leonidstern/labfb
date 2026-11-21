@@ -160,12 +160,18 @@ export function startLive() {
       reloadTimer = 0;
       now();
     };
-    const now = () => {
-      try {
-        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, x: scrollX, pad: parseFloat(getComputedStyle(document.documentElement).paddingTop) || 0, open: W.S.openId, chat: W.S.chatOpen, page: pageState() }));
-      } catch {}
-      location.reload();
-    };
+    // The page is asked for first: with its dev server down the lab answers a plain 502 with no widget, and a reload
+    // would leave the tab there for good. This page stays, and asks again in a moment.
+    const now = () =>
+      fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html' } })
+        .then((r) => r.ok, () => false)
+        .then((up) => {
+          if (!up) return void (reloadTimer ||= setTimeout(() => ((reloadTimer = 0), reload()), 2000));
+          try {
+            sessionStorage.setItem(key, JSON.stringify({ y: scrollY, x: scrollX, pad: parseFloat(getComputedStyle(document.documentElement).paddingTop) || 0, open: W.S.openId, chat: W.S.chatOpen, page: pageState() }));
+          } catch {}
+          location.reload();
+        });
     const reload = () => {
       // A tab in the background doesn't reload on every save: it reloads once, when you come back to it.
       if (document.hidden) return void (reloadWhenShown = true);
@@ -484,7 +490,7 @@ export function startLive() {
       if (board) return;
       const run = ++morphRun;
       try {
-        const res = await fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html' } });
+        const res = await fetch(location.href, { cache: 'no-store', headers: { accept: 'text/html', 'x-lab': '1' } });
         const html = await res.text();
         if (run !== morphRun) return; // a newer save is already being fetched: only the latest is applied
         const doc = new DOMParser().parseFromString(html, 'text/html');
