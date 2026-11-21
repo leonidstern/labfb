@@ -571,7 +571,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .bar { transition: transform var(--_t-slow) var(--_ease-settle), opacity var(--_t-base) var(--_ease-out); }
   :host([data-sheet]) .bar { transform: translateY(calc((100% + 16px + env(safe-area-inset-bottom, 0px)) * (1 - var(--lab-p, 0))));
                              opacity: var(--lab-p, 0); pointer-events: none;
-                             transition: transform var(--_t-base) var(--_ease-in), opacity 70ms var(--_ease-out); /* gone within a few frames of the sheet rising: it showed under the sheet's edge while it slid down (Leo, 21 Nov) */ }
+                             transition: transform var(--_t-base) var(--_ease-in), opacity calc(var(--_t-quick) / 2) var(--_ease-out); /* gone within a few frames of the sheet rising: it showed under the sheet's edge while it slid down (Leo, 21 Nov) */ }
   :host([data-sheet]) .bar button { pointer-events: none; }
   /* A sheet stands apart from the page: the page dims behind it (a tap there closes it), and scrolling inside a
      sheet never scrolls the page. */
