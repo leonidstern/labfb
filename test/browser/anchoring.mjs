@@ -336,6 +336,24 @@ try {
       });
       check(eng, 'a pin far down a long list is found again when a row above it goes', r.now && Math.abs(r.now.docY - r.top) < 30, JSON.stringify(r.now));
       await p.close();
+
+      // What an agent needs to change the thing: the rules that reach it (with the @media and the file), its box, and Astro's source.
+      p = await open(ctx, '<style>.btn{padding:8px 12px}@media (max-width: 600px){.btn{padding:2px}}@media print{.btn{color:red}}.other{color:blue}</style><div data-astro-source-file="/home/me/site/src/pages/index.astro" data-astro-source-loc="12:3"><button class="btn" style="width:5000px">Buy</button></div>');
+      r = await p.evaluate(() => {
+        const b = document.querySelector('.btn').getBoundingClientRect();
+        const a = A.anchorAt(b.left + 2, b.top + 2);
+        return { rules: a.rules, box: a.box, source: a.source };
+      });
+      check(eng, 'the rules that reach a pin: only the ones that apply now', r.rules === '.btn (inline style)', JSON.stringify(r));
+      await p.setViewportSize({ width: 500, height: 700 });
+      const narrow = await p.evaluate(() => {
+        const b = document.querySelector('.btn').getBoundingClientRect();
+        return A.anchorAt(b.left + 2, b.top + 2).rules;
+      });
+      check(eng, 'on a narrow window the @media rule is named, last (it wins)', narrow === '.btn (inline style); .btn @media (max-width: 600px) (inline style)', narrow);
+      check(eng, 'the box says size, padding and display', /^\d+×\d+, padding 8 12 8 12, inline-block/.test(r.box || ''), JSON.stringify(r));
+      check(eng, 'an Astro dev page names its source file and line', r.source === 'src/pages/index.astro:12:3', JSON.stringify(r));
+      await p.close();
       await ctx.close();
     } finally {
       await browser.close();
