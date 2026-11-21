@@ -125,6 +125,22 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
   W.scrim.style.opacity = '0';
   return sent ? dur + W.ms('quick') / 3 : dur; // after a send it starts a frame or two late (see down)
 }
+// Runs `fn` once the sheet's slide has ended, not when its time is up: a render in the same moment can start the slide
+// late, and a sheet taken away on a timer popped off half way down (iOS 27 simulator, 21 Nov: tap-close at 565 px).
+// The timer stays as the fallback (nothing slid, or the event never came).
+export function afterLeave(node: HTMLElement, dur: number, fn: () => void) {
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(t);
+    node.removeEventListener('transitionend', on);
+    fn();
+  };
+  const on = (e: TransitionEvent) => e.target === node && e.propertyName === 'transform' && go();
+  const t = setTimeout(go, dur + 400);
+  node.addEventListener('transitionend', on);
+}
 export function letGo(node: HTMLElement) {
   for (const k of HELD) node.style.removeProperty(k);
   W.host.removeAttribute('data-leaving');
@@ -144,12 +160,12 @@ export function slideAway(node, close, ms = 0, speed = 0) {
   const dur = leave(node, ms, false, speed);
   W.bar.style.transition = `transform ${leaveBar}, opacity ${dur}ms var(--_ease-out)`;
   W.host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
-  setTimeout(() => {
+  afterLeave(node, dur, () => {
     close();
     letGo(node);
     W.bar.style.transition = '';
     W.host.style.removeProperty('--lab-p');
-  }, dur);
+  });
 }
 
 // A new comment's pin stays in sight: as its sheet opens, a pin the sheet would cover once the keyboard is up scrolls up

@@ -28,7 +28,7 @@ import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
-import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { afterLeave, backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, revealOpen, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
@@ -946,7 +946,7 @@ import { bindKeys } from './widget/keys.ts';
         const newPin = S.posted && pinsById.get(S.posted);
         if (newPin) newPin.style.animationDelay = 'var(--_t-quick)'; // as the card goes (lab option 5)
         const dur = leave(prev, 0, Boolean(newPin));
-        setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
+        afterLeave(prev, dur, () => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal())); // the page goes back once the card has landed in its pin
       }
       // Phones: a new comment's sheet has gone (dropped, swiped away; a sent one waits for its card above): the page goes
       // back where it was (sheets.ts).
