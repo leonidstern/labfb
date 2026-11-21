@@ -3,7 +3,7 @@
 // Drag to mark: a mouse or a pen drags an area (or, holding D, a drawing) instead of a point; the ink at the end of a
 // drag; and the words selected with Shift + drag, offered as a comment on them.
 import { inkAnchor, liveInk } from './ink.ts';
-import { openingTag, short, wholeWords, zoneAnchor, zoneEl, anchorAt } from './anchoring.ts';
+import { cut, openingTag, short, wholeWords, zoneAnchor, zoneEl, anchorAt } from './anchoring.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -172,8 +172,8 @@ const selectionAnchor = () => {
   anchor.kind = 'text';
   anchor.quote = {
     exact: short(exact, 300),
-    prefix: side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, '').slice(-40),
-    suffix: side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, '').slice(0, 40),
+    prefix: cut(side([block, 0], [range.startContainer, range.startOffset]).replace(/^\s+/, ''), -40),
+    suffix: cut(side([range.endContainer, range.endOffset], [block, block.childNodes.length]).replace(/\s+$/, ''), 40),
   };
   sel.removeAllRanges();
   return anchor;

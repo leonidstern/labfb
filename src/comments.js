@@ -72,6 +72,7 @@ import { bindKeys } from './widget/keys.ts';
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
+    fade: /** @type {Promise<unknown> | null} */ (null), // set by live.ts while a patched-in save cross-fades: the page can't be hit-tested then (see pinned)
     get $() { return $; },
     get OFF() { return OFF; },
     get isOff() { return isOff; },
@@ -1602,7 +1603,7 @@ import { bindKeys } from './widget/keys.ts';
           setTimeout(() => (S.afterDrag = false), 800);
           showAgain();
           S.openId = null;
-          begin(anchorAt(x, y));
+          pinned(() => begin(anchorAt(x, y)));
           // 400 ms: before iOS's own long press (~500 ms), which selects text and cancels the touch. At 500 ms the two
           // raced, and the hold sometimes gave a text selection instead of a pin (iOS 27 simulator, 16 Nov).
         }, 400),
@@ -1723,8 +1724,10 @@ import { bindKeys } from './widget/keys.ts';
     showAgain();
     if (S.dKey && S.drew) return; // D held and something drawn (or cancelled): a click is part of that, not a pin
     if (S.dKey) S.drew = true; // a click with D held is a pin: letting D go then doesn't also show or hide done pins
-    begin(anchorAt(e.clientX, e.clientY));
+    pinned(() => begin(anchorAt(e.clientX, e.clientY)));
   }
+  // While a patched-in save cross-fades (live.ts) the browser hits nothing but <html> under a point: the pin is made once it is done.
+  const pinned = (go) => (W.fade ? W.fade.then(go) : go());
 
   // A pin whose 28 px would hang past the screen's right edge points the other way: its body left of its tip, so it is
   // seen whole and never makes the page scroll sideways (a phone's sheets then measure a wider page and are cut off).

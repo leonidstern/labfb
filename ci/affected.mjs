@@ -40,7 +40,7 @@ const REACH = {
   // its own (components.js loads only on React, Vue or Svelte pages), so it runs everything.
   'src/widget/motion.ts': ['motionreach', 'moment', 'update'],
   'src/widget/motion.css': ['motionreach', 'moment', 'update'],
-  'src/widget/drag.ts': ['selection', 'draw', 'edge-draw1', 'edge-draw2', 'edge-draw3', 'edge-draw4', 'shortcuts', 'shiftkeys'],
+  'src/widget/drag.ts': ['pincontext', 'selection', 'draw', 'edge-draw1', 'edge-draw2', 'edge-draw3', 'edge-draw4', 'shortcuts', 'shiftkeys'],
   'src/widget/keys.ts': ['shiftkeys', 'selection'],
   'src/widget/boardcam.ts': ['board', 'boardarrange', 'boardclose', 'boardhalf', 'boardmode', 'boardpins', 'boardreload', 'boardview', 'frame', 'framescroll', 'nativeboard'],
   'src/widget/actions.ts': ['actions'],
