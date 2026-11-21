@@ -28,7 +28,7 @@ import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
-import { afterLeave, backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { afterLeave, backFromReveal, bindSheets, backCloses, fromTap, glideLeft, holdKeyboard, leave, letGo, revealDraft, roomFor, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, revealOpen, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
@@ -1640,11 +1640,20 @@ import { bindKeys } from './widget/keys.ts';
   document.addEventListener('touchend', (e) => {
     pressing(false);
     if (!S.pinnedByHold) return;
-    S.pinnedByHold = false;
     e.preventDefault();
     const box = /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'));
     if (box && root.activeElement === box) box.blur(); // focused without a keyboard: again from the lift, so it opens
-    box?.focus({ preventScroll: true });
+    // The keyboard comes once the page has stopped gliding the pin into view (sheets.ts revealDraft). Together, iOS pans the
+    // screen under the scroll and the sheet is thrown about: a lift 0.1 s after the pin left the page 101 px off and the
+    // sheet's top went 331, 182, 234, 197, 267 (iOS 27 simulator, 21 Nov). One timer, set here in the lift: the keyboard
+    // opens for a focus that a touch's own timer makes, not for one from a frame callback.
+    const cursor = () => {
+      S.pinnedByHold = false;
+      /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'))?.focus({ preventScroll: true });
+    };
+    const wait = glideLeft();
+    if (wait > 16) setTimeout(cursor, wait + 16);
+    else cursor();
   }, { capture: true, passive: false });
   // iOS took the touch (its own long press): no lift comes, and a tap in the box opens the keyboard. The next touch's
   // lift isn't this hold's.
@@ -1976,13 +1985,8 @@ import { bindKeys } from './widget/keys.ts';
   // up at the end of the slide; it shrinks away as you scroll back up.
   pageStyle.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
   addEventListener('scroll', () => {
-    const de = document.documentElement;
-    const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
-    if (!had || host.hasAttribute('data-sheet')) return;
-    const room = Math.max(0, Math.ceil(scrollY + innerHeight - (de.scrollHeight - had)));
-    if (room >= had) return;
-    de.style.setProperty('--lab-room', `${room}px`);
-    if (!room) de.classList.remove('lab-room');
+    if (!document.documentElement.classList.contains('lab-room') || host.hasAttribute('data-sheet')) return;
+    roomFor(scrollY, true);
   }, { passive: true });
   // Phones: and the page behind stays put, even when the part of the sheet you drag on has nothing to scroll.
   // On the one element whose overflow is the screen's: body when the page leaves html's alone (the browser takes body's for

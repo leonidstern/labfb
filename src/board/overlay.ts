@@ -158,7 +158,6 @@ export function show(name: string, o: Opts) {
   let settling = false; // …and is gliding back
   let scrollFrom = -1; // where the page was when the keyboard came up
   let grown = false; // a half view that is full while the keyboard is up
-  let grownAt = -1e9;
   let typed = false; // the keyboard has been up since scrollFrom was taken
   let loop = 0;
   let quiet = 0;
@@ -181,7 +180,8 @@ export function show(name: string, o: Opts) {
     if (!vv || !matchMedia('(pointer: coarse)').matches) return;
     const typing = Math.abs(vv.scale - 1) < 0.01 && innerHeight - vv.height > 60; // the keyboard is up
     const sr = document.querySelector('[data-lab-comments]')?.shadowRoot;
-    const sheet = sr?.querySelector('.float:not(.out)')?.getBoundingClientRect();
+    // (A sheet on its way out is no sheet: the camera goes back as it slides away, not once it has gone.)
+    const sheet = sr?.host.hasAttribute('data-leaving') ? undefined : sr?.querySelector('.float:not(.out)')?.getBoundingClientRect();
     const draft = sr?.querySelector<HTMLElement>('.pin.draft');
     const pin = draft?.style.position === 'fixed' ? draft.getBoundingClientRect() : null; // a new comment on the board (its pin is held to the screen)
     let changed = false;
@@ -203,7 +203,6 @@ export function show(name: string, o: Opts) {
     // sheet fills the screen above the keyboard anyway.
     if (typing && pin && size < 1 && !grown) {
       grown = true;
-      grownAt = performance.now();
       board.api.hold(true);
       const top = view.getBoundingClientRect().top;
       view.style.setProperty('--bv-h', '100%');
@@ -222,14 +221,15 @@ export function show(name: string, o: Opts) {
       quiet = 0;
       changed = true;
     }
-    // Not in the frames right after the view grew: the pins are drawn again for the new box first.
-    if (typing && pin && sheet && !nudged && sheet.top > 0 && performance.now() - grownAt > 80) {
+    // (The pin was read before the view grew; the board holds it there on the screen, and a glide under way moves with the box.)
+    if (typing && pin && sheet && !nudged && sheet.top > 0) {
       const over = pin.bottom + 16 - sheet.top;
       const dy = over > 0 ? -over - 24 : pin.top < 56 ? 56 - pin.top : 0;
       nudged = true; // looked at once per comment: the pin is not chased as the sheet moves
       if (dy) board.api.nudge(dy);
-    } else if (!typing && !sheet && !vv.offsetTop && (nudged || grown) && !settling) {
-      // The keyboard and the comment's sheet have gone: the camera glides back to where it was, and only then is a grown
+    } else if ((!typing || !/^(textarea|input)$/.test(sr?.activeElement?.localName || '')) && !sheet && !vv.offsetTop && (nudged || grown) && !settling) {
+      // The comment's sheet is leaving and nothing holds the keyboard any more (it is on its way down, or gone): the camera
+      // glides back with them, not after them, to where it was, and only then is a grown
       // view half again, the board put back as it was before it grew. Nothing is seen of that last step: the board is
       // already where it will be (shrunk first, it jumped 288 px in one frame: 21 Nov simulator).
       settling = true;

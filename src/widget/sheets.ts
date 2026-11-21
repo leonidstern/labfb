@@ -185,7 +185,7 @@ export function revealDraft() {
   if (!(p.top < free || p.bottom > sheetTop - 16)) return;
   const to = Math.max(0, scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
   W.S.revealed = { from: scrollY, to }; // where you were: the page goes back there once the comment is sent or dropped (backFromReveal)
-  scrollPageTo(to);
+  scrollPageTo(to, 360); // brisk: the keyboard waits for it (comments.js, the lift after a hold)
 }
 
 // After a new comment's sheet has gone, the page scrolls back to where it was before revealDraft moved it, unless you
@@ -216,28 +216,24 @@ export function backFromReveal() {
 
 // Scrolls the page to top (smoothly, unless motion is reduced). A spot near the page's end can't scroll up into the
 // part a phone's sheet leaves free above it: the page gets room below its end while the sheet is open (--lab-room).
-export function scrollPageTo(top: number) {
-  if (W.coarse) {
-    const de = document.documentElement;
-    const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
-    const room = Math.max(0, Math.ceil(top + innerHeight - (de.scrollHeight - had)));
-    de.style.setProperty('--lab-room', `${room}px`);
-    de.classList.toggle('lab-room', room > 0);
-  }
+export function scrollPageTo(top: number, cap = 0) {
+  if (W.coarse) roomFor(top);
   const to = Math.max(0, top);
   cancelAnimationFrame(glideId);
+  glideEnds = 0;
   if (W.still.matches || Math.abs(to - scrollY) < 2) return scrollTo({ top: to, behavior: 'auto' });
   // Its own glide, ease in and out and longer for a longer way: the browser's smooth scroll took 0.28 s for 500 px, which
   // reads as a jump (Leo, 21 Nov: "scrolling position to pin can be smoother"). A touch or a wheel hands the page back.
   const from = scrollY;
   // Up to 0.9 s: at 0.56 s a pin 2700 px away went by at 237 px a frame, which is a jump too (iOS 27 simulator, 21 Nov).
-  const ms = Math.min(900, 260 + Math.abs(to - from) * 0.4);
+  const ms = cap ? Math.min(cap, 200 + Math.abs(to - from) * 0.35) : Math.min(900, 260 + Math.abs(to - from) * 0.4);
   const t0 = performance.now();
-  const stop = () => (cancelAnimationFrame(glideId), removeEventListener('touchstart', stop), removeEventListener('wheel', stop));
+  glideEnds = t0 + ms;
+  const stop = () => (cancelAnimationFrame(glideId), (glideEnds = 0), removeEventListener('touchstart', stop), removeEventListener('wheel', stop));
   addEventListener('touchstart', stop, { passive: true });
   addEventListener('wheel', stop, { passive: true });
   const step = (now: number) => {
-    const k = Math.min(1, (now - t0) / ms);
+    const k = Math.min(1, Math.max(0, (now - t0) / ms));
     scrollTo({ top: from + (to - from) * (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2), behavior: 'instant' });
     if (k < 1) glideId = requestAnimationFrame(step);
     else stop();
@@ -245,6 +241,23 @@ export function scrollPageTo(top: number) {
   glideId = requestAnimationFrame(step);
 }
 let glideId = 0;
+let glideEnds = 0; // when the glide under way is over
+/** How long the page's glide still has to go, ms (0: none under way). */
+export const glideLeft = () => Math.max(0, glideEnds - performance.now());
+// Room below the page's end, so that it can scroll to `top` on a phone. The page's own height is html's box when the page is
+// shorter than the screen: scrollHeight is never less than the screen's height, so a short page read as tall as the screen,
+// got 283 px of room where it needed 817, and could not scroll at all: the pin stayed under the sheet until the keyboard
+// came, and then the screen jumped 283 px in one frame and the sheet went off the top and came back (iOS 27 simulator,
+// 21 Nov; Leo: "pin placement opening keyboard and shifting everything not very smooth").
+export function roomFor(top: number, lessOnly = false) {
+  const de = document.documentElement;
+  const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
+  const own = (de.scrollHeight > innerHeight + 1 ? de.scrollHeight : de.offsetHeight) - had;
+  const room = top <= 0 ? 0 : Math.max(0, Math.ceil(top + innerHeight - own));
+  if (lessOnly && room >= had) return;
+  de.style.setProperty('--lab-room', `${room}px`);
+  de.classList.toggle('lab-room', room > 0);
+}
 
  // CloseWatcher (not in TypeScript's DOM types yet)
 export function backCloses() {

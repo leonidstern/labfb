@@ -869,20 +869,24 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // box's corner, nothing is fitted again, no frame is woken and the widget draws nothing but what the edge crosses.
   // Once it rests the board fits again (or is held to its edges, when the camera was moved), in one step (Leo, 19 Nov:
   // "when moving size of boards its sometimes flickering weirdly on some points": it fitted and drew all of it per step).
-  // The camera's glide up or down (api.nudge): ease in and out, longer for a longer way, not one frame (Leo, 21 Nov:
-  // "scrolling position to pin can be smoother"). The camera alone: the widget moves the pins and the open box with it and
-  // draws nothing again (drawn again on each step, the box was made anew and took the cursor every frame of the glide).
+  // The camera's glide up or down (api.nudge), not one frame (Leo, 21 Nov: "scrolling position to pin can be smoother"). It
+  // goes with a phone's keyboard and the comment's sheet, so it moves as they do: off at once and settling, about 0.3 s
+  // (eased in and out over 0.42 s it started after them and was still going when they had stopped). The camera alone: the
+  // widget moves the pins and the open box with it and draws nothing again (drawn again on each step, the box was made
+  // anew and took the cursor every frame of the glide).
+  let way: { from: number; to: number } | null = null; // the glide under way (the box changing size moves both ends with the camera)
   const glide = (to: number, done?: () => void) => {
-    const from = cam.y;
+    const g = (way = { from: cam.y, to });
     cancelAnimationFrame(nudging);
-    const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.min(420, 180 + Math.abs(to - from) * cam.z * 0.5);
+    const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.min(380, 240 + Math.abs(to - g.from) * cam.z * 0.3);
     const t0 = performance.now();
     const step = (now: number) => {
       if (signal.aborted) return;
-      const k = ms ? Math.min(1, (now - t0) / ms) : 1;
-      go({ ...cam, y: from + (to - from) * (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2) }, false, true, true);
+      const k = ms ? Math.min(1, Math.max(0, (now - t0) / ms)) : 1; // (a frame's own time can be a little before t0: never backwards)
+      go({ ...cam, y: g.from + (g.to - g.from) * (1 - (1 - k) ** 3) }, false, true, true);
       if (k < 1) return void (nudging = requestAnimationFrame(step));
       nudging = 0;
+      if (way === g) way = null;
       done?.();
     };
     step(t0);
@@ -895,6 +899,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (px === ox && py === oy && pv.w === view.w && pv.h === view.h) return; // already drawn at this size (resized(), below)
     cam = camBack || { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
     if (home != null && !camBack) home -= (oy - py) / cam.z; // where the glide goes back to moves with the box, as the camera does
+    if (way && nudging && !camBack) [way.from, way.to] = [way.from - (oy - py) / cam.z, way.to - (oy - py) / cam.z];
     camBack = null;
     if (!sizing) sizedFrom = { w: pv.w, h: pv.h };
     sizing = boxed = true;
