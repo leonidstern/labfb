@@ -109,7 +109,7 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
   if (p) fromTap(node, { x: p.left + p.width / 2, y: p.top + p.height / 2 });
   void node.offsetHeight;
   const down = () => {
-    node.style.setProperty('transition', `transform ${dur}ms ${ease}, box-shadow ${W.ms('quick')}ms var(--_ease-out)`, 'important');
+    node.style.setProperty('transition', `transform ${dur}ms ${ease}, box-shadow ${ms ? 0 : W.ms('quick')}ms var(--_ease-out)`, 'important');
     node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + OFF}px)`, 'important');
     // The soft shadow fades off on the way, instead of lingering above the top edge and popping off with the sheet (Leo, 21 Nov:
     // "chat top shadow i dont like when disappearing"); the hairline stays.
