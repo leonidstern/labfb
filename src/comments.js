@@ -1227,7 +1227,8 @@ import { bindKeys } from './widget/keys.ts';
       });
       float.append(el('div', { class: 'handle' }));
       // Paused: the moment this pin will carry, so you know it is kept (Leo, 19 Nov: "some info in pin where it was").
-      if (anchor.moment && S.momentChip) float.append(S.momentChip(anchor.moment));
+      const chip = anchor.moment && S.momentChip?.(anchor.moment); // only a paused video has one (Leo, 21 Nov)
+      if (chip) float.append(chip);
       const row = quickRow(draft, box);
       if (row?.children.length) float.append(row);
       float.append(box);
