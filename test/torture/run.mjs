@@ -4,11 +4,15 @@
 // failure grouped by signature and one small replayable case per signature. See README.md beside this file.
 // A fourth area, dev-servers (the lab in front of real frameworks' dev servers), runs when it is named
 // (--area dev-servers) or asked for beside the others (--area all --with-dev-servers): it installs frameworks once.
+// A fifth, context (what the agent is told about a pin: its element, words, page, window, source and the page's errors),
+// is part of --area all: a fifth of the cases, or its own count with --context-cases.
 //
 //   node test/torture/run.mjs --cases 3000 --area all --seed 1 --concurrency 12 --json out.json
 //   node test/torture/run.mjs --smoke
 //   node test/torture/run.mjs --smoke --area dev-servers                 (~20 cases on real dev servers)
 //   node test/torture/run.mjs --area dev-servers --cases 120 --concurrency 5 --json out.json
+//   node test/torture/run.mjs --smoke --area context                      (~20 cases of pin context, real browsers)
+//   node test/torture/run.mjs --area context --cases 300 --concurrency 8 --json out.json
 //   node test/torture/run.mjs --replay hotswap:2884193731            (one case again, every step printed)
 //   node test/torture/run.mjs --replay hotswap:2884193731:0,3,4      (only these steps of it)
 import fs from 'node:fs';
@@ -20,13 +24,16 @@ import * as devSync from './dev-sync.mjs';
 import * as hotswap from './hotswap.mjs';
 import * as agentSync from './agent-sync.mjs';
 import * as devServers from './dev-servers.mjs';
+import * as context from './context.mjs';
 import { KNOWN_BUGS, knownBugOf, bugTag } from './known-bugs.mjs';
 
-const AREAS = { 'dev-sync': devSync, hotswap, 'agent-sync': agentSync, 'dev-servers': devServers };
-// How `--area all` shares its cases out. (dev-servers is not in the share: it has a count of its own, --dev-server-cases,
-// so the other areas' counts are the same with and without it.)
-const SHARE = { 'dev-sync': 0.35, hotswap: 0.3, 'agent-sync': 0.35 };
+const AREAS = { 'dev-sync': devSync, hotswap, 'agent-sync': agentSync, 'dev-servers': devServers, context };
+// How `--area all` shares its cases out: context a fifth (600 of 3,000), the first three the rest as 35 : 30 : 35.
+// (dev-servers is not in the share: it has a count of its own, --dev-server-cases, so the other areas' counts are the
+// same with and without it. With --context-cases, context has a count of its own too and the three share --cases.)
+const SHARE = { 'dev-sync': 0.28, hotswap: 0.24, 'agent-sync': 0.28, context: 0.2 };
 const HEAVY = 'dev-servers';
+const CONTEXT = 'context';
 const REPO = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 
 // ---------- arguments (a flag, or the same name in the environment: --cases / TORTURE_CASES) ----------
@@ -65,12 +72,23 @@ const opts = {
   devBrowserShare: Number(flag('dev-browser-share', 0.4)),
   devConcurrency: Number(flag('dev-concurrency', smoke ? 4 : 5)),
   frameworks: flag('frameworks', '') ? String(flag('frameworks', '')).split(',') : [],
+  // The context area: its own number of cases when asked for (else a fifth of --cases), how many of its browser cases
+  // and of its dev-server cases run at once, and the frameworks it draws from ('none': plain pages only).
+  contextCases: Number(flag('context-cases', smoke ? 20 : 600)),
+  contextBrowserConcurrency: Number(flag('context-browser-concurrency', smoke ? 5 : 6)),
+  contextDevConcurrency: Number(flag('context-dev-concurrency', smoke ? 3 : 4)),
+  contextFrameworks: flag('context-frameworks', '') ? String(flag('context-frameworks', '')).split(',') : [],
 };
+for (const f of opts.contextFrameworks) if (f !== 'none' && !context.FRAMEWORK_NAMES.includes(f)) throw new Error(`--context-frameworks: some of ${context.FRAMEWORK_NAMES.join(', ')}, or none`);
 for (const f of opts.frameworks) if (!devServers.FRAMEWORK_NAMES.includes(f)) throw new Error(`--frameworks: some of ${devServers.FRAMEWORK_NAMES.join(', ')}`);
 const areaNames = opts.area === 'all' ? [...Object.keys(SHARE), ...(flag('with-dev-servers', false) ? [HEAVY] : [])] : opts.area.split(',');
 for (const a of areaNames) if (!AREAS[a]) throw new Error(`--area: one of ${Object.keys(AREAS).join(', ')}, all`);
 // Named alone, --cases is its count; beside other areas they share --cases and it has --dev-server-cases.
 if (areaNames.length === 1 && areaNames[0] === HEAVY && casesGiven) opts.devCases = opts.cases;
+// context: named alone, --cases is its count (600 by default, 20 in a smoke run); beside other areas it takes its share
+// of --cases, or the count --context-cases gives it (the others then share --cases among them).
+const contextOwn = areaNames.includes(CONTEXT) && (areaNames.length === 1 || flag('context-cases', null) !== null);
+if (areaNames.length === 1 && areaNames[0] === CONTEXT && casesGiven) opts.contextCases = opts.cases;
 
 // ---------- real browsers, for the cases that ask for one ----------
 const require = createRequire(import.meta.url);
@@ -91,8 +109,18 @@ const browserQueue = [];
 opts.browser = !pw || !opts.browserShare
   ? null
   : {
-      /** A browser of this engine (started once for the whole run) and a turn to use it; release() when done. */
-      async take(engine) {
+      /** A browser of this engine (started once for the whole run) and a turn to use it; release() when done.
+       *  free: no turn is taken (the area holds its own cases back: context.mjs gate). */
+      async take(engine, { free = false } = {}) {
+        if (free) {
+          if (!launched.has(engine)) launched.set(engine, pw[engine].launch());
+          try {
+            return { browser: await launched.get(engine), devices: pw.devices, release: () => {} };
+          } catch (e) {
+            launched.delete(engine);
+            throw e;
+          }
+        }
         if (browserSlots > 0) browserSlots--;
         else await new Promise((r) => browserQueue.push(r));
         if (!launched.has(engine)) launched.set(engine, pw[engine].launch());
@@ -116,7 +144,7 @@ async function runOnce(area, seed, keep = null) {
   const all = plan.ops.length;
   if (keep) plan.ops = plan.ops.map((op, i) => (keep.includes(i) ? op : null));
   // An area that is heavy lets only so many of its cases run at once (its turn is waited for before the clock starts).
-  const release = area.gate ? await area.gate(opts) : null;
+  const release = area.gate ? await area.gate(opts, plan) : null;
   const CASE_MS = (area.caseMs || 90000) * opts.slow;
   const ctx = new Ctx(area.name, seed);
   const t0 = Date.now();
@@ -181,7 +209,8 @@ const signatures = new Map(); // signature -> { area, cls, check, tags, cases, c
 const failures = []; // every failing case, one line each
 const timings = {}; // name -> [ms], the settle times the areas measured
 const caseMs = {};
-const shared = areaNames.filter((a) => a !== HEAVY); // these share --cases; dev-servers has its own count
+const own = { [HEAVY]: () => opts.devCases, ...(contextOwn ? { [CONTEXT]: () => opts.contextCases } : {}) }; // areas with a count of their own
+const shared = areaNames.filter((a) => !own[a]); // these share --cases
 const shares = shared.map((a) => SHARE[a] ?? 1);
 const queue = [];
 const zero = () => ({ total: 0, pass: 0, loud: 0, silent: 0, flaky: 0, unclear: 0, harness: 0 });
@@ -190,9 +219,9 @@ shared.forEach((a, k) => {
   counts[a] = zero();
   for (let i = 0; i < n; i++) queue.push({ area: AREAS[a], index: i, seed: hashSeed(opts.seed, a, i) });
 });
-if (areaNames.includes(HEAVY)) {
-  counts[HEAVY] = zero();
-  for (let i = 0; i < opts.devCases; i++) queue.push({ area: AREAS[HEAVY], index: i, seed: hashSeed(opts.seed, HEAVY, i) });
+for (const a of areaNames.filter((x) => own[x])) {
+  counts[a] = zero();
+  for (let i = 0; i < own[a](); i++) queue.push({ area: AREAS[a], index: i, seed: hashSeed(opts.seed, a, i) });
 }
 // Mixed, so the three areas load the machine together from start to end (the order still depends on the seed alone).
 const order = makeRng(hashSeed(opts.seed, 'order')).shuffle(queue);
@@ -205,7 +234,7 @@ async function shrink(area, seed, key, all) {
   let keep = Array.from({ length: all }, (_, i) => i);
   let budget = Math.min(opts.shrink, area.shrinkBudget ?? Infinity); // (a heavy area caps it: its cases take long)
   // A smoke run stops making cases smaller a minute in: it has to end within two (with dev servers: two minutes in, within four).
-  const late = () => smoke && Date.now() - t0 > (areaNames.includes(HEAVY) ? 120000 : 60000);
+  const late = () => smoke && Date.now() - t0 > (areaNames.includes(HEAVY) ? 120000 : areaNames.includes(CONTEXT) ? 90000 : 60000);
   for (let chunk = Math.ceil(keep.length / 2); chunk >= 1 && budget > 0 && !late(); ) {
     let smaller = false;
     for (let at = 0; at < keep.length && budget > 0 && !late(); ) {
@@ -282,7 +311,7 @@ async function runCase(job) {
 const t0 = Date.now();
 let done = 0;
 const total = order.length;
-console.error(`torture: ${total} cases (${areaNames.map((a) => `${a} ${order.filter((j) => j.area.name === a).length}`).join(', ')}), seed ${opts.seed}, ${opts.concurrency} at once${areaNames.includes(HEAVY) ? ` (dev-servers ${opts.devConcurrency} at once)` : ''}${opts.browser ? `, browsers in ${shared.length ? `~${Math.round(opts.browserShare * 100)}% of hotswap and agent-sync` : ''}${shared.length && areaNames.includes(HEAVY) ? ' and ' : ''}${areaNames.includes(HEAVY) ? `~${Math.round(opts.devBrowserShare * 100)}% of dev-servers` : ''}` : ', no browsers'}${opts.lan ? '' : ', no wifi address (phones come in as this computer)'}`);
+console.error(`torture: ${total} cases (${areaNames.map((a) => `${a} ${order.filter((j) => j.area.name === a).length}`).join(', ')}), seed ${opts.seed}, ${opts.concurrency} at once${areaNames.includes(HEAVY) ? ` (dev-servers ${opts.devConcurrency} at once)` : ''}${areaNames.includes(CONTEXT) ? ` (context: ${opts.contextBrowserConcurrency} browser cases and ${opts.contextDevConcurrency} dev-server cases at once)` : ''}${opts.browser ? `, browsers in ${shared.length ? `~${Math.round(opts.browserShare * 100)}% of hotswap and agent-sync` : ''}${shared.length && areaNames.includes(HEAVY) ? ' and ' : ''}${areaNames.includes(HEAVY) ? `~${Math.round(opts.devBrowserShare * 100)}% of dev-servers` : ''}` : ', no browsers'}${opts.lan ? '' : ', no wifi address (phones come in as this computer)'}`);
 const tick = setInterval(() => {
   const sum = (k) => Object.values(counts).reduce((n, c) => n + c[k], 0);
   console.error(`  ${done}/${total} · pass ${sum('pass')} loud ${sum('loud')} silent ${sum('silent')} flaky ${sum('flaky')} harness ${sum('harness')} · ${Math.round((Date.now() - t0) / 1000)} s`);
@@ -316,6 +345,10 @@ if (byKind[HEAVY]) {
   console.log(`\ndev-servers by framework:`);
   for (const f of devServers.FRAMEWORK_NAMES) if (byKind[HEAVY][f]) row(f, byKind[HEAVY][f]);
 }
+if (byKind[CONTEXT]) {
+  console.log(`\ncontext by kind of case (fw-…: behind that framework's dev server):`);
+  for (const k of context.KIND_NAMES) if (byKind[CONTEXT][k]) row(k, byKind[CONTEXT][k]);
+}
 const sigList = [...signatures.values()].sort((a, b) => b.cases - a.cases);
 const say = (title, list, each) => {
   if (!list.length) return;
@@ -326,7 +359,7 @@ const say = (title, list, each) => {
 const withBrowser = (b) => (b ? ' --browser-share 1' : ' --no-browser');
 const replayOf = (s) => `node test/torture/run.mjs --replay ${s.area}:${s.repro.seed}${s.repro.keep?.length ? `:${s.repro.keep.join(',')}` : ''}${withBrowser(s.repro.browser)}${s.repro.flags || ''}`;
 // Which kinds of case a signature was seen in (dev-servers: which frameworks), when the area has more than one.
-const kindsOf = (s) => (s.area === HEAVY && Object.keys(s.kinds).length ? `\n    seen with: ${Object.entries(s.kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}` : '');
+const kindsOf = (s) => ((s.area === HEAVY || s.area === CONTEXT) && Object.keys(s.kinds).length ? `\n    seen with: ${Object.entries(s.kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}` : '');
 say('Failure signatures (came back on a second run of the same case):', sigList.filter((s) => s.confirmed), (s) => {
   console.log(`- [${s.cls}] ${s.signature}\n    ${bugTag(s.signature)}\n    ${s.cases} case${s.cases === 1 ? '' : 's'} (${s.confirmed} came back, ${s.flaky} did not)${kindsOf(s)}\n    e.g. ${s.example.split('\n')[0].slice(0, 300)}\n    replay: ${replayOf(s)}\n    steps: ${s.repro.ops.join(' → ').slice(0, 900) || '(none needed: it shows before the first step)'}`);
 });
