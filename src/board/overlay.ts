@@ -120,43 +120,82 @@ export function show(name: string, o: Opts) {
   // forth at that height). Pulled on below the least height, it goes down with the finger, and let go there (or flicked
   // down) it slides away and closes, as the comment drawer does (Leo, 21 Nov: "board drawer also behave weird not like
   // comment drawer").
-  const drag = (e: PointerEvent) => {
-    if ((e.target as Element).closest?.('button') || e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const on = e.currentTarget as HTMLElement;
-    on.setPointerCapture?.(e.pointerId);
+  // A finger is followed by its touch events, as the comment drawer's is (sheets.ts swipeDown): Safari on a phone let a
+  // pointer drag go now and then (the first drag after opening did nothing, iOS 27 simulator, 21 Nov). A mouse or a pen
+  // by its pointer events.
+  const pulling = (y0: number, t0: number) => {
     let frame = 0;
     let below = 0; // px pulled past the least height
-    const moves = [{ t: e.timeStamp, y: e.clientY }];
-    const pull = (m: PointerEvent) => {
-      const want = (innerHeight - m.clientY) / innerHeight;
+    const moves = [{ t: t0, y: y0 }];
+    const to = (y: number, t: number) => {
+      const want = (innerHeight - y) / innerHeight;
       size = Math.max(MIN, Math.min(1, want));
       below = Math.max(0, (MIN - want) * innerHeight);
-      moves.push({ t: m.timeStamp, y: m.clientY });
-      while (moves.length > 2 && m.timeStamp - moves[0].t > 200) moves.shift();
-      frame ||= requestAnimationFrame(() => ((frame = 0), paintSize(), view.style.setProperty('--bv-t', '0ms'), view.style.setProperty('--bv-y', `0 ${below}px`)));
+      moves.push({ t, y });
+      while (moves.length > 2 && t - moves[0].t > 200) moves.shift();
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        paintSize();
+        if (below) view.style.setProperty('--bv-t', '0ms'), view.style.setProperty('--bv-y', `0 ${below}px`);
+        else ['--bv-t', '--bv-y'].forEach((k) => view.style.removeProperty(k));
+      });
     };
-    const up = (u: PointerEvent) => {
-      on.removeEventListener('pointermove', pull);
-      on.removeEventListener('pointerup', up);
-      on.removeEventListener('pointercancel', up);
+    const end = (t: number, done: boolean) => {
       cancelAnimationFrame(frame);
       paintSize();
-      const v = move.speedOf(moves, u.timeStamp);
+      const v = move.speedOf(moves, t);
       // At its least height, let go as the comment drawer is (move.goes): it goes on down at the finger's speed and closes.
-      if (u.type === 'pointerup' && size <= MIN + 0.01 && move.goes(below, v, view.offsetHeight)) return void close(Math.max(0, v));
+      if (done && size <= MIN + 0.01 && move.goes(below, v, view.offsetHeight)) return void close(Math.max(0, v));
       if (below) setTimeout(() => ((at = view.getBoundingClientRect()), board.resized(), rested()), slide(view, true, Math.max(0, -v)) + 20);
       if (size > 0.97) size = 1;
       paintSize();
       saveSize(o.page, size);
     };
+    return { to, end };
+  };
+  const drag = (e: PointerEvent) => {
+    if (e.pointerType === 'touch' || (e.target as Element).closest?.('button') || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const on = e.currentTarget as HTMLElement;
+    on.setPointerCapture?.(e.pointerId);
+    const p = pulling(e.clientY, e.timeStamp);
+    const pull = (m: PointerEvent) => p.to(m.clientY, m.timeStamp);
+    const up = (u: PointerEvent) => {
+      on.removeEventListener('pointermove', pull);
+      on.removeEventListener('pointerup', up);
+      on.removeEventListener('pointercancel', up);
+      p.end(u.timeStamp, u.type === 'pointerup');
+    };
     on.addEventListener('pointermove', pull);
     on.addEventListener('pointerup', up);
     on.addEventListener('pointercancel', up);
   };
-  grip.addEventListener('pointerdown', drag);
-  if (!o.own) bar.addEventListener('pointerdown', drag);
+  let held: ReturnType<typeof pulling> | null = null;
+  const touchStart = (e: TouchEvent) => {
+    if (e.touches.length !== 1 || (e.target as Element).closest?.('button')) return void (held = null);
+    e.stopPropagation();
+    held = pulling(e.touches[0].clientY, e.timeStamp);
+  };
+  const touchMove = (e: TouchEvent) => {
+    if (!held) return;
+    e.stopPropagation(); // the grip is in the bar: one move, once
+    if (e.cancelable) e.preventDefault();
+    held.to(e.touches[0].clientY, e.timeStamp);
+  };
+  const touchEnd = (e: TouchEvent) => {
+    e.stopPropagation();
+    const h = held;
+    held = null;
+    h?.end(e.timeStamp, e.type === 'touchend');
+  };
+  for (const n of o.own ? [grip] : [grip, bar]) {
+    n.addEventListener('pointerdown', drag);
+    n.addEventListener('touchstart', touchStart, { passive: true });
+    n.addEventListener('touchmove', touchMove, { passive: false });
+    n.addEventListener('touchend', touchEnd);
+    n.addEventListener('touchcancel', touchEnd);
+  }
   // The view's bar never scrolls the page behind (the board itself pans on the wheel).
   bar.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
   // A page's zoom on <html> or <body> scales what is drawn in the view: it zooms the other way, by what 100 px comes out as
