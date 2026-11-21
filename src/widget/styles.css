@@ -14,6 +14,9 @@
   --_soft: var(--lab-soft, rgba(0,0,0,.05)); --_hover: var(--lab-hover, rgba(0,0,0,.10)); --_line: var(--lab-line, rgba(0,0,0,.15)); --_edge: var(--lab-edge, #c7c7cc); --_muted: var(--lab-muted, rgba(0,0,0,.50));
   --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
   --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
+  /* Phones: Safari ends the page 16 px under the bar, and what a shadow draws below that is cut off square (iOS 27 simulator, 21 Nov:
+     a tinted box under the pill, Leo's screenshot). A shadow that ends within that gap. */
+  --_shadow-low: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.06);
   /* Motion: one set of durations and curves, and every transition and animation below uses it (docs/motion.md). Set
      --lab-t-quick, --lab-t-base, --lab-t-slow, --lab-t-loop, --lab-t-hold or --lab-ease, --lab-ease-out, --lab-ease-in,
      --lab-ease-settle, --lab-ease-pop the same way as the colours. */
@@ -35,7 +38,7 @@
   :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
           --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
           --_soft: var(--lab-soft, rgba(255,255,255,.05)); --_hover: var(--lab-hover, rgba(255,255,255,.10)); --_line: var(--lab-line, rgba(255,255,255,.15)); --_edge: var(--lab-edge, #48484a); --_muted: var(--lab-muted, rgba(255,255,255,.50));
-          --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); --_amber: var(--lab-amber, #f0a040);
+          --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); --_shadow-low: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 2px 8px rgba(0,0,0,.4); --_amber: var(--lab-amber, #f0a040);
           --_green-fg: rgb(52, 199, 89); /* the text-sized green, lighter on dark (lab.css's dark --lab-green, #34c759) */ }
 }
 * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
@@ -644,7 +647,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) { /* phones, upright or on their side */
   .listener { display: none !important; }
   .left { bottom: 72px; } /* only the copy-link pill is left here on a phone: it sits above the bar */
-  .bar { bottom: 16px !important; }
+  .bar { bottom: 16px !important; box-shadow: var(--_shadow-low); }
   .hint { bottom: 64px !important; }
   /* Sized and set to the word: its ink about 1.3× the text's height, its foot on the baseline, 6 px from "chat" like the count. */
   .chat-btn .mark { align-self: center; width: 13px; height: 13px; margin: 0 -2.5px 0 -2px; translate: 0 -1.5px; }
