@@ -899,7 +899,8 @@ import { bindKeys } from './widget/keys.ts';
     de.classList.remove('lab-hold-b', 'lab-hold-h');
     if (!on) return;
     const cs = getComputedStyle(de);
-    de.classList.add(cs.overflowX === 'visible' && cs.overflowY === 'visible' ? 'lab-hold-b' : 'lab-hold-h');
+    const own = /auto|scroll|hidden|clip/.test(cs.overflowX + cs.overflowY); // html has an overflow of its own
+    de.classList.add(own ? 'lab-hold-h' : 'lab-hold-b');
   };
   let viewW = 0; // the screen's width without its scrollbar (flipAt)
   function render() {
