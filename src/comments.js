@@ -28,7 +28,7 @@ import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
-import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { afterLeave, backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, liftedDraft, revealDraft, roomFor, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, revealOpen, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
@@ -299,7 +299,7 @@ import { bindKeys } from './widget/keys.ts';
     <div class="ui"><div class="hint" role="status" hidden></div>
     <div class="list chatwin" hidden><div class="tabs"></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
-    <div class="bar">
+    <div class="bar" hidden>
       <button class="secondary chat-btn" type="button" hidden>chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
@@ -445,11 +445,15 @@ import { bindKeys } from './widget/keys.ts';
   };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
   // Anything odd (a gap, an error, an old lab) falls back to the whole list.
-  async function loadChanges(since) {
+  // One at a time, in the order asked: two answers on the way (wifi) may arrive the other way round, and the older would
+  // then overwrite what the newer one brought (a pin resolved, then reopened, shown resolved; a deleted pin back).
+  let changesChain = Promise.resolve();
+  const loadChanges = (since) => (changesChain = changesChain.then(() => changesSince(since)));
+  async function changesSince(since) {
     try {
       const url = new URL('/_lab/api/changes', new URL(API, location.href));
       url.search = String(new URLSearchParams({ page: S.page, since: String(since) }));
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) }); // a hung ask must not hold the ones behind it
       const data = res.ok ? await res.json() : { full: true };
       if (data.full || !S.loaded) return load();
       const gone = new Set(data.del);
@@ -890,8 +894,21 @@ import { bindKeys } from './widget/keys.ts';
     n.style.left = `${parseFloat(n.style.left) - scrollX}px`;
     n.style.top = `${parseFloat(n.style.top) - scrollY}px`;
   };
+  // Phones: the page behind an open sheet doesn't scroll (the rule is with the page's other styles, below).
+  const holdPage = (/** @type {boolean} */ on) => {
+    const de = document.documentElement;
+    de.classList.remove('lab-hold-b', 'lab-hold-h');
+    if (!on) return;
+    const cs = getComputedStyle(de);
+    const own = /auto|scroll|hidden|clip/.test(cs.overflowX + cs.overflowY); // html has an overflow of its own
+    de.classList.add(own ? 'lab-hold-h' : 'lab-hold-b');
+  };
   let viewW = 0; // the screen's width without its scrollbar (flipAt)
   function render() {
+    // The bar shows from its first drawing on: as it comes in the page's source it holds one empty button with a dot, and that
+    // dot stood where the menu comes for as long as the comments took to arrive (Leo, 21 Nov, on his phone over wifi:
+    // "some dot blinking on page reload on menu place").
+    bar.hidden = false;
     if (!moAsked && (S.draft?.anchor?.moment || S.comments.some((/** @type {any} */ x) => x.anchor?.moment))) void loadMotion().then(() => render()); // a moment's chip is the motion file's
     newPass(); // what pinhold read about the pins' elements is read again (pinhold.ts)
     viewW = document.documentElement.clientWidth; // read once a pass, before any pin is written (flipAt)
@@ -947,7 +964,7 @@ import { bindKeys } from './widget/keys.ts';
         const newPin = S.posted && pinsById.get(S.posted);
         if (newPin) newPin.style.animationDelay = 'var(--_t-quick)'; // as the card goes (lab option 5)
         const dur = leave(prev, 0, Boolean(newPin));
-        setTimeout(() => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal()), dur); // the page goes back once the card has landed in its pin
+        afterLeave(prev, dur, () => (prev.remove(), letGo(prev), prev.classList.contains('float') && backFromReveal())); // the page goes back once the card has landed in its pin
       }
       // Phones: a new comment's sheet has gone (dropped, swiped away; a sent one waits for its card above): the page goes
       // back where it was (sheets.ts).
@@ -958,7 +975,9 @@ import { bindKeys } from './widget/keys.ts';
         const key = sheet && (S.draft ? 'draft' : S.openId || (S.chatOpen ? 'chat' : ''));
         if (sheet && key !== S.sheetKey) fromTap(sheet);
         S.sheetKey = key;
-        if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
+        // Its pin above the sheet, before the keyboard (sheets.ts): made by a hold, now, while the finger is still down.
+        if (appear && S.draft && S.pinnedByHold) revealDraft();
+        else if (appear && S.draft) requestAnimationFrame(() => revealDraft(true));
       }
       if (!isTrying()) markQuote(quoted); // a tried choice wears the green itself
       S.quoted = quoted;
@@ -980,6 +999,7 @@ import { bindKeys } from './widget/keys.ts';
       host.setAttribute('data-opening', '');
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
     }
+    if (coarse && host.hasAttribute('data-sheet') !== document.documentElement.classList.contains('lab-sheet')) holdPage(host.hasAttribute('data-sheet'));
     document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
     holdWhileOpen(host.hasAttribute('data-sheet')); // a dev server's reload waits until the chat, thread or list is closed
     backCloses();
@@ -1628,12 +1648,22 @@ import { bindKeys } from './widget/keys.ts';
   document.addEventListener('touchend', (e) => {
     pressing(false);
     if (!S.pinnedByHold) return;
-    S.pinnedByHold = false;
     e.preventDefault();
     const box = /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'));
     if (box && root.activeElement === box) box.blur(); // focused without a keyboard: again from the lift, so it opens
+    // The cursor goes in here, in the lift itself: a real iPhone opens its keyboard only for a focus made in the touch (one
+    // made a moment later, from a timer, opened it in the simulator and not on Leo's phone: "its not in focus now", 21 Nov).
+    S.pinnedByHold = false;
+    getSelection?.()?.removeAllRanges();
     box?.focus({ preventScroll: true });
+    liftedDraft(); // (the page was put where the pin shows above the sheet as the pin appeared: sheets.ts revealDraft)
   }, { capture: true, passive: false });
+  // Phones: nothing but the widget's own fields starts a selection (no Shift there to ask for one), and a hold's lift
+  // clears one that iOS began anyway.
+  if (coarse) document.addEventListener('selectstart', (e) => {
+    const t = e.composedPath()[0];
+    if (!(t instanceof Node) || !(t instanceof Element ? t : t.parentElement)?.closest?.('textarea, input, [contenteditable]')) e.preventDefault();
+  }, true);
   // iOS took the touch (its own long press): no lift comes, and a tap in the box opens the keyboard. The next touch's
   // lift isn't this hold's.
   document.addEventListener('touchcancel', () => (S.pinnedByHold = false), true);
@@ -1761,7 +1791,8 @@ import { bindKeys } from './widget/keys.ts';
       const B = /** @type {any} */ (window).__labBoard;
       const box = a.frame && a.fx !== undefined ? B?.box?.(a.frame) : null;
       const size = box && (B.size?.(a.frame) || { w: box.offsetWidth, h: box.offsetHeight });
-      const share = size?.w && size.h ? { x: a.fx / size.w, y: (a.fy || 0) / size.h } : null;
+      // (an area's pin is at the corner where the drag ended)
+      const share = size?.w && size.h ? { x: (a.fx + (a.pinX ? (a.zw || 0) * size.w : 0)) / size.w, y: ((a.fy || 0) + (a.pinY ? (a.zh || 0) * size.h : 0)) / size.h } : null;
       held = holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
     } else {
       const node = moved ? null : findTarget(a);
@@ -1966,17 +1997,19 @@ import { bindKeys } from './widget/keys.ts';
   // The room a phone's sheet made below the page's end (see goTo) stays after the sheet closes, so the page doesn't jump
   // up at the end of the slide; it shrinks away as you scroll back up.
   pageStyle.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
+  // Phones: the page is scrolled in one step for a new comment's pin and drawn where it was, then let go as the keyboard
+  // comes (sheets.ts revealDraft): its own blocks, not what it holds to the screen itself, nor the widget or a board's view.
+  pageStyle.textContent += 'html.lab-moved body > :not([data-lab-comments], [data-lab-board-view], [data-lab-still]) { translate: 0 var(--lab-shift, 0px) !important; transition: translate var(--lab-shift-t, 0s) var(--lab-shift-e, ease) !important; }';
   addEventListener('scroll', () => {
-    const de = document.documentElement;
-    const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
-    if (!had || host.hasAttribute('data-sheet')) return;
-    const room = Math.max(0, Math.ceil(scrollY + innerHeight - (de.scrollHeight - had)));
-    if (room >= had) return;
-    de.style.setProperty('--lab-room', `${room}px`);
-    if (!room) de.classList.remove('lab-room');
+    if (!document.documentElement.classList.contains('lab-room') || host.hasAttribute('data-sheet')) return;
+    roomFor(scrollY, true);
   }, { passive: true });
   // Phones: and the page behind stays put, even when the part of the sheet you drag on has nothing to scroll.
-  pageStyle.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
+  // On the one element whose overflow is the screen's: body when the page leaves html's alone (the browser takes body's for
+  // the screen, and body is laid out as before), else html. On both, body got an overflow of its own and its first
+  // child's top margin stopped collapsing through it: the whole page moved down by that margin (21 px under an h1) each
+  // time a sheet opened and back up when it closed (Leo, 21 Nov: the page jumps when the chat opens or closes).
+  pageStyle.textContent += '@media (pointer: coarse) { html.lab-hold-b body, html.lab-hold-h { overflow: hidden; } }';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
   pageStyle.textContent += `html:has([data-lab-pinning]) body, html:has([data-lab-pinning]) body * { -webkit-touch-callout: none; }`;
   // Phones: with comments on, a hold is labit's (a pin), not the start of a text selection: iOS would cancel the touch
@@ -1984,7 +2017,10 @@ import { bindKeys } from './widget/keys.ts';
   // (lab-press): Safari paints the quoted words' green (::highlight) over whole blocks of text that can't be selected,
   // so with the page unselectable all the time an open comment tinted half the page (iOS 27 simulator, 17 Nov).
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
-  pageStyle.textContent += `@media (pointer: coarse) { html:has([data-lab-pinning]).lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html:has([data-lab-pinning]) body > :not([data-lab-comments]), html:has([data-lab-pinning]) body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
+  // On a phone there is no Shift, so its text is never selected (Leo, 21 Nov: "text selection only with shift remember";
+  // a hold with a sheet open, or on the dimmed page, still selected it): all the time, but for the frames a quote is lit
+  // in (lab-lit, as on a computer) and never while a finger is down.
+  pageStyle.textContent += `@media (pointer: coarse) { html:has([data-lab-pinning]):not(.lab-lit) body > :not([data-lab-comments]), html:has([data-lab-pinning]).lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html:has([data-lab-pinning]) body > :not([data-lab-comments]), html:has([data-lab-pinning]) body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
 
   // The section bar (src/widget/sections.ts) is its own file, loaded when the page may show one: the lab kept its room
   // (the file clears that again), or a lab page (or one that says so) has 3 or more headings. Asked again when a route

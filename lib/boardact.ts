@@ -47,7 +47,7 @@ export function text(b: Board, o: { origin: string; file?: string | null; json?:
 export const frameLine = (b: Board, f: Frame, file?: string | null) => {
   const beside = b.frames.filter((g) => g.id !== f.id && g.state !== 'archived').map((g) => g.id);
   const gone = b.frames.filter((g) => g.state === 'archived').map((g) => g.id);
-  const line = `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, sized(f), f.guest && 'from a wifi guest', f.label && `"${f.label}"`, beside.length && `beside ${beside.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
+  const line = `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, sized(f), f.guest && 'from a wifi guest', f.state === 'archived' && 'archived', f.label && `"${f.label}"`, beside.length && `beside ${beside.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
   const copy = (g: Frame) => g.src.startsWith('/_lab/') && g.kind !== 'image';
   const others = b.frames.filter((g) => g.id !== f.id);
   const page = file || b.of?.split('#')[0] || 'the page';
