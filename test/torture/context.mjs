@@ -1116,14 +1116,27 @@ export async function run(plan, ctx, opts) {
       const src = f('written at');
       const comp = f('component');
       if (S.file) {
-        const m = /^(.*?)(?::(\d+))?(?::(\d+))?( \(line (\d+) as served, may differ from the source\))?$/.exec(src || '');
+        // The text says the line as it is now, or says what it is (the contract, lib/source-line.mjs): "file:line" (checked against
+        // the file, so right now), "file:line (line from when it was pinned; …)" (as pinned, not checked or no file to check),
+        // "file:line (the pin recorded line N, …)" (moved: the new line, which must be the element's own now), "file (the pin recorded line N; …
+        // lines a, b: check which)" or "file (the pin recorded line N; … not found again …)" (no line named).
+        // (Vue's static markup: the file of the component above it and the words "line unknown": nothing is guessed, and there is no line to check.)
+        const unlocated = / \(line unknown: static markup\)$/.test(src || '');
+        const m = /^(.*?)(?::(\d+))?(?::(\d+))?( \((?:line (\d+) as served, may differ from the source|line from when it was pinned;[^)]*|the pin recorded line (\d+)[,;][^)]*)\))?$/.exec((src || '').replace(/ \(line unknown: static markup\)$/, ''));
+        const [asServed, asPinned, noLine] = [m && /as served/.test(m[4] || ''), m && /^ \(line from when/.test(m[4] || ''), m && m[6] && !m[2]];
         if (!src && S.file === 'if-said') {
           // (Next draws these on the server: nothing says a pin can name their source. What it does say must be right.)
         } else if (!src) no('source-missing', `no "written at" line for an element ${fw} drew from ${k.file}:${k.lines[0]}${pin.tg.markup ? ` (${pin.tg.markup} markup)` : ''}`, pin.tg.markup ? { markup: pin.tg.markup } : {});
         else if (m[1] !== k.file) no('source-names-another-file', `written at: ${src}; the element is written in ${k.file}`, { names: /\.next\/|node_modules|\/chunks\//.test(src) ? 'a-built-file' : 'another-source-file' });
-        else if (S.line && !m[4]) {
-          if (!m[2]) no('source-line-missing', `written at: ${src}; the element is on line ${k.lines[0]} of ${k.file}`, {});
-          else if (Number(m[2]) !== k.lines[0]) {
+        else if (unlocated) unclear('source-line-not-located', `written at: ${src}; the element is static markup, on line ${k.lines[0]} of ${k.file}: the file is named and the line said to be unknown (not checkable against the file)`, { markup: 'static' });
+        else if (S.line && !asServed) {
+          if (noLine) {
+            // Not found again: right when the element did move or change, a false alarm when it is where it was.
+            if (pin.line0 === k.lines[0]) no('source-line-false-alarm', `written at: ${src}; the element is still on line ${k.lines[0]} of ${k.file}, where it was when pinned`, {});
+          } else if (!m[2]) no('source-line-missing', `written at: ${src}; the element is on line ${k.lines[0]} of ${k.file}`, {});
+          else if (asPinned) {
+            if (Number(m[2]) !== pin.line0) no('source-line-wrong', `written at: ${src}; the element was on line ${pin.line0} of ${k.file} when it was pinned`, { made: pin.late ? 'after-the-edit' : 'before-the-edit' });
+          } else if (Number(m[2]) !== k.lines[0]) {
             if (Number(m[2]) === pin.line0 && pin.line0 !== k.lines[0]) no('source-line-stale-after-edit', `written at: ${src}: right when it was pinned; lines were put above since and the element is on line ${k.lines[0]} now. Nothing in the text says the line is from then`, {});
             else no('source-line-wrong', `written at: ${src}; the element was on line ${pin.line0} of ${k.file} when it was pinned${pin.line0 !== k.lines[0] ? ` (line ${k.lines[0]} now)` : ''}`, { made: pin.late ? 'after-the-edit' : 'before-the-edit' });
           }
