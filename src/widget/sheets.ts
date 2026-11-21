@@ -192,7 +192,9 @@ export function revealDraft() {
 export function backFromReveal() {
   const r = W.S.revealed;
   W.S.revealed = null;
-  if (r && W.coarse && Math.abs(scrollY - r.to) < 40) scrollPageTo(r.from);
+  // 320: the keyboard's pan moves the page too (about 300 px, 21 Nov simulator: it was left 382 down from 425); a sheet holds the page still
+  // otherwise, so what moved it is that pan, not a hand.
+  if (r && W.coarse && Math.abs(scrollY - r.to) < 320) scrollPageTo(r.from);
 }
 
 // Scrolls the page to top (smoothly, unless motion is reduced). A spot near the page's end can't scroll up into the
