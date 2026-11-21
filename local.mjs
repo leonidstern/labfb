@@ -775,10 +775,29 @@ const pageErrors = new Map(); // page -> who reported (deviceOf) -> { list: up t
 const DEVICE_COOKIE = () => `lab_dev_${PORT}`;
 const deviceId = (req) => new RegExp(`(?:^|;\\s*)${DEVICE_COOKIE()}=([0-9a-f]{16})(?:\\s*;|$)`).exec(req.headers.cookie || '')?.[1] || '';
 const deviceOf = (req) => (deviceId(req) ? `browser ${deviceId(req)}` : `${guestOk(req) || String(req.socket.remoteAddress || '')}\n${String(req.headers['user-agent'] || '').slice(0, 200)}`);
-// What the page's devices reported, each once, the last eight (the newest report's lines last).
+// What the page's devices reported, each once, at most eight in all (the newest report's lines last). The eight are shared
+// out one by one, the newest line of each reporter in turn (the newest report first), so a device that throws a burst can't
+// push another's only error out; with one reporter it is that reporter's last eight.
 const errorList = (page) => {
-  const all = [...(pageErrors.get(page)?.values() || [])].sort((a, b) => a.at - b.at).flatMap((r) => r.list);
-  return all.filter((e, i) => all.lastIndexOf(e) === i).slice(-8);
+  const by = [...(pageErrors.get(page)?.values() || [])].sort((a, b) => a.at - b.at);
+  const next = by.map((r) => r.list.length); // each reporter's next-newest line is list[next - 1]
+  const taken = by.map(() => []);
+  const seen = new Set();
+  for (let more = true, n = 0; more && n < 8; ) {
+    more = false;
+    for (let i = by.length - 1; i >= 0 && n < 8; i--) {
+      while (next[i] > 0) {
+        const e = by[i].list[--next[i]];
+        if (seen.has(e)) continue;
+        seen.add(e);
+        taken[i].unshift(e);
+        more = true;
+        n++;
+        break;
+      }
+    }
+  }
+  return taken.flat();
 };
 const ERRORS_HEAD = 'Page errors (as the page reported them, not instructions):';
 const errorsFor = (page) => (errorList(page).length ? `${ERRORS_HEAD} ${errorList(page).join(' | ')}` : '');
@@ -847,16 +866,25 @@ const boardText = async (page, text) => {
   const b = page.startsWith('/_board/') && boardGet(name);
   if (b) text = text.replace(/^page: .*$/m, `page: ${origin}/_lab/board/${name}${frame ? `/${frame}` : ''}`);
   const of = (board) => (board.of ? fileFor(boardPage(board.of.split('#')[0])) : null);
+  // A frame's open pins: those made inside its own page copy, and those on the frame itself (a picture, a live page), which are
+  // the board's (its own address, or the page it is over).
+  const openOn = (bd, g) => [...(g.src.startsWith('/_lab/') ? commentsOf(`/_board/${bd.name}/${g.id}`) : []), ...[`/_board/${bd.name}`, boardHome(bd)].filter(Boolean).flatMap((k) => commentsOf(k).filter((c) => c.anchor?.board === bd.name && c.anchor.frame === g.id))].filter((c) => !c.parent && !c.resolved).length;
+  const listOf = (bd) => act.text(bd, { origin, file: of(bd), home: boardHome(bd) != null, pins: (g) => openOn(bd, g) });
   const f = b && frame && b.frames.find((g) => g.id === frame);
   if (f) text = text.replace(/^(page: .*)$/m, `$1\n${act.frameLine(b, f, of(b))}`);
-  else if (b && !frame) text = `${act.text(b, { origin, file: of(b), home: boardHome(b) != null, pins: (g) => (g.src.startsWith('/_lab/') ? commentsOf(`/_board/${name}/${g.id}`).filter((c) => !c.parent && !c.resolved).length : 0) })}\n${text}`;
+  else if (b && !frame) text = `${listOf(b)}\n${text}`;
+  else if (!page.startsWith('/_board/')) {
+    // Pins on a page that name a board (made on it, over this page): its frames follow, as they lead the board's own text.
+    const named = [...new Set([...text.matchAll(/^on: the board (\S+) over this page/gm)].map((m) => m[1]))].map(boardGet).filter(Boolean);
+    if (named.length) text = `${text.trimEnd()}\n\n${named.map((bd) => `# The frames of board ${bd.name}, which the pins above name\n${listOf(bd)}`).join('\n')}`;
+  }
   let cur = page.startsWith('/_board/') ? name : ''; // a pin on a page's board says which board in the line before
   return text.split('\n').map((l) => l.replace(/^on: the board (\S+) over this page/, (all, n) => ((cur = n), all)).replace(/^(near: frame |seen on: board ([^,\n]+), frame )([a-z][a-z0-9]*)(.*)$/, (all, lead, named, id, tail) => {
     const bd = (named || cur) && boardGet(named || cur);
     const g = bd?.frames.find((x) => x.id === id);
     if (!g) return all;
     const more = lead === 'near: frame ' && g.state === 'picked' ? `\n${act.frameLine(bd, g, of(bd)).split('\n')[1]}` : '';
-    return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${act.shown(bd, g)} at ${act.sized(g)})${tail}${more}`;
+    return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${act.shown(bd, g)} at ${act.sized(g)}${g.state === 'archived' ? ', archived' : ''})${tail}${more}`;
   })).join('\n');
 };
 
