@@ -894,11 +894,18 @@ export async function run(plan, ctx, opts) {
       await drag(p, [X(from[0]), Y(from[1])], [X(to[0]), Y(to[1])]);
     } else if (via === 'draw') {
       // A line drawn through the middle of its first line of words (it reads as crossed out), D held.
+      // An element with no words and no picture (white space only) has nothing to go through: a line across its empty
+      // box is an underline of the words just above it, and the area is theirs (draw.ts), so it is not drawn on.
+      if (!at.firstLine && !at.media && !at.el.raw.trim()) return void note('   (the element has no words to draw a line through: skipped)');
       const f = at.firstLine || at.box;
       const y = (f[1] + f[3]) / 2;
       const end = inWin(Math.min(f[2] - 2, f[0] + 180), at.vw);
       const from = await firstFree(Array.from({ length: 8 }, (_, n) => [inWin(f[0] + 2 + n * 14, at.vw), y]).filter(([x]) => end - x >= 30));
       if (!from) return void note('   (no 30 px of its first line are free of the widget: skipped)');
+      // D goes to the document that has the focus, and only that page's widget sees it held: after a pin inside the
+      // <iframe> the frame has it, and a line drawn on the page then is a plain box (a person who goes from one page
+      // to the other clicks or tabs there first). Focus goes to the page the line is drawn in.
+      await ev(d, () => (document.activeElement instanceof HTMLElement && document.activeElement.blur(), window.focus()), null, fkey).catch(() => {});
       await p.keyboard.down('d');
       await sleep(150);
       await drag(p, [X(from[0]), Y(y)], [X(end), Y(y)], 12);
