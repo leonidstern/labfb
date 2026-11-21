@@ -205,7 +205,7 @@ each on the page whose address the device showed.
 | `hmr-message-lost-through-proxy`, `hmr-socket-closed-through-proxy` | silent | the dev server's socket says less through the lab |
 | `dev-server-not-found`, `wrong-dev-server-found` | silent | started with no `--proxy`, the lab serves the folder as plain pages, or goes in front of another server |
 | `hmr-socket-refused`, `request-dropped-by-the-lab`, `page-left-on-the-labs-502`, `console-error-only-through-proxy`, `write-refused`, `agent-command-failed` | loud | the lab or the browser says so |
-| `page-reloaded-by-a-lab-restart`, `page-state-lost-over-a-lab-restart`, `pin-shown-as-moved-after-its-words-changed`, `page-fetched-by-a-script-gets-the-widget`, `framework-stale-without-the-lab`, `framework-reloads-when-quiet`, `widget-script-tag-twice`, `static-server-not-put-in-front` | unclear | the contract does not say |
+| `page-reloaded-by-a-lab-restart`, `page-state-lost-over-a-lab-restart`, `pin-shown-as-moved-after-its-words-changed`, `page-fetched-by-a-script-gets-the-widget`, `framework-stale-without-the-lab`, `framework-keeps-not-found-after-the-route-came-back`, `framework-reloads-when-quiet`, `widget-script-tag-twice`, `static-server-not-put-in-front` | unclear | the contract does not say |
 
 Signatures of this area carry no framework: the report prints `seen with: react 3, astro 2` under each, and a table
 "dev-servers by framework" (pass, loud, silent, flaky per framework; `byKind` in the JSON).
@@ -216,9 +216,15 @@ Signatures of this area carry no framework: the report prints `seen with: react 
   there. Vite and webpack-dev-server say the same to every page: there the kinds of message must be the same.
 - A restarted lab's pages reload (the dev server's client lost its socket through the lab; the widget catches up by a
   reload): noted as unclear, and neither page state nor the quiet window is judged until seconds after one.
-- A page that loaded while a file held a syntax error and did not recover after the fix, when the control did not
-  load in that time: unclear. Vite keeps an error (or a full reload) for the next page only when no page is connected
-  (`vite/dist/node/chunks/node.js`: `!wss.clients.size`), so with a second tab open such a page gets no overlay.
+- A page that loaded while a file held a syntax error and did not recover after the fix: unclear, whether or not the
+  control loaded then too. Vite tells a page about the error only when that page's socket is already connected, and
+  keeps it for the next page only when no page at all is connected (`vite/dist/node/chunks/node.js`: `!wss.clients.size`),
+  so of two tabs that reload together (a dev-server restart), the one that asks for the broken file first recovers and the
+  other is blank for good, with no overlay. Two tabs straight on the dev server do the same in Chromium and WebKit
+  (a tab ended blank in 4 of 5 runs here), a lone tab through the lab recovers every time (3 of 3).
+- A tab that sat on a route when its file was deleted shows the framework's "not found"; when the file comes back Astro's
+  does not reload (the same address straight on the dev server shows the same). Unclear when a reload through the lab then
+  shows the page.
 - webpack-dev-server loses a reload for its HTML template while a page loads; the webpack project's page version is
   a hot module for that reason. Astro's error page reloads itself several times a second while an error shows, with
   and without the lab.

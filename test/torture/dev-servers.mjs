@@ -888,7 +888,6 @@ export async function run(plan, ctx, opts) {
     for (const x of reals()) {
       if (!x.loadsAtBreak) continue;
       if (x.loads > x.loadsAtBreak[0]) x.loadedWhileBroken = true;
-      if (x.cloads > x.loadsAtBreak[1]) x.controlLoadedWhileBroken = true;
       x.loadsAtBreak = null;
     }
   };
@@ -1163,6 +1162,8 @@ export async function run(plan, ctx, opts) {
       const e = extras.get(op.n);
       if (!e) return;
       fs.rmSync(abs(e.file), { force: true });
+      // A tab that sits on the route when its file goes shows the framework's "not found" (see the end).
+      for (const x of reals()) if (x.page && routeOf(new URL(x.page.url(), 'http://x').pathname) === `extra${op.n}`) x.routeDeletedUnder = true;
       // (the route stays in the model: a step may make its file again, and its comments must be there then)
     } else if (op.t === 'route-mv') {
       const e = extras.get(op.n);
@@ -1321,10 +1322,18 @@ export async function run(plan, ctx, opts) {
       // or error page (a route it has not picked up) is the framework's, with or without the lab.
       const own = !i.route && (await ask({ port: dev.port, path: i.url, headers: NAVIGATE }));
       if (controlWrong?.length) ctx.add('unclear', 'framework-stale-without-the-lab', `${fw}: the control page (no lab) is stale too: ${c.route ? controlWrong.map((w) => `${w.k}=${w.got} for ${w.tok}`).join(', ') : `it shows no page of the project (${JSON.stringify((c.text || '').slice(0, 60))})`}`, {});
-      // The page loaded while a file was broken (a restart reloaded it; the control did not load then). Whether such a
-      // page recovers once the file is fixed is the framework's: Vite only keeps its error for the next page when no
-      // other page is connected, so with a second tab open the reloaded one gets no overlay and never reloads.
-      else if (d.loadedWhileBroken && !(laptop?.controlLoadedWhileBroken) && (!i.route || wrong.every((w) => w.got === null || w.k !== 'page'))) ctx.add('unclear', 'page-loaded-while-a-file-was-broken-did-not-recover', `${fw}: ${d.id}'s page loaded while a source file held a syntax error (a restart reloaded it; the control tab did not load then) and still shows ${i.route ? wrong.map((w) => `${w.k}=${w.got}`).join(', ') : 'no page'} after the fix; the control shows ${c && !c.error ? JSON.stringify(c.v) : '?'}`, {});
+      // The page loaded while a file was broken (a restart reloaded it). Whether such a page recovers once the file is
+      // fixed is the framework's: Vite only tells a page about the error it hit when that page's socket is already
+      // connected, and keeps the error for the next page only when no page at all is connected (`!wss.clients.size`).
+      // A real-browser case always has a second tab open (the control, the other device), so of two tabs that reload
+      // at the same moment, whichever asks for the broken file first is told and recovers, and the other gets no overlay
+      // and no reload, blank for good. That is the same with no lab at all (two tabs straight on the dev server, in both
+      // engines), and a lone tab through the lab always recovers. So the control having loaded then too proves nothing.
+      else if (d.loadedWhileBroken && (!i.route || wrong.every((w) => w.got === null || w.k !== 'page'))) ctx.add('unclear', 'page-loaded-while-a-file-was-broken-did-not-recover', `${fw}: ${d.id}'s page loaded while a source file held a syntax error (a restart reloaded it, with another tab open) and still shows ${i.route ? wrong.map((w) => `${w.k}=${w.got}`).join(', ') : 'no page'} after the fix; the control shows ${c && !c.error ? JSON.stringify(c.v) : '?'}`, {});
+      // A tab was on a route when its file was deleted, and the file is back: the framework's "not found" page stays
+      // (Astro's does not reload when the route returns, straight on the dev server too: the control on that very
+      // address shows the same). What the lab must do is serve the page on a reload, as a person would.
+      else if (d.routeDeletedUnder && !i.route && own?.status === 200 && (await d.page.reload({ waitUntil: 'load', timeout: 20000 }).then(() => until(async () => (await d.info()).route, 4000 * slow, 150)).catch(() => false))) ctx.add('unclear', 'framework-keeps-not-found-after-the-route-came-back', `${fw}: ${d.id} sat on ${i.url} when its file was deleted; after the file came back the tab still shows ${JSON.stringify(i.text.slice(0, 40))} (the dev server answers the page, and a reload through the lab shows it)`, {});
       else if (own && (own.status !== 200 || (!F.spa && fw !== 'webpack' && !/id="tok-page"/.test(own.buf?.toString('utf8') || '')))) ctx.add('unclear', 'framework-shows-no-page-without-the-lab', `${fw}: ${i.url} asked of the dev server directly answers ${own.status} with no page of the project either`, {});
       else if (!i.route) silent('page-blank-or-error-through-proxy', `${d.id} after ${Date.now() - lastSave} ms: ${i.url} through the lab shows no page (title "${i.title}", ${i.overlay ? 'an error overlay' : 'no overlay'}, text ${JSON.stringify(i.text.slice(0, 80))}), the control shows ${c ? `${c.route} at ${JSON.stringify(c.v)}` : '(no control on this device)'}`, { cause, ...where(d) });
       else silent('stale-through-proxy', `${d.id} after ${Date.now() - lastSave} ms on ${i.url}: ${wrong.map((w) => `${w.k} shows ${w.got}, the disk has ${w.tok}`).join('; ')}; the control page (no lab) ${c && !c.error ? `shows ${JSON.stringify(c.v)}` : 'could not be read'}\n      the page loaded ${d.loads} times (the control ${laptop?.cloads ?? '-'}), ${i.overlay ? 'shows an error overlay' : 'shows no error overlay'}; its last console errors: ${d.errors.slice(-3).map((e) => `[${e.at - ctx.t0} ms] ${e.text.replace(/\s+/g, ' ').slice(0, 160)}`).join(' | ') || 'none'}`, { res: wrong.every((w) => w.got === null) ? 'the-page-s-scripts-did-not-run' : wrong[0].k, cause, ...where(d) });
